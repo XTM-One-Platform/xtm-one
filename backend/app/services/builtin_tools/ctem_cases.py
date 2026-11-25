@@ -1319,12 +1319,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ToolDefinition(
             name="update_ctem_case",
             description=(
-                "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
-                "reading or attack path of the triage step, a loop gate passed or waited, or the risk treatment plan of "
-                "the decision, or the threat package of the review step, or a change applied through an integration "
-                "(with the gate ctem.production_change). Those writes move the status; "
-                "resolved needs evidence; reopening needs a reason; accepted_risk and resolution_kind "
-                "dismissed (on a reject_and_close answer) need a person."
+                "Change a CTEM case: owner, due date, note, state with its reason, triage exploitation or "
+                "attack path, a loop gate, treatment plan, threat package, or a change applied through an "
+                "integration (gate ctem.production_change); these move the status. resolved needs evidence, "
+                "reopening a reason; accepted_risk and dismissed need a person."
             ),
             input_schema={
                 "type": "object",
@@ -1355,10 +1353,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "attack_path": {
                         "type": "object",
                         "description": (
-                            "From get_opencrq_attack_path_reach: origin {asset, exposure}, hops nearest first "
-                            "[{from, to, nature: proven|inferred, simulation (id), simulation_name, simulation_url, "
-                            "seen_at}], reached [{asset, depth, "
-                            "criticality}], primary (asset names). Replaces the stored one."
+                            "As get_opencrq_attack_path_reach answers it: origin, hops nearest first, reached, "
+                            "primary (asset names). Replaces the stored one."
                         ),
                         "properties": {
                             "origin": {"type": "object"},
@@ -1398,14 +1394,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "threat_package": {
                         "type": "object",
                         "description": (
-                            "The Grouping the review step drafted for this case in the threat intelligence "
-                            "platform (its id, name and page "
-                            "url) and the security coverage requested on it (coverage_id), once requested. "
-                            "url is the draft page while the Grouping sits in a draft; a Grouping page is "
-                            "checked against the live graph and replaced by the draft page when it is not live, "
-                            "and refused while the analyst review is not approved. The case's package state: "
-                            "drafted, awaiting_review, replan (answered with free text or another option), "
-                            "rejected, validated (approved and live)."
+                            "The Grouping the review step drafted for this case (id, name, page url) and its "
+                            "requested coverage_id. A url not live is replaced by the draft page; refused while "
+                            "the analyst review is not approved."
                         ),
                         "properties": {
                             "grouping_id": {"type": "string"},
@@ -1418,9 +1409,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "applied_change": {
                         "type": "object",
                         "description": (
-                            "A fix applied through a bound integration, read back: what was pushed (indicators "
-                            "with their prevention action, scope, expiry; a rule; a setting), the ids returned "
-                            "and how to revert it."
+                            "A fix applied through a bound integration, read back: what was pushed, the ids "
+                            "returned and how to revert it."
                         ),
                         "properties": {
                             "integration": {"type": "string"},
@@ -1442,11 +1432,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ToolDefinition(
             name="record_ctem_case_validation",
             description=(
-                "Write a validation or re-test result on a CTEM case: the validation module's simulation, "
-                "scenario or test id and its result. A passed or not_exposed resolves the case "
-                "(mitigation_only: mitigated, watching, the re-test stays on) unless you set conclusive false "
-                "(the check does not prove the exposure gone): the case stays open. failed reopens a resolved case; "
-                "pending only records."
+                "Write a validation or re-test result on a CTEM case. passed or not_exposed resolves it "
+                "(mitigation_only: mitigated, re-test kept on) unless conclusive is false; failed reopens a "
+                "resolved case; pending only records."
             ),
             input_schema={
                 "type": "object",
@@ -1470,10 +1458,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "type": "string",
                         "enum": ["remediation", "validation", "exposure"],
                         "description": (
-                            "remediation: a version inventory, every in-scope endpoint at or above the fixed "
-                            "build; validation: a detection or behaviour test, never resolves a patch case; "
-                            "exposure: a passive read proving the case still affected (endpoints below the fixed "
-                            "build), written with result failed and conclusive true."
+                            "remediation: every in-scope endpoint at or above the fixed build; validation: a "
+                            "detection test, never resolves a patch case; exposure: endpoints still below it "
+                            "(result failed, conclusive true)."
                         ),
                     },
                     "conclusive": {
@@ -1561,10 +1548,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ToolDefinition(
             name="sync_ctem_case_ticket",
             description=(
-                "Create or sync the remediation ticket of a CTEM case in the organization's declared ticketing "
-                "system (one ticket per case, found again on a retry). create=true opens it when missing (the "
-                "Mobilize gate). Without create it pushes the case state or pulls the ticket status. Answers "
-                "the ticket, its sync state, or why no ticketing is connected."
+                "Create or sync the one remediation ticket of a CTEM case in the declared ticketing system. "
+                "create=true opens it when missing (Mobilize gate); otherwise it pushes the case state or "
+                "pulls the ticket status."
             ),
             input_schema={
                 "type": "object",
@@ -1639,32 +1625,29 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ToolDefinition(
             name="record_ctem_case_detection_gap",
             description=(
-                "Propose a detection gap on the CTEM case its simulation validates (#2393): the case is "
-                "case_id, or the case whose validation from validation_provider names simulation_id. action "
-                "propose writes the gap (root cause, remediation, drafted rule) in the case history and files "
-                "its decision under decision_key with payload.ctem_case_id, listed under the case's "
-                "detection_gaps. action answer records the person's answer on the case. No case: the answer "
-                "says so; file your own decision item."
+                "Detection gap on the CTEM case a simulation validates (case_id, or validation_provider and "
+                "simulation_id). propose records it on the case and files its decision under decision_key; "
+                "answer records the person's answer. No case: file your own decision item."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "action": {"type": "string", "enum": ["propose", "answer"]},
                     "case_id": {"type": "string"},
-                    "decision_key": {"type": "string", "description": "propose: the decision item's key."},
-                    "validation_provider": {"type": "string", "description": "The provider of the simulation."},
-                    "simulation_id": {"type": "string", "description": "The simulation that found it."},
+                    "decision_key": {"type": "string"},
+                    "validation_provider": {"type": "string"},
+                    "simulation_id": {"type": "string"},
                     "inject_id": {"type": "string"},
                     "asset_id": {"type": "string"},
                     "technique": {"type": "string"},
                     "root_cause": {"type": "string", "enum": list(_GAP_ROOT_CAUSES)},
-                    "remediation": {"type": "string", "description": "The fix a person makes, in words."},
+                    "remediation": {"type": "string"},
                     "evidence": {"type": "string"},
-                    "rule_draft": {"type": "string", "description": "The drafted rule text (no_rule)."},
-                    "rule_language": {"type": "string", "description": "The rule's language."},
+                    "rule_draft": {"type": "string"},
+                    "rule_language": {"type": "string"},
                     "recommendation": {"type": "string", "enum": ["done", "declined"]},
-                    "outcome": {"type": "string", "description": "answer: done, declined or deferred."},
-                    "by": {"type": "string", "description": "answer: who answered."},
+                    "outcome": {"type": "string", "description": "done, declined or deferred."},
+                    "by": {"type": "string"},
                 },
                 "required": ["inject_id", "asset_id"],
             },
