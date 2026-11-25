@@ -183,7 +183,9 @@ function NotionWebhookSetupBlock({ integration, baseUrl }: { integration: Integr
         {t_i18n("2. Notion then sends a verification token here. Paste it in the Verify form of the subscription in Notion.")}
       </p>
       {isLoading ? (
-        <Spinner size="sm" tone="inherit" />
+        <div className="flex items-center gap-2 content-caption text-default-secondary">
+          <Spinner size="sm" tone="inherit" /> {t_i18n("Loading the verification token...")}
+        </div>
       ) : isError ? (
         <p className="content-caption text-default-secondary">{t_i18n("The verification token could not be read. Reload the page to try again.")}</p>
       ) : token ? (
