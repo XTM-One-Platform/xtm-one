@@ -17701,7 +17701,6 @@
   "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).": "Sur un actif joignable : exposé à Internet, ou un poste utilisateur (hameçonnage, navigateur, e-mail).",
   "Add your assets and exposure": "Ajouter vos actifs et leur exposition",
   "Not linked": "Non relié",
-  "No software inventory": "Aucun inventaire logiciel",
   "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.": "{total, plural, one {# actif lu} other {# actifs lus}}. Joignables : {reachable} (postes utilisateurs : {endpoints}). Injoignables avérés : {unreachable}. Inconnus : {unknown}.",
   "Business impact": "Impact métier",
   "On an asset that supports a primary asset.": "Sur un actif qui soutient un actif primaire.",
@@ -19490,6 +19489,7 @@
   "The last re-score failed: {reason}": "Le dernier re-scoring a échoué : {reason}",
   "Storage & retention": "Stockage et rétention",
   "{count, plural, one {# file} other {# files}}": "{count, plural, one {# fichier} other {# fichiers}}",
+  "{count, plural, one {{shown} linked asset} other {{shown} linked assets}}": "{count, plural, one {{shown} actif lié} other {{shown} actifs liés}}",
   "{count, plural, one {{shown} file} other {{shown} files}}": "{count, plural, one {{shown} fichier} other {{shown} fichiers}}",
   "Last sweep": "Dernier nettoyage",
   "Any state": "Tous les états",
@@ -21683,6 +21683,13 @@
   "Example: Payment platform, picked from the primary assets of the inventory. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.": "Exemple : Plateforme de paiement, choisie parmi les actifs principaux de l'inventaire. Les agents les lisent avec le PIR dans le contexte de l'organisation. Laissé vide, le PIR ne nomme aucun actif principal.",
   "{set} of {total} set": "{set} sur {total} renseignés",
   "Details of {name}, {count}": "Détails de {name}, {count}",
-  "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{primary, plural, one {# actif primaire atteint} other {# actifs primaires atteints}} via {supporting, plural, one {# actif support} other {# actifs supports}}.",
-  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, one {# règle de politique appliquée} other {# règles de politique appliquées}}."
+  "Case opening": "Ouverture des cas",
+  "Case opening: {state}": "Ouverture des cas : {state}",
+  "Case opening on": "Ouverture des cas activée",
+  "Case opening off": "Ouverture des cas désactivée",
+  "Case opening is off": "L'ouverture des cas est désactivée",
+  "Open a case for each confirmed signal": "Ouvrir un cas pour chaque signal confirmé",
+  "{count, plural, =0 {Off: no confirmed signal is waiting} one {Off: # confirmed signal is waiting} other {Off: # confirmed signals are waiting}}": "{count, plural, =0 {Désactivée : aucun signal confirmé en attente} one {Désactivée : # signal confirmé en attente} other {Désactivée : # signaux confirmés en attente}}",
+  "Case opening was not changed": "L'ouverture des cas n'a pas été modifiée",
+  "CTEM case opening turned on or off": "Ouverture des cas CTEM activée ou désactivée"
 }
