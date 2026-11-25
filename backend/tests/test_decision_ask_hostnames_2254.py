@@ -47,4 +47,5 @@ def test_the_ask_with_a_hex_hostname_is_accepted() -> None:
             "recommendation": "A",
         }
     )
+    assert ask is not None
     assert "langfuse-141a8160.one.example.com" in ask["question"]
