@@ -53,7 +53,21 @@ ALL_FIXED_BELOW_RUNNING = (
     "every issue of the case is fixed in a version at or below every version running (asset inventory)"
 )
 
+#: The resolution of a case a person dropped at a gate (#2252): never an agent's own call.
+DISMISSED = "dismissed"
+#: The option key of a CTEM gate ask that rejects and closes the case as not relevant (#2252).
+CLOSE_OPTION = "reject_and_close"
+#: What the history says when the person who closed the case gave no reason (#2252).
+NO_REASON_GIVEN = "no reason given"
+
 _SPACES = re.compile(r"\s+")
+_OPTION_SEPARATORS = re.compile(r"[\s_-]+")
+
+
+def closes_case(option: str | None) -> bool:
+    """Whether a gate answer is the close option (#2252): its key, or its label as a person reads it."""
+    text = _OPTION_SEPARATORS.sub(" ", (option or "").strip().lower())
+    return text.startswith(CLOSE_OPTION.replace("_", " "))
 
 
 class CaseRuleError(ValueError):
@@ -684,6 +698,7 @@ def check_transition(
     validations: Iterable[dict[str, Any]] | None = None,
     resolution_kind: str | None = None,
     close_without_retest_answered: bool = False,
+    dismissal_answered: bool = False,
 ) -> None:
     """Raise :class:`CaseRuleError` when the transition is refused.
 
@@ -695,6 +710,10 @@ def check_transition(
     unless a person decided otherwise (#1675): a person's own move, or a
     ``ctem.close_without_retest`` decision answered on the case
     (*close_without_retest_answered*), lets it close without the re-test.
+    ``resolution_kind`` ``dismissed`` (#2252) is a person's decision: a
+    person's own move, or a gate of the case a person answered with the option
+    ``reject_and_close`` (*dismissal_answered*); it closes to ``resolved``
+    without evidence or re-test, and an agent never dismisses on its own.
     """
     if target not in CASE_STATES:
         raise CaseRuleError(f"unknown state {target!r}")
@@ -709,6 +728,14 @@ def check_transition(
         raise CaseRuleError("a person moving a case to remediating names its owner")
     if target == "waiting_decision" and actor_kind == "user" and not reason:
         raise CaseRuleError("waiting for decision needs what the case waits on (the reason)")
+    if resolution_kind == DISMISSED:
+        if target != "resolved":
+            raise CaseRuleError("a dismissed case is resolved: set state resolved with resolution_kind dismissed")
+        if actor_kind != "user" and not dismissal_answered:
+            raise CaseRuleError(
+                f"only a person dismisses a case: a gate of the case answered with the option {CLOSE_OPTION}"
+            )
+        return
     if target == "resolved" and not evidence:
         raise CaseRuleError("resolving a case needs evidence (a ticket, a change or a validation run)")
     proven = passing(latest_validation(validations))

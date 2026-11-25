@@ -536,6 +536,24 @@ async def close_without_retest_answered(db: AsyncSession, case_id: uuid.UUID) ->
     return found is not None
 
 
+async def dismissal_answer(db: AsyncSession, case_id: uuid.UUID) -> CtemCaseEvent | None:
+    """The newest gate of the case a person answered with the close option (#2252), ``None`` when none.
+
+    Read from the case's gate events (``ctem_case_loop.record_gate``: kind ``gate``,
+    the outcome in ``to_value``, who answered in ``reason``, the option in ``evidence``).
+    """
+    rows = await db.scalars(
+        select(CtemCaseEvent)
+        .where(
+            CtemCaseEvent.case_id == case_id,
+            CtemCaseEvent.kind == "gate",
+            CtemCaseEvent.to_value == "answered",
+        )
+        .order_by(CtemCaseEvent.at.desc())
+    )
+    return next((row for row in rows if rules.closes_case(row.evidence)), None)
+
+
 async def update_case(
     db: AsyncSession,
     case: CtemCase,
@@ -543,6 +561,7 @@ async def update_case(
     actor: str,
     actor_kind: str,
     state: str | None = None,
+    resolution_kind: str | None = None,
     owner_user_id: uuid.UUID | None = None,
     clear_owner: bool = False,
     due_at: datetime | None = None,
@@ -563,10 +582,15 @@ async def update_case(
     due_at = rules.as_utc(due_at)
     accepted_until = rules.as_utc(accepted_until)
     new_owner = None if clear_owner else (owner_user_id or case.owner_user_id)
+    dismissal: CtemCaseEvent | None = None
+    if resolution_kind is not None and state is None:
+        raise rules.CaseRuleError("resolution_kind goes with a state change")
     if state is None:
         rules.check_owner(case.state, new_owner)
     else:
         answered = False
+        if resolution_kind == rules.DISMISSED and actor_kind != "user":
+            dismissal = await dismissal_answer(db, case.id)
         if (
             state in ("resolved", "mitigated_watching")
             and actor_kind != "user"
@@ -586,6 +610,8 @@ async def update_case(
             validation_plan=bool(getattr(case, "validation_plan", False)),
             validations=getattr(case, "validations", None),
             close_without_retest_answered=answered,
+            resolution_kind=resolution_kind,
+            dismissal_answered=dismissal is not None,
         )
     if new_owner != case.owner_user_id:
         db.add(
@@ -614,6 +640,13 @@ async def update_case(
     if note and note.strip():
         db.add(_event(case.id, actor, "note", reason=note.strip(), at=now))
     if state is not None:
+        reason_text = (reason or "").strip()
+        evidence_text = (evidence or "").strip()
+        if resolution_kind == rules.DISMISSED:
+            # The person and their reason stay on the history; none given is said (#2252).
+            who = (dismissal.reason or "a person").strip() if dismissal is not None else "a person"
+            reason_text = reason_text or rules.NO_REASON_GIVEN
+            evidence_text = evidence_text or f"dismissed by {who}: not relevant, no action"
         db.add(
             _event(
                 case.id,
@@ -621,13 +654,18 @@ async def update_case(
                 "state",
                 from_value=case.state,
                 to_value=state,
-                reason=(reason or "").strip() or None,
-                evidence=(evidence or "").strip() or None,
+                reason=reason_text[:2000] or None,
+                evidence=evidence_text[:2000] or None,
                 at=now,
             )
         )
         case.state = state
         case.state_since = now
+        if resolution_kind is not None:
+            case.resolution_kind = resolution_kind
+        elif state in OPEN_STATES:
+            # Reopened: how it was closed no longer applies (as the loop's own reopen does).
+            case.resolution_kind = None
         if state == "accepted_risk":
             case.accepted_reason = (reason or "").strip()
             case.accepted_until = accepted_until
