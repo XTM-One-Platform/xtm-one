@@ -1033,7 +1033,7 @@ describe("OrganizationSection", () => {
     expect(get).not.toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/syncs\?.*scope=inventory/));
   });
 
-  it("draws the OpenCTI PIR sources under the PIR list of the Prioritization policy, with Add a source opening the PIR import (#1938)", async () => {
+  it("draws the OpenCTI PIR sources under the PIR list of the Prioritization policy, with Add a sync opening the PIR import (#1938)", async () => {
     const base = get.getMockImplementation();
     const pirSync = { id: "s-pir", section: "pirs", source: "opencti", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: null, last_result: null };
     get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [pirSync] : path.startsWith("/organization-context/sources") ? [] : base?.(path)));
