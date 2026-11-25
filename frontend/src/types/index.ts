@@ -1493,8 +1493,8 @@ export interface BuiltinToolGroup {
   /** Only an administrator adds it to an agent: a picker shows it locked to anyone else. */
   bind_admin_only?: boolean;
   agent_keyed: boolean;
-  /** A Platform Health specialist's suite, carried by the Platform Health fleet's own agents: no session picker offers it. */
-  health_only: boolean;
+  /** Internal to Platform Health (#1943): carried by its fleet's own agents alone; no picker, Tools page or chat offers it. */
+  internal: boolean;
   named_after_platform: boolean;
   aliases: string[];
   /** False while this deployment withholds the suite (a flag off): its functions are then empty. */
@@ -5807,13 +5807,6 @@ export interface CtemFunnelLayer {
   reason?: string | null;
   /** The reachability split of the profile assets, on the Exposed layer (`services/asset_reachability.py`). */
   reachability?: CtemFunnelReachability | null;
-  /** Business impact (#1980): the primary assets reached and the inventory assets supporting them. */
-  primary_assets?: number;
-  supporting_assets?: number;
-  /** Business impact: the linked group members were read in part (a very large group). */
-  truncated?: boolean;
-  /** After policy (#1980): the rules of the saved prioritization policy the layer applies. */
-  rules?: string[];
 }
 
 /** How many organization profile assets are reachable, proven unreachable or of unknown exposure. */

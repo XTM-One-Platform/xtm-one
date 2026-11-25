@@ -17701,7 +17701,6 @@
   "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).": "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).",
   "Add your assets and exposure": "Add your assets and exposure",
   "Not linked": "Not linked",
-  "No software inventory": "No software inventory",
   "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.": "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.",
   "Business impact": "Business impact",
   "On an asset that supports a primary asset.": "On an asset that supports a primary asset.",
@@ -21681,6 +21680,7 @@
   "PIR sources": "PIR sources",
   "The OpenCTI imports and syncs that keep the PIR list up to date.": "The OpenCTI imports and syncs that keep the PIR list up to date.",
   "Wait for the prioritization policy to be saved.": "Wait for the prioritization policy to be saved.",
-  "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.",
-  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, one {# policy rule applied} other {# policy rules applied}}."
+  "Platform Health specialists": "Platform Health specialists",
+  "Platform Health's internal tools: diagnosis, experiments, sandbox, Flow Lab, memory and module checks": "Platform Health's internal tools: diagnosis, experiments, sandbox, Flow Lab, memory and module checks",
+  "The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health.": "The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health."
 }
