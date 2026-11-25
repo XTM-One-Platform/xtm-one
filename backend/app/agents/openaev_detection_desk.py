@@ -87,10 +87,22 @@ SHARED_AGENTS: tuple[str, ...] = (
 
 #: The verdicts of one expectation, from the strongest control to none.
 VERDICTS: tuple[str, ...] = ("blocked", "detected", "logged", "missed")
-#: The CTEM case functions the orchestrator holds (#2393): its gaps are proposed on the case.
-CASE_TOOLS: tuple[str, ...] = ("get_ctem_case", "record_ctem_case_detection_gap")
 #: The root causes the gap analyst can name.
-ROOT_CAUSES: tuple[str, ...] = ("none", "no_rule", "no_log", "broken_collector", "matching_defect", "unknown")
+#: ``no_platform``: no security platform of the type the expectation is scoped to
+#: is registered, so the control cannot be measured here (#2378): a configuration
+#: gap of the tenant, grouped per platform type, never a per-host remediation.
+ROOT_CAUSES: tuple[str, ...] = (
+    "none",
+    "no_rule",
+    "no_log",
+    "broken_collector",
+    "matching_defect",
+    "no_platform",
+    "unknown",
+)
+#: The key prefix of the one configuration item per tenant and expected platform
+#: type a ``no_platform`` gap raises, followed by the platform type (e.g. SIEM).
+CONFIGURATION_PREFIX = "openaev:detection-desk:gap:no-platform-"
 #: The agent statuses of a pair whose payload never ran on the asset (#2380): such a pair
 #: was not tested, so it is never a gap; it goes to ``not_executed`` and out of the coverage.
 NOT_EXECUTED_STATUSES: tuple[str, ...] = ("AGENT_INACTIVE", "TIMEOUT", "ERROR", "ASSET_AGENTLESS", "OTHER")
@@ -145,13 +157,22 @@ _GAP_SCHEMA: dict[str, Any] = {
         "coverage": {
             "type": "object",
             "description": (
-                "Share of expectations met in this simulation, 0 to 100, over the pairs whose payload ran; "
-                "not_executed pairs are left out of the denominators."
+                "Share of expectations met in this simulation, 0 to 100, over the pairs whose payload ran "
+                "and the expectations that can be measured: not_executed pairs are left out of the "
+                "denominators, and no_platform expectations are left out and counted apart in 'unmeasurable'."
             ),
             "properties": {
                 "prevention": {"type": "number"},
                 "detection": {"type": "number"},
                 "logging": {"type": "number"},
+                "unmeasurable": {
+                    "type": "object",
+                    "description": (
+                        "no_platform expectations per control (prevention, detection, logging): "
+                        "no registered security platform of the expected type."
+                    ),
+                    "additionalProperties": {"type": "integer"},
+                },
             },
         },
         "silent_collectors": {
@@ -256,9 +277,7 @@ DETECTION_DESK_AGENTS: list[dict[str, Any]] = [
         "temperature": 0.2,
         "tags": ["builtin", "openaev", "detection", "fleet", "detection-desk"],
         "platform_targets": _TARGETS,
-        "builtin_tool_ids": ["work_items", "shared_state", "generate_file", "ctem"],
-        # The case subset (#2393): read the case, propose the desk's gaps on it; nothing else of ctem.
-        "builtin_allowed_tools": {"ctem": list(CASE_TOOLS)},
+        "builtin_tool_ids": ["work_items", "shared_state", "generate_file"],
         "integration_template_bindings": ["openaev"],
         "handover_agent_slugs": [*_DELEGATES, *_CONSULTS],
         "handover_type_slugs": {**{s: "delegate" for s in _DELEGATES}, **{s: "consult" for s in _CONSULTS}},
@@ -330,12 +349,13 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "An OpenAEV simulation finished; the trigger information below names it.\n"
             "Run one analysis of the detection desk loop: delegate the sorting of its results to the "
             "Coverage Gap Analyst, draft a detection rule for each gap whose root cause is a missing "
-            "rule, and propose each gap on the CTEM case the simulation validates with "
-            "record_ctem_case_detection_gap (validation_provider openaev, the simulation id, decision_key "
-            f"{REMEDIATION_PREFIX} followed by the inject and asset ids): it lists the gap on the case and "
-            "files its decision with payload.ctem_case_id. A simulation with no case: raise one "
-            f"remediation work item per gap (keyed {REMEDIATION_PREFIX}, owned by you, "
-            "needs_human with an ask card: a person makes the fix). When the "
+            f"rule, raise one remediation work item per gap (keyed {REMEDIATION_PREFIX}, owned by you, "
+            "needs_human with an ask card: a person makes the fix), except a no_platform gap. A "
+            "no_platform gap is a configuration gap, never a per-host remediation: group them into at "
+            "most one configuration item per expected platform type, keyed "
+            f"{CONFIGURATION_PREFIX} followed by the platform type (dedupe on that key, so a later "
+            "simulation adds to it), owned by you, needs_human with an ask card (register a security "
+            "platform of that type, or accept that the control is not measured). When the "
             f"simulation is itself a re-test (a {RETEST_PREFIX} item names it), close each gap it "
             f"proves closed. {CASE_LINK_RULE} Answer with the run JSON."
         ),
@@ -395,11 +415,11 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
         apply=(
             f"A launch ({LAUNCH_PREFIX}) approved: launch exactly the simulation the approval named, and "
             f"record it in shared state {STATE_KEY}; its results come back through Simulation finished. "
-            f"A remediation ({REMEDIATION_PREFIX}) answered: when its payload names a ctem_case_id, record "
-            "the answer on the case with record_ctem_case_detection_gap (action answer). Answered done: "
-            "create the re-test work item keyed "
+            f"A remediation ({REMEDIATION_PREFIX}) answered done: create the re-test work item keyed "
             f"{RETEST_PREFIX} followed by the same ids, owned by you (none when one is already open), "
             "with the payload links of the remediation item. "
+            f"A configuration item ({CONFIGURATION_PREFIX}) answered: record the decision in {STATE_KEY}; "
+            "it files no re-test, the next simulation measures the control once the platform is registered. "
             f"Rejected, declined or deferred: record the decision and the reason in {STATE_KEY}. "
             "Answer with the run JSON."
         ),
