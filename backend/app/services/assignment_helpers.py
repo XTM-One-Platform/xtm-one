@@ -275,7 +275,7 @@ def _schedule_memory_self_heal(agent: Agent, scope_id: str | None) -> None:
     """Fire-and-forget an automatic memory self-heal pass for *agent*.
 
     Called when the combined memory context breaches the assignment prompt
-    cap.  ``auto_heal_agent_memory`` is throttled per agent and lane via
+    cap.  ``auto_heal_agent_memory`` throttles its agent-wide hygiene per agent and its compression per lane via
     Redis, opens its own DB session, and never raises — so scheduling it
     from the run setup path is safe and cheap.  *scope_id* is the lane the
     run reads (``assignment_memory_scope``), whose medium-term summary the
@@ -1030,7 +1030,7 @@ async def _load_memory_context(
         # Self-healing: schedule an automatic per-agent maintenance
         # pass (persistent-tier prune/cap/consolidate/re-embed + Redis
         # medium-term compression) instead of asking operators to run it
-        # manually from a log line no user ever sees.  Throttled per lane
+        # manually from a log line no user ever sees.  Throttled per agent and lane
         # inside auto_heal_agent_memory, so this is a cheap no-op on
         # subsequent runs within the throttle window.
         _schedule_memory_self_heal(agent, assignment_memory_scope(user_id, agent.user_id))

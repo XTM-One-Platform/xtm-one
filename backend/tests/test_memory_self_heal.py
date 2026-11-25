@@ -257,10 +257,10 @@ async def test_auto_heal_skipped_when_throttled():
 
 
 @pytest.mark.asyncio
-async def test_a_heal_of_one_lane_does_not_throttle_another():
-    """The throttle is per lane: one user's heal within the window leaves the
-    next user's lane free to heal, and blocks a second heal of its own lane."""
-    fake_redis = _FakeRedis({f"agent_mem_autoheal:{AGENT_ID}:scope:user-a": "1"})
+async def test_the_agent_wide_hygiene_runs_once_per_window_and_each_lane_compresses():
+    """Two throttles: the agent-wide persistent hygiene runs once per window,
+    whichever lane fires it; each user's lane gets its own compression, once."""
+    fake_redis = _FakeRedis()
 
     async def fake_redis_client():
         return fake_redis
@@ -268,9 +268,9 @@ async def test_a_heal_of_one_lane_does_not_throttle_another():
     with (
         patch.object(
             persistent_memory_mod, "prune_old_memories", new_callable=AsyncMock
-        ),
+        ) as mock_prune,
         patch.object(persistent_memory_mod, "enforce_memory_cap", new_callable=AsyncMock),
-        patch.object(persistent_memory_mod, "consolidate_agent_facts", new_callable=AsyncMock),
+        patch.object(persistent_memory_mod, "consolidate_agent_facts", new_callable=AsyncMock) as mock_facts,
         patch.object(persistent_memory_mod, "reembed_stale_memories", new_callable=AsyncMock),
         patch("app.core.redis.redis_client", side_effect=fake_redis_client),
         patch("app.core.database.async_session", new=_FakeSessionFactory()),
@@ -283,11 +283,13 @@ async def test_a_heal_of_one_lane_does_not_throttle_another():
             new_callable=AsyncMock,
         ) as mock_compress,
     ):
-        assert await auto_heal_agent_memory(AGENT_ID, scope_id="user-a") is False
+        assert await auto_heal_agent_memory(AGENT_ID, scope_id="user-a") is True
         assert await auto_heal_agent_memory(AGENT_ID, scope_id="user-b") is True
+        assert await auto_heal_agent_memory(AGENT_ID, scope_id="user-a") is False
 
-    assert mock_compress.await_args.kwargs["scope_id"] == "user-b"
-    assert f"agent_mem_autoheal:{AGENT_ID}:scope:user-b" in fake_redis.store
+    mock_prune.assert_awaited_once()
+    mock_facts.assert_awaited_once()
+    assert [c.kwargs["scope_id"] for c in mock_compress.await_args_list] == ["user-a", "user-b"]
 
 
 @pytest.mark.asyncio
