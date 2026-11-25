@@ -1551,6 +1551,9 @@ export interface ProviderCatalogItem {
   /** When present, the UI shows an auth mode selector (e.g. ["api_key", "platform_managed"]). */
   supported_auth_types?: string[];
   fields: string[];
+  /** The credential fields of each mode of a provider with several auth types;
+   * `fields` holds those of the default mode. */
+  fields_by_auth_type?: Record<string, string[]> | null;
   /** A2A only: which directions this mechanism can serve. Absent for every
    * other provider. */
   a2a_directions?: ("inbound" | "outbound")[];

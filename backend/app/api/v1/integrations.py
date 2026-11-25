@@ -84,6 +84,7 @@ from app.api.v1.integration_catalog import (
     PROVIDER_CATALOG,
     build_dummy_token,
     build_provider_tools,
+    credential_fields_by_auth_type,
     integration_owns_oauth_scopes,
     invalid_extra_fields,
     is_certified_provider,
@@ -991,6 +992,7 @@ async def list_provider_catalog(
                 auth_type=val["auth_type"],
                 supported_auth_types=val.get("supported_auth_types"),
                 fields=val["fields"],
+                fields_by_auth_type=credential_fields_by_auth_type(val),
                 # A2A only. Absent from this list, the catalog endpoint drops
                 # them and the creation form cannot offer a direction — which
                 # makes every integration an operator creates inbound and the
