@@ -642,6 +642,26 @@ async def _read_openaev_by_id(
     return openaev_issues(found)
 
 
+#: The by-id readers of each product: closed members and the case read's lookup (#1986).
+_BY_ID_READERS = {"opencti": _read_opencti_by_id, "openaev": _read_openaev_by_id}
+
+
+async def _lookup_by_id(
+    source: str, cred: tuple[str, dict[str, str]], ids: list[str]
+) -> list[rules.SourceIssue] | None:
+    """The issues among *ids* of *source* the credentials read, ``None`` when the product fails."""
+    reader = _BY_ID_READERS[source]
+    base_url, headers = cred
+    if source == "opencti":
+        headers = attach_probe(headers, base_url)
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            return await reader(client, base_url, headers, sorted(ids))
+    except Exception as exc:
+        logger.warning("CTEM cases: %s lookup by id failed: %s", source, format_exception_message(exc))
+        return None
+
+
 async def _read_product(
     user_id: str, provider: str, read: Callable[[httpx.AsyncClient], Awaitable[Any]]
 ) -> tuple[Any, str | BaseException | None]:
@@ -754,23 +774,9 @@ async def _read_closed_members(
         source, _, external_id = member_id.partition(":")
         if member_id not in open_ids and source not in out.missing and creds.get(source):
             wanted.setdefault(source, []).append(external_id)
-    readers = {"opencti": _read_opencti_by_id, "openaev": _read_openaev_by_id}
-
-    async def lookup(source: str, cred: tuple[str, dict[str, str]], ids: list[str]) -> list[rules.SourceIssue] | None:
-        reader = readers[source]
-        base_url, headers = cred
-        if source == "opencti":
-            headers = attach_probe(headers, base_url)
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                return await reader(client, base_url, headers, sorted(ids))
-        except Exception as exc:
-            logger.warning("CTEM cases: %s lookup by id failed: %s", source, format_exception_message(exc))
-            return None
-
     # The products are looked up at once (#1986).
-    lookups = {s: cred for s in wanted if s in readers and (cred := creds.get(s)) is not None}
-    answers = await asyncio.gather(*(lookup(s, cred, wanted[s]) for s, cred in lookups.items()))
+    lookups = {s: cred for s in wanted if s in _BY_ID_READERS and (cred := creds.get(s)) is not None}
+    answers = await asyncio.gather(*(_lookup_by_id(s, cred, wanted[s]) for s, cred in lookups.items()))
     for source, found in zip(lookups, answers, strict=True):
         ids = wanted[source]
         if found is None:

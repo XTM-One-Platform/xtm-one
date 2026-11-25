@@ -30,8 +30,8 @@ def _profile(**policy) -> oc.OrganizationProfile:
             ],
             "software": [{"product": "nginx", "vendor": "f5"}, {"product": "Confluence"}],
             "assets_exposure": [
-                {"name": "shop.example.com", "group": "DMZ", "internet_facing": "yes", "tech_stack": ["nginx"]},
-                {"name": "wiki.example.com", "internet_facing": "no", "tech_stack": ["Confluence"], "tags": ["lab"]},
+                {"name": "shop.example.com", "group": "DMZ", "internet_facing": "yes", "products": ["nginx"]},
+                {"name": "wiki.example.com", "internet_facing": "no", "products": ["Confluence"], "tags": ["lab"]},
                 {"name": "db-1", "criticality": "very_high", "source": "opencrq", "external_id": "sa-42"},
                 {"name": "printer-3", "criticality": "low"},
             ],
@@ -163,7 +163,7 @@ def test_software_resolves_through_the_tech_stack_and_a_cpe():
         _facts(path="new_vulnerability", lens="world", kind="software", ref="cpe:2.3:a:f5:nginx:1.27.1"),
         today=TODAY,
     )
-    assert decision.record["reconcile"]["tech_stack"] == ["nginx"]
+    assert decision.record["reconcile"]["products"] == ["nginx"]
     assert "shop.example.com" in decision.record["reconcile"]["assets"]
     assert decision.outcome == "case"
 
@@ -177,11 +177,11 @@ def test_a_threat_resolves_to_the_tech_stack_through_its_targets_and_matched_fie
             lens="world",
             kind="threat",
             ref="campaign--74c27bbf",
-            matched_fields=["sector (Technology)", "tech_stack (nginx, AWS)"],
+            matched_fields=["sector (Technology)", "products (nginx, AWS)"],
         ),
         today=TODAY,
     )
-    assert by_field.record["reconcile"]["tech_stack"] == ["nginx"]
+    assert by_field.record["reconcile"]["products"] == ["nginx"]
     assert by_field.record["reconcile"]["software_refs"] == ["nginx", "AWS"]
     assert "shop.example.com" in by_field.record["reconcile"]["assets"]
     assert by_field.record["reason_code"] != "subject_unresolved"
@@ -199,7 +199,7 @@ def test_a_threat_resolves_to_the_tech_stack_through_its_targets_and_matched_fie
         ),
         today=TODAY,
     )
-    assert by_relationship.record["reconcile"]["tech_stack"] == ["Confluence"]
+    assert by_relationship.record["reconcile"]["products"] == ["Confluence"]
     assert gate.threat_software({"uses": "nginx", "targets": ["Confluence"]}) == ["Confluence", "nginx"]
 
 
@@ -346,7 +346,7 @@ def test_the_decision_record_lists_every_input():
         "assets",
         "asset_groups",
         "primary_assets_named",
-        "tech_stack",
+        "products",
         "lenses",
         "confidence",
         "proven",

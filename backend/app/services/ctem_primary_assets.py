@@ -44,7 +44,7 @@ def _key(value: Any) -> str:
 def product_matches(product: str, ref: str) -> bool:
     """An installed *product* named by a software reference *ref* (a name, or a CPE's product part).
 
-    The same rule as the gate's tech stack match: equal, or *product* as a whole
+    The same rule as the gate's software match: equal, or *product* as a whole
     word of *ref* (``Windows`` in ``windows_10``, never ``win`` in ``windows``).
     """
     p, r = str(product or "").strip().lower(), str(ref or "").strip().lower()
@@ -102,7 +102,7 @@ class PrimaryAssetIndex:
         return hit
 
     def reach(self, software: list[str], keys: list[str] | None = None) -> list[dict[str, Any]]:
-        """The primary assets *software* (names, CPEs, tech stack products) or subject *keys* reach.
+        """The primary assets *software* (names, CPEs, products) or subject *keys* reach.
 
         One entry per (primary asset key, through, source), best source first:
         ``{primary_asset_key, software, asset, through, through_kind, source, roles, via}``.
@@ -138,7 +138,7 @@ class PrimaryAssetIndex:
 def _record_products(fields: dict[str, Any]) -> dict[str, str]:
     """What a record says it runs: its own software list and the OS family a device reports."""
     out: dict[str, str] = {}
-    for item in fields.get("tech_stack") or []:
+    for item in fields.get("products") or []:
         label = str(item or "").strip()
         if label:
             out.setdefault(_key(label), label)
