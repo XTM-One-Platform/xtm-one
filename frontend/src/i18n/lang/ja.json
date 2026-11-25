@@ -21843,6 +21843,7 @@
   "Triggers when a page's content changes. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "ページの内容が変更されたときに起動します。Notion の Webhook で配信されます。統合の「設定」タブの Webhook カードで設定します。",
   "Triggers when the rows of a data source (database) change. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "データソース（データベース）の行が変更されたときに起動します。Notion の Webhook で配信されます。統合の「設定」タブの Webhook カードで設定します。",
   "Notion webhook setup": "Notion Webhook の設定",
+  "Loading the verification token...": "検証トークンを読み込んでいます...",
   "1. In Notion, open the connection's Webhooks tab and create a subscription with this URL.": "1. Notion で接続の Webhooks タブを開き、この URL でサブスクリプションを作成します。",
   "2. Notion then sends a verification token here. Paste it in the Verify form of the subscription in Notion.": "2. Notion からここに検証トークンが送信されます。Notion のサブスクリプションの Verify フォームに貼り付けてください。",
   "The verification token could not be read. Reload the page to try again.": "検証トークンを読み取れませんでした。ページを再読み込みしてもう一度お試しください。",

@@ -21843,6 +21843,7 @@
   "Triggers when a page's content changes. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "Se déclenche quand le contenu d'une page change. Livré par les webhooks de Notion ; à configurer dans la carte Webhooks de l'onglet Configuration de l'intégration.",
   "Triggers when the rows of a data source (database) change. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "Se déclenche quand les lignes d'une source de données (base de données) changent. Livré par les webhooks de Notion ; à configurer dans la carte Webhooks de l'onglet Configuration de l'intégration.",
   "Notion webhook setup": "Configuration du webhook Notion",
+  "Loading the verification token...": "Chargement du jeton de vérification...",
   "1. In Notion, open the connection's Webhooks tab and create a subscription with this URL.": "1. Dans Notion, ouvrez l'onglet Webhooks de la connexion et créez un abonnement avec cette URL.",
   "2. Notion then sends a verification token here. Paste it in the Verify form of the subscription in Notion.": "2. Notion envoie alors un jeton de vérification ici. Collez-le dans le formulaire Verify de l'abonnement dans Notion.",
   "The verification token could not be read. Reload the page to try again.": "Le jeton de vérification n'a pas pu être lu. Rechargez la page pour réessayer.",
