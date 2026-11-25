@@ -780,8 +780,9 @@ async def _read_closed_members(
             wanted.setdefault(source, []).append(external_id)
     readers = {"opencti": _read_opencti_by_id, "openaev": _read_openaev_by_id}
 
-    async def lookup(source: str, cred: tuple[str, dict[str, str]], ids: list[str]) -> list[rules.SourceIssue] | None:
-        reader = readers[source]
+    async def lookup(source: str, cred: tuple[str, dict[str, str]], ids: list[str]) -> Any:
+        """OpenCTI: the issues read; OpenAEV: ``(issues, ids answering 404)``; ``None`` on an outage."""
+        reader: Any = readers[source]
         base_url, headers = cred
         if source == "opencti":
             headers = attach_probe(headers, base_url)

@@ -39,8 +39,8 @@ def register(
             resp, err = await _api(
                 base_url, headers, "get", f"/api/findings/{finding_id}", "get finding"
             )
-            if err:
-                return err
+            if err or resp is None:
+                return err or "OpenAEV answered nothing."
             body = resp.json()
             if not isinstance(body, dict):
                 return json_answer(body, 2000)
@@ -48,8 +48,8 @@ def register(
         resp, err = await _api(
             base_url, headers, "get", f"/api/findings/{finding_id}/summary", "get finding summary"
         )
-        if err:
-            return err
+        if err or resp is None:
+            return err or "OpenAEV answered nothing."
         return json_answer(resp.json(), 4000)
 
     async def manage_openaev_vulnerability(
