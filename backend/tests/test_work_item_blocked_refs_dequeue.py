@@ -79,3 +79,9 @@ def test_the_note_names_the_removal_its_reason_and_what_to_do() -> None:
     assert note.endswith("surfaced at 2026-11-19T09:30:00Z")
     waiting = dequeued_note([f"{REPO}#109"], _dequeued(109), NOW, still_blocked=True)
     assert "stays blocked until the items it waits for are done" in waiting
+
+
+def test_a_merge_conflict_note_says_the_conflict_may_be_in_the_group() -> None:
+    note = dequeued_note([f"{REPO}#109"], _dequeued(109, reason="merge_conflict"), NOW, still_blocked=False)
+    assert "without a merge (merge_conflict; the conflict may be with a pull request ahead of it" in note
+    assert "mergeable means enqueue the same head again)" in note

@@ -96,6 +96,20 @@ def test_each_removal_wakes_the_item_once() -> None:
     assert [o.conclusion for o in _wakes(out)] == ["dequeued"]
 
 
+def test_a_merge_conflict_removal_says_it_may_be_the_group_not_the_base() -> None:
+    _, out = wipr.apply_pull_request_event(_bound(), _dequeue("MERGE_CONFLICT"), NOW)
+    (wake,) = _wakes(out)
+    assert wake.run_name is not None
+    assert wake.run_name.startswith("merge queue: removed (merge_conflict); ")
+    assert "ahead of it in the queue's group" in wake.run_name
+    assert "enqueue the same head again" in wake.run_name
+
+
+def test_a_check_failure_removal_carries_no_hint() -> None:
+    assert wipr.dequeued_run_name("ci_failure") == "merge queue: removed (ci_failure)"
+    assert wipr.dequeued_run_name(None) == "merge queue: removed (unknown)"
+
+
 # -- 2. A required red after an unrequired red on the same head ---------------------
 
 

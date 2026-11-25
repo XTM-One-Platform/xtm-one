@@ -294,7 +294,9 @@ def _ci_row(status: str) -> SimpleNamespace:
 
 
 def _completed():
-    return SimpleNamespace(conclusion="failure", run_url="https://ci/1", repo=REPO, number=12, head_sha="a" * 40)
+    return SimpleNamespace(
+        conclusion="failure", run_url="https://ci/1", run_name="ci", repo=REPO, number=12, head_sha="a" * 40
+    )
 
 
 async def test_a_ci_completion_under_a_live_lease_starts_no_run(ci_dispatch):
