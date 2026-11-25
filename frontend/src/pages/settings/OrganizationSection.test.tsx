@@ -38,19 +38,15 @@ beforeEach(() => {
   xtmOneMode = true;
 });
 
-/** The header's one "Draft" button (#1991) opens the Draft dialog; no menu. */
-async function openDraft() {
-  fireEvent.click(screen.getByTestId("settings.organization.draft-open"));
-  return screen.findByRole("dialog", { name: "Draft" });
+/** Opens the header "Draft" menu and picks one of its rows (section 6.1). */
+async function pickDraft(row: "From the platforms" | "With AI") {
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Draft" }), { button: 0, ctrlKey: false });
+  fireEvent.click(await screen.findByRole("menuitem", { name: row }));
 }
-/** The dialog's own Draft button runs the pass. */
-function runDraft(dialog: HTMLElement) {
-  fireEvent.click(within(dialog).getByRole("button", { name: "Draft" }));
-}
-/** A connected OpenCTI, so the dialog runs the platforms pass. */
-function withOpenCti() {
-  const base = get.getMockImplementation()!;
-  get.mockImplementation(async (path: string) => (path === "/integrations" ? [{ id: "i-1", name: "OpenCTI", provider: "opencti" }] : base(path)));
+/** Draft > From the platforms opens the import stepper (#11780); its "Quick setup" runs the one-click draft. */
+async function draftFromPlatforms() {
+  await pickDraft("From the platforms");
+  fireEvent.click(await screen.findByRole("button", { name: "Quick setup" }));
 }
 /** The cards CTEM > Inventory mounts in place of the three tabs that left Settings (#1178, #1690). */
 const INVENTORY_CARDS = {
@@ -478,6 +474,35 @@ describe("OrganizationSection", () => {
     expect(within(editTable).getByRole("columnheader", { name: /Primary asset/ }).style.width).toBe("240px");
     fireEvent.click(within(screen.getByTestId("settings.organization.primary-asset-row")).getByText(long));
     await screen.findByDisplayValue(long);
+  });
+
+  it("reads the stored links of a primary asset as a count in the Assets column, a synced link included (#1978 S2)", async () => {
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) => {
+      if (path === "/organization-context")
+        return {
+          ...CONTEXT,
+          profile: {
+            ...CONTEXT.profile,
+            primary_assets: [
+              { name: "Employee  Workstations", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "pa-1" },
+              { name: "Payments", business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "", asset_names: ["pay-db"] },
+              { name: "Laptops", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "pa-2" },
+            ],
+          },
+        };
+      if (path === "/organization-context/primary-assets/link-counts")
+        return { items: { "employee workstations": { total: 263, manual: 0, opencrq: 263, rule: 0 }, payments: { total: 1, manual: 1, opencrq: 0, rule: 0 }, laptops: { total: 1234, manual: 0, opencrq: 1234, rule: 0 } } };
+      return base(path);
+    });
+    renderPage("business");
+    // A sync writes links, never asset_names: the row reads their count, never "Not set" (#1978 cause 4).
+    expect(await screen.findByText("263 linked assets")).toBeTruthy();
+    // The names typed by hand stay as they are while they are all the links.
+    expect(screen.getByText("pay-db")).toBeTruthy();
+    // From 1,000 the count is compact, never the grouped full number (UX r1 B1 on #2000).
+    expect(screen.getByText("1.2K linked assets")).toBeTruthy();
+    expect(screen.queryByText("1,234 linked assets")).toBeNull();
   });
 
   it("edits one list card alone, counts its changes, undoes a removal and patches that list alone (#12256, #1752)", async () => {
@@ -1128,96 +1153,66 @@ describe("OrganizationSection", () => {
     expect(within(alert).getByRole("button", { name: "Reload the versions" })).toBeTruthy();
   });
 
-  it("draws one Draft button, no menu, and no path to the asset import, the stepper or a fill agent (#1991)", async () => {
-    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
-    await screen.findByTestId("settings.organization.identity");
-    const draft = screen.getByTestId("settings.organization.draft-open");
-    expect(draft.textContent).toBe(" Draft");
-    expect(draft.getAttribute("aria-haspopup")).toBeNull();
-    fireEvent.click(draft);
-    const dialog = await screen.findByRole("dialog", { name: "Draft" });
-    expect(screen.queryByRole("menuitem")).toBeNull();
-    expect(within(dialog).queryByText(/Quick setup|From a connected integration|From the platforms/)).toBeNull();
-  });
-
-  it("drafts from the platforms without a model: platform fields of the two tabs only, reviewed, nothing saved before Save (#1991)", async () => {
-    agenticEnabled = false;
-    withOpenCti();
+  it("opens the form on the draft from the platforms, names each source, and saves it as a draft version", async () => {
     post.mockImplementation(async (path: string) => {
       if (path !== "/organization-context/draft") throw new Error(`unexpected POST ${path}`);
       return {
         based_on_version: 3,
-        profile: { ...CONTEXT.profile, name: "Acme SA", pir_ids: ["pir-1"], software: [{ product: "CrowdStrike Falcon", vendor: "", cpe: "" }] },
+        profile: { ...CONTEXT.profile, pir_ids: ["pir-1"], software: [{ product: "CrowdStrike Falcon", vendor: "", cpe: "" }] },
         filled: [
-          { field: "name", source: "opencti", detail: "Acme SA" },
           { field: "pir_ids", source: "opencti", detail: "1 PIR(s)" },
           { field: "software", source: "openaev", detail: "1 product(s)" },
         ],
         unavailable: ["OpenCRQ: no OpenCRQ integration is connected (tenant id 42)"],
-        missing_fields: [],
+        missing_fields: ["size", "loaded_hourly_rate"],
       };
     });
-    put.mockResolvedValue({ ...CONTEXT, version: 4, source: "ai_draft" });
+    put.mockResolvedValue({ ...CONTEXT, version: 4, source: "draft" });
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     await screen.findByTestId("settings.organization.identity");
-    const dialog = await openDraft();
-    expect(within(dialog).getByTestId("ai-draft.no-model")).toBeTruthy();
-    expect(within(dialog).queryByLabelText(/^Description/)).toBeNull();
-    runDraft(dialog);
-    await within(dialog).findByTestId("ai-draft.review");
-    expect(postForm).not.toHaveBeenCalled();
-    // The scope guard: the PIRs and the software are not proposed on Settings.
-    expect(within(dialog).getByTestId("ai-draft.row.name")).toBeTruthy();
-    expect(within(dialog).queryByTestId("ai-draft.row.pir_ids")).toBeNull();
-    expect(within(dialog).queryByTestId("ai-draft.row.software")).toBeNull();
-    expect(within(dialog).getByTestId("ai-draft.group.organization")).toBeTruthy();
-    expect(dialog.textContent).toContain("OpenCRQ could not be read");
-    expect(dialog.textContent).not.toContain("tenant id");
+    await draftFromPlatforms();
+    const panel = await screen.findByTestId("settings.organization.draft");
+    expect(panel.textContent).toContain("Priority intelligence requirements (PIRs) from OpenCTI");
+    expect(panel.textContent).toContain("Software from OpenAEV");
+    expect(panel.textContent).toContain("OpenCRQ could not be read");
+    // The backend's error text is never shown as is.
+    expect(panel.textContent).not.toContain("tenant id");
+    // The drafted software inventory is named in the panel and saved with the profile, its card living on CTEM > Inventory (#1178).
     expect(put).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Accept Organization name" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save accepted (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: /Save/ }));
     await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
-    const [, body] = put.mock.calls[0] as [string, { profile: { name: string; pir_ids: string[] }; source: string }];
-    expect(body.profile.name).toBe("Acme SA");
-    expect(body.profile.pir_ids).toEqual(CONTEXT.profile.pir_ids);
+    const [, body] = put.mock.calls[0] as [string, { profile: { pir_ids: string[] }; source: string }];
+    expect(body.source).toBe("draft");
+    expect(body.profile.pir_ids).toEqual(["pir-1"]);
+    await waitFor(() => expect(screen.queryByTestId("settings.organization.draft")).toBeNull());
   });
 
-  it("merges the platforms and the AI in one review, the platform value first, each with its source (#1991)", async () => {
-    withOpenCti();
-    post.mockResolvedValue({
-      based_on_version: 3,
-      profile: { ...CONTEXT.profile, sector: "Banking" },
-      filled: [{ field: "sector", source: "opencti", detail: "Banking" }],
-      unavailable: [],
-      missing_fields: [],
-    });
-    postForm.mockResolvedValue({
-      based_on_version: 3,
-      proposals: [
-        { field: "sector", value: "Insurance", source: "document:brief.pdf", confidence: "high", basis: "insurer", check: false, current: "Finance", conflict: true },
-        { field: "size", value: "1001-5000", source: "document:brief.pdf", confidence: "high", basis: "4,000 people", check: false, current: "", conflict: false },
-        { field: "primary_assets", value: [{ name: "Core" }], source: "document:brief.pdf", confidence: "high", basis: "", check: false, current: [], conflict: false },
-      ],
-      not_supported: ["pir_ids", "loaded_hourly_rate"],
-      suggested_pirs: ["Ransomware"],
-      unavailable: [],
-      notes: [],
-      usage: {},
-    });
+  it("says so when the platforms had nothing to add, and Cancel drops the draft unsaved", async () => {
+    post.mockResolvedValue({ based_on_version: 3, profile: CONTEXT.profile, filled: [], unavailable: [], missing_fields: CONTEXT.missing_fields });
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     await screen.findByTestId("settings.organization.identity");
-    const dialog = await openDraft();
-    fireEvent.change(within(dialog).getByLabelText(/^Description/), { target: { value: "insurer" } });
-    runDraft(dialog);
-    await within(dialog).findByTestId("ai-draft.review");
-    expect(post).toHaveBeenCalledWith("/organization-context/draft", {});
-    expect(postForm).toHaveBeenCalledTimes(1);
-    expect(within(dialog).getByTestId("ai-draft.row.sector").textContent).toContain("Banking");
-    expect(within(dialog).getByTestId("ai-draft.row.size")).toBeTruthy();
-    expect(within(dialog).queryByTestId("ai-draft.row.primary_assets")).toBeNull();
-    const notSupported = within(dialog).getByText(/Not supported:/).textContent ?? "";
-    expect(notSupported).toContain("Loaded hourly rate");
-    expect(notSupported).not.toContain("Priority intelligence requirements");
+    await draftFromPlatforms();
+    expect(await screen.findByText("The platforms had nothing to add to the empty fields.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Cancel/ }));
+    await waitFor(() => expect(screen.queryByTestId("settings.organization.draft")).toBeNull());
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("keeps Edit disabled while a draft is pending, so the draft never replaces what was typed", async () => {
+    let resolveDraft: (value: unknown) => void = () => {};
+    post.mockImplementation(() => new Promise((resolve) => (resolveDraft = resolve)));
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
+    const edit = screen.getByRole("button", { name: /^Edit$/ }) as HTMLButtonElement;
+    expect(edit.disabled).toBe(false);
+    await draftFromPlatforms();
+    await waitFor(() => expect((screen.getByRole("button", { name: /^Edit$/ }) as HTMLButtonElement).disabled).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+    // The click did not open the form: Save appears only once the draft resolves.
+    expect(screen.queryByRole("button", { name: /Save/ })).toBeNull();
+    resolveDraft({ based_on_version: 3, profile: CONTEXT.profile, filled: [], unavailable: [], missing_fields: CONTEXT.missing_fields });
+    expect(await screen.findByTestId("settings.organization.draft")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Save/ })).toBeTruthy();
   });
 
   it("opens in edit mode with the Draft menu and the setup guide when the first-login setup sends ?setup=1 (#9173 S3)", async () => {
@@ -1276,30 +1271,27 @@ describe("OrganizationSection", () => {
     expect(within(card).queryAllByRole("button").some((button) => button.hasAttribute("aria-expanded"))).toBe(false);
   });
 
-  it("marks the dialog's Draft button aria-busy while the draft is pending (#9102 A2)", async () => {
-    withOpenCti();
+  it("marks the Draft button aria-busy while the draft is pending (#9102 A2)", async () => {
     let resolveDraft: (value: unknown) => void = () => {};
     post.mockImplementation(() => new Promise((resolve) => (resolveDraft = resolve)));
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     await screen.findByTestId("settings.organization.identity");
-    const dialog = await openDraft();
-    const draftButton = () => within(dialog).getByRole("button", { name: "Draft" });
+    const draftButton = () => screen.getByRole("button", { name: "Draft" });
     expect(draftButton().getAttribute("aria-busy")).toBeNull();
-    runDraft(dialog);
+    await draftFromPlatforms();
     await waitFor(() => expect(draftButton().getAttribute("aria-busy")).toBe("true"));
     resolveDraft({ based_on_version: 3, profile: CONTEXT.profile, filled: [], unavailable: [], missing_fields: CONTEXT.missing_fields });
-    expect(await within(dialog).findByTestId("ai-draft.review")).toBeTruthy();
+    expect(await screen.findByTestId("settings.organization.draft")).toBeTruthy();
   });
 
-  it("never puts the backend's text in the toast when the platforms draft fails (#9102 A1)", async () => {
-    agenticEnabled = false;
-    withOpenCti();
+  it("never puts the backend's text in the toast when the draft fails (#9102 A1)", async () => {
     post.mockRejectedValue(new Error("upstream 502 from tenant id 42"));
     // The app MutationCache raises the global error toast: mount it, so a second toast would show here.
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>, { client: testQueryClient({ appMutationCache: true }) });
     await screen.findByTestId("settings.organization.identity");
-    runDraft(await openDraft());
-    expect(await screen.findAllByText(/The draft could not be made/)).toHaveLength(1);
+    await draftFromPlatforms();
+    expect(await screen.findAllByText("The draft could not be made")).toHaveLength(1);
+    expect(screen.getAllByText("Try again in a moment.")).toHaveLength(1);
     expect(screen.queryByText(/tenant id/)).toBeNull();
   });
 
@@ -1313,7 +1305,7 @@ describe("OrganizationSection", () => {
     expect(await screen.findByText(/Version 3, saved .* from a draft of the platforms/)).toBeTruthy();
   });
 
-  describe("Draft, the AI pass (#9484, S-b, #1991)", () => {
+  describe("Draft with AI (#9484, S-b)", () => {
     const AI_DRAFT = {
       based_on_version: 3,
       proposals: [
@@ -1322,7 +1314,7 @@ describe("OrganizationSection", () => {
         { field: "loaded_hourly_rate", value: 90, source: "description", confidence: "medium", basis: "", check: true, current: null, conflict: false },
         { field: "regions", value: ["FR"], source: "description", confidence: "high", basis: "France", check: false, current: ["FR"], conflict: false },
       ],
-      not_supported: ["currency"],
+      not_supported: ["pir_ids"],
       suggested_pirs: [],
       unavailable: [],
       notes: [],
@@ -1332,7 +1324,8 @@ describe("OrganizationSection", () => {
     it("calls no model before the Draft click", async () => {
       renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
       await screen.findByTestId("settings.organization.identity");
-      expect(await openDraft()).toBeTruthy();
+      await pickDraft("With AI");
+      expect(await screen.findByRole("dialog", { name: "Draft with AI" })).toBeTruthy();
       expect(postForm).not.toHaveBeenCalled();
       expect(post).not.toHaveBeenCalled();
     });
@@ -1342,14 +1335,14 @@ describe("OrganizationSection", () => {
       put.mockResolvedValue({ ...CONTEXT, version: 4, source: "ai_draft" });
       renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
       await screen.findByTestId("settings.organization.identity");
-      const dialog = await openDraft();
-      fireEvent.change(within(dialog).getByLabelText(/^Description/), { target: { value: "insurer, 4,000 people, France" } });
-      runDraft(dialog);
+      await pickDraft("With AI");
+      fireEvent.change(await screen.findByLabelText(/^Description/), { target: { value: "insurer, 4,000 people, France" } });
+      fireEvent.click(screen.getByRole("button", { name: "Draft", hidden: false }));
       await screen.findByTestId("ai-draft.review");
       expect(postForm).toHaveBeenCalledTimes(1);
-      // The unchanged proposal is collapsed, never a row to accept; an unsupported field of the two tabs is named.
+      // The unchanged proposal is collapsed, never a row to accept; an unsupported field is named.
       expect(screen.queryByTestId("ai-draft.row.regions")).toBeNull();
-      expect(screen.getByText(/Not supported:/).textContent).toContain("Currency");
+      expect(screen.getByText(/Not supported:/).textContent).toContain("Priority intelligence requirements");
       fireEvent.click(screen.getByRole("button", { name: "Accept all" }));
       expect(screen.getByRole("status").textContent).toBe("Accepted 1, skipped 2 to review");
       expect(put).not.toHaveBeenCalled();
@@ -1367,9 +1360,9 @@ describe("OrganizationSection", () => {
       postForm.mockResolvedValue(AI_DRAFT);
       renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
       await screen.findByTestId("settings.organization.identity");
-      const dialog = await openDraft();
-      fireEvent.change(within(dialog).getByLabelText(/^Description/), { target: { value: "insurer" } });
-      runDraft(dialog);
+      await pickDraft("With AI");
+      fireEvent.change(await screen.findByLabelText(/^Description/), { target: { value: "insurer" } });
+      fireEvent.click(screen.getByRole("button", { name: "Draft", hidden: false }));
       const row = await screen.findByTestId("ai-draft.row.loaded_hourly_rate");
       expect(row.textContent).toMatch(/Proposed: .*90.* per hour/);
       fireEvent.click(within(row).getByRole("button", { name: /^Edit$/ }));
@@ -1377,14 +1370,12 @@ describe("OrganizationSection", () => {
       expect(editor.getAttribute("aria-labelledby")).toBe("ai-draft-edit-loaded_hourly_rate-label");
     });
 
-    it("says in one line that documents and AI need a model when none is available, with no lock (#1991)", async () => {
+    it("shows the licence call to action instead of the dialog when agentic AI is not available", async () => {
       agenticEnabled = false;
       renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
       await screen.findByTestId("settings.organization.identity");
-      const dialog = await openDraft();
-      expect(within(dialog).getByTestId("ai-draft.no-model").textContent).toBe("Documents and AI need a model: this draft reads the connected platforms only.");
-      // No platform connected and no model: nothing to draft from.
-      expect((within(dialog).getByRole("button", { name: "Draft" }) as HTMLButtonElement).disabled).toBe(true);
+      await pickDraft("With AI");
+      expect(screen.queryByRole("dialog", { name: "Draft with AI" })).toBeNull();
       expect(postForm).not.toHaveBeenCalled();
     });
 
