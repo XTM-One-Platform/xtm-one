@@ -34,7 +34,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import CTE, ColumnElement, func, select
+from sqlalchemy import CTE, ColumnElement, func, or_, select
 
 from app.a2a.partner_scope import PartnerPrincipal
 
@@ -80,7 +80,44 @@ def partner_work_items_clause(partner: PartnerPrincipal) -> ColumnElement[bool]:
     from app.models.work_item import WorkItem
 
     tree = _partner_run_tree(partner)
-    return WorkItem.origin_run_id.in_(select(tree.c.run_id))
+    own = WorkItem.origin_run_id.in_(select(tree.c.run_id))
+    return or_(own, partner_fleet_work_items_clause(partner))
+
+
+def partner_fleet_work_items_clause(partner: PartnerPrincipal) -> ColumnElement[bool]:
+    """The work items of the exposed agent's home fleet, when its exposure opted in (#2202).
+
+    The fleet population of ``work_item.fleet_work_item_clause`` (owned or
+    created by a current home member, or filed in the fleet's workspace), for
+    the ONE fleet the exposed agent is a home member of, and only while the
+    partner's live exposure carries ``partner_fleet_reads``. Off (the
+    default), revoked, or an agent in no fleet: the clause matches nothing,
+    so the partner keeps reading its own tickets alone. Resolved in SQL at
+    query time, never cached on the task.
+    """
+    from app.models.a2a import A2AExposure
+    from app.models.fleet import FLEET_ROLE_MEMBER, Fleet, FleetMember
+    from app.models.work_item import WorkItem
+
+    fleet_ids = (
+        select(FleetMember.fleet_id)
+        .join(A2AExposure, A2AExposure.agent_id == FleetMember.agent_id)
+        .where(
+            A2AExposure.id == partner.exposure_id,
+            A2AExposure.partner_fleet_reads.is_(True),
+            A2AExposure.revoked_at.is_(None),
+            FleetMember.role == FLEET_ROLE_MEMBER,
+        )
+    )
+    members = select(FleetMember.agent_id).where(
+        FleetMember.fleet_id.in_(fleet_ids), FleetMember.role == FLEET_ROLE_MEMBER
+    )
+    workspaces = select(Fleet.workspace_id).where(Fleet.id.in_(fleet_ids))
+    return or_(
+        WorkItem.owner_agent_id.in_(members),
+        WorkItem.created_by_agent_id.in_(members),
+        WorkItem.workspace_id.in_(workspaces),
+    )
 
 
 def _trigger(run: AssignmentRun, answered_task: bool) -> str:

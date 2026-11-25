@@ -21828,5 +21828,8 @@
   "Waits for the remediation to be applied": "Attend l'application de la remédiation",
   "Waits for the validation to finish": "Attend la fin de la validation",
   "Watches whether the exposure comes back": "Surveille si l'exposition revient",
-  "Last run by {agent}, {when}": "Dernière exécution par {agent}, {when}"
+  "Last run by {agent}, {when}": "Dernière exécution par {agent}, {when}",
+  "Partners read this agent's fleet": "Les partenaires lisent la flotte de cet agent",
+  "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "La tâche d'un partenaire lit aussi la flotte d'origine de cet agent, sa santé, ses éléments de travail et la version en service. Jamais une autre flotte, jamais une écriture.",
+  "Could not change the partner fleet reads": "Impossible de modifier la lecture de la flotte par les partenaires"
 }
