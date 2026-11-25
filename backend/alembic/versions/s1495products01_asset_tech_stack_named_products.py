@@ -23,7 +23,7 @@ written. Each JSON rewrite pages by ``id`` in batches of ``_BATCH`` rows
 no DDL, a no-op on re-run; the downgrade renames everything back.
 
 Revision ID: s1495products01
-Revises: s1844primasset01
+Revises: h1943healthgrp01
 Create Date: 2026-11-24 22:00:00.000000
 """
 
@@ -39,7 +39,7 @@ from app.core.migration_ddl import set_lock_timeout
 revision: str = "s1495products01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "s1844primasset01"
+down_revision: str | Sequence[str] | None = "h1943healthgrp01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
