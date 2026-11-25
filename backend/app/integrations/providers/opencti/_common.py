@@ -1159,7 +1159,7 @@ def _context_failure_message(
         return _drop_dead_draft(headers, draft_id, errors)
     if status is not None:
         kind = f"{kind} (HTTP {status})"
-    return _describe_graphql_failure(
+    message = _describe_graphql_failure(
         errors,
         operation,
         root_field,
@@ -1167,6 +1167,24 @@ def _context_failure_message(
         kind=kind,
         auth_failure=_is_request_auth_failure(errors, status, draft_id),
     )
+    if draft_id and _is_object_outside_draft(errors):
+        message += OBJECT_OUTSIDE_DRAFT_HINT.format(draft_id=draft_id)
+    return message
+
+
+#: Appended to an object OpenCTI could not find inside the run's draft (#2397).
+OBJECT_OUTSIDE_DRAFT_HINT = (
+    " — the object is not visible in OpenCTI draft {draft_id}, the draft this request ran in: OpenCTI "
+    "resolves an object per draft, so an id a read outside this draft returned may live in another draft "
+    "(a case package's own draft, for one) or was deleted. Write it in the draft that holds it, or read it "
+    "again in this draft and recreate it here; nothing was written."
+)
+
+
+def _is_object_outside_draft(errors: list[Any]) -> bool:
+    """An object (not the draft itself) OpenCTI did not find in a draft-scoped request (#2397)."""
+    text = _errors_text(errors)
+    return "cannot be found" in text and "draft" not in text and "user cannot be found" not in text
 
 
 def _log_context_failure(

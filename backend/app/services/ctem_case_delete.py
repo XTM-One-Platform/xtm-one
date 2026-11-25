@@ -21,7 +21,12 @@ that case whatever the fleet or step that wrote it: no key list to keep in step.
 One audit row per case (who, when, reason, and the case summary, kept in the
 audit row since the case is gone). ``dry_run`` answers the same summary and
 writes nothing. The summary names the case's threat package: its OpenCTI draft
-or Grouping lives outside XTM One and is not removed by the delete (#2328). A
+or Grouping lives outside XTM One and is not removed by the delete (#2328). Its
+security coverage is turned off (``auto_enrichment_disable`` true, in the
+package's draft while the package is drafted) with the administrator's own
+OpenCTI access, so the validation module never builds a scenario for a case
+that no longer exists; the summary and the audit row say what was done, and a
+dry run names it and calls nothing (#2397). A
 case read on the id of a deleted case answers that it was deleted, from the
 audit row (:func:`deleted_case_answer`), never a bare "No case".
 
@@ -60,6 +65,12 @@ PACKAGE_LEFT = (
     "The delete does not remove this threat package from OpenCTI: discard its draft or Grouping there, "
     "or reuse it for the next case on the same fix."
 )
+#: The outcome of a coverage the delete turned off (#2397).
+COVERAGE_DISABLED = "auto enrichment turned off: the validation module builds no scenario from it"
+#: The outcome a dry run names for a coverage (#2397).
+COVERAGE_WOULD_DISABLE = "would turn auto enrichment off; nothing was called"
+#: How long one coverage write may take before the delete goes on without it (#2397).
+COVERAGE_TIMEOUT = 15
 
 
 def origin(events: Iterable[Any]) -> str:
@@ -97,9 +108,12 @@ class CaseDeletion:
     timers: list[str] = field(default_factory=list)
     signals: list[str] = field(default_factory=list)
     threat_package: dict[str, Any] | None = None
+    coverage: dict[str, Any] | None = None
 
     def summary(self) -> dict[str, Any]:
         package = {**self.threat_package, "left_in_opencti": PACKAGE_LEFT} if self.threat_package else None
+        if package is not None and self.coverage is not None:
+            package["coverage"] = self.coverage
         return {
             "id": self.id,
             "title": self.title,
@@ -362,6 +376,105 @@ def hand_off_released(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _package_draft(url: Any) -> str:
+    """The draft id of a package recorded with its OpenCTI draft page, ``""`` otherwise (#2397)."""
+    from app.services.ctem_case_loop import _DRAFT_URL
+
+    page = str(url or "").strip()
+    if not page or _DRAFT_URL.match(page) is None:
+        return ""
+    return page.rstrip("/").split("/data/import/draft/", 1)[1].split("/", 1)[0].lower()
+
+
+async def _patch_coverage(base_url: str, headers: dict[str, str], coverage_id: str, draft_id: str) -> str | None:
+    """Set ``auto_enrichment_disable`` true on *coverage_id* in *draft_id* (live when empty); the error or ``None``."""
+    import httpx
+
+    from app.integrations.providers.opencti._common import _DRAFT_HEADER, _graphql
+    from app.integrations.providers.opencti.capabilities import attach_probe
+    from app.integrations.providers.opencti.security_coverage import _PATCH_MUTATION
+
+    sent = {k: v for k, v in headers.items() if k != _DRAFT_HEADER}
+    if draft_id:
+        sent[_DRAFT_HEADER] = draft_id
+    variables = {"id": coverage_id, "input": [{"key": "auto_enrichment_disable", "value": [True]}]}
+    async with httpx.AsyncClient(timeout=COVERAGE_TIMEOUT) as client:
+        data, err = await _graphql(client, base_url, attach_probe(sent, base_url), _PATCH_MUTATION, variables)
+    if err:
+        return err
+    if not ((data or {}).get("securityCoverageFieldPatch") or {}).get("id"):
+        return f"OpenCTI answered no coverage {coverage_id}"
+    return None
+
+
+#: Most coverage writes one delete runs at once (#2397).
+COVERAGE_CONCURRENCY = 8
+#: What the summary says when the administrator has no OpenCTI access (#2397).
+COVERAGE_NO_ACCESS = "not turned off: no OpenCTI access for this administrator; turn it off in OpenCTI"
+
+
+async def retire_coverage(
+    cred: tuple[str, dict[str, str]] | None, package: dict[str, Any] | None, *, dry_run: bool
+) -> dict[str, Any] | None:
+    """Turn off the security coverage of a deleted case's threat package (#2397); what was done, ``None`` without one.
+
+    *cred* is the administrator's own OpenCTI access (``_user_creds``). The write
+    runs in the package's draft while the package is drafted, then live when
+    that draft is gone (validated or deleted). The Grouping is kept (#2335). A
+    dry run calls nothing. A failure never stops the delete: it is named.
+    """
+    coverage_id = str((package or {}).get("coverage_id") or "").strip()
+    if not coverage_id:
+        return None
+    draft_id = _package_draft((package or {}).get("url"))
+    out: dict[str, Any] = {"id": coverage_id, "draft_id": draft_id or None}
+    if dry_run:
+        return {**out, "action": COVERAGE_WOULD_DISABLE}
+    if cred is None:
+        return {**out, "action": COVERAGE_NO_ACCESS}
+    from app.core.utils import format_exception_message
+
+    base_url, headers = cred
+    errors: list[str] = []
+    for context in [draft_id, ""] if draft_id else [""]:
+        try:
+            err = await _patch_coverage(base_url, headers, coverage_id, context)
+        except Exception as exc:
+            err = format_exception_message(exc)
+        if err is None:
+            where = f"in draft {context}" if context else "live"
+            return {**out, "action": f"{COVERAGE_DISABLED} ({where})"}
+        errors.append(f"{'draft ' + context if context else 'live'}: {err}"[:300])
+    logger.warning("CTEM case delete: coverage %s not turned off: %s", coverage_id, "; ".join(errors))
+    return {**out, "action": "not turned off, turn it off in OpenCTI: " + "; ".join(errors)}
+
+
+async def _retire_coverages(
+    db: AsyncSession, actor: Any, packages: list[dict[str, Any] | None], *, dry_run: bool
+) -> list[dict[str, Any] | None]:
+    """:func:`retire_coverage` for every package, :data:`COVERAGE_CONCURRENCY` at a time, in order.
+
+    The access is read once on *db*; the writes run concurrently with no session.
+    """
+    if dry_run or not any((p or {}).get("coverage_id") for p in packages):
+        return [await retire_coverage(None, p, dry_run=dry_run) for p in packages]
+    from app.core.utils import format_exception_message
+    from app.services.ctem_metrics_collector import _user_creds
+
+    try:
+        cred = await _user_creds(db, str(getattr(actor, "id", "") or ""), "opencti")
+    except Exception as exc:
+        logger.info("CTEM case delete: OpenCTI access unreadable: %s", format_exception_message(exc))
+        cred = None
+    gate = asyncio.Semaphore(COVERAGE_CONCURRENCY)
+
+    async def one(package: dict[str, Any] | None) -> dict[str, Any] | None:
+        async with gate:
+            return await retire_coverage(cred, package, dry_run=False)
+
+    return list(await asyncio.gather(*(one(p) for p in packages)))
+
+
 async def delete_cases(
     db: AsyncSession,
     cases: list[CtemCase],
@@ -385,8 +498,13 @@ async def delete_cases(
     summaries: list[dict[str, Any]] = []
     actor_name = getattr(actor, "email", None) or str(getattr(actor, "id", "an administrator"))
     note = (reason or "").strip()
-    for case in cases:
-        deletion = await plan(db, case, history.get(case.id, []))
+    deletions = [await plan(db, case, history.get(case.id, [])) for case in cases]
+    # The coverages are turned off before any row lock is taken (#1950), all
+    # cases at once: a delete refused afterwards (409) leaves them off, which
+    # only stops an unattended scenario and is undone with one update.
+    retired = await _retire_coverages(db, actor, [d.threat_package for d in deletions], dry_run=dry_run)
+    for case, deletion, coverage in zip(cases, deletions, retired, strict=True):
+        deletion.coverage = coverage
         summaries.append(deletion.summary())
         if dry_run:
             continue
