@@ -19,6 +19,13 @@ vi.mock("@/hooks/api/useSettingsApi", () => ({
       trace_retention_days: 90,
       trace_store_payloads: true,
       audit_log_retention_days: 90,
+      coordination_retention: {
+        work_item_resolved_days: 90,
+        work_item_abandoned_days: 14,
+        shared_state_resolved_days: 0,
+        shared_state_archive_days: 14,
+        workset_resolved_days: 7,
+      },
       trace_store_provider: "postgresql",
       trace_store_health_status: "healthy",
     },
@@ -120,5 +127,46 @@ describe("ObservabilitySection trace retention field", () => {
     fireEvent.change(field, { target: { value: "" } });
     expect(field.value).toBe("");
     expect(field.getAttribute("aria-invalid")).toBeNull();
+  });
+});
+
+describe("ObservabilitySection coordination retention", () => {
+  it("reads the stored windows, 0 shown as kept forever", () => {
+    renderWithProviders(<ObservabilitySection />);
+    const panel = screen.getByTestId("observability-coordination-retention");
+    expect(panel.textContent).toContain("90 days");
+    expect(panel.textContent).toContain("Kept forever");
+  });
+
+  it("marks a value past 3650 invalid and refuses Save with the focus on it", () => {
+    updateObservability.mockClear();
+    openConfigure();
+    const field = screen.getByRole("spinbutton", { name: "Closed work items (days)" }) as HTMLInputElement;
+    expect(field.value).toBe("90");
+    fireEvent.change(field, { target: { value: "3651" } });
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(updateObservability).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(field);
+  });
+
+  it("sends every window with Save, 0 included", () => {
+    updateObservability.mockClear();
+    openConfigure();
+    const field = screen.getByRole("spinbutton", { name: "Closed work items (days)" });
+    fireEvent.change(field, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(updateObservability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        coordination_retention: {
+          work_item_resolved_days: 0,
+          shared_state_resolved_days: 0,
+          work_item_abandoned_days: 14,
+          shared_state_archive_days: 14,
+          workset_resolved_days: 7,
+        },
+      }),
+    );
   });
 });

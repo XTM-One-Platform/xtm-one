@@ -333,5 +333,8 @@ async def test_a_person_who_sees_no_issue_reads_no_case(read: SimpleNamespace) -
     assert listed["cases"] == []
     assert listed["scope"]["applied"] == "own" and listed["scope"]["is_admin"] is False
     assert "No case" in await read.read_for("")("get_ctem_case", case_id=str(read.case.id))
-    assert "case_id must be" in await read.read_for(str(read.user_id))("get_ctem_case", case_id="nope")
+    # Not an id nor an 8+ character id prefix (#2103): no case, and the answer says what case_id takes.
+    assert "case_id is the id list_ctem_cases answers" in await read.read_for(str(read.user_id))(
+        "get_ctem_case", case_id="nope"
+    )
     assert read.db.commits == 0

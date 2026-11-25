@@ -13,10 +13,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 import pytest
-from sqlalchemy import Table, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -27,7 +27,7 @@ from app.models.organization import Organization
 from app.models.user import User
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_store as store
-from tests.scratch_database import scratch_database, with_referenced_tables
+from tests.scratch_database import ALL_TABLES, scratch_database
 
 pytestmark = pytest.mark.integration
 
@@ -37,9 +37,7 @@ KEY = "upgrade:apache/tomcat@9.0.98"
 
 @asynccontextmanager
 async def _database() -> AsyncIterator[async_sessionmaker]:
-    models = (CtemCase, CtemCaseIssue, CtemCaseEvent, CtemSignal)
-    tables = with_referenced_tables([cast(Table, m.__table__) for m in models])
-    async with scratch_database("ctemcases", tables=tables) as db:
+    async with scratch_database("ctemcases", tables=ALL_TABLES, extensions=("vector",)) as db:
         yield db.sessions
 
 

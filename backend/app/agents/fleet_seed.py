@@ -54,7 +54,7 @@ import uuid
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.builtin_fleets import BUILTIN_FLEETS
+from app.agents.builtin_fleets import SEEDED_BUILTIN_FLEETS
 from app.models.agent import Agent
 from app.models.audit_log import AuditLog
 from app.models.fleet import FLEET_DEFAULT_ICON, FLEET_ROLE_CONNECTED, FLEET_ROLE_MEMBER, Fleet, FleetMember
@@ -75,12 +75,12 @@ SEED_AUDIT_ACTOR = "fleet-seed"
 
 
 def fleets_for_mode(platform_mode: str, fleets: list[dict] | None = None) -> list[dict]:
-    """The entries of *fleets* (default ``BUILTIN_FLEETS``) seeded in *platform_mode*."""
+    """The entries of *fleets* (default ``SEEDED_BUILTIN_FLEETS``) seeded in *platform_mode*."""
     from app.agents.seed import seed_matches_platform
 
     if platform_mode not in FLEET_SEED_MODES:
         return []
-    return [f for f in (BUILTIN_FLEETS if fleets is None else fleets) if seed_matches_platform(f, platform_mode)]
+    return [f for f in (SEEDED_BUILTIN_FLEETS if fleets is None else fleets) if seed_matches_platform(f, platform_mode)]
 
 
 def resolve_parent(agent_slug: str, parents: dict[str, str | None], present: set[str]) -> str | None:
@@ -472,7 +472,9 @@ def _seed_approval_gates(fleet: Fleet, structured: dict | None) -> None:
 async def seed_builtin_fleets(db: AsyncSession, *, platform_mode: str, fleets: list[dict] | None = None) -> int:
     """Upsert the built-in fleets of *platform_mode*; the number created. Commits.
 
-    *fleets* overrides ``BUILTIN_FLEETS`` (tests). Idempotent: a second boot
+    *fleets* overrides ``SEEDED_BUILTIN_FLEETS`` (tests). A defined fleet left out
+    of the seed (``SEEDED_BUILTIN_FLEET_SLUGS``) is swept like a retired one: its
+    members go back to the playground, a person's fork is kept. Idempotent: a second boot
     with the same entries creates and changes nothing.
     """
     from app.agents.builtin_fleet_docs import builtin_fleet_documentation, builtin_fleet_structured

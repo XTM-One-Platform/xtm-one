@@ -87,6 +87,24 @@ def _uuid(value: object) -> uuid.UUID | None:
         return None
 
 
+async def resolve_case_id(db: AsyncSession, case_id: str, organization_id: uuid.UUID) -> tuple[uuid.UUID | None, str]:
+    """The case *case_id* names: a full id, or a hex prefix of 8+ characters naming one case (#2103).
+
+    Answers ``(id, "")`` or ``(None, why)``: an ambiguous prefix lists the ids it matches.
+    """
+    from app.services import ctem_cases_store as store
+
+    full = _uuid(case_id)
+    if full is not None:
+        return full, ""
+    found = await store.case_ids_with_prefix(db, str(case_id or ""), organization_id=organization_id, limit=5)
+    if len(found) == 1:
+        return found[0], ""
+    if found:
+        return None, f"case_id {case_id!r} matches several cases: {', '.join(str(f) for f in found)}. Pass the full id."
+    return None, f"No case {case_id}. case_id is the id list_ctem_cases answers, or its first 8+ characters."
+
+
 def _when(value: object) -> datetime | None:
     if not value:
         return None
@@ -97,18 +115,23 @@ def _dump(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
-def _bounded_issues(rendered: dict[str, Any]) -> dict[str, Any]:
-    """*rendered* with at most :data:`_ISSUE_PAGE` issues, the total and a truncated flag (#2092).
+def _bounded_issues(rendered: dict[str, Any], offset: int = 0) -> dict[str, Any]:
+    """*rendered* with at most :data:`_ISSUE_PAGE` issues from *offset*, the total and a truncated flag (#2092).
 
     The issues come ranked (``ctem_cases_view.hydrate``), Restricted rows last, so
     the page keeps the ones that matter; the counts and scores stay those of the case.
+    ``issues_next_offset`` reads the next page (#2103), ``None`` on the last one.
     """
     issues = list(rendered.get("issues") or [])
+    start = max(0, int(offset or 0))
+    end = start + _ISSUE_PAGE
     return {
         **rendered,
-        "issues": issues[:_ISSUE_PAGE],
+        "issues": issues[start:end],
         "issues_total": len(issues),
-        "issues_truncated": len(issues) > _ISSUE_PAGE,
+        "issues_offset": start,
+        "issues_truncated": start > 0 or len(issues) > end,
+        "issues_next_offset": end if len(issues) > end else None,
     }
 
 
@@ -195,7 +218,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         return f"Refused: {ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
 
     async def _list(
-        state: str = "", priority: str = "", owner_user_id: str = "", limit: int = 20, offset: int = 0
+        state: str = "",
+        priority: str = "",
+        owner_user_id: str = "",
+        limit: int = 20,
+        offset: int = 0,
+        asset: str = "",
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_cases_store as store
@@ -221,6 +249,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     state=state or None,
                     priority=priority or None,
                     owner_user_id=str(owner) if owner else None,
+                    # The cases on one asset (#2103): a duplicate check reads them all in one call.
+                    asset=str(asset or "").strip() or None,
                     limit=max(1, min(int(limit or 20), 50)),
                     offset=max(0, int(offset or 0)),
                 )
@@ -248,17 +278,21 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             logger.warning("CTEM case list failed", exc_info=True)
             return "Error: the cases could not be read right now. Say so; do not guess them."
 
-    async def _get(case_id: str = "") -> str:
+    async def _get(case_id: str = "", issues_offset: int = 0) -> str:
         from app.core.database import async_session
 
-        wanted = _uuid(case_id)
-        if wanted is None:
+        if not str(case_id or "").strip():
             return "case_id must be the id list_ctem_cases answers."
         started = time.perf_counter()
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
-                shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
+                if org_id is None or scope is None:
+                    return f"No case {case_id}."
+                wanted, why = await resolve_case_id(db, case_id, org_id)
+                if wanted is None:
+                    return why
+                shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
                     return f"No case {case_id}."
                 from app.services import ctem_case_versions as case_versions
@@ -285,7 +319,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     if shown[0].remediation_kind == "upgrade"
                     else None
                 )
-                rendered = _bounded_issues(shown[2])
+                rendered = _bounded_issues(shown[2], issues_offset)
                 elapsed = time.perf_counter() - started
                 if elapsed > _SLOW_READ_SECONDS:
                     logger.info(
@@ -1007,6 +1041,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "state": state_enum,
                     "priority": {"type": "string", "enum": ["critical", "high", "medium", "low"]},
                     "owner_user_id": {"type": "string", "description": "Only the cases this user owns."},
+                    "asset": {"type": "string", "description": "Only the cases with an issue on this asset name."},
                     "limit": {"type": "integer", "description": "Cases a page (default 20, max 50)."},
                     "offset": {"type": "integer"},
                 },
@@ -1022,7 +1057,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             ),
             input_schema={
                 "type": "object",
-                "properties": {"case_id": {"type": "string"}},
+                "properties": {
+                    "case_id": {"type": "string", "description": "The id, or its first 8+ characters."},
+                    "issues_offset": {
+                        "type": "integer",
+                        "description": "First issue of the page (issues_next_offset).",
+                    },
+                },
                 "required": ["case_id"],
             },
             source=_SOURCE,
