@@ -58,6 +58,7 @@ import {
   useRestoreShippedFleetDocumentation,
   type FleetDocumentation,
   type FleetHealth,
+  type FleetHealthStarts,
 } from "@/hooks/api/useFleetApi";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { useFormatter } from "@/i18n";
@@ -76,8 +77,11 @@ export function FleetAboutView({
   orchestratorId,
   flow,
   readOnly = false,
+  healthStarts,
 }: {
   fleetId: string;
+  /** The Platform Health fleet only (`Fleet.health_starts`): its starts line on the About page (#2194). */
+  healthStarts?: FleetHealthStarts | null;
   onOpenGraph: () => void;
   /** A fleet nobody may write (Platform Health, `read_only_reason`): no setup or fix action. */
   readOnly?: boolean;
@@ -115,6 +119,7 @@ export function FleetAboutView({
       orchestratorId={orchestratorId}
       flow={flow}
       readOnly={readOnly}
+      healthStarts={healthStarts}
     />
   );
 }
@@ -129,10 +134,12 @@ function FleetDocumentationReader({
   orchestratorId,
   flow,
   readOnly,
+  healthStarts,
 }: {
   fleetId: string;
   doc: FleetDocumentation;
   health: FleetHealth | undefined;
+  healthStarts?: FleetHealthStarts | null;
   readOnly: boolean;
   onOpenGraph: () => void;
   onOpenMembers: () => void;
@@ -331,6 +338,7 @@ function FleetDocumentationReader({
             fleetId={fleetId}
             doc={doc}
             health={health}
+            healthStarts={healthStarts}
             orchestratorId={orchestratorId}
             onManageAutomations={onOpenMembers}
             onOpenView={onOpenView}
@@ -381,6 +389,7 @@ function FleetDocumentationReader({
         fleetId={fleetId}
         doc={doc}
         health={health}
+        healthStarts={healthStarts}
         orchestratorId={orchestratorId}
         onManageAutomations={onOpenMembers}
         onOpenView={onOpenView}
