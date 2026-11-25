@@ -33,6 +33,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.helpers import prune_group_grants
 from app.core.base_path import with_base_path
 from app.core.config import settings
 from app.core.database import get_db
@@ -831,6 +832,9 @@ async def _rename_uuid_groups(
                 # Its members now belong to the target group: so do the LLM
                 # provider exclusions that kept them off a vendor.
                 await carry_group_exclusions(db, group.id, target_group.id)
+                # Its grants go with it, as on any group deletion: its members
+                # keep what the named group reaches.
+                await prune_group_grants(db, group.id)
                 await db.delete(group)
                 renamed += 1
                 logger.info(

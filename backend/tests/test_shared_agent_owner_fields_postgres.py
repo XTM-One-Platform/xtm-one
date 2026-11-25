@@ -417,3 +417,38 @@ async def test_deleting_a_group_unlinks_the_agents_of_its_members() -> None:
             assert deleted.status_code == 204, deleted.text
         assert await _references(sessions, maries_id, target_id) == ALL_GONE
         assert await _references(sessions, alices_id, target_id) == ALL_KEPT
+
+
+async def test_merging_a_uuid_named_group_into_its_named_twin_drops_its_grants() -> None:
+    """The SSO sync merges a group named by its IdP id into the group of its
+    display name: the merged group's grants go with it, and its members keep
+    only what the named group reaches."""
+    async with _database() as sessions:
+        async with sessions() as db:
+            sam = await _user(db, "Sam")
+            marie = await _user(db, "Marie")
+            idp_id = str(uuid.uuid4())
+            by_id = await _group(db, idp_id, marie)
+            soc = await _group(db, "SOC")
+            via_id = _agent(
+                sam, "Onboarding", shared_group_ids=[str(by_id.id)], shared_group_permissions={str(by_id.id): "read_only"}
+            )
+            via_name = _agent(
+                sam, "Triage", shared_group_ids=[str(soc.id)], shared_group_permissions={str(soc.id): "read_only"}
+            )
+            db.add_all([via_id, via_name])
+            await db.flush()
+            to_id = _pointing_at(marie, "Marie desk", via_id)
+            to_name = _pointing_at(marie, "Marie triage desk", via_name)
+            db.add_all([to_id, to_name])
+            await db.commit()
+            via_id_id, via_name_id, to_id_id, to_name_id = via_id.id, via_name.id, to_id.id, to_name.id
+
+        async with sessions() as db:
+            assert await auth_sso._rename_uuid_groups(db, {idp_id: "SOC"}) == 1
+            await db.commit()
+
+        async with sessions() as session:
+            assert (await session.get(Agent, via_id_id)).shared_group_ids is None
+        assert await _references(sessions, to_id_id, via_id_id) == ALL_GONE
+        assert await _references(sessions, to_name_id, via_name_id) == ALL_KEPT

@@ -343,7 +343,16 @@ class _ScriptedDb:
         return None
 
 
-async def test_a_merged_uuid_group_records_the_members_it_moved():
+async def test_a_merged_uuid_group_records_the_members_it_moved(monkeypatch):
+    pruned: list[uuid.UUID] = []
+
+    async def _prune(_db, group_id):
+        # Its grants go with it (``helpers.prune_group_grants``, against
+        # PostgreSQL in ``test_shared_agent_owner_fields_postgres.py``).
+        pruned.append(group_id)
+        return 0
+
+    monkeypatch.setattr(auth_sso, "prune_group_grants", _prune)
     entra_id = str(uuid.uuid4())
     uuid_group = Group(id=uuid.uuid4(), name=entra_id)
     target = Group(id=uuid.uuid4(), name="Security Team")
@@ -369,6 +378,7 @@ async def test_a_merged_uuid_group_records_the_members_it_moved():
     assert moved == {newcomer.id, already.id}
     assert [(m.group_id, m.user_id) for m in db.added] == [(target.id, newcomer.id)]
     assert db.deleted == [*members, uuid_group]
+    assert pruned == [uuid_group.id]
 
 
 async def test_a_renamed_uuid_group_moves_nobody():
