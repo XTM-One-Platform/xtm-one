@@ -757,6 +757,9 @@ def matcher_entries(
     """
     out: list[dict[str, Any]] = []
     seen: dict[Key, dict[str, Any]] = {}
+    # The keys of *seen* by product: a vendor-less row finds its software in one lookup, so a
+    # store of thousands of software stays linear (a scan of *seen* per row stalled the loop).
+    by_product: dict[str, list[Key]] = {}
 
     def add(vendor: str, product: str, cpe: str, version: str, versions: list[str], source: str) -> None:
         vendor, product = vendor.strip(), product.strip()
@@ -765,7 +768,7 @@ def matcher_entries(
         key = (_key(vendor), _key(product))
         if key not in seen and not vendor:
             # A typed product with no vendor is the one listed software of that product, if only one.
-            same = [k for k in seen if k[1] == key[1]]
+            same = by_product.get(key[1]) or []
             key = same[0] if len(same) == 1 else key
         held = seen.get(key)
         if held is not None:
@@ -783,6 +786,7 @@ def matcher_entries(
             "version_source": source,
         }
         seen[key] = entry
+        by_product.setdefault(key[1], []).append(key)
         out.append(entry)
 
     for soft in software:
