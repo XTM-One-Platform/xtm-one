@@ -312,7 +312,7 @@ def team_slug_error(value: Any) -> str | None:
     if not _TEAM_SLUG_RE.match(slug):
         return (
             f"Error: invalid team_slug '{raw}'. Pass the slug list_github_teams shows "
-            "(letters, digits, hyphens, underscores; an enterprise team as ent:<slug>)."
+            "(letters, digits, hyphens, underscores; an enterprise team with its ent: prefix, e.g. ent:security-team)."
         )
     return None
 
