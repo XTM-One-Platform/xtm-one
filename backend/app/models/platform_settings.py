@@ -416,6 +416,11 @@ class PlatformSettings(Base):
     audit_log_retention_days: Mapped[int] = mapped_column(
         Integer, nullable=False, default=90, server_default="90"
     )
+    # Coordination retention (#2070): days each closed work item, resolved
+    # shared-state entry, archived item and resolved workset is kept after its
+    # last update, keyed as services/coordination_retention.RETENTION_KEYS. NULL
+    # or a missing key = the environment default.
+    coordination_retention: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     # Share of the turn model's context window a workspace's sources may fill
     # before the agent searches them instead.
     workspace_sources_context_percent: Mapped[int] = mapped_column(

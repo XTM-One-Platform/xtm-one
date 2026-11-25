@@ -61,6 +61,15 @@ import {
   parseAuditLogRetentionDays,
 } from "@/lib/audit-log-retention";
 import {
+  COORDINATION_RETENTION_DEFAULTS,
+  COORDINATION_RETENTION_KEYS,
+  MAX_COORDINATION_RETENTION_DAYS,
+  MIN_COORDINATION_RETENTION_DAYS,
+  parseCoordinationRetentionDays,
+  type CoordinationRetention,
+  type CoordinationRetentionKey,
+} from "@/lib/coordination-retention";
+import {
   MAX_TRACE_RETENTION_DAYS,
   MIN_TRACE_RETENTION_DAYS,
   TRACE_RETENTION_DEFAULT_DAYS,
@@ -69,6 +78,22 @@ import {
 import { cn, formatDateTime } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
 import { Spinner } from "@filigran/design-system";
+
+function coordinationInputsFrom(values: CoordinationRetention): Record<CoordinationRetentionKey, string> {
+  return Object.fromEntries(COORDINATION_RETENTION_KEYS.map((key) => [key, String(values[key])])) as Record<
+    CoordinationRetentionKey,
+    string
+  >;
+}
+
+// Keeps the current state object when every window is unchanged, so an effect that re-syncs from a fresh
+// config object (a refetch, a re-render) does not schedule another render and loop.
+function keepCoordinationInputs(
+  current: Record<CoordinationRetentionKey, string>,
+  next: Record<CoordinationRetentionKey, string>,
+): Record<CoordinationRetentionKey, string> {
+  return COORDINATION_RETENTION_KEYS.every((key) => current[key] === next[key]) ? current : next;
+}
 
 export function ObservabilitySection() {
   const { t_i18n } = useFormatter();
@@ -96,6 +121,44 @@ export function ObservabilitySection() {
   const auditLogRetentionRef = useRef<HTMLInputElement | null>(null);
   const auditLogRetentionDays = parseAuditLogRetentionDays(auditLogRetentionInput);
   const auditLogRetentionInvalid = auditLogRetentionDays === null;
+  // Kept as typed, never clamped: a value out of 0 to 3650 shows an inline error and blocks Save.
+  const [coordinationInputs, setCoordinationInputs] = useState<Record<CoordinationRetentionKey, string>>(
+    () => coordinationInputsFrom(COORDINATION_RETENTION_DEFAULTS),
+  );
+  const coordinationRefs = useRef<Partial<Record<CoordinationRetentionKey, HTMLInputElement | null>>>({});
+  const coordinationDays = Object.fromEntries(
+    COORDINATION_RETENTION_KEYS.map((key) => [key, parseCoordinationRetentionDays(coordinationInputs[key])]),
+  ) as Record<CoordinationRetentionKey, number | null>;
+  const coordinationRetention = { ...COORDINATION_RETENTION_DEFAULTS, ...(config?.coordination_retention ?? {}) };
+  const coordinationLabels: Record<CoordinationRetentionKey, { title: string; label: string; helper: string }> = {
+    work_item_resolved_days: {
+      title: t_i18n("Closed work items"),
+      label: t_i18n("Closed work items (days)"),
+      helper: t_i18n("Done and cancelled work items are deleted this many days after their last update."),
+    },
+    shared_state_resolved_days: {
+      title: t_i18n("Resolved shared state"),
+      label: t_i18n("Resolved shared state (days)"),
+      helper: t_i18n("Resolved shared state entries are deleted this many days after their last update."),
+    },
+    work_item_abandoned_days: {
+      title: t_i18n("Unclaimed open work items"),
+      label: t_i18n("Unclaimed open work items (days)"),
+      helper: t_i18n("Open work items nobody picks up are cancelled this many days after their last activity."),
+    },
+    shared_state_archive_days: {
+      title: t_i18n("Archived shared state items"),
+      label: t_i18n("Archived shared state items (days)"),
+      helper: t_i18n("List items moved to an archive entry are dropped this many days after they were archived."),
+    },
+    workset_resolved_days: {
+      title: t_i18n("Resolved worksets"),
+      label: t_i18n("Resolved worksets (days)"),
+      helper: t_i18n("Resolved worksets are deleted with their documents this many days after they were resolved."),
+    },
+  };
+  const retentionText = (days: number) =>
+    days === 0 ? t_i18n("Kept forever") : t_i18n("{count, plural, one {# day} other {# days}}", { count: days });
 
   const [langfuseEnabled, setLangfuseEnabled] = useState(false);
   const [langfusePublicKey, setLangfusePublicKey] = useState("");
@@ -120,6 +183,8 @@ export function ObservabilitySection() {
     setTraceRetentionInput(String(config.trace_retention_days));
     setTraceStorePayloads(config.trace_store_payloads);
     setAuditLogRetentionInput(String(config.audit_log_retention_days));
+    const next = coordinationInputsFrom({ ...COORDINATION_RETENTION_DEFAULTS, ...(config.coordination_retention ?? {}) });
+    setCoordinationInputs((current) => keepCoordinationInputs(current, next));
   }, [config, editing]);
 
   useEffect(() => {
@@ -136,6 +201,8 @@ export function ObservabilitySection() {
       setTraceRetentionInput(String(config.trace_retention_days));
       setTraceStorePayloads(config.trace_store_payloads);
       setAuditLogRetentionInput(String(config.audit_log_retention_days));
+      const next = coordinationInputsFrom({ ...COORDINATION_RETENTION_DEFAULTS, ...(config.coordination_retention ?? {}) });
+      setCoordinationInputs((current) => keepCoordinationInputs(current, next));
     }
 
     if (langfuseConfig) {
@@ -163,12 +230,18 @@ export function ObservabilitySection() {
       auditLogRetentionRef.current?.focus();
       return;
     }
+    const invalidCoordination = COORDINATION_RETENTION_KEYS.find((key) => coordinationDays[key] === null);
+    if (invalidCoordination) {
+      coordinationRefs.current[invalidCoordination]?.focus();
+      return;
+    }
     try {
       await updateObservability.mutateAsync({
         trace_storage_enabled: traceStorageEnabled,
         trace_retention_days: traceRetentionDays,
         trace_store_payloads: traceStorePayloads,
         audit_log_retention_days: auditLogRetentionDays,
+        coordination_retention: coordinationDays as CoordinationRetention,
       });
 
       if (!isLangfuseEnvManaged) {
@@ -334,6 +407,27 @@ export function ObservabilitySection() {
                 <Badge variant="outline" className="content-caption" data-testid="observability-audit-log-retention">
                   {t_i18n("{count, plural, one {# day} other {# days}}", { count: config?.audit_log_retention_days ?? AUDIT_LOG_RETENTION_DEFAULT_DAYS })}
                 </Badge>
+              </div>
+            </div>
+
+            <div className="space-y-3 border-t border-elevation-subtle-soft pt-4">
+              <p className="content-compact font-medium text-default-secondary">{t_i18n("Coordination retention")}</p>
+
+              <div className="space-y-3" data-testid="observability-coordination-retention">
+                {COORDINATION_RETENTION_KEYS.map((key) => (
+                  <div key={key} className="flex items-center justify-between gap-3 rounded-sm bg-elevation-default p-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Clock3 className="h-5 w-5 shrink-0 text-default-secondary" />
+                      <div className="min-w-0">
+                        <p className="content-base font-medium">{coordinationLabels[key].title}</p>
+                        <p className="content-compact text-default-secondary">{coordinationLabels[key].helper}</p>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="content-caption shrink-0">
+                      {retentionText(coordinationRetention[key])}
+                    </Badge>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -561,6 +655,58 @@ export function ObservabilitySection() {
                   onChange={(event) => setAuditLogRetentionInput(event.target.value)}
                 />
               </SettingsField>
+            </div>
+
+            <div className="space-y-4 border-t border-elevation-subtle-soft pt-4">
+              <div>
+                <SettingsGroupTitle>{t_i18n("Coordination retention")}</SettingsGroupTitle>
+                <SettingsGroupDescription>
+                  {t_i18n("How long work items, shared state and worksets are kept once they are closed. 0 keeps them forever.")}
+                </SettingsGroupDescription>
+              </div>
+
+              <SettingsFieldGrid>
+                {COORDINATION_RETENTION_KEYS.map((key) => {
+                  const id = `observability-coordination-${key.replace(/_/g, "-")}`;
+                  const invalid = coordinationDays[key] === null;
+                  return (
+                    <SettingsField
+                      key={key}
+                      id={id}
+                      label={coordinationLabels[key].label}
+                      helper={coordinationLabels[key].helper}
+                      info={t_i18n(
+                        "An hourly sweep deletes what is past this window, in batches, until nothing is left. Active entries and work items still open are never deleted. 0 keeps them forever. Allowed range: {min} to {max}.",
+                        { min: MIN_COORDINATION_RETENTION_DAYS, max: MAX_COORDINATION_RETENTION_DAYS },
+                      )}
+                      error={
+                        invalid
+                          ? t_i18n("Enter a number of days from {min} to {max}.", {
+                              min: MIN_COORDINATION_RETENTION_DAYS,
+                              max: MAX_COORDINATION_RETENTION_DAYS,
+                            })
+                          : undefined
+                      }
+                    >
+                      <Input
+                        ref={(element) => {
+                          coordinationRefs.current[key] = element;
+                        }}
+                        id={id}
+                        aria-labelledby={settingsFieldLabelId(id)}
+                        aria-describedby={settingsFieldHintId(id)}
+                        aria-invalid={invalid || undefined}
+                        type="number"
+                        inputMode="numeric"
+                        min={MIN_COORDINATION_RETENTION_DAYS}
+                        max={MAX_COORDINATION_RETENTION_DAYS}
+                        value={coordinationInputs[key]}
+                        onChange={(event) => setCoordinationInputs((current) => ({ ...current, [key]: event.target.value }))}
+                      />
+                    </SettingsField>
+                  );
+                })}
+              </SettingsFieldGrid>
             </div>
 
             <div className="space-y-4 border-t border-elevation-subtle-soft pt-4">

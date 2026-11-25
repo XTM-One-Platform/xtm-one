@@ -264,6 +264,8 @@ _NOT_WRITER_GATED = {
         "existing_correlation_keys",
         "bulk_delete_work_items",
         "reap_work_items",
+        # The closed-item retention purge of the scheduler (#2070), a sweep.
+        "purge_terminal_work_items",
         # The platform's claim bookkeeping: the holder's state read, the
         # release of the claims of runs that ended and of claims no live run
         # holds (sweeps, like the reaper) and the dispatcher naming the run it

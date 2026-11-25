@@ -3377,20 +3377,22 @@ async def release_ended_run_holds(
 
 
 async def purge_resolved_states(*, older_than: timedelta, limit: int = 500) -> int:
-    """Delete RESOLVED entries whose resolution is older than ``older_than``.
+    """Delete RESOLVED entries whose last update is older than ``older_than``.
 
     The fleet-wide retention backstop so resolved shared state never lives forever
     even if the owning agent forgets to purge it (the agent-driven path remains
     the primary one). Capped per call and oldest-resolved first, like the other
     autonomous cleanup sweeps. ACTIVE entries are NEVER touched - a long-lived
     source of truth may legitimately update rarely.
+
+    The window counts from ``updated_at`` (#2070), the entry's last update, as
+    the Settings retention says: a resolved entry still written to (a note, a
+    re-resolve) is kept for the whole window after that write.
     """
     from app.core.database import async_session
 
     cutoff = datetime.now(UTC) - older_than
-    # Fall back to ``updated_at`` when ``resolved_at`` is unexpectedly NULL (rows
-    # resolved before the column existed) so they remain purgeable.
-    anchor = func.coalesce(SharedState.resolved_at, SharedState.updated_at)
+    anchor = SharedState.updated_at
     async with async_session() as db:
         target_ids = (
             await db.execute(
@@ -3409,8 +3411,8 @@ async def purge_resolved_states(*, older_than: timedelta, limit: int = 500) -> i
         # SELECT that chose the ids), so the DELETE - not the now-stale id list -
         # decides what is purged. Between the SELECT and the DELETE an entry can,
         # in its own transaction, be (a) reactivated by upsert_state (status flips
-        # to active) or (b) re-resolved with a fresh note (resolved_at / the
-        # coalesced anchor bumped back within the retention window). Re-checking
+        # to active) or (b) re-resolved with a fresh note (updated_at bumped back
+        # within the retention window). Re-checking
         # status == resolved AND anchor < cutoff means neither an active entry nor
         # a freshly re-resolved (no-longer-stale) one is ever purged - fully
         # closing the TOCTOU window and keeping "only resolved entries past

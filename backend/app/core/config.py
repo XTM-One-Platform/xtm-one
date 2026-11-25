@@ -2538,10 +2538,12 @@ class Settings(BaseSettings):
     #     negative value) disables the stale signal entirely.
     shared_state_stale_after_days: int = 14
     #   - ``resolved`` entries are purged by the autonomous sweep once their
-    #     resolution is older than this many days (kept briefly for audit). 0 (or
-    #     a negative value) disables the retention purge (resolved entries are
-    #     kept until an agent or admin deletes them).
-    shared_state_resolved_retention_days: int = 30
+    #     last update is older than this many days. 0 (or a negative value)
+    #     disables the retention purge (resolved entries are kept until an agent
+    #     or admin deletes them). The default of Settings > Observability >
+    #     Coordination retention: a value an administrator stores there wins
+    #     (services/coordination_retention.py), as for the four knobs below.
+    shared_state_resolved_retention_days: int = 90
     #   - Items an ``archive_key`` write moved into an archive entry are stamped
     #     and purged by the same sweep once older than this many days (an
     #     archive is an active entry, which the resolved purge never touches).
@@ -2592,10 +2594,10 @@ class Settings(BaseSettings):
     #     follow-ups nobody ever picked up disappear on their own. 0 (or
     #     negative) disables auto-cancellation.
     work_item_abandoned_after_days: int = 14
-    #   - Terminal (done/cancelled) items are purged by the sweep once they are
-    #     older than this many days (kept briefly for audit). 0 (or negative)
-    #     disables the retention purge.
-    work_item_resolved_retention_days: int = 30
+    #   - Terminal (done/cancelled) items are purged by the sweep once their
+    #     last update is older than this many days. 0 (or negative) disables the
+    #     retention purge.
+    work_item_resolved_retention_days: int = 90
 
     # --- Workset lifecycle ---
     # A workset is a WORKSPACE, not a deliverable: a scoped corpus an agent
