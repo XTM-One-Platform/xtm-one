@@ -1250,13 +1250,17 @@ def hydrate(
         return None
     visible = [r for r in sorted(rows, key=lambda r: _rank(r, view)) if view.sees(_member_id(r))]
     restricted = len(rows) - len(visible)
+    issues = [
+        _visible_issue(r, view.issues.get(_member_id(r)), view.signal_details.get(_member_id(r))) for r in visible
+    ] + [{"restricted": True} for _ in range(restricted)]
+    from app.services import ctem_case_assets as case_assets
+
     return {
         **head,
         "keys": list(case.keys or []),
-        "issues": [
-            _visible_issue(r, view.issues.get(_member_id(r)), view.signal_details.get(_member_id(r))) for r in visible
-        ]
-        + [{"restricted": True} for _ in range(restricted)],
+        "issues": issues,
+        # The issues' assets, then the hosts a validation ran on, each with its provenance (#2395).
+        "assets": case_assets.merged_assets(issues, case_assets.attached_assets(case.validations)),
         # The running-versions record (#1694) is served by the case read's ``running_versions.history``.
         "history": [_event(e, view) for e in events if e.kind != VERSIONS_KIND],
         "exploitation": exploitation_for(case, view),

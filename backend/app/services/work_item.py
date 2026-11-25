@@ -7337,14 +7337,18 @@ async def _complete_case_ask(db: Any, correlation_key: object, ask: Any) -> Any:
     version, or that the proposal is blind, whatever the agent wrote: the
     platform builds the line from the case (``ctem_version_match``). The
     validation card of a ``control_decay`` case states what the run measures
-    in OpenCRQ and its recurrence (``ctem_control_measurement``, #2369). Any
-    other item's ask is returned as given.
+    in OpenCRQ and its recurrence (``ctem_control_measurement``, #2369). A
+    remediation or mobilize card names the hosts its case's validations ran on
+    and how each was chosen (``ctem_case_assets``, #2395). Any other item's ask
+    is returned as given.
     """
     if not ask:
         return ask
-    from app.services import ctem_control_measurement
+    from app.services import ctem_case_assets, ctem_control_measurement
     from app.services.ctem_version_match import complete_gate_ask
 
+    # The assets line goes first, then the version match above it: the version match leads the card.
+    ask = await ctem_case_assets.complete_gate_ask(db, correlation_key, ask)
     ask = await complete_gate_ask(db, correlation_key, ask)
     return await ctem_control_measurement.complete_gate_ask(db, correlation_key, ask)
 
