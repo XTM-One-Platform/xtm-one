@@ -21701,5 +21701,19 @@
   "To validate": "要検証",
   "Running version not verified: validate it before acting on the case.": "稼働中のバージョンは未検証です。ケースに対応する前に検証してください。",
   "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{supporting, plural, other {#件のサポート資産}}を通じて{primary, plural, other {#件の主要資産}}に到達。",
-  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, other {#件のポリシールールを適用}}。"
+  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, other {#件のポリシールールを適用}}。",
+  "Primary asset not found": "主要資産が見つかりません",
+  "No primary asset of the organization has this name: it may have been renamed or removed.": "この名前の主要資産は組織にありません。名前が変更されたか、削除された可能性があります。",
+  "About this primary asset": "この主要資産について",
+  "Supporting assets": "支援資産",
+  "{count, plural, =0 {None linked yet} one {# linked directly} other {# linked directly}}": "{count, plural, =0 {まだリンクなし} other {直接リンク # 件}}",
+  "{count, plural, =0 {none through an asset group} one {# through an asset group} other {# through asset groups}}": "{count, plural, =0 {資産グループ経由なし} other {資産グループ経由 # 件}}",
+  "Through the asset group {group}": "資産グループ {group} 経由",
+  "Linked directly": "直接リンク",
+  "Reaches it": "到達経路",
+  "Inherited security needs": "継承されたセキュリティ要件",
+  "Link source": "リンク元",
+  "No asset of the inventory supports this primary asset yet.": "この主要資産を支援するインベントリの資産はまだありません。",
+  "Search assets or asset groups by name": "資産または資産グループを名前で検索",
+  "No open case reaches this primary asset.": "この主要資産に到達するオープンなケースはありません。"
 }
