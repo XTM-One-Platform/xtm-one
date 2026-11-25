@@ -55,6 +55,7 @@ def test_the_group_carries_the_update_and_the_proposal_tools():
         module.ORGANIZATION_LIST_SYNCS_TOOL,
         module.ORGANIZATION_CREATE_SYNC_TOOL,
         module.ORGANIZATION_RUN_SYNC_TOOL,
+        module.ORGANIZATION_UPDATE_SYNC_TOOL,
         module.ORGANIZATION_LIST_PROPOSALS_TOOL,
         module.ORGANIZATION_DECIDE_PROPOSAL_TOOL,
         module.ORGANIZATION_VERSIONS_TOOL,
@@ -246,6 +247,116 @@ async def test_the_sync_tools_refuse_a_former_administrator(monkeypatch):
         module.REFUSAL
     )
     assert await executor.handler(module.ORGANIZATION_RUN_SYNC_TOOL)(sync_id=str(uuid.uuid4())) == module.REFUSAL
+    assert (
+        await executor.handler(module.ORGANIZATION_UPDATE_SYNC_TOOL)(sync_id=str(uuid.uuid4()), remove_gone=False)
+        == module.REFUSAL
+    )
+
+
+def _stored_sync(**overrides):
+    values = {
+        "id": uuid.uuid4(),
+        "section": "assets",
+        "source": "opencti",
+        "filters": {"label": ["crown-jewel"]},
+        "batch_type": "servers",
+        "remove_gone": True,
+        "excluded_external_ids": ["x-1"],
+        "direction": "inbound",
+        "outbound_ids": {},
+        "frequency": "weekly",
+        "hour": 7,
+        "minute": 15,
+        "weekday": 2,
+        "timezone": "Europe/Paris",
+        "enabled": True,
+        "owner_user_id": uuid.uuid4(),
+        "paused_reason": "token expired",
+        "next_run_at": None,
+        "last_run_at": None,
+        "last_result": None,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+@pytest.mark.asyncio
+async def test_update_sync_changes_only_the_fields_passed_and_keeps_the_rest(monkeypatch):
+    import json
+
+    from app.core import database
+    from app.services import audit
+
+    stored = _stored_sync()
+    session = _SyncSession(stored=stored)
+    audits: list = []
+
+    async def _log_audit(db, **kwargs):
+        audits.append(kwargs)
+
+    monkeypatch.setattr(database, "async_session", lambda: session)
+    monkeypatch.setattr(audit, "log_audit", _log_audit)
+    _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=True, agent_name="Ops")
+    answer = json.loads(
+        await executor.handler(module.ORGANIZATION_UPDATE_SYNC_TOOL)(sync_id=str(stored.id), remove_gone=False)
+    )
+    assert answer["saved"] is True
+    assert answer["notice"] == module.SHARED_CONTEXT_NOTICE
+    assert stored.remove_gone is False
+    # Every field not passed keeps its stored value.
+    assert stored.filters == {"label": ["crown-jewel"]}
+    assert stored.batch_type == "servers"
+    assert stored.excluded_external_ids == ["x-1"]
+    assert (stored.section, stored.source, stored.direction) == ("assets", "opencti", "inbound")
+    assert (stored.frequency, stored.hour, stored.minute, stored.weekday) == ("weekly", 7, 15, 2)
+    assert stored.timezone == "Europe/Paris" and stored.enabled is True
+    # Saved again by the administrator the turn acts for: a paused sync resumes with that token.
+    assert stored.owner_user_id == uuid.UUID(_ADMIN_ID)
+    assert stored.paused_reason == "" and stored.next_run_at is not None
+    assert session.committed and not session.added
+    assert audits[0]["action"] == "update"
+    assert audits[0]["details"]["changed"] == ["remove_gone"]
+    assert audits[0]["details"]["agent"] == "Ops"
+
+
+@pytest.mark.asyncio
+async def test_update_sync_changes_the_schedule_and_filters_it_is_given(monkeypatch):
+    from app.core import database
+    from app.services import audit
+
+    async def _log_audit(db, **kwargs):
+        return None
+
+    stored = _stored_sync()
+    session = _SyncSession(stored=stored)
+    monkeypatch.setattr(database, "async_session", lambda: session)
+    monkeypatch.setattr(audit, "log_audit", _log_audit)
+    _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=True)
+    await executor.handler(module.ORGANIZATION_UPDATE_SYNC_TOOL)(
+        sync_id=str(stored.id), filters={"label": ["dmz"]}, frequency="daily", hour=3, enabled=False
+    )
+    assert stored.filters == {"label": ["dmz"]}
+    assert (stored.frequency, stored.hour, stored.minute) == ("daily", 3, 15)
+    assert stored.enabled is False and stored.next_run_at is None
+    assert stored.remove_gone is True and stored.batch_type == "servers"
+
+
+@pytest.mark.asyncio
+async def test_update_sync_refuses_and_writes_nothing(monkeypatch):
+    from app.core import database
+
+    stored = _stored_sync()
+    session = _SyncSession(stored=stored)
+    monkeypatch.setattr(database, "async_session", lambda: session)
+    _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=True)
+    handler = executor.handler(module.ORGANIZATION_UPDATE_SYNC_TOOL)
+    assert (await handler(sync_id="nope", remove_gone=False)).startswith("Not saved: sync_id")
+    assert (await handler(sync_id=str(stored.id))).startswith("Not saved: pass at least one field")
+    missing = await handler(sync_id=str(uuid.uuid4()), remove_gone=False)
+    assert missing.startswith("Not saved: no sync")
+    refused = await handler(sync_id=str(stored.id), timezone="Mars/Olympus")
+    assert refused.startswith("Not saved: unknown time zone")
+    assert not session.committed
 
 
 @pytest.mark.asyncio
@@ -353,6 +464,7 @@ def test_every_import_sync_and_write_tool_states_the_shared_context() -> None:  
         module.ORGANIZATION_IMPORT_TOOL,
         module.ORGANIZATION_CREATE_SYNC_TOOL,
         module.ORGANIZATION_RUN_SYNC_TOOL,
+        module.ORGANIZATION_UPDATE_SYNC_TOOL,
         module.ORGANIZATION_RESTORE_TOOL,
         "reconcile_organization_with_opencrq",
     }
