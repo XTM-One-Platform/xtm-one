@@ -101,6 +101,16 @@ class PrimaryAssetIndex:
             self._cache[ref] = hit
         return hit
 
+    def _matching(self, software: list[str], keys: list[str] | None) -> list[tuple[Reacher, str]]:
+        """The reachers *software* or subject *keys* name, each with the software reference it runs."""
+        wanted = {k for k in (keys or []) if k}
+        out: list[tuple[Reacher, str]] = []
+        for i, reacher in enumerate(self.reachers):
+            matched = next((ref for ref in software if ref and i in self._running(ref)), "")
+            if matched or wanted & reacher.keys:
+                out.append((reacher, matched))
+        return out
+
     def reach(self, software: list[str], keys: list[str] | None = None) -> list[dict[str, Any]]:
         """The primary assets *software* (names, CPEs, products) or subject *keys* reach.
 
@@ -110,11 +120,7 @@ class PrimaryAssetIndex:
         if not self.reachers:
             return []
         found: dict[tuple[str, str, str], dict[str, Any]] = {}
-        wanted = {k for k in (keys or []) if k}
-        for i, reacher in enumerate(self.reachers):
-            matched = next((ref for ref in software if ref and i in self._running(ref)), "")
-            if not matched and not (wanted & reacher.keys):
-                continue
+        for reacher, matched in self._matching(software, keys):
             for link, kind, through in reacher.links:
                 key = (link.jewel_key, through, link.source)
                 if key in found:
@@ -134,6 +140,52 @@ class PrimaryAssetIndex:
             found.values(), key=lambda h: (h["primary_asset_key"], rank.get(h["source"], 9), h["through"], h["asset"])
         )
 
+    def supporting(self, software: list[str], keys: list[str] | None, jewel_key: str) -> list[dict[str, Any]]:
+        """Every inventory asset *software* or *keys* name that reaches *jewel_key*, one entry per asset.
+
+        Unlike :meth:`reach`, which keeps one chain per (through, source), this lists each
+        supporting asset, its best link first: ``{asset, software, through, through_kind,
+        source, roles}``, sorted by asset name. The loop trace pages it (#1979).
+        """
+        rank = {s: n for n, s in enumerate(SOURCE_ORDER)}
+        out: list[dict[str, Any]] = []
+        for reacher, matched in self._matching(software, keys):
+            links = [(link, kind, through) for link, kind, through in reacher.links if link.jewel_key == jewel_key]
+            if not links:
+                continue
+            link, kind, through = min(links, key=lambda e: (rank.get(e[0].source, 9), e[1] != "asset", e[2]))
+            out.append(
+                {
+                    "asset": reacher.name,
+                    "software": matched,
+                    "through": through,
+                    "through_kind": kind,
+                    "source": link.source,
+                    "roles": sorted({r for lk, _, _ in links for r in lk.roles}),
+                }
+            )
+        return sorted(out, key=lambda e: (e["asset"].casefold(), e["asset"]))
+
+    def totals(self, software: list[str], keys: list[str] | None = None) -> dict[str, dict[str, int]]:
+        """Per primary asset key, how many inventory assets reach it: ``{assets, direct, via_group}``.
+
+        The decision record stores these next to the first chains, so a primary asset
+        reached by 10,000 workstations reads 10,000, never the five chains kept (#1979).
+        """
+        out: dict[str, dict[str, int]] = {}
+        for reacher, _ in self._matching(software, keys):
+            kinds: dict[str, set[str]] = {}
+            for link, kind, _through in reacher.links:
+                kinds.setdefault(link.jewel_key, set()).add(kind)
+            for jewel_key, seen in kinds.items():
+                row = out.setdefault(jewel_key, {"assets": 0, "direct": 0, "via_group": 0})
+                row["assets"] += 1
+                if "asset" in seen:
+                    row["direct"] += 1
+                else:
+                    row["via_group"] += 1
+        return out
+
 
 def _record_products(fields: dict[str, Any]) -> dict[str, str]:
     """What a record says it runs: its own software list and the OS family a device reports."""
@@ -148,8 +200,21 @@ def _record_products(fields: dict[str, Any]) -> dict[str, str]:
     return out
 
 
-async def load_index(db: AsyncSession, organization_id: uuid.UUID) -> PrimaryAssetIndex:
-    """Read the assets of *organization_id* that reach a primary asset. Never raises on empty data."""
+async def load_index(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    *,
+    primary_asset_key: str | None = None,
+    software: list[str] | None = None,
+) -> PrimaryAssetIndex:
+    """Read the assets of *organization_id* that reach a primary asset. Never raises on empty data.
+
+    The loop trace's supporting asset list (UX r2 B4 on #1995) reads a narrower index:
+    *primary_asset_key* keeps the links of that primary asset alone, and *software*
+    keeps the installed software rows of the products those references name (the
+    distinct products are matched first, then only their rows are read), so a cold
+    read of 10,000 supporting assets does not pull every installed product of the fleet.
+    """
     from app.models.organization_asset import OrganizationAssetSoftware
     from app.models.organization_asset_record import (
         OrganizationAssetGroup,
@@ -162,7 +227,9 @@ async def load_index(db: AsyncSession, organization_id: uuid.UUID) -> PrimaryAss
     rows = (
         await db.execute(
             select(link.record_id, link.group_id, link.primary_asset_key, link.source, link.roles, link.via).where(
-                link.organization_id == organization_id, link.removed.is_(False)
+                link.organization_id == organization_id,
+                link.removed.is_(False),
+                *([link.primary_asset_key == primary_asset_key] if primary_asset_key is not None else []),
             )
         )
     ).all()
@@ -219,10 +286,23 @@ async def load_index(db: AsyncSession, organization_id: uuid.UUID) -> PrimaryAss
                 holder.links.append(entry)
     if asset_ids:
         soft = OrganizationAssetSoftware
+        scope = [soft.organization_id == organization_id, soft.asset_id.in_(asset_ids)]
+        if software is not None:
+            refs = [r for r in software if r]
+            products = (await db.execute(select(soft.product_key, soft.product).where(*scope).distinct())).all()
+            wanted = sorted(
+                {
+                    str(key)
+                    for key, product in products
+                    if product
+                    and any(product_matches(str(product), r) or product_matches(r, str(product)) for r in refs)
+                }
+            )
+            scope.append(soft.product_key.in_(wanted))
         installed = (
             await db.execute(
                 select(soft.asset_id, soft.product_key, soft.product)
-                .where(soft.organization_id == organization_id, soft.asset_id.in_(asset_ids))
+                .where(*scope)
                 .distinct()
                 .limit(MAX_SOFTWARE_ROWS + 1)
             )
@@ -235,152 +315,6 @@ async def load_index(db: AsyncSession, organization_id: uuid.UUID) -> PrimaryAss
                 owner.products.setdefault(str(product_key or _key(product)), str(product))
     index.reachers = [r for r in by_asset.values() if r.links]
     return index
-
-
-#: Largest page of supporting assets one read answers.
-SUPPORTERS_PAGE_MAX = 200
-#: The asset criticality scale, lowest first: a descending sort on criticality reads the highest first.
-_CRITICALITY_RANK: tuple[str, ...] = ("unknown", "low", "medium", "high", "very_high")
-#: The orders a page of supporting assets can be read in.
-SUPPORTERS_SORTS: tuple[str, ...] = ("name", "criticality")
-
-
-async def primary_asset_supporters(
-    db: AsyncSession,
-    organization_id: uuid.UUID,
-    primary_asset: str,
-    *,
-    q: str = "",
-    offset: int = 0,
-    limit: int = 50,
-    through: tuple[str, ...] = (),
-    sources: tuple[str, ...] = (),
-    sort: str = "name",
-    descending: bool = False,
-) -> dict[str, Any]:
-    """The inventory records that support *primary_asset*, paged, searched, filtered and sorted on the server (#1980 S2).
-
-    ``through`` keeps the rows reaching it that way (``asset``, ``asset_group``),
-    ``sources`` the rows of those link sources; ``sort`` is ``name`` or
-    ``criticality`` (``descending`` reads the highest first).
-
-    One row per (record, link): a record linked directly (``through_kind``
-    ``asset``) or as a member of a linked group (``asset_group``, ``through``
-    the group's name), with the link's source, roles, inherited security needs
-    and ``via``. A person's removal (``removed``) is left out. ``total`` is the
-    count of every row the search keeps; ``counts`` splits the rows of the whole
-    primary asset (search ignored) by how they reach it and by source.
-    """
-    from sqlalchemy import case, func, literal, or_, union_all
-
-    from app.models.organization_asset_record import (
-        OrganizationAssetGroup,
-        OrganizationAssetGroupMember,
-        OrganizationAssetRecord,
-        OrganizationPrimaryAssetLink,
-    )
-
-    rec, link, member, grp = (
-        OrganizationAssetRecord,
-        OrganizationPrimaryAssetLink,
-        OrganizationAssetGroupMember,
-        OrganizationAssetGroup,
-    )
-    key = _key(primary_asset)[:200]
-    limit, offset = max(1, min(int(limit or 50), SUPPORTERS_PAGE_MAX)), max(0, int(offset or 0))
-    live = (link.organization_id == organization_id, link.primary_asset_key == key, link.removed.is_(False))
-    direct = (
-        select(
-            rec.id.label("record_id"),
-            rec.asset_id.label("asset_id"),
-            rec.name.label("name"),
-            rec.name_key.label("name_key"),
-            rec.category.label("category"),
-            rec.criticality.label("criticality"),
-            literal("asset").label("through_kind"),
-            literal("").label("through"),
-            link.source.label("source"),
-            link.roles.label("roles"),
-            link.inherited_needs.label("inherited_needs"),
-            link.via.label("via"),
-        )
-        .join(rec, rec.id == link.record_id)
-        .where(*live, rec.organization_id == organization_id)
-    )
-    grouped = (
-        select(
-            rec.id.label("record_id"),
-            rec.asset_id.label("asset_id"),
-            rec.name.label("name"),
-            rec.name_key.label("name_key"),
-            rec.category.label("category"),
-            rec.criticality.label("criticality"),
-            literal("asset_group").label("through_kind"),
-            grp.name.label("through"),
-            link.source.label("source"),
-            link.roles.label("roles"),
-            link.inherited_needs.label("inherited_needs"),
-            link.via.label("via"),
-        )
-        .join(grp, grp.id == link.group_id)
-        .join(member, member.group_id == grp.id)
-        .join(rec, rec.id == member.record_id)
-        .where(*live, rec.organization_id == organization_id)
-    )
-    rows = union_all(direct, grouped).subquery()
-    by = (
-        await db.execute(
-            select(rows.c.through_kind, rows.c.source, func.count()).group_by(rows.c.through_kind, rows.c.source)
-        )
-    ).all()
-    counts: dict[str, dict[str, int]] = {"through": {}, "source": {}}
-    for kind, source, count in by:
-        counts["through"][str(kind)] = counts["through"].get(str(kind), 0) + int(count)
-        counts["source"][str(source or "manual")] = counts["source"].get(str(source or "manual"), 0) + int(count)
-    page = select(rows)
-    wanted = _key(q)
-    if wanted:
-        like = f"%{wanted.replace('%', '').replace('_', '')}%"
-        page = page.where(or_(rows.c.name_key.like(like), func.lower(rows.c.through).like(like)))
-    if through:
-        page = page.where(rows.c.through_kind.in_(list(through)))
-    if sources:
-        page = page.where(func.coalesce(rows.c.source, "manual").in_(list(sources)))
-    total = (await db.execute(select(func.count()).select_from(page.subquery()))).scalar() or 0
-    name_order: list[Any] = [rows.c.name_key, rows.c.through_kind, rows.c.through, rows.c.record_id]
-    order: list[Any]
-    if sort == "criticality":
-        rank = case(
-            {level: index for index, level in enumerate(_CRITICALITY_RANK)},
-            value=func.coalesce(rows.c.criticality, "unknown"),
-            else_=0,
-        )
-        order = [rank.desc() if descending else rank.asc(), *name_order]
-    else:
-        order = [c.desc() for c in name_order] if descending else name_order
-    items = (await db.execute(page.order_by(*order).offset(offset).limit(limit))).all()
-    return {
-        "items": [
-            {
-                "record_id": str(r.record_id),
-                "asset_id": str(r.asset_id) if r.asset_id else None,
-                "name": str(r.name),
-                "category": str(r.category or ""),
-                "criticality": str(r.criticality or "unknown"),
-                "through_kind": str(r.through_kind),
-                "through": str(r.through or ""),
-                "source": str(r.source or "manual"),
-                "roles": [str(x) for x in r.roles or ()],
-                "inherited_needs": {str(k): str(v) for k, v in (r.inherited_needs or {}).items()},
-                "via": str(r.via or ""),
-            }
-            for r in items
-        ],
-        "total": int(total),
-        "offset": offset,
-        "limit": limit,
-        "counts": {"total": sum(counts["through"].values()), **counts},
-    }
 
 
 async def asset_primary_assets(
