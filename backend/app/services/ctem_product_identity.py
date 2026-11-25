@@ -24,8 +24,12 @@ by field, and only a field KNOWN ON BOTH SIDES can reject a match:
    reports another OS family.
 
 A field unknown on either side never rejects: with no purl, no CPE, no vendor
-and no OS, the bare product name still matches (Sam, 25 Nov 2026). Pure
-functions over plain data; the version, priority and SLA logic are elsewhere.
+and no OS, the bare product name still matches (Sam, 25 Nov 2026). One
+exception (#2375): an entry that is a language package never matches a
+Software OpenCTI knows by its name alone (no purl and no CPE), since the
+package carries an identity the name cannot confirm; an entry with no
+identity of its own keeps the bare-name match. Pure functions over plain
+data; the version, priority and SLA logic are elsewhere.
 """
 
 from __future__ import annotations
@@ -168,6 +172,10 @@ def conflict(entry: Mapping[str, Any], node: Mapping[str, Any]) -> str | None:
         node_purl = purl_fields(str(node.get("x_opencti_purl") or node.get("purl") or ""))
         entry_purl = purl_fields(str(entry.get("purl") or ""))
         if node_purl and node_purl != entry_purl:
+            return "ecosystem"
+        if not node_purl and not node_fields:
+            # A package named like a server product (the MinIO SDK) is never that product on its
+            # name alone (#2375): a package CVE reaches the repository by its purl instead.
             return "ecosystem"
         if (
             not node_purl
