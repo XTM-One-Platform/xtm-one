@@ -27,6 +27,8 @@ trail, so it never carries an OpenCRQ figure (cost, expected loss, threshold).
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -117,6 +119,29 @@ def parse_options(raw: Any) -> list[RemediationOption]:
                 preapproved=bool(item.get("preapproved")) and bool(_text(item.get("runbook"), 120)),
             )
         )
+    return out
+
+
+#: A version an option's text cites: "9.10.0", "v7.2.6" (two dotted numbers at least).
+_VERSION = re.compile(r"(?<![\w.])v?(\d+(?:\.\d+){1,3})(?![\w.])")
+
+
+def unverified_versions(raw: Any, fixed: Iterable[str]) -> list[str]:
+    """The versions the options cite that the case's fixed versions do not carry (#2103 family, partner 0ae1fa2e).
+
+    An option whose text names a version the case does not know is a claim no source backs:
+    "upgrade to 9.10.0" on a case whose fixed version is unknown. An option that gives
+    ``version_source`` (the advisory or release note it read) is taken as backed.
+    """
+    known = {v.strip().lstrip("vV") for v in fixed if v and v.strip()}
+    out: list[str] = []
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict) or str(item.get("version_source") or "").strip():
+            continue
+        text = " ".join(str(item.get(k) or "") for k in ("label", "residual_risk", "runbook"))
+        for match in _VERSION.finditer(text):
+            if match.group(1) not in known and match.group(1) not in out:
+                out.append(match.group(1))
     return out
 
 

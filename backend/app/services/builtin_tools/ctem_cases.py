@@ -683,6 +683,16 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 if refused:
                     return refused
                 case = shown[0]
+                # An option citing a version the case does not carry needs its source (partner 0ae1fa2e).
+                fixed = [case.fixed_version or "", *(case.fixed_versions or {}).values()]
+                unbacked = decision_rules.unverified_versions(options, fixed)
+                if unbacked and not answered_option:
+                    return (
+                        f"Refused: the options cite version(s) {', '.join(unbacked)} that this case does not "
+                        f"carry (fixed version: {case.fixed_version or 'unknown'}). Read the fixed version from "
+                        "the advisory or release notes and give it as version_source on that option, or "
+                        "word the option without a version. Nothing was changed."
+                    )
                 figures = await _opencrq_readable(db)
                 if answered_option:
                     chosen = decision_rules.recommended(parsed, answered_option)
@@ -1302,6 +1312,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                                 "time_to_apply": {"type": "string"},
                                 "runbook": {"type": "string"},
                                 "preapproved": {"type": "boolean"},
+                                "version_source": {
+                                    "type": "string",
+                                    "description": "Where a version the option names comes from, when the case has none.",
+                                },
                             },
                             "required": ["key", "label"],
                         },
