@@ -1639,6 +1639,11 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Scheduled assignments error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        # --- 3-bis. One admin alert per episode of assignment runs starved of workers (#2040) ---
+        from app.services.run_queue_starvation import check_queue_starvation
+
+        await check_queue_starvation(db)  # never raises
+
         # --- 3a-bis. Fire due flow schedules ---
         # Same tick, same Redis window lock as assignment crons — firing flow
         # crons from the worker's adapter.periodic too would double-trigger.
