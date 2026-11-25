@@ -9,6 +9,9 @@ the review event (or the merge) is its next wake.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import pytest
 
 import app.services.work_item as wi_service
@@ -44,12 +47,48 @@ def test_awaiting_review_reads_only_the_blocking_decisions() -> None:
         assert not wi_service._awaiting_review(read)
 
 
+@pytest.mark.parametrize("gate", ["queue_base", "can_bypass"])
+def test_a_queue_protected_base_or_a_bypassing_viewer_is_never_awaiting_review(gate: str) -> None:
+    """GitHub accepts the PR into its merge queue: the item is handed off to enqueue it (#2324)."""
+    assert not wi_service._awaiting_review({"review_decision": "REVIEW_REQUIRED", gate: True})
+
+
+@pytest.mark.asyncio
+async def test_a_green_head_on_a_queue_protected_base_is_handed_off_not_parked_on_review(settle: Any) -> None:  # noqa: F811
+    make_item: Callable[[], Any] = _item
+    settle.live(
+        {
+            "head_sha": "abc",
+            "conclusion": "success",
+            "draft": False,
+            "review_decision": "REVIEW_REQUIRED",
+            "queue_base": True,
+        }
+    )
+    item = make_item()
+    assert await settle(item) == "deferred"
+    assert item.status == "open"
+
+
+@pytest.mark.asyncio
+async def test_the_live_read_carries_the_queue_base_and_the_bypass(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fake_github(monkeypatch, draft=False, queued=False)
+
+    async def fake_gates(*_a: object, **_k: object) -> tuple[bool, str | None, bool, bool]:
+        return False, "REVIEW_REQUIRED", True, True
+
+    monkeypatch.setattr(rs, "_merge_gates", fake_gates)
+    state = await rs.read_pull_request_ci(REPO, 7, "token")
+    assert state is not None
+    assert state["queue_base"] is True and state["can_bypass"] is True
+
+
 @pytest.mark.asyncio
 async def test_the_live_read_carries_the_review_decision(monkeypatch: pytest.MonkeyPatch) -> None:
     asked = _fake_github(monkeypatch, draft=False, queued=False)
 
-    async def fake_gates(*_a: object, **_k: object) -> tuple[bool, str | None]:
-        return False, "REVIEW_REQUIRED"
+    async def fake_gates(*_a: object, **_k: object) -> tuple[bool, str | None, bool, bool]:
+        return False, "REVIEW_REQUIRED", False, False
 
     monkeypatch.setattr(rs, "_merge_gates", fake_gates)
     state = await rs.read_pull_request_ci(REPO, 7, "token")
@@ -63,3 +102,4 @@ async def test_the_merge_gates_query_asks_for_the_review_decision(monkeypatch: p
     asked = _fake_github(monkeypatch, draft=False, queued=False)
     await rs.read_pull_request_ci(REPO, 7, "token")
     assert asked and "reviewDecision" in asked[0]
+    assert "viewerCanMergeAsAdmin" in asked[0] and "mergeQueue(branch" in asked[0]

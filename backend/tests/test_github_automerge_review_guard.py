@@ -33,9 +33,10 @@ def _tool(tool_name: str):
 class _GitHub:
     """Scripted GitHub: no review-loop marker, a scripted review decision, every mutation recorded."""
 
-    def __init__(self, decision: str | None, read_error: str | None = None):
+    def __init__(self, decision: str | None, read_error: str | None = None, bypass: bool | None = None):
         self.decision = decision
         self.read_error = read_error
+        self.bypass = bypass
         self.mutations: list[str] = []
 
     async def graphql(self, client, headers, query, variables=None, **kwargs):
@@ -45,7 +46,10 @@ class _GitHub:
         if "reviewDecision" in query:
             if self.read_error:
                 return None, self.read_error
-            return {"repository": {"pullRequest": {"reviewDecision": self.decision}}}, None
+            pull: dict[str, object] = {"reviewDecision": self.decision}
+            if self.bypass is not None:
+                pull["viewerCanMergeAsAdmin"] = self.bypass
+            return {"repository": {"pullRequest": pull}}, None
         return {"repository": {"pullRequest": {"comments": {"nodes": []}}}}, None
 
     async def request(self, client, method, url, provider, action, **kwargs):
@@ -63,13 +67,26 @@ async def _enable(github: _GitHub):
 
 
 @pytest.mark.parametrize("decision", ["REVIEW_REQUIRED", "CHANGES_REQUESTED"])
+@pytest.mark.parametrize("bypass", [False, None])
 @pytest.mark.asyncio
-async def test_automerge_is_refused_while_the_review_is_owed(decision):
-    github = _GitHub(decision)
+async def test_automerge_is_refused_while_the_review_is_owed_and_the_viewer_cannot_bypass(
+    decision: str, bypass: bool | None
+) -> None:
+    github = _GitHub(decision, bypass=bypass)
     result = str(await _enable(github))
     assert github.mutations == []
     assert "auto-merge not enabled on PR #12, nothing was written" in result
     assert decision in result
+
+
+@pytest.mark.parametrize("decision", ["REVIEW_REQUIRED", "CHANGES_REQUESTED"])
+@pytest.mark.asyncio
+async def test_automerge_lets_github_decide_when_the_viewer_can_bypass(decision: str) -> None:
+    """viewerCanMergeAsAdmin true: the review decision alone never refuses (#2324)."""
+    github = _GitHub(decision, bypass=True)
+    result = str(await _enable(github))
+    assert len(github.mutations) == 1
+    assert "Auto-merge (squash) enabled on PR #12" in result
 
 
 @pytest.mark.asyncio
