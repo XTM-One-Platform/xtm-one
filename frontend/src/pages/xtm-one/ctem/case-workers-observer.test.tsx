@@ -56,16 +56,17 @@ describe("caseWork with an observer", () => {
   it("names the loop automation, never the observer, when one loop automation is on", () => {
     const automations = caseAutomations([observer, assignment({})], AGENTS, CASE);
     const work = caseWork({ licensed: true, automations, runs: [] });
-    expect(work).toMatchObject({ kind: "on", automations: [{ id: "work", agentName: "Vuln Orchestrator" }], off: [] });
+    expect(work).toMatchObject({ kind: "on", automations: [{ id: "work", agentName: "Vuln Orchestrator" }], last: null });
   });
 
-  it("keeps the switched-off automations visible next to the enabled ones", () => {
+  it("never carries the switched-off automations while an enabled one works the case", () => {
     const automations = caseAutomations(
       [observer, assignment({}), assignment({ id: "work-2", name: "Work cases too", enabled: false })],
       AGENTS,
       CASE,
     );
-    expect(caseWork({ licensed: true, automations, runs: [] })).toMatchObject({ kind: "on", automations: [{ id: "work" }], off: [{ id: "work-2" }] });
+    const work = caseWork({ licensed: true, automations, runs: [] });
+    expect(work).toEqual({ kind: "on", automations: [expect.objectContaining({ id: "work" })], last: null });
   });
 });
 
@@ -79,7 +80,7 @@ describe("CaseWorkCard with an observer", () => {
     expect(screen.getByRole("button", { name: "Switch on" })).toBeInTheDocument();
   });
 
-  it("lists the automations switched off in the on state, by name with Switch on", () => {
+  it("offers no Switch on in the on state, even with another fleet's automation switched off", () => {
     const automations = caseAutomations(
       [observer, assignment({}), assignment({ id: "work-2", name: "Work cases too", enabled: false })],
       AGENTS,
@@ -88,10 +89,8 @@ describe("CaseWorkCard with an observer", () => {
     renderCard(<CaseWorkCard work={caseWork({ licensed: true, automations, runs: [] })} loopFleetId={null} />);
     expect(screen.getByTestId("ctem-case-work")).toHaveAttribute("data-state", "on");
     expect(screen.getByText(/Worked by Vuln Orchestrator/)).toBeInTheDocument();
-    expect(screen.getByTestId("ctem-case-work-switched-off")).toHaveTextContent("1 automation that can work this case is switched off");
-    const list = screen.getByTestId("ctem-case-work-switched-off-list");
-    expect(list).toHaveTextContent("Work cases too");
-    expect(screen.getAllByRole("button", { name: "Switch on" })).toHaveLength(1);
+    expect(screen.queryByText("Work cases too")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Switch on" })).toBeNull();
     expect(screen.queryByText(/Supervisor/)).toBeNull();
   });
 });

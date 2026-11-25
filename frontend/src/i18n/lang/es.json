@@ -21781,7 +21781,6 @@
   "Rows the first run creates in {platform}": "Filas que la primera ejecución crea en {platform}",
   "Observer only": "Solo observador",
   "This automation watches the objects of its events without working them: a CTEM case it hears is not shown as worked by it.": "Esta automatización observa los objetos de sus eventos sin trabajarlos: un caso CTEM que recibe no se muestra como trabajado por ella.",
-  "{count, plural, one {# automation that can work this case is switched off} other {# automations that can work this case are switched off}}": "{count, plural, one {# automatización que puede trabajar este caso está desactivada} other {# automatizaciones que pueden trabajar este caso están desactivadas}}",
   "Ticket": "Ticket",
   "Applied change": "Cambio aplicado",
   "Ticket and applied change": "Ticket y cambio aplicado",
@@ -21813,5 +21812,13 @@
   "Resolved worksets (days)": "Worksets resueltos (días)",
   "Resolved worksets are deleted with their documents this many days after they were resolved.": "Los worksets resueltos se eliminan con sus documentos este número de días después de resolverse.",
   "Kept forever": "Se conserva para siempre",
-  "An hourly sweep deletes what is past this window, in batches, until nothing is left. Active entries and work items still open are never deleted. 0 keeps them forever. Allowed range: {min} to {max}.": "Una limpieza cada hora elimina, por lotes, lo que supera este plazo hasta que no quede nada. Las entradas activas y los work items aún abiertos nunca se eliminan. 0 los conserva para siempre. Rango permitido: {min} a {max}."
+  "An hourly sweep deletes what is past this window, in batches, until nothing is left. Active entries and work items still open are never deleted. 0 keeps them forever. Allowed range: {min} to {max}.": "Una limpieza cada hora elimina, por lotes, lo que supera este plazo hasta que no quede nada. Las entradas activas y los work items aún abiertos nunca se eliminan. 0 los conserva para siempre. Rango permitido: {min} a {max}.",
+  "Waits for a person": "Espera a una persona",
+  "Waits for a decision": "Espera una decisión",
+  "Waits for the case to start": "Espera el inicio del caso",
+  "Waits for the analysis to finish": "Espera el final del análisis",
+  "Waits for the remediation to be applied": "Espera la aplicación de la remediación",
+  "Waits for the validation to finish": "Espera el final de la validación",
+  "Watches whether the exposure comes back": "Vigila si la exposición vuelve",
+  "Last run by {agent}, {when}": "Última ejecución por {agent}, {when}"
 }
