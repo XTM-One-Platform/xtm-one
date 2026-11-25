@@ -1251,15 +1251,20 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     },
                     "evidence_type": {
                         "type": "string",
-                        "enum": ["remediation", "validation"],
+                        "enum": ["remediation", "validation", "exposure"],
                         "description": (
                             "remediation: a version inventory, every in-scope endpoint at or above the fixed "
-                            "build; validation: a detection or behaviour test, never resolves a patch case."
+                            "build; validation: a detection or behaviour test, never resolves a patch case; "
+                            "exposure: a passive read proving the case still affected (endpoints below the fixed "
+                            "build), written with result failed and conclusive true."
                         ),
                     },
                     "conclusive": {
                         "type": "boolean",
-                        "description": "True only when the check proves the exposure gone (the fixed version read).",
+                        "description": (
+                            "True when the check proves its claim: the exposure gone for a pass (the fixed "
+                            "version read), the exposure present for exposure evidence."
+                        ),
                     },
                     "run_order": {
                         "type": "array",

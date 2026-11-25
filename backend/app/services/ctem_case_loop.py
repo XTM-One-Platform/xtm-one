@@ -540,7 +540,10 @@ VERSION_REMEDIATIONS: tuple[str, ...] = ("patch", "upgrade")
 #: What a validation reference proves, as the agent says it: the fix in place (a version inventory), or a test.
 REMEDIATION_EVIDENCE = "remediation"
 VALIDATION_EVIDENCE = "validation"
-EVIDENCE_TYPES: tuple[str, ...] = (REMEDIATION_EVIDENCE, VALIDATION_EVIDENCE)
+#: A passive read that confirms the exposure (a version inventory below the fixed build, a configuration read)
+#: (#2118): written with ``failed`` (still exposed) or ``pending``, never with a pass.
+EXPOSURE_EVIDENCE = "exposure"
+EVIDENCE_TYPES: tuple[str, ...] = (REMEDIATION_EVIDENCE, VALIDATION_EVIDENCE, EXPOSURE_EVIDENCE)
 
 
 def _upsert_validation(validations: list[dict[str, Any]], entry: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
@@ -600,7 +603,9 @@ async def record_validation(
     inject is (#1810). ``evidence_type`` (#1500):
     ``remediation`` (the fix in place: a version inventory showing every
     in-scope endpoint at or above the fixed build) or ``validation`` (a
-    detection or behaviour test). A pass that proves nothing is stored as
+    detection or behaviour test) or ``exposure`` (#2118: a passive read that
+    confirms the case affected, written as ``failed``; ``conclusive`` then says
+    the read proves its claim). A pass that proves nothing is stored as
     ``inconclusive`` (``reported_result`` keeps the word given), in the entry
     and the history event (#1692); one entry per ``(provider, ref)`` replaces a
     pending one, and the same outcome repeated only refreshes it. A patch or upgrade case resolves only on
@@ -625,6 +630,10 @@ async def record_validation(
     }
     if evidence_type is not None and evidence_type not in EVIDENCE_TYPES:
         raise rules.CaseRuleError(f"unknown evidence type {evidence_type!r}")
+    if evidence_type == EXPOSURE_EVIDENCE and result in rules.PASSING_RESULTS:
+        raise rules.CaseRuleError(
+            "exposure evidence confirms the exposure: write it as failed (still exposed), never as a pass"
+        )
     if (case.remediation_kind or "") in VERSION_REMEDIATIONS:
         if evidence_type is None:
             proven = conclusive is True or entry["kind"] == RESCAN_KIND
