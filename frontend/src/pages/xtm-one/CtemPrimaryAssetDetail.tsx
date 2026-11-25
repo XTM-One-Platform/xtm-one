@@ -156,7 +156,7 @@ export default function CtemPrimaryAssetDetail() {
     {
       key: "through",
       header: "Reaches it",
-      cell: (s) => <TruncatedText text={reachLabel(s)} className="max-w-[18rem]" />,
+      cell: (s) => <TruncatedText text={reachLabel(s)} className="max-w-[32rem]" />,
       csv: (s) => (s.through_kind === "asset_group" ? `asset_group:${s.through}` : "asset"),
     },
     {
