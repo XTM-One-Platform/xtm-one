@@ -509,6 +509,89 @@ async def read_running_versions(
     return answer
 
 
+def inventory_version_counts(
+    rows: Iterable[Any], os_assets: Mapping[str, list[dict[str, Any]]], labels: Iterable[str]
+) -> dict[str, dict[str, int]]:
+    """Per product label, each known version the device inventory reports and its distinct assets (pure, #2038).
+
+    *rows* are ``(vendor, product, version, asset_ids)`` groups of the asset software; *os_assets*
+    the assets of each ``os_family`` (:func:`_read_os_assets`). A row counts for a label by the
+    rule :func:`running_versions` reads (:func:`matches_case`), and an OS label also counts the
+    assets' ``os_version`` (an asset already counted by a software row is not counted twice). An
+    ``unknown`` version is left out: it names nothing OpenCTI could place. A label no asset runs
+    is absent.
+    """
+    rows = list(rows)
+    out: dict[str, dict[str, int]] = {}
+    for label in dict.fromkeys(labels):
+        on_version: dict[str, set[str]] = {}
+        counted: set[str] = set()
+        for vendor, product, version, asset_ids in rows:
+            if not matches_case(label, vendor, product):
+                continue
+            ids = {str(a) for a in asset_ids or ()}
+            counted |= ids
+            text = str(version or "").strip()
+            if text and text != UNKNOWN:
+                on_version.setdefault(text, set()).update(ids)
+        family = os_family_of(label)
+        for row in os_rows(os_assets.get(family) or [], product_label=label, skip=counted) if family else []:
+            if row["version"] != UNKNOWN:
+                on_version.setdefault(row["version"], set()).update(row["asset_ids"])
+        if on_version:
+            out[label] = {v: len(ids) for v, ids in on_version.items()}
+    return out
+
+
+#: Product labels per grouped inventory read of :func:`inventory_versions` (bounded bind parameters).
+_INVENTORY_LABELS_CHUNK = 100
+
+
+async def inventory_versions(
+    db: AsyncSession, organization_id: uuid.UUID, labels: Iterable[str]
+) -> dict[str, dict[str, int]]:
+    """Per product label, the known versions the device inventory reports with their asset counts (#2038).
+
+    The same rows :func:`read_running_versions` reads for a case, so the CVE matcher checks every
+    version a case shows as running. ``{}`` when the store cannot be read (the matcher then keeps
+    the versions of the software entities and the profile).
+    """
+    wanted = [label for label in dict.fromkeys(labels) if product_keys(label)]
+    if not wanted:
+        return {}
+    soft = OrganizationAssetSoftware
+    rows: list[Any] = []
+    os_assets: dict[str, list[dict[str, Any]]] = {}
+    try:
+        async with db.begin_nested():
+            for start in range(0, len(wanted), _INVENTORY_LABELS_CHUNK):
+                chunk = wanted[start : start + _INVENTORY_LABELS_CHUNK]
+                keys = sorted({k for label in chunk for k in product_keys(label)})
+                like = [
+                    soft.product_key.like("% " + _like_escape(product_keys(label)[0]), escape="\\") for label in chunk
+                ]
+                rows.extend(
+                    (
+                        await db.execute(
+                            select(
+                                func.min(soft.vendor),
+                                func.min(soft.product),
+                                soft.version,
+                                func.array_agg(func.distinct(soft.asset_id)),
+                            )
+                            .where(soft.organization_id == organization_id, or_(soft.product_key.in_(keys), *like))
+                            .group_by(soft.vendor_key, soft.product_key, soft.version)
+                        )
+                    ).all()
+                )
+            for family in sorted({f for f in (os_family_of(label) for label in wanted) if f}):
+                os_assets[family] = await _read_os_assets(db, organization_id, family)
+    except Exception:  # the inventory never breaks the issues read
+        logger.info("CTEM inventory versions unavailable", exc_info=True)
+        return {}
+    return inventory_version_counts(rows, os_assets, wanted)
+
+
 async def inventory_sources(db: AsyncSession, organization_id: uuid.UUID) -> list[str] | None:
     """The sources the organization's asset software was imported from, sorted (#1736).
 

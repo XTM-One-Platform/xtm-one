@@ -28,10 +28,12 @@ interface Props {
   idPrefix: string;
   value: SyncSchedule;
   onChange: (next: SyncSchedule) => void;
+  /** Outbound (#1982 S4): a run writes the platform instead of reading it, and the helper says so. */
+  direction?: "inbound" | "outbound";
 }
 
 /** Frequency, time (or minute), day and time zone, each a settings field with its helper line. */
-export function SyncScheduleFields({ idPrefix, value, onChange }: Props) {
+export function SyncScheduleFields({ idPrefix, value, onChange, direction = "inbound" }: Props) {
   const { t_i18n, locale } = useFormatter();
   const set = (patch: Partial<SyncSchedule>) => onChange({ ...value, ...patch });
   const ids = { frequency: `${idPrefix}-frequency`, time: `${idPrefix}-time`, minute: `${idPrefix}-minute`, weekday: `${idPrefix}-weekday`, zone: `${idPrefix}-zone` };
@@ -50,8 +52,12 @@ export function SyncScheduleFields({ idPrefix, value, onChange }: Props) {
       <SettingsField
         id={ids.frequency}
         label={t_i18n("Frequency")}
-        helper={t_i18n("How often the platform is read again.")}
-        info={t_i18n("Each run saves a new profile version only when something changed.")}
+        helper={direction === "outbound" ? t_i18n("How often the XTM One rows are pushed to the platform again.") : t_i18n("How often the platform is read again.")}
+        info={
+          direction === "outbound"
+            ? t_i18n("Each run creates, updates and deletes only the platform rows this sync created.")
+            : t_i18n("Each run saves a new profile version only when something changed.")
+        }
       >
         <SearchableSelect
           id={ids.frequency}

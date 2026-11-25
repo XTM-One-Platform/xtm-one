@@ -353,6 +353,12 @@ def _slots_added(adapter) -> int:
 #: to, before it runs it here on what is left.
 LEAVE_TO_OTHERS_CYCLES = 3
 
+#: How long a worker of a release a rollout is replacing leaves a due resumable execution to the incoming release
+#: before it claims it itself (#2040). Without a bound, a worker of another release that stays present (a rollout
+#: stuck half way, a pod of another build) kept every worker of the current release from claiming assignment runs
+#: for as long as it stayed: runs waited for hours and expired before start while chat was served.
+OUTGOING_LEAVE_SECONDS = 120.0
+
 
 def _reserved_cpus(adapters: list) -> int:
     """The CPUs the work of *adapters* reserves on this worker now (``OrchestrationAdapter.cpus_reserved``);
@@ -1140,7 +1146,8 @@ async def _run_cycle(worker_id: str) -> None:
 
     # 3 + 4. Per-adapter claim + periodic sweep. A draining worker claims nothing new.
     # A worker of a release a rollout is replacing leaves the resumable work to the incoming release: claimed
-    # here, it would be killed with this worker by the same rollout and lost once more (#12386).
+    # here, it would be killed with this worker by the same rollout and lost once more (#12386). For
+    # ``OUTGOING_LEAVE_SECONDS`` only (#2040): a worker of another release that stays present never holds the queue.
     outgoing_from: list[dict] | None = None
     for adapter in adapters:
         leaving = False
@@ -1157,7 +1164,7 @@ async def _run_cycle(worker_id: str) -> None:
         # Recomputed per adapter so it accounts for rows just spawned earlier in
         # this cycle. Outbox/periodic work doesn't consume execution slots, so it
         # still runs below.
-        available = 0 if draining or leaving or not claims_here(adapter) else _available_slots_for(adapter, adapters)
+        available = 0 if draining or not claims_here(adapter) else _available_slots_for(adapter, adapters)
         kept_states = _kept_states(adapter)
         if kept_states and available > 0:
             # The slots of the work in flight on a worker asked to stop are kept for it.
@@ -1166,6 +1173,9 @@ async def _run_cycle(worker_id: str) -> None:
             # The slots it adds now get their permits before an execution is claimed into them.
             _grow_adapter_semaphore(adapter)
             ripe = _leave_seconds(adapter, reserved, present, worker_id)
+            if leaving:
+                # The incoming release has it first, for a bounded time only.
+                ripe = max(ripe, OUTGOING_LEAVE_SECONDS)
             async with async_session() as db:
                 claimed = await engine.claim_due(
                     db,
@@ -1182,7 +1192,7 @@ async def _run_cycle(worker_id: str) -> None:
                 await db.commit()
             for execution_id in claimed_ids:
                 _spawn_execution_task(execution_id, adapter.name, worker_id)
-            if not claimed_ids:
+            if not claimed_ids and not leaving:
                 await _lend_idle_slots(adapter, adapters, worker_id, available, batch)
         elif not draining and not leaving and claims_here(adapter):
             if _adapter_concurrency_limit(adapter) is None:

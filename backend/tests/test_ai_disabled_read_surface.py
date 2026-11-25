@@ -463,6 +463,8 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     "delete_organization_sync",
     # The Edit dialog's preview of a filter change (#1982 S2): the next run planned, nothing written.
     "preview_organization_sync_change",
+    # The "Add a sync" stepper's preview of a new outbound sync (#1982 S4): its first run planned, nothing written.
+    "preview_new_outbound_sync",
     "run_organization_sync",
     # The rows a source wrote (#1276): an administrator purging them or handing them
     # to people, saved as a new version of the profile; no model involved.
