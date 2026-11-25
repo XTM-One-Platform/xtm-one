@@ -1260,8 +1260,7 @@ def org_ai_draft_answer(request: dict) -> str | None:
         {"field": "size", "value": "251-1000", "confidence": "medium", "basis": "'about 400 people'"},
         {"field": "loaded_hourly_rate", "value": 95, "confidence": "medium", "check": True,
          "basis": "inferred from the sector and the regions, not read in a source"},
-        {"field": "software", "value": [{"vendor": "Microsoft", "product": "Exchange Online", "cpe": ""}],
-         "confidence": "low", "basis": "'our mail runs in the cloud'"},
+        {"field": "currency", "value": "EUR", "confidence": "low", "basis": "'offices in Paris and Berlin'"},
     ]
     return json.dumps({
         "proposals": [{**p, "source": source, "check": p.get("check", False)} for p in proposals],

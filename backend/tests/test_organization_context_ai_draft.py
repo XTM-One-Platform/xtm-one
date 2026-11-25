@@ -92,7 +92,9 @@ def test_an_unsupported_missing_field_is_named_never_guessed():
     answer = {"proposals": [{"field": "sector", "value": "Energy", "source": "description", "confidence": "high"}]}
     _p, not_supported, _s, _n = ai.parse_proposals(json.dumps(answer), oc.OrganizationProfile(), _evidence())
     assert "sector" not in not_supported
-    assert "software" in not_supported and "loaded_hourly_rate" in not_supported
+    assert "loaded_hourly_rate" in not_supported
+    # The fields Settings > Organization does not draw are never named as missing by its draft (#1991).
+    assert not set(not_supported) & ai.OUT_OF_SCOPE_PATHS
 
 
 def test_an_inferred_amount_is_flagged_check_this():
@@ -121,28 +123,53 @@ def test_an_inferred_amount_is_flagged_check_this():
     }
 
 
-def test_only_existing_pirs_are_proposed_and_primary_assets_link_to_a_single_matching_asset():
-    evidence = _evidence(opencti="{}")
-    evidence.known_pir_ids = ["pir-1"]
-    evidence.opencrq_assets = {"core banking": ["a1"]}
+def test_the_draft_proposes_only_the_fields_of_the_two_settings_tabs():
+    """Scope guard (#1991): inventory fields and PIRs are not asked for and dropped when answered."""
+    assert {"assets_exposure", "asset_groups", "primary_assets", "software", "pir_ids"} <= ai.OUT_OF_SCOPE_PATHS
+    assert not set(ai.CONTRACT_PATHS) & ai.OUT_OF_SCOPE_PATHS
     answer = {
         "proposals": [
-            {"field": "pir_ids", "value": ["pir-1", "pir-9"], "source": "opencti", "confidence": "high"},
-            {
-                "field": "primary_assets",
-                "value": [{"name": "Core banking", "criticality": "critical"}],
-                "source": "opencti",
-                "confidence": "high",
-            },
+            {"field": "pir_ids", "value": ["pir-1"], "source": "opencti", "confidence": "high"},
+            {"field": "primary_assets", "value": [{"name": "Core banking"}], "source": "opencti"},
+            {"field": "software", "value": [{"vendor": "Microsoft", "product": "Exchange"}], "source": "opencti"},
+            {"field": "sector", "value": "Banking", "source": "opencti", "confidence": "high"},
         ],
-        "suggested_pirs": ["Ransomware on retail banks"],
     }
-    proposals, _ns, suggested, notes = ai.parse_proposals(json.dumps(answer), oc.OrganizationProfile(), evidence)
-    by = {p.field: p.value for p in proposals}
-    assert by["pir_ids"] == ["pir-1"]
-    assert by["primary_assets"][0]["opencrq_asset_id"] == "a1"
-    assert suggested == ["Ransomware on retail banks"]
-    assert any("PIR id(s) left out" in n for n in notes)
+    proposals, _ns, _sp, notes = ai.parse_proposals(
+        json.dumps(answer), oc.OrganizationProfile(), _evidence(opencti="{}")
+    )
+    assert [p.field for p in proposals] == ["sector"]
+    assert sum("not drafted on Settings > Organization" in n for n in notes) == 3
+
+
+def test_the_prompt_never_shows_the_inventory_or_the_pirs():
+    current = oc.OrganizationProfile(sector="Banking", pir_ids=["pir-1"])
+    system, user = ai.build_messages(current, _evidence())
+    shown = ai.prompt_profile(current)
+    assert not set(shown) & ai.OUT_OF_SCOPE_PATHS
+    assert "pir_ids" not in system.content and "primary_assets" not in system.content
+    assert "Known PIR ids" not in user.content and "pir-1" not in user.content
+
+
+async def test_platform_facts_out_of_scope_are_not_read_into_the_evidence(monkeypatch):
+    from app.services import organization_context_draft as det
+
+    facts = SimpleNamespace(
+        unavailable=[],
+        sources={"sector": "opencti", "software": "opencti", "pir_ids": "opencti"},
+        sector="Banking",
+        software=["Exchange"],
+        pir_ids=["pir-1"],
+    )
+
+    async def collect(*args, **kwargs):
+        return facts
+
+    monkeypatch.setattr(det, "collect_facts", collect)
+    evidence = ai.Evidence()
+    await ai.read_platforms(SimpleNamespace(), uuid.uuid4(), "", evidence)
+    assert evidence.platform_values == {"sector": "Banking"}
+    assert json.loads(evidence.texts["opencti"]) == {"sector": "Banking"}
 
 
 def test_an_unusable_answer_is_an_error():

@@ -8,7 +8,10 @@ import {
   formatProposalAmount,
   formatProposalValue,
   isBulkAcceptable,
+  isSettingsDraftField,
+  mergeDraftProposals,
   parseProposalAmount,
+  platformProposals,
 } from "./organization-ai-draft";
 
 const row = (over: Partial<AiDraftProposal>): AiDraftProposal => ({
@@ -29,6 +32,45 @@ const PROFILE = {
   size: "",
   risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
 } as unknown as OrganizationProfile;
+
+describe("the Draft scope guard and the one pass (#1991)", () => {
+  it("keeps only the fields of the two Settings tabs", () => {
+    for (const path of ["name", "sector", "regions", "size", "currency", "loaded_hourly_rate", "risk_appetite.approval_threshold", "ticketing.project", "enterprise_knowledge"]) {
+      expect(isSettingsDraftField(path)).toBe(true);
+    }
+    for (const path of ["primary_assets", "software", "assets_exposure", "asset_groups", "shipped_products", "tracked_organizations", "pir_ids", "unknown"]) {
+      expect(isSettingsDraftField(path)).toBe(false);
+    }
+  });
+
+  it("reads the platforms' filled fields as facts, out-of-scope ones dropped", () => {
+    const rows = platformProposals(
+      {
+        based_on_version: 1,
+        profile: { ...PROFILE, name: "Acme SA", pir_ids: ["p"] } as OrganizationProfile,
+        filled: [
+          { field: "name", source: "opencti", detail: "Acme SA" },
+          { field: "pir_ids", source: "opencti", detail: "1 PIR(s)" },
+        ],
+        unavailable: [],
+        missing_fields: [],
+      },
+      PROFILE,
+    );
+    expect(rows).toEqual([row({ field: "name", value: "Acme SA", source: "opencti", basis: "Acme SA", current: "Acme" })]);
+  });
+
+  it("puts the platform value first and lets the AI complete the fields left", () => {
+    const merged = mergeDraftProposals(
+      [row({ field: "sector", value: "Banking", source: "opencti" })],
+      [row({ field: "sector", value: "Insurance" }), row({ field: "size" }), row({ field: "software", value: [] })],
+    );
+    expect(merged.map((p) => [p.field, p.value])).toEqual([
+      ["sector", "Banking"],
+      ["size", "251-1000"],
+    ]);
+  });
+});
 
 describe("organization AI draft review rules (#9484)", () => {
   it("never accepts a conflict, a Check this or a low confidence row in bulk", () => {

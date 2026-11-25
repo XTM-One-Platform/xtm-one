@@ -4,7 +4,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
 import type { FxRate, PirDetail } from "@/lib/organization-reference";
 import type {
   AssetIdentitySettings,
@@ -250,7 +249,7 @@ export interface OrganizationDraftResponse {
   missing_fields: string[];
 }
 
-/** "form" for a profile typed by hand, "draft" for one started from the platforms, "ai_draft" for accepted AI proposals. */
+/** "form" for a profile typed by hand, "draft" for one started from the platforms (kept for past versions), "ai_draft" for accepted AI proposals. */
 export type ProfileSource = "form" | "draft" | "ai_draft";
 
 interface SaveOrganizationContextBody {
@@ -819,32 +818,6 @@ export function useImportOrganizationAssets() {
       if (result.applied) qc.invalidateQueries({ queryKey: KEY });
     },
     // The dialog says every failure inline.
-    meta: { suppressGlobalErrorToast: true },
-  });
-}
-
-/** The fill agent of one connected integration (#11888): created once, its daily sync with `schedule`. */
-export interface FillAgentResponse {
-  agent_id: string;
-  agent_name: string;
-  created: boolean;
-  assignment_id: string | null;
-  /** The preview instruction the chat starts with. */
-  prompt: string;
-}
-
-export function useCreateOrganizationFillAgent() {
-  const qc = useQueryClient();
-  return useMutation<FillAgentResponse, Error, { integration_id: string; schedule: boolean; cron?: string; timezone?: string }>({
-    mutationFn: (body) => api.post("/organization-context/fill-agent", body),
-    // The chat picks its first agent from the cached agents list: refetch it (an unmounted list too)
-    // before the dialog navigates, else a new fill agent is missing and the chat opens on the default one.
-    onSuccess: () => {
-      // A new agent (and its sync assignment) is a node of the flow catalog too.
-      syncFlowNodeCatalog(qc);
-      return qc.invalidateQueries({ queryKey: ["agents"], refetchType: "all" });
-    },
-    // The dialog says the failure inline.
     meta: { suppressGlobalErrorToast: true },
   });
 }
