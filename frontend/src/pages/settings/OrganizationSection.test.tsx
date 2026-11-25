@@ -7,7 +7,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
 import { renderWithProviders, testQueryClient } from "@/testing/providers";
 import type { OrganizationContextResponse } from "@/hooks/api/useOrganizationContextApi";
-import { JEWEL_WIDTHS, OrganizationSection } from "./OrganizationSection";
+import { PRIMARY_ASSET_WIDTHS, OrganizationSection } from "./OrganizationSection";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -120,15 +120,15 @@ describe("OrganizationSection primary asset widths at 1080 (#1174 UX r2 B1 and B
   // The primary assets table measures 810 px in its 72rem card at 1080; Assets and Source step aside there.
   const TABLE_AT_1080 = 810;
   it("leaves Business service and Owner at least 120 px each in edit mode", () => {
-    const fixed = JEWEL_WIDTHS.select + JEWEL_WIDTHS.name + JEWEL_WIDTHS.criticality + JEWEL_WIDTHS.actions;
+    const fixed = PRIMARY_ASSET_WIDTHS.select + PRIMARY_ASSET_WIDTHS.name + PRIMARY_ASSET_WIDTHS.criticality + PRIMARY_ASSET_WIDTHS.actions;
     expect((TABLE_AT_1080 - fixed) / 2).toBeGreaterThanOrEqual(120);
   });
   it("leaves Business service room for its header in read mode and keeps OpenCRQ's header whole", () => {
-    const fixed = JEWEL_WIDTHS.select + JEWEL_WIDTHS.name + JEWEL_WIDTHS.criticality + JEWEL_WIDTHS.opencrq;
+    const fixed = PRIMARY_ASSET_WIDTHS.select + PRIMARY_ASSET_WIDTHS.name + PRIMARY_ASSET_WIDTHS.criticality + PRIMARY_ASSET_WIDTHS.opencrq;
     // "Business service" is 94 px of text, plus 24 px of padding and the sort mark.
     expect((TABLE_AT_1080 - fixed) / 2).toBeGreaterThanOrEqual(94 + 24 + 16);
     // "OpenCRQ" is 56 px of text, plus the padding and the sort mark.
-    expect(JEWEL_WIDTHS.opencrq).toBeGreaterThanOrEqual(56 + 24 + 16);
+    expect(PRIMARY_ASSET_WIDTHS.opencrq).toBeGreaterThanOrEqual(56 + 24 + 16);
   });
 });
 
@@ -435,8 +435,8 @@ describe("OrganizationSection", () => {
     expect(within(row).queryByRole("combobox")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Edit Primary assets/ }));
     // In edit a row still reads as text until opened (#12256): one row of fields at a time.
-    const jewel = await screen.findByTestId("settings.organization.primary-asset-row");
-    await waitFor(() => expect(within(jewel).queryByRole("textbox")).toBeNull());
+    const pa = await screen.findByTestId("settings.organization.primary-asset-row");
+    await waitFor(() => expect(within(pa).queryByRole("textbox")).toBeNull());
     fireEvent.click(within(screen.getByTestId("settings.organization.primary-asset-row")).getByText("Payments"));
     expect(await screen.findByDisplayValue("Payments")).toBeTruthy();
     expect(screen.getAllByRole("combobox", { name: "Criticality" })).toHaveLength(1);
@@ -692,14 +692,14 @@ describe("OrganizationSection", () => {
     await screen.findByText("Payments");
     // The primary assets card: its own search box in read mode, none while editing. The form's pickers
     // (ticketing, regions) render only while editing since #10855, so the count is read inside the card.
-    const jewelsTable = () => screen.getByTestId("settings.organization.primary-asset-row").closest("table")!;
-    const searchNear = () => jewelsTable().parentElement?.parentElement?.querySelectorAll("input[placeholder='Search...']").length ?? 0;
+    const primaryAssetsTable = () => screen.getByTestId("settings.organization.primary-asset-row").closest("table")!;
+    const searchNear = () => primaryAssetsTable().parentElement?.parentElement?.querySelectorAll("input[placeholder='Search...']").length ?? 0;
     expect(searchNear()).toBeGreaterThan(0);
-    expect(jewelsTable().querySelector("th[aria-sort]")).toBeTruthy();
+    expect(primaryAssetsTable().querySelector("th[aria-sort]")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Edit Primary assets/ }));
     await screen.findByTestId("settings.organization.list-save-bar");
     expect(searchNear()).toBeGreaterThan(0);
-    expect(jewelsTable().querySelector("th[aria-sort]")).toBeTruthy();
+    expect(primaryAssetsTable().querySelector("th[aria-sort]")).toBeTruthy();
     expect(screen.getAllByTestId("settings.organization.primary-asset-row")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Remove" }).length).toBeGreaterThan(0);
   });

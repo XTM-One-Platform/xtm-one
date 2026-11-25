@@ -5,12 +5,14 @@ The rows are OpenCRQ PRIMARY assets, rated by their four security needs; nothing
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.services import organization_context as oc
 from app.services.organization_context_opencrq import plan_sync
 
 
-def _profile(*jewels: dict) -> oc.OrganizationProfile:
-    return oc.parse_profile({"primary_assets": list(jewels)})
+def _profile(*pa_rows: dict[str, Any]) -> oc.OrganizationProfile:
+    return oc.parse_profile({"primary_assets": list(pa_rows)})
 
 
 def _primary(asset_id: str, name: str, *needs: str) -> dict[str, str]:

@@ -432,9 +432,9 @@ def resolve(
             out.groups.append(group.name)
     # CTEM-29: the primary assets a tracked organization's services support, named in the evidence.
     named = {n.strip().lower() for n in _evidence_list(facts.evidence, "primary_assets")}
-    for jewel in profile.primary_assets:
-        if {stable_key(jewel.name), stable_key(jewel.opencrq_asset_id)} & wanted - {""} or jewel.name.lower() in named:
-            out.named_primary_assets.append(jewel.name)
+    for pa in profile.primary_assets:
+        if {stable_key(pa.name), stable_key(pa.opencrq_asset_id)} & wanted - {""} or pa.name.lower() in named:
+            out.named_primary_assets.append(pa.name)
     if facts.subject_kind == "identity":
         owned = owned_domain_of(profile, facts.subject_ref)
         if owned:
@@ -552,7 +552,7 @@ def _confidence(facts: SignalFacts, related: list[RelatedSignal]) -> tuple[str, 
 # ── scope gate ─────────────────────────────────────────────────────────
 
 
-def _jewels_of(profile: OrganizationProfile, resolution: Resolution) -> list[tuple[str, str]]:
+def _primary_assets_of(profile: OrganizationProfile, resolution: Resolution) -> list[tuple[str, str]]:
     """``(name, criticality)`` of the primary assets the resolved assets and groups run."""
     names = {a.name.lower() for a in resolution.assets} | {a.group.lower() for a in resolution.assets if a.group}
     # #1773: the groups an asset joins by rule count as its groups too.
@@ -561,13 +561,13 @@ def _jewels_of(profile: OrganizationProfile, resolution: Resolution) -> list[tup
     named = {n.lower() for n in resolution.named_primary_assets}
     linked = {str(h["primary_asset_key"]) for h in resolution.primary_assets}
     out: list[tuple[str, str]] = []
-    for jewel in profile.primary_assets:
+    for pa_row in profile.primary_assets:
         if (
-            jewel.name.lower() in named
-            or names & {n.lower() for n in jewel.asset_names}
-            or " ".join(jewel.name.split()).casefold()[:200] in linked
+            pa_row.name.lower() in named
+            or names & {n.lower() for n in pa_row.asset_names}
+            or " ".join(pa_row.name.split()).casefold()[:200] in linked
         ):
-            out.append((jewel.name, jewel.criticality))
+            out.append((pa_row.name, pa_row.criticality))
     return out
 
 
@@ -745,11 +745,11 @@ def decide(
         inherited = effective_criticality(profile, asset)
         if inherited in ASSET_TO_SCOPE:
             sources.append({"from": "asset_group", "name": asset.name, "criticality": ASSET_TO_SCOPE[inherited]})
-    jewels = _jewels_of(profile, resolution)
+    pa_rows = _primary_assets_of(profile, resolution)
     chains: dict[str, list[dict[str, Any]]] = {}
     for hit in resolution.primary_assets:
         chains.setdefault(str(hit["primary_asset_key"]), []).append(hit)
-    for n, c in jewels:
+    for n, c in pa_rows:
         source: dict[str, Any] = {"from": "primary_asset", "name": n, "criticality": c}
         key = " ".join(n.split()).casefold()[:200]
         chain = chains.get(key)
@@ -762,10 +762,10 @@ def decide(
     sources += [
         {"from": "owned_domain", "name": d, "criticality": policy.identity_criticality} for d in resolution.domains
     ]
-    jewel_ids = [
-        j.opencrq_asset_id for j in profile.primary_assets if j.name in {n for n, _ in jewels} and j.opencrq_asset_id
+    pa_row_ids = [
+        j.opencrq_asset_id for j in profile.primary_assets if j.name in {n for n, _ in pa_rows} and j.opencrq_asset_id
     ]
-    asset_ids = [a.external_id for a in resolution.assets if a.source == "opencrq" and a.external_id] + jewel_ids
+    asset_ids = [a.external_id for a in resolution.assets if a.source == "opencrq" and a.external_id] + pa_row_ids
     # CTEM-29: the OpenCRQ supporting assets a tracked organization's services are.
     asset_ids += _evidence_list(facts.evidence, "opencrq_asset_ids")
     held = scenarios.for_keys(asset_ids, [a.name.lower() for a in resolution.assets]) if scenarios.connected else []
@@ -829,7 +829,7 @@ def decide(
                 code="internet_exposure_required",
             )
     if policy.min_primary_asset_criticality:
-        best = _highest([c for _, c in jewels])
+        best = _highest([c for _, c in pa_rows])
         passed = _rank(best) >= _rank(policy.min_primary_asset_criticality)
         checks.append(
             {

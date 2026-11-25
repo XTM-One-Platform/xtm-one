@@ -664,12 +664,14 @@ async def record_groups(
     return list(out.values())
 
 
-async def _link_primary_assets(db: AsyncSession, organization_id: uuid.UUID, jewels: Iterable[Any]) -> None:
+async def _link_primary_assets(db: AsyncSession, organization_id: uuid.UUID, pa_rows: Iterable[Any]) -> None:
     """The primary assets' ``asset_names`` as links to the records and groups of those names."""
-    for jewel in jewels:
-        if not isinstance(jewel, Mapping):
+    for pa_row in pa_rows:
+        if not isinstance(pa_row, Mapping):
             continue
-        await set_primary_asset_links(db, organization_id, str(jewel.get("name") or ""), jewel.get("asset_names") or [])
+        await set_primary_asset_links(
+            db, organization_id, str(pa_row.get("name") or ""), pa_row.get("asset_names") or []
+        )
 
 
 async def set_primary_asset_links(

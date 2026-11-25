@@ -76,7 +76,7 @@ function PirDetailsBody({ pirId, canEdit, onClose }: { pirId: string; canEdit: b
   const profile = data?.profile;
   const stored = profile?.pir_details ?? {};
   const [detail, setDetail] = useState<PirDetail>(() => stored[pirId] ?? emptyPirDetail());
-  const jewels = (profile?.primary_assets ?? []).map((jewel) => jewel.name).filter(Boolean);
+  const primaryAssets = (profile?.primary_assets ?? []).map((pa) => pa.name).filter(Boolean);
   const problem = pirDetailProblem(detail);
   const pirIds = [...new Set(profile?.pir_ids ?? [])];
   const next = pirDetailsOf(pirIds, { ...stored, [pirId]: detail });
@@ -172,16 +172,16 @@ function PirDetailsBody({ pirId, canEdit, onClose }: { pirId: string; canEdit: b
           />
         </SettingsField>
         <SettingsField
-          id={`${FIELD}-jewels`}
+          id={`${FIELD}-primary-assets`}
           label={t_i18n("Primary assets served")}
           helper={t_i18n("The primary assets of the inventory this PIR protects.")}
           info={t_i18n("Example: Payment platform, picked from the primary assets of the inventory. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.")}
         >
           <MultiSelect
-            id={`${FIELD}-jewels`}
+            id={`${FIELD}-primary-assets`}
             aria-label={t_i18n("Primary assets served")}
-            aria-describedby={settingsFieldHintId(`${FIELD}-jewels`)}
-            options={[...new Set([...jewels, ...detail.primary_assets])].map((name) => ({ value: name, label: name }))}
+            aria-describedby={settingsFieldHintId(`${FIELD}-primary-assets`)}
+            options={[...new Set([...primaryAssets, ...detail.primary_assets])].map((name) => ({ value: name, label: name }))}
             selected={detail.primary_assets}
             onToggle={(name) =>
               set({ primary_assets: detail.primary_assets.includes(name) ? detail.primary_assets.filter((n) => n !== name) : [...detail.primary_assets, name] })

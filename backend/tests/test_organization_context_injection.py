@@ -151,7 +151,7 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
         **PROFILE,
         "name": "N" * 200,
         "regions": ["FR", "DE", "US", "GB", "JP", "AU", "SG", "SA", "ES", "IT"] * 3,
-        "primary_assets": [{"name": f"Jewel {i} " + "x" * 150, "criticality": "high"} for i in range(200)],
+        "primary_assets": [{"name": f"Asset {i} " + "x" * 150, "criticality": "high"} for i in range(200)],
         "software": [{"product": f"Product {i}", "vendor": "Vendor", "cpe": "cpe:2.3:a:v:p:1"} for i in range(500)],
         "pir_ids": [f"pir-{i}" for i in range(100)],
         "pir_names": {f"pir-{i}": "P" * 250 for i in range(100)},

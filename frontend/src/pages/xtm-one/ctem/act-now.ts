@@ -332,13 +332,13 @@ export function caseScopes(
     const prev = out.get(s.case_id) ?? { criticality: null, primaryAssets: [] };
     const crit = s.decision?.scope?.criticality ?? null;
     const better = crit && (prev.criticality === null || (CRITICALITY_RANK[crit] ?? 9) < (CRITICALITY_RANK[prev.criticality] ?? 9));
-    const jewels = [...prev.primaryAssets];
-    // #2343: the scope gate also records the crown jewels it reached through an asset, an asset
+    const primaryAssets = [...prev.primaryAssets];
+    // #2343: the scope gate also records the primary assets it reached through an asset, an asset
     // group or an inventory link as `scope.sources` entries from "primary_asset"; the evidence
     // names only some of them.
     const reached = (s.decision?.scope?.sources ?? []).filter((src) => src.from === "primary_asset").map((src) => src.name);
-    for (const j of [...(s.decision?.reconcile?.primary_assets_named ?? []), ...reached]) if (j && !jewels.includes(j)) jewels.push(j);
-    out.set(s.case_id, { criticality: better ? crit : prev.criticality, primaryAssets: jewels });
+    for (const j of [...(s.decision?.reconcile?.primary_assets_named ?? []), ...reached]) if (j && !primaryAssets.includes(j)) primaryAssets.push(j);
+    out.set(s.case_id, { criticality: better ? crit : prev.criticality, primaryAssets });
   }
   return out;
 }

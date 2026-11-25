@@ -87,7 +87,7 @@ export default function CtemAssetDetail() {
 
   const openCases = (cases.data?.cases ?? []).filter((c) => OPEN_STATES.has(c.state));
   const nameKey = (data?.name ?? "").trim().toLowerCase();
-  const jewels = nameKey
+  const primaryAssets = nameKey
     ? (context?.profile.primary_assets ?? []).filter((j) => (j.asset_names ?? []).some((n) => n.trim().toLowerCase() === nameKey))
     : [];
 
@@ -334,14 +334,14 @@ export default function CtemAssetDetail() {
       </AssetSection>
 
       <AssetSection
-        id="asset-jewels"
+        id="asset-primary-assets"
         title={t_i18n("Primary assets it supports")}
-        count={jewels.length}
-        empty={jewels.length === 0}
+        count={primaryAssets.length}
+        empty={primaryAssets.length === 0}
         emptyLabel={t_i18n("No primary asset names this asset.")}
       >
-        <ul className="flex flex-wrap gap-2" data-testid="ctem-asset-jewels">
-          {jewels.map((j) => (
+        <ul className="flex flex-wrap gap-2" data-testid="ctem-asset-primary-assets">
+          {primaryAssets.map((j) => (
             <li key={j.name}>
               <Link to={primaryAssetPath(j.name)} className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
                 <Icon name="gem" size={16} className="text-default-secondary" aria-hidden />

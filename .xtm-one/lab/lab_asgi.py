@@ -63,7 +63,7 @@ description goes to the application, whose model call the stub model answers wit
 
 With ``LAB_OPENCRQ_SYNC=1`` (set by ``lab.py`` unless the declaration's env says ``0``) Check against OpenCRQ
 (``POST /api/v1/organization-context/opencrq-sync``) answers a deterministic plan, one row of each kind, from
-:data:`LAB_OPENCRQ_JEWELS` and :data:`LAB_OPENCRQ_ASSETS` through the real ``plan_sync``; Apply answers ``applied``
+:data:`LAB_OPENCRQ_PRIMARY_ASSETS` and :data:`LAB_OPENCRQ_ASSETS` through the real ``plan_sync``; Apply answers ``applied``
 and writes nothing, and the next check answers the plan where everything agrees, once. Nothing answers OpenCRQ
 here, so the real ``run_sync`` would answer the route's 409.
 
@@ -1332,7 +1332,7 @@ stub_model_catalogs(dict(os.environ))
 #: The primary assets the lab's OpenCRQ sync plans over, in the shape ``PrimaryAsset`` validates: one row per plan kind
 #: against :data:`LAB_OPENCRQ_ASSETS` (linked by name, ambiguous name, a typed row linked to an asset OpenCRQ
 #: lacks). Nothing is pushed since #1591: ``pushed_to_opencrq`` stays empty.
-LAB_OPENCRQ_JEWELS = [
+LAB_OPENCRQ_PRIMARY_ASSETS = [
     {"name": "Customer portal", "criticality": "high"},
     {"name": "Payment gateway", "criticality": "critical", "opencrq_asset_id": "lab-asset-payments"},
     {"name": "Data warehouse", "criticality": "medium"},
@@ -1352,7 +1352,7 @@ def stub_opencrq_sync(environ: dict) -> bool:
     """Answer Check against OpenCRQ with a deterministic plan when *environ* asks; Apply writes nothing.
 
     ``run_sync`` is imported by name at each request of the route, so the module attribute is the one it calls.
-    A dry run answers the real ``plan_sync`` over :data:`LAB_OPENCRQ_JEWELS` and :data:`LAB_OPENCRQ_ASSETS`
+    A dry run answers the real ``plan_sync`` over :data:`LAB_OPENCRQ_PRIMARY_ASSETS` and :data:`LAB_OPENCRQ_ASSETS`
     (one row of each kind); ``apply`` answers that plan applied and writes neither the profile nor OpenCRQ, and the
     next dry run answers the plan where everything agrees (no row: the panel's "already agree" state), once.
     """
@@ -1363,7 +1363,7 @@ def stub_opencrq_sync(environ: dict) -> bool:
     agreed = [False]
 
     async def run_sync(db, *, user_id, apply, tenant_id="", min_criticality=""):
-        profile = organization_context.parse_profile({"primary_assets": LAB_OPENCRQ_JEWELS})
+        profile = organization_context.parse_profile({"primary_assets": LAB_OPENCRQ_PRIMARY_ASSETS})
         if not apply and agreed[0]:
             agreed[0] = False
             return organization_context_opencrq.SyncPlan(profile=profile), []

@@ -239,7 +239,11 @@ class PrimaryAssetIndex:
         rank = {s: n for n, s in enumerate(SOURCE_ORDER)}
         out: list[dict[str, Any]] = []
         for reacher, matched in self._matching(software, keys):
-            links = [(link, kind, through) for link, kind, through in reacher.links if link.primary_asset_key == primary_asset_key]
+            links = [
+                (link, kind, through)
+                for link, kind, through in reacher.links
+                if link.primary_asset_key == primary_asset_key
+            ]
             if not links:
                 continue
             link, kind, through = min(links, key=lambda e: (rank.get(e[0].source, 9), e[1] != "asset", e[2]))

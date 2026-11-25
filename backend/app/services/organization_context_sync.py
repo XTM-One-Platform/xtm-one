@@ -353,7 +353,7 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             from app.services import organization_context_opencrq_links as opencrq_links
 
             links = await opencrq_links.sync_links_for(
-                db, user_id=owner.id, filters=sync.filters or {}, jewels=list(plan.profile.primary_assets)
+                db, user_id=owner.id, filters=sync.filters or {}, pa_rows=list(plan.profile.primary_assets)
             )
             if links is not None:
                 result["links"] = links

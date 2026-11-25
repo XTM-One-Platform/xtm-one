@@ -55,7 +55,7 @@ def _attention_key(row: dict[str, Any]) -> tuple[int, int, int, str]:
     return (waiting, _PRIORITY_RANK.get(row["priority"], 9), oldest_first, row["id"])
 
 
-def _card_row(row: dict[str, Any], jewel: str | None) -> dict[str, Any]:
+def _card_row(row: dict[str, Any], pa_row: str | None) -> dict[str, Any]:
     return {
         "id": row["id"],
         "title": row["title"],
@@ -66,7 +66,7 @@ def _card_row(row: dict[str, Any], jewel: str | None) -> dict[str, Any]:
         "state_since": row.get("state_since"),
         "waiting_on": row.get("waiting_on"),
         # The primary asset the case touches, among its issues the viewer sees; None when it touches none.
-        "primary_asset": jewel,
+        "primary_asset": pa_row,
     }
 
 
@@ -111,7 +111,7 @@ def build(
         for member in visible:
             if member.source == FUNNEL_SOURCE and member.open:
                 in_case.add(member.external_id)
-        jewels = sorted(
+        pa_rows = sorted(
             {
                 j
                 for member in visible
@@ -119,7 +119,7 @@ def build(
                 for j in getattr(view.issues.get(f"{member.source}:{member.external_id}"), "primary_assets", ())
             }
         )
-        jewel = jewels[0] if jewels else None
+        pa_row = pa_rows[0] if pa_rows else None
         if state == "waiting_decision":
             wait = row.get("waiting_on") or {}
             waiting.append(
@@ -135,13 +135,13 @@ def build(
             phases[phase]["open"] += 1
             if state == "waiting_decision":
                 phases[phase]["waiting"] += 1
-            open_rows[phase].append((row, jewel))
+            open_rows[phase].append((row, pa_row))
         else:
             no_phase_open += 1
 
     for phase, rows in open_rows.items():
         rows.sort(key=lambda pair: _attention_key(pair[0]))
-        phases[phase]["top"] = [_card_row(row, jewel) for row, jewel in rows[:TOP_PER_PHASE]]
+        phases[phase]["top"] = [_card_row(row, pa_row) for row, pa_row in rows[:TOP_PER_PHASE]]
 
     waiting.sort(key=lambda w: (_parse(w["since"]) or now, w["case_id"]))
     oldest = waiting[0] if waiting else None

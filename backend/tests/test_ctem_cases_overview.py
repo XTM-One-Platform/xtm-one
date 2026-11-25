@@ -41,8 +41,8 @@ def _case(state: str, *, title: str = "Upgrade Apache Tomcat", severity: str | N
     )
 
 
-def _issue(ext: str, *, jewels: tuple[str, ...] = ()) -> rules.SourceIssue:
-    return rules.SourceIssue(source="opencti", external_id=ext, name=ext, assets=("web-1",), primary_assets=jewels)
+def _issue(ext: str, *, pa_rows: tuple[str, ...] = ()) -> rules.SourceIssue:
+    return rules.SourceIssue(source="opencti", external_id=ext, name=ext, assets=("web-1",), primary_assets=pa_rows)
 
 
 def _member(case: CtemCase, ext: str, *, source: str = "opencti", open_: bool = True) -> CtemCaseIssue:
@@ -81,7 +81,7 @@ def test_counts_follow_the_list_visibility_and_the_funnel_counts_distinct_vulner
         (resolved, [_member(resolved, "v3", open_=False)]),
         (old_resolved, [_member(old_resolved, "v4", open_=False)]),
     ]
-    view = _view(_issue("v1"), _issue("v2", jewels=("Payments",)), _issue("v3"), _issue("v4"))
+    view = _view(_issue("v1"), _issue("v2", pa_rows=("Payments",)), _issue("v3"), _issue("v4"))
     out = overview.build(cases, view, {}, now=NOW)
     assert out["counts"]["remediating"] == 1
     assert out["counts"]["waiting_decision"] == 1
@@ -102,7 +102,7 @@ def test_a_phase_counts_its_open_and_waiting_cases_and_lists_the_waiting_first(m
     second = _case("waiting_decision", severity="P3", since=NOW - timedelta(hours=1))
     third = _case("analyzing", severity="P1", since=NOW - timedelta(days=1))
     cases = [(c, [_member(c, f"v-{i}")]) for i, c in enumerate((first, second, third))]
-    view = _view(*(_issue(f"v-{i}", jewels=("Payments",) if i == 2 else ()) for i in range(3)))
+    view = _view(*(_issue(f"v-{i}", pa_rows=("Payments",) if i == 2 else ()) for i in range(3)))
     phase_of = {first.id: "remediation", second.id: "remediation", third.id: "prioritization"}
 
     def _position(events, _view):
