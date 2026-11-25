@@ -1450,6 +1450,11 @@ async def recompute_for_user(
 
     await gate_store.prepare_system_reads(db, organization_id)
     await db.execute(text("SELECT set_config('lock_timeout', :timeout, true)"), {"timeout": WRITE_LOCK_TIMEOUT})
+    # #2084: a case-opening drain pass writes the same signal rows; the vertical's writer lock keeps
+    # the two apart (under lock_timeout: a running drain fails this pass fast, the next one retries).
+    from app.services.ctem_case_opening import hold_vertical_lock
+
+    await hold_vertical_lock(db, vertical)
     # OpenAEV #9233 re-keyed every finding: the members it answers 404 for move onto their new
     # finding (or are retired) before the merge, so a case keeps its history and never holds the
     # old and the new id of one finding; a case left with no member resolves.
