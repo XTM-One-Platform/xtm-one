@@ -18245,6 +18245,7 @@
   "Every PIR": "すべての PIR",
   "Hosts, applications and services, with their exposure and criticality.": "ホスト、アプリケーション、サービスと、その公開範囲と重要度。",
   "Import from the platforms": "プラットフォームからインポート",
+  "Save the sync": "同期を保存",
   "In the profile": "プロファイル側",
   "In {platform}": "{platform} 側",
   "Lowest criticality": "最低重要度",
@@ -21727,5 +21728,18 @@
   "≥ {threshold}": "{threshold}以上",
   "< {threshold}": "{threshold}未満",
   "At least {total} {count, plural, one {asset} other {assets}}: {names}": "少なくとも{total}件の資産: {names}",
-  "{total} {count, plural, one {asset} other {assets}}: {names}": "{total}件の資産: {names}"
+  "{total} {count, plural, one {asset} other {assets}}: {names}": "{total}件の資産: {names}",
+  "To create": "作成予定",
+  "To update": "更新予定",
+  "To remove": "削除予定",
+  "Target platform": "送信先プラットフォーム",
+  "What to push": "送信する内容",
+  "Import from a platform": "プラットフォームからインポート",
+  "Push to a platform": "プラットフォームへ送信",
+  "The platform is the master: its rows fill this section.": "プラットフォームが正となり、その行がこのセクションを埋めます。",
+  "XTM One is the master: its rows are written to the platform.": "XTM One が正となり、その行がプラットフォームに書き込まれます。",
+  "Connected: the sync writes with your account.": "接続済み: 同期はあなたのアカウントで書き込みます。",
+  "The first run writes these rows to {platform}. Later runs update and remove only what this sync created; the rest of {platform} is never touched.": "初回の実行でこれらの行を {platform} に書き込みます。以降の実行では、この同期が作成したものだけを更新・削除し、{platform} のその他のデータには一切触れません。",
+  "The sync runs on this schedule, with these filters.": "同期はこのスケジュールとこれらのフィルターで実行されます。",
+  "One section to one platform, no AI. Nothing is written before Save, and the platform's own rows are never touched.": "1 つのセクションを 1 つのプラットフォームへ、AI なし。保存するまで何も書き込まれず、プラットフォーム固有の行には一切触れません。"
 }
