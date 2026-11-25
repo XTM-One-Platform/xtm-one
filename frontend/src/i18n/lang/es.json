@@ -20004,6 +20004,8 @@
   "Becomes a case once OpenCRQ can be read and a risk scenario holds it": "Se convierte en caso cuando OpenCRQ pueda leerse y lo tenga un escenario de riesgo",
   "Becomes a case once an asset at or above {threshold} holds it": "Se convierte en caso cuando lo tenga un recurso de nivel {threshold} o superior",
   "Becomes a case if criticality rises to {threshold}": "Se convierte en caso si la criticidad sube a {threshold}",
+  "Confidence {confidence}": "Confianza {confidence}",
+  "Show the watchlist": "Ver las señales en observación",
   "None matched": "Ninguno vinculado",
   "{lenses} ({count, plural, one {# lens} other {# lenses agree}})": "{lenses} ({count, plural, one {# perspectiva} other {# perspectivas coinciden}})",
   "Unknown, threshold {threshold}": "Desconocida, umbral {threshold}",

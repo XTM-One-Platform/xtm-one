@@ -26,7 +26,7 @@ import { isNotFoundError } from "@/lib/api";
 import { formatDayIntl, formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { cn, safeExternalUrl } from "@/lib/utils";
-import { DecisionReason, decisionSentence, levelLabel } from "./DecisionReason";
+import { DecisionReason, decisionSentence, gateStep, levelLabel } from "./DecisionReason";
 import { EVIDENCE_HEALTH_ROW_KEYS, EVIDENCE_STATE_LABEL, evidenceHealthFacts, type EvidenceHealthFact } from "./evidence-health";
 import { signalLoop, type LoopStageView } from "./loop-stages";
 import { caseDetailPath } from "../cases-kanban";
@@ -637,10 +637,18 @@ export function signalCaseLink(caseId: string | null | undefined, currentCaseId?
   return caseDetailPath(caseId);
 }
 
+/**
+ * One label column for every gate list of the trace (#874 S2 UX round 1 B2): a fixed width,
+ * so the Decision, Reason and Next step values of consecutive gates start on one x in every
+ * locale (the longest label, fr "Étape suivante", fits in 6rem at caption size).
+ */
+const GATE_LABEL_GRID = "grid-cols-[6rem_1fr]";
+
 function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCaseId?: string | null }) {
   const { t_i18n, intl } = useFormatter();
   const stages = signalLoop(signal);
   const caseLink = signalCaseLink(signal.case_id, currentCaseId);
+  const formatDay = (iso: string) => formatDayIntl(intl, iso);
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 content-compact text-default-secondary">
@@ -655,18 +663,22 @@ function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCas
           896 px at most, so a row of ten cells (81 px each) wraps its labels
           and staggers the status captions; the list keeps one baseline. */}
       <ol className="flex flex-col gap-0" aria-label={t_i18n("Loop stages")} data-testid="ctem-loop-stages">
-        {stages.map((stage, index) => (
+        {stages.map((stage, index) => {
+          // #874 S2: the reconcile and scope gates are drawn as steps with their decision, reason and next step.
+          const gate = gateStep(stage.key, stage.status, signal.state, signal.decision, t_i18n, formatDay);
+          return (
           <li
             key={stage.key}
             data-stage={stage.key}
             data-status={stage.status}
             className={cn(
-              "flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5",
+              // #874 S2 UX round 1 B1: the glyph sits on the title line, so a gate row and a one-line row align alike.
+              "flex min-w-0 items-start gap-2 rounded-sm px-2 py-1.5",
               (stage.status === "current" || stage.status === "stopped" || stage.status === "parked") && "layer-1 bg-elevation-hover",
               stage.status === "not_reached" && "text-default-secondary",
             )}
           >
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+            <span className="mt-px flex h-4 w-4 shrink-0 items-center justify-center">
               <StageGlyph status={stage.status} />
             </span>
             <span className="min-w-0 flex-1">
@@ -677,11 +689,27 @@ function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCas
               <span className="block content-caption text-default-secondary">
                 {t_i18n(STATUS_LABEL[stage.status])}
                 {stage.at ? ` · ${formatShortDateTimeIntl(intl, stage.at)}` : ""}
-                {/* The stage where the loop stopped names why (#851 UX round 2 B4). */}
-                {stage.status === "stopped" || stage.status === "parked"
-                  ? ` · ${decisionSentence(signal.decision, t_i18n, (iso) => formatDayIntl(intl, iso))}`
-                  : ""}
+                {/* The stage where the loop stopped names why (#851 UX round 2 B4); a gate says it in its own lines below. */}
+                {!gate && (stage.status === "stopped" || stage.status === "parked") ? ` · ${decisionSentence(signal.decision, t_i18n, formatDay)}` : ""}
               </span>
+              {gate && (
+                <dl className={cn("mt-0.5 grid gap-x-3 content-caption", GATE_LABEL_GRID)} data-testid="ctem-loop-gate" data-gate={stage.key}>
+                  <dt className="min-w-0 break-words text-default-secondary">{t_i18n("Decision")}</dt>
+                  <dd className="min-w-0 break-words font-medium">{gate.decision}</dd>
+                  {gate.reason && (
+                    <>
+                      <dt className="min-w-0 break-words text-default-secondary">{t_i18n("Reason")}</dt>
+                      <dd className="min-w-0 break-words">{gate.reason}</dd>
+                    </>
+                  )}
+                  {gate.next && (
+                    <>
+                      <dt className="min-w-0 break-words text-default-secondary">{t_i18n("Next step")}</dt>
+                      <dd className="min-w-0 break-words">{gate.next}</dd>
+                    </>
+                  )}
+                </dl>
+              )}
             </span>
             {stage.key === "case" && caseLink && (
               <Button asChild variant="link" size="sm" className="h-auto shrink-0 gap-1 p-0">
@@ -692,7 +720,8 @@ function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCas
               </Button>
             )}
           </li>
-        ))}
+          );
+        })}
       </ol>
     </div>
   );
