@@ -1267,15 +1267,6 @@ BUILTIN_AGENTS: list[dict] = [
         "integration_template_bindings": ["opencrq"],
         "supported_intents": {
             "global.assistant": {"crq": 5},
-            "global.make_it_shorter": {"crq": 0},
-            "global.make_it_longer": {"crq": 0},
-            "global.fix_spelling": {"crq": 0},
-            "global.change_tone": {"crq": 0},
-            "global.summarize": {"crq": 0},
-            "global.explain": {"crq": 0},
-            "crq.control_gap_analysis": {"crq": 0},
-            "crq.risk_scenario_generator": {"crq": 0},
-            "crq.assessment_summary": {"crq": 0},
         },
     },
     {
