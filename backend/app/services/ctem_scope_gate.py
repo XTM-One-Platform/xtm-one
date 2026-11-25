@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from app.services.ctem_primary_assets import PrimaryAssetIndex, contains_word
+from app.services.ctem_primary_assets import PrimaryAssetIndex, contains_word, link_basis
 from app.services.organization_context import (
     PROFILE_ASSET_CAP,
     AssetEntry,
@@ -571,6 +571,21 @@ def _primary_assets_of(profile: OrganizationProfile, resolution: Resolution) -> 
     return out
 
 
+def _primary_asset_basis(sources: list[dict[str, Any]], criticality: str | None) -> str | None:
+    """``proven`` or ``inferred``: the link of the primary asset sources at *criticality*, else ``None`` (#2396).
+
+    Several primary assets at that criticality: ``proven`` when one of them is.
+    """
+    bases = {
+        s.get("basis") or "inferred"
+        for s in sources
+        if s.get("from") == "primary_asset" and criticality and s.get("criticality") == criticality
+    }
+    if not bases:
+        return None
+    return "proven" if "proven" in bases else "inferred"
+
+
 def signal_cve_ids(subject_ref: str | None, subject_label: str | None, evidence: Any) -> list[str]:
     """The CVE ids a signal names (its subject, label and evidence ``cve`` / ``cves``), upper case, in order."""
     listed = _evidence_list(evidence, "cve", "cves") if isinstance(evidence, dict) else []
@@ -753,6 +768,8 @@ def decide(
         source: dict[str, Any] = {"from": "primary_asset", "name": n, "criticality": c}
         key = " ".join(n.split()).casefold()[:200]
         chain = chains.get(key)
+        # #2396: whether a recorded link (manual, OpenCRQ) supports it, read on every chain before the cut.
+        source["basis"] = link_basis(chain)
         if chain:
             source["chain"] = chain[:CHAINS_KEPT]
             # #1979: the record keeps the first chains and says how many there are, never a silent cut.
@@ -774,6 +791,8 @@ def decide(
     threshold = policy.scope_min_criticality
     record["scope"] = {
         "criticality": criticality or None,
+        # #2396: when a primary asset sets the scope criticality, whether its link is proven or inferred.
+        "primary_asset_basis": _primary_asset_basis(sources, criticality),
         "sources": sources,
         "threshold": threshold,
         # #1591 S3: where the threshold comes from (the policy's scope field, else its default).
@@ -835,6 +854,8 @@ def decide(
             {
                 "rule": "min_primary_asset_criticality",
                 "value": best or None,
+                # #2396: proven or inferred, the link of the primary asset that gives the value.
+                "basis": _primary_asset_basis(sources, best),
                 "threshold": policy.min_primary_asset_criticality,
                 "passed": passed,
             }
