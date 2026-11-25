@@ -1680,6 +1680,33 @@ async def list_asset_group_members(
     }
 
 
+@router.get("/primary-assets/link-counts")
+async def list_primary_asset_link_counts(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """How many assets and groups support each primary asset, by source (#1978 S2).
+
+    ``items`` maps a primary asset's key (its name, whitespace collapsed and
+    case-folded) to ``{total, manual, opencrq, rule}``; a primary asset with no
+    link is absent. The links a sync wrote count here, so the Assets column of
+    the primary assets table shows them; the profile's ``asset_names`` holds
+    only the names a person typed.
+    """
+    from app.services import organization_asset_records as records
+
+    org = await _built_store(db)
+    if org is None:
+        return {"items": {}}
+    counts = await records.primary_asset_link_counts(db, org)
+    return {
+        "items": {
+            key: {"total": sum(by_source.values()), **{s: by_source.get(s, 0) for s in ("manual", "opencrq", "rule")}}
+            for key, by_source in counts.items()
+        }
+    }
+
+
 @router.put("/primary-assets/{primary_asset}/links")
 async def set_primary_asset_asset_links(
     primary_asset: str,
@@ -2515,6 +2542,64 @@ async def update_organization_sync(
     return await _sync_response(db, row)
 
 
+class SyncChangeRequest(BaseModel):
+    """The settings of a sync as the Edit dialog would save them (#1982 S2)."""
+
+    filters: dict[str, Any] = {}
+    batch_type: str = ""
+    remove_gone: bool = True
+    #: Omitted: the stored list is kept.
+    excluded_external_ids: list[str] | None = None
+
+
+class SyncChangePreviewResponse(BaseModel):
+    direction: str
+    #: enter, update, leave, kept -> how many rows.
+    counts: dict[str, int]
+    #: Inbound: rows the platform would add; outbound: platform rows the run would create.
+    enter: list[str]
+    update: list[str]
+    #: Rows this sync wrote that the next run removes (outbound: the platform rows it deletes).
+    leave: list[str]
+    #: Inbound: rows that left the filters but stay, another writer wrote them.
+    kept: list[str]
+    error: str | None = None
+
+
+@router.post("/syncs/{sync_id}/preview", response_model=SyncChangePreviewResponse)
+async def preview_organization_sync_change(
+    sync_id: uuid.UUID,
+    body: SyncChangeRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> SyncChangePreviewResponse:
+    """What the next run of a sync would do with new filters, before they are saved (#1982 S2).
+
+    Reads with this administrator's token, the one saving makes the runs read with; nothing is
+    written to the platform or to the sync. No model call.
+    """
+    from app.services import organization_context_sync as osync
+
+    row = await _sync_or_404(db, sync_id)
+    if row.section == osync.ALL_SECTIONS:
+        raise HTTPException(status_code=422, detail="Sync all has no filters: preview a section sync.")
+    excluded = (
+        body.excluded_external_ids if body.excluded_external_ids is not None else list(row.excluded_external_ids or [])
+    )
+    change = await osync.preview_change(
+        db,
+        row,
+        user_id=admin.id,
+        filters=body.filters,
+        batch_type=body.batch_type,
+        remove_gone=body.remove_gone,
+        excluded_ids=excluded,
+    )
+    # The plan of assets and groups reads the records; their first touch imports the profile rows (#1543).
+    await db.commit()
+    return SyncChangePreviewResponse(**change)
+
+
 @router.delete("/syncs/{sync_id}", status_code=204)
 async def delete_organization_sync(
     sync_id: uuid.UUID,
@@ -2749,6 +2834,73 @@ async def run_organization_sync(
             status_code=409, detail="Another version was saved at the same time. Run it again."
         ) from None
     return await _sync_response(db, row)
+
+
+class FillAgentRequest(BaseModel):
+    integration_id: str
+    #: True: also create the scheduled assignment that keeps the assets in sync.
+    schedule: bool = False
+    cron: str = "0 6 * * *"
+    timezone: str | None = None
+
+
+class FillAgentResponse(BaseModel):
+    agent_id: str
+    agent_name: str
+    created: bool
+    assignment_id: str | None = None
+    #: The preview instruction the chat starts with.
+    prompt: str
+
+
+@router.post("/fill-agent", response_model=FillAgentResponse)
+async def create_organization_fill_agent(
+    body: FillAgentRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+    # It creates an agent (and a scheduled assignment): refused when AI is off or unlicensed.
+    _gate: None = Depends(require_agentic_ai),
+) -> FillAgentResponse:
+    """An agent that fills the assets from one connected integration, and its optional sync (#11888).
+
+    Bound to the integration read-only and to the ``organization_context``
+    group, reused when the administrator already has one for that integration.
+    No model call here: the chat or the scheduled run does the reading.
+    """
+    from sqlalchemy import select
+
+    from app.api.v1.helpers import get_user_group_ids, parse_uuid, user_visible_filter
+    from app.core.utils import validate_cron_expression
+    from app.models.integration import Integration
+    from app.services import organization_context_fill_agent as fill
+
+    integration_id = parse_uuid(body.integration_id, label="integration_id")
+    groups = await get_user_group_ids(db, admin.id)
+    integration = (
+        await db.execute(
+            select(Integration).where(
+                Integration.id == integration_id,
+                user_visible_filter(Integration, admin.id, groups, is_admin=True),
+            )
+        )
+    ).scalar_one_or_none()
+    if integration is None:
+        raise HTTPException(status_code=404, detail="Integration not found.")
+    try:
+        cron = validate_cron_expression(body.cron)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    made = await fill.ensure_fill_agent(
+        db, admin_id=admin.id, integration=integration, schedule=body.schedule, cron=cron, timezone=body.timezone
+    )
+    await db.commit()
+    return FillAgentResponse(
+        agent_id=str(made.agent.id),
+        agent_name=made.agent.name,
+        created=made.created,
+        assignment_id=str(made.assignment.id) if made.assignment else None,
+        prompt=made.prompt,
+    )
 
 
 class SetupPromptResponse(BaseModel):
