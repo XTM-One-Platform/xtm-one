@@ -49,6 +49,7 @@ CTEM_CASE_TOOL_NAMES: tuple[str, ...] = (
     "bulk_update_ctem_cases",
     "merge_ctem_cases",
     "delete_ctem_cases",
+    "record_ctem_case_detection_gap",
 )
 _SOURCE = "builtin:ctem_cases"
 #: The built-in agents that carry the tools (design section 8): the two loop
@@ -61,6 +62,8 @@ CTEM_CASE_AGENT_SLUGS: frozenset[str] = frozenset(
         "ctem-mobilization-analyst",
     }
 )
+#: The root causes a detection gap carries (#2393), the gap analyst's causes but ``none``.
+_GAP_ROOT_CAUSES: tuple[str, ...] = ("no_rule", "no_log", "broken_collector", "matching_defect", "unknown")
 #: Every case state, read from the model so a new state reaches the counts and the enum (#857).
 _STATES: tuple[str, ...] = CASE_STATES
 #: History events one ``get_ctem_case`` answer carries.
@@ -78,6 +81,7 @@ def offers_ctem_case_tools(agent_slug: str | None, *, is_builtin: bool) -> bool:
     if settings.is_copilot_like:
         return False
     return bool(is_builtin and (agent_slug or "") in CTEM_CASE_AGENT_SLUGS)
+
 
 
 def _uuid(value: object) -> uuid.UUID | None:
@@ -230,6 +234,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
 
         # The list's asset-count rule on the single read (#1704), on every event of the case.
         version_history.with_asset_count(rendered, events)
+        # The detection gaps from the whole history (#2393), never the newest page alone.
+        rendered["detection_gaps"] = view_of.detection_gaps_of(events)
         return case, rows, rendered
 
     async def _view_only(db: AsyncSession, rows: list[Any], vertical: str) -> str | None:
@@ -1076,7 +1082,169 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             logger.warning("CTEM case delete failed", exc_info=True)
             return "Error: the cases could not be deleted right now. Say so; nothing was changed."
 
+    async def _detection_gap(
+        action: str = "propose",
+        case_id: str = "",
+        decision_key: str = "",
+        validation_provider: str = "",
+        simulation_id: str = "",
+        inject_id: str = "",
+        asset_id: str = "",
+        technique: str = "",
+        root_cause: str = "",
+        remediation: str = "",
+        evidence: str = "",
+        rule_draft: str = "",
+        rule_language: str = "",
+        recommendation: str = "done",
+        outcome: str = "",
+        by: str = "",
+    ) -> str:
+        """#2393: a detection gap of the desk proposed on the case its simulation validates, or its answer."""
+        from app.core.database import async_session
+        from app.models.ctem_case import CtemCaseEvent as CtemCaseEventRow
+        from app.services import ctem_cases_store as store
+        from app.services import ctem_cases_view as view_of
+
+        if action not in ("propose", "answer"):
+            return "action is propose or answer."
+        inject, asset = str(inject_id or "").strip()[:120], str(asset_id or "").strip()[:120]
+        if not inject or not asset:
+            return "inject_id and asset_id name the gap (the ids of its desk item key)."
+        gap_key = f"{inject}:{asset}"
+        if action == "propose" and root_cause not in _GAP_ROOT_CAUSES:
+            return f"root_cause must be one of {', '.join(_GAP_ROOT_CAUSES)}."
+        if action == "propose" and not str(decision_key or "").strip():
+            return "decision_key is the correlation key of the gap's decision item (your gap key)."
+        if action == "answer" and not str(outcome or "").strip():
+            return "outcome is the answer the person gave (done, declined, deferred)."
+        try:
+            async with async_session() as db:
+                org_id, vertical = await _context(db)
+                if org_id is None or scope is None:
+                    return "No case: file today's desk item (no CTEM case is readable for this run)."
+                wanted = _uuid(case_id)
+                if wanted is None and str(case_id or "").strip():
+                    wanted, why = await resolve_case_id(db, case_id, org_id)
+                    if wanted is None:
+                        return why
+                if wanted is None and str(simulation_id or "").strip() and str(validation_provider or "").strip():
+                    found = await store.case_ids_for_validation_ref(
+                        db,
+                        organization_id=org_id,
+                        provider=str(validation_provider).strip(),
+                        ref=str(simulation_id).strip(),
+                    )
+                    wanted = found[0] if len(found) == 1 else None
+                    if len(found) > 1:
+                        return (
+                            f"Simulation {simulation_id} validates several cases: "
+                            f"{', '.join(str(f) for f in found)}. Pass case_id."
+                        )
+                if wanted is None:
+                    return "No case: this simulation validates no CTEM case. File your own decision item as before."
+                shown = await _shown(db, wanted, org_id, vertical)
+                if shown is None:
+                    return await missing_case_answer(db, case_id or simulation_id, wanted, org_id)
+                refused = await _view_only(db, shown[1], vertical)
+                if refused:
+                    return refused
+                case = shown[0]
+                now = datetime.now(UTC)
+                if action == "answer":
+                    db.add(
+                        CtemCaseEventRow(
+                            case_id=case.id,
+                            actor=agent_id,
+                            kind=view_of.DETECTION_GAP_KIND,
+                            at=now,
+                            from_value=gap_key,
+                            to_value=f"answered:{str(outcome).strip()[:40]}",
+                            reason=(str(by or "").strip()[:300] or None),
+                        )
+                    )
+                    await db.commit()
+                    refreshed = await _shown(db, wanted, org_id, vertical)
+                    gaps = (refreshed[2] if refreshed else {}).get("detection_gaps") or []
+                    return _dump({"case_id": str(case.id), "gap": next((g for g in gaps if g["key"] == gap_key), None)})
+                detail = {
+                    "technique": str(technique or "").strip()[:200] or None,
+                    "simulation_id": str(simulation_id or "").strip()[:120] or None,
+                    "evidence": str(evidence or "").strip()[:2000] or None,
+                    "rule_draft": str(rule_draft or "").strip()[:20000] or None,
+                    "rule_language": str(rule_language or "").strip()[:40] or None,
+                }
+                item_id = await _file_desk_gap(
+                    case, str(decision_key).strip()[:200], root_cause, remediation, detail, recommendation
+                )
+                detail["item_id"] = item_id or None
+                db.add(
+                    CtemCaseEventRow(
+                        case_id=case.id,
+                        actor=agent_id,
+                        kind=view_of.DETECTION_GAP_KIND,
+                        at=now,
+                        from_value=gap_key,
+                        to_value=root_cause,
+                        reason=str(remediation or "").strip()[:1000] or None,
+                        evidence=json.dumps(detail, ensure_ascii=False),
+                    )
+                )
+                await db.commit()
+                return _dump(
+                    {"case_id": str(case.id), "gap": gap_key, "decision_item_id": item_id, "recorded": "detection_gap"}
+                )
+        except Exception:
+            logger.warning("CTEM case detection gap failed", exc_info=True)
+            return "Error: the detection gap could not be recorded on the case right now. Say so; nothing was changed."
+
+    async def _file_desk_gap(
+        case: Any, decision_key: str, root_cause: str, remediation: str, detail: dict[str, Any], recommendation: str
+    ) -> str:
+        """The case-scoped decision of one gap: the caller's own item under its own key, carrying the case (#2393)."""
+        from app.services.company_managed_writes import agent_writer
+        from app.services.work_item import create_work_item
+
+        fix = {
+            "no_rule": "Deploy the drafted detection rule?",
+            "no_log": "Repair the missing log source?",
+            "broken_collector": "Repair the broken collector?",
+        }.get(root_cause, "Fix this detection gap?")
+        ask = {
+            "question": fix,
+            "context": f"CTEM case {case.title}: {str(remediation or '').strip()[:400]}",
+            "options": [
+                {"key": "done", "label": "Done", "effect": "The fix is made; the desk re-tests the gap."},
+                {"key": "declined", "label": "Declined", "effect": "The gap stays open on the case, recorded."},
+            ],
+            "recommendation": recommendation if recommendation in ("done", "declined") else "done",
+        }
+        body = [f"CTEM case {case.id}.", f"Root cause: {root_cause}.", str(remediation or "").strip()]
+        if detail.get("rule_draft"):
+            body.append(f"Drafted rule ({detail.get('rule_language') or 'rule'}):\n{detail['rule_draft']}")
+        item = await create_work_item(
+            user_id=str(scope),
+            title=f"Detection gap on case: {case.title}"[:200],
+            description="\n\n".join(b for b in body if b),
+            owner_agent_id=agent_id,
+            created_by_agent_id=agent_id,
+            priority="high",
+            correlation_key=decision_key,
+            payload={
+                "ctem_case_id": str(case.id),
+                "simulation_id": detail.get("simulation_id"),
+                "root_cause": root_cause,
+            },
+            needs_human=True,
+            ask=ask,
+            dedupe=True,
+            dedupe_by="key",
+            writer=agent_writer(is_company_managed=False, agent_id=agent_id),
+        )
+        return str(item.get("id") or "")
+
     executor = CallableToolExecutor()
+    executor.register("record_ctem_case_detection_gap", _detection_gap)
     executor.register("bulk_update_ctem_cases", _bulk_update)
     executor.register("merge_ctem_cases", _merge)
     executor.register("delete_ctem_cases", _delete)
@@ -1465,6 +1633,40 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "dry_run": {"type": "boolean"},
                 },
                 "required": [],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="record_ctem_case_detection_gap",
+            description=(
+                "Propose a detection gap on the CTEM case its simulation validates (#2393): the case is "
+                "case_id, or the case whose validation from validation_provider names simulation_id. action "
+                "propose writes the gap (root cause, remediation, drafted rule) in the case history and files "
+                "its decision under decision_key with payload.ctem_case_id, listed under the case's "
+                "detection_gaps. action answer records the person's answer on the case. No case: the answer "
+                "says so; file your own decision item."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["propose", "answer"]},
+                    "case_id": {"type": "string"},
+                    "decision_key": {"type": "string", "description": "propose: the decision item's key."},
+                    "validation_provider": {"type": "string", "description": "The provider of the simulation."},
+                    "simulation_id": {"type": "string", "description": "The simulation that found it."},
+                    "inject_id": {"type": "string"},
+                    "asset_id": {"type": "string"},
+                    "technique": {"type": "string"},
+                    "root_cause": {"type": "string", "enum": list(_GAP_ROOT_CAUSES)},
+                    "remediation": {"type": "string", "description": "The fix a person makes, in words."},
+                    "evidence": {"type": "string"},
+                    "rule_draft": {"type": "string", "description": "The drafted rule text (no_rule)."},
+                    "rule_language": {"type": "string", "description": "The rule's language."},
+                    "recommendation": {"type": "string", "enum": ["done", "declined"]},
+                    "outcome": {"type": "string", "description": "answer: done, declined or deferred."},
+                    "by": {"type": "string", "description": "answer: who answered."},
+                },
+                "required": ["inject_id", "asset_id"],
             },
             source=_SOURCE,
         ),

@@ -200,6 +200,8 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
 
                 # The list's asset-count rule on the single read (#1704): list and case read agree.
                 version_history.with_asset_count(rendered, events)
+                # The detection desk's gaps from the whole history (#2393), as the case tools answer them.
+                rendered["detection_gaps"] = view_of.detection_gaps_of(events)
                 running = await case_versions.for_case(db, case)
                 if running is not None:
                     # Why the versions moved, per device (#1694), as the case tools' read: the drift is explained.

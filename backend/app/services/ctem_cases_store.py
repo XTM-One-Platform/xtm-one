@@ -881,6 +881,35 @@ async def case_ids_with_prefix(
     return list(rows.scalars())
 
 
+async def case_ids_for_validation_ref(
+    db: AsyncSession, *, organization_id: uuid.UUID, provider: str, ref: str, limit: int = 5
+) -> list[uuid.UUID]:
+    """The open cases whose validations name *ref* from *provider* (#2393), at most *limit*.
+
+    The detection desk finds the case a simulation validates by the simulation id the
+    loop recorded with ``record_ctem_case_validation``. The JSON list is read in Python:
+    a case holds a handful of validations and the open cases of one organization are few.
+    """
+    wanted_provider, wanted_ref = (provider or "").strip(), (ref or "").strip()
+    if not wanted_provider or not wanted_ref:
+        return []
+    rows = await db.execute(
+        select(CtemCase.id, CtemCase.validations).where(
+            CtemCase.organization_id == organization_id, CtemCase.state.in_(OPEN_STATES)
+        )
+    )
+    found: list[uuid.UUID] = []
+    for case_id, validations in rows.all():
+        if any(
+            isinstance(v, dict) and v.get("provider") == wanted_provider and v.get("ref") == wanted_ref
+            for v in validations or []
+        ):
+            found.append(case_id)
+            if len(found) >= limit:
+                break
+    return found
+
+
 @dataclass(frozen=True)
 class MergedCase:
     """Where a merged-away case went (#2289): the survivor, when and by whom."""

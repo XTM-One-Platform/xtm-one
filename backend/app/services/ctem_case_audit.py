@@ -87,6 +87,8 @@ KIND_PHASE: dict[str, str] = {
     "treatment_plan": STAGE_REMEDIATION,
     "ticket": STAGE_REMEDIATION,
     "applied_change": STAGE_REMEDIATION,
+    # A detection gap the detection desk proposed on the case, or its answer (#2393).
+    "detection_gap": STAGE_REMEDIATION,
 }
 
 #: The phase a gate of the CTEM catalog (``builtin_fleet_docs.CTEM_GATE_KEYS``) belongs to.

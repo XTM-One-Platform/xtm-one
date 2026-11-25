@@ -1039,6 +1039,48 @@ def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, An
     }
 
 
+#: A detection gap the detection desk proposed on the case (#2393): from the gap key
+#: ``<inject>:<asset>``, to the root cause (or ``answered:<outcome>``), reason the remediation,
+#: evidence ``{technique, simulation_id, evidence, rule_draft, rule_language, item_id}`` as JSON.
+DETECTION_GAP_KIND = "detection_gap"
+
+
+def detection_gaps_of(events: list[CtemCaseEvent]) -> list[dict[str, Any]]:
+    """The detection gaps proposed on the case, one per gap key, oldest first (#2393).
+
+    Each carries its proposal (root cause, remediation, drafted rule, decision item)
+    and its answer once given; a gap proposed again replaces its proposal.
+    """
+    gaps: dict[str, dict[str, Any]] = {}
+    rows = [e for e in events if e.kind == DETECTION_GAP_KIND and e.from_value]
+    for row in sorted(rows, key=lambda e: e.at or datetime.min.replace(tzinfo=UTC)):
+        key = str(row.from_value)
+        at = row.at.isoformat() if row.at else None
+        to = row.to_value or ""
+        if to.startswith("answered:"):
+            if key in gaps:
+                gaps[key]["answer"] = {"outcome": to.split(":", 1)[1], "by": row.reason, "at": at}
+            continue
+        try:
+            detail = json.loads(row.evidence or "{}")
+        except ValueError:
+            detail = {}
+        gaps[key] = {
+            "key": key,
+            "root_cause": to,
+            "remediation": row.reason,
+            "technique": detail.get("technique"),
+            "simulation_id": detail.get("simulation_id"),
+            "evidence": detail.get("evidence"),
+            "rule_draft": detail.get("rule_draft"),
+            "rule_language": detail.get("rule_language"),
+            "decision_item_id": detail.get("item_id"),
+            "proposed_at": at,
+            "answer": None,
+        }
+    return list(gaps.values())
+
+
 def treatment_plan_of(events: list[CtemCaseEvent]) -> dict[str, Any] | None:
     """The treatment plan attached to the case: its newest ``treatment_plan`` event (#1068), whatever the order."""
     plans = [row for row in events if row.kind == "treatment_plan" and row.at is not None]
