@@ -23,7 +23,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select, update
+from sqlalchemy import String, cast, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
@@ -816,6 +816,29 @@ async def events_of(db: AsyncSession, case_ids: list[uuid.UUID]) -> dict[uuid.UU
     for row in rows.scalars():
         out.setdefault(row.case_id, []).append(row)
     return out
+
+
+async def case_ids_with_prefix(
+    db: AsyncSession, prefix: str, *, organization_id: uuid.UUID, limit: int = 2
+) -> list[uuid.UUID]:
+    """The ids of the organization's cases that start with *prefix* (#2103), at most *limit*.
+
+    *prefix* is hex with optional dashes, at least eight characters
+    (``organization_asset_store.id_prefix``); anything else matches nothing.
+    Two answers mean the prefix is ambiguous.
+    """
+    from app.services.organization_asset_store import id_prefix
+
+    text = id_prefix(prefix)
+    if text is None:
+        return []
+    rows = await db.execute(
+        select(CtemCase.id)
+        .where(CtemCase.organization_id == organization_id, cast(CtemCase.id, String).like(f"{text}%"))
+        .order_by(CtemCase.id)
+        .limit(max(1, limit))
+    )
+    return list(rows.scalars())
 
 
 async def get_case(

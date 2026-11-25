@@ -1120,6 +1120,8 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
     members = await store.member_ids(db, organization_id=primary.id, vertical=vertical) if primary else []
     read = await read_open_issues(db, user_id, vertical, members=members)
     view = ViewerView(missing=list(read.missing), reasons=dict(read.reasons), complete=read.complete)
+    # The members this read judged (#2113): a case opened after it is unjudged, never hidden.
+    view.judged, view.built_at = set(members), datetime.now(UTC)
     view.opencrq = await _reads_opencrq(db, user_id)
     view.opencti = await _reads_opencti(db, user_id)
     for issue in [*read.closed, *read.looked_up]:
@@ -1159,6 +1161,7 @@ async def read_case_view(db: AsyncSession, user_id: str, vertical: str, members:
     if vertical == VERTICAL_CYBER and (wanted.get("opencti") or wanted.get("openaev")):
         await _read_case_members(db, user_id, out, wanted)
     view.missing, view.reasons, view.complete = list(out.missing), dict(out.reasons), out.complete
+    view.judged, view.built_at = set(members), datetime.now(UTC)
     # One session: the two credential checks run one after the other, never concurrently.
     view.opencrq = await _reads_opencrq(db, user_id)
     view.opencti = await _reads_opencti(db, user_id)

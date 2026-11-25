@@ -135,7 +135,7 @@ def _review_gate() -> dict[str, Any]:
 def test_analyst_review_gate_offers_the_draft_validation_by_its_key() -> None:
     gate = _review_gate()
     assert "tools" not in gate and "grant" not in gate
-    assert "publishes the package and sends the coverage to OpenAEV" in gate["action"]
+    assert "approve publishes it and sends its coverage to OpenAEV" in gate["action"]
     assert "apply_opencti_draft" in fleet_autonomy.gate_tool_names([gate])
 
 
@@ -246,11 +246,14 @@ async def test_grouping_page_not_placed_live_is_refused(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
-async def test_draft_page_and_no_page_are_not_read_in_opencti(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_draft_page_and_no_page_are_not_read_in_opencti_once_approved(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Approved: nothing is read. Before approval the live graph is read (#2089, the draft-first guard)."""
     sent = _fake_opencti(monkeypatch, live=set(), drafts={})
     for package in ({"grouping_id": GROUPING, "url": DRAFT_URL}, {"grouping_id": GROUPING}, "not a package"):
-        assert await package_live.verify_package(cast(Any, None), "u-1", package) == package
+        assert await package_live.verify_package(cast(Any, None), "u-1", package, "approved") == package
     assert sent == []
+    for package in ({"grouping_id": GROUPING, "url": DRAFT_URL}, {"grouping_id": GROUPING}):
+        assert await package_live.verify_package(cast(Any, None), "u-1", package) == package
 
 
 class _Rows:

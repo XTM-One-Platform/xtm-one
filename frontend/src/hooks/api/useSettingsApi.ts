@@ -671,6 +671,7 @@ export function useUpdateObservabilityConfig() {
       trace_retention_days: number;
       trace_store_payloads: boolean;
       audit_log_retention_days?: number;
+      coordination_retention?: NonNullable<ObservabilityConfig["coordination_retention"]>;
     }
   >({
     mutationFn: (body) => api.put("/settings/observability", body),

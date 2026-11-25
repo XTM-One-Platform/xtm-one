@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.organization_asset import (
@@ -783,6 +783,18 @@ def _field_value(name: str) -> Any:
     return OrganizationAsset.fields[name]["value"].astext
 
 
+#: The shortest id prefix a read takes for an id (#2103): eight hex characters, as ids are quoted.
+MIN_ID_PREFIX = 8
+
+
+def id_prefix(value: str) -> str | None:
+    """*value* as a UUID prefix (hex and dashes, 8+ hex characters, lower case), else ``None``."""
+    text = str(value or "").strip().lower()
+    if len(text.replace("-", "")) < MIN_ID_PREFIX or any(c not in "0123456789abcdef-" for c in text):
+        return None
+    return text
+
+
 def _text(value: str) -> str:
     """*value* as a free-text search compares it: whitespace collapsed, lower case (PostgreSQL ``lower``)."""
     return " ".join(str(value or "").split()).lower()
@@ -821,16 +833,19 @@ def _asset_where(
 ) -> list[Any]:
     """The clauses of the asset list: a text, then each filter but *skip* (OR within, AND across).
 
-    The text is a case-insensitive substring of the name or of one of :data:`TEXT_FIELDS`; a field
+    The text is a case-insensitive substring of the name or of one of :data:`TEXT_FIELDS`, or the
+    start of the asset id (a case's ``running_versions`` names assets by id, #2103); a field
     filter compares case-insensitively, so ``os_family:windows`` keeps the ``Windows`` hosts (#2085).
     """
     where: list[Any] = [OrganizationAsset.organization_id == organization_id]
     if q.strip():
         text = _text(q)
+        prefix = id_prefix(q)
         where.append(
             or_(
                 OrganizationAsset.name_key.contains(_key(q)),
                 *(func.lower(_field_value(name)).contains(text, autoescape=True) for name in TEXT_FIELDS),
+                *((cast(OrganizationAsset.id, String).like(f"{prefix}%"),) if prefix else ()),
             )
         )
     for name, values in (filters or {}).items():

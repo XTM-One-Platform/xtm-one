@@ -232,6 +232,8 @@ async def list_ctem_cases(
     async with view_of.timed("cases"):
         cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
     view = await list_view(db, str(user.id), vertical)
+    # A case deleted between the case read and the view read is gone, never hidden (#2113).
+    cases = await view_of.drop_gone(db, cases, view)
     rows, counts = view_of.list_for_viewer(
         cases,
         view,
@@ -259,8 +261,9 @@ async def list_ctem_cases(
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
         "cases": rows,
-        # The open cases the caller sees none of (a count only): the list is never the org total.
-        "hidden_cases": view_of.hidden_case_count(cases, view),
+        # The open cases the caller is refused (hidden_cases) or the view could not judge now
+        # (unjudged_cases, #2113), by state, with the view's condition: the list is never the org total.
+        **view_of.list_visibility(cases, view),
         "details_unavailable": view.missing,
         # Why each of those products did not answer this viewer's read (#1852): rejected, too_large,
         # timeout, not_connected or unavailable, so the empty state says what failed.
