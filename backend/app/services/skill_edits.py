@@ -97,7 +97,7 @@ def _listed(sections: list[SkillSection], picked: list[SkillSection]) -> str:
     return "; ".join(names) + more
 
 
-def resolve_section(content: str, selector: object) -> SkillSection:
+def resolve_section(content: str, selector: object, *, noun: str = "skill") -> SkillSection:
     """The one section of *content* that *selector* names; :class:`SkillEditError` otherwise.
 
     *selector* is an outline index (``#3``), a heading path (``Parent > Child``)
@@ -109,7 +109,7 @@ def resolve_section(content: str, selector: object) -> SkillSection:
         raise SkillEditError("'section' is empty: give a heading text, a heading path or an outline index such as '#3'.")
     sections = skill_sections(content)
     if not sections:
-        raise SkillEditError("the skill has no Markdown heading, so it has no section to address.")
+        raise SkillEditError(f"the {noun} has no Markdown heading, so it has no section to address.")
 
     index_match = _INDEX_RE.match(raw)
     if index_match is not None:
@@ -161,12 +161,22 @@ def format_outline(content: str) -> str:
     return "\n".join(lines)
 
 
-def _require_heading_first(content: str) -> None:
+def _require_heading_first(content: str, noun: str = "skill") -> None:
     first = next((line for line in content.splitlines() if line.strip()), "")
     if not re.match(r"^#{1,6}[ \t]+\S", first):
         raise SkillEditError(
             "'content' must be a whole section starting with its Markdown heading line "
-            "(e.g. '## Title'), so the skill keeps its structure. Nothing was changed."
+            f"(e.g. '## Title'), so the {noun} keeps its structure. Nothing was changed."
+        )
+
+
+def _require_headings(previous: str, mode: str, noun: str) -> None:
+    """Refuse a section mode on a text with no heading, naming the modes that apply (#2193)."""
+    if not skill_sections(previous):
+        raise SkillEditError(
+            f"mode '{mode}' addresses a Markdown heading section, and this {noun} has no "
+            "Markdown heading. Use mode 'edit' (exact find/replace, e.g. to insert text "
+            "after a paragraph) or 'append'."
         )
 
 
@@ -237,8 +247,9 @@ def new_skill_content(
             separator = "\n\n"
         return f"{previous}{separator}{content}", f" Appended {len(content)} characters at the end."
     if mode in SECTION_MODES:
-        _require_heading_first(content)
-        target = resolve_section(previous, section)
+        _require_headings(previous, mode, noun)
+        _require_heading_first(content, noun)
+        target = resolve_section(previous, section, noun=noun)
         index = skill_sections(previous).index(target) + 1
         if mode == "replace_section":
             body = _terminated(content, target.end < len(previous))
@@ -320,7 +331,12 @@ def partial_text_update(
         raise SkillEditError("mode 'replace' takes the whole text, not a partial update.")
     before = previous or ""
     new_text, detail = new_skill_content(
-        mode, before, content=content if isinstance(content, str) else "", section=section, edits=edits
+        mode,
+        before,
+        content=content if isinstance(content, str) else "",
+        section=section,
+        edits=edits,
+        noun=field,
     )
     if new_text == before:
         raise SkillEditError(f"this {mode} leaves '{field}' unchanged.")

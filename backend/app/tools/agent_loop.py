@@ -10696,8 +10696,8 @@ async def run_agent_loop(
         # and, when the always-on core alone would leave no room for a gated
         # tool, demotes the least important core tools into a catalogued
         # ``builtin:overflow`` group instead of discarding them (see
-        # ``ToolGate._fit_core``) — so no notice is due; the catalogue lists
-        # them like any other group.
+        # ``ToolGate._fit_core``); the catalogue names each demoted tool and
+        # the ``load_tools`` call that brings it back (#2191).
         if tool_gate.demoted_always_on:
             logger.info(
                 "Always-on tool count leaves no room for a gated tool under "

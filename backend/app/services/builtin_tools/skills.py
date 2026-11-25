@@ -805,11 +805,16 @@ def build_skill_tools(
         if cap > 0 and len(content) > cap:
             dropped = len(content) - cap
             content = content[:cap]
+            # #2190: name the reads that reach the rest of the body itself.
             truncated_note = (
                 f"\n\n[Truncated: {dropped} of {dropped + cap} characters were "
                 "cut to fit the per-load size cap. The instructions above are "
-                "incomplete — if the skill references bundled files, read them "
-                "with `read_skill_resource` rather than assuming the rest.]"
+                "incomplete. Read the rest by part instead of assuming it: "
+                f"`load_skill(name='{match.name}', outline=true)` lists the headings, "
+                "then `section` (a heading text or an outline index such as '#3') "
+                "returns one section whole (a long one continues with `offset`). "
+                "Bundled files are read with "
+                "`read_skill_resource`.]"
             )
 
         loaded.add(match.name)
