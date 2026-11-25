@@ -1713,6 +1713,10 @@ async def get_primary_asset(
     q: str = Query("", max_length=200),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
+    through: str = Query("", max_length=100),
+    source: str = Query("", max_length=100),
+    sort: str = Query("name", max_length=20),
+    direction: str = Query("asc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
@@ -1722,9 +1726,14 @@ async def get_primary_asset(
     business service, source); ``supporters`` is one page of the records linked
     to it directly or through an asset group, searched on ``q`` (name or group),
     with ``total`` and the whole primary asset's ``counts`` by path and source.
-    404 when no primary asset of the profile has that name.
+    ``through`` and ``source`` are lists of values (comma between them) the rows
+    are filtered on; ``sort`` is ``name`` or ``criticality``, ``direction``
+    ``asc`` or ``desc``. 404 when no primary asset of the profile has that name.
     """
-    from app.services.ctem_primary_assets import primary_asset_supporters
+    from app.services.ctem_primary_assets import SUPPORTERS_SORTS, primary_asset_supporters
+
+    if sort not in SUPPORTERS_SORTS:
+        raise HTTPException(status_code=422, detail=f"sort must be one of {', '.join(SUPPORTERS_SORTS)}")
 
     current = await org_context.current_version(db)
     wanted = " ".join(primary_asset.split()).casefold()
@@ -1741,7 +1750,16 @@ async def get_primary_asset(
     org = await _built_store(db)
     supporters = (
         await primary_asset_supporters(
-            db, org, str(entry.get("name") or primary_asset), q=q, offset=offset, limit=limit
+            db,
+            org,
+            str(entry.get("name") or primary_asset),
+            q=q,
+            offset=offset,
+            limit=limit,
+            through=tuple(v for v in (p.strip() for p in through.split(",")) if v),
+            sources=tuple(v for v in (p.strip() for p in source.split(",")) if v),
+            sort=sort,
+            descending=direction == "desc",
         )
         if org is not None
         else {

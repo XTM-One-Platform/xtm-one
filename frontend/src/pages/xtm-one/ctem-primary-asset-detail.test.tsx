@@ -10,7 +10,8 @@ import { renderWithProviders } from "@/testing/providers";
 import type { PrimaryAssetPage, PrimaryAssetSupporter } from "@/hooks/api/useOrganizationAssetsApi";
 import CtemPrimaryAssetDetail from "./CtemPrimaryAssetDetail";
 
-const calls = vi.hoisted(() => [] as { name: string | undefined; page: { q: string; offset: number; limit: number } }[]);
+type Page = { q: string; offset: number; limit: number; through: string; source: string; sort: string; direction: string };
+const calls = vi.hoisted(() => [] as { name: string | undefined; page: Page }[]);
 const caseCalls = vi.hoisted(() => [] as (string | undefined)[]);
 const state = vi.hoisted(() => ({ missing: false, empty: false }));
 
@@ -24,26 +25,30 @@ const supporter = (id: string, name: string, kind: PrimaryAssetSupporter["throug
   through,
   source: "opencrq",
   roles: ["stores"],
-  inherited_needs: { confidentiality: "high" },
+  inherited_needs: { confidentiality: "full", traceability: "lower" },
   via: "",
 });
 
 const PAGE = (empty: boolean): PrimaryAssetPage => ({
-  primary_asset: { name: "Payments platform", criticality: "very_high", owner: "Finance", business_service: "Payments", source: "opencrq" },
+  primary_asset: { name: "Payments platform", criticality: "critical", owner: "Finance", business_service: "Payments", source: "opencrq" },
   supporters: empty
     ? { items: [], total: 0, offset: 0, limit: 25, counts: { total: 0, through: {}, source: {} } }
     : {
-        items: [supporter("a-1", "payments-db", "asset"), supporter("a-2", "laptop-001", "asset_group", "Employee laptops"), supporter("x", "laptop-unmatched", "asset_group", "Employee laptops")],
+        items: [
+          supporter("a-1", "payments-db", "asset"),
+          supporter("a-2", "laptop-001", "asset_group", "Employee laptops"),
+          { ...supporter("x", "laptop-unmatched", "asset_group", "Employee laptops"), source: "manual", roles: [], inherited_needs: {} },
+        ],
         total: 265,
         offset: 0,
         limit: 25,
-        counts: { total: 265, through: { asset: 2, asset_group: 263 }, source: { opencrq: 265 } },
+        counts: { total: 265, through: { asset: 2, asset_group: 263 }, source: { opencrq: 264, manual: 1 } },
       },
 });
 
 vi.mock("@/hooks/api/useOrganizationAssetsApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useOrganizationAssetsApi")>()),
-  usePrimaryAsset: (name: string | undefined, page: { q: string; offset: number; limit: number }) => {
+  usePrimaryAsset: (name: string | undefined, page: Page) => {
     calls.push({ name, page });
     return state.missing
       ? { isLoading: false, isError: true, data: undefined, refetch: () => undefined }
@@ -87,7 +92,10 @@ describe("CtemPrimaryAssetDetail", () => {
     state.missing = false;
     state.empty = false;
     renderPage();
-    expect(calls[calls.length - 1]).toEqual({ name: "Payments platform", page: { q: "", offset: 0, limit: 25 } });
+    expect(calls[calls.length - 1]).toEqual({
+      name: "Payments platform",
+      page: { q: "", offset: 0, limit: 25, through: "", source: "", sort: "name", direction: "asc" },
+    });
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Payments platform");
     expect(screen.getAllByTestId("ctem-primary-asset-supporter-row")).toHaveLength(3);
     expect(screen.getByText("Linked directly")).toBeInTheDocument();
@@ -95,6 +103,30 @@ describe("CtemPrimaryAssetDetail", () => {
     expect(screen.getByRole("link", { name: /payments-db/ }).getAttribute("href")).toBe("/ctem/inventory/assets/a-1");
     expect(screen.getByTestId("ctem-primary-asset-overview").textContent).toContain("2 linked directly");
     expect(screen.getByTestId("ctem-primary-asset-overview").textContent).toContain("263 through asset groups");
+  });
+
+  it("words the criticality, roles and inherited needs, and reads None in a blank cell, never a raw value (UX r1 B2, B3)", () => {
+    state.missing = false;
+    state.empty = false;
+    renderPage();
+    const overview = screen.getByTestId("ctem-primary-asset-overview").textContent ?? "";
+    // The fact reads the primary asset scale's word (the test catalog answers the key), never the stored value.
+    expect(overview).toContain("CriticalityCritical");
+    expect(overview).not.toContain("Criticalitycritical");
+    const [direct, , manual] = screen.getAllByTestId("ctem-primary-asset-supporter-row");
+    expect(direct.textContent).toContain("stores");
+    expect(direct.textContent).toContain("Confidentiality: Inherited in full");
+    expect(direct.textContent).toContain("Traceability: Inherited lower");
+    expect(direct.textContent).not.toContain("confidentiality: full");
+    expect(manual.textContent).toContain("None");
+  });
+
+  it("offers the Reaches it and Link source filters from the primary asset's counts (UX r1 B4)", () => {
+    state.missing = false;
+    state.empty = false;
+    renderPage();
+    expect(screen.getByRole("button", { name: /Reaches it/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Link source/ })).toBeInTheDocument();
   });
 
   it("lists the open cases reaching it, never a resolved one", () => {

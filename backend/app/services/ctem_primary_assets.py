@@ -239,6 +239,10 @@ async def load_index(db: AsyncSession, organization_id: uuid.UUID) -> PrimaryAss
 
 #: Largest page of supporting assets one read answers.
 SUPPORTERS_PAGE_MAX = 200
+#: The asset criticality scale, lowest first: a descending sort on criticality reads the highest first.
+_CRITICALITY_RANK: tuple[str, ...] = ("unknown", "low", "medium", "high", "very_high")
+#: The orders a page of supporting assets can be read in.
+SUPPORTERS_SORTS: tuple[str, ...] = ("name", "criticality")
 
 
 async def primary_asset_supporters(
@@ -249,8 +253,16 @@ async def primary_asset_supporters(
     q: str = "",
     offset: int = 0,
     limit: int = 50,
+    through: tuple[str, ...] = (),
+    sources: tuple[str, ...] = (),
+    sort: str = "name",
+    descending: bool = False,
 ) -> dict[str, Any]:
-    """The inventory records that support *primary_asset*, paged and searched on the server (#1980 S2).
+    """The inventory records that support *primary_asset*, paged, searched, filtered and sorted on the server (#1980 S2).
+
+    ``through`` keeps the rows reaching it that way (``asset``, ``asset_group``),
+    ``sources`` the rows of those link sources; ``sort`` is ``name`` or
+    ``criticality`` (``descending`` reads the highest first).
 
     One row per (record, link): a record linked directly (``through_kind``
     ``asset``) or as a member of a linked group (``asset_group``, ``through``
@@ -259,7 +271,7 @@ async def primary_asset_supporters(
     count of every row the search keeps; ``counts`` splits the rows of the whole
     primary asset (search ignored) by how they reach it and by source.
     """
-    from sqlalchemy import func, literal, or_, union_all
+    from sqlalchemy import case, func, literal, or_, union_all
 
     from app.models.organization_asset_record import (
         OrganizationAssetGroup,
@@ -330,14 +342,23 @@ async def primary_asset_supporters(
     if wanted:
         like = f"%{wanted.replace('%', '').replace('_', '')}%"
         page = page.where(or_(rows.c.name_key.like(like), func.lower(rows.c.through).like(like)))
+    if through:
+        page = page.where(rows.c.through_kind.in_(list(through)))
+    if sources:
+        page = page.where(func.coalesce(rows.c.source, "manual").in_(list(sources)))
     total = (await db.execute(select(func.count()).select_from(page.subquery()))).scalar() or 0
-    items = (
-        await db.execute(
-            page.order_by(rows.c.name_key, rows.c.through_kind, rows.c.through, rows.c.record_id)
-            .offset(offset)
-            .limit(limit)
+    name_order: list[Any] = [rows.c.name_key, rows.c.through_kind, rows.c.through, rows.c.record_id]
+    order: list[Any]
+    if sort == "criticality":
+        rank = case(
+            {level: index for index, level in enumerate(_CRITICALITY_RANK)},
+            value=func.coalesce(rows.c.criticality, "unknown"),
+            else_=0,
         )
-    ).all()
+        order = [rank.desc() if descending else rank.asc(), *name_order]
+    else:
+        order = [c.desc() for c in name_order] if descending else name_order
+    items = (await db.execute(page.order_by(*order).offset(offset).limit(limit))).all()
     return {
         "items": [
             {

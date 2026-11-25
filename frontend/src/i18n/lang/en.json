@@ -21715,5 +21715,13 @@
   "Link source": "Link source",
   "No asset of the inventory supports this primary asset yet.": "No asset of the inventory supports this primary asset yet.",
   "Search assets or asset groups by name": "Search assets or asset groups by name",
-  "No open case reaches this primary asset.": "No open case reaches this primary asset."
+  "No open case reaches this primary asset.": "No open case reaches this primary asset.",
+  "Integrity": "Integrity",
+  "Confidentiality": "Confidentiality",
+  "Traceability": "Traceability",
+  "Not inherited": "Not inherited",
+  "Inherited lower": "Inherited lower",
+  "Inherited in full": "Inherited in full",
+  "Through an asset group": "Through an asset group",
+  "{need}: {level}": "{need}: {level}"
 }

@@ -87,3 +87,31 @@ async def test_the_query_leaves_out_removals_and_follows_groups() -> None:
     assert "UNION ALL" in sql
     assert "organization_asset_group_members" in sql
     assert "LIKE" in sql
+
+
+@pytest.mark.asyncio
+async def test_filters_and_the_criticality_sort_reach_the_page_query() -> None:
+    db = _Db(by=[], total=0, page=[])
+    await pa.primary_asset_supporters(
+        db,  # type: ignore[arg-type]
+        uuid.uuid4(),
+        "Payments",
+        through=("asset_group",),
+        sources=("opencrq", "rule"),
+        sort="criticality",
+        descending=True,
+    )
+    total_sql, page_sql = str(db.statements[1]), str(db.statements[2])
+    for sql in (total_sql, page_sql):
+        assert "through_kind IN" in sql
+        assert "coalesce(" in sql
+    assert "CASE" in page_sql and "DESC" in page_sql
+
+
+@pytest.mark.asyncio
+async def test_no_filter_keeps_every_row_in_name_order() -> None:
+    db = _Db(by=[], total=0, page=[])
+    await pa.primary_asset_supporters(db, uuid.uuid4(), "Payments")  # type: ignore[arg-type]
+    page_sql = str(db.statements[2])
+    assert "through_kind IN" not in page_sql
+    assert "CASE" not in page_sql and "DESC" not in page_sql

@@ -428,11 +428,25 @@ export interface PrimaryAssetPage {
   };
 }
 
-/** One primary asset and a page of the assets that support it, searched and paged on the server (#1980 S2). */
-export function usePrimaryAsset(name: string | undefined, page: { q: string; offset: number; limit: number }) {
-  const params = new URLSearchParams({ q: page.q, offset: String(page.offset), limit: String(page.limit) });
+/**
+ * One primary asset and a page of the assets that support it, searched, filtered (`through`, `source`: values with a
+ * comma between them), sorted (`name` or `criticality`) and paged on the server (#1980 S2).
+ */
+export function usePrimaryAsset(
+  name: string | undefined,
+  page: { q: string; offset: number; limit: number; through: string; source: string; sort: string; direction: string },
+) {
+  const params = new URLSearchParams({
+    q: page.q,
+    offset: String(page.offset),
+    limit: String(page.limit),
+    through: page.through,
+    source: page.source,
+    sort: page.sort,
+    direction: page.direction,
+  });
   return useQuery<PrimaryAssetPage>({
-    queryKey: [...KEY, "primary-asset", name, page.q, page.offset, page.limit],
+    queryKey: [...KEY, "primary-asset", name, page.q, page.offset, page.limit, page.through, page.source, page.sort, page.direction],
     queryFn: () => api.get(`/organization-context/primary-assets/${encodeURIComponent(name ?? "")}?${params.toString()}`),
     enabled: Boolean(name),
     placeholderData: (previous) => previous,
