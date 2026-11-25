@@ -21776,5 +21776,18 @@
   "Which side is the master of the list.": "Qué lado es la referencia de la lista.",
   "The part of the organization context the sync writes to the platform.": "La parte del contexto de la organización que la sincronización escribe en la plataforma.",
   "The part of the organization context the platform fills.": "La parte del contexto de la organización que rellena la plataforma.",
-  "Rows the first run creates in {platform}": "Filas que la primera ejecución crea en {platform}"
+  "Rows the first run creates in {platform}": "Filas que la primera ejecución crea en {platform}",
+  "Ticket": "Ticket",
+  "Applied change": "Cambio aplicado",
+  "Ticket and applied change": "Ticket y cambio aplicado",
+  "Indicators blocked": "Indicadores bloqueados",
+  "Detection rule deployed": "Regla de detección desplegada",
+  "Configuration changed": "Configuración modificada",
+  "Control restored": "Control restablecido",
+  "Pushed": "Enviado",
+  "Returned ids": "Identificadores devueltos",
+  "How to revert": "Cómo revertir",
+  "Applied changes": "Cambios aplicados",
+  "Applied a change through an integration": "Aplicó un cambio mediante una integración",
+  "How the fix is carried out once decided: a ticket for the owner, a change applied through a bound integration after the production change gate, or both.": "Cómo se aplica la corrección una vez decidida: un ticket para el responsable, un cambio aplicado mediante una integración vinculada tras la aprobación de cambio en producción, o ambos."
 }

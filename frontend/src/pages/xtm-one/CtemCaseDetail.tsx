@@ -67,6 +67,8 @@ import { CaseRemediationDecision } from "./ctem/CaseRemediationDecision";
 import { CaseAnalystReview } from "./ctem/CaseAnalystReview";
 import { CaseValidation } from "./ctem/CaseValidation";
 import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
+import { CaseMobilization } from "./ctem/CaseMobilization";
+import { APPLIED_CHANGE_KIND_LABEL, isAppliedChangeKind } from "./ctem/case-mobilization";
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseAffectedAssets } from "./ctem/CaseAffectedAssets";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
@@ -417,7 +419,11 @@ export default function CtemCaseDetail() {
                 {reasonLabel(e) ? t_i18n(reasonLabel(e) ?? "") : personReason(e)}
               </span>
             )}
-        {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && e.kind !== "treatment_plan" && e.kind !== "threat_package" && (
+        {/* An applied change names its kind; what was pushed and the rollback are on the Mobilization card (#2061). */}
+        {e.kind === "applied_change" && isAppliedChangeKind(e.to) && (
+          <span className="font-medium" data-testid="ctem-case-applied-change-event">{t_i18n(APPLIED_CHANGE_KIND_LABEL[e.to])}</span>
+        )}
+        {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && e.kind !== "treatment_plan" && e.kind !== "threat_package" && e.kind !== "applied_change" && (
           <span className="text-default-secondary">{e.kind === "gate" ? t_i18n("Option {option}", { option: e.evidence }) : e.evidence}</span>
         )}
       </>
@@ -867,6 +873,8 @@ export default function CtemCaseDetail() {
         <CaseRemediationDecision caseId={kase.id} history={kase.history} gates={kase.gates} personName={personName} />
 
         <CaseTreatmentPlan plan={kase.treatment_plan} />
+
+        <CaseMobilization history={kase.history} tickets={kase.tickets} />
       </CaseLoopProvider>
 
       <Card>
