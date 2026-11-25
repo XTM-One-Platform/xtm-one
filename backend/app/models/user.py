@@ -391,9 +391,28 @@ def is_platform_admin(user: object) -> bool:
 
     The one rule: ``GET /users`` reports it (``is_platform_admin``) and the ID
     token carries it as ``xtm_super_admin``. It follows the email, so whoever
-    holds that address is the platform administrator, and that account may not
-    change it (``PUT /settings/preferences``).
+    holds that address is the platform administrator: no email change moves it
+    (``admin_email_change_refusal``).
     """
     from app.core.config import settings
 
     return getattr(user, "email", None) == settings.admin_email
+
+
+def admin_email_change_refusal(user: object | None, email: str) -> str | None:
+    """Why *user*'s email may not become *email*, or ``None`` when it may.
+
+    The one rule for every email change (``PUT /users/{user_id}/email``, SCIM,
+    ``POST /settings/email-change``):
+    platform administrator standing follows ``ADMIN_EMAIL`` and the boot finds
+    the account by it, so the account holding it keeps it and no other account
+    takes it. *user* is ``None`` for an account being created; *email* is the
+    new, normalized address, different from the current one.
+    """
+    from app.core.config import settings
+
+    if user is not None and is_platform_admin(user):
+        return "The platform admin account's email is set by ADMIN_EMAIL and cannot be changed"
+    if settings.admin_email and email == settings.admin_email.strip().lower():
+        return "This address is the platform admin's, set by ADMIN_EMAIL: it cannot be given to an account"
+    return None

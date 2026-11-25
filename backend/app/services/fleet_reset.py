@@ -33,7 +33,9 @@ notes, model pin, approval switches).
   itself makes (built-in integrations, knowledge bases, skills) kept, and its
   definition rewritten from the seed spec now (``_sync_agent_fields``).
 
-Kept: ids, run history, cases and findings, the audit trail, the workspace.
+Kept: ids, run history, cases and findings, the audit trail, the workspace,
+and the open work items of the members (decision items included): the dry run
+and the audit entry name how many (``FleetResetOutcome.before``, #2134).
 A dry run answers the counts the confirmation dialog shows, and the automations
 an emergency stop holds. Refused during a platform emergency stop, while a stop
 holds any automation of the fleet, and on a custom fleet. Idempotent: a second call
@@ -50,7 +52,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
-from app.models.fleet import FLEET_ROLE_MEMBER, Fleet
+from app.models.fleet import FLEET_ROLE_CONNECTED, FLEET_ROLE_MEMBER, Fleet
 from app.models.user import User
 from app.services.fleets import FleetActionRefusedError, fleet_members
 
@@ -120,6 +122,10 @@ class FleetResetOutcome:
     settings: list[str] = field(default_factory=list)
     documentation: bool = False
     held_by_stop: tuple[str, ...] = ()
+    #: The fleet as it stood before the reset (#2134): the level that held, its members, pins and
+    #: added gates, and the open work the reset keeps (open decision items and open items of its
+    #: home members). What the audit entry records under ``before``.
+    before: dict[str, Any] = field(default_factory=dict)
 
     @property
     def changed(self) -> bool:
@@ -136,6 +142,7 @@ class FleetResetOutcome:
         )
 
     def audit_details(self) -> dict[str, Any]:
+        """What the reset changed (the audit entry's ``changes``; ``before`` is :attr:`before`)."""
         return {
             "automations": self.automations,
             "run_as_cleared": self.run_as_cleared,
@@ -325,6 +332,16 @@ async def reset_builtin_fleet(
 
     rows = await fleet_members(db, fleet.id)
     home = [r for r in rows if r.role == FLEET_ROLE_MEMBER and r.agent_id is not None]
+    open_gates, open_items = await _open_member_work(db, [r.agent_id for r in home])
+    outcome.before = {
+        "autonomy_level": effective_level(fleet.autonomy_level),
+        "home_members": len(home),
+        "connected_agents": sum(1 for r in rows if r.role == FLEET_ROLE_CONNECTED and r.agent_id is not None),
+        "approval_pins": dict(fleet.approval_pins or {}),
+        "customer_gates": outcome.gates,
+        "open_gates": open_gates,
+        "open_items": open_items,
+    }
     member_settings = [
         r for r in home if any(_differs(getattr(r, n, None), v) for n, v in _MEMBER_FACTORY_VALUES.items())
     ]
@@ -363,6 +380,32 @@ async def reset_builtin_fleet(
             await ensure_fleet_health_check(db, fleet, lead)
     await db.flush()
     return outcome
+
+
+async def _open_member_work(db: AsyncSession, agent_ids: list[Any]) -> tuple[int, int]:
+    """``(open decision items, open items)`` owned by *agent_ids*: the work a reset keeps.
+
+    A decision item is an open item with ``needs_human`` set (a gate waiting for a person).
+    """
+    from sqlalchemy import func
+
+    from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
+
+    if not agent_ids:
+        return 0, 0
+    row = (
+        await db.execute(
+            # access_restricted: bypass - an administrator's reset counts its own fleet members' items.
+            select(
+                func.count().filter(WorkItem.needs_human.is_(True)),
+                func.count(),
+            ).where(
+                WorkItem.owner_agent_id.in_(agent_ids),
+                WorkItem.status.notin_(WORK_ITEM_TERMINAL_STATUSES),
+            )
+        )
+    ).one()
+    return int(row[0] or 0), int(row[1] or 0)
 
 
 async def _restore_shipped_documentation(db: AsyncSession, fleet: Fleet) -> None:

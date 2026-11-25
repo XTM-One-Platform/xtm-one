@@ -1462,7 +1462,7 @@ def _tenant_path(path: str, tenant_id: str) -> str:
 
 
 # Stay on the base path: no tenant twin (settings, which is also how the tenant
-# is found; platform-*; schemas; me/*, only GET /me has one), or the run decides
+# is found; platform-*; schemas and engine/schemas; me/*, only GET /me has one), or the run decides
 # its tenant (autonomous-runs, @RunTenantScope: the prefixed path would 404 others).
 _UNSCOPED_PREFIXES = (
     "/api/me",
@@ -1471,6 +1471,7 @@ _UNSCOPED_PREFIXES = (
     "/api/platform-roles",
     "/api/platform-groups",
     "/api/schemas",
+    "/api/engine/schemas",
     "/api/autonomous-runs",
 )
 

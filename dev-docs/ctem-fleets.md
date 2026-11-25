@@ -144,12 +144,13 @@ intent, kept by design.
 Nine new agents, all `platform_targets: ["xtm_one", "dev"]`, company-managed,
 built-in, JSON output schema per unit of work (section 5 reads it).
 
-## 4. The four seeded fleets
+## 4. The four defined fleets
 
-Since CTEM-31 (#1048, section 14) the seeded set is the generic CTEM loop
+Since CTEM-31 (#1048, section 14) the defined set is the generic CTEM loop
 (F1 core, F4 and M1 to M3 folded in as roles), F2 vulnerability management,
-F3 AI security and F5 third-party risk. The per-fleet sections below keep
-describing each role.
+F3 AI security and F5 third-party risk. Only the CTEM loop is seeded until
+the three use cases are tested (section 14). The per-fleet sections below
+keep describing each role.
 
 Common rules:
 
@@ -190,7 +191,11 @@ Common rules:
   ownership change and the hourly case sweep, `catch_up` hands every open
   case its owner never ran (no open `<key>:case:<id>` item of any declared
   key, no `owner_requested` case event for that owner) one
-  `ctem_case.opened`, P1 first, soonest SLA first, 100 per pass.
+  `ctem_case.opened`, P1 first, soonest SLA first, 100 per pass. An ask no
+  case automation answered (no run of the case since it, no open case item)
+  is made again after 15 minutes (`REASK_AFTER_SECONDS`) under a new event
+  id, 3 asks in all (`MAX_ASKS`), so a delivery lost to an exhausted pool
+  never leaves a case unowned (#2101).
   `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active, fleet_id};
   the case page header shows "Owned by <fleet>" linked to the fleet page, or
   "No active fleet owns this case" when it is null or inactive.
@@ -671,7 +676,15 @@ The #11543 categories ride the same registry: `assets_exposure` and
 `enterprise_knowledge` are list fields (generated), `prioritization_policy`
 is the one object field declared in `_OBJECT_CATEGORIES` and read as one
 row per rule set away from its default, per exclusion and per accepted risk
-(`policy_rows`, the count `exposure_counts` gives). `enterprise_knowledge`
+(`policy_rows`, the count `exposure_counts` gives). An agent writes a rule
+the way it reads it, one dotted path per rule: `update_organization_context`
+(administrator) and `propose_organization_context_change` take every scalar
+rule of `POLICY_SETTABLE_PATHS` (`organization_context.py`: the scope
+threshold, `cvss_min`, `epss_min`, `kev_always_in`,
+`internet_exposure_required`, `min_primary_asset_criticality`,
+`require_risk_scenario`, `sla_hours`, the PIR minimum scores and
+`identity_criticality`; #2129); the exclusions and accepted risks stay with
+Settings > Organization. `enterprise_knowledge`
 is never paged as rows: without `query` the tool names each linked knowledge
 base and whether the caller can search it; with `query` it answers passages
 from the linked knowledge bases the person the turn acts for can read
@@ -1305,7 +1318,12 @@ kinds and `event_poller` polls them every 60 s.
   a JSON summary; its `moved` ids, `movedCount` and, when OpenCRQ reports it,
   `movedAle` travel as `moved_scenario_ids`, `moved_count` and `moved_ale`
   (`risk_scenario_id`, `ale_before`, `ale_after`, `ale_delta`) on the payload
-  top level and the entity, merged across a coalesced page. The filter keys
+  top level and the entity, merged across a coalesced page: `moved_count` is
+  the number of distinct moved scenarios (at least the largest count one run
+  reported, since OpenCRQ caps the ids), never a sum over runs (#2117). The
+  event declares `coalesce_merge` (union of the ids, `moved_ale` by scenario,
+  the count kept whole), so a page folded into a waiting run keeps both
+  pages' moves. The filter keys
   of every OpenCRQ event (`FILTER_KEYS`, declared in the catalog) are
   `tenant_id`, `kind`, `risk_scenario_ids`, `moved_scenario_ids` and
   `moved_count`, all payload fields, so `{"moved_scenario_ids": "<id>"}`
@@ -1320,7 +1338,9 @@ kinds and `event_poller` polls them every 60 s.
   `entity.risk_scenario_ids` and on each `covers` entry. The event carries
   `coalesce_key` = `opencrq:<tenant>:<event>`; the poller copies it into the
   trigger context and `trigger_or_queue_assignment` folds a later event with
-  the same key into the run of the same assignment still queued
+  the same key into the run of the same assignment that has not started,
+  queued or `pending` in a free slot (#2117; the executor re-reads the
+  payload under the row lock before it marks the run running)
   (`services/event_coalescing.py`, status `coalesced`). The risk desk's three
   event assignments run with `max_concurrent_runs: 1`: a burst of 30 jobs
   starts one run and queues at most one more.
@@ -2049,6 +2069,21 @@ slots (EDR/XDR, SIEM, beside ticketing and notification), under
 indicators and the EDR custom rules that support it go to prevention mode. The
 re-test still closes the case.
 
+The coverage scenario starts after the validation decision (#2102, Sam, 25 Nov
+2026). OpenAEV builds a scenario from every security coverage it receives and
+schedules it two minutes later only when the coverage carries a periodicity.
+When `ctem.validation.non_readonly` waits at the fleet's level (or is pinned
+`wait`), the orchestrators create the coverage without periodicity (auto
+enrichment left on), so the scenario exists unscheduled; the validation decision
+shows it (link, injects, targets, read-only or not) with a daily-repeat option,
+and the approval launches it (`manage_openaev_scenario` `launch`, then
+`schedule_recurrence` when the repeat is chosen). The run's integration context
+carries the gate keys that wait (`fleet_autonomy.waiting_gate_keys`, context key
+`fleet_waiting_gates`); with the validation gate among them,
+`manage_opencti_security_coverage` refuses a periodicity on `create` and
+`update`, naming the gate, so a repeat is never set through the coverage. When
+the gate runs, the coverage keeps `P1D` and starts on its own.
+
 No seeded gate names a tool or a grant (#1675, Sam, 24 Nov 2026): every tool
 is offered and runs when called; a gate that waits is one decision item the
 orchestrator files between two steps (`needs_human`, its ask card), and the
@@ -2118,7 +2153,7 @@ The routes (`backend/app/api/v1/fleets.py`) and their service
 | `POST /fleets/{id}/pause` | Pause all: every automation that is on switches off, stamped `fleet_pause`. Audit `fleet_pause` | as Enable | allowed |
 | `POST /fleets/{id}/resume` | Resume: exactly the `fleet_pause` ones switch back on; 409 during an emergency stop. Audit `fleet_resume` | as Enable | allowed |
 | `POST /fleets/{id}/unset` | Back to not set up (#11060): every automation that is on switches off, and every off one (any stamp but `panic_stop`) is re-stamped `created_disabled`, so the fleet reads Not set up, 0 on, no Resume. Nothing deleted (ids, prompts, triggers, run history kept); an automation an emergency stop holds is left as it is and named (`held_by_stop` in the audit). Idempotent. Agent tool: `set_fleet_automations(action="unset")`, a dry-run count without `confirm=true`. Audit `fleet_unset` plus one `pause` row per assignment | as Enable | allowed |
-| `POST /fleets/{id}/reset` | Reset a built-in fleet to its factory state (#1508; `services/fleet_reset.py`), administrators only, `dry_run` for the dialog's counts, `confirm_name` (the fleet's name) for the real call. Every automation off and `created_disabled` (as unset) with its run-as and schedule anchor cleared; the level back to the seeded one; `approval_pins`, `customer_gates` and every fleet customer setting (tool-level enforcement, instructions position, confirmed prerequisites, health dismissals, check and enrolment, activity visibility, budget, iteration cap, run budget, member defaults, organization scope) back to their column default; a local documentation version replaced by the shipped one; each home member's customer layer cleared (bindings and their scoping, lending, MCP servers, knowledge bases, skills, custom tools, organization notes, model pin, approval switches), the seed's own built-in integrations, knowledge bases and skills kept, and its definition rewritten from the seed now. Kept: ids, run history, cases and findings, the audit trail, the workspace. Refused (422) on a custom fleet and (409) during an emergency stop. Idempotent; audit `fleet_reset` with the counts; the next boot changes nothing. | administrators | allowed |
+| `POST /fleets/{id}/reset` | Reset a built-in fleet to its factory state (#1508; `services/fleet_reset.py`), administrators only, `dry_run` for the dialog's counts, `confirm_name` (the fleet's name) for the real call. Every automation off and `created_disabled` (as unset) with its run-as and schedule anchor cleared; the level back to the seeded one; `approval_pins`, `customer_gates` and every fleet customer setting (tool-level enforcement, instructions position, confirmed prerequisites, health dismissals, check and enrolment, activity visibility, budget, iteration cap, run budget, member defaults, organization scope) back to their column default; a local documentation version replaced by the shipped one; each home member's customer layer cleared (bindings and their scoping, lending, MCP servers, knowledge bases, skills, custom tools, organization notes, model pin, approval switches), the seed's own built-in integrations, knowledge bases and skills kept, and its definition rewritten from the seed now. Kept: ids, run history, cases and findings, the audit trail, the workspace, and the home members' open work items (decision items included), counted in the answer's `open_gates` and `open_items`. Refused (422) on a custom fleet and (409) during an emergency stop. Idempotent; audit `fleet_reset` with `before` (the fleet as it stood: effective level, home members, connected agents, pins, added gates, open decision items and open items) and `changes` (the counts), plus `autonomy_level_change` (reason `fleet_reset`) when the level moves (#2134); the next boot changes nothing. | administrators | allowed |
 | `POST /fleets/bulk` | pause, resume or set_autonomy on up to 100 fleets, or `all_fleets` (administrators, pause only); each fleet follows its single-fleet rule, refused fleets reported; `dry_run` counts | per fleet | allowed |
 
 **What the level acts on (#10153).** A custom fleet whose `approval_pins` is
@@ -2400,11 +2435,11 @@ tools, CTEM-18, `ctem-cases.md` 9quater), so the fleet recommends (work items ke
 
 Tests: `tests/test_opencrq_risk_budget_desk_fleet.py`.
 
-## 14. Four seeded fleets: one generic CTEM loop and three use cases (CTEM-31, #1048)
+## 14. Four defined fleets: one generic CTEM loop and three use cases (CTEM-31, #1048)
 
-Sam, 21 Nov 2026: at most four seeded fleets, one generic loop end to end and
+Sam, 21 Nov 2026: at most four built-in fleets, one generic loop end to end and
 three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
-(`backend/app/agents/builtin_fleets.py`) holds exactly:
+(`backend/app/agents/builtin_fleets.py`) defines exactly:
 
 | # | Slug | Name | What it carries |
 |---|---|---|---|
@@ -2416,6 +2451,26 @@ three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
 A fifth entry fails `tests/test_builtin_fleets.py`: adding one is a product
 decision. An agent has one home fleet: the use-case fleets reach the loop's
 role agents (risk quantifier, remediation coordinator) as connected agents.
+
+### Seeded set: the CTEM loop only (#2105)
+
+Sam, 25 Nov 2026: the three use cases are defined but not seeded until they
+are tested. `SEEDED_BUILTIN_FLEET_SLUGS` is the switch (`{"ctem-loop"}`);
+`SEEDED_BUILTIN_FLEETS` is what `fleet_seed.seed_builtin_fleets` seeds.
+
+- Agents: `UNSEEDED_FLEET_AGENT_SLUGS`, derived from the definitions (the
+  orchestrators and home members of the unseeded fleets that no seeded fleet
+  names), are withheld by the agent seed with their assignments. Shared agents
+  (risk quantifier, remediation coordinator, the product assistants) stay.
+- Upgrade: the stale-fleet sweep removes the three company-managed fleets
+  (members back to the playground), the stale-agent sweep their exclusive
+  agents. A person's fork is kept; `RETIRED_FLEET_SUCCESSORS` names the CTEM
+  loop as its successor. With the F2 declaration gone, `new_vulnerability`
+  cases fall back to the loop (`paths` null).
+- Derived maps (`BUILTIN_FLEET_LEADS`, `BUILTIN_FLEET_LEAD_SLUGS`) cover the
+  seeded set only; the definitions, their documentation and tests stay.
+- Re-enabling a use case is adding its slug to the switch: it seeds again
+  exactly as its definition.
 
 ### Custom case ownership (#1966)
 

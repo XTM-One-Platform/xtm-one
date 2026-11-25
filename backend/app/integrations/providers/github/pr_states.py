@@ -72,6 +72,7 @@ _UNKNOWN_BACKOFF: tuple[float, ...] = (1.0, 2.0, 4.0, 8.0)
 
 _PR_FIELDS = f"""
       number title state isDraft mergeable mergeStateStatus reviewDecision headRefOid baseRefName
+      isInMergeQueue mergeQueueEntry {{ position state }}
       reviewThreads(first: {_THREADS}) {{ totalCount nodes {{ isResolved }} }}
       commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{
         state
@@ -169,9 +170,29 @@ def node_conflict(node: dict[str, Any] | None) -> bool:
     return checks.is_conflict(node.get("mergeable"), node.get("mergeStateStatus"))
 
 
-def is_computing(node: dict[str, Any] | None) -> bool:
-    """Whether GitHub is still computing this open pull request's mergeability."""
+def queue_entry(node: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The merge queue entry of an open pull request (``{position, state}``), ``None`` when not queued. Pure.
+
+    GitHub reads a queued pull request's ``mergeStateStatus`` as ``UNKNOWN`` for as
+    long as the queue holds it: the queue entry, not a re-read, is its state (#2155).
+    """
     if not isinstance(node, dict) or str(node.get("state") or "").upper() != "OPEN":
+        return None
+    entry = node.get("mergeQueueEntry")
+    if isinstance(entry, dict):
+        return entry
+    return {} if node.get("isInMergeQueue") else None
+
+
+def is_computing(node: dict[str, Any] | None) -> bool:
+    """Whether GitHub is still computing this open pull request's mergeability.
+
+    A pull request in a merge queue is never computing: its ``UNKNOWN`` lasts
+    until the queue merges or removes it, so re-reading it gains nothing.
+    """
+    if not isinstance(node, dict) or str(node.get("state") or "").upper() != "OPEN":
+        return False
+    if queue_entry(node) is not None:
         return False
     return "UNKNOWN" in (str(node.get("mergeable") or "").upper(), str(node.get("mergeStateStatus") or "").upper())
 
@@ -205,7 +226,13 @@ def format_pr(
         parts.append(f"head {sha[:12]}")
     if state == "open":
         merge_state = str(node.get("mergeStateStatus") or "").lower()
-        if merge_state:
+        entry = queue_entry(node)
+        if entry is not None:
+            position = entry.get("position")
+            where = f" position {position}" if isinstance(position, int) else ""
+            status = str(entry.get("state") or "").lower()
+            parts.append(f"in merge queue{where}" + (f" ({status})" if status else ""))
+        elif merge_state:
             still = f" (GitHub still computing after {rereads} re-read(s))" if rereads and is_computing(node) else ""
             conflicting = " (conflicting)" if node_conflict(node) and merge_state != "dirty" else ""
             parts.append(f"merge {merge_state}{conflicting}{still}")
@@ -385,9 +412,10 @@ def register(
                     )
                 )
         text = "\n".join(lines)
-        if any(is_computing(node) for node in nodes.values()):
-            # A merge state GitHub is still computing is not an answer to keep:
-            # transient, so the agent loop never replays it from its cache.
+        if any(is_computing(node) or queue_entry(node) is not None for node in nodes.values()):
+            # A merge state GitHub is still computing, or a merge queue position,
+            # is not an answer to keep: transient, so the agent loop never
+            # replays it from its cache.
             return ToolResult(tool_call_id="", content=text, transient=True)
         return text
 

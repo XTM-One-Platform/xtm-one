@@ -7,11 +7,13 @@ every gate call rebuilt the whole software profile on the web event loop, with a
 quadratic scan in ``matcher_entries``: a case-opening drain stalled the loop for
 seconds at a time. The profile is now built once per session and organization,
 the match index is linear and the build runs off the loop.
+
+The tests count work, never the wall clock: a CI runner's load made a time
+bound flaky (merge_group run 45613256967, 3.69 s against 2.0 s, #2140).
 """
 
 from __future__ import annotations
 
-import time
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -30,17 +32,34 @@ def _software(count: int) -> list[dict[str, Any]]:
     ]
 
 
-def test_matcher_entries_is_linear_in_the_software_count() -> None:
-    software = _software(20_000)
+class _CountedKey(str):
+    """A matcher key that counts its equality comparisons (a dict hit costs one, a scan one per entry)."""
+
+    compared = 0
+
+    def __eq__(self, other: object) -> bool:
+        _CountedKey.compared += 1
+        return str.__eq__(self, other)
+
+    __hash__ = str.__hash__
+
+
+def test_matcher_entries_is_linear_in_the_software_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    size = 4_000
+    key = software_store._key
+    monkeypatch.setattr(software_store, "_key", lambda value: _CountedKey(key(value)))
+    _CountedKey.compared = 0
+    software = _software(size)
     # Vendor-less typed rows take the lookup that used to scan every entry.
-    typed = [{"vendor": "", "product": f"product-{i}", "cpe": "cpe:x", "version": ""} for i in range(0, 20_000, 2)]
-    started = time.perf_counter()
+    typed = [{"vendor": "", "product": f"product-{i}", "cpe": "cpe:x", "version": ""} for i in range(0, size, 2)]
     entries = software_store.matcher_entries(software, typed)
-    elapsed = time.perf_counter() - started
-    assert len(entries) == 20_000
+    assert len(entries) == size
     # A typed row of a listed software gives its CPE, never a second entry.
     assert entries[0]["cpe"] == "cpe:x" and entries[1]["cpe"] == ""
-    assert elapsed < 2.0, f"matcher_entries took {elapsed:.2f}s for 20k software"
+    # A few key comparisons per row: a scan of the entries per row would make about size * size / 2.
+    rows = len(software) + len(typed)
+    assert _CountedKey.compared > 0, "the counting key must reach the match index"
+    assert _CountedKey.compared <= 4 * rows, f"{_CountedKey.compared} key comparisons for {rows} rows"
 
 
 def test_a_vendorless_row_joins_the_one_listed_software_of_that_product() -> None:
@@ -100,10 +119,8 @@ async def test_one_pass_over_many_signals_reads_the_profile_once(monkeypatch: py
 
     db = _Db()
     rows = [SimpleNamespace(id=uuid.uuid4(), organization_id=org, state="new", decision=None) for _ in range(500)]
-    started = time.perf_counter()
     for row in rows:
         await store.evaluate(db, row)  # type: ignore[arg-type]
-    elapsed = time.perf_counter() - started
+    # The cost of a pass is the profile build: one per pass, whatever the runner's speed.
     assert reads == [org], "the profile must be built once per pass, not once per signal"
     assert {row.state for row in rows} == {"confirmed"}
-    assert elapsed < 2.0, f"500 gate calls took {elapsed:.2f}s"

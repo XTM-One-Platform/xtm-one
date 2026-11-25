@@ -1287,10 +1287,27 @@ def parse_profile(raw: Any) -> OrganizationProfile:
         raise ValueError(f"{where}: {first.get('msg', 'invalid value')}") from None
 
 
+#: The prioritization policy rules an agent may set or propose, one path each (#937, #2129): the scope
+#: threshold and the scalar rules (thresholds, the KEV override, the time to fix per severity). The lists
+#: (exclusions, accepted risks) stay with the settings form.
+POLICY_SETTABLE_PATHS: tuple[str, ...] = (
+    "prioritization_policy.scope_min_criticality",
+    "prioritization_policy.cvss_min",
+    "prioritization_policy.epss_min",
+    "prioritization_policy.kev_always_in",
+    "prioritization_policy.internet_exposure_required",
+    "prioritization_policy.min_primary_asset_criticality",
+    "prioritization_policy.require_risk_scenario",
+    "prioritization_policy.sla_hours",
+    "prioritization_policy.pir_min_score_vulnerability",
+    "prioritization_policy.pir_min_score_threat",
+    "prioritization_policy.identity_criticality",
+)
+
 #: The settable paths beyond the contract fields whose provenance a save keeps too (#1773): what an
 #: agent or the API may write (``organization_context_proposals``), so every written field says who and why.
 PROVENANCE_EXTRA_PATHS: tuple[str, ...] = (
-    "prioritization_policy.scope_min_criticality",
+    *POLICY_SETTABLE_PATHS,
     "owned_domains",
     "address_ranges",
     "attack_surface",
@@ -1368,6 +1385,29 @@ async def asset_list_counts(db: AsyncSession, organization_id: uuid.UUID | None)
     if organization_id is None or not await records.is_imported(db, organization_id):
         return None
     return await records.list_counts(db, organization_id)
+
+
+async def agent_list_counts(db: AsyncSession, organization_id: uuid.UUID | None) -> dict[str, int] | None:
+    """The category sizes an agent reads, counted from what ``get_organization_context`` pages (#2144).
+
+    :func:`asset_list_counts`, then ``assets_exposure`` from the merged
+    inventory (one asset per identity cluster) and ``software`` from the
+    Software entities, each once it holds a row: the paged read answers from
+    those same stores, so the summary, the ``*`` index and the "of N" of a
+    page name one size. Read only, never builds a store.
+    """
+    from app.models.organization_asset import OrganizationAsset, OrganizationSoftware
+
+    if organization_id is None:
+        return None
+    counts = dict(await asset_list_counts(db, organization_id) or {})
+    for name, model in (("assets_exposure", OrganizationAsset), ("software", OrganizationSoftware)):
+        held = (
+            await db.execute(select(func.count()).select_from(model).where(model.organization_id == organization_id))
+        ).scalar() or 0
+        if held:
+            counts[name] = int(held)
+    return counts or None
 
 
 async def hydrated_profile(db: AsyncSession, row: OrganizationContextVersion | None) -> OrganizationProfile:
@@ -1669,7 +1709,7 @@ async def fleet_run_context(
         block = render_for_agent(
             primary,
             ctem_work=ctem_work,
-            asset_counts=await asset_list_counts(db, primary.organization_id if primary else None),
+            asset_counts=await agent_list_counts(db, primary.organization_id if primary else None),
         )
         tracked = await scoped_tracked_blocks(db, getattr(resolved, "organization_scope", None))
         scoped = f"\n\n{FLEET_RUN_CONTEXT_HEADER}\n" + "\n\n".join([block, *tracked])

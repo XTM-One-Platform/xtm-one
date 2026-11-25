@@ -870,6 +870,7 @@ def register_knowledge(
     persist_file_fn: Callable[[str, bytes, str], Awaitable[Any]] | None = None,
     live_writes: bool = False,
     gated_draft_validation: bool = False,
+    case_draft_fn: Callable[[str], Awaitable[bool]] | None = None,
 ) -> list[ToolDefinition]:
     """Build the OpenCTI STIX knowledge, draft, NLQ-filter and dev tools.
 
@@ -906,13 +907,21 @@ def register_knowledge(
     writes off: the run's fleet declares a gate naming that tool (the CTEM
     loop's ``ctem.analyst_review``), so the validation of a draft the loop
     staged is a person's decision, or the fleet's policy, never the model's.
+
+    ``case_draft_fn`` (#2089) answers whether a draft id holds the threat
+    package a CTEM case records: with ``gated_draft_validation`` and Live
+    writes off, ``delete_opencti_draft`` may discard that draft (a refused
+    review) besides the drafts this build created, and no other.
     """
     _draft_id = draft_id
     _offer_apply = live_writes or gated_draft_validation
     # Drafts this build created (create_opencti_draft, the autonomous gate):
     # the only ones delete_opencti_draft may remove with the setting off.
     _created_drafts: set[str] = set()
-    _skip_gate = direct_mutations or live_writes
+    # A fleet gate deciding the draft validation (#2089) keeps the draft gate
+    # with Live writes on: what that gate reviews must sit in a draft until
+    # it is answered, never in the live graph.
+    _skip_gate = direct_mutations or (live_writes and not gated_draft_validation)
 
 
     async def validate_nlq_filter(
@@ -3316,6 +3325,10 @@ def register_knowledge(
 
     # ── 21. Create STIX domain object ────────────────────────────────
 
+    x_opencti_aliases_types = {
+        t: "x_opencti_aliases" for t in ("Individual", "Organization", "Sector", "Course-Of-Action")
+    }
+
     async def create_opencti_entity(
         type: str,
         name: str,
@@ -3362,7 +3375,9 @@ def register_knowledge(
         if confidence is not None:
             input_data["confidence"] = confidence
         if aliases:
-            input_data["aliases"] = aliases
+            # Identities and courses of action keep their aliases in x_opencti_aliases
+            # (OpenCTI's AddInput has no 'aliases' for them, the GraphQL call fails).
+            input_data[x_opencti_aliases_types.get(type, "aliases")] = aliases
         # Time-range fields (for types that support them)
         if first_seen:
             input_data["first_seen"] = first_seen
@@ -4743,7 +4758,11 @@ def register_knowledge(
         did = (draft_id or "").strip()
         if not did:
             return "Error: `draft_id` is required."
-        if not live_writes and did not in _created_drafts:
+        if (
+            not live_writes
+            and did not in _created_drafts
+            and not (gated_draft_validation and case_draft_fn is not None and await case_draft_fn(did))
+        ):
             # Setting off: no wording names it or offers to turn it on.
             return (
                 f"Error: draft `{did}` was not created in this run, so it is not "
@@ -5240,6 +5259,9 @@ def register_knowledge(
                 + (
                     "Allowed on any draft. "
                     if live_writes
+                    else "Allowed on a draft created in this run, or the draft holding a case's "
+                    "recorded threat package that a refused review discards. "
+                    if gated_draft_validation
                     else "Allowed on a draft created in this run (create_opencti_draft). "
                 )
                 + "Answers the draft's name and confirms it no longer exists."

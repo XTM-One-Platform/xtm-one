@@ -1375,6 +1375,7 @@ opencrq:list_opencrq_crq_run_history
 opencrq:list_opencrq_cve_evidences
 opencrq:list_opencrq_cve_threats
 opencrq:list_opencrq_cves
+opencrq:list_opencrq_dependency_rules
 opencrq:list_opencrq_drata_controls
 opencrq:list_opencrq_findings
 opencrq:list_opencrq_framework_requirements

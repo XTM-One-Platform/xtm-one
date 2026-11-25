@@ -57,6 +57,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.services import event_coalescing
+
 PROVIDER = "opencrq"
 
 #: Event -> the job kinds whose successful run is that event.
@@ -216,6 +218,14 @@ def run_event(run: dict, event_type: str, *, base_url: str, tenant_id: str) -> d
 #: Most runs one coalesced event lists in ``covers``; the count is kept whole.
 MAX_COVERED_RUNS = 50
 
+#: How the moved fields of two coalesced pages merge when one folds into the
+#: other's waiting run (``event_coalescing.MERGE_KEY``, #2117).
+MOVED_MERGE: dict[str, Any] = {
+    "union": ["moved_scenario_ids", "risk_scenario_ids"],
+    "by_key": {"moved_ale": "risk_scenario_id"},
+    "count_at_least": {"moved_count": "moved_scenario_ids"},
+}
+
 
 def _count(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
@@ -279,15 +289,18 @@ def coalesce_events(
     event["risk_scenario_ids"] = page_scenarios
     event["kind"] = sorted({str(run.get("kind")) for run in kept if run.get("kind")})
     page_moved: list[str] = []
-    page_count = 0
+    largest_count = 0
     page_ale: dict[str, dict[str, Any]] = {}
     for run in kept:
         ids, count, ale = moved_scenarios(run)
         page_moved.extend(sid for sid in ids if sid not in page_moved)
-        page_count += count
+        largest_count = max(largest_count, count)
         # A later run's figures for a scenario replace an earlier run's.
         page_ale.update({move["risk_scenario_id"]: move for move in ale})
-    _set_moved(event, page_moved, page_count, list(page_ale.values()))
+    # The distinct scenarios moved, never a sum over runs that re-price the same
+    # ones (#2117); a run whose ids OpenCRQ capped keeps its own larger count.
+    _set_moved(event, page_moved, max(len(page_moved), largest_count), list(page_ale.values()))
+    event[event_coalescing.MERGE_KEY] = MOVED_MERGE
     if len(covers) > 1:
         event["summary"] = (
             f"{len(covers)} OpenCRQ {event_type} jobs succeeded, the last "

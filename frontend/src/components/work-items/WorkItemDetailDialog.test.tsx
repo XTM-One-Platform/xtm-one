@@ -545,6 +545,33 @@ describe("the work item detail", () => {
       expect(within(card).getByTestId("work-item-decision-link").textContent).toBe("FIN-798");
     });
 
+    it("asks to confirm a terminal option before sending it, Back sends nothing (#2150)", () => {
+      const terminal = {
+        question: "Close the case?",
+        options: [
+          { key: "keep", label: "Keep it open" },
+          { key: "cancel", label: "Cancel the case", confirm: true },
+        ],
+        recommendation: "keep",
+      };
+      answerMutation.mutateAsync.mockClear();
+      openDialog(waiting({ ask: terminal }), { answer: true });
+      const card = screen.getByTestId("work-item-decision");
+      const cancel = within(card)
+        .getAllByTestId("work-item-decision-option")
+        .find((b) => b.textContent?.includes("Cancel the case"));
+      expect(cancel).toBeTruthy();
+      fireEvent.click(cancel!);
+      expect(answerMutation.mutateAsync).not.toHaveBeenCalled();
+      expect(within(card).getByTestId("work-item-decision-confirm").getAttribute("data-option")).toBe("cancel");
+      fireEvent.click(within(card).getByText("Back"));
+      expect(within(card).queryByTestId("work-item-decision-confirm")).toBeNull();
+      expect(answerMutation.mutateAsync).not.toHaveBeenCalled();
+      fireEvent.click(cancel!);
+      fireEvent.click(within(card).getByTestId("work-item-decision-confirm-send"));
+      expect(answerMutation.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ option: "cancel" }));
+    });
+
     it.each([
       ["409", "409 Conflict: the work item changed since it was read"],
       ["500", "500 Internal Server Error: database unavailable"],

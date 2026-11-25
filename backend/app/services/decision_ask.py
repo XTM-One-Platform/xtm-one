@@ -23,7 +23,7 @@ free text; the views had to show that text, or the whole description, and the
 person had to find the question in it. ``ask`` carries the decision itself, so
 a view renders it as a card with one button per option:
 
-``{"question": str, "context"?: str, "options": [{"key", "label", "effect"?, "keeps_waiting"?}],
+``{"question": str, "context"?: str, "options": [{"key", "label", "effect"?, "keeps_waiting"?, "confirm"?}],
 "recommendation"?: option key, "deadline"?: ISO-8601, "links"?: [{"label", "url"}]}``
 
 * ``question``: one sentence, required.
@@ -33,7 +33,9 @@ a view renders it as a card with one button per option:
   ``merge``), ``label`` the button text, ``effect`` what choosing it does,
   ``keeps_waiting`` true for an option that means "keep waiting": answering
   with it records the answer and leaves the item blocked, never dispatched
-  (#1719). None at all: the person answers in free text.
+  (#1719); ``confirm`` true for a terminal option (cancel, close, discard):
+  the card asks the person to confirm it before the answer is sent (#2150).
+  None at all: the person answers in free text.
 * ``recommendation``: the key of the option the agent recommends.
 * ``deadline``: when the answer is needed, normalized to ISO-8601 UTC.
 * ``links``: the sources the reader opens to decide (a Jira ticket, a pull
@@ -231,6 +233,12 @@ def _options(value: object) -> list[dict[str, Any]]:
         if keeps:
             # Answering with it records the answer and leaves the item waiting (#1719).
             option["keeps_waiting"] = True
+        confirm = raw.get("confirm")
+        if confirm not in (None, False, True):
+            raise ValueError("ask.options[].confirm is true or false")
+        if confirm:
+            # The card asks for a second click before sending it (#2150).
+            option["confirm"] = True
         out.append(option)
     return out
 

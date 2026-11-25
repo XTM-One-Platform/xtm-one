@@ -69,6 +69,7 @@ from app.services.agent_config_versioning import (
 from app.services.assignment_activation_check import parse_activation_check
 from app.services.assignment_dispatch import seeded_trigger_config
 from app.services.assignment_pause import (
+    FLEET_PAUSE_REASON,
     clear_pause_provenance,
     is_emergency_stopped,
     mark_schedule_resumed,
@@ -404,12 +405,14 @@ def _new_builtin_agent(data: dict, owner_id: object, *, anthropic_enabled: bool)
 
 
 def _withheld_builtin_agent_slugs() -> set[str]:
-    """The built-in agents whose feature flag is off."""
+    """The built-in agents whose feature flag is off, and those only an unseeded built-in fleet holds."""
+    from app.agents.builtin_fleets import UNSEEDED_FLEET_AGENT_SLUGS
+
     return {
         slug
         for slug, flag in FEATURE_GATED_BUILTIN_AGENTS.items()
         if not is_feature_enabled(flag)
-    }
+    } | set(UNSEEDED_FLEET_AGENT_SLUGS)
 
 
 def _without_specialists(persona: str, names: list[str]) -> str:
@@ -800,7 +803,10 @@ async def seed_builtin_assignments(
     user via their own JWT.
     """
     _seed_xtm = platform_mode in ("xtm_one", "dev")
-    assignments = BUILTIN_ASSIGNMENTS if _seed_xtm else []
+    # An agent the seed withholds (feature flag off, or held only by an unseeded
+    # built-in fleet) is not seeded, so neither are its assignments.
+    withheld = _withheld_builtin_agent_slugs()
+    assignments = [a for a in BUILTIN_ASSIGNMENTS if a["agent_slug"] not in withheld] if _seed_xtm else []
     if not assignments:
         return 0
 
@@ -893,6 +899,14 @@ async def seed_builtin_assignments(
                 # for an automation that writes shared data under an identity
                 # only an administrator can choose.
                 pass
+            elif desired_enabled and existing.paused_reason == FLEET_PAUSE_REASON and not was_enabled:
+                # A fleet's Pause all switched it off (#2157: the dashboard schedules of a
+                # seeded fleet's members): the fleet's Resume re-enables it, a boot never does.
+                logger.info(
+                    "Built-in assignment '%s' (agent '%s') stays paused: its fleet is paused.",
+                    data["name"],
+                    agent_slug,
+                )
             elif desired_enabled and emergency_stopped:
                 # An emergency stop outlives a restart: the stop's resume
                 # re-enables this assignment, a boot never does. The stamp

@@ -45,6 +45,17 @@ and titled on that version (`upgrade:-/<package>@<version>`). An
 issue recorded, and the last member closed resolves the case on a passing
 validation of kind `rescan` (`ctem_case_loop.close_signal_members`).
 
+An asset the inventory retires closes its cases too
+(ctem-autoresolve-archived-asset, `ctem_case_asset_retire.close_retired_asset_cases`,
+run by the scheduled case sweep): a signal member whose `asset` subject names
+inventory records that are all `inactive` (an archived repository, a retired
+host), or a record of that name the change log shows deleted, is closed with the
+evidence `asset archived` or `asset removed`. A case whose every open member is
+such a signal resolves `not_exposed` with that evidence, raises
+`ctem_case.resolved` and cancels its open `ctem:<gate>:<case id>` decision items.
+A subject the inventory never held (an outside-lens hostname) is never retired,
+and a case with a source issue or one live asset left keeps its state.
+
 A GitHub Dependabot alert (#1331, slice 2 of the code repository sources) is
 a path 3 signal keyed `<repository id>:<alert number>` (alert numbers restart
 per repository). Its evidence names the package, ecosystem, manifest, vulnerable

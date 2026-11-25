@@ -133,13 +133,13 @@ def test_hidden_cases_counts_the_open_cases_the_viewer_sees_none_of() -> None:
     view = view_of.ViewerView(signals={f"signal:{signal}"})
     listed, _ = view_of.list_for_viewer(cases, view)
     assert len(listed) == 1
-    assert view_of.hidden_case_count(cases, view) == 3
+    assert view_of.list_visibility(cases, view)["hidden_cases"] == 3
     # Issues opencti:1 and opencti:2 are members of every case here: a reader of them sees them all.
-    assert view_of.hidden_case_count(cases, _admin_view(signal)) == 0
+    assert view_of.list_visibility(cases, _admin_view(signal))["hidden_cases"] == 0
     everyone = view_of.ViewerView(
         signals={f"signal:{s.external_id}" for _, m in cases for s in m if s.source == "signal"}
     )
-    assert view_of.hidden_case_count(cases, everyone) == 0
+    assert view_of.list_visibility(cases, everyone)["hidden_cases"] == 0
 
 
 def test_list_row_and_case_read_agree_on_the_asset_count_for_one_viewer() -> None:

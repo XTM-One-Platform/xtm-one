@@ -285,11 +285,50 @@ def test_a_coalesced_page_merges_the_moved_scenarios() -> None:
         [first, second, simulation], "risk_scenario_recomputed", base_url="", tenant_id="t"
     )
     assert event["moved_scenario_ids"] == event["entity"]["moved_scenario_ids"] == ["s1", "s2"]
-    assert event["moved_count"] == 3
+    # Distinct scenarios, never the per-run sum (1 + 2) (#2117).
+    assert event["moved_count"] == event["entity"]["moved_count"] == 2
     assert event["moved_ale"] == [{"risk_scenario_id": "s1", "ale_before": 2.0, "ale_after": 3.0, "ale_delta": 1.0}]
     assert event["kind"] == ["crq-price-recompute", "crq-simulation"]
     assert event["risk_scenario_ids"] == ["s9"]
     assert [c["moved_scenario_ids"] for c in event["covers"]] == [["s1"], ["s1", "s2"], []]
+
+
+def test_a_capped_run_keeps_its_own_larger_count() -> None:
+    capped = _priced("a", "2026-11-06T07:00:00Z", {"moved": ["s1"], "movedCount": 40})
+    other = _priced("b", "2026-11-06T07:01:00Z", {"moved": ["s1", "s2"], "movedCount": 2})
+    (event,) = opencrq_job_events.coalesce_events(
+        [capped, other], "risk_scenario_recomputed", base_url="", tenant_id="t"
+    )
+    assert event["moved_count"] == 40
+
+
+def test_a_page_folded_into_a_waiting_run_unions_its_moved_scenarios() -> None:
+    from app.services import event_coalescing
+
+    def page(run_id: str, at: str, moved: list[str], delta: float) -> dict:
+        run = _priced(
+            run_id,
+            at,
+            {
+                "moved": moved,
+                "movedCount": len(moved),
+                "movedAle": [
+                    {"riskScenarioId": sid, "aleBefore": 1, "aleAfter": 1 + delta, "aleDelta": delta} for sid in moved
+                ],
+            },
+        )
+        (event,) = opencrq_job_events.coalesce_events([run], "risk_scenario_recomputed", base_url="", tenant_id="t")
+        return event
+
+    waiting = page("a", "2026-11-06T07:00:00Z", ["s1", "s2"], 1.0)
+    incoming = page("b", "2026-11-06T07:01:00Z", ["s2", "s3"], 2.0)
+    merged = event_coalescing.merged_payload(waiting, incoming)
+    assert merged["moved_scenario_ids"] == merged["entity"]["moved_scenario_ids"] == ["s1", "s2", "s3"]
+    assert merged["moved_count"] == merged["entity"]["moved_count"] == 3
+    deltas = {m["risk_scenario_id"]: m["ale_delta"] for m in merged["moved_ale"]}
+    assert deltas == {"s1": 1.0, "s2": 2.0, "s3": 2.0}
+    assert merged["entity"]["id"] == "b"
+    assert merged["run_count"] == 2
 
 
 def test_the_trigger_filter_reacts_to_a_moved_scenario() -> None:

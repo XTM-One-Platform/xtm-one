@@ -48,9 +48,11 @@ left out and its reports move up to its own parent)::
 Assignments stay where they are declared: ``BUILTIN_ASSIGNMENTS`` on the member
 agents (event, work_item and schedule triggers), seeded before the fleets.
 
-CTEM-31 (#1048, Sam, 21 Nov 2026): exactly FOUR seeded fleets, one generic
+CTEM-31 (#1048, Sam, 21 Nov 2026): exactly FOUR defined fleets, one generic
 CTEM loop and three use cases (``dev-docs/ctem-fleets.md`` section 14). Adding
 a fifth is a product decision, never a fix (``tests/test_builtin_fleets.py``).
+Sam, 25 Nov 2026: only the CTEM loop is seeded (:data:`SEEDED_BUILTIN_FLEET_SLUGS`);
+the three use cases stay defined, and the agents only they hold are not seeded.
 Two optional keys carry the upgrade of an instance seeded with the former eight:
 
 * ``previous_slugs``: the built-in fleet row stored under one of them is adopted
@@ -246,8 +248,9 @@ CTEM_VULN_PRIORITIZATION_FLEET: dict[str, Any] = {
     "entry_handovers": [{"from": "ctem-assistant", "type": "delegate"}],
 }
 
-#: The four seeded fleets, in the order the fleet list shows them: the generic
-#: loop first, then the use cases (3. AI security, 4. third-party and supply chain).
+#: The four defined fleets, in the order the fleet list shows them: the generic
+#: loop first, then the use cases (2. vulnerability management, 3. AI security,
+#: 4. third-party and supply chain). Only :data:`SEEDED_BUILTIN_FLEETS` is seeded.
 BUILTIN_FLEETS: list[dict[str, Any]] = [
     CTEM_LOOP_FLEET,
     CTEM_VULN_PRIORITIZATION_FLEET,
@@ -255,19 +258,73 @@ BUILTIN_FLEETS: list[dict[str, Any]] = [
     THIRD_PARTY_RISK_FLEET,
 ]
 
-#: Retired built-in fleet slug -> the seeded fleet that took over its work.
+#: The defined fleets the platform seeds (Sam, 25 Nov 2026): the CTEM loop only.
+#: The three use cases stay defined but are not seeded until tested; adding a slug
+#: here seeds that fleet again, with its agents and assignments, exactly as before.
+SEEDED_BUILTIN_FLEET_SLUGS: frozenset[str] = frozenset({CTEM_LOOP_SLUG})
+
+
+def seeded_fleets(slugs: frozenset[str] | set[str] | None = None) -> list[dict[str, Any]]:
+    """The entries of :data:`BUILTIN_FLEETS` whose slug is in *slugs* (default the seeded switch), in order."""
+    keep = SEEDED_BUILTIN_FLEET_SLUGS if slugs is None else slugs
+    return [f for f in BUILTIN_FLEETS if f["slug"] in keep]
+
+
+#: The seeded fleets, in the order of :data:`BUILTIN_FLEETS`.
+SEEDED_BUILTIN_FLEETS: list[dict[str, Any]] = seeded_fleets()
+
+
+def _named_agents(fleet: dict[str, Any]) -> set[str]:
+    """Every agent slug *fleet* names: orchestrator, members, connected agents, entry handovers."""
+    return {
+        fleet["orchestrator"],
+        *(m["agent"] for m in fleet.get("members") or []),
+        *(c["agent"] for c in fleet.get("connected") or []),
+        *(h["from"] for h in fleet.get("entry_handovers") or []),
+    }
+
+
+def unseeded_fleet_agent_slugs(seeded: list[dict[str, Any]] | None = None) -> frozenset[str]:
+    """The agents only unseeded fleets hold: their orchestrators and home members no seeded fleet names.
+
+    Derived from the definitions, never a hand list: an agent a seeded fleet names
+    (member, connected or entry handover) stays seeded.
+    """
+    seeded = SEEDED_BUILTIN_FLEETS if seeded is None else seeded
+    seeded_slugs = {f["slug"] for f in seeded}
+    kept: set[str] = set()
+    for fleet in seeded:
+        kept |= _named_agents(fleet)
+    homes = {
+        slug
+        for fleet in BUILTIN_FLEETS
+        if fleet["slug"] not in seeded_slugs
+        for slug in (fleet["orchestrator"], *(m["agent"] for m in fleet.get("members") or []))
+    }
+    return frozenset(homes - kept)
+
+
+#: Agents the agent seed withholds, with their assignments (``app.agents.seed``).
+UNSEEDED_FLEET_AGENT_SLUGS: frozenset[str] = unseeded_fleet_agent_slugs()
+
+#: Retired built-in fleet slug -> the seeded fleet that took over its work. A
+#: defined fleet left out of the seed names the CTEM loop, so a fork of it keeps
+#: a successor that exists.
 RETIRED_FLEET_SUCCESSORS: dict[str, str] = {
-    old: entry["slug"]
-    for entry in BUILTIN_FLEETS
-    for old in [*(entry.get("previous_slugs") or []), *(entry.get("absorbs") or [])]
+    **{
+        old: entry["slug"]
+        for entry in SEEDED_BUILTIN_FLEETS
+        for old in [*(entry.get("previous_slugs") or []), *(entry.get("absorbs") or [])]
+    },
+    **{entry["slug"]: CTEM_LOOP_SLUG for entry in BUILTIN_FLEETS if entry not in SEEDED_BUILTIN_FLEETS},
 }
 
-#: Built-in fleet slug -> the agent slugs whose enabled automation makes it
+#: Seeded built-in fleet slug -> the agent slugs whose enabled automation makes it
 #: active: its orchestrator and its declared ``leads``.
 BUILTIN_FLEET_LEADS: dict[str, frozenset[str]] = {
-    entry["slug"]: frozenset([entry["orchestrator"], *(entry.get("leads") or [])]) for entry in BUILTIN_FLEETS
+    entry["slug"]: frozenset([entry["orchestrator"], *(entry.get("leads") or [])]) for entry in SEEDED_BUILTIN_FLEETS
 }
 
-#: Every lead agent slug of every built-in fleet (the SQL activity rule of
+#: Every lead agent slug of every seeded built-in fleet (the SQL activity rule of
 #: ``app.services.fleet_runs``).
 BUILTIN_FLEET_LEAD_SLUGS: frozenset[str] = frozenset(s for leads in BUILTIN_FLEET_LEADS.values() for s in leads)

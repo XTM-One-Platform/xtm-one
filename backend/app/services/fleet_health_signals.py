@@ -131,7 +131,11 @@ FINDING_ADVICE: dict[str, str] = {
     "blocked_chain_stalled": "Read the chain's first blocker: unblock it, re-point the waits or cancel the chain.",
     "disabled_owner": "Hand the items to an enabled member or cancel them.",
     "oversize_state": "Archive or split the entry (keep_last_json with archive_key, or one key per object).",
-    "handover_not_allowed": "Expose the target member or point the handover at the fleet's orchestrator.",
+    "handover_not_allowed": (
+        "The sources are agents outside this fleet (each named with its home fleet): point their handover at "
+        "the fleet's orchestrator, or remove it. Exposing the target lets every other fleet reach it, so "
+        "expose it only when that is wanted."
+    ),
     "cost_spike": "Read the member's runs of the day for a loop or an oversized read.",
 }
 
@@ -674,10 +678,42 @@ async def _handover_findings(db: AsyncSession, fleet: Fleet) -> list[FleetFindin
     return [
         _finding(
             "handover_not_allowed",
-            f"{len(pairs)} handover(s) into a member the fleet does not expose",
+            f"{len(pairs)} handover(s) into a member the fleet does not expose: "
+            + await _handover_lines(db, violations),
             pairs,
         )
     ]
+
+
+#: Handovers named one by one in the summary (the evidence keeps every id).
+MAX_NAMED_HANDOVERS = 5
+
+
+async def _handover_lines(db: AsyncSession, violations: Sequence[Any]) -> str:
+    """Each handover as 'source (home fleet or no fleet, outside this one) -> target' (#2132).
+
+    The ask read from ``source->target`` ids alone suggested the sources were
+    members; naming them with their home fleet shows they are outside it.
+    """
+    from app.models.agent import Agent
+    from app.services.fleets import home_fleets_of
+
+    shown = list(violations)[:MAX_NAMED_HANDOVERS]
+    ids = {v.source_agent_id for v in shown} | {v.target_agent_id for v in shown}
+    names = dict((await db.execute(select(Agent.id, Agent.name).where(Agent.id.in_(list(ids))))).all())
+    homes = await home_fleets_of(db, [v.source_agent_id for v in shown])
+
+    def where(agent_id: uuid.UUID) -> str:
+        home = homes.get(agent_id)
+        return f"fleet {home.fleet_name}" if home else "no fleet"
+
+    lines = [
+        f"{names.get(v.source_agent_id, v.source_agent_id)} ({where(v.source_agent_id)}) -> "
+        f"{names.get(v.target_agent_id, v.target_agent_id)}"
+        for v in shown
+    ]
+    more = len(violations) - len(shown)
+    return "; ".join(lines) + (f"; +{more} more" if more > 0 else "")
 
 
 async def _cost_findings(

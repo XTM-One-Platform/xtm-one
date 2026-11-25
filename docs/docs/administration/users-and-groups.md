@@ -34,7 +34,7 @@ The same dialog lists the `Pending invitations`, with their role and expiry. Rev
 
 An account is either an administrator or a user. `Promote` and `Demote`, at the top of the user's page, switch the role. The change applies on the person's next request.
 
-The bootstrap administrator, the account set by `ADMIN_EMAIL` in the deployment, carries the `Platform Admin` badge. It cannot be demoted, disabled or deleted, its email cannot be changed, and every restart makes it an administrator again (see [Local accounts](../deployment/authentication.md#local-accounts)).
+The bootstrap administrator, the account set by `ADMIN_EMAIL` in the deployment, carries the `Platform Admin` badge. It cannot be demoted, disabled or deleted, its email cannot be changed nor given to another account, and every restart makes it an administrator again (see [Local accounts](../deployment/authentication.md#local-accounts)).
 
 When the platform has no account yet, the first account registered becomes an administrator.
 

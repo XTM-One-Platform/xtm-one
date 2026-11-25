@@ -364,6 +364,15 @@ class TestATakenAddressGetsNoCode:
         await _refused(_confirm(user, first), 400)
         assert user.email == "jane@corp.com"
 
+    async def test_the_admin_email_address_is_taken_even_with_no_account_holding_it(self, env, monkeypatch):
+        monkeypatch.setattr("app.core.config.settings.admin_email", "admin@corp.com")
+
+        answer = await _ask(_user(), "Admin@Corp.com")
+
+        assert answer == {"status": "pending"}
+        assert not env.mail
+        assert not any(k.startswith("emailchange:") for k in env.redis.store)
+
 
 class TestTheConfirmation:
     async def test_a_new_request_replaces_the_pending_one(self, env):
@@ -415,6 +424,13 @@ class TestTheConfirmation:
         user = _user()
         await _ask(user, "jane.doe@corp.com")
         await _refused(_confirm(user, _code_in(env.mail[0]), _DB(uuid.uuid4())), 400)
+        assert user.email == "jane@corp.com" and not env.audits
+
+    async def test_an_address_made_admin_email_in_between_is_refused(self, env, monkeypatch):
+        user = _user()
+        await _ask(user, "jane.doe@corp.com")
+        monkeypatch.setattr("app.core.config.settings.admin_email", "jane.doe@corp.com")
+        await _refused(_confirm(user, _code_in(env.mail[0])), 400)
         assert user.email == "jane@corp.com" and not env.audits
 
     async def test_the_unique_index_refuses_a_race(self, env):

@@ -168,6 +168,15 @@ With it:
   existing gate card wording (`BLIND_ACTION`, "Verify the running version,
   then upgrade") and the existing validation record; nothing is discarded or
   derived from versions;
+- platform applicability (#2152): a vulnerability whose every vulnerable
+  Software (its `has` holders) is built for one operating system
+  (`ctem_fixed_version.platform_of_software`: CPE `target_sw` / `target_hw`,
+  else the one OS its name or version names) is "not affected: platform
+  <OS> only; running on <platforms>" when every asset running the product
+  reports a platform (`os_family`, `ctem_case_versions.inventory_platforms`)
+  and none is shared; it is treated as any not-affected member above. A
+  vulnerable Software naming no platform, or one asset with no platform,
+  keeps the member as before: an unknown is never read as not affected;
 - a signal member that names CVE ids (#2041; subject, label or evidence
   `cve` / `cves`, `ctem_scope_gate.signal_cve_ids`) is enriched from OpenCTI
   with the viewer's own read, like an OpenCTI issue: its first CVE, KEV, the
@@ -299,10 +308,26 @@ same way.
   read, marked; no link-based count is computed, because the ids of members a
   viewer cannot read are never served (ids-only rule of the case loop). Signal
   members carry no issue details for anyone and never restrict. The list
-  answers `hidden_cases` (API top level; `scope.hidden_cases` in
-  `list_ctem_cases`): the open cases the viewer sees none of, a count only, so
-  a page is never read as the organization total. Tests:
-  `tests/test_ctem_case_scope_limited_aggregates.py`.
+  answers (API top level; under `scope` in `list_ctem_cases`,
+  `ctem_cases_view.list_visibility`, #2113) `hidden_cases`, the open cases the
+  viewer is refused (every member judged by their view, none theirs), and
+  `unjudged_cases`, the open cases their view could not judge now (a product
+  that did not answer for a product reason such as timeout or too_large, a
+  capped read, or a case opened after an older view was built: the view keeps
+  the member ids its read was given, `judged`), each with its split by state
+  (`hidden_by_state`, `unjudged_by_state`), `counts_partial` and `view`
+  (`complete`, `capped`, `stale`, `age_seconds`, `products_missing` with
+  reasons). For each state, the store's cases = `counts` + hidden + unjudged.
+  A product that refuses the identity (`rejected`, `not_connected`) makes its
+  members refused, hence hidden. Visibility stays per person for
+  administrators too: an administrator sees a product member only through
+  their own OpenCTI / OpenAEV credentials (signal members are read whole for
+  them), so an administrator's `hidden_cases` means members their own product
+  accounts do not return. A case deleted between the case read and the view
+  read (a bulk delete releases its signals in its own transaction) is re-read
+  by id and left out (`drop_gone`), never counted as hidden. Tests:
+  `tests/test_ctem_case_scope_limited_aggregates.py`,
+  `tests/test_ctem_case_list_unjudged.py`.
 - where the per-platform fix comes from (slice 2 of #1572): the OpenCTI reader
   reads each Software that `remediates` the vulnerability with its `cpe`;
   `ctem_fixed_version.platform_of_software` takes the platform from the CPE
@@ -443,7 +468,11 @@ explained. A single-platform answer draws the card as before.
     failing never stops the others;
   - the page open: `GET /ctem-cases` starts a background recompute for a viewer
     whose last one is older than the interval (the same one-per-minute slot);
-    the list re-reads on the `ctem_case_update` frame, in place, no toast;
+    the list re-reads on the `ctem_case_update` frame, in place, no toast; a
+    burst of frames (a case-opening drain) is coalesced: the first frame after
+    a quiet window re-reads at once, the rest of the window ends with one
+    re-read of the list and of the open case pages it named, so a tab reads
+    the list at most once per 5 s window (`frontend/src/lib/case-refresh-coalescer.ts`, #2092);
   - events: an OpenAEV or OpenCTI delivery that already moves a case (s.9bis,
     `ctem_openaev_events`) keeps doing so between passes.
   Every recompute records its freshness (`freshness` on the list answer:
@@ -862,6 +891,18 @@ with "Ranking points" on the band (a dialog, "Reset to defaults", saved with
 A profile saved before the field reads the defaults; every profile save of
 the Settings form carries it whole.
 
+List reads after a case-opening drain (#2092): the list, the overview and the
+loop measures read the caller's view with `stale_ok`. A generation bump (a case
+opened) retires every cached view; the caller's own newest view of the previous
+generation, still in its TTL, answers while the new one builds in the background
+(`Server-Timing` `cache-stale`); the cases opened since it was built are
+answered as `unjudged_cases` with `view.stale` true, never as hidden (#2113).
+With none, the read waits
+`LIST_BUILD_WAIT_SECONDS` (2 s, #2139: a 503 held 10 s was no fail-fast answer) for that build, then answers 503 with
+`Retry-After` (`LIST_RETRY_AFTER_SECONDS`, 30 s): never a whole view build on
+the request (400 s on a large tenant). Event visibility (`user_sees_case`)
+reads the case's own members, like the case page.
+
 ### 7.3 Case page `/ctem/cases/:id`
 
 - First paint (#1986): opened from the Cases list, the page draws its header
@@ -1031,10 +1072,10 @@ context: every figure 0.
 
 | Tool | Does |
 |---|---|
-| `list_ctem_cases` | filters (state, owner, priority), paging (max 50); returns the API's case rows and the counts by state |
-| `get_ctem_case` | one case with members (source, id), the latest 20 history events |
+| `list_ctem_cases` | filters (state, owner, priority), paging (max 50); returns the API's case rows and the counts by state; after a generation bump it answers the caller's older view while the new one builds, or "Not available yet ... retry in N s" (#2092) |
+| `get_ctem_case` | one case with members (source, id), the latest 20 history events; at most 100 issues (ranked, Restricted last) with `issues_total` and `issues_truncated`; reads the case's own members, never a whole view build (#2092) |
 | `create_ctem_case` | splits open issues (`source:external_id`) out of their cases into a manual case that pins them (`ctem_cases_store.create_manual_case`; a `split` event on each case they leave) |
-| `update_ctem_case` | owner, due date, note, state with `reason`; `resolved` needs `evidence`; `accepted_risk` refused for an agent (a person accepts risk) |
+| `update_ctem_case` | owner, due date, note, state with `reason`; `resolved` needs `evidence`; `accepted_risk` refused for an agent (a person accepts risk). Answers a compact result (#2092): id, title, state, owner, due date, `changed`, `unchanged` and `history_written`, never the whole case; a gate decision identical to the newest one of its key is not recorded again (`unchanged: ["gate"]`); a committed write never answers an error |
 | `record_ctem_case_validation` | a validation or re-test reference (provider, ref, result, kind, mitigation_only) through `ctem_case_loop.record_validation`: passed or not_exposed resolves (mitigated, watching when mitigation only), failed reopens, the events raised after the commit |
 | `record_ctem_case_ticket` | a ticket reference (integration, key, url, status) through `ctem_case_loop.record_ticket`: one entry per `(integration, key)` updated in place, a `ticket` event on change, never a state move |
 | `decide_ctem_case_remediation` | the remediation decision (CTEM-17, gate B, key `ctem.remediation.decision`): options with figures and the recommendation; rules in `services/ctem_remediation_decision.py` (see 9ter) |
@@ -1092,7 +1133,9 @@ rule (`ctem_cases_view.signal_members`, the admin flag alone); under `own`,
 `hidden_by_scope` counts the case-bound signals the person does not see:
 across the organization for `list_ctem_cases`, bound to that case alone for
 `get_ctem_case` (its note then says "on this case"). `list_ctem_cases` also
-answers `scope.hidden_cases`, the open cases the person sees none of; a `null`
+answers `scope.hidden_cases`, the open cases the person is refused, and
+`scope.unjudged_cases` with `scope.view`, the ones their view could not judge
+now (#2113, scope-limited aggregates above); a `null`
 aggregate on a case means unknown for this reader, never none (section on
 scope-limited aggregates above).
 Tests: `tests/test_ctem_read_tools.py`.
@@ -1160,6 +1203,8 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 **Proof.** `POST /api/v1/ctem-cases/{id}/validations` (any caller who sees the case) records a validation reference and sets the validation plan. `passed` or `not_exposed` resolves (`fixed` or `not_exposed`); with `mitigation_only` it goes to `mitigated_watching` and the re-test stays on; `failed` reopens a resolved or watched case to `needs_attention`; `pending` only records. A case with a validation plan resolves only on a passing newest reference (the PATCH route refuses with 422) and never on absence at source in a recompute, unless a person decided otherwise (#1675): a person's own move, or an agent's move once a person answered the case's `ctem.close_without_retest` decision (a `gate` event, `from` that key, `to` `answered`; `ctem_cases_store.close_without_retest_answered`). **A person's answer never moves the case by code (#1675)**: `ctem_case_status.after_gate` keeps only the bookkeeping (waited parks the case in `waiting_decision`; a gate that passed without a person moves it to `GATE_NEXT`); approve, reject or a free-text answer, the Gate answered run reads `payload.answer` and sets the next state itself with `update_ctem_case`. A case with no plan keeps the accepted proof of its kind as evidence (ticket done, re-scan, directory check). Accepted risk keeps its 90-day ceiling.
 
 **Remediation evidence on a patch or upgrade case (#1500).** A reference carries `evidence_type`: `remediation` (a version inventory showing every in-scope endpoint at or above the fixed build) or `validation` (a detection or behaviour test). On a `patch` or `upgrade` case only remediation evidence resolves; a validation pass is recorded with `conclusive` false and the case stays open. When the writer does not say, a provider re-scan or a conclusive check (the fixed version read) counts as remediation, anything else as validation.
+
+**Exposure evidence (#2118).** A passive read that confirms the case affected (a version inventory with endpoints below the fixed build, a configuration read) is written with `evidence_type` `exposure`, `result` `failed` and `conclusive` true: `conclusive` says the check proves its claim, whichever way. A pass with exposure evidence is refused (a read that confirms the exposure never proves it gone).
 
 **No inject classification (#1810).** The platform never classifies an inject, never writes a gate's title or recommendation, and never derives `conclusive` from what an inject is. The agent reads the inject like an analyst (template, payload, targets), says in the gate what it will do to which targets and what its result will and will not prove, recommends, and sets `conclusive` itself on `record_ctem_case_validation`; the only control is the fleet's gate `ctem.validation.non_readonly` at its autonomy level (the key is kept: stored decisions, decision-item keys `ctem:validation:` and `ctem:f2:validate:`, autonomy pins and the case page read it). The former tool `assess_ctem_validation_inject` and the fields `safe_mode` and `inject_class` are gone; old validation entries that carry them stay stored as written and are no longer rendered.
 

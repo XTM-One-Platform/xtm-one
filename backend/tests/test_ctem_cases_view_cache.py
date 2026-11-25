@@ -228,6 +228,65 @@ async def test_a_case_read_never_waits_for_a_background_build(
 
 
 @pytest.mark.asyncio
+async def test_a_list_read_after_a_bump_answers_the_older_view_and_rebuilds_in_background(
+    redis: Any, judged: list[str], revalidations: list[Any]
+) -> None:
+    """#2092: a list read never builds the whole view on the request after a drain bumped the generation."""
+    await view_of.viewer_view(None, "u-1", "cyber")
+    await view_of.forget_all_views("cyber")
+    phases = view_of.start_timing()
+    view = await view_of.viewer_view(None, "u-1", "cyber", stale_ok=True)
+    assert judged == ["u-1"] and view.sees("opencti:a")
+    assert "cache-stale" in phases and revalidations == [("u-1", "cyber", "1")]
+
+
+@pytest.mark.asyncio
+async def test_a_list_read_with_no_view_waits_briefly_then_says_it_is_rebuilding(
+    redis: Any, judged: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gate = asyncio.Event()
+
+    async def slow() -> None:
+        await gate.wait()
+
+    tasks: list[asyncio.Task[None]] = []
+
+    def revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[None]:
+        tasks.append(asyncio.create_task(slow()))
+        return tasks[-1]
+
+    monkeypatch.setattr(view_of, "_revalidate", revalidate)
+    monkeypatch.setattr(view_of, "LIST_BUILD_WAIT_SECONDS", 0.01)
+    with pytest.raises(view_of.ViewRebuildingError) as raised:
+        await view_of.viewer_view(None, "u-1", "cyber", stale_ok=True)
+    assert judged == [] and raised.value.retry_after == view_of.LIST_RETRY_AFTER_SECONDS
+    # The background build is never cancelled by the request that gave up waiting.
+    assert not tasks[0].cancelled()
+    gate.set()
+    await tasks[0]
+
+
+def test_a_list_read_gives_up_waiting_for_the_build_within_two_seconds() -> None:
+    # #2139: a 503 held 10 s on ctem.one was no fail-fast answer.
+    assert 0 < view_of.LIST_BUILD_WAIT_SECONDS <= 2.0
+    assert view_of.LIST_RETRY_AFTER_SECONDS > view_of.LIST_BUILD_WAIT_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_a_list_read_with_no_view_answers_the_build_that_finished_in_the_wait(
+    redis: Any, judged: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[Any]:
+        client = redis
+        return asyncio.create_task(view_of._build_view(None, client, user_id, vertical, generation))
+
+    monkeypatch.setattr(view_of, "_revalidate", revalidate)
+    phases = view_of.start_timing()
+    view = await view_of.viewer_view(None, "u-1", "cyber", stale_ok=True)
+    assert judged == ["u-1"] and view.sees("opencti:a") and "cache-built" in phases
+
+
+@pytest.mark.asyncio
 async def test_no_redis_reads_the_source_every_time(monkeypatch, reads):
     async def _none():
         return None

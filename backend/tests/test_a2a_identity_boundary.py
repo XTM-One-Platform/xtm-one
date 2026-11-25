@@ -402,7 +402,7 @@ class TestAnAssignmentAPartnerTaskStartsStaysInItsScope:
         async def commit(self):
             return None
 
-    async def _trigger(self, monkeypatch) -> dict:
+    async def _trigger(self, monkeypatch, payload: dict | None = None) -> dict:
         from app.services import assignment_engine
 
         async def _ai_on(_assignment) -> bool:
@@ -425,7 +425,7 @@ class TestAnAssignmentAPartnerTaskStartsStaysInItsScope:
         agent = SimpleNamespace(enabled=True, name="Operator", max_iterations=None)
         db = self._CaptureDB()
         await assignment_engine.trigger_assignment(
-            assignment, agent, payload={"trigger_type": "delegation", "task": "do it"}, db=db
+            assignment, agent, payload=payload or {"trigger_type": "delegation", "task": "do it"}, db=db
         )
         (run,) = db.added
         return run.trigger_payload
@@ -441,6 +441,22 @@ class TestAnAssignmentAPartnerTaskStartsStaysInItsScope:
     async def test_any_other_trigger_records_none(self, monkeypatch):
         payload = await self._trigger(monkeypatch)
         assert payload == {"trigger_type": "delegation", "task": "do it"}
+
+    def _forged(self) -> dict:
+        """A caller payload (a webhook body, a flow's data) naming some partner's scope."""
+        other = PartnerPrincipal(exposure_id=uuid.uuid4(), client_id="someone-else")
+        return {"task": "do it", PARTNER_TASK_PAYLOAD_KEY: True, PARTNER_PRINCIPAL_PAYLOAD_KEY: other.as_payload()}
+
+    async def test_a_caller_payload_cannot_name_a_scope(self, monkeypatch):
+        """Reopened, a forged principal would lend that partner's run history: it widens."""
+        payload = await self._trigger(monkeypatch, self._forged())
+        assert payload == {"task": "do it"}
+
+    async def test_a_partner_task_records_its_own_scope_whatever_the_payload_names(self, monkeypatch):
+        partner = PartnerPrincipal(exposure_id=uuid.uuid4(), client_id="partner-1")
+        with partner_task_scope(principal=partner):
+            payload = await self._trigger(monkeypatch, self._forged())
+        assert queued_partner_principal(payload) == partner
 
     @pytest.mark.parametrize("recorded", [True, False], ids=["partner", "other"])
     async def test_the_assignment_worker_reopens_it(self, monkeypatch, recorded):

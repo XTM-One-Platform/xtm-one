@@ -26,7 +26,10 @@ enabled "Case opened or reopened" automation. Exactly one fleet runs a case:
   the scheduled case sweep (hourly by default, ``CTEM_CASE_SWEEP_SECONDS``).
   Idempotent (an ``owner_requested`` case event per owner, an open
   ``<key>:case:<id>`` item of ANY declared key blocks a second run), bounded
-  (``CATCH_UP_BATCH``), P1 first, then the soonest SLA.
+  (``CATCH_UP_BATCH``), P1 first, then the soonest SLA. An ask no case
+  automation answered (no run of the case since it, no open item) is made
+  again after ``REASK_AFTER_SECONDS``, under a new event id, ``MAX_ASKS`` in
+  all: a delivery lost to an exhausted pool never leaves a case unowned (#2101).
 """
 
 from __future__ import annotations
@@ -36,7 +39,7 @@ import logging
 import uuid
 from collections.abc import Iterable, MutableMapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -55,6 +58,10 @@ OWNER_REQUESTED = "owner_requested"
 CATCH_UP_BATCH = 100
 #: Most open cases one pass reads (the most urgent first).
 SCAN_MAX = 2000
+#: An ask no case automation answered (its event lost, #2101) is made again after this long...
+REASK_AFTER_SECONDS = 15 * 60
+#: ... at most this many asks in all per case and owner.
+MAX_ASKS = 3
 #: The owner token of a fleet that is not built-in: its id (a fork's slug is unique per owner only).
 CUSTOM_OWNER_PREFIX = "fleet:"
 _SEVERITY_ORDER = {"P1": 0, "P2": 1, "P3": 2}
@@ -194,9 +201,56 @@ async def stamp_owners(datas: Iterable[MutableMapping[str, Any]], *, fleets: lis
         data[OWNER_KEY] = owner_of(data.get("trigger_path"), fleets)
 
 
-def _catch_up_event_id(case_id: object, owner: str) -> str:
-    digest = hashlib.sha256(f"catch-up\n{case_id}\n{owner}".encode()).hexdigest()[:32]
+def _catch_up_event_id(case_id: object, owner: str, attempt: int = 0) -> str:
+    """The event id of the catch-up's ask *attempt* (0: the first) of *case_id* to *owner*.
+
+    Stable per ask, so a publish repeated within one pass is one delivery; a
+    new ask after an unanswered one gets a new id, so the run dedupe of the
+    first never swallows it (#2101).
+    """
+    seed = f"catch-up\n{case_id}\n{owner}" + (f"\n{attempt}" if attempt else "")
+    digest = hashlib.sha256(seed.encode()).hexdigest()[:32]
     return f"ctem-case-{digest}"
+
+
+def _aware(value: datetime | None) -> datetime | None:
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
+async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime]) -> set[str]:
+    """The case ids (keys of *asks*) a case automation ran since their last ask (*asks*: case id -> its time).
+
+    A run of any fleet's "Case opened or reopened" automation about the case,
+    queued, running or ended, answers the ask; a run that failed or was
+    cancelled does not (the event got no answer from it).
+    """
+    if not asks:
+        return set()
+    from app.models.assignment import Assignment, AssignmentRun
+
+    object_id = AssignmentRun.trigger_context["object_id"].as_string()
+    since = min(asks.values())
+    rows = (
+        await db.execute(
+            select(object_id, AssignmentRun.created_at)
+            .join(Assignment, Assignment.id == AssignmentRun.assignment_id)
+            .where(
+                Assignment.name == CTEM_CASE_ASSIGNMENT_NAME,
+                AssignmentRun.created_at >= since,
+                AssignmentRun.status.not_in(("failed", "cancelled")),
+                object_id.in_(sorted(asks)),
+            )
+        )
+    ).all()
+    answered: set[str] = set()
+    for cid, created in rows:
+        asked_at = asks.get(str(cid))
+        created = _aware(created)
+        if asked_at is not None and created is not None and created >= asked_at:
+            answered.add(str(cid))
+    return answered
 
 
 def _sort_key(case: CtemCase) -> tuple[int, float]:
@@ -227,14 +281,29 @@ async def _open_case_item_ids(db: AsyncSession, case_ids: list[str], case_keys: 
 
 
 async def plan_catch_up(
-    db: AsyncSession, *, only: set[str] | None = None, limit: int = CATCH_UP_BATCH
+    db: AsyncSession, *, only: set[str] | None = None, limit: int = CATCH_UP_BATCH, now: datetime | None = None
 ) -> list[tuple[CtemCase, str]]:
     """The open cases to hand to their active owner, most urgent first: ``(case, owner token)``.
 
     A case is left out when no active fleet owns it, when it already has an
     open case item (any fleet's), or when the catch-up already asked that
-    owner. *only* narrows to the cases owned by those tokens (the fleet just enabled).
+    owner and the ask is answered, recent or spent (:func:`plan_catch_up_asks`).
+    *only* narrows to the cases owned by those tokens (the fleet just enabled).
     """
+    return [(c, o) for c, o, _ in await plan_catch_up_asks(db, only=only, limit=limit, now=now)]
+
+
+async def plan_catch_up_asks(
+    db: AsyncSession, *, only: set[str] | None = None, limit: int = CATCH_UP_BATCH, now: datetime | None = None
+) -> list[tuple[CtemCase, str, int]]:
+    """As :func:`plan_catch_up`, with the ask number of each (0: first ask, n: the n-th ask again).
+
+    An owner already asked is asked again when its last ask is older than
+    :data:`REASK_AFTER_SECONDS`, no case automation ran the case since that
+    ask and fewer than :data:`MAX_ASKS` asks were made: the event of an
+    ask whose delivery was lost (#2101) is raised again under a new event id.
+    """
+    now = now or datetime.now(UTC)
     fleets = await case_fleets(db)
     active = {f.token for f in fleets if f.active}
     if not active:
@@ -256,23 +325,38 @@ async def plan_catch_up(
         return []
     asked_rows = (
         await db.execute(
-            select(CtemCaseEvent.case_id, CtemCaseEvent.to_value).where(
+            select(CtemCaseEvent.case_id, CtemCaseEvent.to_value, CtemCaseEvent.at).where(
                 CtemCaseEvent.kind == OWNER_REQUESTED,
                 CtemCaseEvent.case_id.in_([c.id for c in cases]),
             )
         )
     ).all()
-    already = {(str(cid), owner) for cid, owner in asked_rows}
-    picked: list[tuple[CtemCase, str]] = []
+    # (case id, owner) -> (asks made, the last one's time).
+    already: dict[tuple[str, str], tuple[int, datetime | None]] = {}
+    for cid, owner, at in asked_rows:
+        count, last = already.get((str(cid), owner), (0, None))
+        at = _aware(at)
+        already[(str(cid), owner)] = (count + 1, at if last is None or (at is not None and at > last) else last)
+    reask_before = now - timedelta(seconds=REASK_AFTER_SECONDS)
+    picked: list[tuple[CtemCase, str, int]] = []
+    pending_asks: dict[str, datetime] = {}
     for case in sorted(cases, key=_sort_key):
         owner = owner_of(case.trigger_path, fleets)
         if owner not in active or (only is not None and owner not in only):
             continue
-        if (str(case.id), owner) in already:
+        asked = already.get((str(case.id), owner))
+        if asked is not None:
+            count, last = asked
+            if count >= MAX_ASKS or last is None or last > reask_before:
+                continue
+            pending_asks[str(case.id)] = last
+            picked.append((case, owner, count))
             continue
-        picked.append((case, owner))
-    taken = await _open_case_item_ids(db, [str(c.id) for c, _ in picked], (f.key for f in fleets))
-    return [(c, o) for c, o in picked if str(c.id) not in taken][:limit]
+        picked.append((case, owner, 0))
+    answered = await _answered_case_ids(db, pending_asks)
+    picked = [p for p in picked if str(p[0].id) not in answered]
+    taken = await _open_case_item_ids(db, [str(c.id) for c, _, _ in picked], (f.key for f in fleets))
+    return [p for p in picked if str(p[0].id) not in taken][:limit]
 
 
 async def catch_up(*, only: set[str] | None = None, now: datetime | None = None) -> int:
@@ -288,11 +372,11 @@ async def catch_up(*, only: set[str] | None = None, now: datetime | None = None)
     now = now or datetime.now(UTC)
     try:
         async with async_session() as db:
-            planned = await plan_catch_up(db, only=only)
+            planned = await plan_catch_up_asks(db, only=only, now=now)
             if not planned:
                 return 0
             out: list[tuple[dict[str, Any], str]] = []
-            for case, owner in planned:
+            for case, owner, attempt in planned:
                 db.add(
                     CtemCaseEvent(
                         case_id=case.id,
@@ -300,10 +384,10 @@ async def catch_up(*, only: set[str] | None = None, now: datetime | None = None)
                         kind=OWNER_REQUESTED,
                         at=now,
                         to_value=owner,
-                        reason="catch-up",
+                        reason="catch-up" if not attempt else f"catch-up, asked again ({attempt + 1}): no run",
                     )
                 )
-                out.append(({**loop.case_data(case), OWNER_KEY: owner}, _catch_up_event_id(case.id, owner)))
+                out.append(({**loop.case_data(case), OWNER_KEY: owner}, _catch_up_event_id(case.id, owner, attempt)))
             await db.commit()
         raised = 0
         for data, event_id in out:

@@ -5051,6 +5051,23 @@ async def execute_assignment_run(
                 taken_back_on_its_word=taken_back_on_its_word,
             )
 
+        # A coalescing event may have folded into this run since it was read
+        # (``event_coalescing.FOLDABLE_STATUSES``, #2117): its payload is read
+        # again under the row lock held until the "running" commit below, so a
+        # fold committed before is in the prompt and one waiting on the lock
+        # finds the run started and queues the next run.
+        if event_coalescing.context_key(getattr(run, "trigger_context", None)) is not None:
+            fresh_payload = (
+                await db.execute(
+                    select(AssignmentRun.trigger_payload)
+                    .where(AssignmentRun.id == run.id)
+                    .with_for_update()
+                    .execution_options(autoflush=False)
+                )
+            ).scalar_one_or_none()
+            if isinstance(fresh_payload, dict):
+                run.trigger_payload = fresh_payload
+
         # Save original status before overwriting (needed for HITL resume)
         original_status = run.status
 
@@ -5977,9 +5994,17 @@ async def execute_assignment_run(
                     )
                     if _fleet_autonomy is not None:
                         # The tools a gate of the run's fleet decides (#1480).
-                        from app.services.fleet_autonomy import FLEET_GATED_TOOLS_CONTEXT_KEY, gate_tool_names
+                        from app.services.fleet_autonomy import (
+                            FLEET_GATED_TOOLS_CONTEXT_KEY,
+                            FLEET_WAITING_GATES_CONTEXT_KEY,
+                            gate_tool_names,
+                            waiting_gate_keys,
+                        )
 
                         integration_context[FLEET_GATED_TOOLS_CONTEXT_KEY] = gate_tool_names(_fleet_autonomy[1])
+                        # The gates that wait at the level, read by a tool whose
+                        # safe use depends on one (#2102).
+                        integration_context[FLEET_WAITING_GATES_CONTEXT_KEY] = waiting_gate_keys(*_fleet_autonomy)
 
                     # Resolved bindings: a template-bound provider marked
                     # read-only narrows the integration resolved for it above.
@@ -10280,14 +10305,13 @@ def _acting_identity(user_id: _uuid.UUID | None, agent: Agent | None) -> _uuid.U
 
 
 def _with_partner_scope(payload: dict | None) -> dict | None:
-    """*payload* with the partner-task scope recorded when a partner's task starts the run.
+    """*payload* recording the partner-task scope a partner's task starts the run in, and no other.
 
     The assignment worker reopens it (``orchestration_adapters.assignment``), so
     the run gets what the task's own turn gets (``a2a.partner_scope``)."""
-    from app.a2a.partner_scope import partner_task_payload
+    from app.a2a.partner_scope import partner_scoped_payload
 
-    scope = partner_task_payload()
-    return {**(payload or {}), **scope} if scope else payload
+    return partner_scoped_payload(payload)
 
 
 async def trigger_assignment(
@@ -11170,6 +11194,8 @@ async def trigger_or_queue_assignment(
     """
     await _refuse_if_ai_disabled(assignment)
     await _refuse_if_group_ai_disabled(_run_person(assignment, None, agent))
+    # Before any path: a delivery folded into a waiting run merges its payload.
+    payload = _with_partner_scope(payload)
 
     if not assignment.enabled:
         raise ValueError(f"Assignment '{assignment.name}' is disabled")
@@ -11431,17 +11457,20 @@ async def _fold_into_queued_run(
     coalesce_key: str,
     payload: dict[str, Any] | None,
 ) -> str | None:
-    """Fold a coalescing event into the queued run of the same key; its id, or ``None``.
+    """Fold a coalescing event into the waiting run of the same key; its id, or ``None``.
 
-    The oldest queued run of *assignment* whose trigger context carries
-    *coalesce_key* (``services/event_coalescing.py``), locked so two events
-    folding at once never lose one. Flushes, the caller commits.
+    The oldest run of *assignment* that has not started (queued, or pending
+    in a free slot: ``event_coalescing.FOLDABLE_STATUSES``, #2117) whose
+    trigger context carries *coalesce_key* (``services/event_coalescing.py``),
+    locked so two events folding at once never lose one; the executor re-reads
+    the payload under the same lock when it starts the run. Flushes, the
+    caller commits.
     """
     result = await db.execute(
         select(AssignmentRun)
         .where(
             AssignmentRun.assignment_id == assignment.id,
-            AssignmentRun.status == QUEUED_RUN_STATUS,
+            AssignmentRun.status.in_(event_coalescing.FOLDABLE_STATUSES),
             AssignmentRun.trigger_context[event_coalescing.CONTEXT_KEY].as_string() == coalesce_key,
         )
         .order_by(AssignmentRun.created_at.asc())

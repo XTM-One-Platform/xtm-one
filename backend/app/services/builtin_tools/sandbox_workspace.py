@@ -2921,6 +2921,17 @@ def build_sandbox_workspace_tools(
             return _error(str(exc))
         except WorkspaceUnavailableError as exc:
             return _error(str(exc))
+        # A narrow checkout that lacks what the check reads (#2156): its directory (an exact_files checkout, a
+        # frontend/ checkout running a backend gate) or a declared need (LICENSE for the editions gate). The
+        # checkout is grown by them at its recorded commit first, as materialize_repository add_paths does, so the
+        # check never fails on a file the checkout left out and the record covers them for status and commits.
+        grow_note = ""
+        repository, missing = await commands.missing_requirements(session, command.cwd_root, command)
+        if missing:
+            grown = await _grow_checkout(repository, command.cwd_root, missing)
+            if isinstance(grown, ToolResult):
+                return grown
+            grow_note = f"{command.label} reads {', '.join(missing)}, which the checkout did not hold. {grown}"
         selection_text = ""
         # A formatter declared affected_by_default (backend-format) called without args runs on the change, never
         # the whole tree: a checkout has no .git, so the script alone cannot tell what changed.
@@ -2957,6 +2968,8 @@ def build_sandbox_workspace_tools(
             answer = f"{selection_text}\n\n{answer}"
         if command.env_unset and isinstance(answer, str):
             answer += "\n" + commands.unset_env_note(command.env_unset)
+        if grow_note and isinstance(answer, str):
+            answer = f"{grow_note}\n\n{answer}"
         if settle_note and isinstance(answer, str):
             answer = f"{settle_note}\n\n{answer}"
         return answer

@@ -93,7 +93,7 @@ async def _run_trigger_payload(ctx: AdapterContext, run_id: object) -> object:
     """The run's ``trigger_payload``, ``None`` when it cannot be read.
 
     It records the partner-task scope a partner's task started the run in
-    (``a2a.partner_scope.partner_task_payload``), reopened around the run. A
+    (``a2a.partner_scope.partner_scoped_payload``), reopened around the run. A
     failed read leaves the transaction to ``release_db_connection_before_loop``,
     which closes it next."""
     try:

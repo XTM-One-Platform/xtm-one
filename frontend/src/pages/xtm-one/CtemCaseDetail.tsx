@@ -78,7 +78,7 @@ import { ToneBadge } from "@/components/ui/tone-badge";
 import { CaseOwnedBy } from "./ctem/CaseOwnedBy";
 import { CaseLoopProvider } from "./ctem/CaseSectionReason";
 import { loopFleetOf } from "./ctem/case-loop-reason";
-import { caseAutomations, caseSources, caseWork } from "./ctem/case-workers";
+import { caseAutomations, caseLoopWait, caseSources, caseWork } from "./ctem/case-workers";
 import { CaseWorkCard } from "./ctem/CaseWorkCard";
 import { useFleets } from "@/hooks/api/useFleetApi";
 import { useAssignments } from "@/hooks/api/useAssignmentApi";
@@ -268,6 +268,8 @@ export default function CtemCaseDetail() {
       }),
     [agenticLicensed, assignments.data, assignments.isError, agents.data, caseRuns, kase],
   );
+  // What the loop waits on between runs: its open gate, else the stage the case reached.
+  const loopWait = useMemo(() => caseLoopWait({ state: kase?.state, gates: kase?.gates }), [kase]);
   const loopState = useMemo(() => ({ sources: caseSources(registrations) }), [registrations]);
   const moduleUrls = useModuleBaseUrls();
   const update = useUpdateCtemCase(id);
@@ -857,6 +859,7 @@ export default function CtemCaseDetail() {
       {kase.state !== "resolved" && kase.state !== "accepted_risk" && (
         <CaseWorkCard
           work={work}
+          wait={loopWait}
           loopFleetId={loopFleet?.id ?? null}
           onStart={primaryKind === "start" ? () => open("start") : undefined}
         />

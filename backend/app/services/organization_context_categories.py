@@ -331,7 +331,7 @@ def split_asset_query(query: str) -> tuple[dict[str, list[str]], str]:
     """``(filters, name text)`` of an assets query: ``os_family:windows source:intune web`` (#1774).
 
     A ``field:value`` term on a known field is a filter (a repeated field ORs its values,
-    fields AND); every other word stays the name substring.
+    fields AND); every other word stays the free text (the name, os_family, os_version or owner, #2085).
     """
     filters: dict[str, list[str]] = {}
     words: list[str] = []
@@ -344,14 +344,33 @@ def split_asset_query(query: str) -> tuple[dict[str, list[str]], str]:
     return filters, " ".join(words)
 
 
-def render_asset_page(rows: list[dict[str, Any]], *, total: int, query: str, offset: int, limit: int) -> str:
-    """One page of the merged CTEM Inventory assets as an agent reads it (#1774)."""
+def held_values_line(held: dict[str, list[str]] | None) -> str:
+    """``os_family holds: Linux, Windows.`` per filtered field, what a zero names so it is never silent (#2085)."""
+    parts = [f"{field} holds: {', '.join(values) if values else 'no value'}" for field, values in (held or {}).items()]
+    return " ".join(f"{part}." for part in parts)
+
+
+def render_asset_page(
+    rows: list[dict[str, Any]],
+    *,
+    total: int,
+    query: str,
+    offset: int,
+    limit: int,
+    held: dict[str, list[str]] | None = None,
+) -> str:
+    """One page of the merged CTEM Inventory assets as an agent reads it (#1774).
+
+    *held* (the values each field filter holds, :func:`organization_asset_store.held_values`) is named
+    when no row matched, so a filter on a value no asset carries says what the field does hold (#2085).
+    """
     from app.services.content_safety import wrap_untrusted
 
     scope = f" matching {query.strip()!r}" if query.strip() else ""
     name = "assets_exposure (merged CTEM Inventory assets, one row per real asset)"
     if not total:
-        return f"Category {name}: no row{scope}. Do not guess it."
+        values = held_values_line(held)
+        return f"Category {name}: no row{scope}." + (f" {values}" if values else "") + " Do not guess it."
     if not rows:
         return f"Category {name}: offset {offset} is past the {total} rows{scope}."
     nxt = offset + len(rows)

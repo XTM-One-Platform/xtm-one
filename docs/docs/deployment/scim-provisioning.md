@@ -73,6 +73,9 @@ account instead of creating a second one: it stores the Entra object id and
 answers with the existing account. The account's **Source** then reads **SCIM**
 in **Users**.
 
+The bootstrap administrator's email, set by `ADMIN_EMAIL`, never changes through
+SCIM, and no other account takes that address.
+
 ## What a deactivation does
 
 When Microsoft Entra sets a user inactive (the user is disabled, unassigned or
@@ -113,4 +116,5 @@ deactivated) and the tokens with their last use.
 | 401 | The token is wrong or was revoked: generate a new one and update **Secret Token** |
 | 429 | The rate limit was reached: Entra retries on its own |
 | 409 `uniqueness` | Another Entra object is already linked to that email in XTM One |
+| 400 `mutability` or `invalidValue` naming `ADMIN_EMAIL` | The change would move the bootstrap administrator's email, or give that address to another account |
 | 400 `invalidFilter` | A filter XTM One does not support; Entra's default mappings use only `eq` on `userName` and `externalId` |

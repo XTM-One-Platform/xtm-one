@@ -742,6 +742,11 @@ class AutomationCounts:
     #: "Resume" switches back on.
     fleet_paused: int = 0
     off_names: tuple[str, ...] = field(default=(), compare=False)
+    #: The dashboard schedules of a built-in fleet's members (#2157): they ship
+    #: on and stay outside ``total``, but they run while the badge reads off, so
+    #: get_fleet names them as their own group and Pause all switches them off.
+    dashboard_total: int = field(default=0, compare=False)
+    dashboard_enabled: int = field(default=0, compare=False)
 
 
 def is_fleet_automation(slug: str | None, agent_builtin: bool, name: str, *, builtin_fleet: bool) -> bool:
@@ -761,6 +766,18 @@ def is_fleet_automation(slug: str | None, agent_builtin: bool, name: str, *, bui
     return agent_builtin and (slug, name) in FLEET_OPT_IN_ASSIGNMENTS
 
 
+def is_dashboard_schedule(slug: str | None, agent_builtin: bool, name: str, *, builtin_fleet: bool) -> bool:
+    """Whether an assignment is a dashboard schedule of a built-in fleet's member (#2157).
+
+    The enabled-by-default allowlist (:data:`app.agents.fleet_opt_in.ENABLED_BY_DEFAULT_ALLOWLIST`):
+    outside the badge population, yet a member schedule that runs, so Pause all and Resume act
+    on it and get_fleet names it. On a custom fleet every assignment is already a fleet automation.
+    """
+    from app.agents.fleet_opt_in import ENABLED_BY_DEFAULT_ALLOWLIST
+
+    return builtin_fleet and agent_builtin and (slug, name) in ENABLED_BY_DEFAULT_ALLOWLIST
+
+
 def automation_counts(
     rows: Iterable[tuple[str | None, bool, str, bool, str | None]], *, builtin_fleet: bool
 ) -> AutomationCounts:
@@ -773,10 +790,13 @@ def automation_counts(
     """
     from app.services.assignment_pause import EXPECTED_REASONS, FLEET_PAUSE_REASON
 
-    total = enabled = paused = fleet_paused = 0
+    total = enabled = paused = fleet_paused = dashboard_total = dashboard_enabled = 0
     off: list[str] = []
     for slug, agent_builtin, name, is_enabled, reason in rows:
         if not is_fleet_automation(slug, agent_builtin, name, builtin_fleet=builtin_fleet):
+            if is_dashboard_schedule(slug, agent_builtin, name, builtin_fleet=builtin_fleet):
+                dashboard_total += 1
+                dashboard_enabled += int(bool(is_enabled))
             continue
         total += 1
         if is_enabled:
@@ -788,7 +808,13 @@ def automation_counts(
             if reason == FLEET_PAUSE_REASON:
                 fleet_paused += 1
     return AutomationCounts(
-        total=total, enabled=enabled, paused=paused, fleet_paused=fleet_paused, off_names=tuple(sorted(off))
+        total=total,
+        enabled=enabled,
+        paused=paused,
+        fleet_paused=fleet_paused,
+        off_names=tuple(sorted(off)),
+        dashboard_total=dashboard_total,
+        dashboard_enabled=dashboard_enabled,
     )
 
 

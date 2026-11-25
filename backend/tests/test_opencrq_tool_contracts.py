@@ -829,6 +829,101 @@ READS = {
             "supporting asset Internet Banking Portal (web_application), roles processes, reads",
         ),
     ),
+    "list_opencrq_asset_dependencies_provenance_and_paging": Read(
+        "list_opencrq_asset_dependencies",
+        {"primary_asset_id": PRIMARY_ASSET, "offset": 1, "limit": 1},
+        opencrq_assets,
+        [
+            _sent(
+                "assetDependencies.getSupportToPrimaryLinksByPrimaryAssetId",
+                {"primaryAssetId": PRIMARY_ASSET},
+            ),
+        ],
+        (),
+        (
+            # asset-dependencies-router.ts LINK_PROVENANCE_OUTPUT: source, ruleId, ruleName on every link
+            "Primary asset links (3, showing 2 to 2):",
+            "supporting asset Internet Banking Portal (web_application), roles processes, reads, "
+            "written by rule Web front ends support online banking",
+            "... 1 more: call again with offset=2.",
+        ),
+        absent=("Core Banking System", "Payments Gateway"),
+        overrides={
+            "assetDependencies.getSupportToPrimaryLinksByPrimaryAssetId": [
+                {
+                    "id": "b4c5d6e7-f8a9-4b0c-9d2e-3f4a5b6c7d8e",
+                    "supportingAssetId": CORE_BANKING,
+                    "primaryAssetId": PRIMARY_ASSET,
+                    "roles": ["stores"],
+                    "source": "manual",
+                    "ruleId": None,
+                    "ruleName": None,
+                    "supportingAssetName": "Core Banking System",
+                    "supportingAssetDerivedName": None,
+                    "supportingAssetCategoryId": "host",
+                },
+                {
+                    "id": "41e1f2a3-b4c5-4d6e-9f8a-2b3c4d5e6f7a",
+                    "supportingAssetId": "f6a7b8c9-d0e1-4f2a-ab4c-5d6e7f8a9b0c",
+                    "primaryAssetId": PRIMARY_ASSET,
+                    "roles": ["processes", "reads"],
+                    "source": "rule",
+                    "ruleId": "0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+                    "ruleName": "Web front ends support online banking",
+                    "supportingAssetName": "Internet Banking Portal",
+                    "supportingAssetDerivedName": None,
+                    "supportingAssetCategoryId": "web_application",
+                },
+                {
+                    "id": "52f2a3b4-c5d6-4e7f-8a9b-3c4d5e6f7a8b",
+                    "supportingAssetId": "a7b8c9d0-e1f2-4a3b-8c5d-6e7f8a9b0c1d",
+                    "primaryAssetId": PRIMARY_ASSET,
+                    "roles": ["processes"],
+                    "source": "manual",
+                    "ruleId": None,
+                    "ruleName": None,
+                    "supportingAssetName": "Payments Gateway",
+                    "supportingAssetDerivedName": None,
+                    "supportingAssetCategoryId": "web_application",
+                },
+            ],
+        },
+    ),
+    "list_opencrq_dependency_rules": Read(
+        "list_opencrq_dependency_rules",
+        {},
+        opencrq_assets,
+        # asset-dependencies/asset-dependencies-router.ts: listDependencyRules, no input
+        [_sent("assetDependencies.listDependencyRules")],
+        (),
+        (
+            "Dependency rules (1):",
+            "- Web front ends support online banking (id: 0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f), enabled",
+            "to primary asset Customer Account Data (primary asset id: " + PRIMARY_ASSET + "), roles processes, reads",
+            "Conditions: category web_application and name glob *-portal and reported by microsoft_graph",
+            "Links it holds now: 4",
+        ),
+        overrides={
+            "assetDependencies.listDependencyRules": [
+                {
+                    "id": "0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+                    "name": "Web front ends support online banking",
+                    "primaryAssetId": PRIMARY_ASSET,
+                    "primaryAssetName": "Customer Account Data",
+                    "roles": ["processes", "reads"],
+                    "enabled": True,
+                    "categoryId": "web_application",
+                    "subcategoryId": None,
+                    "namePattern": "*-portal",
+                    "namePatternKind": "glob",
+                    "tagId": None,
+                    "tagName": None,
+                    "source": "microsoft_graph",
+                    "linkCount": 4,
+                },
+            ],
+        },
+    ),
     "get_opencrq_job": Read(
         "get_opencrq_job", {"job_id": JOB}, opencrq_ops,
         # jobs/jobs-router.ts: getJob and getRun inputs are {id}
