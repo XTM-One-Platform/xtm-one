@@ -663,6 +663,7 @@ export default function FleetPage() {
           onOpenMembers={() => setView("members")}
           onOpenView={setView}
           readOnly={!!readOnlyReason}
+          healthStarts={fleet.health_starts}
           orchestratorId={fleet.orchestrator_agent_id}
           flow={
             // The Graph view's own drawing as a fixed mini graph (#9757): the

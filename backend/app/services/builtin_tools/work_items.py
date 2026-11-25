@@ -582,7 +582,7 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
             "type": "object",
             "properties": {
                 "repo": {"type": "string", "description": "owner/name"},
-                "kind": {"type": "string", "enum": ["pull_request", "issue", "deployment", "workflow_run"]},
+                "kind": {"type": "string", "enum": ["pull_request", "issue", "deployment", "workflow_run", "tag"]},
                 "number": {"type": "integer"},
                 "sha": {"type": "string"},
                 "workflow": {"type": "string"},
@@ -590,6 +590,7 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
                 "branch": {"type": "string"},
                 "title_contains": {"type": "string"},
                 "carries": {"type": "string"},
+                "pattern": {"type": "string"},
                 "release_on": {
                     "type": "string",
                     "enum": ["merged", "closed", "merged_or_closed", "deployed", "succeeded"],
@@ -599,8 +600,8 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
         },
         "description": (
             "Waits for (replaces; [] clears), reopens when all met. PR (branch: "
-            "successors too) or issue: release_on (default merged_or_closed, issue closed). deployment (number "
-            "or sha): build has the merge. workflow_run: a later success."
+            "successors too) or issue: release_on. deployment: build has it. workflow_run: a later "
+            "success. tag: carries it."
         ),
     },
     "blocked_reason": {

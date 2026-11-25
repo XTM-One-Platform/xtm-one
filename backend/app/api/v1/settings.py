@@ -5327,6 +5327,8 @@ class CoordinationRetention(BaseModel):
     shared_state_resolved_days: int = Field(ge=0, le=3650)
     shared_state_archive_days: int = Field(ge=0, le=3650)
     workset_resolved_days: int = Field(ge=0, le=3650)
+    #: Finished assignment runs (Operations > Executions); absent in a body = the stored window.
+    assignment_run_days: int | None = Field(default=None, ge=0, le=3650)
 
 
 class ObservabilityConfigResponse(BaseModel):
@@ -6458,7 +6460,10 @@ async def update_observability_config(
             }
     if body.coordination_retention is not None:
         previous_coordination = coordination_retention_days(getattr(ps, "coordination_retention", None))
-        stored = body.coordination_retention.model_dump()
+        stored = {
+            **previous_coordination,
+            **body.coordination_retention.model_dump(exclude_none=True),
+        }
         # Assign a new dict: an in-place change of a JSON column is not tracked.
         ps.coordination_retention = dict(stored)
         changed = {

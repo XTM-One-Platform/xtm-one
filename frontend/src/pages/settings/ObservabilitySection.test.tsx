@@ -165,7 +165,22 @@ describe("ObservabilitySection coordination retention", () => {
           work_item_abandoned_days: 14,
           shared_state_archive_days: 14,
           workset_resolved_days: 7,
+          assignment_run_days: 90,
         },
+      }),
+    );
+  });
+
+  it("edits the run retention, 90 days by default, and sends it with Save", () => {
+    updateObservability.mockClear();
+    openConfigure();
+    const field = screen.getByRole("spinbutton", { name: "Runs (days)" }) as HTMLInputElement;
+    expect(field.value).toBe("90");
+    fireEvent.change(field, { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(updateObservability).toHaveBeenCalledWith(
+      expect.objectContaining({
+        coordination_retention: expect.objectContaining({ assignment_run_days: 30 }),
       }),
     );
   });

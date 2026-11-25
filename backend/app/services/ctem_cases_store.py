@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -878,6 +879,79 @@ async def case_ids_with_prefix(
         .limit(max(1, limit))
     )
     return list(rows.scalars())
+
+
+@dataclass(frozen=True)
+class MergedCase:
+    """Where a merged-away case went (#2289): the survivor, when and by whom."""
+
+    case_id: uuid.UUID
+    survivor_id: uuid.UUID
+    at: datetime
+    actor: str
+
+    def answer(self) -> str:
+        """What a case tool answers for the merged id."""
+        return (
+            f"Case {self.case_id} was merged into {self.survivor_id} at {self.at.isoformat()} "
+            f"by {self.actor}; read the survivor."
+        )
+
+
+def _merge_lookup(organization_id: uuid.UUID | None) -> Any:
+    """The ``merge`` events, newest first, of *organization_id* (every organization when ``None``).
+
+    Served by the partial index ``ix_ctem_case_events_merged_from`` (``from_value`` of the
+    ``merge`` rows). The merged case's history moves with each merge, so the survivor
+    named is the case that holds the event now: a survivor merged in turn is followed.
+    """
+    query = select(CtemCaseEvent.from_value, CtemCaseEvent.case_id, CtemCaseEvent.at, CtemCaseEvent.actor).where(
+        CtemCaseEvent.kind == "merge"
+    )
+    if organization_id is not None:
+        query = query.join(CtemCase, CtemCase.id == CtemCaseEvent.case_id).where(
+            CtemCase.organization_id == organization_id
+        )
+    return query.order_by(CtemCaseEvent.at.desc())
+
+
+async def merged_into(db: AsyncSession, case_id: uuid.UUID, *, organization_id: uuid.UUID | None) -> MergedCase | None:
+    """The survivor *case_id* was merged into (#2289), ``None`` for a case never merged away.
+
+    A case id is unique across organizations, so a run that only knows the id (a
+    queued ``ctem_case.opened`` run) passes ``organization_id=None``.
+    """
+    row = (
+        await db.execute(_merge_lookup(organization_id).where(CtemCaseEvent.from_value == str(case_id)).limit(1))
+    ).first()
+    if row is None:
+        return None
+    return MergedCase(case_id=case_id, survivor_id=row.case_id, at=row.at, actor=row.actor)
+
+
+async def merged_with_prefix(
+    db: AsyncSession, prefix: str, *, organization_id: uuid.UUID, limit: int = 2
+) -> list[MergedCase]:
+    """The merged-away cases whose id starts with *prefix* (#2289), one per merged id, at most *limit*."""
+    from app.services.organization_asset_store import id_prefix
+
+    text = id_prefix(prefix)
+    if text is None:
+        return []
+    rows = await db.execute(_merge_lookup(organization_id).where(CtemCaseEvent.from_value.like(f"{text}%")))
+    out: dict[str, MergedCase] = {}
+    for row in rows:
+        merged_id = row.from_value
+        if merged_id in out:
+            continue
+        try:
+            case_id = uuid.UUID(merged_id)
+        except (TypeError, ValueError):
+            continue
+        out[merged_id] = MergedCase(case_id=case_id, survivor_id=row.case_id, at=row.at, actor=row.actor)
+        if len(out) >= max(1, limit):
+            break
+    return list(out.values())
 
 
 async def get_case(

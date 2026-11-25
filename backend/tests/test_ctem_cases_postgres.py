@@ -368,6 +368,42 @@ async def test_a_manual_merge_keeps_the_survivor_and_maps_every_key_through_reco
             )
 
 
+async def test_a_merged_id_finds_its_survivor_by_id_and_prefix() -> None:
+    """#2289: the merge event names the survivor of a merged id; a never-merged id finds none."""
+    from app.services import ctem_case_run_start as run_start
+
+    async with _database() as sessions, sessions() as session:
+        org_id, _ = await _seed(session)
+        issues = [_issue("v1", "CVE-1"), _other("o1", "CVE-9")]
+        await store.apply_recompute(session, organization_id=org_id, vertical="cyber", issues=issues, now=NOW)
+        await session.commit()
+        target, merged = sorted(
+            (await session.execute(select(CtemCase))).scalars(), key=lambda c: "Tomcat" not in c.title
+        )
+        target_id, merged_id = target.id, merged.id
+        await store.merge_cases(
+            session,
+            organization_id=org_id,
+            vertical="cyber",
+            target_id=target_id,
+            source_ids=[merged_id],
+            actor="agent-1",
+            now=NOW,
+        )
+        await session.commit()
+        found = await store.merged_into(session, merged_id, organization_id=org_id)
+        assert found is not None and (found.survivor_id, found.actor) == (target_id, "agent-1")
+        assert (await store.merged_into(session, merged_id, organization_id=None)) == found
+        assert await store.merged_into(session, merged_id, organization_id=uuid.uuid4()) is None
+        assert await store.merged_into(session, uuid.uuid4(), organization_id=org_id) is None
+        by_prefix = await store.merged_with_prefix(session, str(merged_id)[:8], organization_id=org_id)
+        assert [m.case_id for m in by_prefix] == [merged_id]
+        start = await run_start.case_start(session, merged_id)
+        assert start.proceed and start.context[run_start.MERGED_INTO_KEY]["case_id"] == str(target_id)
+        assert not (await run_start.case_start(session, uuid.uuid4())).proceed
+        assert (await run_start.case_start(session, target_id)).context == {}
+
+
 async def test_a_merged_duplicate_never_comes_back_and_the_survivor_keeps_its_sla() -> None:
     """#2037: merge, then two recompute passes: no new case, no ctem_case.opened, the SLA of the survivor kept."""
     from app.services import ctem_case_loop as loop
