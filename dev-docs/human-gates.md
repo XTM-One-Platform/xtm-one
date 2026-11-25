@@ -495,7 +495,10 @@ an expiry (the decision deadline, else 7 days). Opening it:
    non-recipient gets "Waiting for <name>" and a `refused` event);
 2. answers in one click for an option (no second confirmation), except an
    irreversible consent option, which asks for its code on the page (the
-   `hitl_consent` check is unchanged); "Answer with text" opens the card with
+   `hitl_consent` check is unchanged); on the in-app card and the "Answer
+   with text" page, a work item option the agent marked `confirm` (a
+   terminal one: cancel, close, discard) opens the confirm panel first and is
+   sent only on "Confirm" (#2150); "Answer with text" opens the card with
    the text field;
 3. takes the decision's row lock, writes the answer through the router of
    section 6 with `surface` = the channel the link was sent on (Teams chat,

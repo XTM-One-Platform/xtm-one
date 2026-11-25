@@ -32,6 +32,30 @@ def test_keeps_waiting_is_a_boolean() -> None:
         normalize_ask(bad)
 
 
+def test_an_option_may_ask_for_a_confirm_step() -> None:
+    """A terminal option marked confirm is kept, the others carry no flag (#2150)."""
+    ask = normalize_ask(
+        {
+            **_ASK,
+            "options": [
+                {"key": "ship", "label": "Ship it"},
+                {"key": "cancel", "label": "Cancel", "confirm": True},
+                {"key": "wait", "label": "Keep waiting", "confirm": False},
+            ],
+        }
+    )
+    assert ask is not None
+    ship, cancel, wait = ask["options"]
+    assert cancel["confirm"] is True
+    assert "confirm" not in ship and "confirm" not in wait
+
+
+def test_confirm_is_a_boolean() -> None:
+    bad = {**_ASK, "options": [{"key": "a", "label": "A", "confirm": "yes"}, {"key": "b", "label": "B"}]}
+    with pytest.raises(ValueError, match="confirm is true or false"):
+        normalize_ask(bad)
+
+
 @pytest.mark.parametrize("status", ["done", "cancelled"])
 def test_a_finished_item_reads_as_waiting_for_nobody(status: str) -> None:
     item = {
