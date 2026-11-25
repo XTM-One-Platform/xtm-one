@@ -3219,7 +3219,8 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
         "trigger_config": {
             "provider": "opencti",
             "provision": {
-                "fleet": "Threat response",
+                # The fleet's name (#2121): OpenCTI objects are named after it and renamed with it.
+                "fleet": "CTEM loop",
                 "purpose": "New relevant threats",
                 # Unchanged (#1580): a Report records no signal (no listener row) and the
                 # weekly sweep covers it; the provisioned OpenCTI trigger is left as it is.
@@ -3243,7 +3244,7 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
         "trigger_config": {
             "provider": "opencti",
             "provision": {
-                "fleet": "Threat response",
+                "fleet": "CTEM loop",
                 "purpose": "Threat activity flagged in a PIR",
                 "mode": "pir_playbook",
                 "entity_types": [

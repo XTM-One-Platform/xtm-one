@@ -819,13 +819,19 @@ def pir_playbook_nodes(
     """
     pir_ids = sorted(spec.get("pir_ids") or [])
     names = pir_names or {}
-    score_filter = {
+    score_filter: dict[str, Any] = {
         "mode": "and",
         "filters": [
             {"key": ["pir_score"], "values": [str(spec.get("pir_min_score", 1))], "operator": "gte", "mode": "or"}
         ],
         "filterGroups": [],
     }
+    # The declared entity types narrow the playbook as they narrow a trigger (#2121): two
+    # assignments on the same PIRs with different types never deliver each other's entities.
+    if spec.get("entity_types"):
+        score_filter["filters"].append(
+            {"key": ["entity_type"], "values": list(spec["entity_types"]), "operator": "eq", "mode": "or"}
+        )
     entry = {
         "inPirFilters": [{"value": pid, "label": names.get(pid) or pid, "type": "Pir"} for pid in pir_ids],
         "create": True,
