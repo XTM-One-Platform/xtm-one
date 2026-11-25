@@ -32,6 +32,28 @@ describe("agent General tab: sharing gated on canManage (#2203)", () => {
     expect(start).toBeGreaterThan(-1);
     const card = source.slice(start, source.indexOf("/>", start));
     expect(card).toContain("disabled={isPending || !canManage}");
+    expect(card).toContain("restrictionCopy={canManage ? undefined : READ_ONLY_RESTRICTION_COPY}");
+  });
+
+  it("states the read-only reason instead of the toggle hint when the viewer cannot manage", async () => {
+    renderWithProviders(
+      <PrincipalSharingCard
+        sharedGroupIds={null}
+        onChange={vi.fn()}
+        withPermissions={false}
+        isCompanyManaged
+        disabled
+        restrictionCopy={{
+          title: "Restrict access",
+          restricted: "Only the people and groups below can see this. Access to a built-in agent cannot be changed.",
+          open: "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.",
+          empty: "No one is listed yet, so only admins and the owner can reach this.",
+        }}
+      />,
+    );
+    expect(await screen.findByText("Visible to everyone on the platform. Access to a built-in agent cannot be restricted.")).toBeInTheDocument();
+    expect(screen.queryByText(/Toggle on to limit it/)).not.toBeInTheDocument();
+    expect(source).toContain('open: "Visible to everyone on the platform. Access to a built-in agent cannot be restricted."');
   });
 
   it("disables the sharing switch and sends nothing when the viewer cannot manage", async () => {
