@@ -104,6 +104,27 @@ describe("decision view helpers", () => {
     expect(view.context).toEqual(["line 1", "line 2"]);
     expect(view.technical).toBeTruthy();
   });
+
+  it("asks to confirm an option the agent marked confirm, and only that one (#2150)", () => {
+    const item = {
+      id: "w2",
+      title: "T",
+      ask: {
+        question: "Close the case?",
+        options: [
+          { key: "keep", label: "Keep it open" },
+          { key: "cancel", label: "Cancel the case", confirm: true },
+        ],
+        recommendation: "keep",
+      },
+    } as unknown as WorkItem;
+    const [keep, cancel] = workItemDecisionView(item, t).options;
+    expect(keep.confirm).toBeUndefined();
+    expect(keep.warning).toBeUndefined();
+    expect(cancel.confirm).toBeTruthy();
+    expect(cancel.warning).toBe(true);
+    expect(cancel.label).toBe("Cancel the case");
+  });
 });
 
 describe("RunDecisionCard", () => {

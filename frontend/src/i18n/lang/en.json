@@ -20370,6 +20370,7 @@
   "Triggers when an accounting period is closed, reopened, locked or unlocked. Uses polling (every 5 minutes); the first poll starts from now.": "Triggers when an accounting period is closed, reopened, locked or unlocked. Uses polling (every 5 minutes); the first poll starts from now.",
   "{source} · {by}": "{source} · {by}",
   "Confirm: {option}": "Confirm: {option}",
+  "The agent acts on this answer as soon as it is sent, and it cannot be changed afterwards.": "The agent acts on this answer as soon as it is sent, and it cannot be changed afterwards.",
   "Runs this call once. The tool asks again next time.": "Runs this call once. The tool asks again next time.",
   "{count, plural, one {Runs # call once.} other {Runs these # calls once.}} The tool asks again next time.": "{count, plural, one {Runs # call once.} other {Runs these # calls once.}} The tool asks again next time.",
   "This needs your own consent: the action is run as you approve it now, and it cannot be undone.": "This needs your own consent: the action is run as you approve it now, and it cannot be undone.",
