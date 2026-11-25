@@ -111,6 +111,7 @@ When an agent can delegate (`handover_agent_ids` configured, or self-fan-out ena
 3. `get_task_result(task_ids)` / `get_full_task_result(task_id)` - read a completed result (preview / full), in chat and assignments alike
 4. `collect_task_results(task_ids)` / `clear_collected()` - (chat path, where a session-variable store exists) merge structured items into the `$collected` session variable for a downstream tool, and release it. The extractor handles OpenCTI / OpenAEV-shaped items (id-key / `raw_configuration`), arrays of objects, nested `response` envelopes and flat structured JSON objects.
 5. `list_background_tasks(status?)` - list recent tasks with optional filter
+6. `cancel_background_task(task_ids)` - stop tasks this agent spawned for the acting user (#2217): `cancel_sub_agent_task(..., spawned_by=<the agent>)`, the same durable cancel as the Operations > Background Tasks stop button (execution transitioned, lease released, delivery suppressed); another agent's or another person's task answers "not found"
 
 A task runs its target agent through `run_agent_chat` in a session of its own and persists its result to `sub_agent_tasks`; it may hand over further while its depth is below `_MAX_DELEGATION_DEPTH` (5) and the target has handover agents.
 

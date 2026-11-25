@@ -61,6 +61,7 @@ _HANDOVER_TOOLS = (
     "get_task_result",
     "get_full_task_result",
     "list_background_tasks",
+    "cancel_background_task",
     "collect_task_results",
     "clear_collected",
 )
