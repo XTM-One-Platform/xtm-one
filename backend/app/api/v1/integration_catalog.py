@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from app.api.v1.schemas.integration import ProviderTool
@@ -297,6 +298,33 @@ def supported_auth_types(entry: dict | None) -> list[str]:
         return list(declared)
     default = entry.get("auth_type")
     return [default] if default else []
+
+
+#: The credential fields each authentication mode asks for in the creation form.
+#: A mode absent from it (``none``, ``platform_managed``) asks for none.
+_CREDENTIAL_FIELDS_OF_MODE: dict[str, tuple[str, ...]] = {
+    "oauth": ("client_id", "client_secret"),
+    "client_credentials": ("client_id", "client_secret"),
+    "oauth_password": ("client_id", "client_secret"),
+    "api_key": ("api_key",),
+    "bot_token": ("api_key",),
+}
+
+
+def credential_fields_by_auth_type(entry: Mapping[str, Any] | None) -> dict[str, list[str]] | None:
+    """The credential fields of each mode of a provider with several auth types
+    (#2317), so the creation form shows the fields of the mode picked rather than
+    those of the default one (``fields``, kept as it is). None for a single mode.
+    An OAuth client the platform registers itself (``oauth_registration``) is
+    asked for nothing."""
+    modes = supported_auth_types(dict(entry) if entry else None)
+    if len(modes) < 2:
+        return None
+    registers_client = bool((entry or {}).get("oauth_registration"))
+    return {
+        mode: [] if mode == "oauth" and registers_client else list(_CREDENTIAL_FIELDS_OF_MODE.get(mode, ()))
+        for mode in modes
+    }
 
 
 def unsupported_auth_type_message(auth_type: str, provider: str, supported: list[str]) -> str:
