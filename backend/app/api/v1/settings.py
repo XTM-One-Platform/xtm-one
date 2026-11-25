@@ -6856,6 +6856,7 @@ async def test_langfuse_connection(
     from app.services.langfuse_tracing import (
         LANGFUSE_EXPORT_TIMEOUT,
         areset_langfuse_client,
+        run_langfuse_blocking,
     )
 
     result = await db.execute(select(LangfuseConfig))
@@ -6887,18 +6888,19 @@ async def test_langfuse_connection(
         host = config.host or LANGFUSE_DEFAULT_HOST
 
         def _blocking_test() -> bool:
-            """Build a throwaway client, auth-check, and shut it down. BLOCKING.
+            """Build a client and auth-check it. BLOCKING.
 
-            The Langfuse SDK is synchronous, so this runs off the event loop
-            (via ``asyncio.to_thread``) so an unreachable host can't stall the
-            web event loop for the whole HTTP timeout.
+            The Langfuse SDK is synchronous, so this runs off the event loop,
+            on the Langfuse pool, so an unreachable host can't stall the web
+            event loop for the whole HTTP timeout.
 
             The constructor ``timeout`` MUST match the real client's export
             timeout: the SDK's resource manager is a per-public-key singleton
             that ``shutdown()`` does not evict, so whichever ``Langfuse(...)``
             construction runs first pins the OTLP span exporter timeout for
-            the whole process.  The auth check itself stays short via
-            per-request options.
+            the whole process.  For the same reason the client is never shut
+            down (``langfuse_tracing._blocking_init_and_auth``).  The auth
+            check itself stays short via per-request options.
             """
             client = Langfuse(
                 public_key=public_key,
@@ -6906,21 +6908,13 @@ async def test_langfuse_connection(
                 host=host,
                 timeout=LANGFUSE_EXPORT_TIMEOUT,
             )
-            try:
-                projects = client.api.projects.get(
-                    request_options={"timeout_in_seconds": 10}
-                )
-                return bool(projects.data)
-            finally:
-                try:
-                    client.shutdown()
-                except Exception:
-                    logger.debug(
-                        "Langfuse test client shutdown failed", exc_info=True
-                    )
+            projects = client.api.projects.get(
+                request_options={"timeout_in_seconds": 10}
+            )
+            return bool(projects.data)
 
         has_project = await asyncio.wait_for(
-            asyncio.to_thread(_blocking_test), timeout=15
+            run_langfuse_blocking(_blocking_test), timeout=15
         )
         if not has_project:
             logger.warning("Langfuse test connection: no project found (host=%s)", host)
