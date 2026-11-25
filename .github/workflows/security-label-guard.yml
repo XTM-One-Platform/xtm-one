@@ -2,9 +2,10 @@ name: Security label guard
 
 # Removes the retired `security` label from any issue or pull request
 # (dev-docs/reference/security-reporting.md). Every run looks the same - a fixed
-# name, a job that always runs, no comment or output naming the item - so neither
-# the item nor the run list points at what was labeled. pull_request_target is
-# safe here: nothing of the pull request is checked out or run.
+# name, a job that always runs, nothing in the log naming the item (no step
+# `env:`, which Actions prints, and a generic error) - so neither the item nor the
+# run list or logs point at what was labeled. pull_request_target is safe here:
+# nothing of the pull request is checked out or run.
 run-name: Security label guard
 
 on:
@@ -27,14 +28,14 @@ jobs:
       - name: Remove the label
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
-          LABEL: ${{ github.event.label.name }}
         run: |
           set -u
+          # Read from the event file: a step's env values are printed in its log.
+          label=$(jq -r '.label.name' "$GITHUB_EVENT_PATH")
           # Label names are case-insensitive: `Security` too.
-          [ "$(printf '%s' "$LABEL" | tr '[:upper:]' '[:lower:]')" = security ] || exit 0
+          [ "$(printf '%s' "$label" | tr '[:upper:]' '[:lower:]')" = security ] || exit 0
+          number=$(jq -r '(.issue // .pull_request).number' "$GITHUB_EVENT_PATH")
           # A label someone removed meanwhile answers 404: nothing left to do.
-          if ! out=$(gh api -X DELETE "repos/${REPO}/issues/${NUMBER}/labels/$(jq -rn --arg l "$LABEL" '$l|@uri')" 2>&1); then
-            case "$out" in *"HTTP 404"*) exit 0 ;; *) echo "$out" >&2; exit 1 ;; esac
+          if ! out=$(gh api -X DELETE "repos/${GITHUB_REPOSITORY}/issues/${number}/labels/$(jq -rn --arg l "$label" '$l|@uri')" 2>&1); then
+            case "$out" in *"HTTP 404"*) exit 0 ;; *) echo "Could not remove the label." >&2; exit 1 ;; esac
           fi

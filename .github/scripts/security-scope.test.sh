@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests the `security` type/scope refusal: .githooks/commit-msg and
-# pr-title-check.yml hold the same pattern, and both refuse and accept the same
-# samples.
+# pr-title-check.yml hold the same pattern, and the hook and the title check's own
+# step script refuse and accept the same samples.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -19,8 +19,21 @@ title_pattern="$(sed -n "s/^ *SECURITY_SCOPE='\(.*\)'$/\1/p" "$workflow")"
 [ -n "$title_pattern" ] || fail "no SECURITY_SCOPE found in $workflow"
 [ "$hook_pattern" = "$title_pattern" ] || fail "the hook and the PR title check hold different patterns"
 
+# The title check's step script, run as is (its `shopt`, its message).
+step_script="$(awk '
+  /^ +run: \|$/ { on = 1; next }
+  !on { next }
+  NF { match($0, /^ */); if (!ind) ind = RLENGTH; else if (RLENGTH < ind) exit }
+  { print substr($0, ind + 1) }
+' "$workflow")"
+[ -n "$step_script" ] || fail "no run script found in $workflow"
+
 hook_refuses() { printf '%s\n' "$1" > "$tmp/msg"; ! sh "$hook" "$tmp/msg" 2>/dev/null; }
-title_refuses() { shopt -s nocasematch; local hit=1; [[ "$1" =~ $title_pattern ]] && hit=0; shopt -u nocasematch; return $hit; }
+title_refuses() {
+  local out
+  out="$(TITLE="$1" bash -c "$step_script" 2>&1)" && return 1
+  [[ "$out" == *"'security' is not a type or a scope"* ]]
+}
 
 expect() { # expect refused|accepted <title>
   local want="$1" title="$2"
