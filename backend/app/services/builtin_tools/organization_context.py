@@ -195,10 +195,13 @@ def build_organization_context_tool(
             filters, text = cats.split_asset_query(query)
             size = max(1, min(limit or cats.DEFAULT_PAGE, cats.MAX_PAGE))
             page = await store.list_assets(db, built, q=text, offset=offset, limit=size, filters=filters)
+            held = await store.held_values(db, built, filters) if not page.total else None
         except Exception:
             logger.warning("Inventory asset read failed", exc_info=True)
             return None
-        return cats.render_asset_page(list(page.items), total=page.total, query=query, offset=offset, limit=size)
+        return cats.render_asset_page(
+            list(page.items), total=page.total, query=query, offset=offset, limit=size, held=held
+        )
 
     async def _software_rows(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, object]]:
         """The organization's Software entities (#1495), synced and hand-typed; ``[]`` when it has none."""
