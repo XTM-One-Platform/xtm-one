@@ -8067,7 +8067,8 @@ def build_agent_builder_tool(
                 )
                 if _arg_value is not None and not (isinstance(_arg_value, str) and _arg_value == "")
             ) | (frozenset({"mode"}) if text_mode != "replace" else frozenset())
-            assert assignment_uuid is not None  # _id_arg answered no error
+            if assignment_uuid is None:  # _id_arg answered no error
+                return f"Assignment `{assignment_id}` not found or you don't have permission to edit it."
             assignment, _agent, perm_err = await _load_writable_assignment_for_builder(
                 _db, uid, assignment_uuid, action="edit", written=_written
             )
