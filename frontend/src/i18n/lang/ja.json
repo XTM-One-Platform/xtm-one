@@ -17701,6 +17701,7 @@
   "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).": "到達可能な資産上: インターネットに面した資産、またはユーザー端末 (フィッシング、ブラウザー、メール)。",
   "Add your assets and exposure": "資産と露出を追加",
   "Not linked": "未連携",
+  "No software inventory": "ソフトウェアインベントリなし",
   "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.": "読み取った資産: {total, plural, other {#件}}。到達可能: {reachable} (ユーザー端末: {endpoints})。到達不能と確認: {unreachable}。不明: {unknown}。",
   "Business impact": "ビジネスへの影響",
   "On an asset that supports a primary asset.": "主要資産を支える資産上。",
@@ -21682,5 +21683,7 @@
   "Wait for the prioritization policy to be saved.": "優先順位付けポリシーの保存が完了するまでお待ちください。",
   "Platform Health specialists": "Platform Health スペシャリスト",
   "Platform Health's internal tools: diagnosis, experiments, sandbox, Flow Lab, memory and module checks": "Platform Health の内部ツール: 診断、実験、サンドボックス、Flow Lab、メモリ、モジュールチェック",
-  "The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health.": "Platform Health のスペシャリストが使うツールです: 品質診断、サンドボックスコピーでの実験と評価、Flow Lab、メモリ統合、モジュールチェック、改善提案。Platform Health フリートのエージェントだけが持ち、それぞれ使う関数に限定されます。ツールページ、エージェント設定、チャットでは提供されません。書き込みは Platform Health 以外を拒否します。"
+  "The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health.": "Platform Health のスペシャリストが使うツールです: 品質診断、サンドボックスコピーでの実験と評価、Flow Lab、メモリ統合、モジュールチェック、改善提案。Platform Health フリートのエージェントだけが持ち、それぞれ使う関数に限定されます。ツールページ、エージェント設定、チャットでは提供されません。書き込みは Platform Health 以外を拒否します。",
+  "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{supporting, plural, other {#件のサポート資産}}を通じて{primary, plural, other {#件のプライマリ資産}}に到達。",
+  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, other {#件のポリシールールを適用}}。"
 }
