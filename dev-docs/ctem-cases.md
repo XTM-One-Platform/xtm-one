@@ -168,16 +168,6 @@ With it:
   existing gate card wording (`BLIND_ACTION`, "Verify the running version,
   then upgrade") and the existing validation record; nothing is discarded or
   derived from versions;
-- a signal member that names CVE ids (#2041; subject, label or evidence
-  `cve` / `cves`, `ctem_scope_gate.signal_cve_ids`) is enriched from OpenCTI
-  with the viewer's own read, like an OpenCTI issue: its first CVE, KEV, the
-  highest CVSS and EPSS, and the version a course of action names
-  (`ctem_cases_source.enrich_signal_issues`, at most `SIGNAL_CVE_CAP` CVEs a
-  read); a CVE OpenCTI does not know keeps the member with those facts unknown.
-  With no version outcome it marks the case "to validate" ("no running version
-  reported") unless an OpenCTI issue of the same CVE is in the case, whose
-  outcomes judge it; the KEV count counts such a CVE once, from the OpenCTI
-  member;
 - the upgrade members of one product fold onto ONE key, the smallest version
   that fixes every member (the greatest of their fixed versions), titled
   "Upgrade <vendor product> to <version>";
@@ -1010,6 +1000,9 @@ context: every figure 0.
 | `record_ctem_case_validation` | a validation or re-test reference (provider, ref, result, kind, mitigation_only) through `ctem_case_loop.record_validation`: passed or not_exposed resolves (mitigated, watching when mitigation only), failed reopens, the events raised after the commit |
 | `record_ctem_case_ticket` | a ticket reference (integration, key, url, status) through `ctem_case_loop.record_ticket`: one entry per `(integration, key)` updated in place, a `ticket` event on change, never a state move |
 | `decide_ctem_case_remediation` | the remediation decision (CTEM-17, gate B, key `ctem.remediation.decision`): options with figures and the recommendation; rules in `services/ctem_remediation_decision.py` (see 9ter) |
+| `merge_ctem_cases` | #2037: folds duplicate cases of one fix (`case_ids`) into `target_id` through `ctem_cases_store.merge_cases`, the rules of `POST /ctem-cases/merge`: every case named must be one the acting person sees and acts on (a view right is refused), the agent is the actor of each `merge` event; the survivor keeps its state, owner and SLA and takes the keys, members, history and signals, so a recompute maps them to it and no case reopens. The seeded loop orchestrators merge a duplicate into the case a person holds, else the oldest, and never delete it: `delete_ctem_cases` frees the fix key, so a case whose signals still match reopens at the next reconcile with a new SLA |
+
+Product spelling (#2037): an upgrade key of the same version whose product matches an open case's key once the vendor is set apart (`upgrade:-/minio@latest` and `upgrade:minio/minio@latest`, `upgrade:-/microsoft windows@latest` and `upgrade:microsoft/windows@latest`) joins that open case and adds its key there, in the recompute (`ctem_cases.same_product_key`, `_alias_owner`) and when a signal looks for its case (`ctem_case_loop._open_case_for_key`). Two known vendors that differ, two vendor-less names that differ, or another version never match; a closed case never takes an alias.
 
 ### 9ter. Remediation decision (CTEM-17)
 

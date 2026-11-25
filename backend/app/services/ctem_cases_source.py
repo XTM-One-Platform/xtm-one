@@ -30,9 +30,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from contextvars import ContextVar
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -203,21 +203,6 @@ query CtemCaseVulnsById($filters: FilterGroup, $first: Int) {
 }
 """
 
-# The vulnerabilities a signal member names (#2041): looked up by CVE name, with the viewer's own read.
-_OCTI_VULNS_BY_NAME = """
-query CtemCaseSignalVulns($filters: FilterGroup, $first: Int) {
-  vulnerabilities(filters: $filters, first: $first) {
-    edges { node {
-      id name
-      x_opencti_cvss_base_score x_opencti_epss_score x_opencti_cisa_kev
-    } }
-  }
-}
-"""
-
-#: Most CVE ids one signal enrichment looks up (#2041): past it the rest stays unenriched, never guessed.
-SIGNAL_CVE_CAP = 500
-
 #: Most member lookups by id one OpenAEV read makes; past it the read is incomplete and resolves
 #: nothing. One finding per CVE and asset (OpenAEV #9233) makes more members than before.
 AEV_LOOKUP_CAP = 1000
@@ -309,6 +294,84 @@ def _installed_versions(entry: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(versions))
 
 
+def _version_counts(entry: dict[str, Any]) -> dict[str, int]:
+    """The assets the device inventory reports on each version of a stack entry (#2038), ``{}`` when not read."""
+    counts = entry.get("version_counts")
+    return {str(v): int(n) for v, n in counts.items() if str(v or "").strip()} if isinstance(counts, dict) else {}
+
+
+def with_inventory_versions(
+    stack: list[dict[str, Any]], inventory: Mapping[str, Mapping[str, int]]
+) -> list[dict[str, Any]]:
+    """*stack* with every version the device inventory reports for each entry (pure, #2038).
+
+    *inventory* is ``ctem_case_versions.inventory_versions``' answer, keyed by the entry's
+    ``label``. An entry the inventory reports takes its versions (the entry's own known
+    versions kept after them) and their asset counts (``version_counts``); its own
+    ``version_source`` is kept, so a version the inventory does not report stays attributed
+    to the Software entity or profile row it came from (``_version_facts`` reads
+    ``inventory`` only for the versions in ``version_counts``). Its single ``version`` is kept
+    only when exactly one version runs, never a guess. An entry the inventory does not report
+    (a profile-only product) is unchanged.
+    """
+    out: list[dict[str, Any]] = []
+    for entry in stack:
+        counts = {str(v): int(n) for v, n in (inventory.get(entry.get("label") or "") or {}).items() if str(v).strip()}
+        if not counts:
+            out.append(entry)
+            continue
+        versions = list(dict.fromkeys([*counts, *_installed_versions(entry)]))
+        out.append(
+            {
+                **entry,
+                "versions": versions,
+                "version": versions[0] if len(versions) == 1 else "",
+                "version_counts": counts,
+            }
+        )
+    return out
+
+
+def _remediating_node(node: dict[str, Any]) -> dict[str, Any]:
+    """A remediating Software as the stack matches it (pure, #2038).
+
+    A source may name the node ``<product> <version>`` (``Chrome 148.0.7778.168``) with or
+    without a ``version`` field: the trailing word is read as the version when it parses as one
+    and agrees with the field, and the name is matched without it. Any other node is unchanged.
+    """
+    name = " ".join(str(node.get("name") or "").split())
+    head, _, tail = name.rpartition(" ")
+    version = str(node.get("version") or "").strip()
+    if not head or fixed_versions.parse_version(tail) is None:
+        return node
+    if version and not fixed_versions.same_version(version, tail.lstrip("vV")) and version != tail:
+        return node
+    return {**node, "name": head, "version": version or tail}
+
+
+async def _matcher_stack(db: AsyncSession) -> list[dict[str, Any]]:
+    """The software the OpenCTI issues are read for, each with every version the device inventory
+    reports (#2038): the same versions the case's ``running_versions`` shows, so each gets its
+    own outcome. The inventory failing keeps the software's own versions."""
+    stack = await _organization_software(db)
+    if not stack:
+        return stack
+    from app.services import ctem_case_versions as case_versions
+    from app.services import organization_context as org_context
+
+    try:
+        row = await org_context.current_version(db)
+        if row is None:
+            return stack
+        inventory = await case_versions.inventory_versions(
+            db, row.organization_id, [e["label"] for e in stack if e.get("label")]
+        )
+    except Exception as exc:  # the inventory never breaks the issues read
+        logger.info("CTEM cases: inventory versions unavailable: %s", format_exception_message(exc))
+        return stack
+    return with_inventory_versions(stack, inventory)
+
+
 def _highest(versions: list[str]) -> str | None:
     """The highest of *versions* that compare, else the first one (pure)."""
     if not versions:
@@ -389,6 +452,10 @@ def opencti_issues(
         node = rel.get("from") or {}
         vuln = (rel.get("to") or {}).get("id")
         label = _stack_matches(node, stack)
+        if label is None:
+            # ``Chrome 148.0.7778.168``: the product name carries its version (#2038).
+            node = _remediating_node(node)
+            label = _stack_matches(node, stack)
         version = (node.get("version") or "").strip()
         if vuln and label and version:
             fixed_of.setdefault((vuln, label), []).append(version)
@@ -428,6 +495,7 @@ def opencti_issues(
                 outcomes.append((version, VERSION_AFFECTED))
             else:
                 outcomes.append((version, VERSION_NOT_AFFECTED))
+        facts = _version_facts(entry, outcomes, fixed_of.get((vuln_id, label), ()), fixed_name, vuln_id, label)
         not_affected: str | None = None
         notes: list[str] = []
         unknown = [v for v, o in outcomes if o == VERSION_UNKNOWN]
@@ -468,10 +536,40 @@ def opencti_issues(
                 fixed_by=fixed_by,
                 fixed_versions=tuple(sorted(per_platform.items())) if fixed and fixed_by else (),
                 declared_version_known=any(o != VERSION_UNKNOWN for _v, o in outcomes) if outcomes else None,
-                version_outcomes=tuple(outcomes),
+                version_outcomes=facts,
             )
         )
     return out
+
+
+def _version_facts(
+    entry: dict[str, Any],
+    outcomes: list[tuple[str, str]],
+    fixes: Iterable[str],
+    fixed_name: Mapping[tuple[str, str, str], str],
+    vuln_id: str,
+    label: str,
+) -> tuple[rules.VersionFact, ...]:
+    """The typed fact of each installed version (#2038): its outcome, where it was read, its
+    asset count and the smallest remediating Software above it OpenCTI holds (pure)."""
+    counts = _version_counts(entry)
+    source = entry.get("version_source") or None
+    fixes = list(fixes)
+    out: list[rules.VersionFact] = []
+    for version, outcome in outcomes:
+        fixed = fixed_versions.smallest_fix_above(fixes, version) if outcome != VERSION_NOT_AFFECTED else None
+        out.append(
+            rules.VersionFact(
+                version=version,
+                outcome=outcome,
+                source=(rules.VERSION_SOURCE_INVENTORY if version in counts else source) or None,
+                asset_count=counts.get(version),
+                fixed_version=fixed,
+                fixed_source=rules.FIX_SOURCE_OPENCTI_SOFTWARE if fixed else None,
+                fixed_by=fixed_name.get((vuln_id, label, fixed)) if fixed else None,
+            )
+        )
+    return tuple(out)
 
 
 def openaev_issues(findings: list[dict[str, Any]]) -> list[rules.SourceIssue]:
@@ -812,7 +910,7 @@ async def read_open_issues(
     out = SourceRead()
     if normalize_vertical(vertical) != VERTICAL_CYBER:
         return out
-    stack = await _organization_software(db)
+    stack = await _matcher_stack(db)
     out.no_stack = not stack
     creds: dict[str, tuple[str, dict[str, str]] | None] = {}
     try:
@@ -1081,7 +1179,7 @@ async def _read_case_members(db: AsyncSession, user_id: str, out: SourceRead, wa
             if creds[provider] is None:
                 out.fail(provider, REASON_NOT_CONNECTED)
         octi = creds.get("opencti")
-        stack = await _organization_software(db) if octi else []
+        stack = await _matcher_stack(db) if octi else []
         if octi and stack:
             octi_url, octi_headers = octi
             vuln_ids = sorted(set(wanted["opencti"]))
@@ -1164,15 +1262,7 @@ async def _signal_members(
     if ids is not None:  # one case's signals (#1986)
         statement = statement.where(cast(CtemSignal.id, String).in_(ids))
     rows = (await db.execute(statement)).scalars().all()
-    from app.services.ctem_scope_gate import signal_cve_ids
-
-    # The CVE ids each signal names: enriched from OpenCTI like an OpenCTI issue (#2041).
-    cves = {
-        f"signal:{s.id}": found
-        for s in rows
-        if (found := signal_cve_ids(s.subject_ref, s.subject_label, s.evidence or {}))
-    }
-    issues = [
+    return [
         rules.SourceIssue(
             source="signal",
             external_id=str(s.id),
@@ -1187,116 +1277,6 @@ async def _signal_members(
         )
         for s in rows
     ]
-    return await _enrich_signals(db, user_id, issues, cves) if cves else issues
-
-
-def enrich_signal_issues(
-    issues: list[rules.SourceIssue],
-    cves: dict[str, list[str]],
-    vulns: list[dict[str, Any]],
-    remediations: list[dict[str, Any]] | None = None,
-) -> list[rules.SourceIssue]:
-    """The signal members with the facts OpenCTI holds on the CVEs they name (pure, #2041).
-
-    *cves* maps a member id to the CVE ids its signal names; *vulns* are the
-    OpenCTI Vulnerability nodes read by name, *remediations* their courses of
-    action. A member takes its first CVE, KEV when any of its CVEs is KEV (each
-    KEV CVE kept in ``kev_cves`` for the case's KEV count), the
-    highest CVSS and EPSS, and the version a course of action names when it is
-    a plain upgrade. A CVE OpenCTI does not know leaves those facts unknown
-    (``None``, never 0); the member is kept either way.
-    """
-    by_name: dict[str, dict[str, Any]] = {}
-    for node in vulns:
-        name = str(node.get("name") or "").strip().upper()
-        if name and node.get("id"):
-            by_name.setdefault(name, node)
-    coa_name: dict[str, str] = {}
-    for rel in remediations or []:
-        vuln = (rel.get("to") or {}).get("id")
-        name = str((rel.get("from") or {}).get("name") or "").strip()
-        if vuln and name and (vuln not in coa_name or name < coa_name[vuln]):
-            coa_name[vuln] = name
-    out: list[rules.SourceIssue] = []
-    for issue in issues:
-        named = cves.get(issue.member_id) or []
-        if not named:
-            out.append(issue)
-            continue
-        known = [by_name[c] for c in named if c in by_name]
-        kev_cves = tuple(
-            dict.fromkeys(c.upper() for c in named if c in by_name and by_name[c].get("x_opencti_cisa_kev"))
-        )
-        cvss = [v for n in known if (v := _float(n.get("x_opencti_cvss_base_score"))) is not None]
-        epss = [v for n in known if (v := _float(n.get("x_opencti_epss_score"))) is not None]
-        fixes = [
-            f for n in known if (f := fixed_versions.version_from_course_of_action(coa_name.get(n["id"]))) is not None
-        ]
-        out.append(
-            replace(
-                issue,
-                cve=named[0],
-                kev=any(bool(n.get("x_opencti_cisa_kev")) for n in known),
-                kev_cves=kev_cves,
-                cvss=max(cvss) if cvss else None,
-                epss=max(epss) if epss else None,
-                fixed_version=_highest(fixes),
-            )
-        )
-    return out
-
-
-async def _read_opencti_by_name(
-    client: httpx.AsyncClient, base_url: str, headers: dict[str, str], cves: list[str]
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
-    """The OpenCTI Vulnerabilities named *cves* and their courses of action, ``None`` when OpenCTI fails."""
-    nodes: list[dict[str, Any]] = []
-    for start in range(0, len(cves), _PAGE):
-        chunk = cves[start : start + _PAGE]
-        data, err = await _graphql(
-            client,
-            base_url,
-            headers,
-            _OCTI_VULNS_BY_NAME,
-            {"filters": _fg([{"key": ["name"], "values": chunk}]), "first": len(chunk) * 2},
-        )
-        if err:
-            logger.info("CTEM cases: OpenCTI signal CVE lookup unavailable: %s", err)
-            return None
-        nodes.extend(
-            node
-            for e in ((data or {}).get("vulnerabilities") or {}).get("edges") or []
-            if (node := (e or {}).get("node"))
-        )
-    remediations, _fixes = await _remediations_of(
-        client, base_url, headers, sorted({str(n["id"]) for n in nodes if n.get("id")})
-    )
-    return nodes, remediations
-
-
-async def _enrich_signals(
-    db: AsyncSession, user_id: str, issues: list[rules.SourceIssue], cves: dict[str, list[str]]
-) -> list[rules.SourceIssue]:
-    """*issues* enriched from OpenCTI with the viewer's own credentials (#2041); unchanged when it cannot answer."""
-    wanted = list(dict.fromkeys(c for i in issues for c in cves.get(i.member_id) or ()))[:SIGNAL_CVE_CAP]
-    if not wanted:
-        return issues
-    try:
-        cred = await _user_creds(db, user_id, "opencti")
-    except Exception as exc:  # unreadable credentials: the facts stay unknown, the members stay
-        logger.info("CTEM cases: OpenCTI access unreadable for %s: %s", user_id, format_exception_message(exc))
-        return enrich_signal_issues(issues, cves, [])
-    if cred is None:
-        return enrich_signal_issues(issues, cves, [])
-    base_url, headers = cred
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            found = await _read_opencti_by_name(client, base_url, attach_probe(headers, base_url), wanted)
-    except Exception as exc:
-        logger.warning("CTEM cases: OpenCTI signal CVE lookup failed: %s", format_exception_message(exc))
-        found = None
-    vulns, remediations = found or ([], [])
-    return enrich_signal_issues(issues, cves, vulns, remediations)
 
 
 async def recompute_for_user(

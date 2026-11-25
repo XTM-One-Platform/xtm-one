@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from app.services.ctem_primary_assets import PrimaryAssetIndex
+from app.services.ctem_primary_assets import PrimaryAssetIndex, contains_word
 from app.services.organization_context import (
     PROFILE_ASSET_CAP,
     AssetEntry,
@@ -287,7 +287,7 @@ def _product_matches(product: str, ref: str) -> bool:
     if r.startswith("cpe:"):
         parts = r.split(":")
         r = parts[4] if len(parts) > 4 else r
-    return p == r or re.search(rf"(^|[^a-z0-9]){re.escape(p)}($|[^a-z0-9])", r) is not None
+    return contains_word(p, r)
 
 
 def _cpe_vendor_product(ref: str) -> tuple[str, str] | None:
@@ -545,15 +545,11 @@ def _jewels_of(profile: OrganizationProfile, resolution: Resolution) -> list[tup
     return out
 
 
-def signal_cve_ids(subject_ref: str | None, subject_label: str | None, evidence: Any) -> list[str]:
-    """The CVE ids a signal names (its subject, label and evidence ``cve`` / ``cves``), upper case, in order."""
-    listed = _evidence_list(evidence, "cve", "cves") if isinstance(evidence, dict) else []
-    found = _CVE.findall(" ".join([subject_ref or "", subject_label or "", *listed]))
-    return list(dict.fromkeys(c.upper() for c in found))
-
-
 def _cve_ids(facts: SignalFacts) -> list[str]:
-    return signal_cve_ids(facts.subject_ref, facts.subject_label, facts.evidence)
+    found = _CVE.findall(
+        " ".join([facts.subject_ref, facts.subject_label or "", *_evidence_list(facts.evidence, "cve", "cves")])
+    )
+    return list(dict.fromkeys(c.upper() for c in found))
 
 
 def _accepted(

@@ -141,8 +141,8 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     data["primary_assets"] = tuple(data.get("primary_assets") or ())
     seen = data.get("first_seen_at")
     data["first_seen_at"] = datetime.fromisoformat(seen) if seen else None
-    data["version_outcomes"] = tuple(tuple(pair) for pair in data.get("version_outcomes") or ())
-    data["kev_cves"] = tuple(data.get("kev_cves") or ())
+    # Typed facts (#2038); a view cached before it holds (version, outcome) pairs, read the same way.
+    data["version_outcomes"] = rules.version_facts(data.get("version_outcomes"))
     return rules.SourceIssue(**data)
 
 
@@ -580,8 +580,9 @@ def _visible_issue(
         "course_of_action_name": issue.course_of_action_name if issue.fixed_version and not issue.fixed_by else None,
         "not_affected": bool(issue.not_affected),
         "declared_version_known": issue.declared_version_known,
-        # Each installed version and what OpenCTI says of it (#1783): affected, not_affected or unknown.
-        "version_outcomes": [{"version": v, "outcome": o} for v, o in issue.version_outcomes],
+        # Each installed version and what OpenCTI says of it (#1783): affected, not_affected or unknown,
+        # with where the version was read, its asset count and its fix (#2038).
+        "version_outcomes": [fact.as_dict() for fact in issue.version_outcomes],
         # The OpenAEV finding lifecycle (CTEM-14-UI): absent when the source carries none.
         **(
             {
@@ -618,30 +619,6 @@ AGGREGATES_RESTRICTED_REASON = (
 )
 
 
-def kev_count(details: list[Any]) -> int:
-    """The KEV count of a case: each KEV CVE once (#2041).
-
-    A product member counts when it is KEV. A signal member counts each KEV CVE
-    it names (every one, not only its first) that no product member of the case
-    carries and no other signal already counted: a signal enriched from OpenCTI
-    and the OpenCTI issue of the same CVE are one vulnerability.
-    """
-    products = [d for d in details if d.source != SIGNAL_SOURCE]
-    counted = {str(d.cve).upper() for d in products if d.cve}
-    total = sum(1 for d in products if d.kev)
-    for d in details:
-        if d.source != SIGNAL_SOURCE:
-            continue
-        named = tuple(getattr(d, "kev_cves", ()) or ())
-        if not named and d.kev and d.cve:  # a member cached before kev_cves
-            named = (str(d.cve).upper(),)
-        for cve in named:
-            if cve not in counted:
-                counted.add(cve)
-                total += 1
-    return total
-
-
 def case_priority(severity: str | None, details: list[Any]) -> str:
     """The priority a case shows: its loop severity when set, else the default policy."""
     if severity in SEVERITY_PRIORITY:
@@ -656,8 +633,6 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         return None
     details = [view.issues[_member_id(r)] for r in visible if r.open and _member_id(r) in view.issues]
     agg = rules.aggregates(details)
-    # One KEV CVE is counted once, from its product member, when a signal names it too (#2041).
-    agg["kev_count"] = kev_count(details)
     # Open product members this viewer has no details of (hidden by scope, or seen before from a
     # product that does not answer now): the detail aggregates would count only part of the case,
     # so they are null with a reason, never a silent 0 a reader takes for "none". Signal members
