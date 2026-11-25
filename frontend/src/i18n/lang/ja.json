@@ -21715,5 +21715,13 @@
   "Link source": "リンク元",
   "No asset of the inventory supports this primary asset yet.": "この主要資産を支援するインベントリの資産はまだありません。",
   "Search assets or asset groups by name": "資産または資産グループを名前で検索",
-  "No open case reaches this primary asset.": "この主要資産に到達するオープンなケースはありません。"
+  "No open case reaches this primary asset.": "この主要資産に到達するオープンなケースはありません。",
+  "Integrity": "完全性",
+  "Confidentiality": "機密性",
+  "Traceability": "追跡可能性",
+  "Not inherited": "継承なし",
+  "Inherited lower": "低いレベルで継承",
+  "Inherited in full": "完全に継承",
+  "Through an asset group": "アセットグループ経由",
+  "{need}: {level}": "{need}: {level}"
 }

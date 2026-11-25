@@ -21715,5 +21715,13 @@
   "Link source": "Source du lien",
   "No asset of the inventory supports this primary asset yet.": "Aucun actif de l'inventaire ne supporte encore cet actif principal.",
   "Search assets or asset groups by name": "Rechercher des actifs ou groupes d'actifs par nom",
-  "No open case reaches this primary asset.": "Aucun cas ouvert n'atteint cet actif principal."
+  "No open case reaches this primary asset.": "Aucun cas ouvert n'atteint cet actif principal.",
+  "Integrity": "Intégrité",
+  "Confidentiality": "Confidentialité",
+  "Traceability": "Traçabilité",
+  "Not inherited": "Non héritée",
+  "Inherited lower": "Héritée à un niveau inférieur",
+  "Inherited in full": "Héritée entièrement",
+  "Through an asset group": "Via un groupe d'actifs",
+  "{need}: {level}": "{need} : {level}"
 }
