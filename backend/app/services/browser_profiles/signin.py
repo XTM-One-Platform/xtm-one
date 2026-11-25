@@ -136,6 +136,13 @@ _OTHER_WAYS_SELECTORS: tuple[str, ...] = (
 _PICKER_CODE_VALUES: tuple[str, ...] = ("PhoneAppOTP", "OneWaySMS", "ConsolidatedTelephony")
 #: A push method, chosen only when the picker offers no code method at all.
 _PICKER_PUSH_VALUES: tuple[str, ...] = ("PhoneAppNotification",)
+#: The password method of a sign-in method picker (Entra "Choose a way to sign in": a passkey / FIDO row and
+#: "Use my password"), by ``data-value`` or id, chosen first when the profile holds a password. The passkey row is
+#: never chosen: headless Chromium cannot run its WebAuthn ceremony.
+_PICKER_FIRST_CHOICE_VALUES: tuple[str, ...] = ("Password", "PWD")
+_PICKER_FIRST_CHOICE_SELECTORS: tuple[str, ...] = ("#idA_PWD_SwitchToPassword", "#idA_PWD_SwitchToPasswordLink")
+#: The visible label of a password row, when no attribute names it.
+_PICKER_FIRST_CHOICE_LABEL = r"^\s*(use (my|your|a) password|sign in with (my |your |a )?password|password)\s*$"
 #: The "Stay signed in?" interstitial: tick "don't ask again", then confirm.
 _KMSI_CONFIRM_SELECTOR = "#idSIButton9"
 _KMSI_DONT_ASK_SELECTOR = "#idChkBx_SAOTCC_TD"
@@ -327,6 +334,18 @@ _CLASSIFY_JS = r"""
     try { for (const el of document.querySelectorAll(cfg.signedIn)) if (shown(el)) { signedIn = true; break; } } catch (e) {}
   }
 
+  // A fieldless page that asks for an approval elsewhere (an authenticator push), as opposed to a method picker.
+  let approval = false;
+  let picker = false;
+  if (!fields.length && document.body) {
+    const said = ((document.title || '') + ' ' + (document.body.innerText || '').slice(0, 4000)).toLowerCase();
+    const methods = [...document.querySelectorAll('[data-value]')].filter(shown).length;
+    picker = methods >= 2 || /choose a way to sign in|sign in another way|verify your identity|choose how/.test(said);
+    const marked = !!document.querySelector('#idDiv_SAOTCAS_Title, #idDiv_SAOTCAS_Description, #idRichContext_DisplaySign');
+    approval = marked || (!picker
+      && /approv|authenticator app|notification|push|check your (phone|device)|respond on your|tap (yes|approve)|verify it.?s you/.test(said));
+  }
+
   let interactive = 0;
   for (const el of document.querySelectorAll('a[href], button, input, select, textarea, [role="button"], [role="link"], [role="menuitem"], [role="tab"]')) {
     if (shown(el)) interactive++;
@@ -349,6 +368,8 @@ _CLASSIFY_JS = r"""
     })(),
     submitCount: submits.length,
     number,
+    approval,
+    picker,
     ticks,
     accept,
     textInputs: fields.length,
@@ -384,6 +405,11 @@ class PageState:
     submit_count: int = 0
     #: A large one-to-three-digit number on a page without fields: a number-match prompt.
     number: str | None = None
+    #: A page without fields that asks for an approval elsewhere (Entra's "Approve sign in request", an
+    #: authenticator push): the only fieldless page announced as a push.
+    approval: bool = False
+    #: A page without fields offering sign-in methods ("Choose a way to sign in"): never a push.
+    picker: bool = False
     #: Unticked checkboxes (``[data-xtm-signin="tick-N"]``).
     ticks: int = 0
     #: The default button of the page's form is marked ``[data-xtm-signin="accept"]``.
@@ -503,6 +529,8 @@ async def classify(page: Any, snap: ProfileSnapshot) -> PageState:
         alert=data.get("alert"),
         submit_count=int(data.get("submitCount") or 0),
         number=data.get("number"),
+        approval=bool(data.get("approval")),
+        picker=bool(data.get("picker")),
         ticks=int(data.get("ticks") or 0),
         accept=bool(data.get("accept")),
         text_inputs=int(data.get("textInputs") or 0),
@@ -1397,6 +1425,53 @@ async def _present_picker_method(page: Any, values: tuple[str, ...]) -> str | No
         return None
 
 
+_PICKER_FIRST_CHOICE_JS = r"""
+(args) => {
+  const shown = (el) => {
+    if (!el || !el.isConnected) return false;
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width > 4 && r.height > 4 && s.visibility !== 'hidden' && s.display !== 'none';
+  };
+  for (const el of document.querySelectorAll('[data-xtm-signin="picker-password"]')) el.removeAttribute('data-xtm-signin');
+  const mark = (el) => { el.setAttribute('data-xtm-signin', 'picker-password'); return true; };
+  for (const value of args.values) {
+    const el = document.querySelector(`[data-value="${value}"]`);
+    if (shown(el)) return mark(el);
+  }
+  for (const sel of args.selectors) {
+    let el = null;
+    try { el = document.querySelector(sel); } catch (e) { continue; }
+    if (shown(el)) return mark(el);
+  }
+  const label = new RegExp(args.label, 'i');
+  const rows = document.querySelectorAll('a, button, [role="button"], [role="link"], [data-value], [tabindex]');
+  for (const el of rows) {
+    if (shown(el) && label.test((el.innerText || '').trim())) return mark(el);
+  }
+  return false;
+}
+"""
+
+
+async def _choose_password_method(flow: _Flow) -> bool:
+    """On a sign-in method picker, click its password row ("Use my password"); never a passkey / FIDO row."""
+    args = {
+        "values": list(_PICKER_FIRST_CHOICE_VALUES),
+        "selectors": list(_PICKER_FIRST_CHOICE_SELECTORS),
+        "label": _PICKER_FIRST_CHOICE_LABEL,
+    }
+    try:
+        found = await asyncio.wait_for(flow.page.evaluate(_PICKER_FIRST_CHOICE_JS, args), _READ_TIMEOUT_SECONDS)
+    except Exception:
+        return False
+    if not found or not await _click(flow.page, '[data-xtm-signin="picker-password"]'):
+        return False
+    flow.record("picker_choice=password")
+    flow.nav.bump()
+    return True
+
+
 async def _choose_picker_method(flow: _Flow) -> str | None:
     """On a credential picker, click a code method (authenticator code, then SMS), else a push; the value chosen."""
     page = flow.page
@@ -1594,6 +1669,22 @@ async def _drive(
             await asyncio.sleep(_POLL_SECONDS)
             continue
 
+        # A sign-in method picker (Entra "Choose a way to sign in": a passkey row and "Use my password"): the
+        # password, when the profile holds one, before any passkey or push row.
+        if (
+            not on_app
+            and not state.text_inputs
+            and not state.relay
+            and creds.get("password")
+            and done.get(f"picker-password@{key}", 0) < 2
+            and await _choose_password_method(flow)
+        ):
+            done[f"picker-password@{key}"] = done.get(f"picker-password@{key}", 0) + 1
+            submitted = True
+            flow.stage = STAGE_IDP_FORM
+            await flow.after_action(state)
+            continue
+
         # A credential picker ("Verify your identity" / "Choose a way to sign in"): choose a code method.
         if not on_app and not state.sign_in_shaped and not state.relay and done.get(f"picker@{key}", 0) < 2:
             method = await _choose_picker_method(flow)
@@ -1758,7 +1849,25 @@ async def _drive(
                 flow.nav.bump()
                 await flow.after_action(state)
                 continue
-            if state.number is not None or (submitted and time.monotonic() - still_since >= _APPROVAL_STALL_SECONDS):
+            stalled = submitted and time.monotonic() - still_since >= _APPROVAL_STALL_SECONDS
+            if stalled and state.number is None and not state.approval:
+                # Nothing was sent to a phone: never announced as a push. A method picker offering nothing the
+                # platform can use fails naming the page; any other page waits for the redirect chain's own bound.
+                if state.picker:
+                    flow.record("unusable_method_picker", url=state.url)
+                    return fail(
+                        f"The sign-in stopped on a sign-in method picker offering no method the platform can use "
+                        f"({state.title or 'untitled'}): enable a password, authenticator-code or SMS method on the "
+                        "account, or set the profile's confirm_selector to the control that goes on.",
+                        STAGE_MFA,
+                        state.url,
+                    )
+                if not done.get(f"unknown@{key}"):
+                    done[f"unknown@{key}"] = 1
+                    flow.record("fieldless_page_not_an_approval", url=state.url)
+                await asyncio.sleep(_POLL_SECONDS)
+                continue
+            if state.number is not None or stalled:
                 flow.stage = STAGE_MFA
                 if announced is None:
                     if announce_approval is None:
@@ -1845,6 +1954,13 @@ async def _screenshot(page: Any, user_id: object) -> str | None:
 _local_states: dict[str, dict] = {}
 _local_codes: dict[str, asyncio.Queue[str]] = {}
 _running: dict[str, asyncio.Task] = {}
+#: The login settings each running sign-in started from (its snapshot), by challenge id: a challenge opened on
+#: settings changed since is restarted rather than answered as it stands.
+_started_config: dict[str, str] = {}
+
+
+def _config_digest(login_config: dict[str, Any] | None) -> str:
+    return json.dumps(login_config or {}, sort_keys=True, default=str)
 
 
 # The key names are read by every replica: renamed, a challenge opened by an
@@ -2192,20 +2308,52 @@ async def _run_sign_in(cid: str, snap: ProfileSnapshot, user_id: object) -> None
     finally:
         _running.pop(cid, None)
         _local_codes.pop(cid, None)
+        _started_config.pop(cid, None)
 
 
-async def start_sign_in(profile: BrowserProfile, *, user_id: object, wait_seconds: float = 75.0) -> SignInOutcome:
+async def _close_challenge(cid: str, profile_id: str | None) -> None:
+    """End the sign-in waiting on *cid* (its browser closed) so a new one can start."""
+    task = _running.pop(cid, None)
+    if task is not None and not task.done():
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    _local_codes.pop(cid, None)
+    _started_config.pop(cid, None)
+    await publish(
+        cid,
+        SignInOutcome(
+            status=STATUS_FAILED,
+            message="This sign-in was restarted: a new challenge replaces it.",
+            challenge_id=cid,
+            profile_id=profile_id,
+            stage=STAGE_MFA,
+        ),
+    )
+
+
+async def start_sign_in(
+    profile: BrowserProfile, *, user_id: object, wait_seconds: float = 75.0, restart: bool = False
+) -> SignInOutcome:
     """Start signing *profile* in and wait until it is signed in, failed or waiting for a person.
 
     A challenge already waiting for the person (its browser open on the
-    prompt) is answered as it stands instead of opening a second browser.
+    prompt) is answered as it stands instead of opening a second browser -
+    unless *restart* is asked, or the profile's login settings changed since
+    that challenge opened: the old browser is then closed and a new sign-in
+    starts from the settings as they are now.
     """
     if profile.mfa_challenge_id and profile.session_status == SESSION_AWAITING_MFA:
-        live = await read_state(profile.mfa_challenge_id)
+        old = profile.mfa_challenge_id
+        live = await read_state(old)
         if live is not None and live.status == STATUS_MFA_REQUIRED and not _expired(live.expires_at):
-            return live
+            started = _started_config.get(old)
+            changed = started is not None and started != _config_digest(profile.login_config)
+            if not restart and not changed:
+                return live
+            await _close_challenge(old, str(profile.id))
     cid = secrets.token_urlsafe(18)
     snap = await resolved_snapshot(profile)
+    _started_config[cid] = _config_digest(snap.login_config)
     await publish(
         cid, SignInOutcome(status=STATUS_RUNNING, message="Signing in...", challenge_id=cid, profile_id=snap.id)
     )
