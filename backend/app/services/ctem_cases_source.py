@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from contextvars import ContextVar
@@ -678,7 +679,9 @@ async def _read_opencti(
 
     The stack lookup and the ``fromId`` list go in batches under OpenCTI's
     clause limit (#1811); a cap reached marks the read incomplete, never failed.
+    The time of each phase is logged (#2232), so a slow view build names its slow phase.
     """
+    started = time.perf_counter()
     software, complete, err = await _read_stack_software(
         client, base_url, headers, _OCTI_STACK_SOFTWARE, stack, graphql=_graphql
     )
@@ -709,8 +712,22 @@ async def _read_opencti(
             complete = False
             break
     relations = relations[:OCTI_ISSUE_CAP]
+    read_at = time.perf_counter()
     remediations, fixes = await _remediations_of(client, base_url, headers, _vulnerability_ids(relations))
-    issues = opencti_issues(software, stack, relations, remediations, fixes)
+    built_at = time.perf_counter()
+    # Pure CPU work over every relation (#2232): off the event loop, so the web worker keeps answering.
+    issues = await asyncio.to_thread(opencti_issues, software, stack, relations, remediations, fixes)
+    logger.info(
+        "CTEM cases: OpenCTI read of %d software, %d relations, %d fixes: stack+relations %.0f ms, "
+        "remediations %.0f ms, issues %.0f ms (%d issues)",
+        len(software),
+        len(relations),
+        len(fixes),
+        (read_at - started) * 1000,
+        (built_at - read_at) * 1000,
+        (time.perf_counter() - built_at) * 1000,
+        len(issues),
+    )
     return OpenCtiRead(issues, complete and len(issues) < OCTI_ISSUE_CAP)
 
 
@@ -788,7 +805,8 @@ async def _read_opencti_scoped(
             if not info.get("hasNextPage") or not after:
                 break
     remediations, fixes = await _remediations_of(client, base_url, headers, _vulnerability_ids(relations))
-    return OpenCtiRead(opencti_issues(software, stack, relations, remediations, fixes), complete)
+    issues = await asyncio.to_thread(opencti_issues, software, stack, relations, remediations, fixes)
+    return OpenCtiRead(issues, complete)
 
 
 async def _read_openaev(
