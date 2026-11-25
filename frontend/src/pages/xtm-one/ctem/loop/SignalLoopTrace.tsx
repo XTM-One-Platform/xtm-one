@@ -26,7 +26,10 @@ import { isNotFoundError } from "@/lib/api";
 import { formatDayIntl, formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { cn, safeExternalUrl } from "@/lib/utils";
-import { DecisionReason, decisionSentence, levelLabel } from "./DecisionReason";
+import { TruncatedText } from "@/components/ui/truncated-text";
+import { criticalityFigure, DecisionInputs, DecisionReason, decisionSentence, levelLabel, nextStepSentence } from "./DecisionReason";
+import { PolicyFunnel } from "./PolicyFunnel";
+import { PrimaryAssetCards } from "./PrimaryAssetCards";
 import { EVIDENCE_HEALTH_ROW_KEYS, EVIDENCE_STATE_LABEL, evidenceHealthFacts, type EvidenceHealthFact } from "./evidence-health";
 import { signalLoop, type LoopStageView } from "./loop-stages";
 import { caseDetailPath } from "../cases-kanban";
@@ -503,7 +506,53 @@ function ruleFactRow(fact: SignalRuleFact, t_i18n: ReturnType<typeof useFormatte
  * subject, its source with the link to the source object, when it was first
  * and last seen, how many times, and the evidence the source gave.
  */
-function SignalFacts({ signal }: { signal: CtemSignal }) {
+/** One labelled row of a fact list. */
+type FactRow = { label: string; value: ReactNode };
+
+function FactList({ rows, testId }: { rows: FactRow[]; testId?: string }) {
+  if (rows.length === 0) return null;
+  return (
+    <dl className="grid grid-cols-[minmax(7rem,auto)_1fr] gap-x-3 gap-y-1 content-caption" data-testid={testId}>
+      {rows.map((row) => (
+        <div key={row.label} className="contents">
+          <dt className="text-default-secondary">{row.label}</dt>
+          <dd className="min-w-0 break-words">{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** A titled block of the trace v2 (#1979): an icon, a title, its content. */
+function TraceSection({ icon, title, testId, children }: { icon: string; title: string; testId: string; children: ReactNode }) {
+  return (
+    <section className="flex min-w-0 flex-col gap-2" aria-label={title} data-testid={testId}>
+      <h3 className="flex items-center gap-2 title-xs">
+        <Icon name={icon as "activity"} size={16} className="shrink-0 text-accent" aria-hidden />
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+/** A small titled sub-block of facts (the Aikido finding, the subject, evidence health, the surface, freshness). */
+function FactBlock({ title, rows, testId }: { title: string; rows: FactRow[]; testId: string }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-1 rounded-sm border border-elevation-subtle layer-1 bg-elevation-default p-3" data-testid={testId}>
+      <span className="content-caption font-medium text-default-secondary">{title}</span>
+      <FactList rows={rows} />
+    </div>
+  );
+}
+
+/**
+ * Every fact the signal carries, sorted into the sections of the trace v2 (#1979):
+ * the source line, the fact blocks by family, the seen facts and every remaining
+ * evidence key (no cap: v1 kept 8). One reader, so no fact is drawn twice or lost.
+ */
+function useSignalFacts(signal: CtemSignal) {
   const { t_i18n, intl } = useFormatter();
   const link = safeExternalUrl(signalSourceLink(signal.evidence));
   const provider = signalProviderName(signal.source.provider);
@@ -529,68 +578,77 @@ function SignalFacts({ signal }: { signal: CtemSignal }) {
     .filter(([key]) => !(SOURCE_LINK_KEYS as readonly string[]).includes(key))
     .filter(([key]) => !shownKeys.includes(key))
     .map(([key, value]) => ({ key, value: evidenceText(value) }))
-    .filter((row) => row.value)
-    .slice(0, 8);
+    .filter((row) => row.value);
   const when = (iso: string | null) => (iso ? formatShortDateTimeIntl(intl, iso) : "--");
-  const rows: { label: string; value: ReactNode }[] = [
-    { label: t_i18n("Subject"), value: signal.subject.label || signal.subject.ref },
-    {
-      label: t_i18n("Source"),
-      // The source's emblem and name (#1357), then the way to the source object.
-      value: link ? (
-        <a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1 align-top text-accent hover:underline">
-          <SourceBadge source={signal.source.provider} label={provider} testId="ctem-signal-source" />
-          <Icon name="external-link" size={16} className="shrink-0" />
-          <span className="sr-only">{t_i18n("Open the source")}</span>
-        </a>
-      ) : (
-        // On the top of the line box, the 24 px pivot pulled into the 16 px line: the value stays on its
-        // label's line and the row keeps its height (UX r1 B2 on #1358).
-        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 align-top">
-          <SourceBadge source={signal.source.provider} label={provider} testId="ctem-signal-source" />
-          <ModulePivotLink
-            className="-my-1"
-            module={pivotModule}
-            baseUrl={pivotModule ? moduleUrls[pivotModule] : null}
-            id={signal.source.external_id}
-            iconOnly
-            testId="ctem-signal-source-pivot"
-          />
-        </span>
-      ),
-    },
-    ...ruleFacts.map((fact) => ruleFactRow(fact, t_i18n)),
-    ...findingFacts.map((fact) => aikidoFactRow(fact, t_i18n)),
-    ...identityFacts.map((fact) => subjectFactRow(fact, t_i18n)),
-    ...(health ? evidenceHealthRows(health, t_i18n, (iso) => formatDayIntl(intl, iso)) : []),
-    ...(surface ? surfaceFactRows(surface, t_i18n, (iso) => formatDayIntl(intl, iso)) : []),
-    ...staleFacts.map(() => freshnessFactRow(t_i18n)),
-    { label: t_i18n("First seen"), value: when(signal.first_seen_at) },
-    { label: t_i18n("Last seen"), value: when(signal.last_seen_at) },
-    { label: t_i18n("Seen"), value: t_i18n("{count, plural, one {# time} other {# times}}", { count: signal.seen_count }) },
-  ];
+  const day = (iso: string) => formatDayIntl(intl, iso);
+  const source: ReactNode = link ? (
+    <a href={link} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1 align-top text-accent hover:underline">
+      <SourceBadge source={signal.source.provider} label={provider} testId="ctem-signal-source" />
+      <Icon name="external-link" size={16} className="shrink-0" />
+      <span className="sr-only">{t_i18n("Open the source")}</span>
+    </a>
+  ) : (
+    // On the top of the line box, the 24 px pivot pulled into the 16 px line: the value stays on its
+    // label's line and the row keeps its height (UX r1 B2 on #1358).
+    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 align-top">
+      <SourceBadge source={signal.source.provider} label={provider} testId="ctem-signal-source" />
+      <ModulePivotLink
+        className="-my-1"
+        module={pivotModule}
+        baseUrl={pivotModule ? moduleUrls[pivotModule] : null}
+        id={signal.source.external_id}
+        iconOnly
+        testId="ctem-signal-source-pivot"
+      />
+    </span>
+  );
+  return {
+    source,
+    origin: [
+      { label: t_i18n("Subject"), value: signal.subject.label || signal.subject.ref },
+      { label: t_i18n("Source"), value: source },
+      ...ruleFacts.map((fact) => ruleFactRow(fact, t_i18n)),
+      { label: t_i18n("First seen"), value: when(signal.first_seen_at) },
+      { label: t_i18n("Last seen"), value: when(signal.last_seen_at) },
+      { label: t_i18n("Seen"), value: t_i18n("{count, plural, one {# time} other {# times}}", { count: signal.seen_count }) },
+    ] as FactRow[],
+    blocks: [
+      { id: "aikido", title: t_i18n("Source finding"), rows: findingFacts.map((fact) => aikidoFactRow(fact, t_i18n)) },
+      { id: "subject", title: t_i18n("Subject details"), rows: identityFacts.map((fact) => subjectFactRow(fact, t_i18n)) },
+      { id: "health", title: t_i18n("Evidence coverage"), rows: health ? evidenceHealthRows(health, t_i18n, day) : [] },
+      { id: "surface", title: t_i18n("Surface change"), rows: surface ? surfaceFactRows(surface, t_i18n, day) : [] },
+      { id: "freshness", title: t_i18n("Inventory freshness"), rows: staleFacts.map(() => freshnessFactRow(t_i18n)) },
+    ] as { id: string; title: string; rows: FactRow[] }[],
+    evidence,
+  };
+}
+
+/** The signal's facts: the origin rows, the fact blocks, every remaining evidence key (`ctem-signal-facts`). */
+function SignalFacts({ signal }: { signal: CtemSignal }) {
+  const { t_i18n } = useFormatter();
+  const facts = useSignalFacts(signal);
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 content-caption" data-testid="ctem-signal-facts">
-      {rows.map((row) => (
-        <div key={row.label} className="contents">
-          <dt className="text-default-secondary">{row.label}</dt>
-          <dd className="min-w-0 truncate">{row.value}</dd>
-        </div>
-      ))}
-      {evidence.length > 0 && (
-        <div className="contents">
-          <dt className="text-default-secondary">{t_i18n("Evidence")}</dt>
-          <dd className="min-w-0" data-testid="ctem-signal-evidence">
-            {evidence.map((row) => (
-              <span key={row.key} className="block truncate" title={row.value}>
-                <span className="text-default-secondary">{row.key}: </span>
-                {row.value}
-              </span>
+    <div className="flex min-w-0 flex-col gap-3" data-testid="ctem-signal-facts">
+      <FactList rows={facts.origin} />
+      <div className="grid min-w-0 grid-cols-1 gap-2 @[40rem]:grid-cols-2">
+        {facts.blocks.map((block) => (
+          <FactBlock key={block.id} title={block.title} rows={block.rows} testId={`ctem-signal-facts-${block.id}`} />
+        ))}
+      </div>
+      {facts.evidence.length > 0 && (
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="content-caption font-medium text-default-secondary">{t_i18n("Evidence")}</span>
+          <dl className="grid grid-cols-[minmax(7rem,auto)_1fr] gap-x-3 gap-y-0.5 rounded-sm border border-elevation-subtle p-3 content-caption" data-testid="ctem-signal-evidence">
+            {facts.evidence.map((row) => (
+              <div key={row.key} className="contents">
+                <dt className="text-default-secondary">{row.key}: </dt>
+                <dd className="min-w-0 break-words">{row.value}</dd>
+              </div>
             ))}
-          </dd>
+          </dl>
         </div>
       )}
-    </dl>
+    </div>
   );
 }
 
@@ -637,36 +695,60 @@ export function signalCaseLink(caseId: string | null | undefined, currentCaseId?
   return caseDetailPath(caseId);
 }
 
-function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCaseId?: string | null }) {
+/**
+ * One key figure of the hero: a label, a large value and an optional caption line (CVSS,
+ * EPSS, criticality with its threshold under it, confidence, seen). A value too long for
+ * its tile is cut and named whole by the design-system tooltip (UX r1 B1 on #1995).
+ */
+function KeyFigure({ label, value, caption, testId }: { label: string; value: string; caption?: string; testId: string }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5 rounded-sm border border-elevation-subtle layer-1 bg-elevation-default px-3 py-2" data-testid={testId}>
+      <span className="content-caption text-default-secondary">{label}</span>
+      <TruncatedText text={value} className="title-xs tabular-nums" />
+      {caption && <TruncatedText text={caption} className="content-caption text-default-secondary" />}
+    </div>
+  );
+}
+
+/** The figures the hero tiles show, each only when the signal or its record has it. */
+function keyFigures(signal: CtemSignal, t_i18n: ReturnType<typeof useFormatter>["t_i18n"]) {
+  const evidence = signal.evidence ?? {};
+  const decision = signal.decision;
+  const out: { id: string; label: string; value: string; caption?: string }[] = [];
+  const score = (key: string) => (typeof evidence[key] === "number" || typeof evidence[key] === "string" ? String(evidence[key]) : "");
+  if (score("cvss")) out.push({ id: "cvss", label: t_i18n("CVSS"), value: score("cvss") });
+  if (score("epss")) out.push({ id: "epss", label: t_i18n("EPSS"), value: score("epss") });
+  // UX r1 B1 on #1995: the level alone on the tile, the threshold on its own caption line.
+  const criticality = criticalityFigure(decision?.scope ?? null, t_i18n);
+  if (criticality) out.push({ id: "criticality", label: t_i18n("Criticality"), ...criticality });
+  const confidence = decision?.reconcile?.confidence;
+  if (confidence) out.push({ id: "confidence", label: t_i18n("Confidence"), value: String(levelLabel(confidence, t_i18n)) });
+  out.push({ id: "seen", label: t_i18n("Seen"), value: t_i18n("{count, plural, one {# time} other {# times}}", { count: signal.seen_count }) });
+  return out;
+}
+
+/** The ten stages as a timeline with connectors (`ctem-loop-stages`): glyph, status, time, stop reason, next step, Open case. */
+function LoopStages({ signal, currentCaseId }: { signal: CtemSignal; currentCaseId?: string | null }) {
   const { t_i18n, intl } = useFormatter();
   const stages = signalLoop(signal);
   const caseLink = signalCaseLink(signal.case_id, currentCaseId);
+  const next = nextStepSentence(signal.decision, t_i18n, (iso) => formatDayIntl(intl, iso));
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 content-compact text-default-secondary">
-        <span className="font-medium text-default-primary">{t_i18n(signal.trigger_path_label || signal.trigger_path)}</span>
-        <span aria-hidden>·</span>
-        <span>{t_i18n("Lens: {lens}", { lens: t_i18n(LENS_LABEL[signal.lens] ?? signal.lens) })}</span>
-      </div>
-      <SignalFacts signal={signal} />
-      <DecisionReason state={signal.state} decision={signal.decision} showInputs />
-      <ProposeScope signal={signal} />
-      {/* One vertical list at every width (#851 UX round 1 B1): the dialog is
-          896 px at most, so a row of ten cells (81 px each) wraps its labels
-          and staggers the status captions; the list keeps one baseline. */}
-      <ol className="flex flex-col gap-0" aria-label={t_i18n("Loop stages")} data-testid="ctem-loop-stages">
-        {stages.map((stage, index) => (
+    <ol className="flex min-w-0 flex-col" aria-label={t_i18n("Loop stages")} data-testid="ctem-loop-stages">
+      {stages.map((stage, index) => {
+        const here = stage.status === "current" || stage.status === "stopped" || stage.status === "parked";
+        return (
           <li
             key={stage.key}
             data-stage={stage.key}
             data-status={stage.status}
             className={cn(
-              "flex min-w-0 items-center gap-2 rounded-sm px-2 py-1.5",
-              (stage.status === "current" || stage.status === "stopped" || stage.status === "parked") && "layer-1 bg-elevation-hover",
+              "relative flex min-w-0 items-start gap-2 rounded-sm px-2 py-1.5",
+              here && "layer-1 bg-elevation-hover",
               stage.status === "not_reached" && "text-default-secondary",
             )}
           >
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+            <span className="relative flex h-4 w-4 shrink-0 items-center justify-center pt-0.5">
               <StageGlyph status={stage.status} />
             </span>
             <span className="min-w-0 flex-1">
@@ -682,6 +764,12 @@ function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCas
                   ? ` · ${decisionSentence(signal.decision, t_i18n, (iso) => formatDayIntl(intl, iso))}`
                   : ""}
               </span>
+              {/* #1979: the next step sits on the stage that waits for it. */}
+              {here && next && (
+                <span className="block content-caption" data-testid="ctem-decision-next-step">
+                  {next}
+                </span>
+              )}
             </span>
             {stage.key === "case" && caseLink && (
               <Button asChild variant="link" size="sm" className="h-auto shrink-0 gap-1 p-0">
@@ -692,8 +780,54 @@ function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCas
               </Button>
             )}
           </li>
-        ))}
-      </ol>
+        );
+      })}
+    </ol>
+  );
+}
+
+/**
+ * The loop trace v2 (#1979, Sam 24 Nov 2026): half the page, in sections with icons,
+ * nothing of v1 lost. Initial event (what started it, the decision and the key
+ * figures), loop progress, the policy funnel, scope and criticality, the primary
+ * assets reached with their real totals, every fact and evidence key, then the actions.
+ */
+function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCaseId?: string | null }) {
+  const { t_i18n } = useFormatter();
+  const figures = keyFigures(signal, t_i18n);
+  return (
+    <div className="flex min-w-0 flex-col gap-6">
+      <TraceSection icon="zap" title={t_i18n("Initial event")} testId="ctem-loop-trace-initial-event">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 content-compact text-default-secondary">
+          <span className="font-medium text-default-primary">{t_i18n(signal.trigger_path_label || signal.trigger_path)}</span>
+          <span aria-hidden>·</span>
+          <span>{t_i18n("Lens: {lens}", { lens: t_i18n(LENS_LABEL[signal.lens] ?? signal.lens) })}</span>
+        </div>
+        <p className="title-md break-words" data-testid="ctem-loop-trace-subject">
+          {signal.subject.label || signal.subject.ref}
+        </p>
+        <DecisionReason state={signal.state} decision={signal.decision} showNextStep={false} />
+        <div className="grid min-w-0 grid-cols-2 gap-2 @[40rem]:grid-cols-5" data-testid="ctem-loop-trace-figures">
+          {figures.map((figure) => (
+            <KeyFigure key={figure.id} label={figure.label} value={figure.value} caption={figure.caption} testId={`ctem-loop-trace-figure-${figure.id}`} />
+          ))}
+        </div>
+        <SignalFacts signal={signal} />
+      </TraceSection>
+      <TraceSection icon="workflow" title={t_i18n("Loop progress")} testId="ctem-loop-trace-progress">
+        <LoopStages signal={signal} currentCaseId={currentCaseId} />
+      </TraceSection>
+      <TraceSection icon="list-checks" title={t_i18n("Policy funnel")} testId="ctem-loop-trace-funnel">
+        <PolicyFunnel state={signal.state} decision={signal.decision} />
+      </TraceSection>
+      <TraceSection icon="activity" title={t_i18n("Scope and criticality")} testId="ctem-loop-trace-scope">
+        {/* The checks are the funnel above and the primary assets reached the cards below: each drawn once. */}
+        <DecisionInputs decision={signal.decision} omit={["policy_checks", "primary_assets_reached"]} />
+      </TraceSection>
+      <TraceSection icon="shield-check" title={t_i18n("Primary assets reached")} testId="ctem-loop-trace-primary-assets">
+        <PrimaryAssetCards signalId={signal.id} decision={signal.decision} />
+      </TraceSection>
+      <ProposeScope signal={signal} />
     </div>
   );
 }
