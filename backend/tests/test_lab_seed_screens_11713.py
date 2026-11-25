@@ -173,7 +173,7 @@ def test_the_lab_recomputes_the_screens_cases_and_reads_them_back():
     for part in (
         "'POST', '/ctem-cases/recompute?vertical=cyber'",
         "/ctem-cases?vertical=cyber",
-        ": 429 ",
+        "CTEM_SCREENS_RECOMPUTE_BUSY",
         "len(cases) < 3",
         "/ctem-metrics/posture?vertical=cyber",
         "len(scored) != 5",
@@ -208,7 +208,12 @@ def _recompute_helper(answers: list) -> tuple:
 
     namespace = {"api": api, "log": lambda message: None, "time": types.SimpleNamespace(sleep=waits.append)}
     tree = ast.parse(LAB.read_text(encoding="utf-8"))
-    wanted = {"CTEM_SCREENS_RECOMPUTE_WAIT", "CTEM_SCREENS_RECOMPUTE_ATTEMPTS", "_ctem_screens_recompute"}
+    wanted = {
+        "CTEM_SCREENS_RECOMPUTE_WAIT",
+        "CTEM_SCREENS_RECOMPUTE_ATTEMPTS",
+        "CTEM_SCREENS_RECOMPUTE_BUSY",
+        "_ctem_screens_recompute",
+    }
     nodes = [
         node
         for node in tree.body
@@ -241,10 +246,32 @@ def test_the_screens_recompute_waits_out_a_taken_slot_and_recomputes_again():
     with pytest.raises(RuntimeError, match="recompute answered"):
         recompute("t")
 
-    recompute, calls, waits = _recompute_helper([RuntimeError("x: 429 ")] * 3 + [{"cases": []}])
+    recompute, calls, waits = _recompute_helper([RuntimeError("x: 429 ")] * 4 + [{"cases": []}])
     assert recompute("t") == {"cases": []}
-    assert waits == [62, 62]
+    assert waits == [62, 62, 62]
     assert calls[-1] == ("GET", "/ctem-cases?vertical=cyber&limit=50")
+
+    # Any other error is not waited out.
+    recompute, _, waits = _recompute_helper([RuntimeError("POST /ctem-cases/recompute: 500 boom")])
+    with pytest.raises(RuntimeError, match=": 500 "):
+        recompute("t")
+    assert waits == []
+
+
+def test_the_screens_recompute_waits_out_another_running_recompute():
+    """#2030: since #1953 a recompute already running answers 409; the seed waits it out like a 429."""
+    three = {"cases": [{"id": "a"}, {"id": "b"}, {"id": "c"}]}
+    recompute, calls, waits = _recompute_helper(
+        [
+            RuntimeError("POST /ctem-cases/recompute: 409 A recompute of the cases is already running"),
+            RuntimeError("POST /ctem-cases/recompute: 429 One recompute per minute"),
+            {"applied": True},
+            three,
+        ]
+    )
+    assert recompute("t") == three
+    assert [m for m, _ in calls] == ["POST", "POST", "POST", "GET"]
+    assert waits == [62, 62]
 
 
 def test_the_screens_scope_puts_every_fixable_issue_on_a_critical_asset(monkeypatch):
