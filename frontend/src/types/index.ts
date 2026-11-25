@@ -5433,6 +5433,8 @@ export interface ObservabilityConfig {
     shared_state_resolved_days: number;
     shared_state_archive_days: number;
     workset_resolved_days: number;
+    /** Finished assignment runs (Operations > Executions), from their completion. */
+    assignment_run_days?: number;
   } | null;
   trace_store_payloads: boolean;
   last_aggregation_at: string | null;

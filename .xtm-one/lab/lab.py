@@ -6303,6 +6303,62 @@ def seed_ctem_gates(token: str, base: str) -> dict[str, dict[str, str]]:
     }
 
 
+def seed_ctem_screens_states(token: str, base: str) -> dict[str, dict[str, str]]:
+    """The CTEM screens states reviews built by hand (#2316), read back. May raise.
+
+    ``seed_ctem_screens_states.py`` (the backend's interpreter and environment) writes a watchlisted signal of
+    the administrator, two signals of the peer (:data:`PEER_EMAIL`), the running versions history of the first
+    upgrade case and a peer stage run the module account preflight skipped; the primary asset links of
+    ``ctem_sample.SCREENS_PRIMARY_ASSET_LINKS`` go through the organization context API (skipped under
+    ``LAB_ORG_CONTEXT=missing``). Read back: ``GET /ctem-signals?state=watchlist`` holds a signal and the upgrade
+    case's ``running_versions.history`` is not empty. A restart writes nothing twice.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import ctem_sample  # beside this file, standard library only
+
+    admin = _created(api("GET", "/auth/me", token))
+    listed = api("GET", "/ctem-cases?vertical=cyber&limit=50", token)
+    cases = (listed.get("cases") if isinstance(listed, dict) else None) or []
+    upgrade = next((str(c["id"]) for c in cases if c.get("remediation_kind") == "upgrade"), "-")
+    out = ROOT / "ctem_screens_states.json"
+    process = subprocess.run(
+        [sys.executable, str(CHECKOUT / ".xtm-one" / "lab" / "seed_ctem_screens_states.py"), admin, PEER_EMAIL,
+         upgrade, str(out)],
+        cwd=CHECKOUT / "backend", env=seed_script_env(), capture_output=True, text=True, timeout=120,
+    )
+    if process.returncode != 0:
+        raise RuntimeError(
+            f"seed_ctem_screens_states.py exited with {process.returncode}: {stderr_summary(process.stderr)}"
+        )
+    seeded: dict[str, dict[str, str]] = {}
+    watch = api("GET", "/ctem-signals?state=watchlist&limit=5", token)
+    if not isinstance(watch, dict) or not watch.get("signals"):
+        raise RuntimeError(f"the watchlisted CTEM signals read back {str(watch)[:300]}")
+    seeded["CTEM signal watchlisted"] = {"id": str(watch["signals"][0]["id"]), "url": f"{base}/ctem/signals"}
+    if upgrade != "-":
+        case = api("GET", f"/ctem-cases/{upgrade}", token)
+        running = case.get("running_versions") if isinstance(case, dict) else None
+        if isinstance(running, dict) and running.get("history"):
+            seeded["CTEM case running versions history"] = {"id": upgrade, "url": f"{base}/ctem/cases/{upgrade}"}
+    if lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES) != "missing":
+        current = api("GET", "/organization-context", token)
+        profile = dict(current.get("profile") or {}) if isinstance(current, dict) else {}
+        named = {str(p.get("name", "")).strip().lower() for p in profile.get("primary_assets") or []}
+        missing = [name for name in ctem_sample.SCREENS_PRIMARY_ASSET_LINKS if name.lower() not in named]
+        if missing:
+            profile["primary_assets"] = [*(profile.get("primary_assets") or []),
+                                         *({"name": n, "criticality": "critical"} for n in missing)]
+            body = {"profile": profile, "source": "form"}
+            if isinstance(current, dict) and current.get("version") is not None:
+                body["based_on_version"] = current["version"]
+            api("PUT", "/organization-context", token, body)
+        for name, names in ctem_sample.SCREENS_PRIMARY_ASSET_LINKS.items():
+            api("PUT", f"/organization-context/primary-assets/{urllib.parse.quote(name, safe='')}/links", token,
+                {"names": list(names)})
+            seeded[f"primary asset links {name}"] = {"id": name, "url": f"{base}/settings/organization"}
+    return seeded
+
+
 def seed_ctem_screens_scope(token: str) -> None:
     """Declare the scope the screens issues land in (#1529): tech stack products and the assets running them.
 
@@ -8104,6 +8160,11 @@ def seed_entities() -> None:
             seeded.update(seed_ctem_gates(token, base))
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped["CTEM case gates"] = str(exc)[:600]
+        try:
+            # After the cases: the states reviews built by hand (#2316).
+            seeded.update(seed_ctem_screens_states(token, base))
+        except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+            skipped["CTEM screens states"] = str(exc)[:600]
     if mode == "xtm_one":
         # After seed_org_ai_draft_stub (the asset rows need a saved profile, #1947).
         if "missing" == lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES) or "on" == lab_switch(

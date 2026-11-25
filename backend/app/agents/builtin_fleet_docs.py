@@ -485,7 +485,8 @@ _SWITCHED_ON = _prereq("manual", "An administrator switches each automation on",
 #: authorized, and a gate that waits is one decision item (a needs_human work
 #: item with its ask card) between steps, never a pause inside a run. The agent
 #: decides what an answer means and moves the case itself.
-#: Seeded fleets ship at Low (#10005), so the class says what still waits:
+#: Seeded fleets ship at Full human gates (#2279), where every gate waits; at
+#: Low (#10005, a level an administrator picks) the class says what still waits:
 #: an OpenAEV launch executes payloads on the organization's endpoints or AI
 #: systems, which the fleet cannot tell from production, and an executed
 #: inject cannot be undone: ``destructive``. An action on a supplier (contact,
@@ -502,8 +503,8 @@ CTEM_VALIDATION_GATE = "ctem.validation.non_readonly"
 GATE_OFFERED_TOOLS: dict[str, tuple[str, ...]] = {"ctem.analyst_review": ("apply_opencti_draft",)}
 
 #: The CTEM loop gate catalog (#916, CTEM-34): one key per loop stage, declared
-#: once and seeded on every CTEM loop fleet. Out of the box (the seeded Low
-#: level) two gates wait per case (Sam, 23 Nov 2026, #1339): the OpenAEV
+#: once and seeded on every CTEM loop fleet. Out of the box every gate waits
+#: (Full human gates, #2279); at Low two gates wait per case (Sam, 23 Nov 2026, #1339): the OpenAEV
 #: validation (``ctem.validation.non_readonly``, on a fleet that has the OpenAEV
 #: validation step) and ``ctem.mobilize``, the ``destructive`` ones; every other
 #: gate runs and the case records it as passed automatically.
@@ -712,7 +713,7 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
     "steps": [
         {"title": "Asset match", "detail": "No matching asset closes the case, with the reason."},
         # Each step names the gate it stands for (#1074): the About response badges it when that gate
-        # waits at the fleet's live level and pins; the static flag is the seeded level's (Low).
+        # waits at the fleet's live level and pins; the static flag is Low's (seeded at full_gates, #2279).
         {"title": "Exploitability", "detail": "Validated in OpenAEV.", "gate": True, "gate_key": CTEM_VALIDATION_GATE},
         {"title": "Score", "detail": "The finding is scored in OpenCRQ."},
         {
@@ -1182,7 +1183,7 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
         {"title": "Signal", "detail": "Any trigger path; reconcile and the scope gate open a case or watch it."},
         {"title": "Prioritise", "detail": "Relevance and severity from the profile and the scope criticality."},
         # Each step names its gate (#1074): the About response badges it when that gate waits at the
-        # live level and pins. The static flag is the seeded level's (Low): the validation and ctem.mobilize wait.
+        # live level and pins. The static flag is Low's: the validation and ctem.mobilize wait (seeded: all, #2279).
         {
             "title": "Validate",
             "detail": "An OpenAEV scenario or atomic test, after your approval.",

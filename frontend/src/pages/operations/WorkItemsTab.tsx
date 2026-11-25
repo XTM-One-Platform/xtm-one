@@ -1167,7 +1167,13 @@ export default function WorkItemsTab({
     {
       key: "title",
       header: "Title",
-      cell: (item) => <TruncatedText text={item.title} />,
+      // The card's Waiting for you marker beside the title, same rule and component (#2200, clause 3 of #1001).
+      cell: (item) => (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <TruncatedText text={item.title} className="min-w-0" />
+          {waitsForReader(item, user?.id) && <WaitingForYouBadge testId="work-item-list-waiting-for-you" />}
+        </span>
+      ),
       csv: (item) => item.title,
     },
     {

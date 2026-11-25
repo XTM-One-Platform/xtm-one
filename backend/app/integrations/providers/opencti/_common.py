@@ -469,7 +469,7 @@ _RELATIONSHIP_FIELDS = """
     from {
         ... on BasicObject { id entity_type parent_types }
         ... on StixObject { standard_id }
-        ... on AttackPattern { name }
+        ... on AttackPattern { name x_mitre_id }
         ... on Campaign { name }
         ... on CourseOfAction { name }
         ... on Individual { name }
@@ -499,7 +499,7 @@ _RELATIONSHIP_FIELDS = """
     to {
         ... on BasicObject { id entity_type parent_types }
         ... on StixObject { standard_id }
-        ... on AttackPattern { name }
+        ... on AttackPattern { name x_mitre_id }
         ... on Campaign { name }
         ... on CourseOfAction { name }
         ... on Individual { name }
@@ -1639,6 +1639,22 @@ def _format_entity(entity: dict, base_url: str = "", *, full_text: bool = False)
     return "\n".join(lines)
 
 
+def _relationship_end_ref(end: dict[str, Any]) -> str:
+    """The ids of one end of a relationship: its id, then its STIX id and MITRE ID.
+
+    An agent walking a campaign to its techniques needs the id of each end to
+    read or link it, never the name alone (two techniques share a name across
+    the Enterprise and Mobile matrices). Empty when the end carries no id.
+    """
+    end_id = end.get("id")
+    if not end_id:
+        return ""
+    extra = [str(end["standard_id"])] if end.get("standard_id") else []
+    if end.get("x_mitre_id"):
+        extra.append(f"MITRE {end['x_mitre_id']}")
+    return f"{end_id} ({', '.join(extra)})" if extra else str(end_id)
+
+
 def _format_relationship(rel: dict, base_url: str = "", *, full_text: bool = False) -> str:
     """Format a STIX core relationship into a readable string.
 
@@ -1667,6 +1683,9 @@ def _format_relationship(rel: dict, base_url: str = "", *, full_text: bool = Fal
     )
     rel_id = rel.get('id', 'N/A')
     lines.append(f"  ID: {rel_id}")
+    for label, end in (("From", from_obj), ("To", to_obj)):
+        if ref := _relationship_end_ref(end):
+            lines.append(f"  {label}: {ref}")
     if rel_id != 'N/A' and base_url:
         lines.append(f"  Link: [Open in OpenCTI]({base_url}/dashboard/id/{rel_id})")
     if rel.get("description"):

@@ -85,6 +85,7 @@ from app.services.work_item_blocked_refs import all_satisfied as all_refs_satisf
 from app.services.work_item_blocked_refs import (
     blocked_why,
     names_reference_state,
+    names_tag,
     normalize_blocked_on_refs,
     normalize_blocked_reason,
     own_pull_request,
@@ -2432,6 +2433,7 @@ async def create_work_item(
         deployment = item.status == "blocked" and _names_deployment(refs)
         workflow_runs = item.status == "blocked" and _names_workflow_run(refs)
         reference_states = item.status == "blocked" and names_reference_state(refs)
+        tags = item.status == "blocked" and names_tag(refs)
         from types import SimpleNamespace
 
         events = created_events(item, writer=SimpleNamespace(agent_id=creator_uuid, run_id=None))
@@ -2462,6 +2464,11 @@ async def create_work_item(
         from app.services.work_item_blocked_refs import schedule_reference_state_check
 
         schedule_reference_state_check(item_id)
+    if tags:
+        # Once at creation: the tag may be cut already (#2209).
+        from app.services.work_item_blocked_refs import schedule_tag_check
+
+        schedule_tag_check(item_id)
     created = await _read_back(item_id, user_id=user_id, writer=writer) or {"id": item_id}
     if gate_warning:
         created = {**created, "warnings": [gate_warning]}
@@ -2990,6 +2997,7 @@ async def update_work_item(
         deployment = bool(refs) and item.status == "blocked" and _names_deployment(refs)
         workflow_runs = bool(refs) and item.status == "blocked" and _names_workflow_run(refs)
         reference_states = bool(refs) and item.status == "blocked" and names_reference_state(refs)
+        tags = bool(refs) and item.status == "blocked" and names_tag(refs)
         # A note on an item another live run holds is relayed to that run.
         relay_holder = getattr(item, "claimed_by_run_id", None) if note else None
         relay_title = item.title
@@ -3037,6 +3045,11 @@ async def update_work_item(
         from app.services.work_item_blocked_refs import schedule_reference_state_check
 
         schedule_reference_state_check(item_id)
+    if tags:
+        # Once at the write: the tag may be cut already (#2209).
+        from app.services.work_item_blocked_refs import schedule_tag_check
+
+        schedule_tag_check(item_id)
     updated = await _read_back(item_id, user_id=user_id, writer=writer)
     if gate_warning and updated is not None:
         updated = {**updated, "warnings": [gate_warning]}
@@ -4265,8 +4278,16 @@ def _awaiting_review(read: Any) -> bool:
     Its next wake is the review event (or the merge), never a green hand-off: the
     item is parked on the merge, not put back in the queue for a run that could
     only read the missing review and stand down (#2213).
+
+    A base protected by a merge queue, or an account GitHub lets bypass the
+    base's requirements, is never read as waiting on the review: GitHub accepts
+    such a pull request into the queue (or merges it), so the green hand-off
+    goes to a run that enqueues it with ``merge_github_pr``; the item is parked
+    only once GitHub refused or ejected it (#2324).
     """
-    return isinstance(read, dict) and read.get("review_decision") in AWAITING_REVIEW_DECISIONS
+    if not isinstance(read, dict) or read.get("review_decision") not in AWAITING_REVIEW_DECISIONS:
+        return False
+    return not (read.get("queue_base") is True or read.get("can_bypass") is True)
 
 
 def _ci_green(binding: dict[str, Any]) -> bool:

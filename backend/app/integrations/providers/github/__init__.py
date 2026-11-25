@@ -51,6 +51,7 @@ from app.integrations.reference_state import (
     register_commit_containment_reader,
     register_pull_request_ci_reader,
     register_reference_state_reader,
+    register_tag_reader,
     register_workflow_run_reader,
 )
 from app.integrations.run_payload_shapers import register_run_payload_shaper
@@ -92,6 +93,7 @@ from .reference_state import (
     read_pull_request_ci,
     read_reference_state,
     read_successful_workflow_run,
+    read_tag_carrying,
 )
 from .run_payload import shape_github_run_payload
 
@@ -111,6 +113,8 @@ register_branch_closings_reader("github", read_branch_closings)
 register_commit_containment_reader("github", read_commit_containment)
 # The first successful run of a workflow after a time, for an item blocked on a release run.
 register_workflow_run_reader("github", read_successful_workflow_run)
+# The newest tag carrying a commit, for an item blocked on a release tag (#2209).
+register_tag_reader("github", read_tag_carrying)
 # The head and CI verdict of a pull request a parked work item names, when no CI event came.
 register_pull_request_ci_reader("github", read_pull_request_ci)
 # The full CI run of a pull request parked on its base's red, run again at the base's green.

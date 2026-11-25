@@ -260,24 +260,26 @@ async def _pr_node_id(
     return node_id, None
 
 
-#: Review decisions under which GitHub auto-merge is refused: the pull request still waits for a
-#: reviewer, and an auto-merge enabled now lets GitHub (or its merge queue) land it the moment the
-#: checks pass, with no tool reading the review again (an admin bypass even skips the rule).
+#: Review decisions under which GitHub auto-merge is refused when GitHub says this account cannot
+#: bypass the base's requirements (``viewerCanMergeAsAdmin`` false or not returned). When it can,
+#: GitHub decides: the review decision alone never refuses (#2324).
 _AUTOMERGE_BLOCKING_DECISIONS = frozenset({"REVIEW_REQUIRED", "CHANGES_REQUESTED"})
 
 _REVIEW_DECISION_QUERY = (
     "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){"
-    "pullRequest(number:$number){reviewDecision}}}"
+    "pullRequest(number:$number){reviewDecision viewerCanMergeAsAdmin}}}"
 )
 
 
 async def _automerge_review_refusal(
     client: httpx.AsyncClient, owner: str, name: str, number: int, headers: dict[str, str]
 ) -> str | None:
-    """The refusal when PR *number* still waits for an approving review, else ``None``.
+    """The refusal when PR *number* still waits for a review this account cannot bypass, else ``None``.
 
     ``reviewDecision`` is ``None`` when the base requires no review: auto-merge then
-    stays allowed. An unreadable decision is refused too: the doubt never enables a merge.
+    stays allowed. When GitHub reads ``viewerCanMergeAsAdmin`` true the account may
+    bypass the review rule, so GitHub decides (#2324). An unreadable decision is
+    refused: the doubt never enables a merge.
     """
     data, err = await _common.gh_graphql(
         client,
@@ -295,11 +297,12 @@ async def _automerge_review_refusal(
     decision = pull.get("reviewDecision") if isinstance(pull, dict) else None
     if decision not in _AUTOMERGE_BLOCKING_DECISIONS:
         return None
+    if isinstance(pull, dict) and pull.get("viewerCanMergeAsAdmin") is True:
+        return None
     return (
         f"Error: auto-merge not enabled on PR #{number}, nothing was written: its review decision is "
-        f"{decision}. Auto-merge would let GitHub merge it as soon as the checks pass, before the review "
-        "the repository asks for (an admin bypass skips the review rule). Wait for an approving review, "
-        "then merge with merge_github_pr."
+        f"{decision} and GitHub does not say this account can bypass it (viewerCanMergeAsAdmin is not "
+        "true). Wait for an approving review, then merge with merge_github_pr."
     )
 
 

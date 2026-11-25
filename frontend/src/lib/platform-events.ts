@@ -59,6 +59,7 @@ const PLATFORM_EVENT_LABELS = {
   "run.friction_recorded": "Friction recorded",
   "run.completed_with_undisposed_frictions": "Run ended with open frictions",
   "a2a.delegation.completed": "Partner answer arrived",
+  "a2a.ticket.status_changed": "Partner ticket status changed",
   "background_task.completed": "Background task completed",
   "background_task.failed": "Background task failed",
   "video.render.finished": "Video render finished",

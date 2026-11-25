@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.a2a.client import callbacks as callback_svc
 from app.api.deps import require_secure_transport
@@ -77,6 +78,9 @@ async def receive_callback(delegation_id: str, request: Request) -> JSONResponse
 
         if not await is_chat_enabled(db):
             return _REFUSED
+        body = await _json_body(request)
+        if callback_svc.is_ticket_push(body):
+            return await _receive_ticket_push(db, delegation_id, body, presented)
         row = await callback_svc.addressed_delegation(db, delegation_id)
         # Authenticate BEFORE anything is read, and answer a failure exactly as
         # an unknown delegation is answered.
@@ -89,6 +93,33 @@ async def receive_callback(delegation_id: str, request: Request) -> JSONResponse
         # polling floor concludes the delegation either way.
         callback_svc.spawn_partner_finished(row.id)
         return JSONResponse(status_code=200, content={"status": "accepted"})
+
+
+async def _receive_ticket_push(db: AsyncSession, delegation_id: str, body: object, presented: str) -> JSONResponse:
+    """A partner says a ticket a delegated task filed changed status (#2276).
+
+    The same guards, in the same order: the delegation must exist and the
+    presented secret must be its own before the body is read further, and every
+    refusal is the single answer. A concluded delegation is admitted (a ticket
+    outlives its task) because nothing is resumed: the push raises a platform
+    event for the delegating agent and is never taken as an answer.
+    """
+    row = await callback_svc.ticket_push_delegation(db, delegation_id)
+    if row is None or not callback_svc.presented_secret_matches(row, presented):
+        return _REFUSED
+    fields = callback_svc.ticket_push_fields(body, row)
+    if fields is None:
+        return _REFUSED
+    await callback_svc.publish_ticket_status(db, row, fields)
+    return JSONResponse(status_code=200, content={"status": "accepted"})
+
+
+async def _json_body(request: Request) -> object:
+    """The request's JSON body, ``None`` when it does not parse. Partner-supplied."""
+    try:
+        return await request.json()
+    except Exception:
+        return None
 
 
 async def _presented_secret(request: Request) -> str | None:

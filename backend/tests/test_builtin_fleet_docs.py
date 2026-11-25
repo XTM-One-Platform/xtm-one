@@ -91,14 +91,18 @@ def test_a_step_marked_gate_has_an_approval_gate_listed(slug):
 
 
 @pytest.mark.parametrize("slug", _SLUGS)
-def test_the_steps_flagged_at_the_seeded_level_are_the_steps_whose_gate_waits(slug):
-    """#1074: the About page badges a step exactly when the gate it names waits, at the seeded level too."""
+def test_the_steps_flagged_at_low_are_the_steps_whose_gate_waits(slug: str) -> None:
+    """#1074: the About page badges a step exactly when the gate it names waits.
+
+    The static flags are Low's (the level the shipped structure was written for);
+    the About response derives the live badges from the fleet's level, Full
+    human gates out of the box since #2279.
+    """
     from app.agents.builtin_fleet_docs import BUILTIN_FLEET_STRUCTURED
-    from app.agents.fleet_seed import SEEDED_FLEET_AUTONOMY_LEVEL
     from app.services.fleet_autonomy import gate_catalog, with_live_step_gates
 
     parts = BUILTIN_FLEET_STRUCTURED[slug]
-    catalog = gate_catalog(SEEDED_FLEET_AUTONOMY_LEVEL, parts.get("gates"))
+    catalog = gate_catalog("low", parts.get("gates"))
     keys = {g["key"] for g in catalog}
     for step in parts["steps"]:
         # A step that carries a badge names the gate behind it, and that gate is in the catalog.

@@ -219,6 +219,18 @@ _A2A_DELEGATION_KEYS = (
 
 #: An A2A delegation whose calling run had ended got its answer (#12079).
 A2A_DELEGATION_COMPLETED = "a2a.delegation.completed"
+#: A partner told us a ticket a delegated task filed changed status (#2276).
+A2A_TICKET_STATUS_CHANGED = "a2a.ticket.status_changed"
+_A2A_TICKET_KEYS = (
+    "delegation_id",
+    "agent_id",
+    "run_id",
+    "partner",
+    "partner_task_id",
+    "work_item_id",
+    "status",
+    "previous_status",
+)
 _AGENT_ACCOUNT_KEYS = (
     "account_id",
     "provider",
@@ -376,6 +388,14 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "partner's tool, continue_task_id = partner_task_id and no message."
         ),
         "filter_keys": _A2A_DELEGATION_KEYS,
+    },
+    A2A_TICKET_STATUS_CHANGED: {
+        "description": (
+            "A partner pushed that a ticket (a work item on its side) filed by a task this agent delegated "
+            "changed status. Heard by the delegating agent's assignments (scope own) for the person it ran "
+            "for; ids and statuses only: read the ticket from the partner with its own tool."
+        ),
+        "filter_keys": _A2A_TICKET_KEYS,
     },
     "background_task.completed": {
         "description": "A background task completed.",
@@ -953,6 +973,39 @@ def a2a_delegation_data(
         "result_preview": (result_preview or "")[:_PREVIEW_MAX_CHARS] or None,
         # Raised by the platform on the partner's behalf, not by the agent:
         # its own assignments must hear it (ignore_self_triggered_events).
+        "actor_agent_id": None,
+        "participant_agent_ids": [agent] if agent else [],
+        "object_type": "a2a_delegation",
+        "object_id": _str(delegation_id),
+        "user_id": _str(user_id),
+        "personal_owner_id": _str(user_id),
+    }
+
+
+def a2a_ticket_status_data(
+    *,
+    delegation_id: object,
+    agent_id: object,
+    user_id: object,
+    run_id: object = None,
+    partner: str | None = None,
+    partner_task_id: str | None = None,
+    work_item_id: str,
+    status: str,
+    previous_status: str | None = None,
+) -> dict[str, Any]:
+    """The payload of ``a2a.ticket.status_changed``: ids and statuses, a personal object of the delegating person."""
+    agent = _str(agent_id)
+    return {
+        "delegation_id": _str(delegation_id),
+        "agent_id": agent,
+        "run_id": _str(run_id),
+        "partner": (partner or "")[:200] or None,
+        "partner_task_id": partner_task_id,
+        "work_item_id": work_item_id,
+        "status": status,
+        "previous_status": previous_status,
+        # Raised on the partner's behalf: the agent's own assignments must hear it.
         "actor_agent_id": None,
         "participant_agent_ids": [agent] if agent else [],
         "object_type": "a2a_delegation",

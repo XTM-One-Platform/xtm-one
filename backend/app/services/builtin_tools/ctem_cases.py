@@ -102,7 +102,31 @@ async def resolve_case_id(db: AsyncSession, case_id: str, organization_id: uuid.
         return found[0], ""
     if found:
         return None, f"case_id {case_id!r} matches several cases: {', '.join(str(f) for f in found)}. Pass the full id."
+    # A merged-away case's prefix names its old id (#2289): the read then answers the survivor.
+    merged = await store.merged_with_prefix(db, str(case_id or ""), organization_id=organization_id, limit=5)
+    if len(merged) == 1:
+        return merged[0].case_id, ""
+    if merged:
+        ids = ", ".join(str(m.case_id) for m in merged)
+        return None, f"case_id {case_id!r} matches several merged cases: {ids}. Pass the full id."
     return None, f"No case {case_id}. case_id is the id list_ctem_cases answers, or its first 8+ characters."
+
+
+async def missing_case_answer(
+    db: AsyncSession, case_id: object, wanted: uuid.UUID | None, organization_id: uuid.UUID | None
+) -> str:
+    """What a case tool answers when *wanted* names no case the caller sees (#2289).
+
+    A case merged into another answers the survivor, when and by whom, so the caller
+    follows it; an id never created (or deleted) keeps ``No case <id>.``.
+    """
+    from app.services import ctem_cases_store as store
+
+    if wanted is not None and organization_id is not None:
+        merged = await store.merged_into(db, wanted, organization_id=organization_id)
+        if merged is not None:
+            return merged.answer()
+    return f"No case {case_id}."
 
 
 def _when(value: object) -> datetime | None:
@@ -297,7 +321,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     return why
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
-                    return f"No case {case_id}."
+                    return await missing_case_answer(db, case_id, wanted, org_id)
                 from app.services import ctem_case_versions as case_versions
                 from app.services import ctem_version_match as matching
 
@@ -307,6 +331,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 if running is not None:
                     from app.services import ctem_case_version_history as version_history
                     from app.services import ctem_cases_store as store
+
+                    # The asset count agrees with the running versions this read serves (#2225).
+                    version_history.with_live_asset_count(shown[2], running, at=datetime.now(UTC))
 
                     # Why the versions moved, per device (#1694): before, after, when, source, reason.
                     events = (await store.events_of(db, [shown[0].id])).get(shown[0].id, [])
@@ -382,6 +409,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         reason: str = "",
         evidence: str = "",
         note: str = "",
+        resolution_kind: str = "",
         exploitation: list[dict[str, Any]] | None = None,
         attack_path: dict[str, Any] | None = None,
         gate: dict[str, Any] | None = None,
@@ -412,7 +440,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 org_id, vertical = await _context(db)
                 shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
                 if shown is None:
-                    return f"No case {case_id}."
+                    return await missing_case_answer(db, case_id, wanted, org_id if scope else None)
                 case, rows, _ = shown
                 refused = await _view_only(db, rows, vertical)
                 if refused:
@@ -451,6 +479,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     actor=agent_id,
                     actor_kind="agent",
                     state=state or None,
+                    resolution_kind=resolution_kind or None,
                     owner_user_id=_uuid(owner_user_id),
                     due_at=due,
                     reason=reason or None,
@@ -580,7 +609,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     return f"No case {case_id}."
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
-                    return f"No case {case_id}."
+                    return await missing_case_answer(db, case_id, wanted, org_id)
                 refused = await _view_only(db, shown[1], vertical)
                 if refused:
                     return refused
@@ -640,7 +669,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     return f"No case {case_id}."
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
-                    return f"No case {case_id}."
+                    return await missing_case_answer(db, case_id, wanted, org_id)
                 refused = await _view_only(db, shown[1], vertical)
                 if refused:
                     return refused
@@ -681,7 +710,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 org_id, vertical = await _context(db)
                 shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
                 if shown is None:
-                    return f"No case {case_id}."
+                    return await missing_case_answer(db, case_id, wanted, org_id if scope else None)
                 refused = await _view_only(db, shown[1], vertical)
                 if refused:
                     return refused
@@ -899,7 +928,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     return f"No case {case_id}."
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
-                    return f"No case {case_id}."
+                    return await missing_case_answer(db, case_id, wanted, org_id)
                 refused = await _view_only(db, shown[1], vertical)
                 if refused:
                     return refused
@@ -958,7 +987,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 for one in [target, *sources]:
                     shown = await _shown(db, one, org_id, vertical)
                     if shown is None:
-                        return f"No case {one}."
+                        return await missing_case_answer(db, one, one, org_id)
                     refused = await _view_only(db, shown[1], vertical)
                     if refused:
                         return refused
@@ -1108,9 +1137,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 "reading or attack path of the triage step, a loop gate passed or waited, or the risk treatment plan of "
                 "the decision, or the threat package of the review step, or a change applied through an integration "
                 "(with the gate ctem.production_change). Those writes move the status; "
-                "resolved needs evidence "
-                "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
-                "an agent (a person accepts risk)."
+                "resolved needs evidence; reopening needs a reason; accepted_risk and resolution_kind "
+                "dismissed (on a reject_and_close answer) need a person."
             ),
             input_schema={
                 "type": "object",
@@ -1122,6 +1150,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "reason": {"type": "string"},
                     "evidence": {"type": "string"},
                     "note": {"type": "string"},
+                    "resolution_kind": {"type": "string"},
                     "exploitation": {
                         "type": "array",
                         "description": "Per supporting asset: techniques in attack order, exposure, reading. Replaces the stored one.",
