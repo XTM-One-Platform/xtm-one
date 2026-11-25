@@ -7299,14 +7299,18 @@ async def _complete_case_ask(db: Any, correlation_key: object, ask: Any) -> Any:
 
     The card states the running version, the affected range and the fixed
     version, or that the proposal is blind, whatever the agent wrote: the
-    platform builds the line from the case (``ctem_version_match``). Any other
-    item's ask is returned as given.
+    platform builds the line from the case (``ctem_version_match``). The
+    validation card of a ``control_decay`` case states what the run measures
+    in OpenCRQ and its recurrence (``ctem_control_measurement``, #2369). Any
+    other item's ask is returned as given.
     """
     if not ask:
         return ask
+    from app.services import ctem_control_measurement
     from app.services.ctem_version_match import complete_gate_ask
 
-    return await complete_gate_ask(db, correlation_key, ask)
+    ask = await complete_gate_ask(db, correlation_key, ask)
+    return await ctem_control_measurement.complete_gate_ask(db, correlation_key, ask)
 
 
 def _ux_review_of(correlation_key: object, title: object) -> dict[str, Any] | None:

@@ -3022,6 +3022,23 @@ CTEM_GATE_ANSWERED = GATE_ANSWERED
 CTEM_KEY_PREFIX = "ctem:"
 
 
+#: What measures a control in OpenCRQ (#2369): OpenCRQ books only an observation of an inject with a
+#: DETECTION or PREVENTION expectation on a technique the control covers; a port or version scan reaches
+#: it as nothing, and a one-off result expires after evidence_health.max_age_days (path 9 opens again).
+CTEM_CONTROL_MEASUREMENT_RULE = (
+    "A control is measured only by an OpenAEV scenario or atomic test whose injects carry DETECTION or "
+    "PREVENTION expectations on a technique the control covers (read from OpenCRQ), targeting the asset or "
+    "its asset groups; a port or version scan is exposure, never the measurement, and is never proposed "
+    "for never_measured or attested_only (nor counted as reusable evidence). The gate says what OpenCRQ "
+    "will update (the control's technique test result) and what it will not (findings, other controls). "
+    "A measuring test is proposed recurring at a period below evidence_health.max_age_days, on the "
+    "recurring scenario or asset group already targeting the asset when one exists. No measurable test "
+    "(no covered technique, no agent on the host, no measuring source connected): the decision says so "
+    "(no measuring source connected) and proposes what makes it measurable (connect an EDR, "
+    "vulnerability-management or device-management source, deploy an agent, record the control's "
+    "evidence), no scan."
+)
+
 #: The reconciliation step of a ``control_decay`` case (#2354): "no current evidence in OpenCRQ"
 #: is not "no control", so the existing control sources are read before any scan is proposed.
 CTEM_CONTROL_DECAY_RECONCILE = (
@@ -3035,7 +3052,7 @@ CTEM_CONTROL_DECAY_RECONCILE = (
     "record it in OpenCRQ (update_opencrq_control_capability_assessment or "
     "manage_opencrq_scope_control_posture, the source as justification), never a scan; none found "
     "gets the decision to put a control in place and measure it; the decision lists every source "
-    "checked and what it returned (found, not found, not readable)."
+    "checked and what it returned (found, not found, not readable). " + CTEM_CONTROL_MEASUREMENT_RULE
 )
 
 

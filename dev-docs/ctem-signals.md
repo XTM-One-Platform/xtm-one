@@ -43,6 +43,31 @@ lacks or under-rates becomes one `ctem:remediation:<case id>` decision to record
 it in OpenCRQ, none found keeps the decision to put a control in place, and the
 decision lists every source checked with what it returned.
 
+A validation of such a case is proposed only when it can become an OpenCRQ
+measurement (#2369, `CTEM_CONTROL_MEASUREMENT_RULE`): OpenCRQ books the
+observation of an inject with a DETECTION or PREVENTION expectation on a MITRE
+technique the control covers, on a host mapped to the asset; a port or version
+scan reaches it as nothing, so it is never proposed as the measurement nor
+reused as evidence. The measuring test recurs below
+`evidence_health.max_age_days`, and with no measurable test the decision says
+"no measuring source connected" and proposes what makes the control
+measurable, no scan. The platform completes the `ctem:validation:` card of a
+`control_decay` case with that statement and the re-test delay
+(`ctem_control_measurement.complete_gate_ask`, called from the work item
+write, beside the version match of an upgrade card).
+
+What measures the control (#2369, `CTEM_CONTROL_MEASUREMENT_RULE`): OpenCRQ
+books only the observation of an OpenAEV inject with a DETECTION or PREVENTION
+expectation on a MITRE technique the control covers, on a host mapped to the
+supporting asset; a port or version scan reaches it as nothing. The loop
+proposes for `never_measured` and `attested_only` only such a test, recurring
+at a period below `evidence_health.max_age_days` (a one-off result expires and
+the pass opens the case again), and says "no measuring source connected" with
+the action that makes the control measurable when none exists, never a scan.
+The platform puts the same statement first on the `ctem:validation:<case id>`
+card of a `control_decay` case (`services/ctem_control_measurement.py`, from
+the case and the profile's re-test delay).
+
 A caller may name another lens than the default (a `has` relationship is the
 inside lens of path 1). `GET /api/v1/ctem-signals/paths` answers this table.
 
