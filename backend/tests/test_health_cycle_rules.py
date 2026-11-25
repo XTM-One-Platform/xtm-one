@@ -212,15 +212,23 @@ def test_each_module_checker_writes_no_module_and_hands_nothing_over(provider: s
     nothing over, has its playbook skill and its own checks assignment; only the
     orchestrator delegates to it (the module round of section 13.2).
 
-    ``health_modules`` writes inside XTM One only (recommendations on findings, section 12.4).
+    Its slice of ``health_specialists`` writes inside XTM One only (recommendations on
+    findings, section 12.4, and improvement proposals; #1943).
     """
     from app.services.health.identity import CHECKER_ROLE_BY_PROVIDER
 
     spec = next(s for s in fleet_seed.FLEET_AGENTS if s.role == CHECKER_ROLE_BY_PROVIDER[provider])
     assert spec.slug == f"health-{provider}-checker"
     assert spec.disable_chat and spec.handovers == ()
-    assert spec.skill_slugs == (f"health-{provider}-checks",)
-    assert set(spec.builtin_tool_ids) <= {"health_modules", fleet_seed.IMPROVEMENTS_GROUP}
+    assert spec.skill_slugs == ("health-module-checks",)
+    assert spec.builtin_tool_ids == (fleet_seed.SPECIALISTS_GROUP,)
+    assert set(spec.specialist_functions) == {
+        "list_module_findings",
+        "record_finding_recommendation",
+        "record_module_check_report",
+        "list_improvements",
+        "propose_improvement",
+    }
     assert not set(spec.builtin_tool_ids) & fleet_seed.NON_CONSENT_TOOL_GROUPS
     delegators = [s.slug for s in fleet_seed.FLEET_AGENTS if (spec.slug, "delegate") in s.handovers]
     assert delegators == [fleet_seed.ORCHESTRATOR_SLUG]
@@ -239,11 +247,14 @@ def test_the_opencti_checker_is_the_s14_module_analyst_renamed_in_place() -> Non
 def test_every_playbook_skill_is_shipped() -> None:
     from app.agents.builtin_agents import BUILTIN_SKILLS
     from app.agents.seed import _resolve_seed_content
+    from app.services.health.check_reports import module_playbook
 
     slugs = {s["slug"] for s in BUILTIN_SKILLS}
+    assert "health-module-checks" in slugs
+    assert not {f"health-{p}-checks" for p in ("opencti", "openaev", "opencrq")} & slugs
+    assert _resolve_seed_content("skill_content", "health-module-checks")
     for provider in ("opencti", "openaev", "opencrq"):
-        assert f"health-{provider}-checks" in slugs
-        assert _resolve_seed_content("skill_content", f"health-{provider}-checks")
+        assert "| Check |" in module_playbook(provider), provider
 
 
 def test_every_persona_file_exists():
@@ -340,7 +351,7 @@ def test_a_delegated_concierge_turn_with_no_user_wires_the_concierge_groups_only
     composite = SimpleNamespace(add_tools=lambda definitions, _executor: added.extend(d.name for d in definitions))
     experimenter = SimpleNamespace(id=uuid.uuid4(), health_role="experimenter", is_company_managed=True)
     principal = identity.health_principal_for(experimenter, None)
-    groups = ["health_sandbox", "improvement_proposals", "flow_builder", "platform_insights", "fleets"]
+    groups = ["health_specialists", "flow_builder", "platform_insights", "fleets"]
     if who == "concierge_alone":
         with identity.acting_as_health_principal(principal):
             agent_chat._add_platform_builder_tools(composite, None, "", groups, agent_id=str(experimenter.id))

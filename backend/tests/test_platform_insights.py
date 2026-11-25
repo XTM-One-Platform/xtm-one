@@ -394,6 +394,76 @@ def test_the_release_history_tool_says_where_the_rollout_stands():
     assert rollout(found, ("1.0.0", "aaaaaaa1"), now=windows[1].first_seen_at).state == ROLLOUT_IN_PROGRESS
 
 
+def test_an_ancestor_newest_by_first_boot_reads_superseded_not_in_progress(monkeypatch):
+    """The rows rank builds by first boot: when the answering build's commit carries the newest row's, the newest
+    is an ancestor that booted first, and the rollout is complete on the answering build (#1987)."""
+    from app.services import platform_builds
+    from app.services.platform_builds import (
+        DRAIN_GRACE,
+        ROLLOUT_IN_PROGRESS,
+        ROLLOUT_ROLLED_BACK,
+        ROLLOUT_SUPERSEDED,
+        read_rollout,
+        rollout,
+    )
+
+    windows = _windows()
+    new = windows[1].first_seen_at
+    running = ("1.0.0", "aaaaaaa1")
+    found = rollout(windows, running, now=new + timedelta(minutes=3), running_carries_newest=True)
+    assert found.state == ROLLOUT_SUPERSEDED
+    assert "ancestor, not a rollout in progress" in found.words() and found.payload()["state"] == "superseded"
+
+    asked: list[tuple[str, str]] = []
+
+    async def _carries(_db, _user, newest, running_sha):
+        asked.append((newest.git_sha, running_sha))
+        return carries
+
+    monkeypatch.setattr(platform_builds, "running_carries", _carries)
+    carries = True
+    read = asyncio.run(read_rollout(None, windows, running, user_id="u", now=new + timedelta(minutes=3)))
+    assert read.state == ROLLOUT_SUPERSEDED and asked == [("bbbbbbb2", "aaaaaaa1")]
+    carries = None
+    late = new + timedelta(days=5) + DRAIN_GRACE
+    assert asyncio.run(read_rollout(None, windows, running, user_id="u", now=late)).state == ROLLOUT_ROLLED_BACK
+    carries = False
+    assert (
+        asyncio.run(read_rollout(None, windows, running, user_id="u", now=new + timedelta(minutes=3))).state
+        == ROLLOUT_IN_PROGRESS
+    )
+    # The newest build answering: nothing to read.
+    asked.clear()
+    asyncio.run(read_rollout(None, windows, ("1.1.0", "bbbbbbb2"), user_id="u", now=new + timedelta(days=6)))
+    assert asked == []
+
+
+def test_running_carries_reads_the_containment_reader_on_the_observed_repository(monkeypatch):
+    from app.integrations import reference_state
+    from app.services import work_item_blocked_refs
+    from app.services.platform_builds import running_carries
+
+    windows = _windows()
+    calls: list[tuple] = []
+
+    async def _reader(repo, commit, build_commit, token):
+        calls.append((repo, commit, build_commit, token))
+        return True
+
+    async def _token(_db, provider, _user):
+        return "tok" if provider == "github" else None
+
+    monkeypatch.setattr(reference_state, "_CONTAINMENT_READERS", {"github": _reader})
+    monkeypatch.setattr(work_item_blocked_refs, "reference_token", _token)
+    monkeypatch.setattr(
+        work_item_blocked_refs, "observed_deployment_repositories", lambda: frozenset({"xtm-one-platform/xtm-one"})
+    )
+    assert asyncio.run(running_carries(None, "u", windows[1], "AAAAAAA1")) is True
+    assert calls == [("xtm-one-platform/xtm-one", "bbbbbbb2", "aaaaaaa1", "tok")]
+    # A commit too short to name a build: nothing read.
+    assert asyncio.run(running_carries(None, "u", windows[1], "")) is None and len(calls) == 1
+
+
 def _history_tool(monkeypatch, windows, running=("1.1.0", "bbbbbbb2")):
     """``get_platform_release_history`` over *windows*, the process answering as *running*, no database."""
     from contextlib import asynccontextmanager
@@ -411,9 +481,13 @@ def _history_tool(monkeypatch, windows, running=("1.1.0", "bbbbbbb2")):
         return list(windows)
 
     async def _scope(_db, _user_id):
-        return SimpleNamespace(header=lambda: {"scope": "platform"})
+        return SimpleNamespace(header=lambda: {"scope": "platform"}, user=SimpleNamespace(id="u"))
+
+    async def _carries_unread(_db, _user, _newest, _running_sha):
+        return None
 
     monkeypatch.setattr(database, "async_session", _session)
+    monkeypatch.setattr(platform_builds, "running_carries", _carries_unread)
     monkeypatch.setattr(scope_module, "load_scope", _scope)
     monkeypatch.setattr(platform_builds, "release_windows", _windows_of)
     monkeypatch.setattr(platform_builds, "running_build", lambda: running)

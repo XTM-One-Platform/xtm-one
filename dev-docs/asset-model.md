@@ -141,6 +141,21 @@ each such row moves to `asset_groups` with every field it had; a nested `group` 
 kept as the tag `group:<name>`. Dynamic groups are not modelled in XTM One: a sync from OpenAEV reads their members
 as resolved at sync time.
 
+**Outbound to OpenAEV (#1982 S1).** An outbound `asset_groups` sync to `openaev` makes OpenAEV follow the groups
+XTM One owns (typed, CSV, API, agent rows; a group an OpenAEV sync wrote is skipped):
+
+| XTM One `asset_groups` | OpenAEV `AssetGroupInput` |
+| --- | --- |
+| `name` | `asset_group_name` |
+| `description` | `asset_group_description` |
+| members (`group` field and `membership_rule`) | `asset_group_assets` (`PUT /api/asset_groups/{id}/assets`): the OpenAEV asset id of each member, the member's own `external_id` when an OpenAEV sync wrote it, else the OpenAEV record of the same name; a member with no OpenAEV counterpart is reported (`unlinked_members`), never created as an endpoint |
+| (not mastered) | `asset_group_tags`, `asset_group_dynamic_filter`: read before the write and sent back as OpenAEV holds them, since its PUT replaces the whole object (#1702) |
+
+Only the groups the sync created (`outbound_ids`, keyed on the group name) are updated or deleted; a group leaving
+the sync's filters (the import step's keys read on the XTM One row: `tags`, `search`, `source`, and on assets
+`category`, `subcategory`, `criticality`, `internet_facing`, `environment`, `platform`) is deleted from OpenAEV only
+when this sync created it. The same filters select the AI target assets an outbound `assets` sync pushes (section 7).
+
 ## 6. Tags, environment, external id, platform
 
 | Concept | OpenAEV | OpenCRQ | OpenCTI | XTM One |
@@ -546,8 +561,12 @@ repository): an inventory asset, never a primary asset.
   supports_availability, performs, unknown), `inherited_needs` (need to `full` / `lower` / `none`, the strongest of
   the roles; `unknown` inherits everything), `via` (the supporting asset a `depends_on` chain goes through, written
   by the signals slice), `removed`. The supporting asset is the inventory record of source `opencrq` with the same
-  id, else the single record of the same name; none or several are reported (`not_in_inventory`, `ambiguous`),
-  never created. A manual link is never touched; a synced link a person removes through
+  id, else the single ASSET whose record name, hostname, FQDN or URL host is the name (candidates count per merged
+  asset, so a device Intune and OpenAEV both report is one match, linked through its smallest record id), else the
+  single asset of the same loose name (apostrophes dropped, hyphen, underscore, dot and space one separator,
+  #1978); none or several assets are reported (`not_in_inventory`, `ambiguous`, the first 50 listed and the totals
+  in `not_in_inventory_count` and `ambiguous_count`), never created. A link already held by another record of the
+  same asset is kept as it is. A manual link is never touched; a synced link a person removes through
   `PUT /primary-assets/{name}/links` becomes a tombstone the sync never adds back; a link OpenCRQ dropped is deleted
   at the next sync. The sync's run result carries the link summary under `links`. Migration `v1591pallinks01`.
 - Inventory source (Sam, 24 Nov 2026): the `primary_assets` section is in the `inventory` scope of

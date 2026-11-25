@@ -93,25 +93,28 @@ describe("useBuiltinTools administrator-bound suite", () => {
   });
 });
 
-describe("useBuiltinTools session picker", () => {
-  it("never offers a Platform Health specialist's suite in a chat, while an agent's configuration still lists it", async () => {
-    const steward = {
+describe("useBuiltinTools Platform Health internal group (#1943)", () => {
+  it("offers only Platform Health among the health groups: the internal group is on no Tools page, picker or chat", async () => {
+    const specialists = {
       ...GROUP,
-      id: "memory_steward",
-      name: "Memory Steward",
+      id: "health_specialists",
+      name: "Platform Health specialists",
       gate: "health",
       default_on: false,
       agent_keyed: true,
-      health_only: true,
+      internal: true,
     };
-    const orchestrator = { ...steward, id: "health_orchestrator", name: "Platform Health", health_only: false };
-    get.mockResolvedValueOnce([{ ...GROUP, health_only: false }, steward, orchestrator] as never);
+    const orchestrator = { ...specialists, id: "health_orchestrator", name: "Platform Health", internal: false };
+    get.mockResolvedValueOnce([{ ...GROUP, internal: false }, specialists, orchestrator] as never);
     const { result } = renderHook(() => useBuiltinTools(), { wrapper: withProviders(appClient()) });
     await waitFor(() => expect(result.current.isReady).toBe(true));
-    const agent = { builtin_tool_ids: ["memory_steward"], user_id: "u1", is_company_managed: false };
+    const agent = { builtin_tool_ids: ["health_specialists"], user_id: "u1", is_company_managed: false };
+    expect(result.current.offered("agent").map((tool) => tool.id)).toEqual(["web_fetch", "health_orchestrator"]);
     expect(result.current.offeredInChat(true, agent).map((tool) => tool.id)).toEqual(["web_fetch", "health_orchestrator"]);
     expect(result.current.offeredInChat(false).map((tool) => tool.id)).toEqual(["web_fetch"]);
-    expect(result.current.offered("agent").map((tool) => tool.id)).toEqual(["web_fetch", "memory_steward", "health_orchestrator"]);
-    expect(result.current.describe("memory_steward").healthOnly).toBe(true);
+    // An agent's grid lists it only where the agent carries it (a fleet agent).
+    expect(result.current.listedInAgentConfig([], []).map((tool) => tool.id)).toEqual(["web_fetch", "health_orchestrator"]);
+    expect(result.current.listedInAgentConfig(["health_specialists"], []).map((tool) => tool.id)).toContain("health_specialists");
+    expect(result.current.describe("health_specialists").internal).toBe(true);
   });
 });

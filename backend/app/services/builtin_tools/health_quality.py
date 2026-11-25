@@ -46,7 +46,8 @@ if TYPE_CHECKING:
 
     from app.services.health.access import Reader
 
-DIAGNOSIS_GROUP_ID = "health_diagnosis"
+#: Its functions belong to Platform Health's one internal group (#1943).
+DIAGNOSIS_GROUP_ID = "health_specialists"
 
 #: The read functions of the group: the only ones the platform MCP server serves.
 DIAGNOSIS_READ_TOOLS: frozenset[str] = frozenset({"get_quality_signals", "list_findings"})
