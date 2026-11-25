@@ -210,12 +210,18 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         user = await db.get(User, scope)
         return primary.id, normalize_vertical(getattr(user, "ctem_vertical", None))
 
-    async def _shown(db: AsyncSession, case_id: uuid.UUID, org_id: uuid.UUID, vertical: str) -> Any:
-        """(stored case, members, rendering) for the acting user, ``None`` when they see none of it."""
+    async def _shown(
+        db: AsyncSession, case_id: uuid.UUID, org_id: uuid.UUID, vertical: str, *, lock: bool = False
+    ) -> Any:
+        """(stored case, members, rendering) for the acting user, ``None`` when they see none of it.
+
+        *lock* (#2373): a write reads the case row locked until its commit, so a
+        concurrent write of the same case waits and then reads what this one wrote.
+        """
         from app.services import ctem_cases_store as store
         from app.services import ctem_cases_view as view_of
 
-        found = await store.get_case(db, case_id, organization_id=org_id)
+        found = await store.get_case(db, case_id, organization_id=org_id, for_update=lock)
         if found is None:
             return None
         case, rows, events = found
@@ -456,7 +462,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
-                shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
+                shown = await _shown(db, wanted, org_id, vertical, lock=True) if org_id and scope else None
                 if shown is None:
                     return await missing_case_answer(db, case_id, wanted, org_id if scope else None)
                 case, rows, _ = shown
@@ -625,7 +631,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 org_id, vertical = await _context(db)
                 if org_id is None or scope is None:
                     return f"No case {case_id}."
-                shown = await _shown(db, wanted, org_id, vertical)
+                shown = await _shown(db, wanted, org_id, vertical, lock=True)
                 if shown is None:
                     return await missing_case_answer(db, case_id, wanted, org_id)
                 refused = await _view_only(db, shown[1], vertical)
@@ -685,7 +691,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 org_id, vertical = await _context(db)
                 if org_id is None or scope is None:
                     return f"No case {case_id}."
-                shown = await _shown(db, wanted, org_id, vertical)
+                shown = await _shown(db, wanted, org_id, vertical, lock=True)
                 if shown is None:
                     return await missing_case_answer(db, case_id, wanted, org_id)
                 refused = await _view_only(db, shown[1], vertical)
@@ -726,7 +732,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
-                shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
+                shown = await _shown(db, wanted, org_id, vertical, lock=True) if org_id and scope else None
                 if shown is None:
                     return await missing_case_answer(db, case_id, wanted, org_id if scope else None)
                 refused = await _view_only(db, shown[1], vertical)

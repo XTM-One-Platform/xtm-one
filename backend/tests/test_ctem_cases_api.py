@@ -88,7 +88,7 @@ def api(monkeypatch):
         assert organization_id == ORG
         return [(seen.case, rows)]
 
-    async def _get(_db, case_id, *, organization_id):
+    async def _get(_db: object, case_id: object, *, organization_id: object, **_options: object) -> object:
         if case_id != seen.case.id or organization_id != ORG:
             return None
         events = [
@@ -508,7 +508,7 @@ async def test_a_merge_into_a_visible_case_answers_the_survivor(api, monkeypatch
 
     real_get = store.get_case
 
-    async def _get(db, case_id, *, organization_id):
+    async def _get(db: object, case_id: object, *, organization_id: object, **_options: object) -> object:
         return await real_get(db, api.case.id if case_id == other else case_id, organization_id=organization_id)
 
     monkeypatch.setattr(store, "merge_cases", _merge)
