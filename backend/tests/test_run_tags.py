@@ -8,6 +8,7 @@ reachable); the effective-tag merge and the parameter value logic are pure.
 from __future__ import annotations
 
 import contextlib
+import uuid
 from types import SimpleNamespace
 
 import httpx
@@ -746,6 +747,51 @@ async def test_capture_params_for_runs_upsert_precedence_on_a_collision():
             assert rows["reuse"]["source"] == "manual"
     finally:
         await cleanup()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("_no_groups_or_terms")
+async def test_run_search_tells_a_placebo_comparison_run_from_an_ordinary_one():
+    """A comparison's run carries its arm, target and comparison; any other reads ``real``."""
+    comparison_id = uuid.uuid4()
+    target = {"kind": "persona", "skill_id": None}
+    async with scratch_database("search_arm", tables=_TABLES_search) as db:
+        async with db.sessions() as s:
+            admin = User(email="a@x.io", full_name="Admin", hashed_password="x", role="admin")
+            agent = Agent(name="Agent")
+            s.add_all([admin, agent])
+            await s.flush()
+            evaluation = Evaluation(name="Eval", user_id=admin.id)
+            s.add(evaluation)
+            await s.flush()
+            common = dict(
+                evaluation_id=evaluation.id, agent_id=agent.id, model_id="gpt-4o",
+                trigger_reason="manual", status="completed",
+            )
+            s.add_all([
+                EvaluationRun(**common, quality_score=80.0),
+                EvaluationRun(
+                    **common, quality_score=50.0, arm="placebo", trial_index=1,
+                    placebo_target=target, placebo_comparison_id=comparison_id,
+                ),
+            ])
+            await s.commit()
+            admin_id = admin.id
+
+        async with _client(db.sessions) as client:
+            resp = await client.post(
+                "/api/v1/evaluations/runs/search",
+                json={"scores": [{"field": "quality_score", "op": "gte", "value": 0}]},
+                headers={"Authorization": f"Bearer {create_access_token(str(admin_id))}"},
+            )
+
+    assert resp.status_code == 200, resp.text
+    by_score = {r["quality_score"]: r for r in resp.json()["runs"]}
+    assert (by_score[80.0]["arm"], by_score[80.0]["placebo_comparison_id"]) == ("real", None)
+    assert by_score[50.0]["arm"] == "placebo"
+    assert by_score[50.0]["placebo_target"] == target
+    assert by_score[50.0]["placebo_comparison_id"] == str(comparison_id)
 
 
 # ── Effective-tag and baseline_only run search ────────────────────────────────────────

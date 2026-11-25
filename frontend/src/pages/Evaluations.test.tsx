@@ -99,6 +99,27 @@ describe("Evaluations", () => {
     expect(tip).toContain("Scored by the LLM judge");
   });
 
+  it("tags a placebo comparison's run in Run Search, and leaves an ordinary run untagged", async () => {
+    post.mockResolvedValue({
+      runs: [
+        { id: "r-1", evaluation_id: "e-1", agent_id: "a-1", model_id: "gpt-x", status: "completed", score: 81, created_at: "2026-10-25T10:00:00Z", tags: null },
+        {
+          id: "r-2", evaluation_id: "e-1", agent_id: "a-1", model_id: "gpt-y", status: "completed", score: 40, created_at: "2026-10-25T10:00:00Z", tags: null,
+          arm: "no_target", placebo_target: { kind: "persona", skill_id: null }, placebo_comparison_id: "c-1",
+        },
+      ],
+      count: 2,
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Search Runs/ }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Min score" }), { target: { value: "10" } });
+
+    expect(await screen.findByText(/No target/)).toBeInTheDocument();
+    expect(screen.getAllByText(/No target/)).toHaveLength(1);
+    // An ordinary run wrongly tagged would read `Real`.
+    expect(screen.queryByText("Real")).toBeNull();
+  });
+
   it("says a shared evaluation can be shared directly, not only through a group", async () => {
     renderPage();
 
