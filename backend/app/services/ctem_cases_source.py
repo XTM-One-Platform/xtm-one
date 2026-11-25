@@ -1405,8 +1405,10 @@ def enrich_signal_issues(
     action. A member takes its first CVE, KEV when any of its CVEs is KEV (each
     KEV CVE kept in ``kev_cves`` for the case's KEV count), the
     highest CVSS and EPSS, and the version a course of action names when it is
-    a plain upgrade. A CVE OpenCTI does not know leaves those facts unknown
-    (``None``, never 0); the member is kept either way.
+    a plain upgrade. A CVE OpenCTI does not know, or that was not read (no
+    OpenCTI access for the reader, OpenCTI failed: *vulns* empty), leaves those
+    facts unknown: kept in ``unknown_cves`` and ``kev`` is ``None`` unless another
+    of its CVEs is KEV (#2225), never "not KEV"; the member is kept either way.
     """
     by_name: dict[str, dict[str, Any]] = {}
     for node in vulns:
@@ -1426,6 +1428,7 @@ def enrich_signal_issues(
             out.append(issue)
             continue
         known = [by_name[c] for c in named if c in by_name]
+        unknown = tuple(dict.fromkeys(c.upper() for c in named if c not in by_name))
         kev_cves = tuple(
             dict.fromkeys(c.upper() for c in named if c in by_name and by_name[c].get("x_opencti_cisa_kev"))
         )
@@ -1438,8 +1441,9 @@ def enrich_signal_issues(
             replace(
                 issue,
                 cve=named[0],
-                kev=any(bool(n.get("x_opencti_cisa_kev")) for n in known),
+                kev=True if kev_cves else (None if unknown else False),
                 kev_cves=kev_cves,
+                unknown_cves=unknown,
                 cvss=max(cvss) if cvss else None,
                 epss=max(epss) if epss else None,
                 fixed_version=_highest(fixes),

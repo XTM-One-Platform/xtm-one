@@ -215,6 +215,7 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     # Typed facts (#2038); a view cached before it holds (version, outcome) pairs, read the same way.
     data["version_outcomes"] = rules.version_facts(data.get("version_outcomes"))
     data["kev_cves"] = tuple(data.get("kev_cves") or ())
+    data["unknown_cves"] = tuple(data.get("unknown_cves") or ())
     return rules.SourceIssue(**data)
 
 
@@ -805,6 +806,19 @@ AGGREGATES_RESTRICTED_REASON = (
     "unknown for this reader: some open issues of the case are not readable with their details "
     "(outside your scope, or their product did not answer); this is not a zero"
 )
+#: The aggregates an open signal member leaves unknown when its CVEs' facts were not read (#2225).
+FACT_AGGREGATES: tuple[str, ...] = ("kev_count", "max_cvss", "max_epss")
+#: Why they are null: OpenCTI was not read for this reader (no access, or it failed), or it does not know the CVE.
+FACTS_UNREAD_REASON = (
+    "unknown for this reader: OpenCTI facts (KEV, CVSS, EPSS) were not read for some CVEs the case's "
+    "signals name (no OpenCTI access for this reader, OpenCTI did not answer, or it does not know "
+    "the CVE); this is not a zero"
+)
+
+
+def facts_unread(details: list[Any]) -> int:
+    """The open signal members naming a CVE whose facts were not read (#2225): their KEV and scores are unknown."""
+    return sum(1 for d in details if d.source == SIGNAL_SOURCE and tuple(getattr(d, "unknown_cves", ()) or ()))
 
 
 def kev_count(details: list[Any]) -> int:
@@ -854,6 +868,10 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
     without_details = sum(1 for r in rows if r.open and r.source != SIGNAL_SOURCE and _member_id(r) not in view.issues)
     if without_details:
         agg = {**agg, **{key: None for key in DETAIL_AGGREGATES}}
+    # A signal member whose CVE facts were not read: KEV and scores unknown, never "0 KEV" (#2225).
+    unread = facts_unread(details)
+    if unread:
+        agg = {**agg, **{key: None for key in FACT_AGGREGATES}}
     unavailable = sorted({r.source for r in visible if r.source != SIGNAL_SOURCE and _member_id(r) not in view.issues})
     # Kept and marked, never discarded (#2004): the running version is to validate first.
     unverified = version_match.unverified_reason(details)
@@ -885,6 +903,10 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "members_without_details": without_details,
         "aggregates_restricted": bool(without_details),
         "aggregates_reason": AGGREGATES_RESTRICTED_REASON if without_details else None,
+        # The open signal members whose CVE facts were not read (#2225), and why kev_count, max_cvss
+        # and max_epss are then null.
+        "members_facts_unread": unread,
+        "facts_reason": FACTS_UNREAD_REASON if unread else None,
         "asset_count": agg["asset_count"],
         "primary_asset_count": agg["primary_asset_count"],
         "kev_count": agg["kev_count"],

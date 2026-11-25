@@ -296,7 +296,20 @@ same way.
   `asset_count_reason`, never a silent 0. The single case read
   (`GET /ctem/cases/{id}`, `get_ctem_case`) applies the same rule
   (`version_history.with_asset_count` on the hydrated case), so the list row
-  and the case read answer the same `asset_count`, source and marker.
+  and the case read answer the same `asset_count`, source and marker. The
+  case reads that also serve `running_versions` (the page's details, both
+  case tools) then apply `version_history.with_live_asset_count`: when the
+  count is not from the issues and the live answer names assets, its
+  `asset_count` wins (source `inventory`, `asset_count_as_of` the read time),
+  so the aggregate never says "no asset" beside a `running_versions` that
+  lists devices (#2225).
+- unread signal facts (#2225): a signal member whose CVE OpenCTI was not
+  read for (no access for the reader, OpenCTI failed, or the CVE is unknown
+  to it) keeps it in `unknown_cves` with `kev` `null` (unless another of its
+  CVEs is KEV). While one open signal member has an unread CVE, `kev_count`,
+  `max_cvss` and `max_epss` are `null` with `members_facts_unread` and
+  `facts_reason` (`ctem_cases_view.FACTS_UNREAD_REASON`), never "0 KEV" or
+  "no CVSS"; `aggregates_restricted` keeps its scope meaning.
 - scope-limited aggregates: `summary()` counts the open product members the
   viewer reads WITHOUT their details (outside their scope, or seen before from
   a product that does not answer now) as `members_without_details`. When it is
