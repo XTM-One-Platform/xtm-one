@@ -446,6 +446,40 @@ async def _resolve_integration(db: Any, item: Any, reference: str, provider: str
     from app.models.integration import Integration
 
     visible = await integration_visible_filter(db, item.user_id)
+    from app.services.builtin_tools.id_prefix import id_prefix, id_prefix_clause
+
+    prefix = id_prefix(reference)
+    if prefix is not None:
+        # An id prefix of 8+ hex (#2264), the form the other tools take; the name still wins.
+        named = (
+            (
+                await db.execute(
+                    select(Integration.id).where(
+                        Integration.name == reference, Integration.provider == provider, visible
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if named is not None:
+            return str(named)
+        matches = (
+            (
+                await db.execute(
+                    select(Integration.id)
+                    .where(id_prefix_clause(Integration.id, prefix), Integration.provider == provider, visible)
+                    .order_by(Integration.id)
+                    .limit(2)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if len(matches) > 1:
+            raise NotifyError(f"'{reference}' starts the id of several integrations: pass the full id or the name")
+        if matches:
+            return str(matches[0])
     clause = (
         Integration.id == safe_uuid(reference)
         if safe_uuid(reference) is not None
