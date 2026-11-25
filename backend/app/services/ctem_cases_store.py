@@ -460,7 +460,8 @@ async def _source_signal(
     if created:
         try:
             async with db.begin_nested():
-                await gate_store.evaluate(db, row, now=now)
+                # #1953: this pass holds signal row locks: no remote read (#2171).
+                await gate_store.evaluate(db, row, now=now, remote_reads=False)
         except Exception:
             logging.getLogger(__name__).warning(
                 "CTEM scope gate not run on source signal %s; it stays new", row.id, exc_info=True

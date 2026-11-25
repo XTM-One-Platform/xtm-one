@@ -87,6 +87,30 @@ class SignalFacts:
     source_external_id: str | None = None
     subject_label: str | None = None
     evidence: dict[str, Any] = field(default_factory=dict)
+    #: #2171: the software (name or CPE) OpenCTI relates by ``has`` to the CVEs the signal names, read
+    #: by the store with the recorder's own access when the evidence names no software.
+    cve_software: tuple[str, ...] = ()
+    #: #2171: how that read went: ``""`` not attempted, ``"read"``, else why it could not answer.
+    cve_lookup: str = ""
+
+
+#: #2171: the evidence keys the gate reads; any other key is kept on the signal but never reconciled.
+ASSET_EVIDENCE_KEYS: tuple[str, ...] = ("assets", "asset", "hostnames", "urls", "ips")
+SOFTWARE_EVIDENCE_KEYS: tuple[str, ...] = ("software", "products", "cpe")
+READ_EVIDENCE_KEYS: tuple[str, ...] = (
+    *ASSET_EVIDENCE_KEYS,
+    *SOFTWARE_EVIDENCE_KEYS,
+    "cve",
+    "cves",
+    "primary_assets",
+)
+
+
+def evidence_read_keys(evidence: Any) -> list[str]:
+    """The keys of *evidence* the gate reads that hold a value (#2171)."""
+    if not isinstance(evidence, dict):
+        return []
+    return [k for k in READ_EVIDENCE_KEYS if _evidence_list(evidence, k)]
 
 
 @dataclass(frozen=True)
@@ -396,7 +420,7 @@ def resolve(
     """
     out = Resolution()
     keys = [stable_key(facts.subject_ref), stable_key(facts.source_external_id)]
-    keys += [stable_key(v) for v in _evidence_list(facts.evidence, "assets", "asset", "hostnames", "urls", "ips")]
+    keys += [stable_key(v) for v in _evidence_list(facts.evidence, *ASSET_EVIDENCE_KEYS)]
     keys = [k for k in dict.fromkeys(keys) if k]
     out.keys = keys
     wanted = set(keys)
@@ -419,11 +443,13 @@ def resolve(
         hosted = host_owned_domain(profile, facts.subject_ref)
         if hosted:
             out.hosted_domains.append(hosted)
-    software = _evidence_list(facts.evidence, "software", "products", "cpe")
+    software = _evidence_list(facts.evidence, *SOFTWARE_EVIDENCE_KEYS)
     if facts.subject_kind == "software":
         software.insert(0, facts.subject_ref)
     if facts.subject_kind == "threat":
         software += threat_software(facts.evidence)
+    # #2171: the software OpenCTI says has the CVEs the signal names.
+    software += [s for s in facts.cve_software if str(s or "").strip()]
     software = list(dict.fromkeys(software))
     out.software_refs = software
     for entry in profile.software:
@@ -643,6 +669,9 @@ def decide(
             "shipped_products": resolution.shipped,
             "repositories": resolution.repositories,
             "software_refs": resolution.software_refs,
+            # #2171: the software read from OpenCTI for the signal's CVEs, and how that read went.
+            "cve_software": list(facts.cve_software),
+            "cve_lookup": facts.cve_lookup or None,
             "hosted_under": resolution.hosted_domains,
             "primary_assets": resolution.primary_assets,
             "inventory_links_read": bool(primary_assets is not None and primary_assets.loaded),
