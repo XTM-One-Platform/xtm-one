@@ -130,6 +130,30 @@ def test_the_screens_cases_source_read_answers_the_fixture_only_when_asked(monke
     assert asyncio.run(ctem_cases_source.read_open_issues(None, "u", "fimi")).issues == []
 
 
+def test_the_screens_source_stub_takes_every_keyword_of_the_real_read(monkeypatch):
+    """#2081: the recompute passes ``remap=True``; a stub without it answered 500 and seeded no case."""
+    import inspect
+
+    from app.services import ctem_cases_source
+
+    module = _lab_asgi(monkeypatch)
+    original = ctem_cases_source.read_open_issues
+    monkeypatch.setattr(ctem_cases_source, "read_open_issues", original)
+    assert module.screens_ctem_cases({"LAB_CTEM_SCREENS": "on"}) is True
+    stub = ctem_cases_source.read_open_issues
+
+    def keywords(function):
+        return {
+            name
+            for name, p in inspect.signature(function).parameters.items()
+            if p.kind is inspect.Parameter.KEYWORD_ONLY
+        }
+
+    assert keywords(original) <= keywords(stub), keywords(original) - keywords(stub)
+    read = asyncio.run(stub(None, "u", "cyber", members=["opencti:gone"], remap=True))
+    assert len(read.issues) == len(module.ctem_sample.SCREENS_ISSUES)
+
+
 def test_the_peer_reads_the_ivanti_case_without_one_member_so_its_aggregates_are_restricted(monkeypatch):
     from types import SimpleNamespace
 
