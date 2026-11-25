@@ -6943,6 +6943,22 @@ PROVIDER_CATALOG = {
             "ThreatHunting.Read.All ThreatIntelligence.Read.All "
             "SecurityEvents.Read.All"
         ),
+        # Graph permissions some tools need beyond the sign-in scopes (#2386):
+        # an admin grants them on the app; "Missing scopes" names the tools.
+        "tool_scopes": [
+            {
+                "any_of": ["CustomDetection.ReadWrite.All"],
+                "tools": [
+                    "create_defender_detection_rule",
+                    "update_defender_detection_rule",
+                    "delete_defender_detection_rule",
+                ],
+            },
+            {
+                "any_of": ["CustomDetection.Read.All", "CustomDetection.ReadWrite.All"],
+                "tools": ["list_defender_detection_rules", "get_defender_detection_rule"],
+            },
+        ],
         "authorize_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
         "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         "extra_fields": {

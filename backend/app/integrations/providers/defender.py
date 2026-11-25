@@ -58,13 +58,13 @@ import httpx
 
 from app.core.egress import egress_client
 from app.core.utils import format_exception_message
+from app.integrations import entra_token_errors
 from app.integrations.file_content import (
     keep_file,
     kept_file_line,
     kilobytes,
     rest_of_file_hint,
 )
-from app.integrations import entra_token_errors
 from app.integrations.file_delivery import FetchError
 from app.integrations.http import (
     app_token_cache_key,
@@ -224,6 +224,20 @@ def _app_token_failure(
     )
 
 
+async def app_only_audience_check(tenant_id: str, client_id: str, client_secret: str) -> list[tuple[str, bool, str]]:
+    """Mint a fresh app-only token per audience: (audience, ok, why not) (#2386)."""
+    results: list[tuple[str, bool, str]] = []
+    for scope, label in ((_GRAPH_SCOPE, "Microsoft Graph"), (_MDE_SCOPE, "Defender for Endpoint")):
+        _forget_app_token(tenant_id, client_id, client_secret, scope)
+        if await _get_token(tenant_id, client_id, client_secret, scope):
+            results.append((label, True, ""))
+            continue
+        failure = _app_token_failure(tenant_id, client_id, client_secret, scope)
+        message = token_failure_message(scope, failure, delegated=False).removeprefix("Error: ")
+        results.append((label, False, message))
+    return results
+
+
 def _forget_app_token(tenant_id: str, client_id: str, client_secret: str, scope: str) -> None:
     """Drop the cached app-only token of *scope* (refused by the API)."""
     drop_cached_app_token(app_token_cache_key("defender", tenant_id, client_id, client_secret, scope))
@@ -239,9 +253,7 @@ _AUDIENCES: dict[str, tuple[str, str]] = {
 }
 
 
-def token_failure_message(
-    scope: str, failure: entra_token_errors.EntraTokenFailure | None, *, delegated: bool
-) -> str:
+def token_failure_message(scope: str, failure: entra_token_errors.EntraTokenFailure | None, *, delegated: bool) -> str:
     """The tool error for a token Microsoft Entra ID did not issue, by cause (#2386).
 
     A missing admin consent names the audience and says re-authorizing alone
@@ -359,9 +371,7 @@ def _graph_error_fields(resp: Any) -> tuple[str, str, str]:
     return code, message, (request_id or with_header)[:80]
 
 
-def _detection_permission_error(
-    action: str, *, write: bool, resp: Any = None, granted: set[str] | None = None
-) -> str:
+def _detection_permission_error(action: str, *, write: bool, resp: Any = None, granted: set[str] | None = None) -> str:
     """The answer to a 403 on the custom detection rules API (#2386).
 
     It carries what Graph said (status, ``error.code`` / ``error.message``,
@@ -393,9 +403,7 @@ def _detection_permission_error(
             "unified RBAC role with detection tuning), or the tenant lacks the "
             "Defender licence for custom detections."
         )
-    in_token = (
-        f" The token does not carry {permission}{reads}." if granted is not None else ""
-    )
+    in_token = f" The token does not carry {permission}{reads}." if granted is not None else ""
     return (
         f"Error: {_PROVIDER} refused to {action}{detail}.{in_token} Grant the Microsoft "
         f"Graph permission {permission}{reads} on the integration's Entra app "

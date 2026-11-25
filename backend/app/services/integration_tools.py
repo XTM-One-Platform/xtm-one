@@ -5456,6 +5456,22 @@ class _AzureDelegatedTokenFn:
         await forget_azure_delegated_tokens(self._holder, [scope])
 
 
+async def redeem_azure_delegated_audience(
+    holder: str, scope: str
+) -> tuple[str | None, entra_token_errors.EntraTokenFailure | None]:
+    """Redeem a fresh delegated token for one audience, for a connection test.
+
+    The cached token is dropped first, so the answer is Entra's verdict on the
+    grant as it stands now (an admin consent given since is seen at once);
+    the second value is why it refused, when it did (#2386). The caller has
+    already gated the tester on the integration (test_integration).
+    """
+    await forget_azure_delegated_tokens(holder, [scope])
+    access = await _acquire_azure_delegated_token(holder, scope)
+    failure = None if access else entra_token_errors.recall(entra_token_errors.delegated_key(holder, scope))
+    return access, failure
+
+
 def _make_azure_delegated_token_fn(
     integration_id: str,
 ) -> Callable[[str], Awaitable[str | None]]:
