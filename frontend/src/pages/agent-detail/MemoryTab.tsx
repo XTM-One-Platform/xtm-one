@@ -534,19 +534,19 @@ export function MemoryTab({ agent, canManage }: { agent: Agent; canManage: boole
           {health && (health.stale_count > 0 || health.over_cap > 0 || health.no_embedding_count > 0) && (
             <div className="flex flex-wrap items-center gap-2 content-compact">
               {health.stale_count > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-feedback-alert-primary/10 text-feedback-warning-tertiary px-2.5 py-1 border border-feedback-alert-primary/20">
+                <span className="inline-flex items-center gap-1 rounded-sm bg-feedback-alert-primary/10 text-feedback-warning-tertiary px-2 py-1 border border-feedback-alert-primary/20">
                   <Clock className="h-3 w-3" />
                   {t_i18n("{count} stale (>{days}d)", { count: health.stale_count, days: health.retention_days })}
                 </span>
               )}
               {health.over_cap > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-feedback-error-primary/10 text-feedback-error-primary px-2.5 py-1 border border-feedback-error-primary/20">
+                <span className="inline-flex items-center gap-1 rounded-sm bg-feedback-error-primary/10 text-feedback-error-primary px-2 py-1 border border-feedback-error-primary/20">
                   <AlertCircle className="h-3 w-3" />
                   {t_i18n("{count} over cap", { count: health.over_cap })}
                 </span>
               )}
               {health.no_embedding_count > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-elevation-highlight text-default-secondary px-2.5 py-1 border border-elevation-subtle-soft">
+                <span className="inline-flex items-center gap-1 rounded-sm bg-elevation-highlight text-default-secondary px-2 py-1 border border-elevation-subtle-soft">
                   <AlertTriangle className="h-3 w-3" />
                   {t_i18n("{count} without embedding", { count: health.no_embedding_count })}
                 </span>

@@ -9,10 +9,10 @@
  * 1. the shared chip components carry `rounded-sm` and no `rounded-full`;
  * 2. no `<Badge>` or `<ToneBadge>` overrides the radius at a call site;
  * 3. no new hand-made chip is drawn as a pill: a class string that carries
- *    `rounded-full`, an inline padding (`px-1` to `px-4`) and a type size
- *    (`content-*`, `text-xs`, `text-[Npx]`) is a chip, unless it is a fixed
- *    square (`h-N w-N`, `size-N`: an avatar, a dot, a round button) or a
- *    numeric counter (`min-w-*`). Every hand-made chip has moved (#1333):
+ *    `rounded-full` and an inline padding (`px-1` to `px-4`) is a chip (its
+ *    type size may be inherited), unless it is a fixed square (`h-N w-N`,
+ *    `size-N`: an avatar, a dot, a round button), a numeric counter
+ *    (`min-w-*`) or a shape filling a sized box (`h-full w-full`, a graph node). Every hand-made chip has moved (#1333):
  *    the list of pending chips is empty and any new pill fails.
  *
  * 4. a `<Badge>` holding only a count is a `CountBadge` (round counter).
@@ -52,12 +52,14 @@ function classCalls(text: string): { start: number; end: number; classes: string
   return calls;
 }
 
-/** A pill-shaped chip: full radius, inline padding and a type size in one class string. */
+/** A pill-shaped chip: full radius and inline padding in one class set (the type size may be inherited). */
 function isPillChip(classes: string): boolean {
   if (!/(?:^|\s)rounded-full(?=\s|$)/.test(classes)) return false;
   if (!/(?:^|\s)px-(?:1|1\.5|2|2\.5|3|3\.5|4)(?=\s|$)/.test(classes)) return false;
-  if (!/(?:^|\s)(?:content-[a-z-]+|text-xs|text-\[\d+px\])(?=\s|$)/.test(classes)) return false;
+  // The type size may be inherited from the parent (#1333, UX round 2 B2): not required.
   // A fixed square (avatar, dot, round button) or a numeric counter is not a chip.
+  // A shape filling a sized box (`h-full w-full`: a work-item graph node) is not a chip either.
+  if (/(?:^|\s)h-full\s+(?:[^\s]+\s+)*?w-full(?=\s|$)/.test(classes) && !/(?:^|\s)inline-flex(?=\s|$)/.test(classes)) return false;
   if (/(?:^|\s)(?:h-\[?[\d.]+(?:px)?\]?\s+w-\[?[\d.]+(?:px)?\]?|size-[\d.]+|min-w-(?:[1-9][\d.]*|\[[1-9][^\]\s]*\]))(?=\s|$)/.test(classes)) return false;
   return true;
 }
@@ -148,6 +150,9 @@ test("the pill pattern catches chips and leaves round shapes alone", () => {
     "inline-flex items-center gap-1 rounded-full bg-elevation-hover px-2 py-0.5 text-xs",
     // A truncating chip (`min-w-0`) is not a counter (#1333, UX round 1 B2).
     "flex min-w-0 shrink items-center gap-1.5 rounded-full border border-elevation-subtle px-2.5 py-0.5 content-compact",
+    // The type size may be inherited from the parent (#1333, UX round 2 B2).
+    "inline-flex items-center gap-1 rounded-full border border-dashed border-accent/30 px-1.5 py-1 text-accent/80",
+    "flex items-center gap-1.5 rounded-full bg-elevation-hover px-3 py-1.5 border border-elevation-subtle-soft",
   ]) {
     expect(isPillChip(chip), chip).toBe(true);
   }
@@ -161,6 +166,7 @@ test("the pill pattern catches chips and leaves round shapes alone", () => {
     "h-1.5 w-full rounded-full bg-elevation-hover",
     "flex h-6 w-6 items-center justify-center rounded-full px-1 content-caption",
     "size-3.5 rounded-full border px-1 content-caption",
+    "flex h-full w-full flex-col justify-center gap-0.5 rounded-full border border-elevation-subtle bg-elevation-hover px-3 text-start",
   ]) {
     expect(isPillChip(round), round).toBe(false);
   }

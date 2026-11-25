@@ -302,7 +302,7 @@ function ProductPill({
       <Tip content={soon}>
         <span
           aria-label={soon}
-          className="inline-flex items-center rounded-full border border-dashed border-elevation-subtle-soft px-1.5 py-1 text-default-secondary"
+          className="inline-flex items-center rounded-sm border border-dashed border-elevation-subtle-soft px-2 py-1 text-default-secondary"
         >
           {info?.logo ? <img src={info.logo} alt="" className="h-3.5 w-3.5 opacity-60" /> : <Scale className="h-3 w-3" />}
         </span>
@@ -328,7 +328,7 @@ function ProductPill({
         <button
           onClick={onConnect}
           aria-label={connect}
-          className="inline-flex items-center gap-1 rounded-full border border-dashed border-accent/30 px-1.5 py-1 text-accent/80 hover:bg-accent/10 transition-colors"
+          className="inline-flex items-center gap-1 rounded-sm border border-dashed border-accent/30 px-2 py-1 text-accent/80 hover:bg-accent/10 transition-colors"
         >
           <Plus className="h-3 w-3" />
           {logoSrc ? <img src={logoSrc} alt="" className="h-3.5 w-3.5 opacity-70" /> : <Link2 className="h-3 w-3" />}

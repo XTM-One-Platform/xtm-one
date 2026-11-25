@@ -149,7 +149,7 @@ function HistoryLine({ ctx, kind, id }: { ctx: ReviewContext; kind: "e" | "r"; i
         </span>
       ))}
       {verdict && verdict !== "same" && (
-        <span className={cn("rounded-full border px-1.5 text-default-primary", STATUS_SURFACE[verdict])}>{t_i18n(statusLabel(verdict, "runs"))}</span>
+        <span className={cn("rounded-sm border px-2 text-default-primary", STATUS_SURFACE[verdict])}>{t_i18n(statusLabel(verdict, "runs"))}</span>
       )}
     </p>
   );
