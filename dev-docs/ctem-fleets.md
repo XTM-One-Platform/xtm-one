@@ -144,13 +144,12 @@ intent, kept by design.
 Nine new agents, all `platform_targets: ["xtm_one", "dev"]`, company-managed,
 built-in, JSON output schema per unit of work (section 5 reads it).
 
-## 4. The four defined fleets
+## 4. The four seeded fleets
 
-Since CTEM-31 (#1048, section 14) the defined set is the generic CTEM loop
+Since CTEM-31 (#1048, section 14) the seeded set is the generic CTEM loop
 (F1 core, F4 and M1 to M3 folded in as roles), F2 vulnerability management,
-F3 AI security and F5 third-party risk. Only the CTEM loop is seeded until
-the three use cases are tested (section 14). The per-fleet sections below
-keep describing each role.
+F3 AI security and F5 third-party risk. The per-fleet sections below keep
+describing each role.
 
 Common rules:
 
@@ -191,11 +190,7 @@ Common rules:
   ownership change and the hourly case sweep, `catch_up` hands every open
   case its owner never ran (no open `<key>:case:<id>` item of any declared
   key, no `owner_requested` case event for that owner) one
-  `ctem_case.opened`, P1 first, soonest SLA first, 100 per pass. An ask no
-  case automation answered (no run of the case since it, no open case item)
-  is made again after 15 minutes (`REASK_AFTER_SECONDS`) under a new event
-  id, 3 asks in all (`MAX_ASKS`), so a delivery lost to an exhausted pool
-  never leaves a case unowned (#2101).
+  `ctem_case.opened`, P1 first, soonest SLA first, 100 per pass.
   `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active, fleet_id};
   the case page header shows "Owned by <fleet>" linked to the fleet page, or
   "No active fleet owns this case" when it is null or inactive.
@@ -2123,7 +2118,7 @@ The routes (`backend/app/api/v1/fleets.py`) and their service
 | `POST /fleets/{id}/pause` | Pause all: every automation that is on switches off, stamped `fleet_pause`. Audit `fleet_pause` | as Enable | allowed |
 | `POST /fleets/{id}/resume` | Resume: exactly the `fleet_pause` ones switch back on; 409 during an emergency stop. Audit `fleet_resume` | as Enable | allowed |
 | `POST /fleets/{id}/unset` | Back to not set up (#11060): every automation that is on switches off, and every off one (any stamp but `panic_stop`) is re-stamped `created_disabled`, so the fleet reads Not set up, 0 on, no Resume. Nothing deleted (ids, prompts, triggers, run history kept); an automation an emergency stop holds is left as it is and named (`held_by_stop` in the audit). Idempotent. Agent tool: `set_fleet_automations(action="unset")`, a dry-run count without `confirm=true`. Audit `fleet_unset` plus one `pause` row per assignment | as Enable | allowed |
-| `POST /fleets/{id}/reset` | Reset a built-in fleet to its factory state (#1508; `services/fleet_reset.py`), administrators only, `dry_run` for the dialog's counts, `confirm_name` (the fleet's name) for the real call. Every automation off and `created_disabled` (as unset) with its run-as and schedule anchor cleared; the level back to the seeded one; `approval_pins`, `customer_gates` and every fleet customer setting (tool-level enforcement, instructions position, confirmed prerequisites, health dismissals, check and enrolment, activity visibility, budget, iteration cap, run budget, member defaults, organization scope) back to their column default; a local documentation version replaced by the shipped one; each home member's customer layer cleared (bindings and their scoping, lending, MCP servers, knowledge bases, skills, custom tools, organization notes, model pin, approval switches), the seed's own built-in integrations, knowledge bases and skills kept, and its definition rewritten from the seed now. Kept: ids, run history, cases and findings, the audit trail, the workspace. Refused (422) on a custom fleet and (409) during an emergency stop. Idempotent; audit `fleet_reset` with the counts; the next boot changes nothing. | administrators | allowed |
+| `POST /fleets/{id}/reset` | Reset a built-in fleet to its factory state (#1508; `services/fleet_reset.py`), administrators only, `dry_run` for the dialog's counts, `confirm_name` (the fleet's name) for the real call. Every automation off and `created_disabled` (as unset) with its run-as and schedule anchor cleared; the level back to the seeded one; `approval_pins`, `customer_gates` and every fleet customer setting (tool-level enforcement, instructions position, confirmed prerequisites, health dismissals, check and enrolment, activity visibility, budget, iteration cap, run budget, member defaults, organization scope) back to their column default; a local documentation version replaced by the shipped one; each home member's customer layer cleared (bindings and their scoping, lending, MCP servers, knowledge bases, skills, custom tools, organization notes, model pin, approval switches), the seed's own built-in integrations, knowledge bases and skills kept, and its definition rewritten from the seed now. Kept: ids, run history, cases and findings, the audit trail, the workspace, and the home members' open work items (decision items included), counted in the answer's `open_gates` and `open_items`. Refused (422) on a custom fleet and (409) during an emergency stop. Idempotent; audit `fleet_reset` with `before` (the fleet as it stood: effective level, home members, connected agents, pins, added gates, open decision items and open items) and `changes` (the counts), plus `autonomy_level_change` (reason `fleet_reset`) when the level moves (#2134); the next boot changes nothing. | administrators | allowed |
 | `POST /fleets/bulk` | pause, resume or set_autonomy on up to 100 fleets, or `all_fleets` (administrators, pause only); each fleet follows its single-fleet rule, refused fleets reported; `dry_run` counts | per fleet | allowed |
 
 **What the level acts on (#10153).** A custom fleet whose `approval_pins` is
@@ -2405,11 +2400,11 @@ tools, CTEM-18, `ctem-cases.md` 9quater), so the fleet recommends (work items ke
 
 Tests: `tests/test_opencrq_risk_budget_desk_fleet.py`.
 
-## 14. Four defined fleets: one generic CTEM loop and three use cases (CTEM-31, #1048)
+## 14. Four seeded fleets: one generic CTEM loop and three use cases (CTEM-31, #1048)
 
-Sam, 21 Nov 2026: at most four built-in fleets, one generic loop end to end and
+Sam, 21 Nov 2026: at most four seeded fleets, one generic loop end to end and
 three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
-(`backend/app/agents/builtin_fleets.py`) defines exactly:
+(`backend/app/agents/builtin_fleets.py`) holds exactly:
 
 | # | Slug | Name | What it carries |
 |---|---|---|---|
@@ -2421,26 +2416,6 @@ three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
 A fifth entry fails `tests/test_builtin_fleets.py`: adding one is a product
 decision. An agent has one home fleet: the use-case fleets reach the loop's
 role agents (risk quantifier, remediation coordinator) as connected agents.
-
-### Seeded set: the CTEM loop only (#2105)
-
-Sam, 25 Nov 2026: the three use cases are defined but not seeded until they
-are tested. `SEEDED_BUILTIN_FLEET_SLUGS` is the switch (`{"ctem-loop"}`);
-`SEEDED_BUILTIN_FLEETS` is what `fleet_seed.seed_builtin_fleets` seeds.
-
-- Agents: `UNSEEDED_FLEET_AGENT_SLUGS`, derived from the definitions (the
-  orchestrators and home members of the unseeded fleets that no seeded fleet
-  names), are withheld by the agent seed with their assignments. Shared agents
-  (risk quantifier, remediation coordinator, the product assistants) stay.
-- Upgrade: the stale-fleet sweep removes the three company-managed fleets
-  (members back to the playground), the stale-agent sweep their exclusive
-  agents. A person's fork is kept; `RETIRED_FLEET_SUCCESSORS` names the CTEM
-  loop as its successor. With the F2 declaration gone, `new_vulnerability`
-  cases fall back to the loop (`paths` null).
-- Derived maps (`BUILTIN_FLEET_LEADS`, `BUILTIN_FLEET_LEAD_SLUGS`) cover the
-  seeded set only; the definitions, their documentation and tests stay.
-- Re-enabling a use case is adding its slug to the switch: it seeds again
-  exactly as its definition.
 
 ### Custom case ownership (#1966)
 
