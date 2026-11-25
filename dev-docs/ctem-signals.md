@@ -32,6 +32,17 @@ lenses disagree. Before this change none of that had a place to land.
 | 11 | `third_party_event` | world | an OpenCTI report or incident naming a tracked organization by identity, one signal per organization (the tracked-organizations trigger of the third-party fleet) |
 | 12 | `blind_spot` | inside | tool and API |
 
+Path 9 (`control_decay`, evidence state `never_measured`, `attested_only` or
+`expired`) means OpenCRQ holds no current evidence for a control, not that no
+control exists (#2354): the Loop Orchestrator reconciles the case first
+(`CTEM_CONTROL_DECAY_RECONCILE` in its case prompt, the section of its persona
+of the same name). It reads the OpenAEV results on the asset, the EDR and
+device-management coverage the inventory holds (`assets_exposure`, filtered by
+`source:`), and `get_opencrq_control_validation`; a control found that OpenCRQ
+lacks or under-rates becomes one `ctem:remediation:<case id>` decision to record
+it in OpenCRQ, none found keeps the decision to put a control in place, and the
+decision lists every source checked with what it returned.
+
 A caller may name another lens than the default (a `has` relationship is the
 inside lens of path 1). `GET /api/v1/ctem-signals/paths` answers this table.
 
