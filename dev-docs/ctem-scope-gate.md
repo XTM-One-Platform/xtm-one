@@ -24,7 +24,11 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
 - From the Signals page, by the people who read the signals:
   `POST /api/v1/ctem-signals/triage` dismisses (state `discarded`, reason
   `dismissed_by_user`, kept out of every pass until restored), restores or
-  re-checks the selected signals or every signal a state filter matches. An
+  re-checks the selected signals or every signal a state filter matches.
+  `dry_run: true` (route and `triage_ctem_signals`, #2341) runs the same
+  selection and decisions, answers `signals` (id, state before and after,
+  `changed`, `unchanged` or `skipped`) with the counts, and rolls back: nothing
+  is written and no `ctem_signal.triaged` event is raised. An
   administrator also has `POST /api/v1/ctem-signals/add-to-inventory`: one
   profile version declares the subjects of the selected unmatched signals (a
   host an asset, a software a tech stack product, an identity its email domain
