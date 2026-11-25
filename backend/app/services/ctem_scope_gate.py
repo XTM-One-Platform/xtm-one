@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from app.services.ctem_primary_assets import PrimaryAssetIndex
+from app.services.ctem_primary_assets import PrimaryAssetIndex, contains_word
 from app.services.organization_context import (
     PROFILE_ASSET_CAP,
     AssetEntry,
@@ -287,7 +287,7 @@ def _product_matches(product: str, ref: str) -> bool:
     if r.startswith("cpe:"):
         parts = r.split(":")
         r = parts[4] if len(parts) > 4 else r
-    return p == r or re.search(rf"(^|[^a-z0-9]){re.escape(p)}($|[^a-z0-9])", r) is not None
+    return contains_word(p, r)
 
 
 def _cpe_vendor_product(ref: str) -> tuple[str, str] | None:
