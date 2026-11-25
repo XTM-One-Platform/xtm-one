@@ -4,6 +4,8 @@ OpenAEV's ``simulation_finished`` trigger watches ``SIMULATION`` ``UPDATE``
 filtered on ``FINISHED``, so every later update of a finished simulation is
 notified again. The receiver delivers it once per assignment, simulation and
 end date: a repeat starts no run; a relaunched simulation (new end date) does.
+The claim is kept only once a run started: a delivery that started none gives it
+back, so the next delivery of the same occurrence still runs (#2247 review).
 """
 
 from __future__ import annotations
@@ -26,6 +28,12 @@ class _Redis:
             return None
         self.keys.add(key)
         return True
+
+    async def delete(self, key: str) -> int:
+        if key in self.keys:
+            self.keys.discard(key)
+            return 1
+        return 0
 
 
 def _delivery(resource_id: str = "sim-1") -> dict[str, Any]:
@@ -58,12 +66,19 @@ def world(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return state
 
 
+async def _claim(
+    event: str = "simulation_finished", *, assignment: str = "a1", verified: bool = True, sim: str = "sim-1"
+) -> tuple[bool, str | None]:
+    return await aev.claim_occurrence(
+        event, _delivery(sim), integration_id="i1", assignment_id=assignment, verified=verified
+    )
+
+
 async def _repeat(
     event: str = "simulation_finished", *, assignment: str = "a1", verified: bool = True, sim: str = "sim-1"
 ) -> bool:
-    return await aev.repeated_delivery(
-        event, _delivery(sim), integration_id="i1", assignment_id=assignment, verified=verified
-    )
+    repeat, _claim_key = await _claim(event, assignment=assignment, verified=verified, sim=sim)
+    return repeat
 
 
 @pytest.mark.asyncio
@@ -109,3 +124,30 @@ async def test_a_simulation_without_an_end_date_is_delivered(world: dict[str, An
     world["end"] = None
     assert await _repeat() is False
     assert await _repeat() is False
+
+
+@pytest.mark.asyncio
+async def test_a_delivery_that_started_no_run_gives_the_occurrence_back(world: dict[str, Any]) -> None:
+    repeat, claim = await _claim()
+    assert repeat is False and claim is not None
+    # Dropped, filtered, busy or failed: the receiver releases the claim.
+    await aev.release_occurrence(claim)
+    repeat, claim_again = await _claim()
+    assert repeat is False and claim_again == claim
+    # Run started: the claim is kept and the next update is a repeat.
+    assert await _claim() == (True, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail", ["read", "redis"])
+async def test_an_unclaimed_delivery_has_nothing_to_release(world: dict[str, Any], fail: str) -> None:
+    world["fail"] = fail
+    assert await _claim() == (False, None)
+    await aev.release_occurrence(None)
+
+
+@pytest.mark.asyncio
+async def test_release_never_raises(world: dict[str, Any]) -> None:
+    _repeat_flag, claim = await _claim()
+    world["fail"] = "redis"
+    await aev.release_occurrence(claim)

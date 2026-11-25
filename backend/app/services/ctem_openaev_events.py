@@ -139,24 +139,31 @@ ONCE_PER_OCCURRENCE: dict[str, tuple[str, str]] = {
 REPEAT_TTL_SECONDS = 30 * 24 * 3600
 
 
-async def repeated_delivery(
+async def claim_occurrence(
     event: str, payload: Mapping[str, Any], *, integration_id: str, assignment_id: str, verified: bool
-) -> bool:
-    """Whether *assignment_id* already received this occurrence of a once-per-occurrence event.
+) -> tuple[bool, str | None]:
+    """Claim this occurrence of a once-per-occurrence event for *assignment_id*.
 
-    ``simulation_finished`` is delivered once per simulation and end date: the first
-    delivery claims the occurrence, a later update of the same finished simulation is a
-    repeat. A relaunched simulation ends again with a new end date and is delivered.
-    Verified deliveries only (a forged one never claims an occurrence); fails open: an
-    unread end date or an unreachable Redis delivers as before. Never raises.
+    Answers ``(repeat, claim)``: ``repeat`` is true when the assignment already received
+    the occurrence; ``claim`` is the key this delivery claimed, or ``None``. The caller
+    keeps the claim only once the delivery started or queued a run, and hands it to
+    :func:`release_occurrence` on every other path (dropped, filtered, busy, failed), so
+    a later delivery of the same occurrence still runs.
+
+    ``simulation_finished`` is delivered once per simulation and end date: a later update
+    of the same finished simulation is a repeat; a relaunched simulation ends again with
+    a new end date and is delivered. Verified deliveries only (a forged one never claims
+    an occurrence); fails open: an unread end date or an unreachable Redis delivers as
+    before. The claim is one atomic ``SET NX``, so two concurrent deliveries of one
+    occurrence never both run. Never raises.
     """
     read = ONCE_PER_OCCURRENCE.get(event)
     meta = payload.get("_openaev_event") if isinstance(payload, Mapping) else None
     if read is None or not verified or not isinstance(meta, Mapping):
-        return False
+        return False, None
     resource_id = str(meta.get("resource_id") or "").strip()
     if not resource_id:
-        return False
+        return False, None
     from urllib.parse import quote
 
     path, field = read
@@ -164,10 +171,10 @@ async def repeated_delivery(
         body = await _read_object(integration_id, path.format(id=quote(resource_id, safe="")))
     except Exception:
         logger.warning("OpenAEV %s %s not read for its occurrence", event, resource_id, exc_info=True)
-        return False
+        return False, None
     occurrence = body.get(field) if isinstance(body, dict) else None
     if not isinstance(occurrence, str) or not occurrence.strip():
-        return False
+        return False, None
     marker = "\n".join((assignment_id, event, resource_id, occurrence.strip()))
     key = f"openaev:occurrence:{hashlib.sha256(marker.encode()).hexdigest()[:32]}"
     try:
@@ -177,8 +184,21 @@ async def repeated_delivery(
         claimed = await redis.set(key, "1", nx=True, ex=REPEAT_TTL_SECONDS)
     except Exception:
         logger.warning("OpenAEV %s occurrence not claimed (delivered)", event, exc_info=True)
-        return False
-    return not claimed
+        return False, None
+    return (False, key) if claimed else (True, None)
+
+
+async def release_occurrence(claim: str | None) -> None:
+    """Give back an occurrence *claim* whose delivery started no run. Never raises."""
+    if not claim:
+        return
+    try:
+        from app.core.redis import redis_client
+
+        redis = await redis_client()
+        await redis.delete(claim)
+    except Exception:
+        logger.warning("OpenAEV occurrence claim %s not released", claim, exc_info=True)
 
 
 def references(case: CtemCase, issues: list[CtemCaseIssue], resource_id: str) -> bool:
