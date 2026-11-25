@@ -17,8 +17,8 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Awaitable, Callable
-from contextlib import AsyncExitStack
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, unquote
@@ -1749,6 +1749,30 @@ def parse_finding(raw: Any) -> Finding | None:
         last_seen=last_seen or updated_at,
         seen_reported=last_seen is not None,
     )
+
+
+@asynccontextmanager
+async def tool_client(
+    headers: dict[str, str], *, timeout: int = 30
+) -> AsyncIterator[httpx.AsyncClient | AutoRefreshClient]:
+    """The client every OpenAEV tool opens for its own requests (#2372).
+
+    With a re-mint callback on *headers* (a platform-managed integration's
+    short-lived cross-platform JWT), the token is re-minted before it expires
+    (:func:`ensure_fresh_token`) and the client is an :class:`AutoRefreshClient`,
+    so a 401/403 re-mints once and retries, as :func:`_api` does. Without one
+    (a static API key) it is the plain egress client, as before. A tool that
+    opened ``egress_client`` directly sent an expired JWT about 10 minutes into
+    a run and turned one expiry into a run-wide auth refusal.
+    """
+    refresh_fn = getattr(headers, "refresh_fn", None)
+    if refresh_fn is None:
+        async with egress_client(timeout=timeout) as plain:
+            yield plain
+        return
+    await _ensure_fresh_token(headers, refresh_fn)
+    async with AutoRefreshClient(headers, refresh_fn, timeout=timeout) as refreshing:
+        yield refreshing
 
 
 async def scoped_safe_request(
