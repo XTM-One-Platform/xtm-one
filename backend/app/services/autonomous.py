@@ -1921,6 +1921,10 @@ async def _run_autonomous_tick_inner() -> int:
                 polled = await poll_blocked_on_refs()
                 if polled["released"]:
                     logger.info("Reopened %d work item(s) whose references closed", polled["released"])
+                # Items waiting for an outbound A2A task that ended (#2265).
+                from app.services.work_item_a2a_refs import release_ended_a2a_tasks
+
+                await release_ended_a2a_tasks()
                 # The class of defect: every reference met, the item still blocked.
                 await release_satisfied_blocks()
                 # Items waiting on each other through items or gated pull requests (#606).

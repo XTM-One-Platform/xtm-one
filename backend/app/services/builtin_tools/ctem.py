@@ -108,7 +108,9 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
     except ValueError:
         scope = None
 
-    async def _triage(action: str = "", ids: list[str] | None = None, state: str = "", trigger_path: str = "") -> str:
+    async def _triage(
+        action: str = "", ids: list[str] | None = None, state: str = "", trigger_path: str = "", dry_run: bool = False
+    ) -> str:
         """Dismiss, restore or re-check signals, as ``POST /ctem-signals/triage`` (#1505), for the acting person."""
         from app.core.database import async_session
         from app.services import ctem_access
@@ -158,6 +160,14 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
                     limit=scope_gate.MAX_BULK,
                 )
                 actor = (getattr(user, "name", None) or getattr(user, "email", None) or str(user.id))[:200]
+                if dry_run:
+                    # Same selection and decisions, nothing written (#2341).
+                    outcomes: list[dict[str, Any]] = []
+                    counts = await scope_gate.triage(
+                        db, rows, action=action, actor=actor, evaluator_id=user.id, outcomes=outcomes
+                    )
+                    await db.rollback()
+                    return _dump({"dry_run": True, "matched": len(rows), "counts": counts, "signals": outcomes})
                 counts = await scope_gate.triage(db, rows, action=action, actor=actor, evaluator_id=user.id)
                 await db.commit()
                 return _dump({"matched": len(rows), "counts": counts})
@@ -178,8 +188,8 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
     triage = ToolDefinition(
         name=TRIAGE_TOOL,
         description=(
-            "Dismiss, restore or re-check CTEM signals by ids or by a filter (state, trigger_path); "
-            "a signal that opened a case is skipped. Answers matched and counts."
+            "Dismiss, restore or re-check CTEM signals by ids or filter; case-opening signals "
+            "are skipped. dry_run: preview only."
         ),
         input_schema={
             "type": "object",
@@ -188,6 +198,7 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
                 "ids": {"type": "array", "items": {"type": "string"}},
                 "state": {"type": "string", "enum": list(SIGNAL_STATES)},
                 "trigger_path": {"type": "string", "enum": list(TRIGGER_PATHS)},
+                "dry_run": {"type": "boolean"},
             },
             "required": ["action"],
         },

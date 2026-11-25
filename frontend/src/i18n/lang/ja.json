@@ -21876,5 +21876,10 @@
   "Attack flow": "攻撃フロー",
   "Condition": "条件",
   "True": "真",
-  "False": "偽"
+  "False": "偽",
+  "Only the people and groups below can see this. Access to a built-in agent cannot be changed.": "以下のユーザーとグループのみが閲覧できます。組み込みエージェントのアクセスは変更できません。",
+  "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.": "プラットフォームのすべてのユーザーに表示されます。組み込みエージェントのアクセスは制限できません。",
+  "Partners read this agent's fleet": "パートナーがこのエージェントのフリートを読み取る",
+  "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "パートナーのタスクは、このエージェントのホームフリート、その健全性、作業項目、稼働中のビルドも読み取ります。他のフリートは読み取らず、書き込みも行いません。",
+  "Could not change the partner fleet reads": "パートナーのフリート読み取りを変更できませんでした"
 }

@@ -30,6 +30,12 @@ opened twice while the collision note sat on both items).
   loop injects each note as a user steer at its next iteration boundary,
   marked as a note on its held item.
 
+- **unseen**: a relayed note stays pending for its holder run until the loop
+  injects it or the run reads the item again (``get_work_item``); a terminal
+  write of that run on the item is refused while one is pending
+  (``unseen_notes``), so a "do not close" written a second before the
+  completion is never finalised over (#2266).
+
 A note offered when the holder's session is closed (or the store is
 unreachable) is not relayed: it stays on the item, as before, for the next
 run to read. Nothing is lost and nothing changes for an unheld item.
@@ -50,6 +56,7 @@ import json
 import logging
 import uuid
 from collections.abc import AsyncIterator, Sequence
+from typing import Any
 
 from app.core.redis import redis_client
 from app.core.utils import format_exception_message
@@ -67,6 +74,10 @@ POLL_SECONDS = 1.0
 MAX_STEERED_NOTES = 20
 
 _KEY_PREFIX = "work_item_note_steering"
+
+
+def pending_key(run_id: str) -> str:
+    return f"{_KEY_PREFIX}:pending:{run_id}"
 
 
 def live_key(run_id: str) -> str:
@@ -134,6 +145,7 @@ async def offer(
         await redis.rpush(inbox, entry)
         await redis.expire(inbox, INBOX_TTL_SECONDS)
         if await redis.get(live_key(holder)):
+            await _mark_pending(redis, holder, entry)
             return True
         # The session closed between the read and the push: take the entry
         # back (the note stays on the item), unless the close popped it.
@@ -148,19 +160,93 @@ async def offer(
         return False
 
 
+async def _mark_pending(redis: Any, holder: str, entry: str) -> None:
+    """Record *entry* as a note its *holder* run has not seen yet; never raises."""
+    try:
+        data = _decode(entry)
+        key = pending_key(holder)
+        await redis.hset(key, str(data.get("id") or ""), entry)
+        await redis.expire(key, INBOX_TTL_SECONDS)
+    except Exception as exc:
+        logger.debug("Work item note steering: could not mark a note pending: %s", format_exception_message(exc))
+
+
+async def mark_seen(
+    run_ids: Sequence[object], *, item_id: object = None, entry_ids: Sequence[str] | None = None
+) -> None:
+    """Drop the pending notes *run_ids* have now seen; never raises.
+
+    *entry_ids* names the notes the loop injected; without them every pending
+    note on *item_id* goes (the run read the item again).
+    """
+    runs = [str(r) for r in run_ids if r]
+    if not runs or (entry_ids is None and not item_id):
+        return
+    try:
+        redis: Any = await redis_client()  # redis stub: sync|async union
+        for run in runs:
+            key = pending_key(run)
+            if entry_ids is not None:
+                if entry_ids:
+                    await redis.hdel(key, *entry_ids)
+                continue
+            stored = await redis.hgetall(key) or {}
+            gone = [
+                field.decode() if isinstance(field, bytes) else str(field)
+                for field, raw in stored.items()
+                if str(_decode(raw).get("item") or "") == str(item_id)
+            ]
+            if gone:
+                await redis.hdel(key, *gone)
+    except Exception as exc:
+        logger.debug("Work item note steering: could not mark notes seen: %s", format_exception_message(exc))
+
+
+async def unseen_notes(run_ids: Sequence[object], item_id: object) -> list[str]:
+    """The notes on *item_id* relayed to *run_ids* that they have not seen yet.
+
+    Empty when there are none or the store is unreachable (the write is not
+    held up by the relay being down). Never raises.
+    """
+    runs = [str(r) for r in run_ids if r]
+    if not runs or not item_id:
+        return []
+    notes: list[str] = []
+    try:
+        redis: Any = await redis_client()  # redis stub: sync|async union
+        for run in runs:
+            for raw in (await redis.hgetall(pending_key(run)) or {}).values():
+                entry = _decode(raw)
+                if str(entry.get("item") or "") == str(item_id) and str(entry.get("note") or "").strip():
+                    notes.append(str(entry["note"]).strip())
+    except Exception as exc:
+        logger.debug("Work item note steering: could not read unseen notes: %s", format_exception_message(exc))
+        return []
+    return notes
+
+
 class HeldItemNoteQueue(SteeringQueue):
     """The steering queue of a run holding a work item.
 
     Not an interactive chat turn: no person waits on a reply, so the loop
     keeps the park semantics of an assignment run (``interactive`` false).
+    A note the loop takes in is no longer pending for its run (#2266).
     """
 
     interactive = False
 
-    def __init__(self) -> None:
+    def __init__(self, run_ids: Sequence[str] = ()) -> None:
         super().__init__()
         self._seen: set[str] = set()
+        self._entry_of: dict[int, str] = {}
+        self.run_ids = list(run_ids)
         self.taken = 0
+
+    async def admit(self, items: list[str | SteeringMessage]) -> list[str | SteeringMessage]:
+        injected = [self._entry_of.pop(id(item)) for item in items if id(item) in self._entry_of]
+        if injected:
+            await mark_seen(self.run_ids, entry_ids=injected)
+        return items
 
     def put_entry(self, entry: dict) -> bool:
         """Queue one note entry (a known one is skipped); ``False`` past the cap."""
@@ -172,7 +258,10 @@ class HeldItemNoteQueue(SteeringQueue):
         if entry_id:
             self._seen.add(entry_id)
         self.taken += 1
-        self.put_nowait(SteeringMessage(text=steer_text(entry)))
+        message = SteeringMessage(text=steer_text(entry))
+        if entry_id:
+            self._entry_of[id(message)] = entry_id
+        self.put_nowait(message)
         return True
 
 
@@ -181,7 +270,7 @@ class _Session:
         self.run_ids = list(dict.fromkeys(run_ids))
         self.run_id = ", ".join(self.run_ids)
         self.item_id = item_id or ""
-        self.queue = HeldItemNoteQueue()
+        self.queue = HeldItemNoteQueue(self.run_ids)
 
     def marker(self, run_id: str) -> str:
         return json.dumps({"run": run_id, "item": self.item_id})
@@ -203,7 +292,7 @@ class _Session:
         """Delete the markers and the inboxes: a note not taken stays on the item."""
         try:
             redis = await redis_client()
-            await redis.delete(*(key for r in self.run_ids for key in (live_key(r), inbox_key(r))))
+            await redis.delete(*(key for r in self.run_ids for key in (live_key(r), inbox_key(r), pending_key(r))))
         except Exception as exc:
             logger.warning(
                 "Work item note steering: could not close the session of run %s (its marker expires): %s",

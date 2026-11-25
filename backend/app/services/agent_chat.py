@@ -38,6 +38,7 @@ the same tree-of-runs visibility that assignment-originated handovers have.
 import asyncio
 import contextlib
 import dataclasses
+import functools
 import json
 import logging
 import re
@@ -113,7 +114,7 @@ from app.services.run_ledger import (
     record_helper_ledger,
     tool_ledger_call,
 )
-from app.services.tool_surface_refresh import IntegrationSurfaceRefresher
+from app.services.tool_surface_refresh import IntegrationSurfaceRefresher, rebuild_bound_builtin_groups
 from app.tools.agent_loop import (
     CONTINUATION_COMPOSING_REASONS,
     SLOW_TURN_WARN_SECONDS,
@@ -1407,6 +1408,22 @@ def _platform_builder_actor(user_id: str) -> tuple[str, bool]:
     return user_id, False
 
 
+def _add_partner_fleet_tools(composite: CompositeToolExecutor, user_id: str, *, agent_id: str | None) -> None:
+    """Wire the partner fleet reads of #2202 in a partner task that names its partner.
+
+    Acting as the run-as identity, but scoped by ``a2a.partner_fleet`` to the
+    exposed agent's home fleet and to its exposure's opt-in, read at each call.
+    """
+    from app.a2a.partner_scope import current_partner
+
+    if current_partner() is None or not is_valid_uuid(user_id):
+        return
+    from app.a2a.partner_fleet import scope_fleet_tools_to_partner
+    from app.services.builtin_tools import build_fleet_tools
+
+    composite.add_tools(*scope_fleet_tools_to_partner(*build_fleet_tools(user_id, agent_id=agent_id)))
+
+
 def _add_trace_tools(
     composite: CompositeToolExecutor,
     db: AsyncSession,
@@ -1511,6 +1528,7 @@ def _add_platform_builder_tools(
         # The conversation is where export_fleet_spec keeps the full spec file.
         fl_defs, fl_exec = build_fleet_tools(actor_id, conversation_id=conversation_id, agent_id=agent_id)
         composite.add_tools(fl_defs, fl_exec)
+    _add_partner_fleet_tools(composite, user_id, agent_id=agent_id)
     if "roi" in agent_builtin_tool_ids and not read_only:
         from app.services.builtin_tools.roi import build_roi_tools
 
@@ -7968,7 +7986,24 @@ async def run_agent_chat(
             # of the turn changes an integration it is bound to (#1874).
             if loop_kwargs["executor"] is not None and _rebuild_integration_tools is not None:
                 loop_kwargs["tool_surface_refresher"] = IntegrationSurfaceRefresher(
-                    composite, loop_kwargs["executor"], _rebuild_integration_tools, _narrow_tool_surface
+                    composite,
+                    loop_kwargs["executor"],
+                    _rebuild_integration_tools,
+                    _narrow_tool_surface,
+                    # update_agent on this turn's own agent refreshes it too (#2205).
+                    agent_id=str(agent.id),
+                    # A built-in group granted in the turn loads from the next step,
+                    # through its own gate for the person asking (#2205).
+                    rebuild_builtins=(
+                        None
+                        if is_anonymous_user or not user_id
+                        else functools.partial(
+                            rebuild_bound_builtin_groups,
+                            str(agent.id),
+                            str(user_id),
+                            conversation_id=str(conversation_id) if conversation_id else None,
+                        )
+                    ),
                 )
             # Fast-path: when the agent config declares a finalize_on_builtin_tool,
             # pass it to the loop so it can short-circuit after a successful tool

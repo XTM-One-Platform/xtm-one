@@ -35,7 +35,10 @@ use the graph:
   blocked most recently goes back to ``open`` with a note, and one
   ``work_item.wait_cycle`` platform event is raised per cycle;
 * :func:`find_cycles` and :func:`stalled_chains` feed the ``wait_cycle`` and
-  ``blocked_chain_stalled`` fleet health findings.
+  ``blocked_chain_stalled`` fleet health findings; :func:`person_wait_chains`
+  lists apart the chains that end on a person's open decision (#2326): waiting
+  on a person before the due date is the expected state under human gates, not
+  a stall.
 
 The graph rules are pure; only the loaders read the database.
 """
@@ -82,6 +85,14 @@ class WaitNode:
     gates: list[tuple[str | None, str | None, int]] = field(default_factory=list)
     last_activity_at: datetime | None = None
     held: bool = False
+    #: A person's decision gate (#2326): ``needs_human`` with a card they can read.
+    needs_human: bool = False
+    card_ok: bool = False
+    answered: bool = False
+    due_at: datetime | None = None
+    created_at: datetime | None = None
+    #: Who the decision waits for: a user id, ``group:<ids>`` or ``administrators``.
+    recipient: str | None = None
 
 
 def pr_key(repo: str, number: int) -> str:
@@ -119,9 +130,17 @@ def node_of(
     payload: object,
     last_activity_at: datetime | None = None,
     held: bool = False,
+    needs_human: object = None,
+    ask: object = None,
+    due_at: datetime | None = None,
+    created_at: datetime | None = None,
+    recipient: str | None = None,
 ) -> WaitNode:
     """The :class:`WaitNode` of an item, from its fields as they land. Pure."""
+    from app.services.work_item_ask_backfill import card_unreadable
     from app.services.work_item_blocked_refs import open_refs
+
+    human = needs_human is True
 
     waits = [str(b) for b in (blocked_on if isinstance(blocked_on, list | tuple) else []) if b]
     refs = [
@@ -138,7 +157,29 @@ def node_of(
         gates=_gates(correlation_key, title, payload),
         last_activity_at=last_activity_at,
         held=held,
+        needs_human=human,
+        card_ok=human and not card_unreadable(ask),
+        answered=_answered(payload, ask),
+        due_at=due_at,
+        created_at=created_at,
+        recipient=recipient,
     )
+
+
+def _answered(payload: object, ask: object) -> bool:
+    """Whether a person answered the item (``payload.answer``), a keep-waiting answer aside. Pure."""
+    from app.services.decision_ask import keeps_waiting
+
+    answer = payload.get("answer") if isinstance(payload, dict) else None
+    if not isinstance(answer, dict):
+        return False
+    key = str(answer.get("option") or "").casefold()
+    options = ask.get("options") if isinstance(ask, dict) else None
+    chosen = next(
+        (o for o in options or [] if isinstance(o, dict) and str(o.get("key", "")).casefold() == key and key),
+        None,
+    )
+    return not keeps_waiting(chosen)
 
 
 def _gates_pr(node: WaitNode, repo: str, number: int) -> bool:
@@ -235,8 +276,45 @@ def stalled_chains(nodes: dict[str, WaitNode], now: datetime, *, in_cycles: Iter
     """The chains of 2+ blocked items waiting on each other, all quiet for :data:`STALLED_AFTER`, none held. Pure.
 
     A chain is a connected group of the wait graph between blocked items; items
-    already in a cycle are left out (the cycle is its own finding).
+    already in a cycle are left out (the cycle is its own finding). A chain whose
+    every end waits on a person's open decision (:func:`waits_on_person`) is not
+    stalled, however quiet (#2326): :func:`person_wait_chains` lists it apart. A
+    decision past its due date, answered without releasing its chain, or on a card
+    nobody can read still stalls the chain.
     """
+    return [
+        group
+        for group in _chains(nodes, in_cycles)
+        if not _ends_on_person(group, nodes, now) and all(_quiet(nodes[i], now) for i in group)
+    ]
+
+
+def person_wait_chains(nodes: dict[str, WaitNode], now: datetime, *, in_cycles: Iterable[str] = ()) -> list[list[str]]:
+    """The chains of 2+ blocked items whose every end waits on a person's open decision (#2326). Pure."""
+    return [group for group in _chains(nodes, in_cycles) if _ends_on_person(group, nodes, now)]
+
+
+def waits_on_person(node: WaitNode, now: datetime) -> bool:
+    """An open decision of a person: needs_human, a card they can read, not answered, not past due. Pure."""
+    if node.status != "blocked" or not node.needs_human or not node.card_ok or node.answered:
+        return False
+    due = node.due_at
+    return due is None or (due if due.tzinfo else due.replace(tzinfo=UTC)) > now
+
+
+def chain_ends(group: Iterable[str], nodes: dict[str, WaitNode]) -> list[str]:
+    """The items of *group* that wait on no other item of it: where the chain is held. Pure."""
+    members = set(group)
+    return sorted(i for i in members if not any(nxt in members for _, nxt in successors(nodes[i], nodes)))
+
+
+def _ends_on_person(group: Sequence[str], nodes: dict[str, WaitNode], now: datetime) -> bool:
+    ends = chain_ends(group, nodes)
+    return bool(ends) and all(waits_on_person(nodes[i], now) for i in ends)
+
+
+def _chains(nodes: dict[str, WaitNode], in_cycles: Iterable[str]) -> list[list[str]]:
+    """The connected groups of 2+ blocked items of the wait graph, cycles left out. Pure."""
     excluded = set(in_cycles)
     blocked = {i: n for i, n in nodes.items() if n.status == "blocked" and i not in excluded}
     links: dict[str, set[str]] = {i: set() for i in blocked}
@@ -258,8 +336,7 @@ def stalled_chains(nodes: dict[str, WaitNode], now: datetime, *, in_cycles: Iter
             group.add(current)
             todo.extend(links[current] - group)
         seen |= group
-        quiet = all(_quiet(blocked[i], now) for i in group)
-        if len(group) >= 2 and quiet:
+        if len(group) >= 2:
             out.append(sorted(group))
     return out
 
@@ -290,6 +367,17 @@ def _graph_clause() -> tuple[Any, ...]:
     )
 
 
+def _recipient(item: Any) -> str | None:
+    """Who a ``needs_human`` item waits for, as :mod:`app.services.work_item_recipient` reads it."""
+    if getattr(item, "needs_human", None) is not True:
+        return None
+    groups = getattr(item, "waits_for_group_ids", None)
+    if isinstance(groups, list) and groups:
+        return "group:" + ",".join(str(g) for g in groups)
+    person = getattr(item, "waits_for_user_id", None) or getattr(item, "user_id", None)
+    return str(person) if person else "administrators"
+
+
 def _row_node(item: Any, *, held: bool = False) -> WaitNode:
     return node_of(
         item.id,
@@ -301,6 +389,11 @@ def _row_node(item: Any, *, held: bool = False) -> WaitNode:
         payload=item.payload,
         last_activity_at=item.last_activity_at,
         held=held,
+        needs_human=getattr(item, "needs_human", None),
+        ask=getattr(item, "ask", None),
+        due_at=getattr(item, "due_at", None),
+        created_at=getattr(item, "created_at", None),
+        recipient=_recipient(item),
     )
 
 

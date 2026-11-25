@@ -21876,5 +21876,10 @@
   "Attack flow": "Flujo de ataque",
   "Condition": "Condición",
   "True": "Verdadero",
-  "False": "Falso"
+  "False": "Falso",
+  "Only the people and groups below can see this. Access to a built-in agent cannot be changed.": "Solo las personas y los grupos de abajo pueden verlo. El acceso a un agente integrado no se puede cambiar.",
+  "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.": "Visible para todos en la plataforma. El acceso a un agente integrado no se puede restringir.",
+  "Partners read this agent's fleet": "Los socios leen la flota de este agente",
+  "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "La tarea de un socio también lee la flota de origen de este agente, su salud, sus elementos de trabajo y la versión en ejecución. Nunca otra flota, nunca una escritura.",
+  "Could not change the partner fleet reads": "No se pudo cambiar la lectura de la flota por los socios"
 }

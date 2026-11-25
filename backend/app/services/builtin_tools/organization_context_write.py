@@ -28,7 +28,8 @@ off by default:
 - ``run_organization_import`` runs the platform import of Settings >
   Organization (``organization_context_import``, #11780), preview first;
 - ``list_organization_syncs``, ``create_organization_sync`` and
-  ``run_organization_sync`` read, schedule and run now the scheduled syncs
+  ``run_organization_sync`` read, schedule and run now the scheduled syncs;
+  ``update_organization_sync`` changes one, only the fields passed
   of Settings > Organization > Syncs (``organization_context_sync``, #11913),
   saved by the administrator the turn acts for (#11888);
 - ``list_organization_proposals`` and ``decide_organization_proposal`` read
@@ -67,6 +68,7 @@ ORGANIZATION_IMPORT_TOOL = "run_organization_import"
 ORGANIZATION_LIST_SYNCS_TOOL = "list_organization_syncs"
 ORGANIZATION_CREATE_SYNC_TOOL = "create_organization_sync"
 ORGANIZATION_RUN_SYNC_TOOL = "run_organization_sync"
+ORGANIZATION_UPDATE_SYNC_TOOL = "update_organization_sync"
 ORGANIZATION_LIST_PROPOSALS_TOOL = "list_organization_proposals"
 ORGANIZATION_DECIDE_PROPOSAL_TOOL = "decide_organization_proposal"
 ORGANIZATION_VERSIONS_TOOL = "list_organization_versions"
@@ -619,6 +621,101 @@ def build_organization_context_write_tools(
             logger.warning("Organization sync creation failed", exc_info=True)
             return "Error: the sync could not be saved right now. Say so; nothing was changed."
 
+    async def _update_sync(
+        sync_id: str = "",
+        filters: dict[str, Any] | None = None,
+        batch_type: str | None = None,
+        remove_gone: bool | None = None,
+        excluded_external_ids: list[str] | None = None,
+        frequency: str | None = None,
+        hour: int | None = None,
+        minute: int | None = None,
+        weekday: int | None = None,
+        timezone: str | None = None,
+        enabled: bool | None = None,
+    ) -> str:
+        """Change a stored sync: only the fields passed change, every other stored value is kept."""
+        import json
+
+        from app.core.database import async_session
+        from app.models.organization_context import OrganizationContextSync
+        from app.services import organization_context_sync as osync
+        from app.services.audit import log_audit
+
+        if _identity_only():
+            return IDENTITY_ONLY_REFUSAL
+        try:
+            wanted = uuid.UUID(str(sync_id))
+        except ValueError:
+            return "Not saved: sync_id must be the id list_organization_syncs gives."
+        passed = {
+            key: value
+            for key, value in {
+                "filters": filters,
+                "batch_type": batch_type,
+                "remove_gone": remove_gone,
+                "excluded_external_ids": excluded_external_ids,
+                "frequency": frequency,
+                "hour": hour,
+                "minute": minute,
+                "weekday": weekday,
+                "timezone": timezone,
+                "enabled": enabled,
+            }.items()
+            if value is not None
+        }
+        if not passed:
+            return "Not saved: pass at least one field to change."
+        try:
+            async with async_session() as db:
+                person = await _admin(db)
+                if person is None:
+                    return REFUSAL
+                sync = await db.get(OrganizationContextSync, wanted)
+                if sync is None:
+                    return "Not saved: no sync with that id. Read list_organization_syncs."
+
+                def _kept(name: str, stored: Any) -> Any:
+                    return passed.get(name, stored)
+
+                osync.define(
+                    sync,
+                    owner_id=person.id,
+                    section=sync.section,
+                    source=sync.source or "",
+                    filters=_kept("filters", sync.filters),
+                    batch_type=_kept("batch_type", getattr(sync, "batch_type", "") or ""),
+                    remove_gone=bool(_kept("remove_gone", sync.remove_gone)),
+                    excluded_external_ids=passed.get("excluded_external_ids"),
+                    frequency=_kept("frequency", sync.frequency),
+                    hour=int(_kept("hour", sync.hour)),
+                    minute=int(_kept("minute", sync.minute)),
+                    weekday=int(_kept("weekday", sync.weekday)),
+                    timezone=_kept("timezone", sync.timezone) or "UTC",
+                    enabled=bool(_kept("enabled", sync.enabled)),
+                    direction=getattr(sync, "direction", None) or "inbound",
+                )
+                await log_audit(
+                    db,
+                    user=person,
+                    action="update",
+                    entity_type="organization_context_sync",
+                    entity_id=sync.id,
+                    entity_name=f"{sync.section} from {sync.source or 'every source'}",
+                    summary=f"Organization sync of {sync.section} changed ({', '.join(sorted(passed))}) by agent "
+                    f"{agent_name or 'unknown'}"[:500],
+                    details={"agent": agent_name, "changed": sorted(passed), **_sync_dict(sync)},
+                )
+                await db.commit()
+                return json.dumps(
+                    {"saved": True, "sync": _sync_dict(sync), "notice": SHARED_CONTEXT_NOTICE}, default=str
+                )
+        except osync.SyncRefusedError as exc:
+            return f"Not saved: {exc}"
+        except Exception:
+            logger.warning("Organization sync update failed", exc_info=True)
+            return "Error: the sync could not be saved right now. Say so; nothing was changed."
+
     async def _run_sync(sync_id: str = "") -> str:
         import json
 
@@ -805,6 +902,7 @@ def build_organization_context_write_tools(
     executor.register(ORGANIZATION_LIST_SYNCS_TOOL, _list_syncs)
     executor.register(ORGANIZATION_CREATE_SYNC_TOOL, _create_sync)
     executor.register(ORGANIZATION_RUN_SYNC_TOOL, _run_sync)
+    executor.register(ORGANIZATION_UPDATE_SYNC_TOOL, _update_sync)
     executor.register(ORGANIZATION_LIST_PROPOSALS_TOOL, _list_proposals)
     executor.register(ORGANIZATION_DECIDE_PROPOSAL_TOOL, _decide_proposal)
     executor.register(ORGANIZATION_VERSIONS_TOOL, _versions)
@@ -959,6 +1057,31 @@ def build_organization_context_write_tools(
                     "timezone": {"type": "string", "description": "IANA name, e.g. Europe/Paris."},
                 },
                 "required": ["section"],
+            },
+            source=_SOURCE,
+            priority=0,
+        ),
+        ToolDefinition(
+            name=ORGANIZATION_UPDATE_SYNC_TOOL,
+            description=(
+                "Change a sync: only the fields passed change, the rest stays as stored." + SHARED_CONTEXT_CLAUSE
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "sync_id": {"type": "string"},
+                    "filters": {"type": "object"},
+                    "batch_type": {"type": "string"},
+                    "remove_gone": {"type": "boolean"},
+                    "excluded_external_ids": {"type": "array", "items": {"type": "string"}},
+                    "frequency": {"type": "string", "enum": ["hourly", "daily", "weekly"]},
+                    "hour": {"type": "integer"},
+                    "minute": {"type": "integer"},
+                    "weekday": {"type": "integer"},
+                    "timezone": {"type": "string"},
+                    "enabled": {"type": "boolean"},
+                },
+                "required": ["sync_id"],
             },
             source=_SOURCE,
             priority=0,

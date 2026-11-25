@@ -65,6 +65,9 @@ from app.tools.wait_policy import (  # noqa: F401  (re-exported for the API laye
 # administrator-only functions wired for an administrator only.
 DEFAULT_GA_BUILTIN_TOOL_IDS: tuple[str, ...] = (
     "generate_file",
+    # Both former ids of ``files``: the default assistants carry the whole
+    # group, stored unscoped, image generation included (#2327).
+    "generate_image",
     "generate_presentation",
     "template_search",
     "agent_builder",

@@ -181,6 +181,100 @@ def test_failure_cause_names_the_failing_step_of_an_error_complete() -> None:
     assert "COMMAND_EXECUTION ERROR" in line and "access denied" in line and "exit_code" in line
 
 
+class _PagedApi:
+    """83 ASSETS and 82 AGENT targets served by page, as OpenAEV's targets search does."""
+
+    def __init__(self, counts: dict[str, int]) -> None:
+        self.counts = counts
+        self.searches: list[tuple[str, int, int]] = []
+        self.trace_reads: list[str] = []
+
+    async def __call__(self, base_url, headers, method, path, action, **kw):
+        if "/targets/" in path and path.endswith("/search"):
+            target_type = path.split("/targets/")[1].split("/")[0]
+            page, size = kw["json"]["page"], kw["json"]["size"]
+            self.searches.append((target_type, page, size))
+            total = self.counts.get(target_type, 0)
+            prefix = target_type[:2].lower()
+            ids = [f"{prefix}{i}" for i in range(total)][page * size : (page + 1) * size]
+            content = [{"target_id": t, "target_name": f"name-{t}"} for t in ids]
+            return _Resp({"content": content, "totalElements": total}), None
+        if path == "/api/injects/execution-traces":
+            target = kw["params"]["targetId"]
+            self.trace_reads.append(target)
+            status = "TIMEOUT" if int(target[2:]) % 4 == 0 else "SUCCESS"
+            return _Resp(
+                [
+                    {
+                        "execution_status": status,
+                        "execution_action": "COMPLETE",
+                        "execution_time": "t",
+                        "execution_message": "m",
+                    }
+                ]
+            ), None
+        return await _Api()(base_url, headers, method, path, action, **kw)
+
+
+def _listed(content: str) -> list[str]:
+    return [line.split("(id: ")[1].split(")")[0] for line in content.splitlines() if line.startswith("- ")]
+
+
+async def test_more_than_fifty_targets_per_type_are_paged_and_counted(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.integrations.providers.openaev import injects
+
+    monkeypatch.setattr(injects, "_TRACE_SEARCH_PAGE", 50)
+    api = _PagedApi({"ASSETS": 83, "AGENT": 82})
+    monkeypatch.setattr(injects, "_api", api)
+    content = await _run({"action": "target_traces", "scope": "global", "inject_id": "i1"})
+    assert "165 target(s) (ASSETS 83, AGENT 82)" in content
+    assert "Terminal status counts over every target:" in content
+    assert "  ASSETS 83: SUCCESS 62, TIMEOUT 21" in content
+    assert "  AGENT 82: SUCCESS 61, TIMEOUT 21" in content
+    assert [s for s in api.searches if s[0] == "ASSETS"] == [("ASSETS", 0, 50), ("ASSETS", 1, 50)]
+    assert len(set(api.trace_reads)) == 165
+    assert "Targets 1-100 of 165" in content
+    assert "truncated: 65 more target(s), call again with offset=100." in content
+
+
+async def test_successive_offsets_read_every_target_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.integrations.providers.openaev import injects
+
+    monkeypatch.setattr(injects, "_api", _PagedApi({"ASSETS": 83, "AGENT": 82}))
+    seen: list[str] = []
+    offset = 0
+    while True:
+        content = await _run(
+            {"action": "target_traces", "scope": "global", "inject_id": "i1", "offset": offset, "limit": 60}
+        )
+        seen += _listed(content)
+        marker = next((line for line in content.splitlines() if line.startswith("truncated:")), None)
+        if marker is None:
+            break
+        offset = int(marker.rsplit("offset=", 1)[1].rstrip("."))
+    assert len(seen) == 165 and len(set(seen)) == 165
+    assert offset == 120
+
+
+async def test_several_types_and_a_small_inject_answer_without_marker(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.integrations.providers.openaev import injects
+
+    monkeypatch.setattr(injects, "_api", _PagedApi({"ASSETS": 4, "AGENT": 3, "TEAMS": 3}))
+    content = await _run({"action": "target_traces", "scope": "global", "inject_id": "i1"})
+    assert "10 target(s) (ASSETS 4, AGENT 3, TEAMS 3)" in content
+    assert "  TEAMS 3: SUCCESS 2, TIMEOUT 1" in content
+    assert len(_listed(content)) == 10
+    assert "truncated:" not in content
+
+
+async def test_offset_past_the_end_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.integrations.providers.openaev import injects
+
+    monkeypatch.setattr(injects, "_api", _PagedApi({"ASSETS": 4}))
+    content = await _run({"action": "target_traces", "scope": "global", "inject_id": "i1", "offset": 9})
+    assert content.startswith("offset 9 is past the last target")
+
+
 def test_failure_cause_is_none_on_success_and_message_is_truncated() -> None:
     from app.integrations.providers.openaev.injects import _CAUSE_MESSAGE_CHARS, _cause_line, _failure_cause
 

@@ -21876,5 +21876,10 @@
   "Attack flow": "Attack flow",
   "Condition": "Condition",
   "True": "True",
-  "False": "False"
+  "False": "False",
+  "Only the people and groups below can see this. Access to a built-in agent cannot be changed.": "Only the people and groups below can see this. Access to a built-in agent cannot be changed.",
+  "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.": "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.",
+  "Partners read this agent's fleet": "Partners read this agent's fleet",
+  "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.",
+  "Could not change the partner fleet reads": "Could not change the partner fleet reads"
 }

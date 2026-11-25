@@ -57,11 +57,13 @@ async def test_a_prefix_of_a_merged_id_answers_its_survivor(
 
 
 class _Db:
+    """A session whose case read answers an open state (``exists``), else no row."""
+
     def __init__(self, exists: bool) -> None:
         self.exists = exists
 
     async def execute(self, _query: Any) -> Any:
-        return SimpleNamespace(scalar_one_or_none=lambda: uuid.uuid4() if self.exists else None)
+        return SimpleNamespace(scalar_one_or_none=lambda: "new" if self.exists else None)
 
 
 def _context(case_id: uuid.UUID, event: str = "ctem_case.opened") -> dict[str, Any]:

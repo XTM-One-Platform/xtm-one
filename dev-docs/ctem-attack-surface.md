@@ -136,7 +136,11 @@ time, provider label, hosts observed, the coverage list, the statuses, the count
 per path (with `recorded`, `new_host_withheld` and `out_of_scope`) and the time of the pass it
 compared with. An administrator reads the latest ones with
 `GET /api/v1/ctem-signals/attack-surface/passes?limit=N` (`truncated` true when
-a read hit its bound), so a pass that found nothing is still visible.
+a read hit its bound), so a pass that found nothing is still visible. No pass
+at all answers `why_empty`: the first step the schedule stops at (pass off, no
+owned domains or ranges, no readable provider) or "no pass has completed yet"
+(#2331). The repair's answer carries `signals`, each with its id, host,
+`first_seen_at`, `observed_at` and state, so a dry run can be checked by date.
 
 Repair: `POST /api/v1/ctem-signals/attack-surface/repair-new-hosts` with
 `{"dry_run": false}` (administrators; `dry_run` true by default answers the

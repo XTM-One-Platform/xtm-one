@@ -34,7 +34,7 @@ No finding means healthy: stop there. Send nothing, write nothing.
 | `blocked_without_blocker` | owner | a blocked item is not black or white: no owner, only a free-text reason, needs_human without an ask card, or its blocked_on items all cancelled; the fix is a valid blocker (`blocked_on`, `blocked_on_refs`, or `needs_human` with an ask; skill "Fleet design and operations" section 4), or `not_before` for a deferral |
 | `decision_card_not_readable` | owner | an item waits for a person on an ask that is missing, incomplete or full of ids |
 | `wait_cycle` | owner | blocked items wait on each other (blocked_on, or a pull request a review item gates) |
-| `blocked_chain_stalled` | owner | a chain of blocked items, all quiet 2 hours, none held by a live run |
+| `blocked_chain_stalled` | owner | a chain of blocked items, all quiet 2 hours, none held by a live run, not waiting on a person's open decision. A chain that ends on a readable, unanswered decision before its due date is no finding: the report lists it under `waiting_on_people` with its recipient and age; never advise cancelling it |
 | `oversize_state` | owner | a shared-state entry is over the size limit |
 | `handover_not_allowed` | owner | a handover from an agent outside the fleet points at a member the fleet does not expose; the summary names each source with its home fleet. Recommend re-pointing the handover at the orchestrator; exposing the target opens it to every other fleet |
 | `cost_spike` | owner | a member used over 3 times its daily tokens |

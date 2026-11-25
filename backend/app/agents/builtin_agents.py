@@ -546,10 +546,12 @@ DEFAULT_ASSISTANT_SLUGS: tuple[str, ...] = (
     "fimi-analyst",
 )
 
-#: What a default assistant makes from data: files, reports, decks and videos,
-#: and the template lookup that dresses them in the brand.
+#: What a default assistant makes from data: files, images, reports, decks and
+#: videos, and the template lookup that dresses them in the brand. Both former
+#: ids of ``files`` are named, so the seed stores that group unscoped (#2327).
 DEFAULT_ASSISTANT_MEDIA_TOOL_IDS: tuple[str, ...] = (
     "generate_file",
+    "generate_image",
     "generate_report",
     "generate_presentation",
     "template_search",

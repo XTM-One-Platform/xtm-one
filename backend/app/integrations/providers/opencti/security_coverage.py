@@ -19,6 +19,14 @@ point at an object the live graph does not hold). With no draft active, or with
 the integration's Live writes on, the coverage is written live and reaches
 OpenAEV at once.
 
+In a draft, ``create`` sends ``auto_enrichment_disable: true`` unless the caller
+passes the flag (#2323): OpenCTI publishes the enrichment event of a draft
+object too, and a validation module that does not honour the draft marker
+would build and run the scenario before the analyst review decides. After the
+draft is validated the caller turns it on with ``update``
+(``auto_enrichment_disable: false``) on the live coverage; ``get`` shows it.
+An explicit ``false`` in a draft is the opt-in and is sent as given.
+
 A coverage that carries a periodicity makes OpenAEV schedule the scenario it
 builds two minutes later, then at that periodicity; without one the scenario
 is built and nothing is scheduled. When the run's fleet validation gate
@@ -88,7 +96,7 @@ _APPLIES: dict[str, frozenset[str]] = {
 }
 
 _COVERAGE_FIELDS = (
-    "id name description periodicity duration type_affinity platforms_affinity "
+    "id name description periodicity duration type_affinity platforms_affinity auto_enrichment_disable "
     "coverage_last_result coverage_information { coverage_name coverage_score } "
     "objectCovered { id entity_type representative { main } }"
 )
@@ -148,7 +156,8 @@ def _format_coverage(node: dict[str, Any]) -> list[str]:
         f"{node.get('name')} (id: {node.get('id')})",
         f"  covers: {_covered(node)}",
         f"  periodicity: {node.get('periodicity') or '-'}, duration: {node.get('duration') or '-'}, "
-        f"type affinity: {node.get('type_affinity') or '-'}, platforms: {affinity}",
+        f"type affinity: {node.get('type_affinity') or '-'}, platforms: {affinity}, "
+        f"auto enrichment: {'off' if node.get('auto_enrichment_disable') else 'on'}",
         f"  last result: {node.get('coverage_last_result') or 'none'}; scores: {_scores(node.get('coverage_information'))}",
     ]
 
@@ -291,10 +300,14 @@ def register(
                     f"Error: a security coverage covers a {', '.join(COVERED_TYPES)}; {covered_id} is a "
                     f"{covered.get('entity_type')}. Put it in a Grouping first; nothing was written."
                 )
+            draft = headers.get("opencti-draft-id") or ""
+            # In a draft the flag defaults to true (#2323): the coverage reaches the
+            # validation module once the review validated the draft, never before.
+            disabled = bool(draft) if auto_enrichment_disable is None else bool(auto_enrichment_disable)
             inp: dict[str, Any] = {
                 "name": name,
                 "objectCovered": covered_id,
-                "auto_enrichment_disable": bool(auto_enrichment_disable),
+                "auto_enrichment_disable": disabled,
             }
             for key, value in (
                 ("description", description),
@@ -314,9 +327,15 @@ def register(
                 f"Created security coverage '{created.get('name')}' (id: {created.get('id')}) on "
                 f"{covered.get('entity_type')} {covered_id}"
                 + (
-                    f" in OpenCTI draft {headers.get('opencti-draft-id')}: it reaches the validation module when "
-                    "the draft is validated."
-                    if headers.get("opencti-draft-id")
+                    f" in OpenCTI draft {draft} with auto enrichment off: nothing is sent to the validation module. "
+                    "Once the draft is validated, turn it on on the live coverage (action 'update', "
+                    "auto_enrichment_disable false)."
+                    if draft and disabled
+                    else f" in OpenCTI draft {draft} with auto enrichment on, as asked: the validation module may "
+                    "receive it before the draft is validated."
+                    if draft
+                    else " with auto enrichment off: the validation module receives it once it is turned on."
+                    if disabled
                     else ". The validation module builds its scenario from it; read its results with action 'get'."
                 )
             )
@@ -402,7 +421,7 @@ def register(
                     },
                     "auto_enrichment_disable": {
                         "type": "boolean",
-                        "description": "true: OpenCTI never sends it to the validation module by itself (create, update; omit to keep).",
+                        "description": "true: never sent to the validation module by itself. Omitted: kept; on create true in a draft.",
                     },
                     "search": {"type": "string"},
                     "limit": {"type": "integer", "default": _DEFAULT_LIMIT},

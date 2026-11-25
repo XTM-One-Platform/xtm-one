@@ -209,10 +209,20 @@ class _AgentUpdated(str):
     """
 
     fields: tuple[str, ...]
+    #: The agent's id when the update changed which tools its runs hold
+    #: (``tool_surface_timing.AGENT_TOOL_FIELDS``), else ``None``: the
+    #: executor carries it to the loop, which refreshes the surface of a run
+    #: of that agent (#2205).
+    tool_scope_agent_id: str | None
 
-    def __new__(cls, text: str, *, fields: tuple[str, ...] = ()) -> _AgentUpdated:
+    def __new__(cls, text: str, *, fields: tuple[str, ...] = (), agent_id: str | None = None) -> _AgentUpdated:
+        from app.services.tool_surface_timing import AGENT_TOOL_FIELDS
+
         result = super().__new__(cls, text)
         result.fields = fields
+        result.tool_scope_agent_id = (
+            agent_id if agent_id and any(f.split(" ", 1)[0] in AGENT_TOOL_FIELDS for f in fields) else None
+        )
         return result
 
 
@@ -6901,38 +6911,54 @@ def build_agent_builder_tool(
                     _channel_config_changed = True
 
             # handover_types — "<agent_id>:<type>" pairs, or "none"/"clear".
+            # A merge (#2207): the pairs type only the targets they name, the
+            # others keep how they ran (``merged_handover_types``); a target may
+            # hold several types (``A:consult|delegate``, or repeated pairs) or
+            # ``all``.
             if (handover_types or "").strip():
                 if handover_types.strip().lower() in ("none", "clear"):
                     agent.handover_types = {}
                 else:
-                    ht_map: dict[str, str] = {}
-                    ht_malformed: list[str] = []
-                    valid_types = (
-                        "delegate",
-                        "consult",
-                        "transfer",
-                        "mandatory_transfer",
+                    from app.services.handover_types import (
+                        handover_type_set,
+                        merged_handover_types,
+                        parse_handover_type_entry,
                     )
+
+                    ht_parts: dict[str, set[str]] = {}
+                    ht_malformed: list[str] = []
                     for raw_pair in handover_types.split(","):
                         cleaned = raw_pair.strip()
                         if not cleaned:
                             continue
                         aid, sep, htype = cleaned.partition(":")
-                        aid, htype = aid.strip(), htype.strip().lower()
-                        parsed_aid = safe_uuid(aid)
-                        if not sep or not parsed_aid or htype not in valid_types:
+                        parsed_aid = safe_uuid(aid.strip())
+                        entry = parse_handover_type_entry(htype) if sep else None
+                        if not parsed_aid or entry is None:
                             ht_malformed.append(cleaned)
                             continue
-                        ht_map[str(parsed_aid)] = htype
+                        ht_parts.setdefault(str(parsed_aid), set()).update(handover_type_set(entry))
+                    ht_map: dict[str, str] = {}
+                    for aid, parts in ht_parts.items():
+                        entry = parse_handover_type_entry("|".join(sorted(parts)))
+                        if entry is None:
+                            ht_malformed.append(f"{aid}:{'|'.join(sorted(parts))}")
+                            continue
+                        ht_map[aid] = entry
                     if ht_malformed:
                         return (
                             "Invalid handover_types entry(ies): "
                             f"{', '.join(ht_malformed)}. Use 'AGENT_ID:TYPE' "
                             "pairs separated by commas (TYPE is delegate, "
-                            "consult, transfer or mandatory_transfer), or "
+                            "consult, transfer, several of them joined by '|', "
+                            "all, or mandatory_transfer alone), or "
                             "'none'/'clear' to reset."
                         )
-                    agent.handover_types = ht_map
+                    agent.handover_types = merged_handover_types(
+                        agent.handover_agent_ids or [],
+                        stored_handover_types,
+                        ht_map,
+                    )
                 updated.append("handover_types")
 
             # handover_conditions — JSON {agent_id: condition}, or "none"/"clear".
@@ -7506,7 +7532,10 @@ def build_agent_builder_tool(
                         + " — a company-managed agent can only bind company-managed "
                         "knowledge bases."
                     )
-            return _AgentUpdated(_result, fields=tuple(updated))
+            _updated_id = getattr(agent, "id", None)
+            return _AgentUpdated(
+                _result, fields=tuple(updated), agent_id=str(_updated_id) if _updated_id is not None else None
+            )
 
     # ── delete_agent ──────────────────────────────────────────────────
 
