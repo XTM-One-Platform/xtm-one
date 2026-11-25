@@ -47,8 +47,11 @@ from app.models.platform_build import PlatformBuild
 
 logger = logging.getLogger(__name__)
 
-#: How often the scheduler tick refreshes ``last_seen_at`` of the running build.
-TOUCH_INTERVAL_SECONDS = 15 * 60
+#: How often the scheduler tick refreshes ``last_seen_at`` of the running build. Short, so a build whose pods
+#: still serve stays seen within a tick or two and the rollout reads ``draining``, not ``complete``, until its
+#: last pod is gone (#2064: complete was read four minutes before the old build stopped answering). One row
+#: upserted per process at this pace is cheap.
+TOUCH_INTERVAL_SECONDS = 45
 
 #: The bucket a time before the first recorded build falls in.
 BEFORE_HISTORY_BUCKET = "before_release_history"
@@ -346,9 +349,10 @@ ROLLOUT_ROLLED_BACK = "rolled_back"
 #: it only recorded itself later (its boot or its refresh comes after the older build's).
 ROLLOUT_SUPERSEDED = "superseded"
 
-#: How long after its last sighting a build still seen after a newer one's first boot counts as draining: one
-#: ``last_seen_at`` refresh (``TOUCH_INTERVAL_SECONDS``) and a minute of slack.
-DRAIN_GRACE = timedelta(seconds=TOUCH_INTERVAL_SECONDS + 60)
+#: How long after its last sighting a build still seen after a newer one's first boot counts as draining: two
+#: ``last_seen_at`` refreshes (``TOUCH_INTERVAL_SECONDS``, paced by the 60-second scheduler tick) and slack, so
+#: one slow tick never reads a serving build as gone.
+DRAIN_GRACE = timedelta(seconds=2 * TOUCH_INTERVAL_SECONDS + 90)
 
 
 @dataclass(frozen=True)

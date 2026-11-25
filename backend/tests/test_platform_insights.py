@@ -345,10 +345,15 @@ def test_a_rollout_is_complete_once_the_newest_build_answers_and_the_previous_on
         ReleaseWindow(old.label, old.version, old.git_sha, old.first_seen_at, new + timedelta(minutes=2), new),
         windows[1],
     ]
-    found = rollout(draining, ("1.1.0", "bbbbbbb2"), now=new + timedelta(minutes=5))
+    found = rollout(draining, ("1.1.0", "bbbbbbb2"), now=new + timedelta(minutes=3))
     assert found.state == ROLLOUT_DRAINING and "may still be draining" in found.words()
     # Past the grace, the same rows read as complete.
-    assert rollout(draining, ("1.1.0", "bbbbbbb2"), now=new + timedelta(minutes=5) + DRAIN_GRACE).state == ROLLOUT_COMPLETE
+    assert (
+        rollout(draining, ("1.1.0", "bbbbbbb2"), now=new + timedelta(minutes=2) + DRAIN_GRACE).state == ROLLOUT_COMPLETE
+    )
+    # The grace is a couple of ticks, not a quarter of an hour: an old pod that stopped refreshing is gone soon,
+    # and one that still serves refreshes well within it, so "complete" is never read while it answers.
+    assert DRAIN_GRACE.total_seconds() <= 180
     # The newest build not seen for longer than the grace while an older one answers: a rollback, not a rollout.
     back = rollout(windows, ("1.0.0", "aaaaaaa1"), now=windows[1].last_seen_at + DRAIN_GRACE)
     assert back.state == ROLLOUT_ROLLED_BACK and back.words().startswith("rolled back: 1.1.0 (bbbbbbb)")
