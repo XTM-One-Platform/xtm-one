@@ -22,7 +22,7 @@ vi.mock("@/hooks/api/useWorkItemApi", async (importOriginal) => ({
   },
 }));
 vi.mock("@/components/work-items/WorkItemDecisionCard", () => ({
-  WorkItemDecisionCard: () => <div data-testid="unified-decision-card" />,
+  WorkItemDecisionCard: ({ inCase }: { inCase?: boolean }) => <div data-testid="unified-decision-card" data-in-case={String(Boolean(inCase))} />,
 }));
 
 const { CaseAnalystReview } = await import("./CaseAnalystReview");
@@ -97,10 +97,12 @@ describe("CaseAnalystReview", () => {
   });
 
   it("renders a waiting review on the unified decision card", () => {
-    state.items = [{ id: "w1", status: "blocked", needs_human: true, ask: { question: "Request it?", options: [] }, is_company_managed: false }];
+    // Even an item that names its case: inside the case, the card never offers "Open the case" (#2370).
+    const ctem_case = { id: "c1", title: "Case", state: "validating", path: "/ctem/cases/c1" };
+    state.items = [{ id: "w1", status: "blocked", needs_human: true, ask: { question: "Request it?", options: [] }, is_company_managed: false, ctem_case }];
     renderWithProviders(<CaseAnalystReview caseId="c1" pkg={{ ...PKG, coverage_requested: false, coverage_id: null }} history={[ev({ to: "waited" })]} />);
     expect(screen.getByText("Waiting for a person")).toBeTruthy();
-    expect(screen.getByTestId("unified-decision-card")).toBeTruthy();
+    expect(screen.getByTestId("unified-decision-card").getAttribute("data-in-case")).toBe("true");
     expect(screen.getByText("Threat package drafted, coverage not requested yet")).toBeTruthy();
     expect(state.calls.some((c) => (c as { filters: { correlation_key: string } }).filters.correlation_key === "ctem:review:c1")).toBe(true);
   });

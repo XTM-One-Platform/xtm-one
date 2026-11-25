@@ -6544,6 +6544,15 @@ interface WorkItemCardFallback {
   missing: string[];
 }
 
+/** The CTEM case a work item is about (#2370): derived from its gate key or `payload.case_id`. */
+export interface WorkItemCtemCase {
+  id: string;
+  title: string;
+  state: string | null;
+  /** The case page in the app, `/ctem/cases/<id>`. */
+  path: string;
+}
+
 export interface WorkItem {
   id: string;
   user_id: string | null;
@@ -6583,6 +6592,8 @@ export interface WorkItem {
   ask?: WorkItemAsk | null;
   /** Set when the item needs a person and its ask is missing or incomplete (#834). */
   card_fallback?: WorkItemCardFallback | null;
+  /** The CTEM case the item is about, when the reader may read it (#2370); only on the single-item read. */
+  ctem_case?: WorkItemCtemCase | null;
   /** `work_item_blocked_refs.blocked_why`: null when not blocked; `missing` for a blocked item that says nothing. */
   blocked_why?: { text: string; missing: boolean } | null;
   source: string;

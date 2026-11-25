@@ -105,6 +105,18 @@ describe("decision view helpers", () => {
     expect(view.technical).toBeTruthy();
   });
 
+  it("leads with Open the case on an item about a case, never when the card is shown inside that case (#2370)", () => {
+    const item = {
+      id: "w3",
+      title: "T",
+      correlation_key: "ctem:validation:c1",
+      ctem_case: { id: "c1", title: "Case", state: "validating", path: "/ctem/cases/c1" },
+      ask: { question: "Run it?", options: [] },
+    } as unknown as WorkItem;
+    expect(workItemDecisionView(item, t).lead).toBeTruthy();
+    expect(workItemDecisionView(item, t, { inCase: true }).lead).toBeUndefined();
+  });
+
   it("asks to confirm an option the agent marked confirm, and only that one (#2150)", () => {
     const item = {
       id: "w2",

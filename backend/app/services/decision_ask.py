@@ -341,6 +341,9 @@ def card_link_label(link: dict[str, Any], language: str | None = None) -> str:
     """
     from app.services.channel_notices import notice
 
+    if link.get("kind") == "ctem_case":
+        # The case the item is about, derived by the platform (#2370): worded from the catalog.
+        return notice("card_link_ctem_case", language)
     url = str(link.get("url") or "")
     label = str(link.get("label") or "").strip()
     found = link_kind(url) if (not label or is_derived_label(link)) else None

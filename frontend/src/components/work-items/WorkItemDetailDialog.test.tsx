@@ -545,6 +545,53 @@ describe("the work item detail", () => {
       expect(within(card).getByTestId("work-item-decision-link").textContent).toBe("FIN-798");
     });
 
+    describe("an item on a CTEM case opens the case first (#2370)", () => {
+      const CASE_ID = "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f";
+      const kase = { id: CASE_ID, title: "Patch the VPN gateways", state: "validating", path: `/ctem/cases/${CASE_ID}` };
+
+      it("leads the card with Open the case above the options, in the app, and drops the agent's link to it", () => {
+        openDialog(
+          waiting({
+            correlation_key: `ctem:validation:${CASE_ID}`,
+            ctem_case: kase,
+            ask: {
+              ...ask,
+              links: [
+                { label: "The case", url: `https://one.example.test/xtm-one/ctem/cases/${CASE_ID}` },
+                { label: "FIN-798", url: "https://example.atlassian.net/browse/FIN-798" },
+              ],
+            },
+          }),
+          { answer: true },
+        );
+        const card = screen.getByTestId("work-item-decision");
+        const open = within(card).getByTestId("work-item-case-link");
+        expect(open.textContent).toContain("Open the case");
+        expect(open.getAttribute("href")).toBe(`/ctem/cases/${CASE_ID}`);
+        expect(open.getAttribute("target")).toBeNull();
+        expect(within(card).getByTestId("work-item-case-title").textContent).toBe("Patch the VPN gateways");
+        // Above the options: the link comes first in document order.
+        const options = within(card).getByTestId("work-item-decision-options");
+        expect(open.compareDocumentPosition(options) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(within(card).getAllByTestId("work-item-decision-link").map((a) => a.textContent)).toEqual(["FIN-798"]);
+      });
+
+      it("shows the link on an answered item too, outside the card", () => {
+        openDialog(item({ status: "done", correlation_key: `ctem:review:${CASE_ID}`, ctem_case: kase }), {});
+        expect(screen.queryByTestId("work-item-decision")).toBeNull();
+        expect(screen.getByTestId("work-item-case-link").getAttribute("href")).toBe(`/ctem/cases/${CASE_ID}`);
+      });
+
+      it("shows no link when the reader may not read the case, and a non-CTEM item is unchanged", () => {
+        openDialog(waiting({ correlation_key: `ctem:validation:${CASE_ID}`, ctem_case: null, ask }), { answer: true });
+        expect(screen.queryByTestId("work-item-case-link")).toBeNull();
+        cleanup();
+        openDialog(waiting({ ask }), { answer: true });
+        expect(screen.queryByTestId("work-item-case")).toBeNull();
+        expect(screen.getByTestId("work-item-decision-question").textContent).toBe("Which pricing tier ships first?");
+      });
+    });
+
     it("asks to confirm a terminal option before sending it, Back sends nothing (#2150)", () => {
       const terminal = {
         question: "Close the case?",

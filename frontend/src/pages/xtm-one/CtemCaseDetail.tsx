@@ -9,7 +9,7 @@
  * but that word; a case the caller sees nothing of answers 404.
  */
 import { useMemo, useState, type ComponentProps } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Icon, Textarea } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
@@ -240,6 +240,8 @@ function IssueCaption({ text }: { text: string }) {
 export default function CtemCaseDetail() {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  // Opened from a work item's "Open the case" (#2370): Back returns to that item.
+  const back = useLocation().state as { backTo?: string; backLabel?: string } | null;
   const { t_i18n, intl } = useFormatter();
   const { toast } = useToast();
   const { data: me } = useMe();
@@ -765,8 +767,8 @@ export default function CtemCaseDetail() {
       {/* The app's standard entity header (#1367, Sam 23 Nov 2026: no band with a surface and a border): the
           back link, the title, state, priority and owner on its meta row, the actions on the title line. */}
       <EntityPageHeader
-        backTo="/ctem/cases"
-        backLabel="Back to Cases"
+        backTo={back?.backTo ?? "/ctem/cases"}
+        backLabel={back?.backLabel ?? "Back to Cases"}
         badges={
           <>
             <CaseStateChip state={kase.state} />
