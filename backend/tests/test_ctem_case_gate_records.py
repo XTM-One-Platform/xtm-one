@@ -173,6 +173,22 @@ def test_attach_extends_answer_on_the_waiting_event() -> None:
     assert asked["answer"]["recorded_on_case"] is False
 
 
+def test_a_waiting_record_says_whether_its_decision_was_filed() -> None:
+    """#1954: a gate can read waiting with no decision item; the record says so, the page does not point to a list."""
+    history = _history(_gate("11:09", "ctem.analyst_review", "waited"))
+    lost = _one(gates.resolve(history, [], now=NOW, filed={"ctem.analyst_review": False}), "ctem.analyst_review")
+    assert lost["status"] == gates.WAITING and lost["decision_filed"] is False and lost["asked_of"] is None
+    filed = _one(gates.resolve(history, [], now=NOW, filed={"ctem.analyst_review": True}), "ctem.analyst_review")
+    assert filed["decision_filed"] is True
+    assert _one(gates.resolve(history, [], now=NOW), "ctem.analyst_review")["decision_filed"] is None
+    answered = _history(
+        _gate("11:09", "ctem.analyst_review", "waited"),
+        _gate("12:10", "ctem.analyst_review", "answered", PERSON, reason=PERSON, evidence="B"),
+    )
+    record = _one(gates.resolve(answered, [], now=NOW, filed={"ctem.analyst_review": False}), "ctem.analyst_review")
+    assert record["decision_filed"] is None
+
+
 def test_attach_keeps_what_the_case_event_said() -> None:
     history = _history(
         _gate("11:09", "ctem.analyst_review", "waited"),

@@ -173,7 +173,7 @@ function ThisMachineCard({ bridge }: { bridge: DesktopBridge }) {
         </div>
         {bridge.runner_id && (
           <span className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+            "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[11px] font-medium",
             revoked
               ? "border-feedback-error-primary/30 bg-feedback-error-primary/10 text-feedback-error-primary"
               : online

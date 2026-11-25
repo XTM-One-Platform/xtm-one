@@ -168,6 +168,7 @@ def resolve(
     *,
     names: Mapping[str, str] | None = None,
     now: datetime | None = None,
+    filed: Mapping[str, bool] | None = None,
 ) -> list[dict[str, Any]]:
     """One record per gate the case met, in the CTEM order of ``GATE_PHASE``.
 
@@ -177,6 +178,9 @@ def resolve(
     ``decision`` holds the row's ``id, public_id, status, ask, recipient,
     answer, answered_by, answered_at, surface, deadline, created_at``.
     *names* maps the user, group and agent ids the viewer may see to names.
+    *filed* says, by gate key, whether an open decision item of the gate exists
+    for anyone (``ctem_gate_order.open_gate_item_keys``, #1954); a waiting record
+    carries it as ``decision_filed`` (``None`` when unknown).
     """
     names = names or {}
     now = now or datetime.now(UTC)
@@ -198,7 +202,10 @@ def resolve(
         chosen = rows.get(gate)
         if not events and chosen is None:
             continue
-        records.append(_record(gate, events, chosen, history, names, now))
+        record = _record(gate, events, chosen, history, names, now)
+        # A gate can read waiting with no decision anyone can answer (#1954): the page says so.
+        record["decision_filed"] = (filed or {}).get(gate) if record["status"] == WAITING else None
+        records.append(record)
     return records
 
 

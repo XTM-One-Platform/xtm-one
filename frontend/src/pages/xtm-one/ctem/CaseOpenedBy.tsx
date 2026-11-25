@@ -14,9 +14,13 @@
  * scope sentence once, the first and last seen days, the subjects as chips
  * ("+N more" past the first few) and the loop trace of its newest signal as a
  * button. A group of up to three signals keeps the per-signal detail; a larger
- * one opens ("Show all N") into a one-row-height table of its signals, each
+ * one opens ("Show all (N)") into a one-row-height table of its signals, each
  * with its own loop trace button (the shared DataTable: ten rows a page,
  * searchable by subject), collapsed by default above five.
+ *
+ * Every loop trace button opens the shared trace sheet over the case (Sam,
+ * 24 Nov 2026): the case route keeps its pathname and carries `?signal=<id>`,
+ * so a reload reopens it and Back, Close or Escape return to the case.
  */
 import { useMemo, useState } from "react";
 import { Icon } from "@filigran/design-system";
@@ -26,12 +30,15 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToneBadge } from "@/components/ui/tone-badge";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { useCtemCaseSignals, type CtemSignal } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
+import { formatCount } from "@/lib/number-format";
 import { formatDayIntl } from "@/lib/relative-time";
 import type { CtemCaseEvent } from "@/hooks/api/useCtemCasesApi";
 import { NO_SIGNAL_ORIGIN_LABEL, noSignalOrigin } from "./case-loop-reason";
 import { LoopTraceButton } from "./LoopTraceButton";
+import { LoopTraceSheet, useLoopTraceParam } from "./loop/LoopTraceSheet";
 import { SIGNAL_STATE_LABEL, decisionSentence } from "./loop/DecisionReason";
 import { signalProviderName } from "./loop/SignalLoopTrace";
 import {
@@ -57,6 +64,7 @@ export function CaseOpenedBy({ caseId, history }: { caseId: string; history?: re
   const { t_i18n } = useFormatter();
   const { data, isLoading, isError } = useCtemCaseSignals(caseId);
   const groups = useMemo(() => groupOpenedBySignals(data?.signals ?? []), [data]);
+  const trace = useLoopTraceParam();
 
   return (
     <Card data-testid="ctem-case-opened-by">
@@ -92,6 +100,7 @@ export function CaseOpenedBy({ caseId, history }: { caseId: string; history?: re
           </ul>
         )}
       </CardContent>
+      <LoopTraceSheet signalId={trace.signal} onClose={trace.close} showOpenInSignals currentCaseId={caseId} />
     </Card>
   );
 }
@@ -121,9 +130,7 @@ function SignalDetail({ signal }: { signal: CtemSignal }) {
     <li className="flex min-w-0 flex-col gap-1 content-base" data-testid="ctem-case-opened-by-signal">
       <span className="flex min-w-0 flex-wrap items-center gap-2">
         <PathChips signal={signal} />
-        <span className="min-w-0 truncate text-default-secondary" title={signalSubject(signal)}>
-          {signalSubject(signal)}
-        </span>
+        <TruncatedText text={signalSubject(signal)} className="text-default-secondary" />
         <LoopTraceButton signalId={signal.id} subject={signalSubject(signal)} className="ml-auto" />
       </span>
       <span className="text-default-secondary">{decisionSentence(signal.decision, t_i18n, (iso) => formatDayIntl(intl, iso))}</span>
@@ -161,8 +168,8 @@ function SignalGroup({ group }: { group: OpenedByGroup }) {
       )}
       <span className="flex min-w-0 flex-wrap items-center gap-1.5" data-testid="ctem-case-opened-by-subjects">
         {shown.map((s) => (
-          <ToneBadge key={s.id} tone="neutral" title={signalSubject(s)} className="max-w-[12rem] truncate">
-            {signalSubject(s)}
+          <ToneBadge key={s.id} tone="neutral" className="max-w-[12rem]">
+            <TruncatedText text={signalSubject(s)} />
           </ToneBadge>
         ))}
         {more > 0 && (
@@ -181,7 +188,8 @@ function SignalGroup({ group }: { group: OpenedByGroup }) {
           data-testid="ctem-case-opened-by-toggle"
         >
           <Icon name="chevron-down" size={16} className={open ? "rotate-180 transition-transform" : "transition-transform"} aria-hidden />
-          <span>{open ? t_i18n("Show less") : t_i18n("Show all {count}", { count })}</span>
+          {/* One fold wording on the case page, the one of CaseFoldToggle (#1679, advisory A1 of #1918). */}
+          <span>{open ? t_i18n("Show fewer") : t_i18n("Show all ({count})", { count: formatCount(intl.locale, count) })}</span>
         </Button>
       </span>
       {open && <SignalTable id={tableId} signals={group.signals} />}

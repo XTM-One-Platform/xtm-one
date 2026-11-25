@@ -2492,11 +2492,16 @@ def _describe_builtin_change(before: list[str], after: list[str]) -> str:
 
 
 def _advertised_builtin_tool_ids() -> tuple[str, ...]:
-    """``_VALID_BUILTIN_TOOL_IDS`` minus the former ids and the ids whose feature flag is off."""
+    """``_VALID_BUILTIN_TOOL_IDS`` minus the former ids, Platform Health's internal group (#1943)
+    and the ids whose feature flag is off."""
+    from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
+
+    internal = {group.id for group in BUILTIN_TOOL_GROUPS if group.internal}
     return tuple(
         tool_id
         for tool_id in _VALID_BUILTIN_TOOL_IDS
         if not is_former_builtin_id(tool_id)
+        and tool_id not in internal
         and (
             tool_id not in _FEATURE_GATED_BUILTIN_TOOL_IDS
             or is_feature_enabled(_FEATURE_GATED_BUILTIN_TOOL_IDS[tool_id])
@@ -5280,6 +5285,8 @@ def build_agent_builder_tool(
             line = f"- **{group.name}** (`{group.id}`) — {count} member{'' if count == 1 else 's'}"
             if str(group.id) in own_group_ids:
                 line += ", you are a member"
+            if group.auto_join:
+                line += ", auto join (single sign-on users join it)"
             if group.description:
                 line += f" — {group.description}"
             if members_listed:
@@ -9075,6 +9082,13 @@ def build_agent_builder_tool(
                 if r.completed_at and r.started_at:
                     secs = (r.completed_at - r.started_at).total_seconds()
                     line += f" | Duration: {secs:.0f}s"
+                if r.status in ("pending", "delayed") and r.assignment_id:
+                    # Why it waits and its place in the queue (#2040).
+                    from app.services.run_queue_starvation import queue_wait_line
+
+                    waiting = await queue_wait_line(_db, r.id)
+                    if waiting:
+                        line += f"\n  {waiting}"
                 line += _run_degraded_lines(r, prefix="\n  ")
                 if r.status == "failed" and r.error:
                     err_text = " ".join(r.error.split())
@@ -9275,6 +9289,12 @@ def build_agent_builder_tool(
                 budget_line = await _run_budget_line(_db, run.id)
                 if budget_line:
                     parts.append(budget_line)
+                if run.status in ("pending", "delayed"):
+                    from app.services.run_queue_starvation import queue_wait_line
+
+                    waiting = await queue_wait_line(_db, run.id)
+                    if waiting:
+                        parts.append(waiting)
             from app.services.hitl_resume_clock import awaiting_human_seconds
 
             _paused = awaiting_human_seconds(run)

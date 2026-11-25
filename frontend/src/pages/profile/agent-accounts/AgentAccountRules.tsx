@@ -297,7 +297,7 @@ function RuleCard({
                     onClick={() => toggleType(kind)}
                     aria-pressed={on}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 content-compact transition-colors",
+                      "inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 content-compact transition-colors",
                       on ? "border-accent bg-accent/10 text-accent" : "border-elevation-subtle text-default-secondary hover:border-accent/40",
                     )}
                   >
@@ -472,7 +472,7 @@ function Chips({ items, onRemove, icon: Icon }: {
   return (
     <div className="flex flex-wrap gap-1.5">
       {items.map((item) => (
-        <span key={item.id} className="inline-flex max-w-full items-center gap-1 rounded-full border border-elevation-subtle bg-elevation-hover px-2 py-0.5 content-compact">
+        <span key={item.id} className="inline-flex max-w-full items-center gap-1 rounded-sm border border-elevation-subtle bg-elevation-hover px-2 py-0.5 content-compact">
           <Icon className="h-3 w-3 shrink-0 text-default-secondary" />
           <span className="truncate">{item.name || item.email || item.id}</span>
           <button type="button" onClick={() => onRemove(item.id)} aria-label={t_i18n("Remove")} className="text-default-secondary hover:text-default-primary">
@@ -631,7 +631,7 @@ function AccessEditor({ access, onChange, agentId }: {
                       aria-pressed={on}
                       onClick={() => onChange(toggleAccess(access, key, item.id, items.map((i) => i.id)))}
                       className={cn(
-                        "max-w-full truncate rounded-full border px-2.5 py-0.5 content-compact transition-colors",
+                        "max-w-full truncate rounded-sm border px-2 py-0.5 content-compact transition-colors",
                         on ? "border-accent bg-accent/10 text-accent" : "border-elevation-subtle text-default-secondary line-through hover:border-accent/40",
                       )}
                     >

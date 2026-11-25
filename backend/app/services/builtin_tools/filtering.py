@@ -389,21 +389,9 @@ AGENT_KEYED_BUILTIN_TOOL_IDS: frozenset[str] = frozenset(
         "deep_investigation",
         # The grounded STIX extraction: its own group, for agents built to extract.
         "stix_extractor",
-        # Platform Health's sandbox acts for its fleet agents, never on the General Assistant (#8255).
-        "health_sandbox",
-        "improvement_proposals",
-        "health_evaluation",
-        # The Quality Analyst and the Experimenter (#8259).
-        "health_diagnosis",
-        "health_experiments",
-        # The Platform Health's memory consolidation (#8258): only its own
-        # fleet agent carries it, never a chat session or the assistant.
-        "memory_steward",
-        # Platform Health's Flow Lab (#8260).
-        "flow_lab",
+        # Platform Health's one internal group (#1943): its fleet agents alone carry it.
+        "health_specialists",
         "health_orchestrator",
-        # Platform Health's Module Analyst (#101 S14).
-        "health_modules",
         # The write side of the organization profile (#11594): bound to an
         # agent by an administrator, wired for an administrator's turn alone.
         "organization_context",
@@ -446,7 +434,8 @@ def agent_keyed_session_additions(
 # Explicit OpenAEV mutation tools that do NOT share the ``manage_openaev_``
 # prefix (the run-scoped autonomous authoring/writing tools). The unified
 # ``manage_openaev_*`` tools are all mutation-capable (create/update/delete via
-# an ``action`` arg), so they are matched by prefix instead of being listed.
+# an ``action`` arg), so they are matched by prefix instead of being listed;
+# a definition that declares ``read_only`` is never a write, whatever its name.
 _OPENAEV_EXTRA_WRITE_TOOLS = frozenset(
     {
         "author_openaev_attack_path_step",
@@ -493,8 +482,9 @@ def is_openaev_write_tool(td_or_name) -> bool:
 
     Covers every unified ``manage_openaev_*`` tool (create/update/delete) plus
     the run-scoped autonomous authoring/writing tools. Read-only OpenAEV tools
-    (``search_openaev_*`` / ``read_openaev_*`` / ``get_openaev_*``) are NOT
-    matched, so a consulted specialist keeps its ability to look things up.
+    (``search_openaev_*`` / ``read_openaev_*`` / ``get_openaev_*``, and any
+    definition its provider declares ``read_only``) are NOT matched, so a
+    consulted specialist keeps its ability to look things up.
 
     Matched on the instance-BASE name (see :func:`_openaev_gate_bases`): with
     two OpenAEV platform integrations bound to one agent, multi-instance
@@ -502,9 +492,10 @@ def is_openaev_write_tool(td_or_name) -> bool:
     etc., and an exact-name match would let a suffixed run-scoped write slip
     past the advisory strip.
     """
+    if getattr(td_or_name, "read_only", False) is True:
+        return False
     return any(
-        b.startswith("manage_openaev_") or b in _OPENAEV_EXTRA_WRITE_TOOLS
-        for b in _openaev_gate_bases(td_or_name)
+        b.startswith("manage_openaev_") or b in _OPENAEV_EXTRA_WRITE_TOOLS for b in _openaev_gate_bases(td_or_name)
     )
 
 

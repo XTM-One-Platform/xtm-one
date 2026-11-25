@@ -819,7 +819,7 @@ No JWT, no AI gate (the episode was already dispatched). The signature is compar
 - `op` is `lt`, `lte`, `gt`, `gte` or `eq`. An unknown param, metric or tag key, aggregate or operator matches no run; an unknown score `field` is a 422.
 - Newest first; `limit` 100 by default, 500 at most (422 above).
 - Evaluation, score and date filters run in SQL; the others filter the newest `max(5 × limit, 100)` of those runs, so an older match can be missed.
-- A row (`RunSearchResultItem`) carries headlines, own and effective tags, `is_baseline`, `anomaly_count` and `platform_error_count`, not parameters or metric aggregates (the run's own routes serve them).
+- A row (`RunSearchResultItem`) carries headlines, own and effective tags, `is_baseline`, `anomaly_count`, `platform_error_count` and, for a placebo comparison's run, `arm`, `placebo_target` and `placebo_comparison_id` (`real` and null elsewhere), not parameters or metric aggregates (the run's own routes serve them).
 
 ### Comparison tool
 

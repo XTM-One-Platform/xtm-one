@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseAttackPath } from "@/hooks/api/useCtemCasesApi";
 import { CaseAttackPath } from "./CaseAttackPath";
@@ -32,7 +33,7 @@ const READING: CtemCaseAttackPath = {
 
 describe("CaseAttackPath", () => {
   it("lists the hops nearest first, proven or inferred, and the primary assets reached", () => {
-    renderWithProviders(<CaseAttackPath reading={READING} />);
+    renderWithProviders(<MemoryRouter><CaseAttackPath reading={READING} /></MemoryRouter>);
     expect(screen.getByText("Attack path and blast radius")).toBeInTheDocument();
     expect(screen.getByText("Internet-facing")).toBeInTheDocument();
     const hops = screen.getAllByTestId("ctem-case-attack-path-hop");
@@ -48,19 +49,25 @@ describe("CaseAttackPath", () => {
     expect(within(hops[1]).queryByTestId("ctem-case-attack-path-proof")).not.toBeInTheDocument();
     expect(screen.getByText("Attack starts from")).toBeInTheDocument();
     expect(screen.getAllByTestId("ctem-case-attack-path-primary").map((li) => li.textContent)).toEqual(["Credit decision"]);
+    // Each primary asset reached opens its page, by name (#1980 S2).
+    expect(screen.getByRole("link", { name: "Credit decision" }).getAttribute("href")).toBe("/ctem/inventory/primary-assets/Credit%20decision");
   });
 
   it("shows restricted assets without their names", () => {
     renderWithProviders(
-      <CaseAttackPath
-        reading={{
-          ...READING,
-          origin: { asset: "Restricted", exposure: "internal" },
-          hops: [{ from: "Restricted", to: "Restricted", nature: "proven", simulation_name: null, simulation_url: null, seen_at: "2026-11-20" }],
-          primary: ["Restricted"],
-        }}
-      />,
+      <MemoryRouter>
+        <CaseAttackPath
+          reading={{
+            ...READING,
+            origin: { asset: "Restricted", exposure: "internal" },
+            hops: [{ from: "Restricted", to: "Restricted", nature: "proven", simulation_name: null, simulation_url: null, seen_at: "2026-11-20" }],
+            primary: ["Restricted"],
+          }}
+        />
+      </MemoryRouter>,
     );
+    // A restricted primary asset opens nothing: its name is not the viewer's to read.
+    expect(within(screen.getByTestId("ctem-case-attack-path-primary")).queryByRole("link")).not.toBeInTheDocument();
     expect(screen.getAllByText("Restricted asset").length).toBeGreaterThanOrEqual(4);
     expect(screen.queryByText("Edge bastion")).not.toBeInTheDocument();
     expect(screen.getByText("Proven")).toBeInTheDocument();
@@ -69,19 +76,19 @@ describe("CaseAttackPath", () => {
   });
 
   it("gives proven and inferred hops different tones", () => {
-    renderWithProviders(<CaseAttackPath reading={READING} />);
+    renderWithProviders(<MemoryRouter><CaseAttackPath reading={READING} /></MemoryRouter>);
     const [proven, inferred] = screen.getAllByTestId("ctem-case-attack-path-nature");
     expect(proven.outerHTML).not.toEqual(inferred.outerHTML.replace("Inferred", "Proven"));
   });
 
   it("says why when no attack path leaves the asset and no business asset is reached", () => {
-    renderWithProviders(<CaseAttackPath reading={{ ...READING, hops: [], reached: [], primary: [] }} />);
+    renderWithProviders(<MemoryRouter><CaseAttackPath reading={{ ...READING, hops: [], reached: [], primary: [] }} /></MemoryRouter>);
     expect(screen.getByTestId("ctem-case-attack-path-no-hop")).toBeInTheDocument();
     expect(screen.getByTestId("ctem-case-attack-path-no-primary")).toBeInTheDocument();
   });
 
   it("is never blank before triage reads it", () => {
-    renderWithProviders(<CaseAttackPath reading={null} />);
+    renderWithProviders(<MemoryRouter><CaseAttackPath reading={null} /></MemoryRouter>);
     expect(screen.getByTestId("ctem-case-attack-path-empty")).toBeInTheDocument();
   });
 
@@ -94,7 +101,7 @@ describe("CaseAttackPath", () => {
       simulation_url: null,
       seen_at: null,
     }));
-    renderWithProviders(<CaseAttackPath reading={{ ...READING, hops }} />);
+    renderWithProviders(<MemoryRouter><CaseAttackPath reading={{ ...READING, hops }} /></MemoryRouter>);
     expect(screen.getAllByTestId("ctem-case-attack-path-hop")).toHaveLength(5);
     expect(within(screen.getAllByTestId("ctem-case-attack-path-hop")[0]).getByText("Host 1")).toBeInTheDocument();
     const toggle = screen.getByRole("button", { name: "Show all (12)" });
@@ -106,7 +113,7 @@ describe("CaseAttackPath", () => {
   });
 
   it("draws no fold on a short path", () => {
-    renderWithProviders(<CaseAttackPath reading={READING} />);
+    renderWithProviders(<MemoryRouter><CaseAttackPath reading={READING} /></MemoryRouter>);
     expect(screen.queryByTestId("ctem-case-attack-path-more")).not.toBeInTheDocument();
   });
 });

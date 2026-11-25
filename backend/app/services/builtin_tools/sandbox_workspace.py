@@ -1776,6 +1776,7 @@ def build_sandbox_workspace_tools(
         path: str = "",
         add_paths: list[str] | None = None,
         prune_clean_checkouts: bool = False,
+        exact_files: bool = False,
     ) -> str | ToolResult:
         try:
             destination = normalize(path or _default_destination(repository))
@@ -1790,7 +1791,11 @@ def build_sandbox_workspace_tools(
                     "nor ref with it (a new tree is a checkout at another path)."
                 )
             return await _grow_checkout(repository, destination, adds, prune=bool(prune_clean_checkouts))
-        fetched = await _archive_tree(provider, repository, ref, subs, operation="materialize_repository")
+        # exact_files (#2056): a sub_path naming a file is that file alone, as add_paths keeps it (#1919), so a
+        # read or a two-file edit never pays the whole directory a declared check runs from.
+        fetched = await _archive_tree(
+            provider, repository, ref, subs, operation="materialize_repository", exact_files=bool(exact_files)
+        )
         if isinstance(fetched, ToolResult):
             return fetched
         tree, tool_name = fetched
@@ -1877,6 +1882,7 @@ def build_sandbox_workspace_tools(
                 "ref": ref,
                 "sub_paths": subs,
                 "requested_sub_paths": requested,
+                "exact_files": bool(exact_files),
                 "path": destination,
                 "files": len(tree.files),
                 "companions": len(tree.companions),
@@ -3212,7 +3218,14 @@ def build_sandbox_workspace_tools(
             )
         ran = outcome.command or command
         if ran is not None and not outcome.stopped and not outcome.timed_out:
-            await prepush.record_run(session, checkout, check=ran.check, argv=ran.argv, exit_code=outcome.exit_code)
+            await prepush.record_run(
+                session,
+                checkout,
+                check=ran.check,
+                argv=ran.argv,
+                exit_code=outcome.exit_code,
+                on_change=ran.affected_by_default,
+            )
         return outcome.text + await _outside_checkout_note(outcome, checkout, ran)
 
     async def _outside_checkout_note(
@@ -4269,6 +4282,14 @@ def build_sandbox_workspace_tools(
                             "Grow the existing checkout at path instead of replacing it: these repository paths are "
                             "written at the commit its record names, nothing is removed, an edit is kept (a stale "
                             "file an earlier checkout left is rewritten), and the record covers them. Not with sub_paths or ref."
+                        ),
+                    },
+                    "exact_files": {
+                        "type": "boolean",
+                        "description": (
+                            "A sub_path naming a file is written as that file alone, never widened to the directory "
+                            "a declared check runs from nor to its package root (a directory still widens): for a "
+                            "read or a small edit; a check run on it may need a wider checkout. Default false."
                         ),
                     },
                     "prune_clean_checkouts": {

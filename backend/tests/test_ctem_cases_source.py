@@ -20,6 +20,36 @@ from app.core.database import get_db
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_source as source
 
+
+def _write_db() -> SimpleNamespace:
+    """A session double for the write phase: counts commits, records each statement executed."""
+    executed: list[tuple[str, Any]] = []
+    db = SimpleNamespace(commits=0, executed=executed)
+
+    async def commit() -> None:
+        db.commits += 1
+
+    async def execute(statement: Any, params: Any = None) -> None:
+        db.executed.append((str(statement), params))
+
+    db.commit, db.execute = commit, execute
+    return db
+
+
+@pytest.fixture(autouse=True)
+def _no_gate_reads(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    """The gate's reads prepared before the write phase (#1953), recorded instead of read."""
+    from app.services import ctem_scope_gate_store as gate_store
+
+    prepared: list[Any] = []
+
+    async def prepare(db: Any, organization_id: Any) -> None:
+        prepared.append(organization_id)
+
+    monkeypatch.setattr(gate_store, "prepare_system_reads", prepare)
+    return prepared
+
+
 STACK = [{"product": "Tomcat", "vendor": "Apache", "cpe": "", "label": "Apache Tomcat"}]
 SOFTWARE = [
     {"id": "sw-1", "name": "tomcat", "vendor": "apache", "cpe": ""},
@@ -112,7 +142,7 @@ def test_a_cve_shared_by_two_stack_products_is_one_issue_and_one_case_per_produc
     assert set(grouping.groups) == {"upgrade:google/chrome@latest", "upgrade:microsoft/edge@latest"}
 
 
-def test_openaev_finding_lifecycle_is_read_when_present_and_absent_otherwise():
+def test_openaev_finding_lifecycle_is_read_from_the_finding_and_absent_from_a_search_row():
     findings = [
         {
             "finding_id": "f-1",
@@ -121,7 +151,7 @@ def test_openaev_finding_lifecycle_is_read_when_present_and_absent_otherwise():
             "finding_last_tested": "2026-11-21T10:00:00Z",
         },
         {"finding_id": "f-2", "finding_value": "CVE-2026-2", "finding_status": "OPEN", "finding_retest_inject_id": "inj-9"},
-        {"finding_id": "f-3", "finding_value": "CVE-2026-3"},  # an OpenAEV older than the lifecycle
+        {"finding_id": "f-3", "finding_value": "CVE-2026-3"},  # a search row: no status (OpenAEV #9233)
     ]
     one, two, three = source.openaev_issues(findings)
     assert one.retest_status == "not_reproduced" and one.last_tested_at.startswith("2026-11-21T10:00")
@@ -132,7 +162,7 @@ def test_openaev_finding_lifecycle_is_read_when_present_and_absent_otherwise():
 
 @pytest.mark.asyncio
 async def test_recompute_writes_nothing_when_a_product_cannot_answer(monkeypatch):
-    async def read(db, user_id, vertical, *, now=None, members=None):
+    async def read(db, user_id, vertical, *, now=None, members=None, remap=False):
         return source.SourceRead(issues=[], missing=["openaev"])
 
     async def apply(*a, **kw):
@@ -156,7 +186,8 @@ async def test_recompute_merges_and_resolves_only_what_the_reader_confirms_close
     gone = rules.SourceIssue(source="opencti", external_id="v-9", name="CVE-2026-9")
     asked: list = []
 
-    async def read(db, user_id, vertical, *, now=None, members=None):
+    async def read(db, user_id, vertical, *, now=None, members=None, remap=False):
+        assert remap is True  # the recompute matches the members OpenAEV #9233 re-keyed
         asked.append(members)
         return source.SourceRead(issues=[issue], closed=[gone], complete=complete)
 
@@ -174,12 +205,7 @@ async def test_recompute_merges_and_resolves_only_what_the_reader_confirms_close
     async def forget(user_id, vertical):
         forgotten.append(user_id)
 
-    db = SimpleNamespace(commits=0)
-
-    async def commit():
-        db.commits += 1
-
-    db.commit = commit
+    db = _write_db()
     monkeypatch.setattr(source, "read_open_issues", read)
     monkeypatch.setattr(source.store, "apply_recompute", apply)
     monkeypatch.setattr(source.store, "member_ids", members)
@@ -187,6 +213,8 @@ async def test_recompute_merges_and_resolves_only_what_the_reader_confirms_close
     answer = await source.recompute_for_user(db, organization_id=uuid.uuid4(), user_id="u-1", vertical="cyber")
     assert answer["applied"] is True and answer["created"] == 1 and answer["issues"] == 1
     assert db.commits == 1 and forgotten == ["u-1"]
+    # #1953: the write phase fails fast on a held row instead of waiting until the statement timeout.
+    assert [p for s, p in db.executed if "lock_timeout" in s] == [{"timeout": source.WRITE_LOCK_TIMEOUT}]
     assert asked == [["opencti:v-1", "opencti:v-9"]]
     assert applied == [["opencti:v-9"] if complete else []]
 
@@ -203,6 +231,7 @@ AEV_FINDING_FILTERABLE = frozenset(
         "finding_tags",
         "finding_created_at",
         "finding_updated_at",
+        "finding_status",
         "finding_assets",
         "finding_teams",
         "finding_users",
@@ -239,7 +268,7 @@ async def test_openaev_findings_search_filters_only_on_keys_finding_accepts(monk
         issues = await source._read_openaev(client, "https://aev", {}, source.datetime.now(source.UTC))
     assert issues is not None and [i.external_id for i in issues] == ["f-1"]
     keys = [f["key"] for f in sent[0]["filterGroup"]["filters"]]
-    assert keys == ["finding_type", "finding_created_at"]
+    assert keys == ["finding_type", "finding_status", "finding_updated_at"]
     assert set(keys) <= AEV_FINDING_FILTERABLE
 
 
@@ -269,12 +298,7 @@ async def test_recompute_applies_when_opencti_and_openaev_answer(monkeypatch):
     async def forget(user_id, vertical):
         return None
 
-    db = SimpleNamespace()
-
-    async def commit():
-        return None
-
-    db.commit = commit
+    db = _write_db()
     monkeypatch.setattr(source, "_organization_software", stack)
     monkeypatch.setattr(source, "_user_creds", creds)
     monkeypatch.setattr(source, "_read_opencti", read_opencti)
@@ -334,3 +358,22 @@ async def test_recompute_route_builds_the_callers_own_cases_and_is_throttled(mon
     assert first.status_code == 200 and first.json()["applied"] is True
     assert second.status_code == 429
     assert calls == [(str(member.id), "cyber")]
+
+
+@pytest.mark.asyncio
+async def test_recompute_route_answers_409_while_another_recompute_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#1953: one recompute per organization at a time; the route never queues a second one."""
+    from app.services import ctem_cases_refresh as refresh
+
+    async def busy(db: Any, *, organization_id: Any, user_id: str, vertical: str) -> dict[str, Any]:
+        return refresh.busy_answer(vertical)
+
+    async def slot(user_id: str, vertical: str) -> bool:
+        return True
+
+    monkeypatch.setattr(refresh, "recompute_as", busy)
+    monkeypatch.setattr(api_module, "recompute_slot", slot)
+    member = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None, is_admin=False)
+    async with _client(monkeypatch, member) as client:  # type: ignore[no-untyped-call]
+        answer = await client.post("/api/v1/ctem-cases/recompute")
+    assert answer.status_code == 409 and "already running" in answer.json()["detail"]

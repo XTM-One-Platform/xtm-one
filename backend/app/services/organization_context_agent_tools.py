@@ -16,7 +16,7 @@
 The ``organization_context`` built-in group (``builtin_tools/organization_context_write``)
 is a generic layer and names no platform (invariant 18). A platform-specific action on
 the profile that an administrator's agent must be able to run, today the OpenCRQ
-crown-jewel reconcile of Settings > Organization (``POST /organization-context/opencrq-sync``,
+primary-asset reconcile of Settings > Organization (``POST /organization-context/opencrq-sync``,
 ``organization_context_opencrq.run_sync``), is declared here: its definition and its
 handler, which the group registers as they are.
 """
@@ -144,7 +144,7 @@ def declared_organization_tools(
     definition = ToolDefinition(
         name=OPENCRQ_RECONCILE_TOOL,
         description=(
-            "Reconcile the crown jewels with OpenCRQ's primary assets: apply false answers the "
+            "Reconcile the primary assets with OpenCRQ's primary assets: apply false answers the "
             "plan, true saves a version of the profile (nothing is written to OpenCRQ)." + shared_context_clause
         ),
         input_schema={

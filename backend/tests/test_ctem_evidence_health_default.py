@@ -40,6 +40,10 @@ def test_the_switch_is_unset_by_default() -> None:
         ({"enabled": False}, [ONE], (health.PASS_ON, ONE)),
         ({}, [ONE, TWO], (health.PASS_OFF, "")),
         ({"enabled": False, "integration": ONE}, [ONE], (health.PASS_OFF, "")),
+        # #1937: an explicit off from the path sources panel names the integration the pass ran on,
+        # so it holds with one connected and none declared before; on again runs on that one.
+        ({"enabled": False, "integration": ONE}, [ONE, TWO], (health.PASS_OFF, "")),
+        ({"enabled": True, "integration": ONE}, [ONE], (health.PASS_ON, ONE)),
         ({"enabled": True, "integration": ONE}, [ONE, TWO], (health.PASS_ON, ONE)),
         ({"integration": ONE}, [ONE], (health.PASS_ON, ONE)),
         # A declared integration no longer connected is never swapped for another one.

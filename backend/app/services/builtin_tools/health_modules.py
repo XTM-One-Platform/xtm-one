@@ -55,7 +55,8 @@ if TYPE_CHECKING:
 
     from app.services.health.access import Reader
 
-MODULES_GROUP_ID = "health_modules"
+#: Its functions belong to Platform Health's one internal group (#1943).
+MODULES_GROUP_ID = "health_specialists"
 #: The S14 role, kept as an alias of the module checkers' roles (section 13.1).
 ANALYST_ROLE = "module_analyst"
 #: The read functions of the group.

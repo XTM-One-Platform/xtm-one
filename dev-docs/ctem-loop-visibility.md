@@ -71,15 +71,15 @@ backend writes on the signal (`decision`) or the case event (`reason`):
 - **outcome chip**: the state in words, its colour from the state tokens of
   `ctem-cases.md` section 7.0 (never a raw state key);
 - **one sentence**, built from the record, never written by a model at read
-  time. Examples: "Ignored: host not in any crown jewel scope (threshold
+  time. Examples: "Ignored: host not in any primary asset scope (threshold
   high)", "Watchlist: criticality medium, below high", "Discarded: not
-  confirmed by inventory", "Case opened: crown jewel Customer SaaS hosting,
+  confirmed by inventory", "Case opened: primary asset Customer SaaS hosting,
   criticality critical";
 - **inputs**, in a tooltip or the loop trace: each input the rule read
   (threshold, criticality found, lenses that confirmed, policy rule) with its
   value and source;
 - **links** to the source objects (the OpenCTI, OpenAEV or Aikido object of
-  the signal's `evidence.link`, the crown jewel in Settings > Organization,
+  the signal's `evidence.link`, the primary asset in Settings > Organization,
   the case).
 
 Contract for the backend items: a decision record carries at least
@@ -116,6 +116,14 @@ loop, and why".
   the `?loop=` links are gone (CTEM is unreleased, no redirect is kept), so a trace can
   be shared and reopened after a reload. Focus returns to the row that opened
   it.
+- **One sheet, opened in place** (#1934, Sam, 24 Nov 2026): the trace is one
+  side sheet, `ctem/loop/LoopTraceSheet.tsx`, used by the Signals page and by
+  the case page's "Opened by" card. On a case, "See the loop trace" opens it over
+  the case: the pathname is kept and the case URL carries `?signal=<id>`, so a
+  reload reopens it and Back, Close or Escape return to the case. Off the
+  Signals page the sheet adds "Open in Signals", the only way to leave the case.
+  A signal with a `case_id` shows "Open case" on its "Case opened" stage,
+  except on that case's own page.
 - **Reached from**: a signal row of Live activity, a case card of the board,
   the case page header (More menu, "Show in the loop"), a Done for you point
   that is a signal or a case, an Act now row that comes from a case. Nothing

@@ -24,7 +24,7 @@ CVE = "CVE-2026-12345"
 def _profile(**extra: object) -> oc.OrganizationProfile:
     return oc.parse_profile(
         {
-            "tech_stack": [{"product": "PostgreSQL", "vendor": "PostgreSQL"}],
+            "software": [{"product": "PostgreSQL", "vendor": "PostgreSQL"}],
             "shipped_products": [
                 {
                     "product": "Acme Server",
@@ -70,7 +70,7 @@ def test_repositories_are_owner_name_once() -> None:
 
 def test_tech_stack_is_unchanged_and_an_empty_list_dumps_as_before() -> None:
     profile = _profile()
-    assert [e.product for e in profile.tech_stack] == ["PostgreSQL"]
+    assert [e.product for e in profile.software] == ["PostgreSQL"]
     assert "shipped_products" not in oc.legacy_dump(oc.parse_profile({}))
     assert oc.legacy_dump(profile)["shipped_products"][0]["product"] == "Acme Server"
 

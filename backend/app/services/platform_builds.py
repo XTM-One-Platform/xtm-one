@@ -16,7 +16,9 @@ that was replaced.
 
 A rollout is read off the same rows (``rollout``): the newest recorded build
 booted, and the process answering is an older one - the rollout is in
-progress -, or the previous build was still seen after the newest one's first
+progress, unless the answering build's commit contains the newest one's
+(``read_rollout``: then the newest is an ancestor that booted first,
+``superseded``) -, or the previous build was still seen after the newest one's first
 boot and recently - it may still be draining -, else the rollout is complete.
 Nothing is known of a deploy before its first pod boots and records itself.
 
@@ -45,8 +47,11 @@ from app.models.platform_build import PlatformBuild
 
 logger = logging.getLogger(__name__)
 
-#: How often the scheduler tick refreshes ``last_seen_at`` of the running build.
-TOUCH_INTERVAL_SECONDS = 15 * 60
+#: How often the scheduler tick refreshes ``last_seen_at`` of the running build. Short, so a build whose pods
+#: still serve stays seen within a tick or two and the rollout reads ``draining``, not ``complete``, until its
+#: last pod is gone (#2064: complete was read four minutes before the old build stopped answering). One row
+#: upserted per process at this pace is cheap.
+TOUCH_INTERVAL_SECONDS = 45
 
 #: The bucket a time before the first recorded build falls in.
 BEFORE_HISTORY_BUCKET = "before_release_history"
@@ -340,10 +345,14 @@ ROLLOUT_IN_PROGRESS = "in_progress"
 ROLLOUT_DRAINING = "draining"
 ROLLOUT_COMPLETE = "complete"
 ROLLOUT_ROLLED_BACK = "rolled_back"
+#: The newest build by first boot is an ancestor of the one answering: the answering build is the deployed one,
+#: it only recorded itself later (its boot or its refresh comes after the older build's).
+ROLLOUT_SUPERSEDED = "superseded"
 
-#: How long after its last sighting a build still seen after a newer one's first boot counts as draining: one
-#: ``last_seen_at`` refresh (``TOUCH_INTERVAL_SECONDS``) and a minute of slack.
-DRAIN_GRACE = timedelta(seconds=TOUCH_INTERVAL_SECONDS + 60)
+#: How long after its last sighting a build still seen after a newer one's first boot counts as draining: two
+#: ``last_seen_at`` refreshes (``TOUCH_INTERVAL_SECONDS``, paced by the 60-second scheduler tick) and slack, so
+#: one slow tick never reads a serving build as gone.
+DRAIN_GRACE = timedelta(seconds=2 * TOUCH_INTERVAL_SECONDS + 90)
 
 
 @dataclass(frozen=True)
@@ -375,6 +384,11 @@ class Rollout:
                 f"rollout of {self.newest.label} started {started}; the previous build {self.previous.label} was "
                 f"still seen at {self.previous.last_seen_at.isoformat()} and may still be draining"
             )
+        if self.state == ROLLOUT_SUPERSEDED:
+            return (
+                f"rollout complete: {self.answered_by} answers and carries {self.newest.label}, the newest build by "
+                f"first boot ({started}); that build is an ancestor, not a rollout in progress"
+            )
         if self.state == ROLLOUT_ROLLED_BACK:
             return (
                 f"rolled back: {self.newest.label}, first seen {started}, was last seen "
@@ -397,7 +411,11 @@ class Rollout:
 
 
 def rollout(
-    windows: list[ReleaseWindow], running: tuple[str, str] | None = None, *, now: datetime | None = None
+    windows: list[ReleaseWindow],
+    running: tuple[str, str] | None = None,
+    *,
+    now: datetime | None = None,
+    running_carries_newest: bool | None = None,
 ) -> Rollout:
     """Where the rollout of the newest recorded build stands: *windows* oldest first (:func:`release_windows`),
     *running* the ``(version, git_sha)`` of the process answering (:func:`running_build` by default).
@@ -410,6 +428,11 @@ def rollout(
     the one answering, but the previous build was still seen after its first
     boot and within :data:`DRAIN_GRACE` of *now*: its pods may still be serving.
     ``complete`` otherwise; ``unknown`` with nothing recorded.
+
+    The windows rank builds by first boot, not by commit: *running_carries_newest*
+    true (the answering build's commit contains the newest one's,
+    :func:`running_carries`) makes a newest build that is not the one answering
+    ``superseded``, never a rollout in progress or a rollback.
     """
     version, git_sha = running if running is not None else running_build()
     answered_by = release_label(version, git_sha)
@@ -419,6 +442,8 @@ def rollout(
     previous = windows[-2] if len(windows) > 1 else None
     moment = now or datetime.now(UTC)
     if not is_build(newest, version, git_sha):
+        if running_carries_newest:
+            return Rollout(ROLLOUT_SUPERSEDED, newest, answered_by, previous)
         state = ROLLOUT_IN_PROGRESS if moment - newest.last_seen_at < DRAIN_GRACE else ROLLOUT_ROLLED_BACK
         return Rollout(state, newest, answered_by, previous)
     if (
@@ -428,6 +453,52 @@ def rollout(
     ):
         return Rollout(ROLLOUT_DRAINING, newest, answered_by, previous)
     return Rollout(ROLLOUT_COMPLETE, newest, answered_by, previous)
+
+
+async def running_carries(db: AsyncSession, user_id: object, newest: ReleaseWindow, running_sha: str) -> bool | None:
+    """Whether the answering build's commit *running_sha* contains *newest*'s (it is that commit or a descendant),
+    read with *user_id*'s credential through the commit containment readers on the repositories the platform's
+    builds come from; ``None`` when either commit is unknown or nothing could read it. Never raises."""
+    newest_sha = (newest.git_sha or version_git_sha(newest.version)).strip().lower()
+    running_sha = (running_sha or "").strip().lower()
+    if len(newest_sha) < 7 or len(running_sha) < 7:
+        return None
+    from app.integrations.reference_state import commit_containment_readers
+    from app.services.work_item_blocked_refs import observed_deployment_repositories, reference_token
+
+    try:
+        for repo in sorted(observed_deployment_repositories()):
+            for provider, reader in commit_containment_readers().items():
+                token = await reference_token(db, provider, user_id)
+                if not token:
+                    continue
+                answer = await reader(repo, newest_sha, running_sha, token)
+                if answer is not None:
+                    return answer
+    except Exception as exc:
+        logger.info(
+            "Whether %s carries %s not read: %s", running_sha[:7], newest_sha[:7], format_exception_message(exc)
+        )
+    return None
+
+
+async def read_rollout(
+    db: AsyncSession,
+    windows: list[ReleaseWindow],
+    running: tuple[str, str],
+    *,
+    user_id: object,
+    now: datetime | None = None,
+) -> Rollout:
+    """:func:`rollout`, the commit order read when the newest build by first boot is not the one answering."""
+    found = rollout(windows, running, now=now)
+    if found.newest is None or found.state not in (ROLLOUT_IN_PROGRESS, ROLLOUT_ROLLED_BACK):
+        return found
+    version, git_sha = running
+    carries = await running_carries(db, user_id, found.newest, git_sha or version_git_sha(version))
+    if not carries:
+        return found
+    return rollout(windows, running, now=now, running_carries_newest=True)
 
 
 def release_order(label: object, windows: list[ReleaseWindow]) -> int:

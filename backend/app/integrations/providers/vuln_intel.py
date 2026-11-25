@@ -28,7 +28,7 @@ is it?" without a commercial subscription:
     CVEs per call), historical/as-of-date scores, 30-day time series, and
     top-N / threshold queries. Unauthenticated.
 
-The crown-jewel tool is ``assess_vulnintel_cve``: it queries all three sources
+The main tool is ``assess_vulnintel_cve``: it queries all three sources
 concurrently for one CVE and merges them into a single deterministic urgency
 verdict (KEV membership beats everything, then EPSS probability, then CVSS).
 
@@ -671,7 +671,7 @@ def build_tools(
         return (vulns[0] or {}).get("cve") or {}, None
 
     # ══════════════════════════════════════════════════════════════════════
-    # MERGED ASSESSMENT (the crown jewel)
+    # MERGED ASSESSMENT (the main tool)
     # ══════════════════════════════════════════════════════════════════════
 
     async def assess_vulnintel_cve(cve: str = "") -> str:

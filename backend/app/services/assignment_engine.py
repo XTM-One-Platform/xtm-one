@@ -134,6 +134,7 @@ from app.services.builtin_tools import (
     merge_tool_allow_lists,
     offered_handover_types,
 )
+from app.services.ctem_module_preflight import guarding_module_accounts, stage_need
 from app.services.decision_waits import holds_assignment
 from app.services.element_scope import assignment_run_scope
 from app.services.event_bus import (
@@ -3048,6 +3049,75 @@ async def _skip_by_any_of_checks(
     )
 
 
+async def _skip_by_module_preflight(
+    db: AsyncSession,
+    *,
+    run: AssignmentRun,
+    agent,
+    assignment: Assignment,
+    effective_user_id,
+) -> bool:
+    """End a per-user CTEM stage run at zero tokens when the member has no module account.
+
+    ``True`` when the run was ended skipped with the reason ``no_module_account``.
+    Any agent other than a seeded CTEM stage agent, a run with no member, and a
+    preflight that cannot decide all let the run go ahead (#2042).
+    """
+    from app.services import ctem_module_preflight as preflight_mod
+
+    need = preflight_mod.stage_need(getattr(agent, "slug", None), is_builtin=bool(getattr(agent, "is_builtin", False)))
+    if need is None or not effective_user_id:
+        return False
+    user_id = str(effective_user_id)
+
+    async def _resolve(module: str) -> tuple[str, str, str] | None:
+        from app.services.ctem_metrics_collector import _user_creds
+
+        creds = await _user_creds(db, user_id, module)
+        if creds is None:
+            return None
+        base_url, headers = creds
+        token = str(headers.get("Authorization", "")).removeprefix("Bearer ")
+        return (base_url, base_url, token) if token else None
+
+    try:
+        verdict = await preflight_mod.preflight(need, user_id, _resolve)
+    except Exception as exc:  # the preflight never blocks a run
+        logger.warning(
+            "Assignment '%s': CTEM module preflight failed (%s) - the run proceeds",
+            assignment.name,
+            format_exception_message(exc),
+        )
+        return False
+    run.trigger_context = {
+        **(run.trigger_context or {}),
+        "module_accounts": dict(verdict.states),
+    }
+    if verdict.proceed:
+        return False
+    await ensure_single_writer()
+    now = datetime.now(UTC)
+    run.status = "skipped"
+    run.error = preflight_mod.NO_MODULE_ACCOUNT
+    run.result_summary = verdict.summary
+    run.total_input_tokens = 0
+    run.total_output_tokens = 0
+    run.started_at = run.started_at or now
+    run.completed_at = now
+    await db.commit()
+    await _release_run_work_item(run, agent, failed=False)
+    await _publish_run_status(
+        str(run.user_id),
+        str(run.id),
+        "skipped",
+        assignment.name,
+        run.result_summary,
+        is_company=run.is_company_managed,
+    )
+    logger.info("Assignment '%s' skipped by the CTEM module preflight: %s", assignment.name, verdict.summary)
+    return True
+
+
 async def _end_run_skipped_by_gate_check(
     db: AsyncSession,
     *,
@@ -4745,6 +4815,17 @@ async def execute_assignment_run(
         # stop, a rollout) are past it, so a run never reads the lease it took
         # itself as a live holder and skips with its work undone (#8831).
         if _gate_check_due(run, resuming=_resuming) and await _skip_by_activation_check(
+            db,
+            run=run,
+            agent=agent,
+            assignment=assignment,
+            effective_user_id=effective_user_id,
+        ):
+            return
+        # ── CTEM module account preflight (#2042) ───────────────────────
+        # A per-user CTEM stage run for a member with no account on the
+        # modules it reads ends here, before the charge and any model call.
+        if _gate_check_due(run, resuming=_resuming) and await _skip_by_module_preflight(
             db,
             run=run,
             agent=agent,
@@ -6567,7 +6648,14 @@ async def execute_assignment_run(
                 from app.services.builtin_tools import build_friction_tools
 
                 composite.add_tools(
-                    *build_friction_tools(str(run.user_id or _run_file_owner_id or ""), str(agent.id), run_id=run.id)
+                    *build_friction_tools(
+                        str(run.user_id or _run_file_owner_id or ""),
+                        str(agent.id),
+                        run_id=run.id,
+                        # The trace supervision grant reaches the supervised agents' frictions too (#1928).
+                        supervision_target_agent_ids=agent.trace_supervision_target_agent_ids,
+                        allow_cross_agent="inspect_agent_traces" in agent_builtin_tool_ids,
+                    )
                 )
                 # Per-object timers ride with shared state: a run arms a date and
                 # the platform raises timer.due then (services/platform_timers.py).
@@ -6822,7 +6910,7 @@ async def execute_assignment_run(
                 composite.add_tools(pi_defs, pi_exec)
 
             # --- Memory Steward (#8258): refused to anyone but Platform Health ---
-            if "memory_steward" in agent_builtin_tool_ids:
+            if "health_specialists" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import build_memory_steward_tools
 
                 # The run's Platform Health cycle pays for the pass's model calls.
@@ -6891,14 +6979,14 @@ async def execute_assignment_run(
 
             # --- Platform Health sandbox (#8255): a Platform Health run has no user of its
             # own; the tools apply their own rule (Platform Health or an admin).
-            if "health_sandbox" in agent_builtin_tool_ids:
+            if "health_specialists" in agent_builtin_tool_ids:
                 from app.services.health.sandbox.tools import build_sandbox_tools
 
                 composite.add_tools(
                     *build_sandbox_tools(db, str(effective_user_id) if effective_user_id else None)
                 )
             # --- Platform Health evaluation (#8257): the same rule, the tools' own.
-            if "health_evaluation" in agent_builtin_tool_ids:
+            if "health_specialists" in agent_builtin_tool_ids:
                 from app.services.health.evaluation_tools import build_health_evaluation_tools
 
                 composite.add_tools(
@@ -6906,7 +6994,7 @@ async def execute_assignment_run(
                         db, str(effective_user_id) if effective_user_id else None, run_id=str(run.id)
                     )
                 )
-            if "improvement_proposals" in agent_builtin_tool_ids:
+            if "health_specialists" in agent_builtin_tool_ids:
                 from app.services.builtin_tools.improvements import build_improvement_tools
 
                 composite.add_tools(
@@ -6942,9 +7030,10 @@ async def execute_assignment_run(
             )
             if agent.handover_agent_ids:
                 try:
-                    from app.api.v1.helpers import (
-                        get_user_group_ids,
-                        user_visible_filter,
+                    from app.api.v1.helpers import get_user_group_ids
+                    from app.services.fleets import (
+                        configured_handover_reach,
+                        handover_peer_clause,
                     )
 
                     h_uuids = [_uuid.UUID(h) for h in agent.handover_agent_ids if h]
@@ -6953,11 +7042,15 @@ async def execute_assignment_run(
                         if run.user_id:
                             _user_group_ids = await get_user_group_ids(db, run.user_id)
 
+                        # The configured handover is the grant, the exposure
+                        # rule kept: a peer the run's person may not open is
+                        # still reached through the tool of its type.
+                        _granted = await configured_handover_reach(db, agent.id, h_uuids) if run.user_id else set()
                         _ho_query = (
                             select(Agent)
                             .where(Agent.id.in_(h_uuids), Agent.enabled.is_(True))
                             .where(
-                                user_visible_filter(Agent, run.user_id, _user_group_ids)
+                                handover_peer_clause(run.user_id, _user_group_ids, _granted)
                             )
                         )
                         from app.services.fleet_runs import active_handover_target_clause
@@ -8528,6 +8621,15 @@ async def execute_assignment_run(
                                 assignment_id=assignment.id,
                                 work_item_id=(getattr(run, "trigger_payload", None) or {}).get("work_item_id"),
                             )
+                        ),
+                        # A per-user CTEM stage run stops calling a module
+                        # that refused its member (#2042).
+                        guarding_module_accounts(
+                            stage_need(
+                                getattr(agent, "slug", None),
+                                is_builtin=bool(getattr(agent, "is_builtin", False)),
+                            )
+                            is not None
                         ),
                         turn_binding(_turn_session),
                     ):

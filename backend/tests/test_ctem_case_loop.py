@@ -109,7 +109,7 @@ def _signal(**kw) -> SimpleNamespace:
             "scope": {
                 "criticality": "critical",
                 "risk_scenarios": [{"id": "rs-1", "name": "Data theft"}],
-                "sources": [{"from": "crown_jewel", "name": "Customer SaaS hosting", "criticality": "critical"}],
+                "sources": [{"from": "primary_asset", "name": "Customer SaaS hosting", "criticality": "critical"}],
             },
         },
     )
@@ -291,6 +291,38 @@ async def test_a_case_that_needs_its_validation_proof_is_not_resolved_on_the_inv
 )
 def test_paths_with_no_cve_map_to_their_remediation_kind(path, kind):
     assert loop.fix_of(_signal(trigger_path=path)).kind == kind
+
+
+@pytest.mark.parametrize(
+    "state,title",
+    [
+        ("never_measured", "Put in place and measure the control on kibana.example.com"),
+        ("attested_only", "Measure the control on kibana.example.com (attested only)"),
+        ("expired", "Re-test the control on kibana.example.com"),
+        ("unknown_state", "Restore the control on kibana.example.com: some reason"),
+        (None, "Restore the control on kibana.example.com: some reason"),
+    ],
+)
+def test_a_control_decay_case_is_worded_by_its_evidence_state(state, title):
+    """#2069: wording only; the key and kind stay those of every control_decay case of the asset."""
+    evidence = {"state": state} if state else {}
+    fix = loop.fix_of(
+        _signal(
+            trigger_path="control_decay",
+            subject_ref="kibana.example.com",
+            subject_label="kibana.example.com: some reason",
+            evidence=evidence,
+        )
+    )
+    assert fix.title == title
+    assert fix.kind == "restore_control" and fix.key == "restore_control:asset/kibana.example.com"
+
+
+def test_a_mitigation_regression_keeps_the_restore_wording():
+    fix = loop.fix_of(
+        _signal(trigger_path="mitigation_regression", subject_label="WAF rule", evidence={"state": "never_measured"})
+    )
+    assert fix.title == "Restore the control on WAF rule"
 
 
 def test_a_software_subject_on_a_vulnerability_path_is_an_upgrade():

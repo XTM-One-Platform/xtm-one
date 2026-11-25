@@ -43,6 +43,10 @@ attack surface pass, at most once per cadence window (Redis slot
    recorded by `system` through `record_signal`; a new one goes through the
    scope gate (`evaluate_after_record`). An asset or a sync seen in several
    scenarios is recorded once.
+4. Commit by batch: the scheduled pass commits every `COMMIT_BATCH` (25) new
+   signals and raises their case events at once, and hands the event loop back
+   between signals. A pass cut by a restart keeps the batches it committed; the
+   next pass finds them by dedupe key and goes on from there.
 
 The dedupe key holds the asset, its state and the date of its last evidence
 (`never` when none): two identical passes record nothing new; evidence that

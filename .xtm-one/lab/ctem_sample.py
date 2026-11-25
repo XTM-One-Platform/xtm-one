@@ -394,7 +394,7 @@ SCREENS_ISSUES: tuple[dict, ...] = (
     _cti(8, "CVE-2017-0145", "Windows Server", "Microsoft", None, 8.8, 0.95, coa=_SMB),
     {
         "source": "openaev", "external_id": "finding-lab-0001", "name": "CVE-2024-21762", "cve": "CVE-2024-21762",
-        "cvss": 9.8, "assets": ("fw-paris-01", "fw-lyon-02"), "crown_jewels": ("Customer SaaS hosting",),
+        "cvss": 9.8, "assets": ("fw-paris-01", "fw-lyon-02"), "primary_assets": ("Customer SaaS hosting",),
         "days_ago": 2,
     },
     {"source": "openaev", "external_id": "finding-lab-0002", "name": "Weak TLS cipher on the VPN gateway",
@@ -402,6 +402,14 @@ SCREENS_ISSUES: tuple[dict, ...] = (
 )
 #: The cases a recompute of :data:`SCREENS_ISSUES` creates (one per remediation key).
 SCREENS_CASES = 4
+
+#: The issues each viewer's Cases source read leaves out, by the viewer's email: the lab's non-admin peer
+#: (``lab.PEER_EMAIL``) reads the Ivanti case without CVE-2023-46805, so for that viewer the case is
+#: ``aggregates_restricted`` (an open member read without its details, #1931) while the administrator
+#: reads it whole. A UX round of the restricted state signs in as the peer; no ``window.fetch`` override.
+SCREENS_RESTRICTED: dict[str, tuple[str, ...]] = {
+    "lab-peer@filigran.io": ("opencti:vulnerability--lab-0005",),
+}
 
 #: The scope the screens lab declares before its recompute: since #1529 a case opens only through the scope
 #: gate, which resolves a vulnerability to the profile's tech stack and the assets running it. Each product of
@@ -416,11 +424,11 @@ SCREENS_TECH_STACK: tuple[dict, ...] = (
 #: The asset records that run them (``POST /organization-context/assets/records/batch``, stable external ids).
 SCREENS_ASSETS: tuple[dict, ...] = (
     {"name": "fw-paris-01", "category": "network_device", "criticality": "very_high", "internet_facing": "yes",
-     "tech_stack": ["FortiOS"], "source": "lab", "external_id": "lab-screens-fw-paris-01"},
+     "products": ["FortiOS"], "source": "lab", "external_id": "lab-screens-fw-paris-01"},
     {"name": "vpn-gw-01", "category": "network_device", "criticality": "very_high", "internet_facing": "yes",
-     "tech_stack": ["Connect Secure"], "source": "lab", "external_id": "lab-screens-vpn-gw-01"},
+     "products": ["Connect Secure"], "source": "lab", "external_id": "lab-screens-vpn-gw-01"},
     {"name": "app-portal-01", "category": "host", "criticality": "very_high", "internet_facing": "yes",
-     "tech_stack": ["Tomcat"], "source": "lab", "external_id": "lab-screens-app-portal-01"},
+     "products": ["Tomcat"], "source": "lab", "external_id": "lab-screens-app-portal-01"},
     {"name": "fs-paris-01", "category": "host", "criticality": "very_high", "internet_facing": "no",
-     "tech_stack": ["Windows Server"], "source": "lab", "external_id": "lab-screens-fs-paris-01"},
+     "products": ["Windows Server"], "source": "lab", "external_id": "lab-screens-fs-paris-01"},
 )

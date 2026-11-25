@@ -342,7 +342,9 @@ def deliver_world(monkeypatch):
     async def duplicate(db, agent_id, key, *, window_seconds):
         return state.duplicate
 
-    async def lock_current(db, assignment_id, name, payload):
+    async def lock_current(
+        db: Any, assignment_id: uuid.UUID, name: str, payload: Any, *, lock: bool = True
+    ) -> tuple[Any, bool]:
         # The locked row still takes the event (edits are covered in test_platform_events_watch).
         return SimpleNamespace(id=assignment_id), False
 

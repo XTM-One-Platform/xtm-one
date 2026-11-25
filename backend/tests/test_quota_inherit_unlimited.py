@@ -575,6 +575,7 @@ def _group(quota_config):
         updated_at=None,
         quota_config=quota_config,
         kind="auto",
+        auto_join=False,
     )
 
 
@@ -619,6 +620,7 @@ async def test_put_group_grants_and_removes_a_ctem_right(monkeypatch: pytest.Mon
         updated_at=None,
         quota_config=None,
         kind="auto",
+        auto_join=False,
     )
 
     async def put(body: groups_api.UpdateGroupRequest) -> groups_api.GroupListItem:

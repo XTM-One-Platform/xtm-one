@@ -278,6 +278,65 @@ async def _record_skipped_fire(
         )
 
 
+async def _supersede_stale_fires(db: AsyncSession, assignment: Assignment, now: datetime) -> bool:
+    """Supersede the earlier fires of *assignment* still waiting for a worker (#2040); whether none is left active.
+
+    Every active run of the assignment must be a scheduled fire that never
+    started (:func:`schedule_overlap.supersede_never_started`): a run that
+    started, an event or manual run, or one a worker claimed meanwhile keeps
+    its place and the new fire is skipped as before. Committed when it
+    supersedes; best effort, a failure is logged and answers ``False``.
+    """
+    from app.services import schedule_overlap
+    from app.services.assignment_engine import ACTIVE_RUN_STATUSES
+    from app.services.decision_waits import holds_assignment
+
+    try:
+        active = list(
+            (
+                await db.execute(
+                    select(AssignmentRun).where(
+                        AssignmentRun.assignment_id == assignment.id,
+                        holds_assignment(AssignmentRun, ACTIVE_RUN_STATUSES),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not active or any(
+            (getattr(run, "trigger_context", None) or {}).get("type") != "schedule"
+            or getattr(run, "status", None) not in schedule_overlap.SUPERSEDABLE_STATUSES
+            or getattr(run, "started_at", None) is not None
+            for run in active
+        ):
+            return False
+        for run in active:
+            if not await schedule_overlap.supersede_never_started(db, run, now=now):
+                await db.rollback()
+                return False
+        await db.commit()
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            await db.rollback()
+        logger.warning(
+            "Scheduled assignment '%s' (%s): stale fire not superseded: %s",
+            assignment.name,
+            assignment.id,
+            format_exception_message(exc),
+        )
+        return False
+    for run in active:
+        logger.info(
+            "Scheduled assignment '%s' (%s): fire %s never started and is superseded by the fire of %s",
+            assignment.name,
+            assignment.id,
+            run.id,
+            now.isoformat(),
+        )
+    return True
+
+
 async def _flag_assignment_cron_misconfiguration(
     db: AsyncSession,
     assignment: Assignment,
@@ -1579,6 +1638,11 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Scheduled assignments error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+
+        # --- 3-bis. One admin alert per episode of assignment runs starved of workers (#2040) ---
+        from app.services.run_queue_starvation import check_queue_starvation
+
+        await check_queue_starvation(db)  # never raises
 
         # --- 3a-bis. Fire due flow schedules ---
         # Same tick, same Redis window lock as assignment crons — firing flow
@@ -2897,7 +2961,7 @@ async def _run_autonomous_tick_inner() -> int:
         logger.error("Platform registration heartbeat error: %s", format_exception_message(e), exc_info=True)
 
     # --- 14d. Keep the running build's last_seen_at current ---
-    # One row upserted at most every 15 minutes per process, on a session of
+    # One row upserted at most every TOUCH_INTERVAL_SECONDS per process, on a session of
     # its own: the release history tells a build still running from a replaced one.
     try:
         from app.services.platform_builds import touch_running_build_if_due
@@ -3874,7 +3938,7 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
             # This prevents overlapping executions — an assignment cannot re-run
             # while a previous run is still pending, delayed, running, or
             # awaiting human input.
-            if await has_active_run(db, assignment.id):
+            if await has_active_run(db, assignment.id) and not await _supersede_stale_fires(db, assignment, now):
                 # Never silent: the dropped fire is a ``skipped`` run
                 # naming the run in its way, so a run stuck across resumes
                 # shows in the run list instead of starving the schedule.

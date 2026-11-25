@@ -30,7 +30,7 @@ TODAY = date(2026, 11, 24)
 
 def _typed_profile() -> oc.OrganizationProfile:
     return oc.parse_profile(
-        {"tech_stack": [{"product": "Confluence", "vendor": "Atlassian", "cpe": "", "version": "8.5"}]}
+        {"software": [{"product": "Confluence", "vendor": "Atlassian", "cpe": "", "version": "8.5"}]}
     )
 
 
@@ -54,7 +54,7 @@ def stored(monkeypatch):
 
 async def test_the_profile_rows_are_answered_as_they_are_before_the_store_holds_software(stored):
     _row, profile = await oc.software_profile(None, ORG)
-    assert [(e.vendor, e.product, e.version) for e in profile.tech_stack] == [("Atlassian", "Confluence", "8.5")]
+    assert [(e.vendor, e.product, e.version) for e in profile.software] == [("Atlassian", "Confluence", "8.5")]
 
 
 async def test_a_synced_software_joins_the_typed_rows_and_keeps_its_installed_version(stored):
@@ -63,7 +63,7 @@ async def test_a_synced_software_joins_the_typed_rows_and_keeps_its_installed_ve
         {"vendor": "Atlassian", "product": "Confluence", "cpe": "cpe:2.3:a:atlassian:confluence", "versions": []}
     )
     _row, profile = await oc.software_profile(None, ORG)
-    by_product = {e.product: e for e in profile.tech_stack}
+    by_product = {e.product: e for e in profile.software}
     assert set(by_product) == {"Edge", "Confluence"}
     assert by_product["Edge"].version == "131.0" and by_product["Edge"].source == "software"
     # The entity wins; its CPE is kept, nothing typed is listed twice.
@@ -73,7 +73,7 @@ async def test_a_synced_software_joins_the_typed_rows_and_keeps_its_installed_ve
 async def test_more_software_than_a_typed_list_holds_is_still_answered(stored):
     stored.extend({"vendor": "V", "product": f"P{i}", "cpe": "", "versions": []} for i in range(600))
     _row, profile = await oc.software_profile(None, ORG)
-    assert len(profile.tech_stack) == 601
+    assert len(profile.software) == 601
 
 
 async def test_a_vulnerability_on_synced_software_resolves_in_the_gate(stored):

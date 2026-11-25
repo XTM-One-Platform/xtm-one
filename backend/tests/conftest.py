@@ -308,6 +308,24 @@ def _no_platform_event_dispatch(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _ctem_case_opening_on(request, monkeypatch):
+    """CTEM case opening is on in the unit suite (#1951), as on a fresh install.
+
+    Every case-opening path reads the switch from ``platform_settings``; a unit test runs on
+    a fake session and a scratch database may hold no such table. A module that tests the
+    switch itself sets ``READS_CASE_OPENING_SETTING = True`` and reads the real row.
+    """
+    if not getattr(request.module, "READS_CASE_OPENING_SETTING", False):
+        from app.services import ctem_case_opening
+
+        async def on_everywhere(_db):
+            return set()
+
+        monkeypatch.setattr(ctem_case_opening, "read_paused_verticals", on_everywhere)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _health_findings_open_on_one_read(monkeypatch: pytest.MonkeyPatch) -> None:
     """Platform Health findings open on the first failing read here, with no startup grace.
 

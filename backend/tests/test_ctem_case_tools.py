@@ -99,7 +99,7 @@ def env(monkeypatch):
         seen.created[case.id] = case
         return case
 
-    async def _viewer(_db, user_id, vertical, *, fresh=False):
+    async def _viewer(_db, user_id, vertical, *, fresh=False, members=None):
         if str(user_id) == str(seen.user_id):
             return view_of.ViewerView(issues={ISSUE.member_id: ISSUE}, open_ids={ISSUE.member_id})
         return view_of.ViewerView()
@@ -407,6 +407,70 @@ async def test_a_gate_pass_is_written_on_the_case_and_an_unknown_gate_is_refused
     assert refused.startswith("Refused:") and env.db.commits == commits
 
 
+@pytest.mark.parametrize(
+    ("gate", "prefix"),
+    [
+        ("ctem.analyst_review", "ctem:review:"),
+        ("ctem.validation.non_readonly", "ctem:validation:"),
+        ("ctem.validation.non_readonly", "ctem:f2:validate:"),
+        ("ctem.remediation.decision", "ctem:remediation:"),
+        ("ctem.mobilize", "ctem:f1:case-mobilize:"),
+        ("ctem.mobilize", "ctem:f2:mobilize:"),
+        ("ctem.accept_risk", "ctem:accept-risk:"),
+    ],
+)
+async def test_a_waited_gate_needs_its_open_decision_item(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, gate: str, prefix: str
+) -> None:
+    """#1954: a gate reaches waited only through its decision; without one the write is refused, nothing written."""
+    from app.services import ctem_gate_order
+
+    open_keys: set[str] = set()
+
+    async def _open(_db: object, case_id: str) -> set[str]:
+        assert case_id == str(env.case.id)
+        return set(open_keys)
+
+    monkeypatch.setattr(ctem_gate_order, "open_gate_item_keys", _open)
+    commits = env.db.commits
+    refused = await env.call(
+        "update_ctem_case", case_id=str(env.case.id), state="analyzing", gate={"key": gate, "outcome": "waited"}
+    )
+    assert refused.startswith("Refused:") and "create_work_item" in refused
+    assert env.db.commits == commits and env.db.added == []
+    # Another gate's decision is not this gate's decision.
+    open_keys.add(f"ctem:other:{uuid.uuid4()}")
+    assert (
+        await env.call("update_ctem_case", case_id=str(env.case.id), gate={"key": gate, "outcome": "waited"})
+    ).startswith("Refused:")
+    open_keys.add(prefix + str(env.case.id))
+    body = json.loads(
+        await env.call("update_ctem_case", case_id=str(env.case.id), gate={"key": gate, "outcome": "waited"})
+    )
+    assert "updated" in body
+    written = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
+    assert [(g.from_value, g.to_value) for g in written] == [(gate, "waited")]
+
+
+async def test_a_pass_or_an_answer_needs_no_decision_item(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1954: only waited rests on a decision item; a pass or an answer is written as before."""
+    from app.services import ctem_gate_order
+
+    async def _never(_db: object, _case_id: str) -> set[str]:
+        raise AssertionError("read only for a waited gate")
+
+    monkeypatch.setattr(ctem_gate_order, "open_gate_item_keys", _never)
+    for outcome in ("passed_automatically", "answered"):
+        body = json.loads(
+            await env.call(
+                "update_ctem_case", case_id=str(env.case.id), gate={"key": "ctem.analyst_review", "outcome": outcome}
+            )
+        )
+        assert "updated" in body
+
+
 _REMEDIATION_OPTIONS = [
     {"key": "A", "label": "Disable HTTP/2", "cost": 6000, "expected_loss_before": 500, "expected_loss_after": 50},
     {"key": "B", "label": "Upgrade", "cost": 45000, "expected_loss_before": 500, "expected_loss_after": 10},
@@ -514,3 +578,54 @@ async def test_a_person_answer_is_written_on_the_case(env: SimpleNamespace, monk
     assert body == {"decided": True, "option": "B", "by": "user-1"}
     gates = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
     assert [(g.to_value, g.reason, g.evidence) for g in gates] == [("answered", "user-1", "B")]
+
+
+# ── #2037: a duplicate is merged by the loop, never deleted ──
+
+
+async def test_an_agent_merges_a_duplicate_into_the_case_it_names(env: SimpleNamespace, monkeypatch) -> None:
+    duplicate = _case(title="Upgrade windows to a fixed version", keys=["upgrade:-/windows@latest"])
+    env.created[duplicate.id] = duplicate
+    calls: list[dict[str, Any]] = []
+
+    async def _merge(_db, **kw):
+        calls.append(kw)
+        return env.case
+
+    monkeypatch.setattr(store, "merge_cases", _merge)
+    body = json.loads(
+        await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[str(duplicate.id)], reason="same fix")
+    )
+    assert body["merged"] == [str(duplicate.id)] and body["into"]["id"] == str(env.case.id)
+    assert calls[0]["actor"] == AGENT and calls[0]["source_ids"] == [duplicate.id]
+    assert calls[0]["target_id"] == env.case.id and calls[0]["reason"] == "same fix"
+    assert env.db.commits == 1
+
+
+async def test_a_merge_of_a_case_the_agent_does_not_see_is_refused(env: SimpleNamespace, monkeypatch) -> None:
+    async def _merge(_db, **kw):
+        raise AssertionError("no merge on a case the acting person does not see")
+
+    monkeypatch.setattr(store, "merge_cases", _merge)
+    unseen = str(uuid.uuid4())
+    assert "No case" in await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[unseen])
+    _, other = env.tools_for(str(uuid.uuid4()))
+    assert "No case" in await other("merge_ctem_cases", target_id=str(env.case.id), case_ids=[unseen])
+    assert "must be ids" in await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[])
+    assert env.db.commits == 0
+
+
+async def test_a_merge_rule_refusal_writes_nothing(env: SimpleNamespace, monkeypatch) -> None:
+    async def _merge(_db, **kw):
+        raise rules.CaseRuleError("the surviving case cannot also be merged into itself")
+
+    monkeypatch.setattr(store, "merge_cases", _merge)
+    answer = await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[str(env.case.id)])
+    assert answer.startswith("Refused: the surviving case") and env.db.commits == 0
+
+
+def test_delete_points_to_merge_for_duplicates(env: SimpleNamespace) -> None:
+    described = {d.name: d.description for d in env.defs}
+    assert "reopens at the next reconcile" in described["delete_ctem_cases"]
+    assert "merge duplicates" in described["delete_ctem_cases"]
+    assert "never reopens" in described["merge_ctem_cases"]

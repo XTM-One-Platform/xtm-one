@@ -17,6 +17,7 @@ import { MetricInfo } from "@/components/ui/metric-info";
 import { SampleBadge } from "@/components/ui/sample-badge";
 import { cn, safeExternalUrl, exactMetricValue, formatMetricValue } from "@/lib/utils";
 import { useFormatter } from "@/i18n";
+import { StageSignInHint } from "./stage-sign-in-hint";
 import { CTEM_BAND_CONFIG, CTEM_BAND_SCALE_TEXT, CTEM_PRODUCT_INFO, CTEM_STAGE_CONFIG, CTEM_EXPECTATION_BUCKETS, CTEM_EXPECTATION_TYPE_ORDER, ctemExpectationLabel, ctemExpectationOrder, type CtemStageKey } from "@/lib/constants";
 import { useCtemStageAssessment, useRefreshStageAssessment } from "@/hooks/api/useCtemMetricsApi";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
@@ -155,6 +156,9 @@ function StageAssessmentStrip({ stage, vertical }: { stage: string; vertical: Ct
   // flight) and mirrors it in ``status`` with precedence ("generating" outranks a
   // cached "ready"), so the boolean is the single source of truth here.
   const generating = !!data.generating;
+  // The newest run was skipped before any model call: the member has no
+  // account on these modules yet and signs in to them once (#2042).
+  const unsignedModules = data.status === "no_module_account" ? data.no_module_account ?? [] : [];
   return (
     // Fixed height + fixed line-clamps so the AI assessment strip is identical
     // across every card in a row (the card body above grows to fill, pinning the
@@ -190,6 +194,8 @@ function StageAssessmentStrip({ stage, vertical }: { stage: string; vertical: Ct
             </p>
           )}
         </>
+      ) : !generating && data.status === "no_module_account" ? (
+        <StageSignInHint modules={unsignedModules} />
       ) : (
         <p className="content-caption text-default-secondary my-auto">
           {generating

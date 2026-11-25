@@ -17,6 +17,11 @@ export type CaseView = "list" | "kanban";
 const CASES_LIST_PATH = "/ctem/cases";
 const CASES_KANBAN_PATH = "/ctem/cases/kanban";
 
+/** The detail page of one case. */
+export function caseDetailPath(caseId: string): string {
+  return `${CASES_LIST_PATH}/${encodeURIComponent(caseId)}`;
+}
+
 /** The view a pathname draws; anything but the Kanban path is the list. */
 export function readCaseView(pathname: string): CaseView {
   return pathname.replace(/\/+$/, "") === CASES_KANBAN_PATH ? "kanban" : "list";

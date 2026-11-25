@@ -1,6 +1,6 @@
 # XTM One in OpenCRQ
 
-OpenCRQ is the governance, risk and compliance module of the XTM Platform. It owns frameworks, controls, assessments, risk scenarios and the financial quantification of cyber risk. XTM One brings its agents into OpenCRQ, gives your own agents OpenCRQ tools, and keeps the crown jewels of your organization profile in line with OpenCRQ's assets.
+OpenCRQ is the governance, risk and compliance module of the XTM Platform. It owns frameworks, controls, assessments, risk scenarios and the financial quantification of cyber risk. XTM One brings its agents into OpenCRQ, gives your own agents OpenCRQ tools, and keeps the primary assets of your organization profile in line with OpenCRQ's assets.
 
 ## The embedded assistant
 
@@ -49,4 +49,4 @@ The exposure lifecycle on the [home dashboard](../home-dashboard.md) has a `Gove
 
 ## Next step
 
-Administrators who want to fill in the crown jewels first should read [Organization profile](../../administration/organization.md). To connect an MCP client, continue with [`Platform MCP servers`](../resources/platform-mcp-servers.md).
+Administrators who want to fill in the primary assets first should read [Organization profile](../../administration/organization.md). To connect an MCP client, continue with [`Platform MCP servers`](../resources/platform-mcp-servers.md).

@@ -472,10 +472,6 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
         "fleet workspace the agent is a home member of, for its owner or claimer "
         "only; a caller with no account or no agent gets false()"
     ),
-    ("services/organization_context_fill_agent.py", "_existing_agent"): (
-        "the administrator's own fill agent (#11888), found by its owner id and "
-        "tag: a personal agent of that user, never a caller's visibility tier"
-    ),
     ("services/shared_state.py", "_narrowed_clause"): (
         "an agent's narrowing on top of the visible scope: the company-managed "
         "entries whose owner agent keeps that agent out"

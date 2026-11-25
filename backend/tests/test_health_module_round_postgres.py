@@ -13,7 +13,6 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -39,12 +38,13 @@ from tests.health_support import configure, health_database, make_user
 pytestmark = pytest.mark.integration
 
 NOW = datetime(2026, 11, 22, 6, 0, tzinfo=UTC)
-_SKILLS_DIR = Path(module_analyst.__file__).resolve().parents[2] / "agents" / "seed_data" / "skill_content"
 
 
 def _playbook_checks(provider: str) -> list[str]:
     """The check ids of the seeded playbook of *provider*, in table order."""
-    text = (_SKILLS_DIR / f"health-{provider}-checks.md").read_text(encoding="utf-8")
+    from app.services.health.check_reports import module_playbook
+
+    text = module_playbook(provider)
     return re.findall(r"^\| `([a-z0-9_]+)` \|", text, flags=re.MULTILINE)
 
 
@@ -271,4 +271,4 @@ async def test_the_seeded_fleet_delegates_to_each_checker_and_each_holds_its_pla
         assert (orchestrator.handover_types or {}).get(str(checker.id)) == "delegate", role
         assert (f"agent:{orchestrator.id}", f"agent:{checker.id}", EDGE_HANDOVER, "delegate") in edges, role
         held = [skills[str(i)] for i in checker.skill_ids or [] if str(i) in skills]
-        assert any(f"slug:health-{provider}-checks" in (tags or []) for tags in held), (role, held)
+        assert any("slug:health-module-checks" in (tags or []) for tags in held), (provider, role, held)

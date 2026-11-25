@@ -95,8 +95,10 @@ _WRITE_KEY_CHARS = 80
 _READ_VALUE_CHARS = 2000
 _READ_WINDOW_DEFAULT_CHARS = 20_000
 _READ_WINDOW_MAX_CHARS = 50_000
-#: Keys a ``PREFIX*`` read searches (gap-evidence-overflow-scatter).
-_FAMILY_MAX_KEYS = 50
+#: Keys a ``PREFIX*`` read searches (gap-evidence-overflow-scatter), read by pages of
+#: _FAMILY_PAGE_KEYS so a family past one page is searched whole (gap-lookup-across-split-keys).
+_FAMILY_MAX_KEYS = 500
+_FAMILY_PAGE_KEYS = 100
 # The default read of a large object value: its top-level keys, a
 # small value inline (its JSON up to _READ_KEY_INLINE_CHARS), a larger one by
 # its size; at most _READ_KEYS_SHOWN keys. Then the latest _READ_NOTES notes.
@@ -1046,14 +1048,20 @@ def build_shared_state_tools(
 
         if not family.strip() or not path:
             return "Error: a key ending in * reads one `path` across the keys starting with it; give both."
+        states: list[dict] = []
         try:
-            states = await list_states(
-                user_id=acting_user_id,
-                status="active",
-                reader=writer,
-                key_prefix=_ns(family),
-                limit=_FAMILY_MAX_KEYS,
-            )
+            while len(states) < _FAMILY_MAX_KEYS:
+                page = await list_states(
+                    user_id=acting_user_id,
+                    status="active",
+                    reader=writer,
+                    key_prefix=_ns(family),
+                    limit=min(_FAMILY_PAGE_KEYS, _FAMILY_MAX_KEYS - len(states)),
+                    offset=len(states),
+                )
+                states.extend(page)
+                if len(page) < _FAMILY_PAGE_KEYS:
+                    break
         except Exception as exc:
             logger.error("get_shared_state family read failed: %s", format_exception_message(exc), exc_info=True)
             return "Error: failed to read the shared state. Please try again."

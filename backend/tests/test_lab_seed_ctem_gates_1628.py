@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -97,6 +97,44 @@ def test_the_plan_resolves_to_the_records_the_cards_draw():
     assert answered["option"] == {"key": "A", "label": module.OPTIONS[0]["label"]}
     assert answered["wait_seconds"] == 42 * 60
     assert resolved["ctem.validation.non_readonly"]["deadline"]
+
+
+def test_the_seeded_threat_package_reads_drafted_after_the_review_answer():
+    """Gap lab-ctem-screens-no-threat-package: the package card renders without a fetch override."""
+    from types import SimpleNamespace
+
+    from app.services import ctem_case_loop as loop
+    from app.services import ctem_cases_view as view
+
+    module = _seed()
+    assert loop._GROUPING_ID.match(module.PACKAGE["grouping_id"])
+    assert loop._DRAFT_URL.match(module.PACKAGE["url"])
+    now = datetime(2026, 11, 24, 12, 0, tzinfo=UTC)
+    events = []
+    for row in module.plan("case-1", now):
+        for outcome, at, by, option in row["events"]:
+            events.append(
+                SimpleNamespace(
+                    kind="gate", from_value=row["gate"], to_value=outcome, at=at, reason=by, evidence=option
+                )
+            )
+    events.append(
+        SimpleNamespace(
+            kind="threat_package",
+            from_value=module.PACKAGE["coverage_id"],
+            to_value=module.PACKAGE["grouping_id"],
+            at=now - timedelta(minutes=20),
+            reason=module.PACKAGE["name"],
+            evidence=module.PACKAGE["url"],
+        )
+    )
+    package = view.threat_package_for(events, SimpleNamespace(opencti=True), now=now)
+    assert package["state"] == "drafted" and package["coverage_drafted"] is True
+    assert package["restricted"] is False and package["grouping_id"] == module.PACKAGE["grouping_id"]
+    source = SEED.read_text(encoding="utf-8")
+    assert "record_threat_package(db, case, dict(PACKAGE)" in source
+    helper = ast.unparse(ast.parse(LAB.read_text(encoding="utf-8")))
+    assert "CTEM case threat package drafted" in helper
 
 
 def test_lab_runs_it_after_the_cases_and_skips_on_failure():

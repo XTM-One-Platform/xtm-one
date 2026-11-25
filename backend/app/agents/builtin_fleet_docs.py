@@ -440,9 +440,9 @@ _INTEGRATIONS = "/integrations"
 _PROFILE_FIELD_TAB: dict[str, tuple[str, str]] = {
     "sector": ("identity", "identity"),
     "regions": ("identity", "identity"),
-    "crown_jewels": ("business", "crown_jewels"),
+    "primary_assets": ("business", "primary_assets"),
     "tracked_organizations": ("business", "tracked_organizations"),
-    "tech_stack": ("technology", "tech_stack"),
+    "software": ("technology", "software"),
 }
 
 
@@ -463,9 +463,9 @@ _NEEDS_OPENCRQ = _prereq("integration:opencrq", "OpenCRQ connected for you", _IN
 _NEEDS_SECTOR = _prereq("profile:sector", "Sector in the organization profile", profile_fix_route("sector"))
 _NEEDS_REGIONS = _prereq("profile:regions", "Regions in the organization profile", profile_fix_route("regions"))
 _NEEDS_JEWELS = _prereq(
-    "profile:crown_jewels", "Primary assets in the organization profile", profile_fix_route("crown_jewels")
+    "profile:primary_assets", "Primary assets in the organization profile", profile_fix_route("primary_assets")
 )
-_NEEDS_TECH = _prereq("profile:tech_stack", "Technology in the organization profile", profile_fix_route("tech_stack"))
+_NEEDS_TECH = _prereq("profile:software", "Technology in the organization profile", profile_fix_route("software"))
 _SWITCHED_ON = _prereq("manual", "An administrator switches each automation on", "")
 
 #: Gate impact classes (#9769, ``app.services.fleet_autonomy``): ``low`` stops
@@ -502,7 +502,9 @@ GATE_OFFERED_TOOLS: dict[str, tuple[str, ...]] = {"ctem.analyst_review": ("apply
 #: (``Fleet.approval_pins``, writable on a built-in fleet, never written by the
 #: seed) moves one gate either way and survives a seed upgrade. No gate names a
 #: tool (#1675): the OpenAEV launches belong to ``ctem.validation.non_readonly``,
-#: the remediation tickets and a supplier action to ``ctem.mobilize``, the OpenCRQ
+#: the remediation tickets and a supplier action to ``ctem.mobilize``, a fix applied
+#: through a bound integration (indicators pushed to the EDR in prevention mode, a rule
+#: deployed, a configuration changed, #2061) to ``ctem.production_change``, the OpenCRQ
 #: treatment plan writes to ``ctem.remediation.decision``, by the persona alone.
 CTEM_GATE_KEYS: tuple[str, ...] = (
     "ctem.validation.non_readonly",
@@ -543,13 +545,22 @@ def _ctem_gates(*, launch_tools: bool, mobilize_action: str) -> list[dict[str, A
             "high",
         ),
         gate(CTEM_MOBILIZE_GATE, mobilize_action, "platform", "destructive"),
-        gate("ctem.production_change", "Apply a change on production through an integration", "platform", "high"),
+        gate(
+            "ctem.production_change",
+            "Apply a change on production through an integration: indicators blocked in the EDR, a rule "
+            "deployed, a configuration changed, with its rollback",
+            "platform",
+            "high",
+        ),
         gate("ctem.accept_risk", "Accept a residual risk beyond the policy cap", "platform", "high"),
         gate("ctem.close_without_retest", "Close a case without a passing re-test", "platform", "high"),
     ]
 
 
-_MOBILIZE_ACTION = "Mobilize: create the tickets, notify the owners, hand over the prepared change"
+_MOBILIZE_ACTION = (
+    "Mobilize: create the tickets, notify the owners, hand over the prepared change; a fix applied "
+    "through an integration is ctem.production_change"
+)
 
 CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
     "purpose_line": "Turn a published threat into an approved, verified plan in days.",
