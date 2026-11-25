@@ -213,6 +213,17 @@ Common rules:
   signal, and the note lists their identifiers (first 50) so an operator can
   record a signal by hand. Gates are unchanged. Tests:
   `tests/test_ctem_fleets_on_cases.py`.
+- **One writer per counter (#2250).** Each counter of `ctem:f1:state` and
+  `ctem:f2:state` has exactly one seeded writer, named in
+  `CTEM_F1_COUNTER_WRITERS` / `CTEM_F2_COUNTER_WRITERS` (`builtin_agents.py`)
+  and in both personas: the F1 Weekly threat sweep writes `threats_reviewed`,
+  `threats_relevant` and `last_refresh` once per week; the F1 Re-test due
+  writes `cases_resolved` and `loss_avoided` once per resolved case (the note
+  names the case id, so a resumed run adds nothing); the F2 Daily backlog pass
+  sets `cve_triaged`, `cve_validated` and `last_pass` counted from the cases;
+  the F2 Re-test due writes `ticket_closed_retested` once per case. The case
+  listener (up to 5 runs at once) and the F2 triage listeners never write them.
+  Tests: `tests/test_ctem_counter_writers.py`.
 - **Bounded shared state (#10789).** Every seeded persona that keeps a list in
   shared state states its bound: a closed case leaves the open list and only
   bumps the counters, a history or closed list is appended with `keep_last`
