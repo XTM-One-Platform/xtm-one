@@ -4286,6 +4286,63 @@ def seed_open_decision(token: str, base: str) -> dict[str, dict[str, str]]:
     return {"open decision": {"id": f"work_item:{item}", "url": f"{base}/tasks/work-items/{item}"}}
 
 
+def seed_waiting_items(token: str, base: str, fleet: str | None) -> dict[str, dict[str, str]]:
+    """Items waiting for the administrator outside Mine: the "Waiting for me" chip on every scope (#2044).
+
+    ``seed_open_decision`` makes one personal item; the chip of the work items list (#1506) counts the
+    scope of the page, so the Company segment and a fleet's Work Items tab need their own waiting rows.
+    Writes through the API, ``needs_human`` with a complete ask and no owner agent (no inbox claims it):
+    ``company`` is company-managed; ``fleet``, given *fleet* (the locked fleet), is filed in its
+    workspace. Each is read back from ``GET /work-items?waiting_for_me=true`` (``&fleet=`` for the
+    fleet one); a row missing raises. Logged ``seeded waiting items: <url>``. May raise: the caller
+    logs and skips.
+    """
+    ask = {
+        "question": "Keep the seeded scope row?",
+        "context": "Seeded by the lab so the Waiting for me chip counts on this scope.\nAnswering it changes nothing.",
+        "options": [
+            {"key": "A", "label": "Keep it", "effect": "The item reopens with this answer."},
+            {"key": "B", "label": "Drop it", "effect": "The item reopens with this answer."},
+        ],
+        "recommendation": "A",
+    }
+    common = {"needs_human": True, "ask": ask, "dedupe": True, "dedupe_by": "key"}
+    slots: dict[str, tuple[str, str]] = {}
+    company = _created(api("POST", "/work-items", token, {
+        **common,
+        "title": f"{SEED_NAME} company item waiting for you",
+        "description": "Seeded by the lab: a company-managed item parked for a person's decision.",
+        "correlation_key": "lab-waiting-company",
+        "is_company_managed": True,
+    }))
+    slots["company"] = (company, "/work-items?waiting_for_me=true&vis=all&limit=200")
+    if fleet:
+        fleet_row = api("GET", f"/fleets/{fleet}", token)
+        workspace = fleet_row.get("workspace_id") if isinstance(fleet_row, dict) else None
+        if not workspace:
+            raise RuntimeError(f"fleet {fleet} answered no workspace: {str(fleet_row)[:120]}")
+        in_fleet = _created(api("POST", "/work-items", token, {
+            **common,
+            "title": f"{SEED_NAME} fleet item waiting for you",
+            "description": "Seeded by the lab: an item filed in the fleet's workspace, parked for a person's decision.",
+            "correlation_key": "lab-waiting-fleet",
+            "workspace_id": workspace,
+        }))
+        slots["fleet"] = (in_fleet, f"/work-items?waiting_for_me=true&vis=all&limit=200&fleet={fleet}")
+    missing = []
+    for slot, (item, path) in slots.items():
+        listed = api("GET", path, token)
+        ids = {str(row.get("id")) for row in listed or [] if isinstance(row, dict)}
+        if item not in ids:
+            missing.append(f"{slot} {item}")
+    if missing:
+        raise RuntimeError(f"waiting items not read back from waiting_for_me: {', '.join(missing)}")
+    seeded = {"waiting company item": {"id": company, "url": f"{base}/tasks/work-items?vis=all"}}
+    if "fleet" in slots:
+        seeded["waiting fleet item"] = {"id": slots["fleet"][0], "url": f"{base}/fleets/{fleet}"}
+    return seeded
+
+
 def seed_no_reason_blocked(token: str, base: str, fleet: str | None) -> dict[str, dict[str, str]]:
     """Blocked work items with no reason, so the work items list renders its "No reason" chip (#10422).
 
@@ -7823,6 +7880,10 @@ def seed_entities() -> None:
         seeded.update(seed_no_reason_blocked(token, base, seeded.get("locked fleet", {}).get("id")))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["no-reason blocked work items"] = str(exc)[:600]
+    try:
+        seeded.update(seed_waiting_items(token, base, seeded.get("locked fleet", {}).get("id")))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["waiting items"] = str(exc)[:600]
     try:
         seeded.update(seed_scheduled_one_offs(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal

@@ -9082,6 +9082,13 @@ def build_agent_builder_tool(
                 if r.completed_at and r.started_at:
                     secs = (r.completed_at - r.started_at).total_seconds()
                     line += f" | Duration: {secs:.0f}s"
+                if r.status in ("pending", "delayed") and r.assignment_id:
+                    # Why it waits and its place in the queue (#2040).
+                    from app.services.run_queue_starvation import queue_wait_line
+
+                    waiting = await queue_wait_line(_db, r.id)
+                    if waiting:
+                        line += f"\n  {waiting}"
                 line += _run_degraded_lines(r, prefix="\n  ")
                 if r.status == "failed" and r.error:
                     err_text = " ".join(r.error.split())
@@ -9282,6 +9289,12 @@ def build_agent_builder_tool(
                 budget_line = await _run_budget_line(_db, run.id)
                 if budget_line:
                     parts.append(budget_line)
+                if run.status in ("pending", "delayed"):
+                    from app.services.run_queue_starvation import queue_wait_line
+
+                    waiting = await queue_wait_line(_db, run.id)
+                    if waiting:
+                        parts.append(waiting)
             from app.services.hitl_resume_clock import awaiting_human_seconds
 
             _paused = awaiting_human_seconds(run)

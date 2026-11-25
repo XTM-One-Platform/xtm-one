@@ -32,6 +32,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services import ctem_cases as rules
+
 logger = logging.getLogger(__name__)
 
 #: The work item keys of the gates that decide or mobilize a case's remediation,
@@ -160,11 +162,12 @@ def unverified_reason(issues: Any) -> str | None:
     for issue in issues or ():
         if getattr(issue, "source", None) != "opencti" or getattr(issue, "not_affected", None):
             continue
-        outcomes = tuple(getattr(issue, "version_outcomes", None) or ())
+        # Typed facts (#2038); a pair stored before it reads the same way.
+        outcomes = rules.version_facts(getattr(issue, "version_outcomes", None))
         if not outcomes and not _clean(getattr(issue, "installed_version", None)):
             not_reported = True
             continue
-        not_known.update(_clean(v) for v, o in outcomes if _clean(o) == UNKNOWN and _clean(v))
+        not_known.update(_clean(f.version) for f in outcomes if _clean(f.outcome) == UNKNOWN and _clean(f.version))
     if not_known:
         return f"{UNVERIFIED_NOT_KNOWN} {', '.join(sorted(not_known))}"
     return UNVERIFIED_NOT_REPORTED if not_reported else None

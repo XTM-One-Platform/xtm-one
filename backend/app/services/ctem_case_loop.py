@@ -195,6 +195,40 @@ def fix_of(signal: CtemSignal) -> CaseFix:
     return CaseFix(key=key, kind=kind, title=title)
 
 
+#: Why a software signal with nothing to install opens no upgrade case (#2047).
+NOTHING_TO_UPGRADE = (
+    "no CVE, no affected version range and no fixed version: nothing to install (a vendor fix made "
+    "service-side); kept to validate, no upgrade case"
+)
+#: Evidence keys any one of which names something an upgrade can act on.
+_UPGRADE_FACTS: tuple[str, ...] = (
+    "cve",
+    "cve_id",
+    "cves",
+    "vulnerable_range",
+    "affected_versions",
+    "affected_packages",
+    "fixed_version",
+    "patched_versions",
+)
+
+
+def nothing_to_upgrade(signal: CtemSignal, fix: CaseFix) -> bool:
+    """Whether *fix* is an ``@latest`` upgrade the signal gives nothing to act on (pure, #2047).
+
+    True only for an ``upgrade:...@latest`` key from a signal that names no CVE (subject or evidence),
+    no affected range and no fixed version. A signal with any of them keeps its upgrade case.
+    """
+    if fix.kind != "upgrade" or not fix.key.endswith("@latest") or fix.fixed_version:
+        return False
+    for ref in (signal.subject_ref, signal.subject_label):
+        if str(ref or "").strip().upper().startswith("CVE-"):
+            return False
+    evidence = getattr(signal, "evidence", None)
+    evidence = evidence if isinstance(evidence, dict) else {}
+    return not any(evidence.get(k) for k in _UPGRADE_FACTS)
+
+
 def source_fix_of(evidence: dict[str, Any]) -> CaseFix | None:
     """The remediation a source reader named on its signal (#1529), else ``None``.
 
@@ -291,17 +325,25 @@ def _event(case_id: uuid.UUID, actor: str, kind: str, at: datetime, **kw: Any) -
 
 
 async def _open_case_for_key(db: AsyncSession, organization_id: uuid.UUID, vertical: str, key: str) -> CtemCase | None:
-    rows = (
-        await db.execute(
-            select(CtemCase).where(
-                CtemCase.organization_id == organization_id,
-                CtemCase.vertical == vertical,
-                CtemCase.state.in_(OPEN_STATES),
+    rows = list(
+        (
+            await db.execute(
+                select(CtemCase).where(
+                    CtemCase.organization_id == organization_id,
+                    CtemCase.vertical == vertical,
+                    CtemCase.state.in_(OPEN_STATES),
+                )
             )
-        )
-    ).scalars()
+        ).scalars()
+    )
     for case in rows:
         if key in (case.keys or []):
+            return case
+    # The same fix of the same product under another spelling (vendor present or absent, label case)
+    # joins the open case and adds its key there, so one fix never holds two SLAs (#2037).
+    for case in rows:
+        if any(rules.same_product_key(key, k) for k in case.keys or []):
+            case.keys = [*(case.keys or []), key]
             return case
     return None
 
@@ -323,6 +365,12 @@ async def open_from_signal(
         return None
     now = now or datetime.now(UTC)
     fix = fix_of(signal)
+    if nothing_to_upgrade(signal, fix):
+        # #2047: no CVE, no affected range, no fixed version: a vendor fix made service-side leaves nothing to
+        # install, so no upgrade case opens; the signal is kept and parked for a person to validate.
+        signal.state = "to_validate"
+        signal.decision = {**decision, "outcome": "review", "state": "to_validate", "reason": NOTHING_TO_UPGRADE}
+        return None
     severity, hours, scenarios = severity_of(decision)
     case = await _open_case_for_key(db, signal.organization_id, vertical, fix.key)
     created = case is None
