@@ -76,8 +76,9 @@ from app.services.assignment_pause import (
     mark_schedule_resumed,
     pause_assignment,
 )
+from app.services.builtin_allowed_tools import with_implicit_scope
 from app.services.builtin_customer_layer import seed_keeps_field, seed_keeps_model
-from app.services.builtin_tool_aliases import canonical_builtin_selection
+from app.services.builtin_tool_aliases import canonical_builtin_selection, platform_scoped_groups
 from app.services.kb_helpers import bump_kb_revision, reset_changed_document
 
 logger = logging.getLogger(__name__)
@@ -372,6 +373,12 @@ def _sync_agent_fields(
     agent.skip_llm = data.get("skip_llm", False)
     # Per-agent runtime config (generic JSON blob for engine-level behaviour)
     agent.config = data.get("config") or None
+    # A group the canonical fold scoped while the definition named no list for it is a
+    # list the platform wrote (#2327, as ``fold_builtin_selection`` marks it, #39): the
+    # functions later releases add to the group reach the agent.
+    implicit = platform_scoped_groups(data.get("builtin_allowed_tools"), agent.builtin_allowed_tools)
+    if implicit:
+        agent.config = with_implicit_scope(agent.config, add=implicit)
     # Memory tiers
     agent.memory_short_term_enabled = data.get("memory_short_term_enabled", True)
     agent.memory_medium_term_enabled = data.get("memory_medium_term_enabled", True)
