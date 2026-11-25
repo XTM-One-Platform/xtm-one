@@ -1931,6 +1931,18 @@ async def _run_autonomous_tick_inner() -> int:
                     logger.info("Lease hold: %d held event(s) delivered again", held)
         except Exception as e:
             logger.error("Lease hold error: %s", format_exception_message(e), exc_info=True)
+        # The platform event deliveries that errored (the DB pool exhausted, a
+        # dropped connection): delivered again with back-off, never lost (#2101).
+        try:
+            if _ai_on:
+                from app.services.platform_event_retry import process_due as process_platform_event_retries
+
+                redelivered = await process_platform_event_retries()
+                if redelivered:
+                    triggered += redelivered
+                    logger.info("Platform event retry: %d delivery(ies) made again", redelivered)
+        except Exception as e:
+            logger.error("Platform event retry error: %s", format_exception_message(e), exc_info=True)
 
         # --- 3b. Process work-item inbox assignments (autonomous pickup) ---
         # The consumer half of the work-item primitive: dispatch due,
