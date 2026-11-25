@@ -18,6 +18,7 @@ import pytest
 from app.services import ctem_remediation_decision as rd
 from app.services import ctem_version_match as matching
 from app.services import work_item
+from app.services.decision_ask import CUT_MARK, MAX_EFFECT_CHARS
 
 
 @pytest.mark.parametrize(("name", "limit"), sorted(rd.TEXT_LIMITS.items()))
@@ -33,6 +34,45 @@ def test_an_option_text_at_its_room_is_kept_whole() -> None:
     residual = "r" * rd.TEXT_LIMITS["residual_risk"]
     (option,) = rd.parse_options([{"key": "A", "label": "l" * 120, "residual_risk": residual}])
     assert option.label == "l" * 120 and option.residual_risk == residual
+
+
+def _full_option(**figures: float | str) -> dict[str, object]:
+    """An option with every text field at its room (#2179)."""
+    texts = {name: "w " * (limit // 2) for name, limit in rd.TEXT_LIMITS.items()}
+    return {"key": "A", **texts, "preapproved": True, **figures}
+
+
+@pytest.mark.parametrize(
+    "figures",
+    [{}, {"cost": 1_000_000_000, "expected_loss_before": 9_000_000_000, "expected_loss_after": 100_000}],
+    ids=["not-priced", "priced"],
+)
+def test_an_option_whose_composed_effect_overflows_is_refused_with_its_length(figures: dict[str, float]) -> None:
+    with pytest.raises(rd.DecisionInputError) as refused:
+        rd.parse_options([_full_option(**figures)])
+    message = str(refused.value)
+    assert "option A effect is" in message and str(MAX_EFFECT_CHARS) in message
+
+
+@pytest.mark.parametrize("currency", ["", "EUR"])
+@pytest.mark.parametrize(
+    "figures",
+    [{}, {"cost": 1_000_000_000, "expected_loss_before": 9_000_000_000, "expected_loss_after": 100_000}],
+    ids=["not-priced", "priced"],
+)
+def test_an_accepted_option_reads_its_effect_whole(figures: dict[str, float], currency: str) -> None:
+    option = _full_option(**figures)
+    # Shorten the residual risk until the composed line fits: the largest option parse_options accepts.
+    while True:
+        try:
+            (parsed,) = rd.parse_options([option])
+            break
+        except rd.DecisionInputError:
+            option["residual_risk"] = str(option["residual_risk"])[:-2]
+    for shown in (True, False):
+        effect = rd.option_effect(parsed, figures=shown, currency=currency)
+        assert CUT_MARK not in effect and len(effect) <= MAX_EFFECT_CHARS
+        assert effect.endswith(f"pre-approved runbook {parsed.runbook}")
 
 
 def test_an_unpriced_option_says_why() -> None:
