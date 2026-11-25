@@ -25,6 +25,7 @@ as actor. The answers are the API's own shapes (``api/v1/ctem_cases.py``).
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -64,6 +65,10 @@ CTEM_CASE_AGENT_SLUGS: frozenset[str] = frozenset(
 _STATES: tuple[str, ...] = CASE_STATES
 #: History events one ``get_ctem_case`` answer carries.
 _HISTORY_PAGE = 20
+#: Issues one ``get_ctem_case`` answer lists (#2092): a 700-issue case answered 300k characters.
+_ISSUE_PAGE = 100
+#: A case read slower than this is logged with its size (#2092).
+_SLOW_READ_SECONDS = 5.0
 
 
 def offers_ctem_case_tools(agent_slug: str | None, *, is_builtin: bool) -> bool:
@@ -90,6 +95,48 @@ def _when(value: object) -> datetime | None:
 
 def _dump(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def _bounded_issues(rendered: dict[str, Any]) -> dict[str, Any]:
+    """*rendered* with at most :data:`_ISSUE_PAGE` issues, the total and a truncated flag (#2092).
+
+    The issues come ranked (``ctem_cases_view.hydrate``), Restricted rows last, so
+    the page keeps the ones that matter; the counts and scores stay those of the case.
+    """
+    issues = list(rendered.get("issues") or [])
+    return {
+        **rendered,
+        "issues": issues[:_ISSUE_PAGE],
+        "issues_total": len(issues),
+        "issues_truncated": len(issues) > _ISSUE_PAGE,
+    }
+
+
+def _same_gate(events: list[Any], gate: dict[str, Any]) -> bool:
+    """Whether the newest ``gate`` event of this gate key already records this decision (#2092).
+
+    An identical decision written again (a retried call after a timeout) is not
+    recorded twice.
+    """
+    key = str(gate.get("key") or "").strip()
+    newest = next((e for e in reversed(events) if e.kind == "gate" and e.from_value == key), None)
+    if newest is None:
+        return False
+    return (
+        (newest.to_value or "") == str(gate.get("outcome") or "")
+        and (newest.reason or "") == (str(gate.get("by") or "").strip()[:300])
+        and (newest.evidence or "") == (str(gate.get("option") or "").strip()[:300])
+    )
+
+
+def _written(event: Any) -> dict[str, Any]:
+    """One history entry a write added, as the compact update answer names it (#2092)."""
+    return {
+        "kind": event.kind,
+        "from": event.from_value,
+        "to": event.to_value,
+        "reason": (event.reason or "")[:300] or None,
+    }
 
 
 def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:
@@ -125,9 +172,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         if found is None:
             return None
         case, rows, events = found
-        rendered = view_of.hydrate(
-            case, rows, events[:_HISTORY_PAGE], await view_of.viewer_view(db, str(scope), vertical)
-        )
+        # This case's members only (#2092): an older view or the case's own read answers while
+        # a drain rebuilds the whole view, never a whole build on the call.
+        members = [f"{r.source}:{r.external_id}" for r in rows]
+        view = await view_of.viewer_view(db, str(scope), vertical, members=members)
+        rendered = view_of.hydrate(case, rows, events[:_HISTORY_PAGE], view)
         if rendered is None:
             return None
         from app.services import ctem_case_version_history as version_history
@@ -161,7 +210,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     return "No organization is set up yet: there are no cases."
                 cases = await store.list_cases(db, organization_id=org_id, vertical=vertical)
                 owner = _uuid(owner_user_id)
-                view = await view_of.viewer_view(db, str(scope), vertical)
+                try:
+                    view = await view_of.viewer_view(db, str(scope), vertical, stale_ok=True)
+                except view_of.ViewRebuildingError as exc:
+                    # Never a whole view build on the call (#2092): say when to retry.
+                    return f"Not available yet: {exc} Nothing is wrong with the cases; do not guess them."
                 rows, counts = view_of.list_for_viewer(
                     cases,
                     view,
@@ -201,6 +254,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         wanted = _uuid(case_id)
         if wanted is None:
             return "case_id must be the id list_ctem_cases answers."
+        started = time.perf_counter()
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
@@ -231,7 +285,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     if shown[0].remediation_kind == "upgrade"
                     else None
                 )
-                return _dump({**shown[2], "running_versions": running, "version_match": match})
+                rendered = _bounded_issues(shown[2])
+                elapsed = time.perf_counter() - started
+                if elapsed > _SLOW_READ_SECONDS:
+                    logger.info(
+                        "CTEM case read of %s took %.1f s (%d issues)", wanted, elapsed, rendered["issues_total"]
+                    )
+                return _dump({**rendered, "running_versions": running, "version_match": match})
         except Exception:
             logger.warning("CTEM case read failed", exc_info=True)
             return "Error: the case could not be read right now. Say so; do not guess it."
@@ -309,6 +369,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             due = _when(due_at)
         except ValueError:
             return "due_at must be an ISO-8601 date and time."
+        committed = False
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
@@ -319,6 +380,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 refused = await _view_only(db, rows, vertical)
                 if refused:
                     return refused
+                before = (await store.events_of(db, [case.id])).get(case.id, [])
+                known = {e.id for e in before}
+                unchanged: list[str] = []
                 if isinstance(gate, dict) and str(gate.get("outcome") or "") == "waited":
                     from app.agents.builtin_fleet_docs import CTEM_GATE_KEYS
                     from app.services import ctem_gate_order
@@ -362,9 +426,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     if not isinstance(attack_path, dict):
                         raise rules.CaseRuleError("attack_path must be an object with its origin")
                     case_loop.record_attack_path(db, case, attack_path, actor=agent_id)
-                if gate is not None:
-                    if not isinstance(gate, dict):
-                        raise rules.CaseRuleError("gate must be an object with key and outcome")
+                if gate is not None and not isinstance(gate, dict):
+                    raise rules.CaseRuleError("gate must be an object with key and outcome")
+                if gate is not None and _same_gate(before, gate):
+                    # The same decision again (a retry after a timeout, #2092): recorded once.
+                    unchanged.append("gate")
+                elif gate is not None:
                     case_loop.record_gate(
                         db,
                         case,
@@ -395,12 +462,51 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         db, case, threat_package, view_of.threat_package_of(history), actor=agent_id
                     )
                 await db.commit()
-                refreshed = await _shown(db, wanted, org_id, vertical)
-                return _dump({"updated": refreshed[2] if refreshed else {"id": str(wanted)}})
+                committed = True
+                # A compact answer (#2092): what this call wrote, never the whole case re-read
+                # (300k characters and a view build on a 700-issue case); get_ctem_case reads it.
+                written: list[dict[str, Any]] = []
+                try:
+                    after = (await store.events_of(db, [case.id])).get(case.id, [])
+                    written = [_written(e) for e in after if e.id not in known]
+                except Exception:
+                    logger.info("CTEM case update: written events unreadable for %s", wanted, exc_info=True)
+                return _dump(
+                    {
+                        "updated": {
+                            "id": str(case.id),
+                            "title": case.title,
+                            "state": case.state,
+                            "owner_user_id": str(case.owner_user_id) if case.owner_user_id else None,
+                            "due_at": case.due_at,
+                            "changed": sorted(
+                                name
+                                for name, value in (
+                                    ("state", state),
+                                    ("owner_user_id", owner_user_id),
+                                    ("due_at", due_at),
+                                    ("note", note),
+                                    ("exploitation", exploitation),
+                                    ("attack_path", attack_path),
+                                    ("gate", gate),
+                                    ("treatment_plan", treatment_plan),
+                                    ("threat_package", threat_package),
+                                    ("applied_change", applied_change),
+                                )
+                                if value not in (None, "") and name not in unchanged
+                            ),
+                            "unchanged": unchanged,
+                            "history_written": written,
+                        }
+                    }
+                )
         except rules.CaseRuleError as exc:
             return f"Refused: {exc}. Nothing was changed."
         except Exception:
             logger.warning("CTEM case update failed", exc_info=True)
+            if committed:
+                # The write is in (#2092): never report a failure for a committed change.
+                return _dump({"updated": {"id": str(wanted), "committed": True}})
             return "Error: the case could not be changed right now. Say so; nothing was changed."
 
     async def _validation(

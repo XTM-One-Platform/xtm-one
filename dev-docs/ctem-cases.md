@@ -862,6 +862,16 @@ with "Ranking points" on the band (a dialog, "Reset to defaults", saved with
 A profile saved before the field reads the defaults; every profile save of
 the Settings form carries it whole.
 
+List reads after a case-opening drain (#2092): the list, the overview and the
+loop measures read the caller's view with `stale_ok`. A generation bump (a case
+opened) retires every cached view; the caller's own newest view of the previous
+generation, still in its TTL, answers while the new one builds in the background
+(`Server-Timing` `cache-stale`). With none, the read waits
+`LIST_BUILD_WAIT_SECONDS` (10 s) for that build, then answers 503 with
+`Retry-After` (`LIST_RETRY_AFTER_SECONDS`, 30 s): never a whole view build on
+the request (400 s on a large tenant). Event visibility (`user_sees_case`)
+reads the case's own members, like the case page.
+
 ### 7.3 Case page `/ctem/cases/:id`
 
 - First paint (#1986): opened from the Cases list, the page draws its header
@@ -1031,10 +1041,10 @@ context: every figure 0.
 
 | Tool | Does |
 |---|---|
-| `list_ctem_cases` | filters (state, owner, priority), paging (max 50); returns the API's case rows and the counts by state |
-| `get_ctem_case` | one case with members (source, id), the latest 20 history events |
+| `list_ctem_cases` | filters (state, owner, priority), paging (max 50); returns the API's case rows and the counts by state; after a generation bump it answers the caller's older view while the new one builds, or "Not available yet ... retry in N s" (#2092) |
+| `get_ctem_case` | one case with members (source, id), the latest 20 history events; at most 100 issues (ranked, Restricted last) with `issues_total` and `issues_truncated`; reads the case's own members, never a whole view build (#2092) |
 | `create_ctem_case` | splits open issues (`source:external_id`) out of their cases into a manual case that pins them (`ctem_cases_store.create_manual_case`; a `split` event on each case they leave) |
-| `update_ctem_case` | owner, due date, note, state with `reason`; `resolved` needs `evidence`; `accepted_risk` refused for an agent (a person accepts risk) |
+| `update_ctem_case` | owner, due date, note, state with `reason`; `resolved` needs `evidence`; `accepted_risk` refused for an agent (a person accepts risk). Answers a compact result (#2092): id, title, state, owner, due date, `changed`, `unchanged` and `history_written`, never the whole case; a gate decision identical to the newest one of its key is not recorded again (`unchanged: ["gate"]`); a committed write never answers an error |
 | `record_ctem_case_validation` | a validation or re-test reference (provider, ref, result, kind, mitigation_only) through `ctem_case_loop.record_validation`: passed or not_exposed resolves (mitigated, watching when mitigation only), failed reopens, the events raised after the commit |
 | `record_ctem_case_ticket` | a ticket reference (integration, key, url, status) through `ctem_case_loop.record_ticket`: one entry per `(integration, key)` updated in place, a `ticket` event on change, never a state move |
 | `decide_ctem_case_remediation` | the remediation decision (CTEM-17, gate B, key `ctem.remediation.decision`): options with figures and the recommendation; rules in `services/ctem_remediation_decision.py` (see 9ter) |
