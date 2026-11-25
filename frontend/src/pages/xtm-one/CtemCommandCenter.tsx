@@ -351,8 +351,7 @@ function ProductPill({
   // like a broken link that opens a blank tab.
   const href = safeExternalUrl(url);
   const base = cn(
-    "inline-flex items-center gap-1.5 rounded-full border border-elevation-subtle-soft py-1 text-[11px] text-default-primary no-underline",
-    compact ? "px-1.5" : "px-2.5",
+    "inline-flex items-center gap-1.5 rounded-sm border border-elevation-subtle-soft px-2 py-1 text-[11px] text-default-primary no-underline",
   );
   // What the compact pill no longer writes out.
   const tone = productPillTone(healthy, health);

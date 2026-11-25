@@ -30,13 +30,35 @@ const SRC = join(process.cwd(), "src") + sep;
 /** One class string (between quotes or backticks) on one line. */
 const CLASS_STRING = /["'`]([^"'`\n]*)["'`]/g;
 
+/**
+ * The `cn(...)` / `clsx(...)` calls of a file, each read as ONE class set: a
+ * chip whose padding sits in a separate argument (`compact ? "px-1.5" :
+ * "px-2.5"`) is still a chip (#1333, UX round 1 B3).
+ */
+function classCalls(text: string): { start: number; end: number; classes: string }[] {
+  const calls: { start: number; end: number; classes: string }[] = [];
+  for (const open of text.matchAll(/\b(?:cn|clsx)\(/g)) {
+    const start = open.index + open[0].length;
+    let depth = 1;
+    let end = start;
+    while (end < text.length && depth > 0) {
+      if (text[end] === "(") depth += 1;
+      else if (text[end] === ")") depth -= 1;
+      end += 1;
+    }
+    const body = text.slice(start, end - 1);
+    calls.push({ start, end, classes: [...body.matchAll(CLASS_STRING)].map((m) => m[1]).join(" ") });
+  }
+  return calls;
+}
+
 /** A pill-shaped chip: full radius, inline padding and a type size in one class string. */
 function isPillChip(classes: string): boolean {
   if (!/(?:^|\s)rounded-full(?=\s|$)/.test(classes)) return false;
   if (!/(?:^|\s)px-(?:1|1\.5|2|2\.5|3|3\.5|4)(?=\s|$)/.test(classes)) return false;
   if (!/(?:^|\s)(?:content-[a-z-]+|text-xs|text-\[\d+px\])(?=\s|$)/.test(classes)) return false;
   // A fixed square (avatar, dot, round button) or a numeric counter is not a chip.
-  if (/(?:^|\s)(?:h-\[?[\d.]+(?:px)?\]?\s+w-\[?[\d.]+(?:px)?\]?|size-[\d.]+|min-w-[^\s]+)(?=\s|$)/.test(classes)) return false;
+  if (/(?:^|\s)(?:h-\[?[\d.]+(?:px)?\]?\s+w-\[?[\d.]+(?:px)?\]?|size-[\d.]+|min-w-(?:[1-9][\d.]*|\[[1-9][^\]\s]*\]))(?=\s|$)/.test(classes)) return false;
   return true;
 }
 
@@ -59,7 +81,11 @@ function pillChipCounts(): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const path of sourceFiles(SRC)) {
     const text = readFileSync(path, "utf8");
-    const hits = [...text.matchAll(CLASS_STRING)].filter((m) => isPillChip(m[1])).length;
+    const calls = classCalls(text);
+    const inCall = (at: number) => calls.some((call) => at >= call.start && at < call.end);
+    const hits =
+      [...text.matchAll(CLASS_STRING)].filter((m) => !inCall(m.index) && isPillChip(m[1])).length +
+      calls.filter((call) => isPillChip(call.classes)).length;
     if (hits > 0) counts[path.slice(SRC.length).split(sep).join("/")] = hits;
   }
   return counts;
@@ -120,9 +146,14 @@ test("the pill pattern catches chips and leaves round shapes alone", () => {
     "inline-flex items-center rounded-full border px-2.5 py-0.5 content-compact font-semibold",
     "rounded-full px-2 py-0.5 text-[11px] font-medium",
     "inline-flex items-center gap-1 rounded-full bg-elevation-hover px-2 py-0.5 text-xs",
+    // A truncating chip (`min-w-0`) is not a counter (#1333, UX round 1 B2).
+    "flex min-w-0 shrink items-center gap-1.5 rounded-full border border-elevation-subtle px-2.5 py-0.5 content-compact",
   ]) {
     expect(isPillChip(chip), chip).toBe(true);
   }
+  // A padding in a separate cn() argument still makes a chip (#1333, UX round 1 B1).
+  const split = `cn(\n  "inline-flex items-center gap-1.5 rounded-full border border-elevation-subtle-soft py-1 text-[11px]",\n  compact ? "px-1.5" : "px-2.5",\n)`;
+  expect(classCalls(split).filter((call) => isPillChip(call.classes))).toHaveLength(1);
   for (const round of [
     "inline-flex items-center rounded-sm border px-2 py-0.5 content-compact font-semibold",
     "h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent",

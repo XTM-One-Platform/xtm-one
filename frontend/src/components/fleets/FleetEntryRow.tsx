@@ -72,7 +72,7 @@ export function FleetEntryRow({
             <Tip key={point.agentId} content={<ReachTip point={point} fleetNames={fleetNames} />}>
               <Link
                 to={`/agents/${point.agentId}`}
-                className="flex min-w-0 shrink items-center gap-1.5 rounded-full border border-elevation-subtle px-2.5 py-0.5 content-compact hover:bg-elevation-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                className="flex min-w-0 shrink items-center gap-1.5 rounded-sm border border-elevation-subtle px-2 py-0.5 content-compact hover:bg-elevation-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                 data-testid="fleet-entry-chip"
               >
                 <Icon name="bot" size={16} className="shrink-0" />
