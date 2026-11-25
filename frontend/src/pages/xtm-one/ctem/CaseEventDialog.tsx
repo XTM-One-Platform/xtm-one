@@ -12,12 +12,11 @@
 import type * as React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import type { IconName } from "@filigran/design-system";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
-import { AUDIT_PHASE_LABEL, AUTONOMY_LABEL, AUTONOMY_VARIANT, type AuditRow } from "@/lib/ctem-case-audit";
-import { CASE_FACT_ICON, CaseFactChip, CaseIcon, actorIcon, caseEventIcon } from "./case-icons";
+import { AUDIT_PHASE_LABEL, type AuditRow } from "@/lib/ctem-case-audit";
+import { CASE_FACT_ICON, CaseAutonomyChip, CaseFactChip, CaseIcon, actorIcon, caseEventIcon } from "./case-icons";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 import { eventIssueLabel } from "./case-issue-label";
 
@@ -102,9 +101,7 @@ export function CaseEventDialog({
                 <CaseFactChip icon="waypoints" testId="ctem-case-event-phase">
                   {t_i18n(AUDIT_PHASE_LABEL[row.phase])}
                 </CaseFactChip>
-                <Badge variant={AUTONOMY_VARIANT[row.autonomy]} className="whitespace-nowrap" data-testid="ctem-case-event-autonomy">
-                  {t_i18n(AUTONOMY_LABEL[row.autonomy])}
-                </Badge>
+                <CaseAutonomyChip autonomy={row.autonomy} testId="ctem-case-event-autonomy" />
               </div>
 
               {/* Two columns only for two facts or more: one fact alone spans the body (B2). */}

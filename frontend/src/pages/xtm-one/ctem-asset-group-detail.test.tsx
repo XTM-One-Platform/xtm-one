@@ -21,7 +21,7 @@ const GROUP = {
   internet_facing: "yes",
   owner: "",
   tags: [],
-  tech_stack: [],
+  products: [],
   source: "openaev",
   external_id: "oaev-1",
   member_count: 2,

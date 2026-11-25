@@ -100,7 +100,7 @@ export function ReviewRail({
                 aria-pressed={on}
                 onClick={() => onToggle(k)}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border border-elevation-subtle px-2 py-0.5 content-compact transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus",
+                  "inline-flex items-center gap-1.5 rounded-sm border border-elevation-subtle px-2 py-0.5 content-compact transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus",
                   on ? "text-default-primary" : "text-default-disabled line-through",
                 )}
               >

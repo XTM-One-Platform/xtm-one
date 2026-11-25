@@ -63,7 +63,7 @@ function WorkPill({ item }: { item: AwaitedWorkItem }) {
         </div>
       }
     >
-      <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[9px] text-accent/70">
+      <span className="inline-flex items-center gap-1 rounded-sm border border-transparent bg-accent/10 px-2 py-0.5 text-[9px] text-accent/70">
         {running && <Spinner size="sm" tone="inherit" className="shrink-0" />}{!running && <Hourglass className="h-2.5 w-2.5 shrink-0" aria-hidden />}
         <span className="max-w-[180px] truncate">{label}</span>
         {running && <span className="tabular-nums">{item.percent}%</span>}

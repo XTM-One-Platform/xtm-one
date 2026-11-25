@@ -661,7 +661,7 @@ export default function PresentationViewer() {
   // the deck that will be presented, and the reader must not forget that.
   const previewBanner = previewed && previewRevision !== null && (
     <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center print:hidden">
-      <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-feedback-alert-primary/40 bg-elevation-default px-3 py-1.5 content-compact text-feedback-warning-primary shadow-overlay backdrop-blur-sm">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-sm border border-feedback-alert-primary/40 bg-elevation-default px-3 py-1.5 content-compact text-feedback-warning-primary shadow-overlay backdrop-blur-sm">
         <Eye className="h-3.5 w-3.5" aria-hidden="true" />
         <span>
           {t_i18n("Previewing revision {revision} - not the current presentation", {

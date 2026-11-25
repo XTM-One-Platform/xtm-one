@@ -30,6 +30,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { BookOpen, Filter, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CountBadge } from "@/components/ui/count-badge";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedFilter, type SegmentedFilterOption } from "@/components/ui/segmented-filter";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -162,9 +163,7 @@ function ToolbarDisclosure({ label, icon: Icon, badge, width = "w-56", align = "
         <Icon className="h-3.5 w-3.5" aria-hidden="true" />
         {label}
         {badge ? (
-          <span className="ml-1 rounded-full bg-accent px-1.5 content-compact font-semibold text-accent-foreground tabular-nums">
-            {badge}
-          </span>
+          <CountBadge className="ml-1 border-transparent bg-accent font-semibold text-accent-foreground">{badge}</CountBadge>
         ) : null}
       </Button>
       {open && (

@@ -99,7 +99,7 @@ def env(monkeypatch):
         seen.created[case.id] = case
         return case
 
-    async def _viewer(_db, user_id, vertical, *, fresh=False):
+    async def _viewer(_db, user_id, vertical, *, fresh=False, members=None):
         if str(user_id) == str(seen.user_id):
             return view_of.ViewerView(issues={ISSUE.member_id: ISSUE}, open_ids={ISSUE.member_id})
         return view_of.ViewerView()

@@ -353,7 +353,7 @@ export function MemoryTab({ agent, canManage }: { agent: Agent; canManage: boole
         cell: (mem) => {
           const config = typeConfigOf(mem.memory_type);
           return (
-            <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 content-caption font-medium", config.bg, config.text)}>
+            <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-transparent px-2 py-0.5 content-caption font-medium", config.bg, config.text)}>
               <config.icon className="h-3 w-3 shrink-0" />
               {t_i18n(typeLabelOf(mem.memory_type))}
             </span>
@@ -381,7 +381,7 @@ export function MemoryTab({ agent, canManage }: { agent: Agent; canManage: boole
               <span className="min-w-0 truncate" title={mem.content}>{line}</span>
               {mem.superseded && (
                 <Tip content={t_i18n("This entry no longer holds. It stays searchable and is never added to the agent's context.")}>
-                  <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-elevation-highlight px-2 py-0.5 content-caption font-medium text-default-secondary">
+                  <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-transparent bg-elevation-highlight px-2 py-0.5 content-caption font-medium text-default-secondary">
                     <History className="h-3 w-3" />
                     {t_i18n("Superseded")}
                   </span>
@@ -534,19 +534,19 @@ export function MemoryTab({ agent, canManage }: { agent: Agent; canManage: boole
           {health && (health.stale_count > 0 || health.over_cap > 0 || health.no_embedding_count > 0) && (
             <div className="flex flex-wrap items-center gap-2 content-compact">
               {health.stale_count > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-feedback-alert-primary/10 text-feedback-warning-tertiary px-2.5 py-1 border border-feedback-alert-primary/20">
+                <span className="inline-flex items-center gap-1 rounded-sm bg-feedback-alert-primary/10 text-feedback-warning-tertiary px-2 py-1 border border-feedback-alert-primary/20">
                   <Clock className="h-3 w-3" />
                   {t_i18n("{count} stale (>{days}d)", { count: health.stale_count, days: health.retention_days })}
                 </span>
               )}
               {health.over_cap > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-feedback-error-primary/10 text-feedback-error-primary px-2.5 py-1 border border-feedback-error-primary/20">
+                <span className="inline-flex items-center gap-1 rounded-sm bg-feedback-error-primary/10 text-feedback-error-primary px-2 py-1 border border-feedback-error-primary/20">
                   <AlertCircle className="h-3 w-3" />
                   {t_i18n("{count} over cap", { count: health.over_cap })}
                 </span>
               )}
               {health.no_embedding_count > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-elevation-highlight text-default-secondary px-2.5 py-1 border border-elevation-subtle-soft">
+                <span className="inline-flex items-center gap-1 rounded-sm bg-elevation-highlight text-default-secondary px-2 py-1 border border-elevation-subtle-soft">
                   <AlertTriangle className="h-3 w-3" />
                   {t_i18n("{count} without embedding", { count: health.no_embedding_count })}
                 </span>

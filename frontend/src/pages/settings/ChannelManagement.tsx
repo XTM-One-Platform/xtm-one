@@ -1227,7 +1227,7 @@ function InlineWhitelistCard({
         <div className="flex flex-wrap gap-1">
           {(channels ?? []).slice(0, 8).map((ch) => (
             <span key={ch.id} className={cn(
-              "content-caption rounded-full px-1.5 py-0.5 border",
+              "content-caption rounded-sm px-2 py-0.5 border",
               isReceive
                 ? "bg-feedback-success-primary/10 text-feedback-success-primary/80 border-feedback-success-primary/20"
                 : "bg-feedback-info-primary/10 text-feedback-info-primary/80 border-feedback-info-primary/20",

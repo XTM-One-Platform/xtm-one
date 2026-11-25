@@ -10,10 +10,12 @@
  */
 import { createContext, useContext, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import type { IconName } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { withBasePath } from "@/lib/base-path";
 import { useFormatter } from "@/i18n";
 import type { CaseSource, CaseSources } from "./case-workers";
+import { CaseIcon } from "./case-icons";
 
 interface CaseLoopState {
   sources: CaseSources;
@@ -36,10 +38,17 @@ const SOURCE_PRODUCT: Record<CaseSource, { name: string; logo: string }> = {
 export function CaseSectionReason({
   own,
   source,
+  icon,
   testId,
 }: {
   /** What the section will hold, already translated. */
   own: string;
+  /**
+   * The section's own icon (`CASE_SECTION_ICON`), drawn before the sentence so every
+   * empty state of the case page carries one (#1679, point 5); the product's logo
+   * then marks the line that names the product.
+   */
+  icon?: IconName;
   /** The product the section is written from; none for a section XTM One writes alone. */
   source?: CaseSource;
   testId: string;
@@ -53,11 +62,22 @@ export function CaseSectionReason({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3" data-testid={testId} data-reason={missing ? "source_missing" : "own"}>
       <span className="flex min-w-0 items-center gap-3">
-        {product && <img src={withBasePath(product.logo)} alt="" className="h-6 w-6 shrink-0" />}
+        {icon ? (
+          <CaseIcon name={icon} className="text-default-secondary" />
+        ) : (
+          product && <img src={withBasePath(product.logo)} alt="" className="h-6 w-6 shrink-0" />
+        )}
         <span className="flex min-w-0 flex-col">
           <span className="content-base text-default-secondary">{own}</span>
           {product && connected !== null && (
-            <span className={missing ? "content-compact text-feedback-warning-primary" : "content-compact text-default-secondary"}>
+            <span
+              className={
+                missing
+                  ? "flex items-center gap-1.5 content-compact text-feedback-warning-primary"
+                  : "flex items-center gap-1.5 content-compact text-default-secondary"
+              }
+            >
+              {icon && <img src={withBasePath(product.logo)} alt="" className="h-4 w-4 shrink-0" />}
               {missing
                 ? t_i18n("{product} is not connected", { product: product.name })
                 : t_i18n("Written from {product}, connected", { product: product.name })}

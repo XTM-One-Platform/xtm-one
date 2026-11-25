@@ -404,8 +404,8 @@ class AssetEntry(BaseModel):
     owner: str = Field(default="", max_length=200)
     #: The ``asset_groups`` entry this asset belongs to, by name (empty: none).
     group: str = Field(default="", max_length=200)
-    #: The ``tech_stack`` products running on it, by product name.
-    tech_stack: list[str] = Field(default_factory=list, max_length=100)
+    #: The software products running on it, by product name (the ``software`` rows it runs).
+    products: list[str] = Field(default_factory=list, max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=50)
     source: str = Field(default="manual", max_length=80)
     external_id: str = Field(default="", max_length=200)
@@ -462,7 +462,7 @@ class AssetEntry(BaseModel):
     def _clean_addresses(cls, value: list[str]) -> list[str]:
         return list(dict.fromkeys(v.strip()[:64] for v in value if v and v.strip()))
 
-    @field_validator("tech_stack", "tags")
+    @field_validator("products", "tags")
     @classmethod
     def _clean_names(cls, value: list[str]) -> list[str]:
         return _names(value)
@@ -533,14 +533,14 @@ class AssetGroupEntry(BaseModel):
     environment: Literal["", "production", "staging", "development", "test", "other"] = ""
     internet_facing: Literal["yes", "no", "unknown"] = "unknown"
     owner: str = Field(default="", max_length=200)
-    tech_stack: list[str] = Field(default_factory=list, max_length=100)
+    products: list[str] = Field(default_factory=list, max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=50)
     source: str = Field(default="manual", max_length=80)
     external_id: str = Field(default="", max_length=200)
     #: The sync that last wrote the row (#1134).
     sync_id: str = Field(default="", max_length=64)
 
-    @field_validator("tech_stack", "tags")
+    @field_validator("products", "tags")
     @classmethod
     def _clean_names(cls, value: list[str]) -> list[str]:
         return _names(value)

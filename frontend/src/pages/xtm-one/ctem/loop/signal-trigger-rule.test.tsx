@@ -34,7 +34,7 @@ const onSoftware: CtemSignal = {
   seen_count: 1,
   evidence: { event: "create", stix_type: "relationship:has", software: ["nginx 1.27.1"] },
   state: "confirmed",
-  decision: { version: 1, outcome: "in_scope", reconcile: { tech_stack: ["nginx"] } },
+  decision: { version: 1, outcome: "in_scope", reconcile: { products: ["nginx"] } },
   case_id: null,
   recorded_via: "listener",
 };
@@ -53,10 +53,10 @@ afterEach(() => get.mockReset());
 
 describe("signal rule facts", () => {
   it("matches the software rule only when the scope gate resolved the software", () => {
-    expect(signalRuleFacts({ software: ["nginx"] }, { reconcile: { tech_stack: ["nginx"] } })).toEqual([
+    expect(signalRuleFacts({ software: ["nginx"] }, { reconcile: { products: ["nginx"] } })).toEqual([
       { key: "software", software: "nginx", matched: true, checked: true },
     ]);
-    expect(signalRuleFacts({ software: ["nginx"] }, { reconcile: { tech_stack: [] } })).toEqual([
+    expect(signalRuleFacts({ software: ["nginx"] }, { reconcile: { products: [] } })).toEqual([
       { key: "software", software: "nginx", matched: false, checked: true },
     ]);
     expect(signalRuleFacts({ software: ["nginx"] }, null)).toEqual([
@@ -84,7 +84,7 @@ describe("signal rule facts", () => {
   });
 
   it("a software signal not resolved to the software claims no trigger rule", async () => {
-    const facts = await renderTrace({ ...onSoftware, state: "discarded", decision: { version: 1, reconcile: { tech_stack: [] } } });
+    const facts = await renderTrace({ ...onSoftware, state: "discarded", decision: { version: 1, reconcile: { products: [] } } });
     expect(within(facts).queryByText("Trigger rule")).toBeNull();
     expect(within(facts).getByText("Source software")).toBeTruthy();
     expect(within(facts).getByText("nginx 1.27.1, not in your software inventory")).toBeTruthy();

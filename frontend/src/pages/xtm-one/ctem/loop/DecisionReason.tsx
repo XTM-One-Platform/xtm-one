@@ -182,6 +182,57 @@ export function nextStepSentence(
   return sentence ? t_i18n(sentence, sentenceParams(decision, t_i18n, formatDay)) : null;
 }
 
+/** What one gate of the loop decided for a signal, drawn as a step of the trace (#874 S2). */
+export interface GateStep {
+  /** The outcome in words: Confirmed, In scope, or the state the signal stopped in. */
+  decision: string;
+  /** The why, from the record's reason code; empty when the gate gave none. */
+  reason: string;
+  /** What would make a stopped signal go on (S1's next step), null when it went on. */
+  next: string | null;
+}
+
+/**
+ * The decision of the reconcile gate (`stage` "reconcile") or of the scope gate
+ * (`stage` "scope") for a signal, read from its state and decision record (#874 S2,
+ * dev-docs/ctem-loop-visibility.md section 3: the trace lists the gates as labelled
+ * steps). `status` is the stage's status in `signalLoop`: a gate not reached yet or
+ * still waiting has no decision (null). A signal that passed reconcile reads
+ * "Confirmed" with the confidence; one that passed the scope gate reads "In scope" with
+ * the in-scope sentence; the gate it stopped at carries its state, reason and next step.
+ */
+export function gateStep(
+  stage: string,
+  status: string,
+  state: CtemSignalState,
+  decision: CtemDecisionRecord | null | undefined,
+  t_i18n: Translate,
+  formatDay: (iso: string) => string = (iso) => iso,
+): GateStep | null {
+  if (stage !== "reconcile" && stage !== "scope") return null;
+  if (status === "stopped" || status === "parked") {
+    return {
+      decision: t_i18n(SIGNAL_STATE_LABEL[state] ?? state),
+      reason: decisionSentence(decision, t_i18n, formatDay),
+      next: nextStepSentence(decision, t_i18n, formatDay),
+    };
+  }
+  if (status !== "passed") return null;
+  if (stage === "reconcile") {
+    const confidence = decision?.reconcile?.confidence;
+    return {
+      decision: t_i18n(SIGNAL_STATE_LABEL.confirmed),
+      reason: confidence ? t_i18n("Confidence {confidence}", { confidence: levelLabel(confidence, t_i18n) }) : "",
+      next: null,
+    };
+  }
+  return {
+    decision: t_i18n("In scope"),
+    reason: decision?.reason_code === "in_scope" ? decisionSentence(decision, t_i18n, formatDay) : "",
+    next: null,
+  };
+}
+
 /** One input of the trace: a value on one line, or several lines drawn whole (the primary asset chains). */
 type DecisionInput = { label: string; value: string; lines?: string[] };
 
@@ -211,7 +262,7 @@ function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n:
     { label: t_i18n("Matched assets"), value: matched },
     // UX r1 B3 on #1796: the names the record matched, next to the primary assets reached below.
     { label: t_i18n("Primary assets named"), value: list(reconcile.primary_assets_named) },
-    { label: t_i18n("Software"), value: list(reconcile.tech_stack) },
+    { label: t_i18n("Software"), value: list(reconcile.products) },
     { label: t_i18n("Owned domain"), value: domains },
     { label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
     // #1591 S3: the primary assets reached and their chains, then the one threshold and where it comes from.

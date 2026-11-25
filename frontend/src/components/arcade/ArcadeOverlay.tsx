@@ -979,7 +979,7 @@ export default function ArcadeOverlay({ options, answer, getWaitStartedAt, onClo
             <button
               type="button"
               onClick={exitToAnswer}
-              className="flex items-center gap-2 rounded-full border border-accent/40 bg-elevation-default px-3 py-1 content-compact text-accent shadow-overlay backdrop-blur-sm hover:bg-accent/10"
+              className="flex items-center gap-2 rounded-sm border border-accent/40 bg-elevation-default px-3 py-1 content-compact text-accent shadow-overlay backdrop-blur-sm hover:bg-accent/10"
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
               {t_i18n("Answer ready: Esc to read it")}
@@ -1047,7 +1047,7 @@ export default function ArcadeOverlay({ options, answer, getWaitStartedAt, onClo
 
       {showHint && stage === "playing" && (
         <div className="pointer-events-none absolute inset-x-0 bottom-10 z-10 flex justify-center">
-          <p className="rounded-full bg-elevation-default px-4 py-1.5 font-mono-plex text-[11px] text-default-secondary backdrop-blur-sm animate-fade-in">
+          <p className="rounded-sm bg-elevation-default px-4 py-1.5 font-mono-plex text-[11px] text-default-secondary backdrop-blur-sm animate-fade-in">
             {coarsePointer
               ? t_i18n("Drag to move and fire - tap the rocket for a missile")
               : t_i18n("Arrows or A/D to move - Space to fire - right-click or X for a missile - P or Esc to pause - Esc again to leave")}
@@ -1146,7 +1146,7 @@ export default function ArcadeOverlay({ options, answer, getWaitStartedAt, onClo
                 </span>
               )}
               {save.status === "saved" && save.data.personal_best && (
-                <span className="rounded-full bg-feedback-alert-primary/15 px-2.5 py-0.5 content-compact font-bold uppercase text-feedback-warning-tertiary light:text-feedback-warning-tertiary">
+                <span className="rounded-sm border border-transparent bg-feedback-alert-primary/15 px-2 py-0.5 content-compact font-bold uppercase text-feedback-warning-tertiary light:text-feedback-warning-tertiary">
                   {t_i18n("New personal best!")}
                 </span>
               )}
@@ -1194,7 +1194,7 @@ export default function ArcadeOverlay({ options, answer, getWaitStartedAt, onClo
                     const achievement = achievementById(id);
                     return achievement ? (
                       <Tip key={id} container={tipContainer} content={t_i18n(achievement.description)}>
-                        <span className="rounded-full border border-feedback-alert-primary/40 px-2.5 py-0.5 content-compact">{t_i18n(achievement.title)}</span>
+                        <span className="rounded-sm border border-feedback-alert-primary/40 px-2 py-0.5 content-compact">{t_i18n(achievement.title)}</span>
                       </Tip>
                     ) : null;
                   })}
@@ -1236,7 +1236,7 @@ export default function ArcadeOverlay({ options, answer, getWaitStartedAt, onClo
 
       {stage === "leaving" && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
-          <p className="flex items-center gap-2 rounded-full bg-elevation-default px-4 py-2 font-mono-plex content-base text-accent shadow-overlay backdrop-blur-sm">
+          <p className="flex items-center gap-2 rounded-sm bg-elevation-default px-4 py-2 font-mono-plex content-base text-accent shadow-overlay backdrop-blur-sm">
             <Wrench className="h-4 w-4 animate-pulse" />
             {t_i18n("Repairing the interface...")}
           </p>

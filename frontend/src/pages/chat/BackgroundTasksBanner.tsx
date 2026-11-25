@@ -139,7 +139,7 @@ function TaskPill({ task, tone }: { task: SubAgentTask; tone: PillTone }) {
         aria-label={title || undefined}
         data-testid="background-task-chip"
         className={cn(
-          "inline-flex min-w-0 max-w-[180px] shrink items-center gap-1 rounded-full px-2 py-0.5 content-caption outline-none focus-visible:ring-2 focus-visible:ring-focus",
+          "inline-flex min-w-0 max-w-[180px] shrink items-center gap-1 rounded-sm border border-transparent px-2 py-0.5 content-caption outline-none focus-visible:ring-2 focus-visible:ring-focus",
           PILL_TONES[tone],
         )}
       >

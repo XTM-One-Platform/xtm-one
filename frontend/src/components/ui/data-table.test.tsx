@@ -613,6 +613,73 @@ describe("DataTable", () => {
     }
   });
 
+  it("wraps a compact one-row toolbar whose page controls still run past its box (UX r3 B1 on #1963)", () => {
+    const original = globalThis.ResizeObserver;
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(846);
+    // The ja Cases toolbar at 1080: compact controls plus the page's own switch need 867 px.
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === "data-table-toolbar" ? 867 : 0;
+    });
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      renderTable({ filtersInPill: true, exportName: "cases", toolbar: <button type="button">Page control</button> });
+      expect(screen.getByRole("combobox", { name: "Rows per page" }).getAttribute("data-compact")).toBe("true");
+      expect(screen.getByTestId("data-table-toolbar").getAttribute("data-wraps")).toBe("true");
+    } finally {
+      scroll.mockRestore();
+      width.mockRestore();
+      globalThis.ResizeObserver = original;
+    }
+  });
+
+  it("keeps a compact toolbar with no page controls on one row even when it ran past its box (worksets at 1024)", () => {
+    const original = globalThis.ResizeObserver;
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(846);
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === "data-table-toolbar" ? 867 : 0;
+    });
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      renderTable({ filtersInPill: true, exportName: "worksets" });
+      expect(screen.getByRole("combobox", { name: "Rows per page" }).getAttribute("data-compact")).toBe("true");
+      expect(screen.getByTestId("data-table-toolbar").getAttribute("data-wraps")).toBeNull();
+    } finally {
+      scroll.mockRestore();
+      width.mockRestore();
+      globalThis.ResizeObserver = original;
+    }
+  });
+
+  it("keeps a compact one-row toolbar on one row when it fits its box", () => {
+    const original = globalThis.ResizeObserver;
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(846);
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === "data-table-toolbar" ? 846 : 0;
+    });
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      renderTable({ filtersInPill: true, exportName: "cases", toolbar: <button type="button">Page control</button> });
+      expect(screen.getByRole("combobox", { name: "Rows per page" }).getAttribute("data-compact")).toBe("true");
+      expect(screen.getByTestId("data-table-toolbar").getAttribute("data-wraps")).toBeNull();
+    } finally {
+      scroll.mockRestore();
+      width.mockRestore();
+      globalThis.ResizeObserver = original;
+    }
+  });
+
   it("keeps the full toolbar labels on a wide table", () => {
     const original = globalThis.ResizeObserver;
     const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1200);

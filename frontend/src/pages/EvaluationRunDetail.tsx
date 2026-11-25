@@ -923,7 +923,7 @@ function ResultRow({ runId, result, index, judgeEnabled, evaluationSlug, runDate
             {result.files && result.files.length > 0 && (
               <span className="flex items-center gap-1 shrink-0">
                 {result.files.map((f) => (
-                  <span key={f.id} className="inline-flex items-center gap-1 rounded-full bg-elevation-hover px-2 py-0.5 text-[11px] text-default-secondary">
+                  <span key={f.id} className="inline-flex items-center gap-1 rounded-sm border border-transparent bg-elevation-hover px-2 py-0.5 text-[11px] text-default-secondary">
                     <Paperclip className="h-2.5 w-2.5" />
                     <span className="max-w-[100px] truncate">{f.filename}</span>
                   </span>
