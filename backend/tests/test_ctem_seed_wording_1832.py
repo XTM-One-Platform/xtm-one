@@ -59,6 +59,14 @@ def test_a_retest_has_one_path_the_event_files_the_item() -> None:
         assert "Never wait for the result in this run" in prompt
 
 
+def test_a_gate_decision_is_filed_with_dedupe_by_key_so_a_resumed_run_files_it_once() -> None:
+    # A worker restart resumes the run and replays a completed create_work_item: without
+    # dedupe the case got a second decision card for the same gate.
+    for slug in ("ctem-threat-response-orchestrator", "ctem-vuln-prioritization-orchestrator"):
+        persona = _persona(slug)
+        assert "filed with `dedupe` true and `dedupe_by` \"key\"" in persona, slug
+
+
 def test_threat_activity_flagged_in_a_pir_has_one_owner() -> None:
     loop_types = set(ba.CTEM_F1_ASSIGNMENTS[1]["trigger_config"]["provision"]["entity_types"])
     assert ba.CTEM_F1_ASSIGNMENTS[1]["name"] == ba.CTEM_F1_PIR_INTAKE
