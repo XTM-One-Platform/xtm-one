@@ -308,6 +308,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     from app.services import ctem_case_version_history as version_history
                     from app.services import ctem_cases_store as store
 
+                    # The asset count agrees with the running versions this read serves (#2225).
+                    version_history.with_live_asset_count(shown[2], running, at=datetime.now(UTC))
+
                     # Why the versions moved, per device (#1694): before, after, when, source, reason.
                     events = (await store.events_of(db, [shown[0].id])).get(shown[0].id, [])
                     running = {**running, "history": version_history.history_of(events)}

@@ -153,9 +153,12 @@ class SourceIssue:
     course_of_action_name: str | None = None
     cvss: float | None = None
     epss: float | None = None
-    kev: bool = False
+    #: ``None`` on a signal member whose CVEs were not read from OpenCTI (#2225): unknown, never "not KEV".
+    kev: bool | None = False
     #: A signal member (#2041): every CVE it names that OpenCTI marks KEV, upper case, else ``()``.
     kev_cves: tuple[str, ...] = ()
+    #: A signal member (#2225): every CVE it names whose facts were not read (OpenCTI unread or silent on it).
+    unknown_cves: tuple[str, ...] = ()
     assets: tuple[str, ...] = ()
     primary_assets: tuple[str, ...] = ()
     first_seen_at: datetime | None = None

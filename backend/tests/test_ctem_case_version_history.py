@@ -119,6 +119,31 @@ def test_list_asset_count_comes_from_the_issues_then_the_inventory_never_a_silen
     assert other["asset_count_reason"] == history.NO_COUNT_NOT_UPGRADE
 
 
+def test_case_read_counts_the_assets_of_its_live_running_versions() -> None:
+    """No issue asset, no recorded snapshot, a live answer of 2 devices: 2 from the inventory (#2225)."""
+    row = history.with_asset_count({"asset_count": 0, "remediation_kind": "upgrade"}, [])
+    assert row["asset_count"] is None and row["asset_count_source"] == "unknown"
+    running = versions.running_versions(
+        [{"vendor": "MinIO", "product": "MinIO", "version": "2023.1", "asset_ids": ["a1", "a2"], "sources": ["csv"]}],
+        product_label="MinIO",
+        fixed_version="2023.3",
+    )
+    assert running is not None and running["asset_count"] == 2
+    history.with_live_asset_count(row, running, at=T0)
+    assert row["asset_count"] == 2
+    assert row["asset_count_source"] == "inventory"
+    assert row["asset_count_as_of"] == T0.isoformat()
+    assert "asset_count_reason" not in row
+
+
+def test_live_count_leaves_an_issue_count_and_an_unread_inventory_alone() -> None:
+    issues = history.with_asset_count({"asset_count": 3, "remediation_kind": "upgrade"}, [])
+    assert history.with_live_asset_count(issues, {"asset_count": 7}, at=T0)["asset_count"] == 3
+    unread = history.with_asset_count({"asset_count": 0, "remediation_kind": "upgrade"}, [])
+    assert history.with_live_asset_count(unread, None, at=T0)["asset_count_source"] == "unknown"
+    assert history.with_live_asset_count(unread, {"asset_count": 0}, at=T0)["asset_count"] is None
+
+
 class _Db:
     def __init__(self) -> None:
         self.added: list[Any] = []
