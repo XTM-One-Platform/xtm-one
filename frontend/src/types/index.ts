@@ -5807,6 +5807,13 @@ export interface CtemFunnelLayer {
   reason?: string | null;
   /** The reachability split of the profile assets, on the Exposed layer (`services/asset_reachability.py`). */
   reachability?: CtemFunnelReachability | null;
+  /** Business impact (#1980): the primary assets reached and the inventory assets supporting them. */
+  primary_assets?: number;
+  supporting_assets?: number;
+  /** Business impact: the linked group members were read in part (a very large group). */
+  truncated?: boolean;
+  /** After policy (#1980): the rules of the saved prioritization policy the layer applies. */
+  rules?: string[];
 }
 
 /** How many organization profile assets are reachable, proven unreachable or of unknown exposure. */

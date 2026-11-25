@@ -17702,6 +17702,7 @@
   "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).": "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).",
   "Add your assets and exposure": "Add your assets and exposure",
   "Not linked": "Not linked",
+  "No software inventory": "No software inventory",
   "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.": "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.",
   "Business impact": "Business impact",
   "On an asset that supports a primary asset.": "On an asset that supports a primary asset.",
@@ -21698,5 +21699,7 @@
   "Every field of this tab is filled.": "Every field of this tab is filled.",
   "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}",
   "To validate": "To validate",
-  "Running version not verified: validate it before acting on the case.": "Running version not verified: validate it before acting on the case."
+  "Running version not verified: validate it before acting on the case.": "Running version not verified: validate it before acting on the case.",
+  "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.",
+  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, one {# policy rule applied} other {# policy rules applied}}."
 }
