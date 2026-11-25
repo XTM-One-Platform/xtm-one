@@ -19489,6 +19489,7 @@
   "The last re-score failed: {reason}": "The last re-score failed: {reason}",
   "Storage & retention": "Storage & retention",
   "{count, plural, one {# file} other {# files}}": "{count, plural, one {# file} other {# files}}",
+  "{count, plural, one {# linked asset} other {# linked assets}}": "{count, plural, one {# linked asset} other {# linked assets}}",
   "{count, plural, one {{shown} file} other {{shown} files}}": "{count, plural, one {{shown} file} other {{shown} files}}",
   "Last sweep": "Last sweep",
   "Any state": "Any state",

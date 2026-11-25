@@ -437,6 +437,31 @@ describe("OrganizationSection", () => {
     await screen.findByDisplayValue(long);
   });
 
+  it("reads the stored links of a primary asset as a count in the Assets column, a synced link included (#1978 S2)", async () => {
+    const base = get.getMockImplementation()!;
+    get.mockImplementation(async (path: string) => {
+      if (path === "/organization-context")
+        return {
+          ...CONTEXT,
+          profile: {
+            ...CONTEXT.profile,
+            primary_assets: [
+              { name: "Employee  Workstations", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "pa-1" },
+              { name: "Payments", business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "", asset_names: ["pay-db"] },
+            ],
+          },
+        };
+      if (path === "/organization-context/primary-assets/link-counts")
+        return { items: { "employee workstations": { total: 263, manual: 0, opencrq: 263, rule: 0 }, payments: { total: 1, manual: 1, opencrq: 0, rule: 0 } } };
+      return base(path);
+    });
+    renderPage("business");
+    // A sync writes links, never asset_names: the row reads their count, never "Not set" (#1978 cause 4).
+    expect(await screen.findByText("263 linked assets")).toBeTruthy();
+    // The names typed by hand stay as they are while they are all the links.
+    expect(screen.getByText("pay-db")).toBeTruthy();
+  });
+
   it("edits one list card alone, counts its changes, undoes a removal and patches that list alone (#12256, #1752)", async () => {
     const base = get.getMockImplementation()!;
     const tech = Array.from({ length: 150 }, (_, i) => ({ product: `Product ${String(i).padStart(3, "0")}`, vendor: i === 7 ? "" : "Vendor", cpe: "" }));

@@ -69,7 +69,7 @@ import {
   usePatchOrganizationContext,
   useSaveOrganizationContext,
 } from "@/hooks/api/useOrganizationContextApi";
-import { useAssetGroups, useCanonicalAssets } from "@/hooks/api/useOrganizationAssetsApi";
+import { primaryAssetLinkKey, useAssetGroups, useCanonicalAssets, usePrimaryAssetLinkCounts } from "@/hooks/api/useOrganizationAssetsApi";
 import { useFormatter } from "@/i18n";
 import {
   type AmountField,
@@ -215,6 +215,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // The names a primary asset links to, read on the row APIs (#1752 slice 3b), never from the profile.
   const linkGroups = useAssetGroups({ throwOnError: false });
   const linkAssets = useCanonicalAssets({ offset: 0, limit: 200 });
+  // The stored links counted per primary asset (#1978 S2): an OpenCRQ or rule sync writes links, never asset_names.
+  const linkCounts = usePrimaryAssetLinkCounts();
   // Primary assets are an Inventory source (#1754): their sources are configured and run in CTEM > Inventory > Sources
   // like every other source, nothing is pre-provisioned and the card names none of them (Sam, 24 Nov 2026, #1883).
   const drafting = useDraftOrganizationContext();
@@ -812,6 +814,17 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // "Not set" takes the table's compact text so every row keeps one height (UX r2 B1 on #10804).
   const readCell = (value: string) =>
     value.trim() ? <TruncatedText text={value} /> : <span className="content-compact text-default-secondary">{t_i18n("Not set")}</span>;
+  /**
+   * What the Assets column of a primary asset reads (#1978 S2): the names typed by hand while they are all its links,
+   * else the count of its stored links (a sync writes hundreds: a count, never a list); the typed names before the
+   * link counts answer.
+   */
+  const jewelAssetsText = (jewel: { name: string; asset_names?: string[] }) => {
+    const names = jewel.asset_names ?? [];
+    const count = linkCounts.data?.items?.[primaryAssetLinkKey(jewel.name)];
+    if (!count || count.total === 0 || count.total <= names.length) return names.join(", ");
+    return t_i18n("{count, plural, one {# linked asset} other {# linked assets}}", { count: count.total });
+  };
   /** Where a row came from (#1134): the platform's logo and name, or Typed, CSV, API, Agent. */
   const sourceLabel = (value: Provenance) => {
     const kind = sourceKind(value.source);
@@ -925,9 +938,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       hideable: true,
       // Steps aside at 1080 so Business service reads whole (UX r2 B2 on #1174); the Columns pill brings it back.
       hideBelow: JEWEL_STEP_ASIDE,
-      cell: ({ value }) => readCell((value.asset_names ?? []).join(", ")),
+      cell: ({ value }) => readCell(jewelAssetsText(value)),
       interactive: true,
-      csv: ({ value }) => (value.asset_names ?? []).join("; "),
+      csv: ({ value }) => jewelAssetsText(value).split(", ").join("; "),
     },
     {
       key: "opencrq",
@@ -1049,7 +1062,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       // Below 72rem it steps aside, else the two local fields of a synced row kept 61 px (UX r2 B1 on #1174).
       hideBelow: JEWEL_STEP_ASIDE,
       width: readWidth(JEWEL_WIDTHS.assets),
-      read: (v) => readCell((v.asset_names ?? []).join(", ")),
+      read: (v) => readCell(jewelAssetsText(v)),
       edit: (v, set) => {
         const names = v.asset_names ?? [];
         // The groups and assets come from their row APIs (#1752 slice 3b): the profile answers no row.
