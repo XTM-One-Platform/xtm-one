@@ -7,10 +7,12 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
+import { QueryClient } from "@tanstack/react-query";
 import { renderWithProviders } from "@/testing/providers";
+import { CTEM_CASE_LIST_KEY } from "@/hooks/api/useCtemCasesApi";
 import CtemCaseDetail from "./CtemCaseDetail";
 
-const state = vi.hoisted(() => ({ notFound: false, aggregatesRestricted: false }));
+const state = vi.hoisted(() => ({ notFound: false, aggregatesRestricted: false, loading: false }));
 
 vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useAuthApi")>()),
@@ -22,7 +24,9 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useCtemCasesApi")>()),
   useUpdateCtemCase: () => ({ isPending: false, mutate: () => undefined }),
   useCtemCase: () =>
-    state.notFound
+    state.loading
+      ? { isLoading: true, isError: false, error: null, data: undefined, refetch: () => undefined }
+      : state.notFound
       ? { isLoading: false, isError: true, error: { status: 404 }, data: undefined, refetch: () => undefined }
       : {
           isLoading: false,
@@ -71,15 +75,39 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
         },
 }));
 
-function page() {
+function page(client?: QueryClient) {
   return renderWithProviders(
     <MemoryRouter initialEntries={["/ctem/cases/c1"]}>
       <Routes>
         <Route path="/ctem/cases/:id" element={<CtemCaseDetail />} />
       </Routes>
     </MemoryRouter>,
+    ...(client ? [client] : []),
   );
 }
+
+describe("CtemCaseDetail first paint (#1986)", () => {
+  it("draws the header from the cached list row while the case is read", () => {
+    state.loading = true;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(CTEM_CASE_LIST_KEY, {
+      vertical: "cyber",
+      counts: {},
+      cases: [{ id: "c1", title: "Upgrade Apache HTTP Server to 2.4.62", state: "new", priority: "high", owner_user_id: null }],
+    });
+    page(client);
+    expect(screen.getByTestId("ctem-case-listed-header")).toBeInTheDocument();
+    expect(screen.getByText("Upgrade Apache HTTP Server to 2.4.62")).toBeInTheDocument();
+    state.loading = false;
+  });
+
+  it("keeps the page skeleton when the case is not in a cached list", () => {
+    state.loading = true;
+    page();
+    expect(screen.queryByTestId("ctem-case-listed-header")).not.toBeInTheDocument();
+    state.loading = false;
+  });
+});
 
 describe("CtemCaseDetail restricted members (#11613)", () => {
   it("draws a hidden member as a Restricted row of the issues table, with no detail", () => {

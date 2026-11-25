@@ -81,7 +81,9 @@ describe("signal source link", () => {
   it("an OpenCTI signal pivots to its entity in OpenCTI", async () => {
     get.mockImplementation((path: string) =>
       Promise.resolve(
-        path.startsWith("/ctem-metrics/posture") ? { products: { opencti: { present: true, url: "https://cti.example/" } } } : cti,
+        path.startsWith("/platform/registrations")
+          ? [{ platform_identifier: "opencti", platform_url: "https://cti.example/", status: "active" }]
+          : cti,
       ),
     );
     renderWithProviders(
@@ -97,7 +99,7 @@ describe("signal source link", () => {
   });
 
   it("draws no pivot when OpenCTI is not connected", async () => {
-    get.mockImplementation((path: string) => Promise.resolve(path.startsWith("/ctem-metrics/posture") ? { products: {} } : cti));
+    get.mockImplementation((path: string) => Promise.resolve(path.startsWith("/platform/registrations") ? [] : cti));
     renderWithProviders(
       <MemoryRouter initialEntries={[`/ctem/signals?signal=${ID}`]}>
         <SignalTraceBody id={ID} />

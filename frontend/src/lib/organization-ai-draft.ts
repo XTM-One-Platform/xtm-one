@@ -18,7 +18,43 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * pure functions over the proposals `POST /organization-context/ai-draft` answers,
  * so the dialog and its tests read one definition of "safe to accept in bulk".
  */
-import type { AiDraftProposal, OrganizationProfile } from "@/hooks/api/useOrganizationContextApi";
+import type { AiDraftProposal, OrganizationDraftResponse, OrganizationProfile } from "@/hooks/api/useOrganizationContextApi";
+import { SETTINGS_PROFILE_TABS, tabOfField } from "@/lib/organization-profile-tabs";
+
+/**
+ * The scope guard of Settings > Organization's Draft (#1991): a field the two tabs (Organization, Risk and response)
+ * draw. Inventory fields and the PIRs belong to CTEM > Inventory and the Prioritization policy card: never proposed here.
+ */
+export function isSettingsDraftField(path: string): boolean {
+  const tab = tabOfField(path);
+  return tab !== null && (SETTINGS_PROFILE_TABS as readonly string[]).includes(tab);
+}
+
+function valueAt(profile: OrganizationProfile, path: string): unknown {
+  return path.split(".").reduce<unknown>((node, key) => (node && typeof node === "object" ? (node as Record<string, unknown>)[key] : undefined), profile);
+}
+
+/** The platforms pass as review rows: each field the platforms filled, read as a fact (high confidence, never a conflict). */
+export function platformProposals(draft: OrganizationDraftResponse, current: OrganizationProfile): AiDraftProposal[] {
+  return draft.filled
+    .filter((row) => isSettingsDraftField(row.field))
+    .map((row) => ({
+      field: row.field,
+      value: valueAt(draft.profile, row.field),
+      source: row.source,
+      confidence: "high" as const,
+      basis: row.detail,
+      check: false,
+      current: valueAt(current, row.field),
+      conflict: false,
+    }));
+}
+
+/** One review from both passes: the platform values first, the AI completes the fields they left; out-of-scope rows dropped. */
+export function mergeDraftProposals(platform: readonly AiDraftProposal[], ai: readonly AiDraftProposal[]): AiDraftProposal[] {
+  const taken = new Set(platform.map((row) => row.field));
+  return [...platform, ...ai.filter((row) => !taken.has(row.field))].filter((row) => isSettingsDraftField(row.field));
+}
 
 /** A proposal "Accept all" may take: not a conflict, not "Check this", not low confidence. */
 export function isBulkAcceptable(proposal: AiDraftProposal): boolean {
