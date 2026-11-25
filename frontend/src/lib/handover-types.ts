@@ -47,7 +47,7 @@ export const ALL_HANDOVER_TYPES = "__all__";
 
 /** The stored entry of a target that runs every type in a map that holds a
  *  type (`app/services/handover_types.py` ALL_TYPES). */
-export const STORED_ALL_HANDOVER_TYPES = "all";
+const STORED_ALL_HANDOVER_TYPES = "all";
 
 function holdsAType(types: HandoverTypeMap | null | undefined): types is HandoverTypeMap {
   return !!types && Object.keys(types).length > 0;
