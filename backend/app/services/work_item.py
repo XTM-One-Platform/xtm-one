@@ -2268,7 +2268,9 @@ async def create_work_item(
         payload=payload,
     )
     refuse_blocked_on_red_pull_request(status, blocked_on_refs=refs, payload=payload, blocked_on=blockers)
-    refuse_foreign_pull_request_ref(status, correlation_key=correlation_key, title=title, blocked_on_refs=refs)
+    refuse_foreign_pull_request_ref(
+        status, correlation_key=correlation_key, title=title, blocked_on_refs=refs, payload=payload
+    )
     refuse_unbound_reference_reason(
         status,
         blocked_reason=reason,
@@ -2696,6 +2698,7 @@ async def update_work_item(
                 correlation_key=item.correlation_key if correlation_key is None else correlation_key,
                 title=item.title if title is None else title,
                 blocked_on_refs=refs,
+                payload=item.payload if payload is None else payload,
             )
         if landing == "blocked" and blocked_reason is not None:
             # A reason naming a pull request nothing watches would never be released (#11045).

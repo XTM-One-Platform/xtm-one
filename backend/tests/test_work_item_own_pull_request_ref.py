@@ -82,6 +82,18 @@ def test_another_repository_an_issue_or_a_satisfied_reference_is_left_alone():
     _refuse([_ref(13, state="merged", at=NOW.isoformat())])
 
 
+def test_a_pull_request_the_payload_binds_is_its_own_whatever_the_key_names():
+    # #2242: the key names #12, the payload binds #13, the PR that carries the change.
+    payload = {"pull_requests": [{"repo": REPO, "number": 13, "state": "open"}]}
+    refs_mod.refuse_foreign_pull_request_ref(
+        "blocked", correlation_key=VERDICT_KEY, title=VERDICT_TITLE, blocked_on_refs=[_ref(13)], payload=payload
+    )
+    with pytest.raises(ValueError, match="#14 is not this item's pull request"):
+        refs_mod.refuse_foreign_pull_request_ref(
+            "blocked", correlation_key=VERDICT_KEY, title=VERDICT_TITLE, blocked_on_refs=[_ref(14)], payload=payload
+        )
+
+
 def test_an_item_not_blocked_or_about_no_pull_request_is_never_refused():
     _refuse([_ref(13)], status="in_progress")
     _refuse([_ref(13)], key="dev:gap-verdict-item-pr-ref", title="Gap fix 15/25")

@@ -546,6 +546,19 @@ def _mark_told_holder(payload: object, done: CiCompleted) -> dict[str, Any]:
     return out
 
 
+def moved_head(payload: object, done: CiCompleted) -> str | None:
+    """The current head of *done*'s pull request when it is no longer *done*'s head, else ``None``. Pure."""
+    if not done.head_sha:
+        return None
+    for binding in pull_request_bindings(payload):
+        if (binding["repo"], binding["number"]) != (done.repo, done.number):
+            continue
+        head = binding.get("head_sha")
+        if head and head != done.head_sha:
+            return str(head)
+    return None
+
+
 def waiting_for_ci(item: dict) -> dict | None:
     """The first open pull request of *item* whose CI has not completed, or ``None``."""
     waiting = pull_requests_waiting_for_ci(item)
@@ -1180,6 +1193,14 @@ async def _dispatch(item_id: uuid.UUID, done: CiCompleted, now: datetime) -> str
             return "not dispatched: the item is no longer waiting"
         if waits_on_items(item):
             return "not dispatched: it waits for other items"
+        moved = moved_head(item.payload, done)
+        if moved is not None:
+            # A completion held back (a lease, a busy inbox) is stale once the
+            # head moved: the new head's own CI completion dispatches it (#2243).
+            return (
+                f"not dispatched: {done.repo}#{done.number} moved from {(done.head_sha or '?')[:8]} "
+                f"to {moved[:8]}; the new head's CI completion hands it back"
+            )
         # The deferral of an unchanged red waited for this very CI conclusion.
         if clear_red_deferral(item):
             item.last_activity_at = now
