@@ -59,7 +59,8 @@ def announce(
     db.add(_event(case.id, rules.SYSTEM_ACTOR, ANNOUNCED, to_value=loop.CASE_OPENED, reason=reason, at=at))
     events.verticals.add(case.vertical)
     events.frame(case, "created", at)
-    events.add(loop.CASE_OPENED, loop.case_data(case), loop.case_event_id(loop.CASE_OPENED, case, "open"))
+    # The event is dated at the case's creation, whenever it is raised (the backfill runs hourly).
+    events.add(loop.CASE_OPENED, loop.opened_data(case), loop.case_event_id(loop.CASE_OPENED, case, "open"))
 
 
 def _state_event(case: CtemCase, events: PendingEvents | None, at: datetime) -> None:
@@ -480,8 +481,11 @@ async def _case_of_signal(
     # #1951: while case opening is paused the signal waits, confirmed with no case.
     if not await ctem_case_opening.is_on(db, vertical):
         return None
+    # A case opened here is stamped when it is written, not at the start of the read (*now*), which
+    # can be minutes earlier on a long source read (ctem-case-stamps-pass-start-not-creation).
+    opened_at = max(now, datetime.now(UTC))
     async with db.begin_nested():
-        return await loop.open_from_signal(db, signal, vertical=vertical, events=events, now=now)
+        return await loop.open_from_signal(db, signal, vertical=vertical, events=events, now=opened_at)
 
 
 async def expire_acceptances(db: AsyncSession, *, now: datetime | None = None) -> int:

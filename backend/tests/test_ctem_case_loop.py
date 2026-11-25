@@ -137,6 +137,7 @@ def _case(**kw) -> CtemCase:
         validations=[],
         validation_plan=False,
         resolution_kind=None,
+        created_at=NOW,
     )
     base.update(kw)
     return CtemCase(**base)
@@ -164,6 +165,35 @@ async def test_signal_with_no_cve_opens_a_case_with_severity_sla_and_scenarios()
     payload = events.items[0][1]
     assert "title" not in payload and "signal_id" not in payload and payload["case_id"] == str(case.id)
     assert "severity" not in payload and "risk_scenario_ids" not in payload  # read on the case (#933)
+
+
+@pytest.mark.asyncio
+async def test_the_opened_event_is_dated_at_the_case_creation_not_at_its_publication():
+    # ctem-case-opened-event-backfill-delay: the event raised after the commit keeps the creation time.
+    db = FakeSession()
+    events = loop.PendingEvents()
+    case = await loop.open_from_signal(db, _signal(), events=events, now=NOW)
+    assert case is not None and case.created_at == NOW and case.state_since == NOW
+    assert events.items[0][1]["occurred_at"] == NOW.isoformat()
+    later = _case(created_at=NOW - timedelta(minutes=37))
+    assert loop.opened_data(later)["occurred_at"] == (NOW - timedelta(minutes=37)).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_a_case_opened_by_a_long_read_is_stamped_when_written_not_at_the_read_start(monkeypatch):
+    # ctem-case-stamps-pass-start-not-creation: the read started 11 s before the case was written.
+    from app.services import ctem_case_opening
+    from app.services import ctem_cases_store as store
+
+    async def on(_db, _vertical):
+        return True
+
+    monkeypatch.setattr(ctem_case_opening, "is_on", on)
+    read_start = datetime.now(UTC) - timedelta(seconds=11)
+    case = await store._case_of_signal(FakeSession(), _signal(), vertical="cyber", events=None, now=read_start)
+    assert case is not None
+    assert case.state_since > read_start and case.created_at == case.state_since
+    assert case.sla_due_at == case.state_since + timedelta(hours=24)
 
 
 @pytest.mark.asyncio
