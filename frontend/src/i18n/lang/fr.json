@@ -21776,5 +21776,19 @@
   "Which side is the master of the list.": "Le côté qui fait référence pour la liste.",
   "The part of the organization context the sync writes to the platform.": "La partie du contexte de l'organisation que la synchronisation écrit dans la plateforme.",
   "The part of the organization context the platform fills.": "La partie du contexte de l'organisation que la plateforme remplit.",
-  "Rows the first run creates in {platform}": "Lignes que la première exécution crée dans {platform}"
+  "Rows the first run creates in {platform}": "Lignes que la première exécution crée dans {platform}",
+  "Coordination retention": "Rétention de la coordination",
+  "How long work items, shared state and worksets are kept once they are closed. 0 keeps them forever.": "Durée de conservation des work items, de l'état partagé et des worksets une fois clos. 0 les conserve indéfiniment.",
+  "Closed work items (days)": "Work items clos (jours)",
+  "Done and cancelled work items are deleted this many days after their last update.": "Les work items terminés et annulés sont supprimés ce nombre de jours après leur dernière mise à jour.",
+  "Resolved shared state (days)": "État partagé résolu (jours)",
+  "Resolved shared state entries are deleted this many days after their last update.": "Les entrées d'état partagé résolues sont supprimées ce nombre de jours après leur dernière mise à jour.",
+  "Unclaimed open work items (days)": "Work items ouverts non pris (jours)",
+  "Open work items nobody picks up are cancelled this many days after their last activity.": "Les work items ouverts que personne ne prend sont annulés ce nombre de jours après leur dernière activité.",
+  "Archived shared state items (days)": "Éléments d'état partagé archivés (jours)",
+  "List items moved to an archive entry are dropped this many days after they were archived.": "Les éléments de liste déplacés dans une entrée d'archive sont supprimés ce nombre de jours après leur archivage.",
+  "Resolved worksets (days)": "Worksets résolus (jours)",
+  "Resolved worksets are deleted with their documents this many days after they were resolved.": "Les worksets résolus sont supprimés avec leurs documents ce nombre de jours après leur résolution.",
+  "Kept forever": "Conservé indéfiniment",
+  "An hourly sweep deletes what is past this window, in batches, until nothing is left. Active entries and work items still open are never deleted. 0 keeps them forever. Allowed range: {min} to {max}.": "Un nettoyage horaire supprime, par lots, ce qui dépasse cette durée jusqu'à ce qu'il ne reste rien. Les entrées actives et les work items encore ouverts ne sont jamais supprimés. 0 les conserve indéfiniment. Plage autorisée : {min} à {max}."
 }
