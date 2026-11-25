@@ -21776,5 +21776,8 @@
   "Which side is the master of the list.": "Qué lado es la referencia de la lista.",
   "The part of the organization context the sync writes to the platform.": "La parte del contexto de la organización que la sincronización escribe en la plataforma.",
   "The part of the organization context the platform fills.": "La parte del contexto de la organización que rellena la plataforma.",
-  "Rows the first run creates in {platform}": "Filas que la primera ejecución crea en {platform}"
+  "Rows the first run creates in {platform}": "Filas que la primera ejecución crea en {platform}",
+  "Observer only": "Solo observador",
+  "This automation watches the objects of its events without working them: a CTEM case it hears is not shown as worked by it.": "Esta automatización observa los objetos de sus eventos sin trabajarlos: un caso CTEM que recibe no se muestra como trabajado por ella.",
+  "{count, plural, one {# automation that can work this case is switched off} other {# automations that can work this case are switched off}}": "{count, plural, one {# automatización que puede trabajar este caso está desactivada} other {# automatizaciones que pueden trabajar este caso están desactivadas}}"
 }
