@@ -89,6 +89,14 @@ _TITLES: dict[str, str] = {
     "restore_coverage": "Restore coverage of {subject}",
 }
 
+#: The action a ``control_decay`` signal asks for, by its evidence state (#2069): a control never
+#: measured has nothing to restore. Titled on the asset name; the reason stays on the signal.
+_CONTROL_DECAY_TITLES: dict[str, str] = {
+    "never_measured": "Put in place and measure the control on {asset}",
+    "attested_only": "Measure the control on {asset} (attested only)",
+    "expired": "Re-test the control on {asset}",
+}
+
 #: Most signals the sweep opens cases for in one pass.
 SWEEP_BATCH = 500
 #: The member source of a signal attached to a case.
@@ -191,6 +199,10 @@ def fix_of(signal: CtemSignal) -> CaseFix:
             title=f"Upgrade {subject} to a fixed version"[:COLUMN_MAX],
         )
     key = _bounded_key(f"{kind}:{signal.subject_kind}/{_norm(signal.subject_ref)}")
+    decay = _CONTROL_DECAY_TITLES.get(str(evidence.get("state") or "")) if path == "control_decay" else None
+    asset = (signal.subject_ref or "").strip()
+    if decay and asset:
+        return CaseFix(key=key, kind=kind, title=decay.format(asset=asset)[:COLUMN_MAX])
     title = _TITLES.get(kind, "Remediate {subject}").format(subject=subject)[:COLUMN_MAX]
     return CaseFix(key=key, kind=kind, title=title)
 

@@ -3218,7 +3218,14 @@ def build_sandbox_workspace_tools(
             )
         ran = outcome.command or command
         if ran is not None and not outcome.stopped and not outcome.timed_out:
-            await prepush.record_run(session, checkout, check=ran.check, argv=ran.argv, exit_code=outcome.exit_code)
+            await prepush.record_run(
+                session,
+                checkout,
+                check=ran.check,
+                argv=ran.argv,
+                exit_code=outcome.exit_code,
+                on_change=ran.affected_by_default,
+            )
         return outcome.text + await _outside_checkout_note(outcome, checkout, ran)
 
     async def _outside_checkout_note(

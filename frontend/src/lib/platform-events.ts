@@ -190,6 +190,8 @@ export interface PlatformEventDraft {
   once: boolean;
   /** The subscription's deadline (an ISO instant with its offset), optional: past it the trigger no longer starts a run. */
   expiresAt?: string;
+  /** The assignment watches the objects of its events without working them (`trigger_config.role = "observer"`). */
+  observer?: boolean;
 }
 
 export function platformEventDraft(config: TriggerConfig | undefined): PlatformEventDraft {
@@ -202,6 +204,7 @@ export function platformEventDraft(config: TriggerConfig | undefined): PlatformE
     scope: platformEventScope(config?.scope),
     once: config?.once === true,
     ...(typeof config?.expires_at === "string" && config.expires_at ? { expiresAt: config.expires_at } : {}),
+    ...(config?.role === "observer" ? { observer: true } : {}),
   };
 }
 
@@ -216,5 +219,6 @@ export function platformEventConfig(draft: PlatformEventDraft): TriggerConfig {
   if (draft.scope !== "own") config.scope = draft.scope;
   if (draft.once) config.once = true;
   if (draft.expiresAt) config.expires_at = draft.expiresAt;
+  if (draft.observer) config.role = "observer";
   return config;
 }

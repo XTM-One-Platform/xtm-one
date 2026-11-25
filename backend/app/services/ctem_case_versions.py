@@ -30,6 +30,7 @@ scheme of ``ctem_fixed_version``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Iterable, Mapping
@@ -527,6 +528,39 @@ async def read_running_versions(
     return answer
 
 
+def _row_index(rows: list[Any]) -> tuple[list[tuple[str, str]], dict[str, list[int]]]:
+    """Fold each row's (vendor, product) once and index the rows by every label they may match (#2038).
+
+    A row matches a label (:func:`matches_case`) only when the label is its product key, its
+    ``vendor product`` key, or a word suffix of its product key (a publisher-prefixed product), so
+    those keys index it; :func:`matches_case` is still the rule, applied to the candidates only.
+    """
+    keys: list[tuple[str, str]] = []
+    index: dict[str, list[int]] = {}
+    for i, (vendor, product, _version, _asset_ids) in enumerate(rows):
+        vendor_key, product_key = publisher_key(vendor), _key(product)
+        keys.append((vendor_key, product_key))
+        candidates = {product_key}
+        if vendor_key:
+            candidates.add(f"{vendor_key} {product_key}")
+        words = product_key.split(" ")
+        for start in range(1, len(words)):
+            candidates.add(" ".join(words[start:]))
+        for candidate in candidates:
+            if candidate:
+                index.setdefault(candidate, []).append(i)
+    return keys, index
+
+
+def _keys_match(label: str, vendor_key: str, product_key: str) -> bool:
+    """:func:`matches_case` on keys already folded (*label* folded with :func:`_key`)."""
+    if product_key == label:
+        return True
+    if vendor_key and f"{vendor_key} {product_key}" == label:
+        return True
+    return _publisher_prefixed(label, vendor_key, product_key)
+
+
 def inventory_version_counts(
     rows: Iterable[Any], os_assets: Mapping[str, list[dict[str, Any]]], labels: Iterable[str]
 ) -> dict[str, dict[str, int]]:
@@ -537,16 +571,20 @@ def inventory_version_counts(
     rule :func:`running_versions` reads (:func:`matches_case`), and an OS label also counts the
     assets' ``os_version`` (an asset already counted by a software row is not counted twice). An
     ``unknown`` version is left out: it names nothing OpenCTI could place. A label no asset runs
-    is absent.
+    is absent. Each row is folded once and indexed, so the cost is linear in rows plus labels.
     """
     rows = list(rows)
+    keys, index = _row_index(rows)
     out: dict[str, dict[str, int]] = {}
     for label in dict.fromkeys(labels):
         on_version: dict[str, set[str]] = {}
         counted: set[str] = set()
-        for vendor, product, version, asset_ids in rows:
-            if not matches_case(label, vendor, product):
+        folded = _key(label)
+        for i in sorted(set(index.get(folded, ()))) if folded else ():
+            vendor_key, product_key = keys[i]
+            if not _keys_match(folded, vendor_key, product_key):
                 continue
+            _vendor, _product, version, asset_ids = rows[i]
             ids = {str(a) for a in asset_ids or ()}
             counted |= ids
             text = str(version or "").strip()
@@ -607,7 +645,8 @@ async def inventory_versions(
     except Exception:  # the inventory never breaks the issues read
         logger.info("CTEM inventory versions unavailable", exc_info=True)
         return {}
-    return inventory_version_counts(rows, os_assets, wanted)
+    # Pure and CPU-bound on a large inventory: off the event loop so no request waits on it.
+    return await asyncio.to_thread(inventory_version_counts, rows, os_assets, wanted)
 
 
 async def inventory_sources(db: AsyncSession, organization_id: uuid.UUID) -> list[str] | None:
