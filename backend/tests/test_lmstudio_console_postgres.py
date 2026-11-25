@@ -255,7 +255,7 @@ async def test_a_company_managed_server_is_an_admins_console(monkeypatch):
         assert (overview.can_manage_server, overview.can_link_provider, overview.link_refusal) == (True, True, None)
 
 
-async def test_an_unrouted_integration_never_reaches_its_server(monkeypatch):
+async def test_an_unrouted_integration_reaches_its_server_directly(monkeypatch):
     fake = _FakeLMStudio().install(monkeypatch)
     async with _database() as db, db.sessions() as session:
         admin = _user("admin", role="admin")
@@ -266,14 +266,12 @@ async def test_an_unrouted_integration_never_reaches_its_server(monkeypatch):
         iid = str(integration.id)
 
         overview = await console.get_overview(iid, user=admin, db=session, _ai_gate=None)
-        assert (overview.routed, overview.server_refusal, overview.can_link_provider) == (
-            False, client.PUBLIC_MESSAGES["not_routed"], False
-        )
-        assert await _status(console.get_models(iid, user=admin, db=session, _ai_gate=None)) == 409
-        assert await _status(
-            console.link_provider(iid, LinkProviderRequest(available_models=["qwen/qwen3-4b"]), None, user=admin, db=session, _ai_gate=None)
-        ) == 409
-        assert fake.calls == []
+        assert (overview.routed, overview.relay_group_id, overview.server_refusal) == (False, None, None)
+        assert (overview.can_link_provider, overview.link_refusal) == (True, None)
+        models = await console.get_models(iid, user=admin, db=session, _ai_gate=None)
+        assert models.models
+        [(kind, connection, route)] = fake.calls
+        assert (kind, connection.base_url, route) == ("list", "http://gpu-host:1234", None)
 
 
 # ---------------------------------------------------------------------------
@@ -357,21 +355,17 @@ async def test_an_admin_feeds_the_platform_provider_which_follows_the_integratio
         await session.refresh(config)
         assert decrypt_value(config.api_key_enc) == llm_link.STORED_CREDENTIAL
 
-        # It is never saved unrouted (``requires_relay``); a row that lost its
-        # group anyway carries nothing: the provider refuses.
-        assert await _status(
-            integrations_mod.update_integration(
-                cid, UpdateIntegrationRequest(relay_group_id=None), None, user=admin, db=session, after_commit=AfterCommit(),
-            )
-        ) == 422
+        # Taken off its relay group, the integration sends the provider's
+        # requests to the server directly.
+        after_commit = AfterCommit()
+        await integrations_mod.update_integration(
+            cid, UpdateIntegrationRequest(relay_group_id=None), None, user=admin, db=session, after_commit=after_commit,
+        )
+        await after_commit.run()
         await session.refresh(company)
-        assert company.relay_group_id == other_relays.id
-        company.relay_group_id = None
-        await session.commit()
-        llm_link.forget_target()
-        with pytest.raises(llm_link.TargetRefusedError) as refused:
-            await llm_link.resolve_target(config_id)
-        assert refused.value.message == client.PUBLIC_MESSAGES["not_routed"]
+        assert company.relay_group_id is None
+        target = await llm_link.resolve_target(config_id)
+        assert (target.route, target.connection.base_url) == (None, "http://gpu-host:1234")
 
         # Made private, the integration stops feeding the provider.
         company.relay_group_id = relays.id
@@ -427,7 +421,7 @@ async def test_an_unlinked_provider_refuses_at_once_and_can_be_adopted_again(mon
             await llm_link.resolve_target(config_id)
 
 
-async def test_an_lm_studio_integration_is_created_routed_and_connected_without_a_token(monkeypatch):
+async def test_an_lm_studio_integration_is_created_direct_or_routed_and_connected_without_a_token(monkeypatch):
     from app.api.v1.schemas.integration import CreateIntegrationRequest
 
     async with _database() as db, db.sessions() as session:
@@ -436,14 +430,17 @@ async def test_an_lm_studio_integration_is_created_routed_and_connected_without_
         session.add_all([admin, relays])
         await session.commit()
 
-        unrouted = CreateIntegrationRequest(provider="lmstudio", name="GPU box", extra_config={"base_url": "http://gpu-host:1234"})
-        assert await _status(integrations_mod.create_integration(unrouted, None, user=admin, db=session, _agentic_gate=None)) == 422
-        assert (await session.execute(select(Integration))).scalars().all() == []
-
-        routed = unrouted.model_copy(update={"relay_group_id": str(relays.id)})
+        direct = CreateIntegrationRequest(provider="lmstudio", name="Local box", extra_config={"base_url": "http://localhost:1234"})
+        await integrations_mod.create_integration(direct, None, user=admin, db=session, _agentic_gate=None)
+        routed = CreateIntegrationRequest(
+            provider="lmstudio", name="GPU box", extra_config={"base_url": "http://gpu-host:1234"}, relay_group_id=str(relays.id)
+        )
         await integrations_mod.create_integration(routed, None, user=admin, db=session, _agentic_gate=None)
-        [row] = (await session.execute(select(Integration))).scalars().all()
-        assert (row.status, row.auth_type, row.relay_group_id, row.api_key_enc) == ("connected", "none", relays.id, None)
+        rows = {r.name: r for r in (await session.execute(select(Integration))).scalars().all()}
+        assert {name: (r.status, r.auth_type, r.relay_group_id, r.api_key_enc) for name, r in rows.items()} == {
+            "Local box": ("connected", "none", None, None),
+            "GPU box": ("connected", "none", relays.id, None),
+        }
 
 
 async def test_settings_never_creates_the_provider_by_hand():
