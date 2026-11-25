@@ -32,7 +32,7 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -202,6 +202,21 @@ query CtemCaseVulnsById($filters: FilterGroup, $first: Int) {
   }
 }
 """
+
+# The vulnerabilities a signal member names (#2041): looked up by CVE name, with the viewer's own read.
+_OCTI_VULNS_BY_NAME = """
+query CtemCaseSignalVulns($filters: FilterGroup, $first: Int) {
+  vulnerabilities(filters: $filters, first: $first) {
+    edges { node {
+      id name
+      x_opencti_cvss_base_score x_opencti_epss_score x_opencti_cisa_kev
+    } }
+  }
+}
+"""
+
+#: Most CVE ids one signal enrichment looks up (#2041): past it the rest stays unenriched, never guessed.
+SIGNAL_CVE_CAP = 500
 
 #: Most member lookups by id one OpenAEV read makes; past it the read is incomplete and resolves
 #: nothing. One finding per CVE and asset (OpenAEV #9233) makes more members than before.
@@ -1262,7 +1277,15 @@ async def _signal_members(
     if ids is not None:  # one case's signals (#1986)
         statement = statement.where(cast(CtemSignal.id, String).in_(ids))
     rows = (await db.execute(statement)).scalars().all()
-    return [
+    from app.services.ctem_scope_gate import signal_cve_ids
+
+    # The CVE ids each signal names: enriched from OpenCTI like an OpenCTI issue (#2041).
+    cves = {
+        f"signal:{s.id}": found
+        for s in rows
+        if (found := signal_cve_ids(s.subject_ref, s.subject_label, s.evidence or {}))
+    }
+    issues = [
         rules.SourceIssue(
             source="signal",
             external_id=str(s.id),
@@ -1277,6 +1300,116 @@ async def _signal_members(
         )
         for s in rows
     ]
+    return await _enrich_signals(db, user_id, issues, cves) if cves else issues
+
+
+def enrich_signal_issues(
+    issues: list[rules.SourceIssue],
+    cves: dict[str, list[str]],
+    vulns: list[dict[str, Any]],
+    remediations: list[dict[str, Any]] | None = None,
+) -> list[rules.SourceIssue]:
+    """The signal members with the facts OpenCTI holds on the CVEs they name (pure, #2041).
+
+    *cves* maps a member id to the CVE ids its signal names; *vulns* are the
+    OpenCTI Vulnerability nodes read by name, *remediations* their courses of
+    action. A member takes its first CVE, KEV when any of its CVEs is KEV (each
+    KEV CVE kept in ``kev_cves`` for the case's KEV count), the
+    highest CVSS and EPSS, and the version a course of action names when it is
+    a plain upgrade. A CVE OpenCTI does not know leaves those facts unknown
+    (``None``, never 0); the member is kept either way.
+    """
+    by_name: dict[str, dict[str, Any]] = {}
+    for node in vulns:
+        name = str(node.get("name") or "").strip().upper()
+        if name and node.get("id"):
+            by_name.setdefault(name, node)
+    coa_name: dict[str, str] = {}
+    for rel in remediations or []:
+        vuln = (rel.get("to") or {}).get("id")
+        name = str((rel.get("from") or {}).get("name") or "").strip()
+        if vuln and name and (vuln not in coa_name or name < coa_name[vuln]):
+            coa_name[vuln] = name
+    out: list[rules.SourceIssue] = []
+    for issue in issues:
+        named = cves.get(issue.member_id) or []
+        if not named:
+            out.append(issue)
+            continue
+        known = [by_name[c] for c in named if c in by_name]
+        kev_cves = tuple(
+            dict.fromkeys(c.upper() for c in named if c in by_name and by_name[c].get("x_opencti_cisa_kev"))
+        )
+        cvss = [v for n in known if (v := _float(n.get("x_opencti_cvss_base_score"))) is not None]
+        epss = [v for n in known if (v := _float(n.get("x_opencti_epss_score"))) is not None]
+        fixes = [
+            f for n in known if (f := fixed_versions.version_from_course_of_action(coa_name.get(n["id"]))) is not None
+        ]
+        out.append(
+            replace(
+                issue,
+                cve=named[0],
+                kev=any(bool(n.get("x_opencti_cisa_kev")) for n in known),
+                kev_cves=kev_cves,
+                cvss=max(cvss) if cvss else None,
+                epss=max(epss) if epss else None,
+                fixed_version=_highest(fixes),
+            )
+        )
+    return out
+
+
+async def _read_opencti_by_name(
+    client: httpx.AsyncClient, base_url: str, headers: dict[str, str], cves: list[str]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+    """The OpenCTI Vulnerabilities named *cves* and their courses of action, ``None`` when OpenCTI fails."""
+    nodes: list[dict[str, Any]] = []
+    for start in range(0, len(cves), _PAGE):
+        chunk = cves[start : start + _PAGE]
+        data, err = await _graphql(
+            client,
+            base_url,
+            headers,
+            _OCTI_VULNS_BY_NAME,
+            {"filters": _fg([{"key": ["name"], "values": chunk}]), "first": len(chunk) * 2},
+        )
+        if err:
+            logger.info("CTEM cases: OpenCTI signal CVE lookup unavailable: %s", err)
+            return None
+        nodes.extend(
+            node
+            for e in ((data or {}).get("vulnerabilities") or {}).get("edges") or []
+            if (node := (e or {}).get("node"))
+        )
+    remediations, _fixes = await _remediations_of(
+        client, base_url, headers, sorted({str(n["id"]) for n in nodes if n.get("id")})
+    )
+    return nodes, remediations
+
+
+async def _enrich_signals(
+    db: AsyncSession, user_id: str, issues: list[rules.SourceIssue], cves: dict[str, list[str]]
+) -> list[rules.SourceIssue]:
+    """*issues* enriched from OpenCTI with the viewer's own credentials (#2041); unchanged when it cannot answer."""
+    wanted = list(dict.fromkeys(c for i in issues for c in cves.get(i.member_id) or ()))[:SIGNAL_CVE_CAP]
+    if not wanted:
+        return issues
+    try:
+        cred = await _user_creds(db, user_id, "opencti")
+    except Exception as exc:  # unreadable credentials: the facts stay unknown, the members stay
+        logger.info("CTEM cases: OpenCTI access unreadable for %s: %s", user_id, format_exception_message(exc))
+        return enrich_signal_issues(issues, cves, [])
+    if cred is None:
+        return enrich_signal_issues(issues, cves, [])
+    base_url, headers = cred
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            found = await _read_opencti_by_name(client, base_url, attach_probe(headers, base_url), wanted)
+    except Exception as exc:
+        logger.warning("CTEM cases: OpenCTI signal CVE lookup failed: %s", format_exception_message(exc))
+        found = None
+    vulns, remediations = found or ([], [])
+    return enrich_signal_issues(issues, cves, vulns, remediations)
 
 
 async def recompute_for_user(
