@@ -153,10 +153,19 @@ async def verify_package(db: AsyncSession, user_id: str, package: Any, review: s
     the case's ``ctem_cases_view.review_outcome`` (#1573): while the review
     waits, was refused or asked for a re-plan, an open draft holding the
     Grouping wins over the live graph, and a Grouping found in none is refused.
+    Until the review approved, no gate written yet included (#2089), a package
+    with a draft page or no page is read too: its Grouping found in the live
+    graph and in no open draft was written live before any approval, and is
+    refused (create a draft first).
     """
-    if not isinstance(package, dict) or not _grouping_page_of(package):
+    if not isinstance(package, dict):
         return package
     held = _not_approved(review)
+    if not _grouping_page_of(package):
+        grouping_id = str(package.get("grouping_id") or "").strip()
+        if (held or review is None) and grouping_id:
+            await _refuse_live_before_review(db, user_id, grouping_id)
+        return package
     placement = await grouping_placement(db, user_id, str(package.get("grouping_id") or "").strip(), draft_first=held)
     if placement.where == DRAFT:
         return {**package, "url": placement.draft_page}
@@ -178,6 +187,73 @@ async def verify_package(db: AsyncSession, user_id: str, package: Any, review: s
         "threat_package.url is the Grouping page but whether the Grouping is in OpenCTI's live graph could not "
         f"be read ({placement.detail}): record the draft page while the package is drafted, or try again"
     )
+
+
+#: The refusal of a package written live before its review approved it (#2089).
+LIVE_BEFORE_REVIEW = (
+    "threat_package.grouping_id is in OpenCTI's live graph and in no open draft, but the case's analyst review "
+    "(ctem.analyst_review) has not approved the package: create a draft first (create_opencti_draft), write "
+    "the package in it and record the draft page; the package reaches the live graph only when the approved "
+    "review validates the draft (apply_opencti_draft)"
+)
+
+
+async def _refuse_live_before_review(db: AsyncSession, user_id: str, grouping_id: str) -> None:
+    """Refuse a Grouping placed in the live graph alone while the review is held (#2089).
+
+    Draft first: a Grouping inside an open draft passes, whether or not it also
+    exists live (an edit of a live object is still a drafted package). One
+    OpenCTI cannot place passes as given: the draft page or the empty page
+    keeps the package ``drafted``, and an unreadable OpenCTI never blocks a case.
+    """
+    placement = await grouping_placement(db, user_id, grouping_id, draft_first=True)
+    if placement.where == LIVE:
+        raise rules.CaseRuleError(LIVE_BEFORE_REVIEW)
+
+
+async def is_case_package_draft(db: AsyncSession, draft_id: str) -> bool:
+    """Whether *draft_id* holds the threat package a CTEM case records now (#2089).
+
+    True when the newest ``threat_package`` event of a case of the primary
+    organization carries that draft's page (``/data/import/draft/<draft_id>``).
+    It bounds what a gated CTEM run may discard with ``delete_opencti_draft``:
+    the draft of a case's own package, never an analyst's or another draft.
+    """
+    did = (draft_id or "").strip().lower()
+    try:
+        uuid.UUID(did)
+    except ValueError:
+        return False
+    from app.services.organizations import get_primary
+
+    primary = await get_primary(db)
+    if primary is None:
+        return False
+    suffix = f"/data/import/draft/{did}"
+    found = await db.execute(
+        select(CtemCaseEvent.case_id)
+        .join(CtemCase, CtemCase.id == CtemCaseEvent.case_id)
+        .where(
+            CtemCase.organization_id == primary.id,
+            CtemCaseEvent.kind == "threat_package",
+            CtemCaseEvent.evidence.ilike(f"%{suffix}%"),
+        )
+        .distinct()
+    )
+    case_ids = found.scalars().all()
+    for case_id in case_ids:
+        newest = (
+            await db.execute(
+                select(CtemCaseEvent.evidence)
+                .where(CtemCaseEvent.case_id == case_id, CtemCaseEvent.kind == "threat_package")
+                .order_by(CtemCaseEvent.at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        page = str(newest or "").strip().lower().rstrip("/")
+        if page.endswith(suffix) or f"{suffix}/" in page:
+            return True
+    return False
 
 
 async def repair_stored_packages(
