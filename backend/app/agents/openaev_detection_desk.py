@@ -297,7 +297,8 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "An OpenAEV simulation finished; the trigger information below names it.\n"
             "Run one analysis of the detection desk loop: delegate the sorting of its results to the "
             "Coverage Gap Analyst, draft a detection rule for each gap whose root cause is a missing "
-            "rule, raise one remediation work item per gap and schedule its re-test. When the "
+            f"rule, raise one remediation work item per gap (keyed {REMEDIATION_PREFIX}, owned by you, "
+            "needs_human with an ask card: a person makes the fix). When the "
             f"simulation is itself a re-test (a {RETEST_PREFIX} item names it), close each gap it "
             "proves closed. Answer with the run JSON."
         ),
@@ -348,13 +349,19 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
     },
     gate_answered_assignment(
         _COMMON,
-        prefixes=(LAUNCH_PREFIX,),
+        prefixes=(LAUNCH_PREFIX, REMEDIATION_PREFIX),
         inherit_switch_from="Simulation finished",
-        description="A person answered a launch approval: launch the simulation, or record the refusal.",
+        description=(
+            "A person answered a launch approval or a remediation: launch the simulation or schedule "
+            "the re-test, or record the refusal."
+        ),
         apply=(
-            "Approved: launch exactly the simulation the approval named, and record it in shared "
-            f"state {STATE_KEY}; its results come back through Simulation finished. Rejected or "
-            "deferred: record the decision and the reason there. Answer with the run JSON."
+            f"A launch ({LAUNCH_PREFIX}) approved: launch exactly the simulation the approval named, and "
+            f"record it in shared state {STATE_KEY}; its results come back through Simulation finished. "
+            f"A remediation ({REMEDIATION_PREFIX}) answered done: create the re-test work item keyed "
+            f"{RETEST_PREFIX} followed by the same ids, owned by you (none when one is already open). "
+            f"Rejected, declined or deferred: record the decision and the reason in {STATE_KEY}. "
+            "Answer with the run JSON."
         ),
     ),
 ]
