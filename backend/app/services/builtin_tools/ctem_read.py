@@ -148,7 +148,7 @@ def empty_sections(
 
 def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The three read tools, acting for *user_id*; nothing is written."""
-    from .ctem_cases import _uuid, build_ctem_case_tools
+    from .ctem_cases import _uuid, build_ctem_case_tools, resolve_case_id
     from .ctem_signals import build_ctem_signal_tools
 
     signal_defs, signal_exec = build_ctem_signal_tools(user_id=user_id)
@@ -164,8 +164,7 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         from app.services.ctem_verticals import normalize_vertical
         from app.services.organizations import get_primary
 
-        wanted = _uuid(case_id)
-        if wanted is None:
+        if not str(case_id or "").strip():
             return "case_id must be the id list_ctem_cases answers."
         if scope is None:
             return f"No case {case_id}."
@@ -174,6 +173,10 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 primary = await get_primary(db)
                 if primary is None:
                     return f"No case {case_id}."
+                # A full id or a unique 8+ character prefix (#2103), as the case tools.
+                wanted, why = await resolve_case_id(db, case_id, primary.id)
+                if wanted is None:
+                    return why
                 user = await db.get(User, scope)
                 vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
                 found = await store.get_case(db, wanted, organization_id=primary.id)
@@ -280,7 +283,7 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "internet_facing": {"type": "string"},
                     "query": {
                         "type": "string",
-                        "description": "Case-insensitive text in the name, os_family, os_version or owner.",
+                        "description": "Text in the name, os_family, os_version or owner, or an asset id or id prefix.",
                     },
                     "offset": {"type": "integer"},
                     "limit": {"type": "integer"},
