@@ -6546,11 +6546,21 @@ def _log_tool_result(tc: ToolCall, result: ToolResult, probe: str | None = None)
     elif errored:
         from app.services.ctem_module_preflight import NO_MODULE_ACCOUNT, note_tool_refusal
         from app.services.frictions import note_expected_error, note_tool_error
+        from app.services.integration_auth_guard import AUTH_FAILURE_RECORDED_REF
 
         # A per-user CTEM stage run refused by a module the member has no
         # account on: expected, recorded already disposed of (#2042).
         if (refused := note_tool_refusal(tc.name, result.content)) is not None:
             note_expected_error(tc.name, result.content, f"{NO_MODULE_ACCOUNT}: {refused}")
+        elif result.auth_failure_recorded:
+            # An integration 401 / 403 the run's auth guard already recorded on
+            # integration_auth_failures and the coverage notice: reported once,
+            # never an undisposed friction on top (#2204).
+            note_expected_error(
+                tc.name,
+                result.content,
+                f"{AUTH_FAILURE_RECORDED_REF}: {result.auth_failure_recorded}",
+            )
         else:
             note_tool_error(tc.name, result.content)
     if result.is_error:

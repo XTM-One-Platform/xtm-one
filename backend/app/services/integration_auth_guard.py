@@ -54,6 +54,10 @@ FORBIDDEN_FAIL_FAST = 3
 #: ``AssignmentRun.stop_reason`` of a run in which no called integration was readable.
 UNREADABLE_STOP_REASON = "integrations_unreadable"
 
+#: Ref of the friction a recorded auth failure is filed under, already disposed
+#: of: the run reports the failure on ``integration_auth_failures`` (#2204).
+AUTH_FAILURE_RECORDED_REF = "integration auth failure recorded on the run"
+
 
 def auth_failure_status(content: str) -> str:
     """``"403"`` for a call the credential may not make, ``"401"`` for a credential rejected."""
@@ -253,12 +257,16 @@ class AuthGuardedExecutor:
                 ),
                 is_error=True,
                 refused=True,
+                auth_failure_recorded=f"{integration} {guard.failures_of(integration)}",
             )
         guard.note_call(integration)
         result: ToolResult = await inner.execute_tool(call)
         content = result.content if isinstance(result.content, str) else ""
         if content and is_auth_failure_result(content):
             guard.record(integration, call.name, content)
+            # Recorded on the run (integration_auth_failures, coverage notice):
+            # the loop files its friction already disposed of (#2204).
+            result.auth_failure_recorded = f"{integration} {guard.failures_of(integration)}"
         else:
             guard.note_answer(integration)
         return result
