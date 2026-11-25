@@ -12433,7 +12433,18 @@ export interface WidgetGeoData {
 }
 /** Nodes and the edges between them; every edge's ends are nodes. */
 export interface WidgetGraphData {
-  nodes: { id: string; label: string; group: string | null; value: number | null }[];
+  nodes: {
+    id: string;
+    label: string;
+    group: string | null;
+    value: number | null;
+    /** A flow's node (an Attack Flow, a kill chain's stages): its kind and what its card shows. */
+    kind?: "start" | "action" | "condition" | "operator" | "asset";
+    technique?: string;
+    tactic?: string;
+    description?: string;
+    operator?: "AND" | "OR";
+  }[];
   edges: { source: string; target: string; label: string | null; value: number | null }[];
 }
 /** Events in time, by start: an ISO date (`2026-01-31`) or UTC date-time (`2026-01-31T10:00:00Z`). */
@@ -12554,6 +12565,8 @@ interface WidgetPresentation {
  * someone asks (`manual`).
  */
 export interface WidgetSnapshot {
+  /** The source holding the snapshot: the widget's own, or the one its derived source reads. */
+  source_id?: string;
   mode: "server" | "manual";
   every: string | null;
   refreshed_at: string | null;

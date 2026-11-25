@@ -241,6 +241,32 @@ test("each source type is drawn as a data widget naming its source, type and ref
   );
 });
 
+test("an integration's read tool and a knowledge base table are drawn as data widgets", () => {
+  const definition = sourcesDefinition();
+  definition.dataSources = {
+    ...definition.dataSources,
+    tool: { type: "integration", options: { integration_id: INTEGRATION, tool: "list_issues", shape: "rows" } },
+    table: { type: "knowledge", options: { knowledge_base_id: INTEGRATION, document_id: INTEGRATION, shape: "distribution" } },
+  } as typeof definition.dataSources;
+  definition.visualizations = {
+    ...definition.visualizations,
+    d: { type: "xtm.table", dataSources: { primary: "tool" } },
+    e: { type: "xtm.bar", dataSources: { primary: "table" } },
+  } as typeof definition.visualizations;
+  definition.layout.layoutDefinitions.main.structure.push(
+    { item: "d", position: { x: 0, y: 16, w: 6, h: 6 } },
+    { item: "e", position: { x: 6, y: 16, w: 6, h: 6 } },
+  );
+  const widgets = normalizeDashboard(definition).widgets.filter((w) => w.id === "d" || w.id === "e");
+  assert.deepEqual(
+    widgets.map((w) => [w.id, w.kind, w.kind === "data" ? w.sourceType : null]),
+    [
+      ["d", "data", "integration"],
+      ["e", "data", "knowledge"],
+    ],
+  );
+});
+
 test("a derived widget is read again when the source it derives from changes", () => {
   const before = normalizeDashboard(sourcesDefinition()).widgets[0];
   const changed = sourcesDefinition();

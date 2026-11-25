@@ -67,6 +67,7 @@ const VIEW_ROWS: Record<string, number> = {
   choroplethsvg: 5,
   linkgraph: 5,
   networkgraph: 5,
+  attackflow: 6,
   sankey: 5,
   parallel: 4,
   timeline: 4,
@@ -129,10 +130,13 @@ function cellHeight(rows: number): number {
   return rows * 62 + (rows - 1) * 20;
 }
 
+/** The least height a chart is drawn at: a widget sized smaller than its content shrinks it, never overflows its cell. */
+export const MIN_CHART_HEIGHT = 32;
+
 /** The height of a platform widget's chart: its cell less the heading, padding and footer; stacked, by `size`. */
 export function chartHeight(size: "s" | "m" | "l", cell: { rows: number } | null): number {
   if (!cell) return { s: 160, m: 240, l: 320 }[size];
-  return Math.max(96, cellHeight(cell.rows) - 104);
+  return Math.max(MIN_CHART_HEIGHT, cellHeight(cell.rows) - 104);
 }
 
 /** The grid's registry for these widgets: each one where it is, with its minimum size. */

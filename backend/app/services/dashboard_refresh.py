@@ -244,6 +244,8 @@ async def snapshot_of(db: AsyncSession, dashboard_id: object, source_id: str, so
     ).scalar_one_or_none()
     publisher = await db.get(User, row.publisher_id) if row is not None and row.publisher_id else None
     about = {
+        # The source that holds it: a derived source drawing this one shows its snapshot, and is refreshed through it.
+        "source_id": source_id,
         "mode": mode,
         "every": source["options"].get("refresh") if mode == "server" else source["options"].get("cron") if mode == "schedule" else None,
         "refreshed_at": row.refreshed_at.isoformat() if row is not None and row.refreshed_at else None,
@@ -253,6 +255,16 @@ async def snapshot_of(db: AsyncSession, dashboard_id: object, source_id: str, so
         # Saved, not read yet: the scheduler reads it on its next run.
         return {"status": "error", "code": "running", "snapshot": about}
     return {**row.result, "snapshot": about}
+
+
+def _dependants(definition: dict, source_id: str) -> list[str]:
+    """The sources read on the server that derive straight from *source_id*: read again when it is."""
+    return [
+        sid
+        for sid, source in (definition.get("dataSources") or {}).items()
+        if isinstance(source, dict) and source.get("type") == "derived" and _mode(source)
+        and (source.get("options") or {}).get("extends") == source_id
+    ]  # fmt: skip
 
 
 async def _read_one(db: AsyncSession, row: CustomDashboardSourceSnapshot) -> tuple[dict | None, dict | None]:
@@ -299,9 +311,12 @@ async def refresh_due(db_factory, *, now: datetime | None = None) -> int:
     return done
 
 
-async def refresh_row(db_factory, row_id: uuid.UUID) -> bool:
+async def refresh_row(db_factory, row_id: uuid.UUID, *, _seen: frozenset[uuid.UUID] = frozenset()) -> bool:
     """Read one snapshot's source as its publisher now, store it with what changed since its last read, tell the
-    people of an alert that starts to hold, and tell the open pages; whether it was read."""
+    people of an alert that starts to hold, and tell the open pages; then read again the sources read on the server
+    that derive from it, so a figure drawn from it never lags behind it. Whether it was read."""
+    from app.services.dashboard_definition import upgrade
+
     try:
         async with db_factory() as db:
             row = await db.get(CustomDashboardSourceSnapshot, row_id)
@@ -315,6 +330,20 @@ async def refresh_row(db_factory, row_id: uuid.UUID) -> bool:
             holding, started = evaluate_alerts(source, result, row.alert_state or [])
             row.result, row.refreshed_at, row.due_at, row.alert_state = result, read_at, _next_due(source, read_at), holding
             dashboard_id, source_id, publisher_id = row.dashboard_id, row.source_id, row.publisher_id
+            dashboard = await db.get(CustomDashboard, dashboard_id)
+            children = _dependants(upgrade(dashboard.spec), source_id) if dashboard is not None else []
+            child_rows = (
+                (
+                    await db.execute(
+                        select(CustomDashboardSourceSnapshot.id).where(
+                            CustomDashboardSourceSnapshot.dashboard_id == dashboard_id,
+                            CustomDashboardSourceSnapshot.source_id.in_(children),
+                        )
+                    )
+                ).scalars().all()
+                if children
+                else []
+            )
             await db.commit()
     except Exception as exc:
         logger.warning("Refreshing dashboard source %s failed: %r", row_id, str(exc)[:200])
@@ -322,6 +351,9 @@ async def refresh_row(db_factory, row_id: uuid.UUID) -> bool:
     if started:
         await alert_people(db_factory, dashboard_id, source_id, publisher_id, started, figure_of(result))
     await notify_updated(dashboard_id, source_id)
+    for child in child_rows:
+        if child not in _seen:
+            await refresh_row(db_factory, child, _seen=_seen | {row_id})
     return True
 
 

@@ -38,6 +38,9 @@ import { isElementType, readCanvas, type CanvasModel } from "./canvas.ts";
 
 import { readInputs, type ReadInputs } from "./inputs.ts";
 
+/** The data sources XTM One reads itself (`dashboard_definition.DataSource`, less `platform`). */
+export const DATA_SOURCE_TYPES = ["static", "assignment", "ask", "variable", "integration", "knowledge", "derived"] as const;
+
 type Raw = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is Raw => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -66,6 +69,7 @@ export const TYPE_TO_VIEW: Record<string, string | undefined> = {
   "xtm.choropleth.svg": "choroplethsvg",
   "xtm.linkgraph": "linkgraph",
   "xtm.networkgraph": "networkgraph",
+  "xtm.attackflow": "attackflow",
   "xtm.sankey": "sankey",
   "xtm.parallelcoordinates": "parallel",
   "xtm.timeline": "timeline",
@@ -223,7 +227,7 @@ function widgetRecord(vid: string, viz: Raw, sources: Raw, defaults: Raw): Raw |
       ...drawing,
     };
   }
-  if (typeof sid === "string" && ["static", "assignment", "ask", "variable", "derived"].includes(source.type as string)) {
+  if (typeof sid === "string" && (DATA_SOURCE_TYPES as readonly string[]).includes(source.type as string)) {
     // Read again when the source, a source it derives from or the view changes, not on every save.
     return {
       kind: "data",

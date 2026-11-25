@@ -831,6 +831,7 @@ def _permission_hint(
     codes: set[str],
     *,
     auth_failure: bool = False,
+    identity_refused: bool = False,
 ) -> str:
     """Actionable suffix for an auth/permission GraphQL failure (``""`` if not one).
 
@@ -842,6 +843,14 @@ def _permission_hint(
     and the re-mint retry can never disagree about what "not authenticated"
     means.
     """
+    if identity_refused:
+        # A token minted for this very request was refused: not an expired token, but an identity OpenCTI does not
+        # know. It matches the person by their email, so re-authorizing changes nothing.
+        return (
+            " — unauthorized: OpenCTI refused the identity XTM One vouched for (a token minted just now): no active "
+            "OpenCTI user has this person's email. An OpenCTI administrator creates or enables the user with the "
+            "same email as in XTM One."
+        )
     if auth_failure or _is_auth_error(errors):
         return (
             " — unauthorized: the OpenCTI API token was rejected (missing, "
@@ -876,6 +885,7 @@ def _describe_graphql_failure(
     *,
     kind: str = "error",
     auth_failure: bool = False,
+    identity_refused: bool = False,
 ) -> str:
     """Render GraphQL ``errors`` into one error-shaped, self-describing string.
 
@@ -906,7 +916,7 @@ def _describe_graphql_failure(
         messages.append(message)
     combined = "; ".join(messages)
     hint = _permission_hint(
-        errors, root_field, query, combined, codes, auth_failure=auth_failure
+        errors, root_field, query, combined, codes, auth_failure=auth_failure, identity_refused=identity_refused
     )
     return f"GraphQL {kind} in '{operation}': {combined}{hint}"
 
@@ -1149,6 +1159,8 @@ def _context_failure_message(
     root_field: str,
     query: str,
     kind: str,
+    *,
+    identity_refused: bool = False,
 ) -> str:
     """The tool result for a GraphQL failure, a context-level one included.
 
@@ -1166,6 +1178,7 @@ def _context_failure_message(
         query,
         kind=kind,
         auth_failure=_is_request_auth_failure(errors, status, draft_id),
+        identity_refused=identity_refused and _is_request_auth_failure(errors, status, draft_id),
     )
 
 
@@ -1308,6 +1321,7 @@ async def _graphql(
         return data.get("data", {}), None, None, None
 
     data, err, errors, status = await _attempt()
+    reminted = False
     if errors and _is_request_auth_failure(errors, status, draft_id) and await _force_remint(client):
         # An auth failure means the query never ran, so replaying it - even a
         # mutation - cannot double any side effect.
@@ -1315,10 +1329,11 @@ async def _graphql(
             "OpenCTI GraphQL auth error (%s) — re-minted the token, retrying once",
             _format_graphql_errors(errors),
         )
+        reminted = True
         data, err, errors, status = await _attempt()
     if errors:
         message = _context_failure_message(
-            errors, status, headers, draft_id, operation, root_field, query, "error"
+            errors, status, headers, draft_id, operation, root_field, query, "error", identity_refused=reminted
         )
         logger.warning(
             "OpenCTI %s | query preview: %.120s", message, query.strip()[:120]
@@ -1393,6 +1408,7 @@ async def _graphql_upload(
         return data.get("data", {}), None, None, None
 
     data, err, errors, status = await _attempt()
+    reminted = False
     if (
         errors
         and _is_request_auth_failure(errors, status, draft_id)
@@ -1402,10 +1418,11 @@ async def _graphql_upload(
             "OpenCTI GraphQL upload auth error (%s) — re-minted the token, retrying once",
             _format_graphql_errors(errors),
         )
+        reminted = True
         data, err, errors, status = await _attempt()
     if errors:
         message = _context_failure_message(
-            errors, status, auth_headers, draft_id, operation, root_field, query, "upload error"
+            errors, status, auth_headers, draft_id, operation, root_field, query, "upload error", identity_refused=reminted
         )
         logger.warning("OpenCTI %s", message)
         return {}, message

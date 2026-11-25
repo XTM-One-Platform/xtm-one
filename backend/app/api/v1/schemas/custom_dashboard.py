@@ -99,6 +99,13 @@ class CustomDashboardResponse(CustomDashboardSummaryResponse):
     can_use_as_home: bool = False
 
 
+class CustomDashboardRenderResponse(CustomDashboardResponse):
+    """The dashboard as an export's page draws it: it has no session to search a platform with, so the entity
+    inputs' starting entities come named (``dashboard_platform_schema.entity_input_names``)."""
+
+    entity_names: dict[str, str] = Field(default_factory=dict)
+
+
 class CustomDashboardTagsUpdate(BaseModel):
     """``PUT .../tags``: the whole list of a dashboard's tags."""
 

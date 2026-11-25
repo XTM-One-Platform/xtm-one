@@ -53,7 +53,7 @@ const SHAPE_VIEWS: Record<string, readonly string[]> = {
   distribution: ["distribution", "donut", "hbar", "bar", "treemap", "radar", "polar", "wordcloud"],
   rows: ["list", "table", "scatter", "bubble", "punchcard", "timeline", "linkgraph", "networkgraph", "sankey", "parallel"],
   geo: ["map", "choroplethsvg"],
-  graph: ["networkgraph", "linkgraph", "sankey"],
+  graph: ["networkgraph", "linkgraph", "sankey", "attackflow"],
   events: ["timeline"],
   tree: ["treemap"],
   outcomes: ["outcomematrix", "pathgraph", "exposureconsole", "scoregauge", "ringgauge", "domaincards"],
@@ -92,6 +92,7 @@ export const TYPE_LABELS = {
   "xtm.choropleth.svg": "Choropleth SVG",
   "xtm.linkgraph": "Link graph",
   "xtm.networkgraph": "Network graph",
+  "xtm.attackflow": "Attack flow",
   "xtm.sankey": "Sankey diagram",
   "xtm.parallelcoordinates": "Parallel coordinates",
   "xtm.timeline": "Timeline",
@@ -147,7 +148,7 @@ const LOOK = [
 ]; // prettier-ignore
 
 /** The maps, graphs and flows (`STUDIO_VIZ_TYPES`): their options are kept as written. */
-const STUDIO_TYPES = ["xtm.map", "xtm.choropleth.svg", "xtm.linkgraph", "xtm.networkgraph", "xtm.sankey", "xtm.parallelcoordinates", "xtm.timeline", "xtm.treemap"];
+const STUDIO_TYPES = ["xtm.map", "xtm.choropleth.svg", "xtm.linkgraph", "xtm.networkgraph", "xtm.sankey", "xtm.parallelcoordinates", "xtm.timeline", "xtm.treemap", "xtm.attackflow"];
 
 type Group = "plain" | "xy" | "pie" | "polar" | "radar" | "wordcloud" | "heatmap" | "scatter" | "single" | "icon" | "radial" | "gauge" | "table" | "outcome" | "studio";
 

@@ -216,12 +216,23 @@ def check_native(native: object) -> NativeCheck:
     # Audit data is not queried from a dashboard (it needs an administrator of
     # the platform): such a widget is kept and drawn as a link.
     drawn = shape if perspective != "audits" else None
+    # dynamicFrom / dynamicTo narrow a relationship's two ends: a widget on entities never reads them, and drew every
+    # entity of its types instead of those of one intrusion set.
+    ignored = tuple(
+        f"dataSelection[{i}].{key}: only relationships read it; to keep the entities related to one, filter regardingOf "
+        "{id, relationship_type} (filter_keys)"
+        for i, selection in enumerate(checked)
+        if selection["perspective"] != "relationships"
+        for key in ("dynamicFrom", "dynamicTo")
+        if selection[key].get("filters") or selection[key].get("filterGroups")
+    )
     return NativeCheck(
         native={"type": widget_type, "perspective": perspective, "dataSelection": checked, "parameters": params},
         shape=drawn,  # type: ignore[arg-type]
         native_type=widget_type,
         title=params.get("title"),
         preferred_view=PREFERRED_VIEWS.get(widget_type),
+        ignored=ignored,
     )
 
 
@@ -290,13 +301,17 @@ def describe(widget_type: str | None = None) -> dict:
         "rules": [
             "dataSelection entries: label, perspective, filters (a filter group), attribute (what a breakdown counts), "
             "date_attribute, number (top N), isTo; relationships also take dynamicFrom / dynamicTo (filter groups on "
-            "their source and target) and isTo (count the target side).",
+            "their source and target) and isTo (count the target side). Entities related to one (an intrusion set's "
+            "techniques): perspective entities, filter {key: [regardingOf], values: [{key: id, values: [<its id>]}, "
+            "{key: relationship_type, values: [uses]}], operator: eq, mode: and}.",
             "A filter group is {mode: and|or, filters: [{key: [key], values: [...], operator, mode: or|and}], "
             f"filterGroups: [nested groups]}}; operators: {', '.join(sorted(OPERATORS))}.",
             "The keys, the entity types, the attributes and the values come from the platform: look them up "
             "(kinds entity_types, filter_keys, attributes, values) instead of guessing them.",
             f"parameters: title, description, interval ({', '.join(INTERVALS)}) for a series, stacked, legend, distributed.",
             "A dashboard input is read as '$token$' in a filter value.",
+            "A list's columns: dataSelection.columns [{attribute, label?}]; a list of Attack-Pattern entities may "
+            "show x_mitre_id and killChainPhases (its tactics, in their kill chain's order).",
         ],
     }
 

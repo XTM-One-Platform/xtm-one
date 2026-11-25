@@ -41,6 +41,7 @@ from app.api.v1.helpers import parse_path_id
 from app.api.v1.schemas.custom_dashboard import (
     CustomDashboardCreate,
     CustomDashboardImportResponse,
+    CustomDashboardRenderResponse,
     CustomDashboardResponse,
     CustomDashboardSharingUpdate,
     CustomDashboardSummaryResponse,
@@ -1035,15 +1036,20 @@ async def _render_user(dashboard_id: str, request: Request, db: AsyncSession = D
     return user
 
 
-@router.get("/{dashboard_id}/render", response_model=CustomDashboardResponse)
+@router.get("/{dashboard_id}/render", response_model=CustomDashboardRenderResponse)
 async def read_dashboard_for_render(
     dashboard_id: str,
     user: User = Depends(_render_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """The dashboard as the static render page draws it (render token only)."""
+    """The dashboard as the static render page draws it (render token only), its entity inputs' entities named
+    as the person who asked for the export reads them (the page has no session to search with)."""
+    from app.services.dashboard_definition import upgrade
+    from app.services.dashboard_platform_schema import entity_input_names
+
     dashboard, tier = await _load(db, user, dashboard_id)
-    return _response(dashboard, tier)
+    names = await entity_input_names(db, user.id, upgrade(dashboard.spec))
+    return CustomDashboardRenderResponse(**_response(dashboard, tier).model_dump(), entity_names=names)
 
 
 @router.post(

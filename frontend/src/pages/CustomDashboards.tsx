@@ -29,11 +29,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Boxes, Building2, Copy, Globe, House, LayoutGrid, Plus, Sparkles, Tags, Trash2, Upload, UsersRound } from "lucide-react";
+import { Boxes, Building2, Copy, Globe, House, LayoutGrid, Sparkles, Tags, Trash2, Upload, UsersRound } from "lucide-react";
 
 import { useAskAssistant } from "@/lib/ask-assistant";
 import { ImportDashboardDialog } from "@/components/custom-dashboard/ImportDashboardDialog";
 import { NewDashboardDialog } from "@/components/custom-dashboard/NewDashboardDialog";
+import { ListPageHeader } from "@/components/ui/list-page-header";
 import { PublicLinksDialog } from "@/components/custom-dashboard/PublicLinksDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -346,39 +347,37 @@ export default function CustomDashboards() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">{t_i18n("Dashboards")}</h1>
-          <p className="mt-2 text-default-secondary">
-            {t_i18n("Pages of widgets your agents build and keep up to date, yours and those shared with you, on the web and on your phone.")}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {studio && (
-            <>
-              {isAdmin && (
-                <Button variant="outline" className="gap-1.5" onClick={() => setReviewing(true)}>
-                  <Globe className="h-4 w-4" /> {t_i18n("Public links")}
+      {/* One header row, as Videos and Presentations: the page's description is the title's "i",
+          and one main button, whose dialog builds with the assistant or starts empty. */}
+      <ListPageHeader
+        title={t_i18n("Dashboards")}
+        infoLabel={t_i18n("About dashboards")}
+        info={t_i18n("Pages of widgets your agents build and keep up to date, yours and those shared with you, on the web and on your phone.")}
+        actions={
+          <>
+            {studio && (
+              <>
+                {isAdmin && (
+                  <Button variant="outline" className="gap-1.5" onClick={() => setReviewing(true)}>
+                    <Globe className="h-4 w-4" /> {t_i18n("Public links")}
+                  </Button>
+                )}
+                <Button variant="outline" className="gap-1.5" asChild>
+                  <Link to="/dashboards/packs">
+                    <Boxes className="h-4 w-4" /> {t_i18n("Widget packs")}
+                  </Link>
                 </Button>
-              )}
-              <Button variant="outline" className="gap-1.5" asChild>
-                <Link to="/dashboards/packs">
-                  <Boxes className="h-4 w-4" /> {t_i18n("Widget packs")}
-                </Link>
-              </Button>
-              <Button variant="outline" className="gap-1.5" onClick={() => setImporting(true)}>
-                <Upload className="h-4 w-4" /> {t_i18n("Import")}
-              </Button>
-              <Button variant="outline" className="gap-1.5" onClick={() => setCreating(true)}>
-                <Plus className="h-4 w-4" /> {t_i18n("Create")}
-              </Button>
-            </>
-          )}
-          <Button className="gap-1.5" onClick={buildWithAssistant}>
-            <Sparkles className="h-4 w-4" /> {t_i18n("Build with the assistant")}
-          </Button>
-        </div>
-      </div>
+                <Button variant="outline" className="gap-1.5" onClick={() => setImporting(true)}>
+                  <Upload className="h-4 w-4" /> {t_i18n("Import")}
+                </Button>
+              </>
+            )}
+            <Button className="gap-1.5" onClick={buildWithAssistant}>
+              <Sparkles className="h-4 w-4" /> {t_i18n("New dashboard")}
+            </Button>
+          </>
+        }
+      />
 
       {studio && <NewDashboardDialog open={creating} onOpenChange={setCreating} />}
       {studio && <ImportDashboardDialog open={importing} onOpenChange={setImporting} />}

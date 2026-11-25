@@ -39,9 +39,10 @@ too, with:
 * ``publish_dashboard`` - send a dashboard to OpenCTI or OpenAEV as one of
   theirs, with the user's own access there (a write: gated by the agent's
   approvals like any other);
-* ``dashboard_catalog``, ``describe_platform_widget``, ``lookup_platform_values``,
-  ``preview_source``, ``add_widget``, ``check_dashboard`` - find the data, write a
-  widget right the first time and check it (``custom_dashboard_studio``).
+* ``dashboard_catalog``, ``find_dashboard_data``, ``describe_platform_widget``,
+  ``lookup_platform_values``, ``preview_source``, ``add_widget``,
+  ``check_dashboard`` - find the data, write a widget right the first time and
+  check it (``custom_dashboard_studio``).
 
 What the agent may and may not author
 -------------------------------------

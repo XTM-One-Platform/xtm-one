@@ -29,7 +29,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * `node --test`.
  */
 import type { CanvasModel } from "./canvas.ts";
-import { readDefinition } from "./definition.ts";
+import { DATA_SOURCE_TYPES, readDefinition } from "./definition.ts";
 import type { ReadInputs } from "./inputs.ts";
 import { readConditions, readHandlers, readVisibility, type EventHandler, type Visibility } from "./interactions.ts";
 import { placeWidgets, readCell, type GridCell } from "./grid.ts";
@@ -82,6 +82,7 @@ export const PLATFORM_VIEWS = [
   "parallel",
   "timeline",
   "treemap",
+  "attackflow",
   // Radar, polar area, word cloud and heatmap (`charts/`).
   "radar",
   "polar",
@@ -102,8 +103,6 @@ export type PlatformView = (typeof PLATFORM_VIEWS)[number];
 /** How a data widget is drawn: a platform view, or an answer in words (`xtm.answer`). */
 export const DATA_VIEWS = [...PLATFORM_VIEWS, "text"] as const;
 export type DataView = (typeof DATA_VIEWS)[number];
-/** The data sources XTM One reads itself (`dashboard_definition.DataSource`, less `platform`). */
-const DATA_SOURCE_TYPES = ["static", "assignment", "ask", "variable", "integration", "knowledge", "derived"] as const;
 type DataSourceType = (typeof DATA_SOURCE_TYPES)[number];
 
 /** The colours a widget may ask for, by meaning (`DASHBOARD_TONES`, read by

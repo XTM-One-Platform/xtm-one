@@ -121,7 +121,7 @@ def is_range(value: object) -> bool:
 
 MAX_POINTS = 60
 MAX_ITEMS = 50
-MAX_ROWS = 50
+MAX_ROWS = 100
 #: OpenCTI's default entities list has ten columns.
 MAX_COLUMNS = 12
 MAX_SERIES = 5
@@ -130,7 +130,30 @@ MAX_TEXT = 20_000
 MAX_GEO_POINTS = 300
 #: ISO 3166-1 has 249 codes; an uploaded SVG names its own regions.
 MAX_REGIONS = 300
-MAX_GRAPH_NODES = 200
+#: Each shape's form, as an agent writes it (a static source's data, the JSON an assignment answers).
+SHAPE_FORMS: dict[str, str] = {
+    "number": '{"value": n, "change"?: n}',
+    "series": '{"series": [{"name", "points": [{"x", "y"}]}]}',
+    "distribution": '{"items": [{"label", "value"}]}',
+    "rows": '{"columns": [{"key", "label"}], "rows": [{<key>: value}]}',
+    "geo": '{"points": [{"label", "lat", "lon", "value"}], "regions": [{"code", "label", "value"}]}',
+    "graph": (
+        '{"nodes": [{"id", "label", "group"?, "value"?, "kind"?: start|action|condition|operator|asset, "technique"?, '
+        '"tactic"?, "description"?, "operator"?: AND|OR}], "edges": [{"source", "target", "label"?}]}; a STIX bundle '
+        "holding a MITRE Attack Flow (attack-flow, attack-action...) is read as one; rows of techniques become one "
+        "through a derived source's step {op: flow, stage, label, technique?}: each row an action in the stage(s) its "
+        "stage cell names (chips ordered by their rank), stage after stage - a platform list of techniques with their "
+        "tactics, read live, drawn as a flow"
+    ),
+    "events": '{"events": [{"label", "start", "end"?, "lane"?}]}',
+    "tree": '{"items": [{"path": [str], "value"}]}',
+    "text": '{"text": str}',
+}
+MAX_GRAPH_NODES = 300
+#: A node of a flow (an Attack Flow, the stages of a kill chain) is one of these kinds; its card shows
+#: these details, each cut to this many characters.
+GRAPH_NODE_KINDS = ("start", "action", "condition", "operator", "asset")
+_GRAPH_NODE_DETAILS = {"technique": 20, "tactic": 60, "description": 400}
 MAX_GRAPH_EDGES = 500
 MAX_EVENTS = 300
 MAX_TREE_ITEMS = 300
@@ -214,6 +237,9 @@ def text(value: object, limit: int = MAX_STRING) -> str:
     """A display string from an answer: cut, without control characters."""
     if value is None:
         return ""
+    # A whole number read as a float (JSON, a closed number) is written as the number it is: 131072, not 131072.0.
+    if isinstance(value, float) and value.is_integer() and abs(value) < 1e15:
+        value = int(value)
     raw = value if isinstance(value, str) else str(value)
     cleaned = "".join(ch if ch.isprintable() else " " for ch in raw[: limit * 2])
     return cleaned.strip()[:limit]
@@ -402,7 +428,11 @@ def _chip(value: object) -> dict | None:
     if not isinstance(value, dict):
         return None
     label = text(value.get("label"), 80)
-    return _optional({"label": label, "color": color(value.get("color")), "icon": icon(value.get("icon"))}) if label else None
+    # ``rank``: where the chip stands in its ``group`` (a kill chain phase's order in its kill chain), for a step
+    # that orders by it.
+    rank = value.get("rank") if isinstance(value.get("rank"), int) and not isinstance(value.get("rank"), bool) else None
+    fields = {"label": label, "color": color(value.get("color")), "icon": icon(value.get("icon")), "rank": rank, "group": text(value.get("group"), 60) or None}
+    return _optional(fields) if label else None
 
 
 def cell(kind: str, value: object) -> object:
@@ -494,15 +524,27 @@ def geo_data(points: list[tuple[object, ...]], regions: list[tuple[object, ...]]
     return {"points": clean_points, "regions": list(clean_regions.values())}
 
 
-def graph_data(nodes: list[tuple[object, object, object, object]], edges: list[tuple[object, ...]]) -> dict:
-    """Nodes (``id, label, group, value``) and the edges between them (``source, target, label, value``).
+def _node_details(extra: object) -> dict:
+    """A flow node's kind and card details (:data:`GRAPH_NODE_KINDS`, :data:`_GRAPH_NODE_DETAILS`), the rest dropped."""
+    if not isinstance(extra, dict):
+        return {}
+    out: dict[str, object] = {key: text(extra.get(key), size) for key, size in _GRAPH_NODE_DETAILS.items()}
+    out["kind"] = extra.get("kind") if extra.get("kind") in GRAPH_NODE_KINDS else None
+    operator = str(extra.get("operator") or "").upper()
+    out["operator"] = operator if operator in ("AND", "OR") else None
+    return {key: value for key, value in out.items() if value}
+
+
+def graph_data(nodes: list[tuple[object, ...]], edges: list[tuple[object, ...]]) -> dict:
+    """Nodes (``id, label, group, value[, details]``) and the edges between them (``source, target, label, value``).
 
     A node named once is kept once; an edge's end that names no node becomes
-    one (labelled by its id) while there is room, else the edge is dropped.
+    one (labelled by its id) while there is room, else the edge is dropped. A
+    node of a flow also says its ``kind`` and its card's details (:func:`_node_details`).
     """
     clean_nodes: dict[str, dict] = {}
 
-    def add(node_id: object, label: object = None, group: object = None, value: object = None) -> str | None:
+    def add(node_id: object, label: object = None, group: object = None, value: object = None, extra: object = None) -> str | None:
         key = text(node_id, 120)
         if not key:
             return None
@@ -514,11 +556,12 @@ def graph_data(nodes: list[tuple[object, object, object, object]], edges: list[t
                 "label": text(label, 120) or key,
                 "group": text(group, 60) or None,
                 "value": _maybe_number(value),
+                **_node_details(extra),
             }
         return key
 
-    for node_id, label, group, value in nodes:
-        add(node_id, label, group, value)
+    for node in nodes:
+        add(*node[:5])
     clean_edges = []
     for source, target, label, value in edges:
         if len(clean_edges) >= MAX_GRAPH_EDGES:
@@ -848,6 +891,8 @@ def closed_static_data(shape: str, data: dict, *, reclosing: bool = False) -> di
     """
     from app.services.custom_dashboard_spec import check_internal_path
 
+    from .attack_flow import flow_graph, is_flow_bundle
+
     def internal(record: dict, key: str = "link") -> dict:
         if record.get(key) is not None and not reclosing:
             check_internal_path(str(record[key]))
@@ -895,8 +940,11 @@ def closed_static_data(shape: str, data: dict, *, reclosing: bool = False) -> di
             [(r.get("code"), r.get("label"), r.get("value"), r.get("level")) for r in _records(data, "regions")],
         )
     if shape == "graph":
+        if is_flow_bundle(data):
+            # An Attack Flow, as its builder exports it: read into the graph's nodes and edges.
+            data = flow_graph(data)
         return graph_data(
-            [(n.get("id"), n.get("label"), n.get("group"), n.get("value")) for n in _records(data, "nodes")],
+            [(n.get("id"), n.get("label"), n.get("group"), n.get("value"), n) for n in _records(data, "nodes")],
             [(e.get("source"), e.get("target"), e.get("label"), e.get("value")) for e in _records(data, "edges")],
         )
     if shape == "events":

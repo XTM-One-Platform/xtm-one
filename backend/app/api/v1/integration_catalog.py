@@ -10405,6 +10405,7 @@ def integration_owns_oauth_scopes(provider: str) -> bool:
 # format satisfies compound-token providers (split on ``||``) and
 # RSS (needs a valid URL).
 _URL_DUMMY_PROVIDERS = {
+    "lmstudio",
     "opencti",
     "openaev",
     "opencrq",

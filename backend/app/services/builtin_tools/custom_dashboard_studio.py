@@ -18,6 +18,9 @@ Built with the custom dashboards suite while ``DASHBOARD_STUDIO`` is on
 
 * ``dashboard_catalog`` - the visualizations, the data shapes each draws and,
   for one type, its options: read from the options models, never a copy;
+* ``find_dashboard_data`` - the integrations (and one's read tools) and the
+  knowledge base documents an ``integration`` or ``knowledge`` source can read,
+  with the user's own access and the ids the source takes;
 * ``describe_platform_widget`` - a platform's widget types, or one type with an
   example configuration that passes the platform's own checks and the rules
   it follows (``dashboard_platform.describe_widget``);
@@ -67,6 +70,11 @@ _FEED_SHAPES = {
     "distribution": '{"items": [{"label": "...", "value": <number>}]}',
     "rows": '[{"<column>": <value>, ...}, ...]',
 }
+#: Sources previewed without a widget added before each preview reminds the agent to build what reads data.
+PREVIEWS_BEFORE_A_WIDGET = 8
+#: ... and past this many, a preview is refused until a widget is added: the reminder alone was read and ignored
+#: (sixty previews, no widget, the person watching an empty page).
+PREVIEW_LIMIT = 2 * PREVIEWS_BEFORE_A_WIDGET
 #: The id a previewed source is read under.
 _PREVIEW_ID = "preview_source"
 _ID_CHARS = re.compile(r"[^a-z0-9_]+")
@@ -76,14 +84,21 @@ REMEDIES: dict[str, str] = {
     "integration_unavailable": "the integration is not one the user can read through: list_platform_integrations",
     "access_denied": "the platform refused the user's account: another integration, or ask the user",
     "timeout": "the platform answered too slowly: narrow the filters or the period, then check again",
-    "upstream_error": "the platform could not answer this configuration: describe_platform_widget for a valid one",
+    "upstream_error": (
+        "the system read could not answer this configuration: a platform, describe_platform_widget for a valid one; an "
+        "integration tool, what it answered says why (nothing found is no data to draw)"
+    ),
     "unsupported": "XTM One draws this type as a link only: pick another type",
     "rate_limited": "too many reads at once: check again in a minute",
     "tenant_required": "the integration reaches several tenants: the user picks one in the integration",
     "no_result": "the assignment has no completed run the user may see: run it, or wait for its next run",
     "not_run": "a question to an agent is asked only when the viewer presses Ask the agent",
     "running": "the question is being answered",
-    "invalid_result": "the answer does not fit the shape, or a step does not apply: fix the path, the shape or the steps",
+    "invalid_result": (
+        "the answer holds no JSON fitting the shape, or a step does not apply: fix the path, the shape or the steps; "
+        "a tool that answers in words, not JSON, is drawn as text (shape text), or create_feed lets an agent turn it "
+        "into the JSON"
+    ),
     "waiting": "an input the source reads has no value yet: give the input a default value",
 }
 
@@ -116,13 +131,76 @@ def _is_empty(data: object) -> bool:
 def describe_read(result: dict) -> str:
     """One line on what a source read: its shape and how much, empty, or the error with its remedy."""
     if result.get("status") != "ok":
+        from app.services.content_safety import wrap_untrusted
+
         code = str(result.get("code") or "upstream_error")
-        return f"error {code}: {REMEDIES.get(code, 'check the configuration')}"
+        # The detail may be what an integration answered: data, never instructions.
+        detail = (
+            f" ({wrap_untrusted(result['detail'], 'the answer of the system read')})"
+            if isinstance(result.get("detail"), str) and result["detail"]
+            else ""
+        )
+        return f"error {code}{detail}: {REMEDIES.get(code, 'check the configuration')}"
     data = result.get("data")
     if _is_empty(data):
         return f"empty ({result.get('shape')}): it reads nothing over this period or with these filters"
     sizes = [f"{len(v)} {k}" for k, v in (data or {}).items() if isinstance(v, list)]
     return f"ok ({result.get('shape')}" + (f", {', '.join(sizes)}" if sizes else "") + ")"
+
+
+#: The dashboard grid's columns (OpenCTI's), and the views that draw a table's columns side by side.
+GRID_COLUMNS = 12
+ROW_VIEWS = ("xtm.table", "xtm.list")
+
+
+def _widths(definition: dict) -> dict[str, int]:
+    """Each placed visualization's width, in grid columns (its narrowest placement)."""
+    widths: dict[str, int] = {}
+    for layout in (definition.get("layout") or {}).get("layoutDefinitions", {}).values():
+        for item in layout.get("structure") or []:
+            width = (item.get("position") or {}).get("w")
+            if isinstance(width, int) and item.get("item"):
+                widths[item["item"]] = min(width, widths.get(item["item"], width))
+    return widths
+
+
+def describe_choices(options: dict, data: object) -> str:
+    """The choices a dropdown reading *data* offers, as the page derives them (``inputs.ts`` ``choicesOf``): by
+    default the first column of a table, which named one type for a list of 189 intrusion sets."""
+    if not isinstance(data, dict):
+        return "its source reads nothing: no choice offered"
+    value_field = options.get("valueField")
+    if isinstance(data.get("items"), list):
+        entries, value_key = data["items"], value_field or "label"
+        keys: list[str] = sorted({k for e in entries[:20] if isinstance(e, dict) for k in e})
+    elif isinstance(data.get("rows"), list):
+        entries = data["rows"]
+        keys = [str(c.get("key")) for c in data.get("columns") or [] if isinstance(c, dict)]
+        keys += sorted({k for e in entries[:20] if isinstance(e, dict) for k in e} - set(keys))
+        value_key = value_field or (keys[0] if keys else "")
+    else:
+        return ""
+    values = {str(e.get(value_key)) for e in entries[:200] if isinstance(e, dict) and e.get(value_key) not in (None, "")}
+    line = f"{len(values)} choices from {len(entries)} rows (value: {value_key or 'none'})"
+    if len(entries) >= 3 and len(values) * 2 < min(len(entries), 200):
+        line += f"; collapsed: most rows give the same value - set valueField / labelField among {', '.join(keys[:15])}"
+        line += ", or an input.entity for the viewer to search the platform's entities"
+    return line
+
+
+def unread_parts(source: object) -> str:
+    """What a platform source holds that its platform does not read, told after a preview: the read itself looks
+    right (an entities widget whose relationship filter is ignored drew every entity of its types)."""
+    from app.services.dashboard_platform import NativeError, check_native
+
+    options = source.get("options") if isinstance(source, dict) and source.get("type") == "platform" else None
+    if not isinstance(options, dict):
+        return ""
+    try:
+        ignored = check_native(str(options.get("source")), options.get("native")).ignored
+    except NativeError:
+        return ""
+    return f"\nThe platform does not read: {'; '.join(ignored)}." if ignored else ""
 
 
 def _new_id(base: str, taken: set[str], prefix: str = "") -> str:
@@ -156,6 +234,12 @@ def build_dashboard_studio_tools(
     source: str,
 ) -> tuple[list[ToolDefinition], dict[str, Callable[..., Awaitable[ToolResult]]]]:
     """The studio tools, acting for *user_id*; *edit* is the suite's ``edit_dashboard`` (one save path)."""
+    from app.services.dashboard_definition import SourceAlert
+
+    # Sources previewed since the last widget added: past PREVIEWS_BEFORE_A_WIDGET, each preview says to add the
+    # widgets whose sources read data first - the person watches an empty dashboard while the agent explores.
+    previews = {"since_add": 0}
+    from app.services.dashboard_pipeline import form_of
     from app.services.dashboard_platform import PLATFORM_SOURCES, platform_list
 
     async def _working(dashboard_id: object, *, need: str = "read") -> tuple[object, dict] | ToolResult:
@@ -175,10 +259,17 @@ def build_dashboard_studio_tools(
     async def _read(definition: dict, source_id: str, range_key: str | None = None) -> dict:
         from app.core.database import async_session
         from app.services.dashboard_sources import read_source
+        from app.services.dashboard_tokens import starting_tokens
 
         user_uuid = safe_uuid(user_id)
         async with async_session() as db:
-            return await read_source(db, user_uuid, definition, source_id, range_key)  # type: ignore[arg-type]
+            # As a viewer opening the page reads it: the inputs at their default values (read without them, a
+            # source on an intrusion set picker answered "waiting" to every check).
+            try:
+                tokens = starting_tokens(definition)
+            except ValueError:
+                tokens = {}
+            return await read_source(db, user_uuid, definition, source_id, range_key, tokens=tokens)  # type: ignore[arg-type]
 
     async def _catalog(shape: str | None = None, type: str | None = None, **_kw: object) -> ToolResult:
         from app.services.dashboard_definition import DATA_TYPES, visualization_catalog
@@ -187,10 +278,14 @@ def build_dashboard_studio_tools(
         if type:
             if type not in DATA_TYPES:
                 return _error(f"type must be a visualization drawing data: {', '.join(DATA_TYPES)}.")
+            from app.services.dashboard_live import SHAPE_FORMS
+
             shapes = next((v["shapes"] for v in visualization_catalog() if v["type"] == type), [])
+            forms = "\n".join(f"- {shape}: {SHAPE_FORMS[shape]}" for shape in shapes if shape in SHAPE_FORMS)
             return ToolResult(
                 tool_call_id="",
-                content=f"{type} draws {', '.join(shapes) or 'text'}. Its options (camelCase, in visualization.options):\n"
+                content=f"{type} draws {', '.join(shapes) or 'text'}" + (f", data of the form:\n{forms}" if forms else ".")
+                + "\nIts options (camelCase, in visualization.options):\n"
                 + json.dumps(option_names(type), ensure_ascii=False),
             )
         catalog = visualization_catalog(shape)
@@ -202,6 +297,50 @@ def build_dashboard_studio_tools(
             content="Visualizations and the data shapes they draw (dashboard_catalog type=... gives one's options):\n"
             + "\n".join(lines),
         )
+
+    async def _find(
+        kind: str, search: str | None = None, integration_id: str | None = None, knowledge_base_id: str | None = None, **_kw: object
+    ) -> ToolResult:
+        from app.core.database import async_session
+        from app.services.content_safety import wrap_untrusted
+        from app.services.dashboard_sources import LiveError, read_tools, readable_documents, readable_integrations
+
+        user_uuid = safe_uuid(user_id)
+        needle = str(search or "").strip().lower()
+        if user_uuid is None or kind not in ("integrations", "knowledge"):
+            return _error("kind is integrations or knowledge.")
+        try:
+            async with async_session() as db:
+                if kind == "integrations" and integration_id:
+                    try:
+                        tools = await read_tools(db, user_uuid, safe_uuid(str(integration_id).strip()) or integration_id)
+                    except LiveError as exc:
+                        return _error(f"That integration cannot be read: {REMEDIES.get(exc.code, exc.code)}.")
+                    lines = [
+                        f"- {t.name}: {' '.join(str(t.description or '').split())[:240]} Arguments: "
+                        + json.dumps((t.input_schema or {}).get("properties") or {}, ensure_ascii=False)[:400]
+                        for t in tools
+                        if not needle or needle in f"{t.name} {t.description}".lower()
+                    ]
+                    header = f"{len(lines)} tools of that integration only read (an integration source calls one with fixed arguments):"
+                elif kind == "integrations":
+                    rows = [r for r in await readable_integrations(db, user_uuid) if not needle or needle in f"{r.name} {r.provider}".lower()]
+                    lines = [f"- {r.name} ({r.provider}): integration_id {r.id}" for r in rows]
+                    header = f"{len(lines)} integrations a source can read through (find_dashboard_data integration_id=... lists one's read tools):"
+                else:
+                    pairs = await readable_documents(db, user_uuid, safe_uuid(str(knowledge_base_id or "").strip()))
+                    lines = [
+                        f"- {doc.filename} ({doc.source_type}, {doc.status}): knowledge_base_id {kb.id} ({kb.name}), document_id {doc.id}"
+                        for kb, doc in pairs
+                        if not needle or needle in f"{kb.name} {doc.filename}".lower()
+                    ][:80]
+                    header = f"{len(lines)} knowledge base documents a knowledge source can read (a table in JSON, JSON lines, CSV or Markdown):"
+        except Exception as exc:
+            logger.error("find_dashboard_data failed: %s", format_exception_message(exc), exc_info=True)
+            return _error("Error: the data could not be listed. Please try again.")
+        if not lines:
+            return ToolResult(tool_call_id="", content="Nothing matches: try without search, or ask the user where the data is.")
+        return ToolResult(tool_call_id="", content=header + "\n" + wrap_untrusted("\n".join(lines)[: _SAMPLE_CHARS * 2], f"{kind} the user can read"))
 
     async def _describe(source: str, widget_type: str | None = None, **_kw: object) -> ToolResult:
         from app.services.dashboard_platform import NativeError, describe_widget
@@ -264,12 +403,20 @@ def build_dashboard_studio_tools(
             content=f"{len(items)} {kind} (value, label):\n" + wrap_untrusted(listing, f"{kind} of the platform"),
         )
 
-    async def _preview(source: object, dashboard_id: str | None = None, range: str | None = None, **_kw: object) -> ToolResult:
+    async def _preview(
+        source: object, dashboard_id: str | None = None, range: str | None = None, sources: object = None, **_kw: object
+    ) -> ToolResult:
         from pydantic import TypeAdapter, ValidationError
 
         from app.services.content_safety import wrap_untrusted
         from app.services.dashboard_definition import DataSource
 
+        if previews["since_add"] >= PREVIEW_LIMIT:
+            return _error(
+                f"{previews['since_add']} sources previewed and no widget added: no more previews until one is. Add "
+                "the widgets whose source read data (add_widget, sources for the ones not saved yet), or end here and "
+                "tell the person which parts read nothing and why."
+            )
         source, problem = _parse("source", source)
         if problem:
             return _error(problem)
@@ -278,26 +425,50 @@ def build_dashboard_studio_tools(
         except ValidationError as exc:
             first = exc.errors()[0]
             where = ".".join(str(p) for p in first["loc"] if not str(p).startswith(("function-", "tagged-union")))
-            return _error(f"The source is invalid at {where or 'its root'}: {str(first.get('msg', '')).removeprefix('Value error, ')}")
+            message = f"The source is invalid at {where or 'its root'}: {str(first.get('msg', '')).removeprefix('Value error, ')}"
+            if ".steps" in where:
+                from app.services.dashboard_pipeline import step_forms
+
+                message += ". A step is one of: " + "; ".join(step_forms())
+            return _error(message)
         definition: dict = {"dataSources": {}, "inputs": {}}
         if dashboard_id:
             working = await _working(dashboard_id)
             if isinstance(working, ToolResult):
                 return working
             definition = working[1]
-        definition = {**definition, "dataSources": {**(definition.get("dataSources") or {}), _PREVIEW_ID: checked}}
+        # The sources a derived one reads that are not saved yet: read with it, never saved.
+        unsaved, problem = _parse("sources", sources) if sources is not None else ({}, None)
+        if problem or not isinstance(unsaved, dict) or len(unsaved) > 10:
+            return _error(problem or "sources is {id: source}, at most 10: the unsaved sources the previewed one extends.")
+        extra: dict = {}
+        for sid, raw in unsaved.items():
+            try:
+                extra[str(sid)] = TypeAdapter(DataSource).validate_python(raw).model_dump(mode="json", by_alias=True, exclude_none=True)
+            except ValidationError as exc:
+                return _error(f"sources.{sid} is invalid: {str(exc.errors()[0].get('msg', ''))[:200]}")
+        definition = {**definition, "dataSources": {**(definition.get("dataSources") or {}), **extra, _PREVIEW_ID: checked}}
         try:
             result = await _read(definition, _PREVIEW_ID, range)
         except Exception as exc:
             logger.error("preview_source failed: %s", format_exception_message(exc), exc_info=True)
             return _error("Error: the source could not be read. Please try again.")
         line = describe_read(result)
+        previews["since_add"] += 1
+        pace = (
+            f"\n{previews['since_add']} sources previewed and no widget added since: add now the widgets whose source "
+            "reads data (add_widget) - the person is watching an empty dashboard - and leave a source that still "
+            "reads nothing for the hand-over, saying why."
+            if previews["since_add"] >= PREVIEWS_BEFORE_A_WIDGET
+            else ""
+        )
+        unread = unread_parts(checked)
         if result.get("status") != "ok":
-            return ToolResult(tool_call_id="", content=f"The source reads nothing: {line}.")
+            return ToolResult(tool_call_id="", content=f"The source reads nothing: {line}.{unread}{pace}")
         sample = json.dumps(result.get("data"), ensure_ascii=False)[:_SAMPLE_CHARS]
         return ToolResult(
             tool_call_id="",
-            content=f"The source reads {line}, as the user sees it:\n" + wrap_untrusted(sample, "data source data"),
+            content=f"The source reads {line}, as the user sees it:\n" + wrap_untrusted(sample, "data source data") + unread + pace,
         )
 
     async def _add(
@@ -308,6 +479,7 @@ def build_dashboard_studio_tools(
         place: object = None,
         tab: str | None = None,
         revision: object = None,
+        sources: object = None,
         **_kw: object,
     ) -> ToolResult:
         from app.services.dashboard_definition import CONTENT_TYPES, DATA_TYPES
@@ -321,6 +493,10 @@ def build_dashboard_studio_tools(
         place, problem = _parse("place", place)
         if problem:
             return _error(problem)
+        # The sources the new one extends, saved with it under the ids given: a base no widget draws itself.
+        bases, problem = _parse("sources", sources) if sources is not None else ({}, None)
+        if problem or not isinstance(bases, dict) or len(bases) > 10:
+            return _error(problem or "sources is {id: source}, at most 10: the sources the new one extends, saved with it.")
         if not isinstance(visualization, dict) or not isinstance(visualization.get("type"), str):
             return _error("visualization is {type, title?, description?, options?}: dashboard_catalog lists the types.")
         viz_type = visualization["type"]
@@ -334,16 +510,19 @@ def build_dashboard_studio_tools(
             return working
         _row, definition = working
         sources = definition.get("dataSources") or {}
+        clash = sorted(set(bases) & (set(sources) | set(definition.get("visualizations") or {})))
+        if clash:
+            return _error(f"sources would replace what the dashboard has: {', '.join(clash)}. Use other ids, or source_id.")
         if source_id is not None and source_id not in sources:
             return _error(f"The dashboard has no data source '{source_id}': {', '.join(sources) or 'none yet'}.")
         layouts = definition["layout"]["layoutDefinitions"]
         layout_id = tab or definition["layout"]["tabs"]["items"][0]["layoutId"]
         if layout_id not in layouts:
             return _error(f"tab must be a layout id of the dashboard: {', '.join(layouts)}.")
-        taken = set(sources) | set(definition.get("visualizations") or {}) | set(definition.get("inputs") or {})
+        taken = set(sources) | set(bases) | set(definition.get("visualizations") or {}) | set(definition.get("inputs") or {})
         title = str(visualization.get("title") or "")
         vid = _new_id(title or viz_type.removeprefix("xtm."), taken)
-        operations: list[dict] = []
+        operations: list[dict] = [{"op": "set", "path": f"dataSources.{bid}", "value": base} for bid, base in bases.items()]
         viz = {k: v for k, v in visualization.items() if k in ("type", "title", "description", "options", "context", "eventHandlers", "containerOptions")}
         if draws_data:
             sid = source_id or _new_id(vid, taken | {vid}, prefix="ds_")
@@ -354,6 +533,8 @@ def build_dashboard_studio_tools(
         box = place if isinstance(place, dict) else _place(definition, layout_id, viz_type)
         operations.append({"op": "layout", "items": [{"id": vid, **{k: box.get(k) for k in ("x", "y", "w", "h")}}], "layoutId": layout_id})
         saved = await edit(dashboard_id=dashboard_id, operations=operations, revision=revision)
+        if not saved.is_error:
+            previews["since_add"] = 0
         if saved.is_error or not draws_data:
             return saved
         after = await _working(dashboard_id)
@@ -381,7 +562,7 @@ def build_dashboard_studio_tools(
         from app.core.database import async_session
         from app.tools.base import ToolCall
 
-        from .agent_builder import build_agent_builder_tool
+        from .agent_builder import _load_writable_agent_for_builder, build_agent_builder_tool
 
         trigger, problem = _parse("trigger", trigger)
         if problem:
@@ -406,7 +587,19 @@ def build_dashboard_studio_tools(
                 f"Before it, keep the consolidated table in the knowledge base document `{knowledge['document_id']}` "
                 "(update_knowledge_document), so it can be searched and read later."
             )
+        agent_uuid, user_uuid = safe_uuid(str(agent_id or "")), safe_uuid(user_id)
+        if agent_uuid is None or user_uuid is None:
+            return _error("agent_id must be an agent's id: list_agents.")
         async with async_session() as db:
+            # Checked first, with what to do: told only "Cannot add an assignment to built-in agents", the agent
+            # retried the same one.
+            _agent, refused = await _load_writable_agent_for_builder(db, user_uuid, agent_uuid, action="add an assignment to", assignment_write=True)
+            if refused:
+                return _error(
+                    f"The feed cannot run on this agent: {refused} A feed runs on an agent the user may give an "
+                    "assignment: one of theirs that has the tools the data takes (list_agents), or a new one "
+                    "(create_agent with those tools); then create_feed with its id."
+                )
             _defs, builder = build_agent_builder_tool(db, user_id, conversation_id=conversation_id)
             created = await builder.execute_tool(ToolCall(id="feed", name="create_assignment", arguments={
                 "agent_id": agent_id, "name": name, "prompt": "\n".join(lines), "trigger_type": trigger_type,
@@ -445,6 +638,8 @@ def build_dashboard_studio_tools(
         row, definition = working
         visualizations = definition.get("visualizations") or {}
         read: dict[str, str] = {}
+        columns: dict[str, int] = {}
+        widths = _widths(definition)
         lines = []
         for vid, viz in visualizations.items():
             if viz.get("type") not in DATA_TYPES:
@@ -452,12 +647,38 @@ def build_dashboard_studio_tools(
             sid = (viz.get("dataSources") or {}).get("primary")
             if sid not in read:
                 try:
-                    read[sid] = describe_read(await _read(definition, sid))
+                    result = await _read(definition, sid)
+                    read[sid] = describe_read(result)
+                    data = result.get("data") if result.get("status") == "ok" else None
+                    columns[sid] = len(data.get("columns") or []) if isinstance(data, dict) and isinstance(data.get("rows"), list) else 0
                 except Exception as exc:
                     logger.warning("check_dashboard could not read %s: %s", sid, format_exception_message(exc))
                     read[sid] = "error upstream_error: the source could not be read"
-            lines.append(f"- {vid} [{viz.get('type')} <- {sid}]: {read[sid]}")
-        problems = sum(1 for line in lines if ": error" in line or ": empty" in line)
+            line = f"- {vid} [{viz.get('type')} <- {sid}]: {read[sid]}"
+            unread = unread_parts((definition.get("dataSources") or {}).get(sid)).strip()
+            if unread:
+                line += f"; misread: {unread} - what it draws is not what it means to"
+            # A table read in a tile narrower than its columns: each needs about one of the grid's 12 columns.
+            needed, width = min(GRID_COLUMNS, columns.get(sid, 0)), widths.get(vid)
+            if viz.get("type") in ROW_VIEWS and width is not None and width < needed:
+                line += f"; cramped: {columns[sid]} columns in {width} grid columns, unreadable - widen it to {needed} (edit_dashboard)"
+            lines.append(line)
+        # A choice input read from a source: the choices the viewer gets, as the page derives them.
+        for token, entry in (definition.get("inputs") or {}).items():
+            sid = ((entry or {}).get("dataSources") or {}).get("primary")
+            if (entry or {}).get("type") not in ("input.dropdown", "input.multiselect") or not sid:
+                continue
+            try:
+                result = await _read(definition, sid)
+            except Exception as exc:
+                logger.warning("check_dashboard could not read %s: %s", sid, format_exception_message(exc))
+                continue
+            told = describe_choices(entry.get("options") or {}, result.get("data") if result.get("status") == "ok" else None)
+            if told:
+                lines.append(f"- input {token} [{entry['type']} <- {sid}]: {told}")
+        problems = sum(
+            1 for line in lines if ": error" in line or ": empty" in line or "; cramped:" in line or "; misread:" in line or "; collapsed:" in line
+        )
         summary = (
             f"Dashboard **{definition.get('title')}** (revision {row.revision}): "  # type: ignore[attr-defined]
             f"{len(lines)} visualizations draw data, {problems} need attention."
@@ -471,7 +692,8 @@ def build_dashboard_studio_tools(
             content += "\nThe attached picture is the tab as the user sees it: look at it before saying the dashboard is done."
         except Exception as exc:
             logger.warning("check_dashboard capture failed: %s", format_exception_message(exc))
-            content += "\nThe tab could not be rendered (the platform's headless browser is unavailable): say so, do not describe it."
+            # Its own reason: "the headless browser is unavailable" sent the agent waiting for a browser that was up.
+            content += f"\nThe tab could not be rendered ({format_exception_message(exc)[:200]}): say so, do not describe it."
         return ToolResult(tool_call_id="", content=content, files=files)
 
     async def _capture(row: object, definition: dict, tab: str | None) -> object:
@@ -513,6 +735,27 @@ def build_dashboard_studio_tools(
             read_only=True,
         ),
         ToolDefinition(
+            name="find_dashboard_data",
+            description=(
+                "Find the data an integration or knowledge source reads, with the user's access: kind integrations "
+                "(the integrations, with their integration_id; with integration_id, its tools that only read and "
+                "their arguments) or knowledge (the knowledge base documents, with knowledge_base_id and document_id). "
+                "search narrows by name. Platform widgets use list_platform_integrations instead."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["integrations", "knowledge"]},
+                    "search": {"type": "string"},
+                    "integration_id": {"type": "string"},
+                    "knowledge_base_id": {"type": "string"},
+                },
+                "required": ["kind"],
+            },
+            source=source,
+            read_only=True,
+        ),
+        ToolDefinition(
             name="describe_platform_widget",
             description=(
                 f"What a live widget of {platform_list()} can be: its widget types, or (widget_type) one type's example "
@@ -532,8 +775,8 @@ def build_dashboard_studio_tools(
             description=(
                 "Read from a platform, with the user's access, what fills a widget's configuration: kind "
                 "entity_types, filter_keys (for a perspective / the types), attributes (of the types), values (of a "
-                "filter key, matching search), entities (of the types, matching search), labels (of ids), "
-                "saved_filters. Never guess a key, a type or a value."
+                "filter key), entities (of the types), labels (of ids), saved_filters; search narrows any kind. Never "
+                "guess a key, a type or a value."
             ),
             input_schema={
                 "type": "object",
@@ -555,15 +798,22 @@ def build_dashboard_studio_tools(
             name="preview_source",
             description=(
                 f"Read a data source before saving it, as the user sees it: its shape and a sample, empty, or the "
-                f"error and what to do. Any type: platform {{source: {sources}, integration_id, native, range?}}, static, "
-                "assignment, ask, variable, integration {integration_id, tool (one that only reads), arguments, shape, "
-                "path}, knowledge {knowledge_base_id, document_id, section?, format, shape, path}, derived (with "
-                "dashboard_id, a derived source may extend the dashboard's). It is read live, as the user."
+                f"error and what to do. A source is {{type, name?, options}}; its options by type: platform {{source: "
+                f"{sources}, integration_id, native, range?}}, static, assignment, ask, variable, integration "
+                "{integration_id, tool (one that only reads), arguments, shape, path?}, knowledge {knowledge_base_id, "
+                "document_id, section?, format, shape, path?}, derived {extends (a source id), steps} (with dashboard_id, "
+                "a derived source may extend the dashboard's); refreshMode, refresh, cron, on and alerts (each "
+                f"{form_of(SourceAlert)}, on the figure of a source read on the server) are options too. A table's rows "
+                "drawn as a distribution: its first text column labels, its first number column counts. It is read live, as the user."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "source": {"type": "object", "description": "A data source: {type, name?, options}."},
+                    "sources": {
+                        "type": "object",
+                        "description": "{id: source}: sources not saved yet that a derived source extends, read with it.",
+                    },
                     "dashboard_id": {"type": "string"},
                     "range": {"type": "string"},
                 },
@@ -577,7 +827,8 @@ def build_dashboard_studio_tools(
             description=(
                 "Add a widget to a dashboard in one step: a new data source (source) or one of the dashboard's "
                 "(source_id), the visualization drawing it, and its place (below the others when omitted). Returns "
-                "what the new widget reads. A content visualization (xtm.text...) takes no source."
+                "what the new widget reads; the sources a new derived one extends are saved with it (sources). A "
+                "content visualization (xtm.text...) takes no source."
             ),
             input_schema={
                 "type": "object",
@@ -589,6 +840,10 @@ def build_dashboard_studio_tools(
                     },
                     "source": {"type": "object", "description": "A new data source {type, name?, options} (preview_source's)."},
                     "source_id": {"type": "string"},
+                    "sources": {
+                        "type": "object",
+                        "description": "{id: source}: the sources the new one extends, saved with it - a base no widget draws.",
+                    },
                     "place": {"type": "object", "description": "{x, y, w, h}: grid cells (82 px rows), or pixels on a canvas tab."},
                     "tab": {"type": "string", "description": "The layout id of the tab (default: the first)."},
                     "revision": {"type": "integer"},
@@ -629,7 +884,10 @@ def build_dashboard_studio_tools(
                 "type": "object",
                 "properties": {
                     "dashboard_id": {"type": "string"},
-                    "agent_id": {"type": "string", "description": "The agent that runs it (it needs the tools the data takes)."},
+                    "agent_id": {
+                        "type": "string",
+                        "description": "The agent that runs it: one the user may give an assignment (not a built-in one), with the tools the data takes.",
+                    },
                     "name": {"type": "string"},
                     "prompt": {"type": "string", "description": "What to gather and how to consolidate it."},
                     "trigger": {"type": "object"},
@@ -645,6 +903,7 @@ def build_dashboard_studio_tools(
     )
     handlers = {
         "dashboard_catalog": _catalog,
+        "find_dashboard_data": _find,
         "describe_platform_widget": _describe,
         "lookup_platform_values": _lookup,
         "preview_source": _preview,

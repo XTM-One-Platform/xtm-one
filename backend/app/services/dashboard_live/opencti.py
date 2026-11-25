@@ -122,7 +122,8 @@ _ENTITY_NODE = """
       objectLabel { id value color }
       objectMarking { id definition x_opencti_color }
       ... on StixDomainObject { created modified status { template { name color } } workflowEnabled }
-      ... on Report { published }"""
+      ... on Report { published }
+      ... on AttackPattern { x_mitre_id killChainPhases { kill_chain_name phase_name x_opencti_order } }"""
 
 #: ... and of a relationship (``StixRelationshipsList``, ``StixRelationshipsTimeline``).
 _RELATIONSHIP_NODE = """
@@ -755,7 +756,7 @@ _CHIP_COLUMNS = frozenset({"entity_type", "from_entity_type", "to_entity_type", 
 def _kind(attribute: str) -> str:
     if attribute in _CHIP_COLUMNS:
         return "chip"
-    if attribute in ("objectLabel", "objectMarking"):
+    if attribute in ("objectLabel", "objectMarking", "killChainPhases"):
         return "chips"
     return "date" if attribute in _DATES else "text"
 
@@ -785,6 +786,16 @@ def _cell(node: dict, attribute: str) -> object:
         return [{"label": lab.get("value"), "color": lab.get("color")} for lab in node.get("objectLabel") or [] if isinstance(lab, dict)]
     if attribute == "objectMarking":
         return [c for c in (marking_chip(m) for m in node.get("objectMarking") or []) if c]
+    if attribute == "killChainPhases":
+        # A technique's tactics, in their kill chain's order (``rank``): what a flow step lays out stage by stage.
+        # Each tactic with its kill chain (``group``) and its order there (``rank``): orders compare within a chain only.
+        phases = {
+            (p["phase_name"], p.get("kill_chain_name")): p.get("x_opencti_order")
+            for p in node.get("killChainPhases") or []
+            if isinstance(p, dict) and p.get("phase_name")
+        }
+        ordered = sorted(phases.items(), key=lambda item: (str(item[0][1] or ""), item[1] if isinstance(item[1], int) else 1_000))
+        return [{"label": name, "group": chain, "rank": rank if isinstance(rank, int) else None} for (name, chain), rank in ordered]
     value = node.get(attribute)
     if isinstance(value, list):
         return ", ".join(str(v) for v in value if isinstance(v, str | int | float))

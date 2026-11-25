@@ -410,6 +410,17 @@ async def test_the_agent_adds_a_widget_in_one_step_and_checks_the_dashboard(monk
             "source_id": "ds_open_findings",
         })  # fmt: skip
         both = await _call("add_widget", {"dashboard_id": dashboard, "visualization": {"type": "xtm.line"}})
+        # A derived figure and its base, which no widget draws, in one step.
+        derived = await _call("add_widget", {
+            "dashboard_id": dashboard, "visualization": {"type": "xtm.singlevalue", "title": "Total"},
+            "source": {"type": "derived", "options": {"extends": "base_rows", "steps": [{"op": "stats", "agg": "sum", "field": "n"}]}},
+            "sources": {"base_rows": {"type": "static", "options": {"shape": "rows", "data": {"columns": ["n"], "rows": [{"n": 2}, {"n": 5}]}}}},
+        })  # fmt: skip
+        clash = await _call("add_widget", {
+            "dashboard_id": dashboard, "visualization": {"type": "xtm.singlevalue"},
+            "source": {"type": "static", "options": {"shape": "number", "data": {"value": 1}}},
+            "sources": {"ds_open_findings": {"type": "static", "options": {"shape": "number", "data": {"value": 2}}}},
+        })  # fmt: skip
         checked = await _call("check_dashboard", {"dashboard_id": dashboard})
         captured = await _call("check_dashboard", {"dashboard_id": dashboard, "capture": True})
         async with scratch.sessions() as db:
@@ -419,6 +430,9 @@ async def test_the_agent_adds_a_widget_in_one_step_and_checks_the_dashboard(monk
     assert "its data: empty (rows)" in empty.content
     assert reused.is_error is False, reused.content
     assert both.is_error and "either 'source'" in both.content
+    assert derived.is_error is False and "its data: ok (number)" in derived.content, derived.content
+    assert clash.is_error and "would replace what the dashboard has: ds_open_findings" in clash.content
+    assert stored["dataSources"]["base_rows"]["type"] == "static"
     assert stored["dataSources"]["ds_open_findings"]["options"]["data"]["value"] == 12
     assert stored["visualizations"]["same_figure"]["dataSources"] == {"primary": "ds_open_findings"}
     placed = {e["item"]: e["position"] for e in next(iter(stored["layout"]["layoutDefinitions"].values()))["structure"]}

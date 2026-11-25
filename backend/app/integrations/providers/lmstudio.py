@@ -586,6 +586,77 @@ async def check_connectivity(ctx: Any) -> Any:
     return ProbeResult.ok(f"{ctx.name} is connected through the relay: {count} on the server, {loaded} loaded.")
 
 
+# ---------------------------------------------------------------------------
+# Agent tools
+# ---------------------------------------------------------------------------
+
+#: The tool that reads the server's models, for an agent or a dashboard's integration source.
+LIST_MODELS_TOOL = "list_lmstudio_models"
+
+
+def build_tools(token: str, executor: Any, **_kwargs: Any) -> list[Any]:
+    """What an agent reads on the LM Studio server: its models, as JSON (``base_url||api_token``).
+
+    Read only: loading, unloading and downloading stay in the integration's console, behind its managers. The calls
+    leave through the integration's relay route, like the console's (``integration_tools._route_through_relay``).
+    """
+    from app.integrations.http import parse_compound_token
+    from app.tools.base import ToolDefinition
+
+    base_raw, api_token = parse_compound_token(token, 2, greedy_last=True)
+    if not (base_raw or "").strip():
+        return []
+
+    async def list_lmstudio_models(type: str | None = None, loaded_only: bool = False) -> str:
+        try:
+            models = await list_models(make_connection(base_raw, api_token))
+        except LMStudioError as exc:
+            logger.info("LM Studio tool: %s (%s)", exc.kind, exc.detail[:300])
+            return f"Error: {exc.public_message}"
+        rows = [
+            {
+                "model": m["display_name"],
+                "key": m["key"],
+                "type": m["type"],
+                "publisher": m["publisher"],
+                "architecture": m["architecture"],
+                "params": m["params"],
+                "quantization": m["quantization"],
+                "size_gb": round(m["size_bytes"] / 1e9, 2) if m["size_bytes"] else None,
+                "max_context_length": m["max_context_length"],
+                "loaded_instances": len(m["loaded_instances"]),
+                "vision": m["vision"],
+                "tool_use": m["tool_use"],
+            }
+            for m in models
+            if (not type or m["type"] == type) and (not loaded_only or m["loaded_instances"])
+        ]
+        return json.dumps(
+            {"models": rows, "count": len(rows), "loaded": sum(1 for r in rows if r["loaded_instances"])},
+            ensure_ascii=False,
+        )
+
+    executor.register(LIST_MODELS_TOOL, list_lmstudio_models)
+    return [
+        ToolDefinition(
+            name=LIST_MODELS_TOOL,
+            description=(
+                "List the models on the LM Studio server, as JSON: each model's name, key, type (llm, embedding), "
+                "publisher, architecture, parameters, quantization, size in GB, maximum context and how many "
+                "instances are loaded; with the count of models and of loaded ones."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "enum": list(MODEL_TYPES), "description": "Only the models of this type."},
+                    "loaded_only": {"type": "boolean", "description": "Only the models loaded in memory."},
+                },
+            },
+            read_only=True,
+        )
+    ]
+
+
 def _register() -> None:
     from app.integrations.connectivity import register_connectivity
 

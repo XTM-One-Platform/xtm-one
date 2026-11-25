@@ -24,7 +24,7 @@ import type { WidgetChartData, WidgetData } from "@/types";
 import { trellisOptions } from "./trellis.ts";
 
 /** The views `StudioViz` draws. */
-const STUDIO_VIEWS = ["map", "choroplethsvg", "linkgraph", "networkgraph", "sankey", "parallel", "timeline", "treemap"] as const;
+const STUDIO_VIEWS = ["map", "choroplethsvg", "linkgraph", "networkgraph", "sankey", "parallel", "timeline", "treemap", "attackflow"] as const;
 type StudioView = (typeof STUDIO_VIEWS)[number];
 
 /** The chart views a trellis splits into small multiples. */

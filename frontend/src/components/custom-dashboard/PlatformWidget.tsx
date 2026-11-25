@@ -31,6 +31,7 @@ import { ExternalLink, MessageCircleQuestion, Radar, RefreshCw } from "lucide-re
 import { useWidgetSize } from "@/components/dashboard-grid/widget-size-context";
 import { AiActionGate } from "@/components/ui/ai-disabled";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboardAccess } from "@/hooks/api/dashboard-access";
@@ -44,7 +45,7 @@ import type { WidgetChanges, WidgetDataErrorCode, WidgetSnapshot } from "@/types
 import { accentStyle } from "./charts/colors";
 import { presentedOptions } from "./definition";
 import { withoutLinks } from "./viz/shapes";
-import { chartHeight } from "./grid";
+import { chartHeight, MIN_CHART_HEIGHT } from "./grid";
 import { useDashboardTokens } from "./token-state";
 import { useDashboardLive } from "./live";
 import { hasNoData, type ClickEvent } from "./interactions";
@@ -136,6 +137,9 @@ function OpenLink({ href, platform }: { href: string | undefined; platform: stri
   );
 }
 
+/** The pixels the line saying what changed since the previous read takes (`ChangesLine`). */
+const CHANGES_LINE_HEIGHT = 18;
+
 function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget | DataDashboardWidget; dashboardId: string }) {
   const { t_i18n, locale } = useFormatter();
   const live = useDashboardLive();
@@ -167,7 +171,8 @@ function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget |
   const asks = widget.kind === "data" && widget.sourceType === "ask";
   const annotation = useDataSourceData(dashboardId, widget.annotation?.id, live?.range, widget.annotation?.fingerprint ?? "");
   // The chart fills the widget's cell on the grid, less its description; stacked, it takes its old height.
-  const height = Math.max(80, chartHeight(widget.kind === "platform" ? widget.size : "m", useWidgetSize()) - (widget.description ? 24 : 0));
+  const room = chartHeight(widget.kind === "platform" ? widget.size : "m", useWidgetSize()) - (widget.description ? 24 : 0);
+  const height = Math.max(MIN_CHART_HEIGHT, room);
 
   if (!widget.view) {
     return (
@@ -211,6 +216,8 @@ function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget |
     );
   }
   const annotationData = annotation.data?.status === "ok" ? annotation.data : undefined;
+  // What changed since the previous read takes a line of its own under the freshness line: the chart gives it room.
+  const drawnHeight = Math.max(MIN_CHART_HEIGHT, height - (data.snapshot && data.changes ? CHANGES_LINE_HEIGHT : 0));
   // The link into the platform is in the widget's menu, as the modules keep theirs in the card's header.
   const footer = widget.showLastUpdated && data.fetched_at;
   const options = presentedOptions(widget.options, widget.view, data.presentation);
@@ -239,7 +246,7 @@ function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget |
             <PlatformChart
               data={shown}
               view={widget.view}
-              height={height}
+              height={drawnHeight}
               options={options}
               context={widget.context}
               annotation={annotationData}
@@ -247,7 +254,7 @@ function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget |
               onBrush={onBrush}
             />
           ) : (
-            <StudioViz data={shown} view={widget.view === "text" ? undefined : widget.view} height={height} options={options} />
+            <StudioViz data={shown} view={widget.view === "text" ? undefined : widget.view} height={drawnHeight} options={options} />
           )}
         </Suspense>
       </div>
@@ -298,7 +305,9 @@ function SnapshotLine({ widget, snapshot, changes }: { widget: DashboardWidget; 
   const { dashboardId } = useDashboardLive() ?? {};
   const access = useDashboardAccess();
   const refresh = useRefreshSnapshot(dashboardId);
-  const sourceId = widget.kind === "data" || widget.kind === "platform" ? widget.sourceId : undefined;
+  const { toast } = useToast();
+  // A derived source drawing a server-read one shows that one's snapshot: Refresh now reads that one again.
+  const sourceId = snapshot.source_id ?? (widget.kind === "data" || widget.kind === "platform" ? widget.sourceId : undefined);
   if (!snapshot.refreshed_at) return null;
   return (
     <span className="mt-auto flex min-w-0 flex-col gap-0.5 content-caption text-default-secondary" data-testid="widget.snapshot">
@@ -314,7 +323,11 @@ function SnapshotLine({ widget, snapshot, changes }: { widget: DashboardWidget; 
           className="h-6 w-6 shrink-0 px-0"
           aria-label={t_i18n("Refresh now")}
           disabled={refresh.isPending}
-          onClick={() => refresh.mutate(sourceId)}
+          onClick={() =>
+            refresh.mutate(sourceId, {
+              onError: (error) => toast({ title: t_i18n("The data could not be read again"), description: error.message, variant: "error" }),
+            })
+          }
         >
           <RefreshCw className={refresh.isPending ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
         </Button>

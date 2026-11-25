@@ -129,6 +129,8 @@ DATA_TYPES: tuple[str, ...] = (
     "xtm.parallelcoordinates",
     "xtm.timeline",
     "xtm.treemap",
+    # A flow of attack steps (``graph`` data: an Attack Flow, or a kill chain's stages from a ``flow`` step).
+    "xtm.attackflow",
     # A distribution or a series drawn as a radar, a polar area, a word cloud or a heatmap.
     "xtm.radar",
     "xtm.polararea",
@@ -180,6 +182,7 @@ VIEW_TO_TYPE: dict[str | None, str] = {
     "parallel": "xtm.parallelcoordinates",
     "timeline": "xtm.timeline",
     "treemap": "xtm.treemap",
+    "attackflow": "xtm.attackflow",
     "radar": "xtm.radar",
     "polar": "xtm.polararea",
     "wordcloud": "xtm.wordcloud",

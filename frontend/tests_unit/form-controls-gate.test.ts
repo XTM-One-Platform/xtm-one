@@ -104,8 +104,8 @@ const ALLOWED: Record<Gate, Record<string, string>> = {
       "the search line inside the vault secret popover: a popover search line, not a form field",
     "components/presentation/SlideJumpMenu.tsx":
       "the slide number search at the top of the slide jump menu, a keyboard listbox filter inside a popover, not a form field",
-    "pages/VideoEditor.tsx":
-      "the inline video title of the studio bar, sized to its text like a heading, not a form field",
+    "components/studio/StudioChrome.tsx":
+      "the inline title of a studio bar (video, dashboard), sized to its text like a heading, not a form field",
   },
   comma: {},
   date: {},

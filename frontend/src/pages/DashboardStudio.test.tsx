@@ -137,7 +137,10 @@ describe("DashboardStudio", () => {
     expect(body.revision).toBe(4);
     expect(body.operations.map((op: { op: string; path: string }) => `${op.op} ${op.path}`)).toEqual(["set visualizations.rectangle", "set layout"]);
     expect(body.operations[0].value).toEqual({ type: "xtm.shape.rectangle", options: { fillOpacity: 0.15, strokeWidth: 2, rx: 8 } });
-    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    const edit = screen.getByRole("button", { name: "Edit the dashboard" });
+    expect(edit.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(edit);
+    expect(edit.getAttribute("aria-pressed")).toBe("false");
     expect(screen.queryByRole("toolbar", { name: "Design" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add a tab" })).toBeNull();
   });
@@ -146,20 +149,26 @@ describe("DashboardStudio", () => {
     const dashboard = serve(true, WALL);
     api.patch.mockImplementation(async (_url: string, body: { revision: number }) => ({ ...dashboard, revision: body.revision + 1 }));
     draw();
-    const toggle = await screen.findByRole("button", { name: "Hide the settings panel" });
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(toggle);
-    expect(screen.getByRole("button", { name: "Show the settings panel" }).getAttribute("aria-pressed")).toBe("false");
+    // The panel's switch is in More actions, as the Video Studio keeps its secondary actions.
+    const more = async () => {
+      fireEvent.pointerDown(await screen.findByRole("button", { name: "More actions" }), { button: 0, ctrlKey: false });
+      return screen.findAllByRole("menuitem");
+    };
+    fireEvent.click((await more()).find((item) => item.textContent === "Hide the settings panel")!);
+    await waitFor(() => expect(screen.queryByRole("menuitem")).toBeNull());
+    expect((await more()).map((item) => item.textContent)).toContain("Show the settings panel");
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menuitem")).toBeNull());
     // Adding an element opens its settings.
     fireEvent.click(screen.getByRole("button", { name: "Add a rectangle" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Hide the settings panel" }).getAttribute("aria-pressed")).toBe("true"));
+    await waitFor(async () => expect((await more()).map((item) => item.textContent)).toContain("Hide the settings panel"));
   });
 
   it("gives a reader no mode switch and no design tools", async () => {
     serve(false, WALL);
     draw();
     expect(await screen.findByTestId("dashboard.canvas")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit the dashboard" })).toBeNull();
     expect(screen.queryByRole("toolbar", { name: "Design" })).toBeNull();
   });
 });

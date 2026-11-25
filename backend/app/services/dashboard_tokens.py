@@ -80,6 +80,36 @@ class TokenValues(BaseModel):
         return values
 
 
+def default_tokens(definition: dict) -> dict[str, Any]:
+    """The tokens a page starts with: ``defaults.tokens.default``, then each input's ``defaultValue`` - what a
+    published link's snapshot, an export and an agent checking the dashboard read it with, as a viewer opening it."""
+
+    tokens: dict[str, Any] = {}
+    defaults = ((definition.get("defaults") or {}).get("tokens") or {}).get("default") or {}
+    for name, entry in defaults.items():
+        value = entry.get("value") if isinstance(entry, dict) else None
+        if NAME_RE.match(str(name)) and value is not None:
+            tokens[str(name)] = value
+    for entry in (definition.get("inputs") or {}).values():
+        token, value = entry.get("token"), entry.get("defaultValue")
+        if isinstance(token, str) and NAME_RE.match(token) and value is not None:
+            tokens[token] = value
+    cleaned: dict[str, Any] = {}
+    for name, value in tokens.items():
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int | float):
+            value = str(value)
+        if isinstance(value, str) or (isinstance(value, list) and all(isinstance(v, str) for v in value)):
+            cleaned[name] = value
+    return cleaned
+
+
+def starting_tokens(definition: dict) -> dict[str, Any]:
+    """:func:`default_tokens`, bounded as a page's tokens are (:class:`TokenValues`); ``ValueError`` when they are not."""
+    return TokenValues(values=default_tokens(definition)).values
+
+
 def names_in(value: object) -> set[str]:
     """Every token name *value* (any JSON) refers to."""
     found: set[str] = set()

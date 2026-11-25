@@ -27,6 +27,8 @@ shapes of ``dashboard_live`` (``number`` / ``series`` / ``distribution`` /
     top     {field, count}             rows -> distribution: count by value
     stats   {agg, field, by}           rows / distribution / series -> number,
                                        or rows -> distribution when ``by`` is set
+    flow    {stage, label, technique}  rows -> graph: each row an action in its stage
+                                       (a tactic), stage after stage, joined by OR
 
 No step runs code: an ``eval`` expression is parsed here into arithmetic on
 the row's numbers (``+ - * /``, parentheses, ``round``, ``abs``, ``min``,
@@ -109,10 +111,41 @@ class StatsStep(_Step):
     by: FieldName | None = None
 
 
+class FlowStep(_Step):
+    """Rows laid out as a flow: each row an action in the stage(s) its ``stage`` cell names (a tactic; a
+    list of chips puts it in each, ordered by their ``rank`` within their ``group``), the stages one after
+    another, each joined to the next by an OR."""
+
+    op: Literal["flow"]
+    stage: FieldName
+    label: FieldName
+    technique: FieldName | None = None
+
+
 Step = Annotated[
-    WhereStep | SortStep | HeadStep | FieldsStep | RenameStep | EvalStep | TopStep | StatsStep,
+    WhereStep | SortStep | HeadStep | FieldsStep | RenameStep | EvalStep | TopStep | StatsStep | FlowStep,
     Field(discriminator="op"),
 ]
+
+
+def form_of(model: type[BaseModel]) -> str:
+    """A model's form as an agent writes it: ``{op: where, field, operator?: eq|ne|..., value?}`` - its fields by
+    their names (aliases first), ``?`` when optional, the choices of a closed one."""
+    from typing import get_args, get_origin
+
+    parts = []
+    for name, info in model.model_fields.items():
+        choices = get_args(info.annotation) if get_origin(info.annotation) is Literal else ()
+        part = f"{info.alias or name}{'' if info.is_required() else '?'}" + (": " + "|".join(map(str, choices)) if choices else "")
+        parts.insert(0, part) if name == "op" else parts.append(part)
+    return "{" + ", ".join(parts) + "}"
+
+
+def step_forms() -> list[str]:
+    """Each step's form, read from its model."""
+    from typing import get_args
+
+    return [form_of(model) for model in get_args(get_args(Step)[0])]
 
 
 # ── eval: arithmetic on a row's numbers, parsed here ─────────────────────────
@@ -328,7 +361,92 @@ def _apply(step: Any, shape: str, data: dict, where: str) -> tuple[str, dict]:
     if isinstance(step, TopStep):
         counts = Counter(str(row.get(step.field) or "-") for row in rows)
         return "distribution", {"items": [{"label": label, "value": n} for label, n in counts.most_common(step.count)]}
+    if isinstance(step, FlowStep):
+        return "graph", _flow(step, rows)
     raise PipelineError(f"{where}: unknown step")  # pragma: no cover - the union is closed
+
+
+def _stages_of(value: object) -> list[tuple[str, str | None, int | None]]:
+    """The stages a ``stage`` cell names, each with its chip's ``group`` and ``rank`` when it has them."""
+    items = value if isinstance(value, list) else [value]
+    out = []
+    for item in items:
+        if isinstance(item, dict) and item.get("label"):
+            rank = item.get("rank")
+            group = str(item["group"]) if item.get("group") else None
+            out.append((str(item["label"]), group, rank if isinstance(rank, int) and not isinstance(rank, bool) else None))
+        elif isinstance(item, str | int | float) and str(item).strip():
+            out.append((str(item).strip(), None, None))
+    return out
+
+
+def _stage_order(stages: list[str], ranks: dict[str, dict[str, int]]) -> list[str]:
+    """*stages* in order: a stage goes before another when a group (``ranks``: by group, each stage's rank in it)
+    that holds both ranks it first - ranks of different groups are never compared, two kill chains numbering
+    their tactics each their own way - the groups' majority deciding; a tie, or a stage no group places, keeps
+    its first appearance."""
+    votes: Counter[tuple[str, str]] = Counter()
+    for ranked in ranks.values():
+        for a, rank_a in ranked.items():
+            for b, rank_b in ranked.items():
+                if rank_a < rank_b:
+                    votes[(a, b)] += 1
+    before = {s: {t for t in stages if votes[(t, s)] > votes[(s, t)]} for s in stages}
+    ordered: list[str] = []
+    left = list(stages)
+    while left:
+        ready = [s for s in left if not (before[s] & set(left))] or left[:1]
+        ordered.append(ready[0])
+        left.remove(ready[0])
+    return ordered
+
+
+def _flow(step: FlowStep, rows: list[dict]) -> dict:
+    from app.services.dashboard_live import MAX_GRAPH_NODES
+
+    stages: dict[str, list[dict]] = {}
+    ranks: dict[str, dict[str, int]] = {}
+    for row in rows:
+        label = _cell_text(row.get(step.label))
+        if not label:
+            continue
+        seen: set[str] = set()
+        for stage, group, rank in _stages_of(row.get(step.stage)) or [("-", None, None)]:
+            if rank is not None:
+                ranked = ranks.setdefault(group or "", {})
+                ranked[stage] = min(rank, ranked.get(stage, rank))
+            if stage in seen:
+                continue
+            seen.add(stage)
+            stages.setdefault(stage, []).append(row)
+    ordered = _stage_order(list(stages), ranks)
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    previous: list[str] = []
+    for index, stage in enumerate(ordered):
+        if len(nodes) >= MAX_GRAPH_NODES:
+            break
+        current = []
+        for number, row in enumerate(stages[stage]):
+            node_id = f"s{index}-{number}"
+            technique = _cell_text(row.get(step.technique)) if step.technique else ""
+            nodes.append({"id": node_id, "label": _cell_text(row.get(step.label)), "kind": "action", "tactic": stage, "technique": technique})
+            current.append(node_id)
+        if previous:
+            join = f"or{index}"
+            nodes.append({"id": join, "label": "OR", "kind": "operator", "operator": "OR"})
+            edges += [{"source": source, "target": join} for source in previous]
+            edges += [{"source": join, "target": target} for target in current]
+        previous = current
+    return {"nodes": nodes, "edges": edges}
+
+
+def _cell_text(value: object) -> str:
+    if isinstance(value, dict):
+        return str(value.get("label") or "")
+    if isinstance(value, list):
+        return ", ".join(_cell_text(v) for v in value if _cell_text(v))
+    return "" if value is None else str(value).strip()
 
 
 def _alias(shape: str, field: str) -> str:

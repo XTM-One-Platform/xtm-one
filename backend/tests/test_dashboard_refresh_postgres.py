@@ -237,3 +237,44 @@ async def test_each_read_says_what_changed_and_an_alert_is_told_once_per_crossin
             activity = (await db.execute(select(Activity).order_by(Activity.created_at.desc()))).scalars().first()
         assert activity.title == "SOC: High findings" and activity.summary == "5 > 4"
         assert activity.extra_data["notification_source"] == "dashboard_alert"
+
+
+async def test_a_figure_derived_from_a_source_is_read_again_with_it(monkeypatch) -> None:
+    """Refresh now on a source reads the server-read sources derived from it too, and a widget drawing a live derived
+    source shows - and is refreshed through - the snapshot of the source it reads."""
+    import app.core.database as database
+    from app.services import dashboard_refresh_events
+    from app.services.custom_dashboards import save_dashboard
+    from app.services.dashboard_definition import upgrade
+    from app.services.dashboard_refresh import refresh_row
+    from app.services.dashboard_sources import read_source
+
+    told: list[tuple[str, str]] = []
+
+    async def _publish(dashboard_id: str, source_id: str) -> None:
+        told.append((dashboard_id, source_id))
+
+    monkeypatch.setattr(dashboard_refresh_events, "publish_source_updated", _publish)
+    async with _world() as (scratch, owner, _viewer, kb, doc):
+        monkeypatch.setattr(database, "async_session", scratch.sessions)
+        definition = _definition(kb.id, doc.id, refreshMode="manual")
+        definition["dataSources"]["sev"]["options"].pop("refresh")
+        definition["dataSources"]["high"] = {"type": "derived", "options": {
+            "extends": "sev", "refreshMode": "manual",
+            "steps": [{"op": "where", "field": "severity", "value": "high"}, {"op": "stats", "agg": "sum", "field": "count"}]}}  # fmt: skip
+        definition["dataSources"]["view"] = {"type": "derived", "options": {"extends": "sev", "steps": []}}
+        async with scratch.sessions() as db:
+            dashboard = await save_dashboard(db, user_id=owner.id, spec_payload=definition)
+            await db.commit()
+            rows = {r.source_id: r.id for r in (await db.execute(select(CustomDashboardSourceSnapshot))).scalars()}
+        assert set(rows) == {"sev", "high"}
+        assert await refresh_row(scratch.sessions, rows["sev"])
+        # The derived figure was read with it, not at its own due time.
+        assert told == [(str(dashboard.id), "sev"), (str(dashboard.id), "high")]
+        async with scratch.sessions() as db:
+            high = await db.get(CustomDashboardSourceSnapshot, rows["high"])
+            assert high.result["data"]["value"] == 3
+            stored = upgrade((await db.get(type(dashboard), dashboard.id)).spec)
+            view = await read_source(db, owner.id, stored, "view", dashboard_id=dashboard.id)
+        # The live view shows its parent's snapshot, which names the source Refresh now reads again.
+        assert view["status"] == "ok" and view["snapshot"]["source_id"] == "sev"

@@ -118,6 +118,12 @@ async def test_a_feed_is_an_assignment_made_by_the_agent_builder_and_a_widget_re
         yield None
 
     monkeypatch.setattr(agent_builder, "build_agent_builder_tool", lambda *_a, **_k: ([], _Builder()))
+    refusal: list[str | None] = [None]
+
+    async def _writable(*_a, **_k):
+        return SimpleNamespace(), refusal[0]
+
+    monkeypatch.setattr(agent_builder, "_load_writable_agent_for_builder", _writable)
     monkeypatch.setattr(database, "async_session", _session)
     added: list[dict] = []
 
@@ -154,3 +160,11 @@ async def test_a_feed_is_an_assignment_made_by_the_agent_builder_and_a_widget_re
     assert calls[1] == ("trigger_assignment", {"assignment_id": assignment_id})
     assert added[0]["source"]["options"] == {"assignment_id": assignment_id, "shape": "series", "history": 30}
     assert added[0]["visualization"]["type"] == "xtm.line"
+
+    # An agent the user may not give an assignment (a built-in one): refused before anything is created, with what to do.
+    calls.clear()
+    refusal[0] = "Cannot add an assignment to built-in agents."
+    refused = await feed(dashboard_id=str(uuid.uuid4()), agent_id=str(uuid.uuid4()), name="N", prompt="P")
+    assert refused.is_error and calls == []
+    assert "built-in agents. A feed runs on an agent the user may give an assignment" in refused.content
+    assert "create_agent" in refused.content

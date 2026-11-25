@@ -299,7 +299,7 @@ The craft lives in the skill and the tool results, never in the system prompt (i
 | Tool | New / changed | Purpose |
 |---|---|---|
 | `dashboard_catalog(shape?, type?)` | new | Visualization types per data shape and their options, generated from `dashboard_visualization_options.py` (no hand-written copy) |
-| `find_data(question)` | new | Candidate sources the user can read: platform widget types, integrations with their read tools (`list_integration_tools`), knowledge bases, assignments, variables |
+| `find_dashboard_data(kind, search?, integration_id?, knowledge_base_id?)` | new (2026-11-25) | The integrations (then one's read tools and their arguments) and the knowledge base documents the user reads, with the ids a source takes. The agent's own knowledge tools only see the bases it is given, so without it an agent could not find the user's |
 | `describe_platform_widget(source, type)` | new | The widget's form from `dashboard_platform/forms.py`, flattened to fields, allowed values and an example `native` |
 | `lookup_platform_values(source, kind, query)` | new | `dashboard_platform_schema` lookups (entity types, attributes, filter keys, values), with the user's access |
 | `preview_source(source)` | generalizes `preview_platform_widget` | Any source type: shape, sample rows, or the error code and how to fix it |
@@ -328,6 +328,36 @@ Each agent capability has a UI twin. `Data > New` gets **Integration** (pick the
 | **5 – Insight and alerting** (landed 2026-11-24: what changed since the previous read, computed from the two reads - the figure and a breakdown's top movers, a number's trend - instead of a model's narrative, which a feed's text answer already offers; `alerts` on server-read sources, told once per crossing in the bell (`dashboard_alert`) and on phones) | Narrative widget computed from a dataset at each refresh (grounded: it cites the snapshot), thresholds on a value → notification / work item | Optional, after phase 4 adoption |
 
 Each phase updates `docs/docs/usage/custom-dashboards.md` and `dev-docs/dashboard-rendering-reference.md`, adds its tests as a non-admin (rule 19), and keeps new files EE (`make edition`).
+
+### 6.1 Functional pass on a local instance (2026-11-25)
+
+The five phases were driven end to end on a local stack with a real model (the brief "the last 10 ransomware victims from Ransomware.live, refreshed hourly; open findings by severity from a CSV in a knowledge base; the critical count on top; tell me above 5"), each step captured and compared with what was expected. It took five runs to land the brief; what each run found was fixed in code:
+
+| Found | Fixed by |
+|---|---|
+| The agent could not find the user's knowledge base: its knowledge tools read only the agent's bases, and no studio tool listed what the user reads | `find_dashboard_data`; the knowledge tools' refusal says whose bases they read; the skill says it first in step 3 |
+| A tool answering in words read as `upstream_error`: `dashboard_live.LiveError` folded every source code it did not know into it | `dashboard_sources.SourceError` keeps the sources' own codes; `invalid_result` names its remedies (shape `text`, a feed) |
+| A `severity,count` table drawn as a distribution gave unnamed zero bars, and its numbers were text in a table | `_items_of` reads the first text column as labels and the first number column as values; number columns are typed |
+| The agent wrote steps and alerts by guesswork until the failure brake stopped it | `dashboard_pipeline.form_of` / `step_forms`: each step's and an alert's form, read from the models, in the error and in `preview_source`'s description, with the `{type, name?, options}` envelope |
+| Widgets on `integration` and `knowledge` sources were drawn as "cannot be shown in this version" | one `DATA_SOURCE_TYPES` list in `definition.ts`, used by `spec.ts` too |
+| A small number tile clipped its freshness line | the chart shrinks to its cell (`MIN_CHART_HEIGHT`) and leaves the changes line its room |
+| `Refresh now` on a widget of a live derived source answered 404, silently; a figure derived from a refreshed source lagged until its own due time | the snapshot names its source (`snapshot.source_id`), which `Refresh now` reads again, failures are told; `refresh_row` reads again the server-read sources derived from the one it read |
+
+A second pass drove agent-built dashboards on a local OpenCTI and edge briefs: a threat watch ("keep me informed on Lazarus Group": its techniques by tactic, malware, campaigns, a weekly web news feed, Ransomware.live victims "if there are any"), then the same dashboard made generic with an intrusion set picker, a brief naming two integrations that are not connected (OpenAEV, Jira) asked from `/chat`, and a studio edit made while the agent was editing. The agent no longer invents data for a missing integration (it builds what reads and says what is missing), and concurrent edits keep both changes. What it found:
+
+| Found | Fixed by |
+|---|---|
+| The agent previewed sixty sources over fifty iterations without adding one widget: the reminder past `PREVIEWS_BEFORE_A_WIDGET` was read and ignored | past `PREVIEW_LIMIT` (twice the reminder) a preview is refused until a widget is added; the first widgets then land within four minutes |
+| An integration source in error answered `upstream_error` alone: a search with nothing to find (Ransomware.live answers 404) was retried some twenty times | the tool's own message travels as `detail` (`DETAIL_CHARS`), quarantined as data in `describe_read`; the remedy of `upstream_error` names what an integration tool's answer means |
+| `lookup_platform_values` ignored `search` for the kinds OpenCTI lists whole (filter keys, attributes, entity types, saved filters): the agent could not find `regardingOf` | `read_schema` narrows those lists on the key and its label |
+| `create_feed` on a built-in agent answered "Cannot add an assignment to built-in agents" and the agent retried it | the agent is checked first (`_load_writable_agent_for_builder`) and the refusal says which agent a feed runs on, or to create one |
+| An entities widget given `dynamicFrom` (only relationships read it) drew every technique of the platform instead of one intrusion set's, and looked right | `NativeCheck.ignored` names what the platform does not read, kept as written; told after `preview_source` and in `check_dashboard` (`misread`); `describe_platform_widget` gives the `regardingOf` form |
+| A nine-column relationship list in 4 of the 12 grid columns, and a picker of 189 intrusion sets offering one choice (a list's first column, its type) | `check_dashboard` reports a table narrower than its columns (`cramped`) and a choice input whose rows give few distinct values (`collapsed`, with the row keys and `input.entity`) |
+| A feed's source links are plain text | kept so, on purpose: a dashboard links to pages of XTM One only (`dashboard_live.internal`), and a link an agent read on the web could be a planted one |
+| A dashboard asked for from `/chat` showed as a link, never as its card: the web chat restores through the embedded panels' API, which makes a dashboard's marker a link (pre-existing) | `keep_dashboards` on the restore and the message pages of the web chat and the agent page's chat |
+
+**Attack Flow widget (2026-11-25).** `xtm.attackflow` draws the `graph` shape as a MITRE Attack Flow (`charts/AttackFlow.tsx`, laid out left to right by `viz/attack-flow.ts`). A graph node may carry `kind` (`start`, `action`, `condition`, `operator`, `asset`), `technique`, `tactic`, `description` and `operator` (`dashboard_live.graph_data`). Two ways in: a STIX bundle holding an Attack Flow (CTID's `attack-flow`, `attack-action`, `attack-condition`, `attack-operator`, `attack-asset`) is read as a graph by any source drawing `graph` (`dashboard_live.attack_flow`); and the `flow` pipeline step lays out rows of techniques by their tactics, ordered by a chip's `rank`, which an OpenCTI list of attack patterns now gives (`killChainPhases` with `x_opencti_order`, and `x_mitre_id`). `dashboard_catalog type=` now gives the form of the data each shape takes (`SHAPE_FORMS`). Building it with the agent found: the studio tools read sources without the inputs' default values (every widget on a picker "waiting"): they now read with `dashboard_tokens.starting_tokens`, the one rule the published link's snapshot already used; an export of a dashboard with an entity input never finished (the picker, with no session, searched its platform, got a 401 and sent the page to sign-in): the picker searches with a session only, and the render route names the inputs' starting entities (`entity_names`, `dashboard_platform_schema.entity_input_names`, read with the exporter's access); a failed capture now says its own reason instead of "the headless browser is unavailable".
+
 
 ## 7. Decisions needed
 

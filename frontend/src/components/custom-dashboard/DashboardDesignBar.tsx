@@ -14,14 +14,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The Dashboard Studio's toolbar, above the stage in edit mode:
- * undo and redo; a chart (on sample data of its own,
+ * The Dashboard Studio's toolbar, above the stage in edit mode (undo, redo and
+ * whether everything is saved are the studio bar's, as in the Video Studio):
+ * a chart (on sample data of its own,
  * `viz-config.addChart`) or an input to add on every tab; on a canvas, the
  * elements to add (rectangle, ellipse, line, icon, image, markdown),
  * layering, alignment and distribution of the selection, duplication (with
  * the same or a new data source), deletion and the zoom; then the data
- * sources, the source editor, the dashboard's theme and whether everything
- * is saved. Each change is one step of the designer's history.
+ * sources, the source editor and the dashboard's theme. Each change is one
+ * step of the designer's history.
  */
 import {
   AlignCenterHorizontal,
@@ -37,7 +38,6 @@ import {
   BringToFront,
   BarChart3,
   Braces,
-  Check,
   Circle,
   ClipboardPaste,
   Copy,
@@ -45,7 +45,6 @@ import {
   ImageIcon,
   Moon,
   MoveUpRight,
-  Redo2,
   SlidersHorizontal,
   Sun,
   SendToBack,
@@ -53,9 +52,7 @@ import {
   Star,
   Trash2,
   Type,
-  Undo2,
 } from "lucide-react";
-import { Spinner } from "@filigran/design-system";
 
 import { Button } from "@/components/ui/button";
 import { OverflowMenu } from "@/components/ui/overflow-menu";
@@ -202,9 +199,6 @@ export function DashboardDesignBar({
       className="flex min-h-10 flex-wrap items-center gap-0.5 border-b border-elevation-subtle-soft layer-1 bg-elevation-default px-3 py-1"
       data-testid="dashboard.design-bar"
     >
-      <BarButton label={t_i18n("Undo")} icon={Undo2} onClick={designer.undo} disabled={!designer.canUndo} shortcut={`${mod}Z`} />
-      <BarButton label={t_i18n("Redo")} icon={Redo2} onClick={designer.redo} disabled={!designer.canRedo} shortcut={`${mod}⇧Z`} />
-      <Divider />
       <OverflowMenu
         label={t_i18n("Add a chart")}
         scroll
@@ -315,17 +309,6 @@ export function DashboardDesignBar({
           icon={dark ? Sun : Moon}
           onClick={() => designer.change((definition) => setTheme(definition, dark ? "light" : "dark"))}
         />
-        <Divider />
-        <span
-          className="flex min-w-24 items-center gap-1.5 px-1 content-caption text-default-secondary"
-          role="status"
-          aria-live="polite"
-          data-testid="dashboard.toolbar.save-state"
-        >
-          {designer.saveState === "saved" && <Check className="h-3.5 w-3.5 text-feedback-success-primary" aria-hidden="true" />}
-          {designer.saveState !== "saved" && <Spinner size="sm" tone="inherit" />}
-          {designer.saveState === "saved" ? t_i18n("Saved") : t_i18n("Saving…")}
-        </span>
       </div>
     </div>
   );

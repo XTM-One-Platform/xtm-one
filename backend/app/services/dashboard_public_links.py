@@ -68,6 +68,7 @@ from app.core.security import decrypt_value, encrypt_value, hash_token
 from app.core.security_options import security_option
 from app.models.custom_dashboard import CustomDashboard, CustomDashboardPublicLink
 from app.models.user import User
+from app.services.dashboard_tokens import starting_tokens
 from app.services.presentation_public_links import mint_token, well_formed_token
 
 logger = logging.getLogger(__name__)
@@ -295,29 +296,6 @@ async def disable_public_link(db: AsyncSession, dashboard_id: uuid.UUID) -> bool
 # ── The snapshot ──────────────────────────────────────────────────────────────
 
 
-def default_tokens(definition: dict) -> dict[str, Any]:
-    """The tokens a page starts with: ``defaults.tokens.default``, then each input's ``defaultValue``."""
-    from app.services.dashboard_tokens import NAME_RE
-
-    tokens: dict[str, Any] = {}
-    defaults = ((definition.get("defaults") or {}).get("tokens") or {}).get("default") or {}
-    for name, entry in defaults.items():
-        value = entry.get("value") if isinstance(entry, dict) else None
-        if NAME_RE.match(str(name)) and value is not None:
-            tokens[str(name)] = value
-    for entry in (definition.get("inputs") or {}).values():
-        token, value = entry.get("token"), entry.get("defaultValue")
-        if isinstance(token, str) and NAME_RE.match(token) and value is not None:
-            tokens[token] = value
-    cleaned: dict[str, Any] = {}
-    for name, value in tokens.items():
-        if isinstance(value, bool):
-            continue
-        if isinstance(value, int | float):
-            value = str(value)
-        if isinstance(value, str) or (isinstance(value, list) and all(isinstance(v, str) for v in value)):
-            cleaned[name] = value
-    return cleaned
 
 
 #: The keys a closed shape keeps a link under: a row's ``_url``, an item's, an event's, an outcome's or an action's ``link``.
@@ -375,10 +353,8 @@ async def read_snapshot(
     """Every source's result as *user_id* reads it now, and each visualization's (its primary source's); under a
     *marking_ceiling*, OpenCTI's data marked above it left out, and an agent's answer not kept at all."""
     from app.services.dashboard_sources import read_source
-    from app.services.dashboard_tokens import TokenValues
-
     try:
-        tokens = TokenValues(values=default_tokens(definition)).values
+        tokens = starting_tokens(definition)
     except ValueError:
         tokens = {}
     sources: dict[str, dict] = {}

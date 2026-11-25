@@ -76,6 +76,9 @@ describe("PlatformWidget", () => {
     const expand = screen.getByRole("button", { name: "Expand Reports" });
     const menu = screen.getByRole("button", { name: "Data of Reports" });
     expect(expand.compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The module's look raises the first letter only: a sentence keeps its own case, in any language.
+    const heading = screen.getByRole("heading", { name: "Reports" });
+    expect(heading.className).not.toContain("capitalize");
   }, 20_000);
 
   it("puts a tile's change sentence in the widget's header when its look asks, in the module's accent", async () => {
@@ -169,6 +172,31 @@ describe("PlatformWidget", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh now" }));
     await waitFor(() => expect(api.post.mock.calls.map(([path]) => String(path))).toContain(`/custom-dashboards/${ID}/data-sources/sev/refresh`));
     vi.useRealTimers();
+  });
+
+  it("refreshes the source holding the snapshot a derived widget shows, and says when it cannot", async () => {
+    const snapshot = { source_id: "sev", mode: "server", every: "15m", refreshed_at: "2026-10-23T10:00:00Z", publisher: "Alice" } as const;
+    api.post.mockImplementation(async (path: string) => {
+      if (String(path).endsWith("/refresh")) throw new Error("Too many refreshes");
+      return { status: "ok", shape: "number", data: { value: 7, change: null }, fetched_at: "2026-10-23T10:00:00Z", open_url: null, snapshot };
+    });
+    const dashboard = normalizeDashboard({
+      version: 2,
+      title: "Board",
+      dataSources: {
+        sev: { type: "static", options: { shape: "number", data: { value: 7 } } },
+        view: { type: "derived", options: { extends: "sev", steps: [] } },
+      },
+      visualizations: { big: { type: "xtm.singlevalue", title: "Open findings", dataSources: { primary: "view" } } },
+      layout: {
+        tabs: { items: [{ layoutId: "main", label: "Main" }] },
+        layoutDefinitions: { main: { structure: [{ item: "big", position: { x: 0, y: 0, w: 4, h: 3 } }] } },
+      },
+    });
+    renderWithProviders(<CustomDashboardView dashboard={dashboard} dashboardId={ID} revision={2} />, new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+    fireEvent.click(await screen.findByRole("button", { name: "Refresh now" }));
+    await waitFor(() => expect(api.post.mock.calls.map(([path]) => String(path))).toContain(`/custom-dashboards/${ID}/data-sources/sev/refresh`));
+    expect(await screen.findByText("The data could not be read again")).toBeTruthy();
   });
 
   it("says a snapshot not read yet waits for the server, not for an agent", async () => {

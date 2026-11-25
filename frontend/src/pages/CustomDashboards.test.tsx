@@ -61,7 +61,8 @@ describe("CustomDashboards", () => {
   it("creates an empty dashboard from its name and description, then opens it in the studio", async () => {
     api.post.mockResolvedValue({ id: ID, title: "Weekly board" });
     draw();
-    fireEvent.click(await screen.findByRole("button", { name: "Create" }));
+    // One main button, as Videos and Presentations: its dialog also starts an empty dashboard.
+    fireEvent.click(await screen.findByRole("button", { name: "New dashboard" }));
     const create = (await screen.findByTestId("dashboards.create.blank")) as HTMLButtonElement;
     expect(create.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "  Weekly board " } });
@@ -83,7 +84,7 @@ describe("CustomDashboards", () => {
     api.post.mockResolvedValue({ id: ID, title: "SOC brief" });
     draw();
     // The list's main button opens the same dialog, on the assistant's side.
-    fireEvent.click(await screen.findByRole("button", { name: "Build with the assistant" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New dashboard" }));
     const assist = (await screen.findByTestId("dashboards.create.assistant")) as HTMLButtonElement;
     expect(assist.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "SOC brief" } });
@@ -205,7 +206,7 @@ describe("CustomDashboards", () => {
 
   it("offers no review of public links to someone who is not an administrator", async () => {
     draw();
-    await screen.findByRole("button", { name: "Create" });
+    await screen.findByRole("button", { name: "New dashboard" });
     expect(screen.queryByRole("button", { name: "Public links" })).toBeNull();
   });
 
@@ -213,7 +214,7 @@ describe("CustomDashboards", () => {
     flags.studio = false;
     draw();
     await waitFor(() => expect(api.get).toHaveBeenCalled());
-    expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Widget packs" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Import" })).toBeNull();
   });
 });

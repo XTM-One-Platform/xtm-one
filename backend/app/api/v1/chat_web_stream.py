@@ -860,8 +860,9 @@ async def open_web_chat_session(
     # the sends and the events stream stay the owner's.
     conv = await _readable_conversation(db, user, body.conversation_id) if body.conversation_id else None
     if conv is not None:
+        # The web panel draws a dashboard's marker as the dashboard: kept, not made a link.
         restored, has_more = await platform_api.restore_chat_session_window(
-            db, user, conv, supports_artifacts=body.supports_artifacts
+            db, user, conv, supports_artifacts=body.supports_artifacts, keep_dashboards=True
         )
         if conv.agent_id is None:
             # Here a conversation is answered by its own agent whatever the panel
@@ -986,7 +987,7 @@ async def list_web_chat_messages(
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return await platform_api.read_message_page(
-        db, user, conv, before=before, limit=limit, supports_artifacts=supports_artifacts
+        db, user, conv, before=before, limit=limit, supports_artifacts=supports_artifacts, keep_dashboards=True
     )
 
 

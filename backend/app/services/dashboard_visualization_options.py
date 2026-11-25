@@ -229,6 +229,7 @@ STUDIO_VIZ_TYPES = (
     "xtm.parallelcoordinates",
     "xtm.timeline",
     "xtm.treemap",
+    "xtm.attackflow",
 )
 
 
