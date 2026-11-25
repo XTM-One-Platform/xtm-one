@@ -38,6 +38,7 @@ from app.integrations.providers.spendesk.webhooks import EVENT_TYPES as SPENDESK
 from app.integrations.providers.spendesk.webhooks import TRIGGER_EVENTS as SPENDESK_TRIGGER_EVENTS
 from app.services.dealhub_events import catalog_events as _dealhub_catalog_events
 from app.services.defender_stream import catalog_events as _defender_catalog_events
+from app.services.drata_webhooks import catalog_events as _drata_catalog_events
 from app.services.opencrq_job_events import FILTER_KEYS as _OPENCRQ_FILTER_KEYS
 from app.services.tool_classification import definition_tool_type
 from app.services.wordsmith_webhooks import EVENTS as _WORDSMITH_EVENTS
@@ -2491,7 +2492,13 @@ PROVIDER_CATALOG = {
         "integration_types": ["compliance"],
         "auth_type": "api_key",
         "fields": ["api_key"],
-        "extra_fields": {"region": "API Region"},
+        "extra_fields": {
+            "region": "API Region",
+            "webhook_token": "Webhook token (a long random secret you choose; Drata workflows send it as Authorization: Bearer, see the setup guide)",
+        },
+        # Drata's events leave through the Send webhook step of its workflows
+        # (services/drata_webhooks.py): bearer token header, one event per family.
+        "available_events": _drata_catalog_events(),
         "extra_field_options": {
             "region": [
                 {"value": "us", "label": "US — public-api.drata.com"},
@@ -2508,6 +2515,7 @@ PROVIDER_CATALOG = {
                 "Give it a descriptive name like '{APP_NAME}'.",
                 "Grant the required permissions (see list below). For full agentic control select both List/Read **and** Create/Update/Delete permissions for every resource you want the agent to manage.",
                 "Copy the API key and paste it below.",
+                "Optional, for event triggers: choose a long random Webhook token and save it below. In Drata > Workflows, create a workflow on a control, evidence, risk or personnel trigger and add a Send webhook step: URL = this integration's webhook URL (Configuration tab, Webhooks card), custom header Authorization = 'Bearer <the token>', and the properties the agent needs.",
             ],
             "permissions": [
                 {

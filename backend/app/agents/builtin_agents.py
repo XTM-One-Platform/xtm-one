@@ -2970,6 +2970,9 @@ CTEM_CASE_ORDERING_KEY = "case_id"
 #: A burst of ``ctem_case.opened`` (a reconcile opening 500 cases) is batched (#2286): the
 #: events of this window join one run, at most ``CTEM_CASE_BATCH_MAX_EVENTS`` cases each, so
 #: the burst starts a bounded number of Loop runs. Every other case event runs alone, at once.
+#: The batch is a dispatch bound only (#2379, ``batch_split``): each case of a batch is
+#: worked in a run and a context of its own, one after the other, never in one conversation
+#: that re-sends every earlier case's tool results.
 CTEM_CASE_BATCH_WINDOW_SECONDS = 60
 CTEM_CASE_BATCH_MAX_EVENTS = 5
 CTEM_CASE_BATCHED_EVENTS: tuple[str, ...] = ("ctem_case.opened",)
@@ -3022,6 +3025,31 @@ CTEM_GATE_ANSWERED = GATE_ANSWERED
 CTEM_KEY_PREFIX = "ctem:"
 
 
+#: What measures a control in OpenCRQ (#2369): chosen from the asset type and the tenant's live
+#: integrations, a permanent control first, a recurring OpenAEV scenario next, a one-off last; a
+#: port-only scan reaches OpenCRQ as nothing, and a one-off result expires after
+#: evidence_health.max_age_days (path 9 opens again).
+CTEM_CONTROL_MEASUREMENT_RULE = (
+    "Choose the measurement like an analyst, from the asset type and the integrations the tenant has "
+    "connected, read at decision time (the integrations and tools you hold, get_organization_context "
+    "category software and assets_exposure), never from a fixed recipe, in this order: (1) a permanent "
+    "control an integration already offers for this kind of asset (a repository with Aikido connected: "
+    "enable Aikido scanning on it; an IP or host with a vulnerability scanner such as Tenable, Qualys, "
+    "Rapid7 or Wiz: permanent scanning of the asset in it; an endpoint with an EDR: the policy or "
+    "coverage that measures the control); (2) a recurring OpenAEV scenario at a period below "
+    "evidence_health.max_age_days, on the recurring scenario or asset group already targeting the asset "
+    "when one exists: injects with DETECTION or PREVENTION expectations on a technique the control "
+    "covers (read from OpenCRQ), or OpenAEV generic vulnerability scanning (CVE output, which OpenCRQ "
+    "books); (3) a one-off test only when (1) and (2) are impossible, the decision saying why no "
+    "permanent control fits. A port-only scan with no expectation and no CVE output is exposure, never "
+    "the measurement, and never counted as reusable evidence. Several options may be offered, the "
+    "recommended one first; each says whether it is permanent or one-off, what it measures, and what "
+    "OpenCRQ will update (the technique test result, or CVE findings) and will not (other controls; "
+    "nothing from a port-only scan). Nothing applies at all (no integration and no OpenAEV path): the "
+    "decision says no measuring source connected, names it as the root cause and the integration to "
+    "connect, no scan."
+)
+
 #: The reconciliation step of a ``control_decay`` case (#2354): "no current evidence in OpenCRQ"
 #: is not "no control", so the existing control sources are read before any scan is proposed.
 CTEM_CONTROL_DECAY_RECONCILE = (
@@ -3042,7 +3070,7 @@ CTEM_CONTROL_DECAY_RECONCILE = (
     "record it in OpenCRQ (update_opencrq_control_capability_assessment or "
     "manage_opencrq_scope_control_posture, the source as justification), never a scan; none found "
     "gets the decision to put a control in place and measure it; the decision lists every source "
-    "checked and what it returned (found, not found, not readable)."
+    "checked and what it returned (found, not found, not readable). " + CTEM_CONTROL_MEASUREMENT_RULE
 )
 
 
@@ -3068,13 +3096,13 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "batch_window_seconds": CTEM_CASE_BATCH_WINDOW_SECONDS,
             "batch_events": list(CTEM_CASE_BATCHED_EVENTS),
             "batch_max_events": CTEM_CASE_BATCH_MAX_EVENTS,
+            "batch_split": True,
         },
         "prompt": (
             "A CTEM case event is in the trigger below (event name, case_id, trigger_path, "
-            "state, owner_fleet: the fleet the platform routed this case to, yours). Opened cases "
-            "arrive batched: when the trigger is a batch (batch true, an events list), work each "
-            "event of the list in order, one case at a time, exactly as below, each case under its "
-            "own work item and its own gates; never merge two cases' loops into one item. The case "
+            "state, owner_fleet: the fleet the platform routed this case to, yours). Each run works "
+            "one case: work it exactly as below, under its own work item and its own gates; never "
+            "merge two cases' loops into one item. The case "
             "is the record of this loop: read it first with "
             "get_ctem_case. On ctem_case.opened or ctem_case.reopened: own the case's loop "
             f"under the work item keyed `{fleet_key}:case:` followed by the case_id (create "

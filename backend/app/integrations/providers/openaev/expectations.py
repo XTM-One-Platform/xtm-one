@@ -21,6 +21,7 @@ manual-validation endpoint.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -117,6 +118,242 @@ def _fmt_drift(d: dict, scope: str, parent_id: str) -> str:
         "expectations at all, not every inject."
     )
     return "\n".join(lines)
+
+
+#: ``InjectExpectationService.COLLECTOR``: the ``sourceType`` of a result a
+#: collector (EDR, SIEM, LLM firewall) wrote. Only those sources upload traces.
+_COLLECTOR_SOURCE_TYPE = "collector"
+
+#: ``GET /api/inject-expectations-traces`` (``InjectExpectationTraceApi``)
+#: takes BOTH parameters as required ``@RequestParam``: a missing one is a bare
+#: Spring 400 before OpenAEV's own logic runs.
+_TRACES_PATH = "/api/inject-expectations-traces"
+
+#: Upper bound on the collectors probed when the expectation row cannot be
+#: located: past it the caller is asked for the row's locator or a source_id.
+_MAX_PROBED_COLLECTORS = 10
+
+_NO_COLLECTOR_SOURCE = (
+    "No collector scored expectation {expectation_id}: traces exist only for "
+    "collector results (an EDR, SIEM or firewall collector uploads the alert it "
+    "matched). A manual, media-pressure or vulnerability-manager result has none, "
+    "so there is nothing to read."
+)
+
+
+def _collector_sources(row: dict[str, Any]) -> list[tuple[str, str]]:
+    """The ``(sourceId, label)`` of each collector result on an expectation row.
+
+    A result written by a collector carries ``sourceType`` ``collector``; the
+    built-in sources (manual validation, media pressure, the vulnerability
+    manager) carry their own type and never upload traces. A result without a
+    ``sourceType`` (an older OpenAEV) is kept: an unknown collector id answers
+    an empty list, never an error.
+    """
+    sources: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for r in row.get("inject_expectation_results") or []:
+        if not isinstance(r, dict):
+            continue
+        sid = str(r.get("sourceId") or "").strip()
+        stype = str(r.get("sourceType") or "").strip().lower()
+        if not sid or sid in seen or (stype and stype != _COLLECTOR_SOURCE_TYPE):
+            continue
+        seen.add(sid)
+        sources.append((sid, str(r.get("sourceName") or sid)))
+    return sources
+
+
+def _traces_bad_request(err: str, expectation_id: str, source_id: str) -> str:
+    """Name the parameters behind a 400 of the traces endpoint.
+
+    The ``_api`` wording of a 400 ends in OpenAEV's bare ``Bad Request``, which
+    tells the agent nothing about what to change.
+    """
+    if "bad request" not in err.lower():
+        return err
+    return (
+        f"OpenAEV refused the traces read (HTTP 400). GET {_TRACES_PATH} requires "
+        f"both injectExpectationId (sent: {expectation_id or 'none'}) and sourceId "
+        f"(sent: {source_id or 'none'}), the id of a collector that scored the "
+        "row (target_results lists each source). Check both ids. Original "
+        f"error: {err}"
+    )
+
+
+def _fmt_trace_lines(items: list[Any]) -> list[str]:
+    lines = []
+    for t in items:
+        if not isinstance(t, dict):
+            continue
+        name = t.get("inject_expectation_trace_alert_name", "?")
+        date = t.get("inject_expectation_trace_date", "")
+        link = t.get("inject_expectation_trace_alert_link")
+        line = f"  - {name}"
+        if date:
+            line += f" ({date})"
+        if link:
+            line += f" {link}"
+        lines.append(line)
+    return lines
+
+
+async def _find_row(
+    base_url: str,
+    headers: dict[str, str],
+    expectation_id: str,
+    *,
+    inject_id: str,
+    target_id: str,
+    target_type: str,
+    parent_target_id: str,
+    exercise_id: str,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Read the expectation row through a locator the caller gave.
+
+    OpenAEV has no read of one expectation by id: the row is found in the
+    target results of its inject (inject_id + target_id + target_type) or in
+    the expectations of its simulation (exercise_id). ``(None, None)`` means no
+    locator was given or the row is not under it.
+    """
+    resolved = next(
+        (t for t in _TARGET_TYPES if t.lower() == (target_type or "").strip().lower()),
+        None,
+    )
+    if inject_id and target_id and resolved:
+        params = {"parentTargetId": parent_target_id} if parent_target_id else None
+        resp, err = await _api(
+            base_url,
+            headers,
+            "get",
+            f"/api/atomic-testings/{inject_id}/target_results/{target_id}/types/{resolved}",
+            "get target results",
+            params=params,
+        )
+    elif exercise_id:
+        resp, err = await _api(
+            base_url,
+            headers,
+            "get",
+            f"/api/exercises/{exercise_id}/expectations",
+            "get simulation expectations",
+        )
+    else:
+        return None, None
+    if err or resp is None:
+        return None, err
+    rows = resp.json() or []
+    row = next(
+        (r for r in rows if isinstance(r, dict) and r.get("inject_expectation_id") == expectation_id),
+        None,
+    )
+    return row, None
+
+
+async def _probe_collectors(base_url: str, headers: dict[str, str]) -> tuple[list[tuple[str, str]] | None, str | None]:
+    """The collectors a traces read can address, when the row is not located.
+
+    The traces endpoint resolves the collector's security platform, so only a
+    collector bound to one can hold traces.
+    """
+    resp, err = await _api(base_url, headers, "get", "/api/collectors", "list collectors")
+    if err or resp is None:
+        return None, err
+    sources = []
+    for c in resp.json() or []:
+        if not isinstance(c, dict) or not c.get("collector_security_platform"):
+            continue
+        cid = str(c.get("collector_id") or "").strip()
+        if cid:
+            sources.append((cid, str(c.get("collector_name") or cid)))
+    return sources, None
+
+
+async def _traces_answer(
+    base_url: str,
+    headers: dict[str, str],
+    expectation_id: str,
+    *,
+    source_id: str,
+    inject_id: str,
+    target_id: str,
+    target_type: str,
+    parent_target_id: str,
+    exercise_id: str,
+) -> str:
+    """Read the alert evidence of one expectation row, one call per collector.
+
+    ``GET /api/inject-expectations-traces`` is keyed by expectation AND source:
+    with no ``source_id`` the sources are the collector results of the row
+    (located by the caller's locator), else every collector bound to a security
+    platform. Traces are merged and labelled by source.
+    """
+    if source_id:
+        sources = [(source_id, source_id)]
+    else:
+        row, err = await _find_row(
+            base_url,
+            headers,
+            expectation_id,
+            inject_id=inject_id,
+            target_id=target_id,
+            target_type=target_type,
+            parent_target_id=parent_target_id,
+            exercise_id=exercise_id,
+        )
+        if err:
+            return err
+        if row is not None:
+            sources = _collector_sources(row)
+        else:
+            probed, err = await _probe_collectors(base_url, headers)
+            if err:
+                return err
+            sources = probed or []
+            if len(sources) > _MAX_PROBED_COLLECTORS:
+                return (
+                    f"{len(sources)} collectors could hold traces for expectation "
+                    f"{expectation_id}. Pass source_id (the collector id a "
+                    "target_results row lists), or locate the row with inject_id + "
+                    "target_id + target_type, or exercise_id."
+                )
+        if not sources:
+            return _NO_COLLECTOR_SOURCE.format(expectation_id=expectation_id)
+
+    blocks: list[str] = []
+    found = 0
+    for sid, label in sources:
+        resp, err = await _api(
+            base_url,
+            headers,
+            "get",
+            _TRACES_PATH,
+            "get expectation traces",
+            params={"injectExpectationId": expectation_id, "sourceId": sid},
+        )
+        if err or resp is None:
+            err = _traces_bad_request(err or "no response", expectation_id, sid)
+            if len(sources) == 1:
+                return err
+            blocks.append(f"Source {label} ({sid}): {err}")
+            continue
+        lines = _fmt_trace_lines(resp.json() or [])
+        if not lines:
+            continue
+        found += len(lines)
+        blocks.append(f"Source {label} ({sid}), {len(lines)} alert(s):")
+        blocks.extend(lines)
+    if not found:
+        empty = (
+            f"No alert evidence recorded for expectation {expectation_id} "
+            f"(collector source(s) read: {', '.join(label for _, label in sources)}). "
+            "Traces are optional: a collector can confirm a detection without "
+            "pushing back an alert link, so an empty list does NOT contradict a "
+            "SUCCESS verdict. A collector uploads traces only for the alerts it "
+            "matched, so a Not Detected row normally has none."
+        )
+        return "\n".join([empty, *blocks]) if blocks else empty
+    return "\n".join([f"Alert evidence ({found}):", *blocks])
 
 
 def register(
@@ -321,37 +558,17 @@ def register(
         if action == "traces":
             if not expectation_id:
                 return "expectation_id is required for action 'traces'."
-            params = {"injectExpectationId": expectation_id}
-            if source_id:
-                params["sourceId"] = source_id
-            resp, err = await _api(
-                base_url, headers, "get", "/api/inject-expectations-traces",
-                "get expectation traces", params=params,
+            return await _traces_answer(
+                base_url,
+                headers,
+                expectation_id,
+                source_id=source_id,
+                inject_id=inject_id,
+                target_id=target_id,
+                target_type=target_type,
+                parent_target_id=parent_target_id,
+                exercise_id=exercise_id,
             )
-            if err:
-                return err
-            items = resp.json() or []
-            if not items:
-                return (
-                    f"No alert evidence recorded for expectation {expectation_id}. "
-                    "Traces are optional: a collector can confirm a detection "
-                    "without pushing back an alert link, so an empty list does NOT "
-                    "contradict a SUCCESS verdict."
-                )
-            lines = [f"Alert evidence ({len(items)}):"]
-            for t in items:
-                if not isinstance(t, dict):
-                    continue
-                name = t.get("inject_expectation_trace_alert_name", "?")
-                date = t.get("inject_expectation_trace_date", "")
-                link = t.get("inject_expectation_trace_alert_link")
-                line = f"  - {name}"
-                if date:
-                    line += f" ({date})"
-                if link:
-                    line += f" {link}"
-                lines.append(line)
-            return "\n".join(lines)
 
         if action in ("drift", "realign_drift", "dismiss_drift"):
             root = _DRIFT_BASES.get(scope)
@@ -485,7 +702,8 @@ def register(
                 "what), 'target_results_merged' (one row per type, collector "
                 "sources omitted), 'agent_breakdown' (inject_id + target_id asset + "
                 "expectation_type - per-agent detail under an asset), 'traces' "
-                "(expectation_id - the alert evidence behind a verdict), 'drift' / "
+                "(expectation_id - the alert evidence behind a verdict, read per "
+                "collector source of the row), 'drift' / "
                 "'realign_drift' / 'dismiss_drift' (scope simulation|scenario|"
                 "atomic - whether stored expectations still match their injector "
                 "contracts), 'validate' (expectation_id + score - record a MANUAL "
@@ -511,7 +729,7 @@ def register(
                     },
                     "scenario_id": {"type": "string", "description": "Scenario ID (drift actions with scope='scenario')."},
                     "inject_id": {"type": "string", "description": "Inject / atomic test ID."},
-                    "expectation_id": {"type": "string", "description": "Expectation row ID (traces, validate)."},
+                    "expectation_id": {"type": "string", "description": "Expectation row ID (traces, validate). For traces, inject_id + target_id + target_type or exercise_id locate its row."},
                     "target_id": {"type": "string", "description": "Target entity ID (asset, agent, team, player, asset group)."},
                     "target_type": {
                         "type": "string",
@@ -529,7 +747,10 @@ def register(
                             "HUMAN_RESPONSE)."
                         ),
                     },
-                    "source_id": {"type": "string", "description": "Security platform / collector ID to filter traces by."},
+                    "source_id": {
+                        "type": "string",
+                        "description": "Collector ID for 'traces'. Optional: without it the tool reads every collector source of the row.",
+                    },
                     "score": {
                         "type": "number",
                         "description": (

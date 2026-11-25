@@ -612,7 +612,9 @@ async def record_validation(
     was), ``failed`` (still exposed) or ``pending``. ``mitigation_only``: the
     pass proves a mitigation, not the permanent fix, so the case goes to
     ``mitigated_watching`` and the re-test stays on. ``run_order``: the target
-    asset groups in the order they were tested (at most 20 names). ``conclusive``
+    asset groups in the order they were tested (at most 20 names); a name that
+    resolves to one canonical asset attaches it to the case (``assets``, provenance
+    ``name_match_inferred``), one that does not is kept in ``unresolved`` (#2395). ``conclusive``
     (#1458), set by the agent that read the check: false when a pass proves
     nothing (the case stays open with its remediation), true when the check
     proves the exposure gone, None when the writer did not say (a scanner
@@ -666,6 +668,12 @@ async def record_validation(
     order = [str(name).strip()[:120] for name in (run_order or []) if str(name).strip()][:RUN_ORDER_MAX]
     if order:
         entry["run_order"] = order
+        from app.services import ctem_case_assets as case_assets
+
+        # The hosts the validation ran on become case assets with their provenance (#2395).
+        resolved = await case_assets.resolve_names(db, getattr(case, "organization_id", None), order)
+        if resolved is not None:
+            case_assets.attach_run_order(entry, order, resolved, actor=actor, at=at)
     if result in rules.PASSING_RESULTS and conclusive is False:
         # A pass that proves nothing is stored, shown and measured as inconclusive (#1692).
         entry["result"] = INCONCLUSIVE_RESULT

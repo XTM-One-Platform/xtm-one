@@ -204,6 +204,9 @@ NO_COUNT_RESTRICTED = (
 def with_asset_count(row: dict[str, Any], events: Iterable[Any]) -> dict[str, Any]:
     """*row* (a case list row) with ``asset_count_source`` and, when its issues name no asset, the inventory count.
 
+    ``attached`` (#2395): neither the issues nor the inventory count an asset, and the case's
+    validations attached some (``ctem_case_assets``): their count.
+
     ``issues``: the issues name the assets (unchanged count). ``inventory``: the latest
     snapshot counts the devices running the product (``asset_count_as_of``). ``unknown``:
     ``asset_count`` is ``None`` with ``asset_count_reason``; never a silent 0. A row whose
@@ -219,6 +222,14 @@ def with_asset_count(row: dict[str, Any], events: Iterable[Any]) -> dict[str, An
         row["asset_count"] = found["asset_count"]
         row["asset_count_source"] = "inventory"
         row["asset_count_as_of"] = found["as_of"]
+        return row
+    from app.services.ctem_case_assets import ATTACHED_SOURCE, attached_assets
+
+    # The hosts a validation ran on, recorded on the case (#2395): never a silent 0 while one ran.
+    attached = attached_assets(row.get("validations"))
+    if attached and not restricted:
+        row["asset_count"] = len(attached)
+        row["asset_count_source"] = ATTACHED_SOURCE
         return row
     row["asset_count"] = None
     row["asset_count_source"] = "unknown"

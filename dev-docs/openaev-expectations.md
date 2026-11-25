@@ -192,3 +192,19 @@ verdicts while impersonating a security platform. `expectations.py` uses the
 same endpoints the OpenAEV UI uses, and its only write path is the documented
 manual-validation endpoint. `test_expectation_tool_does_not_expose_collector_endpoints`
 locks this in.
+
+## Reading traces: one call per collector source
+
+`GET /api/inject-expectations-traces` (the read the UI uses) requires BOTH
+`injectExpectationId` and `sourceId`: traces are stored per security platform
+and the endpoint resolves the collector's platform first. A call without
+`sourceId` is a bare Spring 400 (#2371). `action=traces` therefore always sends
+both: with an explicit `source_id` it makes one call; without one it reads the
+row (through `inject_id` + `target_id` + `target_type`, or `exercise_id`), takes
+the results whose `sourceType` is `collector` and calls once per source, the
+traces merged and labelled by source. A row with no collector result answers
+that traces exist only for collectors, without any traces call. With no locator
+it probes the collectors bound to a security platform (at most 10). Manual,
+media-pressure and vulnerability-manager results never carry traces, and a
+collector uploads traces only for the alerts it matched, so a Not Detected row
+normally has none. `tests/test_openaev_expectation_traces.py` locks this in.

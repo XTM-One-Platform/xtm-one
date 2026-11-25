@@ -320,7 +320,9 @@ def _version_counts(entry: dict[str, Any]) -> dict[str, int]:
 
 
 def with_inventory_versions(
-    stack: list[dict[str, Any]], inventory: Mapping[str, Mapping[str, int]]
+    stack: list[dict[str, Any]],
+    inventory: Mapping[str, Mapping[str, int]],
+    packages: Mapping[str, Mapping[str, int]] | None = None,
 ) -> list[dict[str, Any]]:
     """*stack* with every version the device inventory reports for each entry (pure, #2038).
 
@@ -332,23 +334,51 @@ def with_inventory_versions(
     ``inventory`` only for the versions in ``version_counts``). Its single ``version`` is kept
     only when exactly one version runs, never a guess. An entry the inventory does not report
     (a profile-only product) is unchanged.
+
+    *inventory* leaves out the language package rows of the repositories (the MinIO SDK is not
+    the MinIO server, #2375): its versions are what a CVE of a server or OS product reads.
+    *packages*, the answer that keeps them, gives the entry a ``package_view`` when it differs:
+    the versions a CVE whose every Software is a language package reads (:func:`_view`), the
+    rule a case's running versions follow (#2223), so ``installed_version`` and
+    ``running_versions`` agree.
     """
     out: list[dict[str, Any]] = []
     for entry in stack:
-        counts = {str(v): int(n) for v, n in (inventory.get(entry.get("label") or "") or {}).items() if str(v).strip()}
-        if not counts:
-            out.append(entry)
-            continue
-        versions = list(dict.fromkeys([*counts, *_installed_versions(entry)]))
-        out.append(
-            {
-                **entry,
-                "versions": versions,
-                "version": versions[0] if len(versions) == 1 else "",
-                "version_counts": counts,
-            }
-        )
+        label = entry.get("label") or ""
+        view = _inventory_view(entry, inventory.get(label) or {})
+        if packages is not None:
+            package_counts = _counts(packages.get(label) or {})
+            if package_counts != _counts(inventory.get(label) or {}):
+                view = {**view, "package_view": _inventory_view(entry, package_counts)}
+        out.append(view)
     return out
+
+
+def _counts(found: Mapping[str, int]) -> dict[str, int]:
+    return {str(v): int(n) for v, n in found.items() if str(v).strip()}
+
+
+def _inventory_view(entry: dict[str, Any], found: Mapping[str, int]) -> dict[str, Any]:
+    """*entry* with the inventory versions *found* (pure, #2038); unchanged when none."""
+    counts = _counts(found)
+    if not counts:
+        return entry
+    versions = list(dict.fromkeys([*counts, *_installed_versions(entry)]))
+    return {
+        **entry,
+        "versions": versions,
+        "version": versions[0] if len(versions) == 1 else "",
+        "version_counts": counts,
+    }
+
+
+def _view(entry: dict[str, Any], language_package: bool) -> dict[str, Any]:
+    """The versions of *entry* a CVE reads (pure, #2375): with the repositories' language package rows
+    only when every Software of the CVE is a language package (:func:`with_inventory_versions`)."""
+    package = entry.get("package_view")
+    if language_package and isinstance(package, dict):
+        return package
+    return entry
 
 
 def _remediating_node(node: dict[str, Any]) -> dict[str, Any]:
@@ -379,7 +409,8 @@ _MATCHER_STACK_LOCKS: dict[str, asyncio.Lock] = {}
 
 
 def _matcher_stack_key(organization_id: uuid.UUID, profile_version: int) -> str:
-    return f"ctem:cases:matcher-stack:{organization_id}:{profile_version}"
+    # v2: the entries carry their language package view apart (#2375).
+    return f"ctem:cases:matcher-stack:v2:{organization_id}:{profile_version}"
 
 
 async def _stack_redis() -> Any | None:
@@ -480,6 +511,8 @@ async def _compute_matcher_stack(db: AsyncSession) -> list[dict[str, Any]]:
         labels = [e["label"] for e in stack if e.get("label")]
         lap = time.perf_counter()
         inventory = await case_versions.inventory_versions(db, row.organization_id, labels)
+        # The same read, cached: the answer a language package entry reads (#2375).
+        packages = await case_versions.inventory_versions(db, row.organization_id, labels, language_packages=True)
         versions_ms = (time.perf_counter() - lap) * 1000
         lap = time.perf_counter()
         platforms = await case_versions.inventory_platforms(db, row.organization_id, labels)
@@ -488,7 +521,7 @@ async def _compute_matcher_stack(db: AsyncSession) -> list[dict[str, Any]]:
         logger.info("CTEM cases: inventory versions unavailable: %s", format_exception_message(exc))
         return stack
     lap = time.perf_counter()
-    merged = with_inventory_platforms(with_inventory_versions(stack, inventory), platforms)
+    merged = with_inventory_platforms(with_inventory_versions(stack, inventory, packages), platforms)
     # Where the products phase of a view build spends its time before any product call (#2232):
     # 110 s of a 111 s build on ctem.one with both product reads rejected in under a second.
     logger.info(
@@ -578,15 +611,17 @@ def opencti_issues(
         platform_of[node["id"]] = fixed_versions.platform_of_software(
             node.get("name"), node.get("version"), node.get("cpe")
         )
-        versions = _installed_versions(entry)
-        for version in versions:
-            # A CPE match names the version only when one version runs (the CPE carries no version of its own).
-            if fixed_versions.same_version(node.get("version"), version) or (
-                len(versions) == 1
-                and entry.get("cpe")
-                and (node.get("cpe") or "").strip().lower() == entry["cpe"].lower()
-            ):
-                version_ids.setdefault((label, version), set()).add(node["id"])
+        # Both views of the entry (#2375): without and with the repositories' language package rows.
+        for view in (entry, _view(entry, True)):
+            versions = _installed_versions(view)
+            for version in versions:
+                # A CPE match names the version only when one version runs (the CPE carries no version of its own).
+                if fixed_versions.same_version(node.get("version"), version) or (
+                    len(versions) == 1
+                    and view.get("cpe")
+                    and (node.get("cpe") or "").strip().lower() == view["cpe"].lower()
+                ):
+                    version_ids.setdefault((label, version), set()).add(node["id"])
     coa_of: dict[str, tuple[str, str]] = {}
     for rel in remediations:
         coa = rel.get("from") or {}
@@ -636,7 +671,9 @@ def opencti_issues(
         holders[pair].add(sw_id)
     out: list[rules.SourceIssue] = []
     for vuln_id, label in order:
-        vuln, entry = vuln_of[vuln_id], entry_by_label[label]
+        # Every Software the vulnerability names is a language package: the repository rows count (#2223, #2375).
+        language_package = all(ecosystem_of.get(sw) for sw in holders[(vuln_id, label)])
+        vuln, entry = vuln_of[vuln_id], _view(entry_by_label[label], language_package)
         name = (vuln.get("name") or "").strip() or vuln_id
         coa = coa_of.get(vuln_id)
         versions = _installed_versions(entry)
@@ -696,8 +733,7 @@ def opencti_issues(
                 fixed_versions=tuple(sorted(per_platform.items())) if fixed and fixed_by else (),
                 declared_version_known=any(o != VERSION_UNKNOWN for _v, o in outcomes) if outcomes else None,
                 version_outcomes=facts,
-                # Every Software the vulnerability names is a language package: the repository rows count.
-                language_package=all(ecosystem_of.get(sw) for sw in holders[(vuln_id, label)]),
+                language_package=language_package,
             )
         )
     return out
@@ -1515,8 +1551,11 @@ async def _signal_members(
     if ids is not None:  # one case's signals (#1986)
         statement = statement.where(cast(CtemSignal.id, String).in_(ids))
     rows = (await db.execute(statement)).scalars().all()
+    from app.services.ctem_primary_assets import decision_primary_assets
     from app.services.ctem_scope_gate import signal_cve_ids
 
+    # #2396: each primary asset the gate decision reached, with its link basis (proven or inferred).
+    reached = {s.id: decision_primary_assets(s.decision or {}) for s in rows}
     # The CVE ids each signal names: enriched from OpenCTI like an OpenCTI issue (#2041).
     cves = {
         f"signal:{s.id}": found
@@ -1529,11 +1568,8 @@ async def _signal_members(
             external_id=str(s.id),
             name=(s.subject_label or s.subject_ref or s.trigger_path)[:300],
             assets=(s.subject_ref,) if s.subject_kind == "asset" else (),
-            primary_assets=tuple(
-                str(j.get("name"))
-                for j in ((s.decision or {}).get("scope") or {}).get("sources") or []
-                if isinstance(j, dict) and j.get("from") == "primary_asset" and j.get("name")
-            ),
+            primary_assets=tuple(j["name"] for j in reached[s.id]),
+            inferred_primary_assets=tuple(j["name"] for j in reached[s.id] if j["basis"] == "inferred"),
             first_seen_at=s.first_seen_at,
         )
         for s in rows

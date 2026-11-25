@@ -17,6 +17,12 @@ the next case for that key opens fresh, with no old history:
 
 A case UUID names one case only, so a correlation key that holds it belongs to
 that case whatever the fleet or step that wrote it: no key list to keep in step.
+An item or timer whose key cannot hold the case id (a fleet keyed by its own
+objects, the OpenAEV detection desk's ``gap``, ``retest`` and ``launch``
+items) belongs to the case through its payload (#2389): ``ctem_case_id``
+names the case, or ``simulation_id`` names a simulation the case records (a
+validation reference or an attack-path hop), for an item filed before the
+writer set the case link.
 
 One audit row per case (who, when, reason, and the case summary, kept in the
 audit row since the case is gone). ``dry_run`` answers the same summary and
@@ -40,7 +46,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, text, update
+from sqlalchemy import or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
@@ -55,6 +61,10 @@ OPENED_BY_LEGACY = "legacy"
 CANCELLED_ITEM_RESULT = "Cancelled: CTEM case {case_id} was deleted by an administrator ({actor}). {reason}"
 #: The outcome written on a timer a case delete cancelled.
 CANCELLED_TIMER_OUTCOME = "cancelled: CTEM case {case_id} deleted"
+#: Payload field naming the CTEM case an item or timer belongs to when its key cannot (#2389).
+CASE_LINK_FIELD = "ctem_case_id"
+#: Payload field naming the simulation an item was derived from; matched on the case's simulations (#2389).
+SIMULATION_LINK_FIELD = "simulation_id"
 #: What the summary says about a threat package the delete leaves in OpenCTI (#2328).
 PACKAGE_LEFT = (
     "The delete does not remove this threat package from OpenCTI: discard its draft or Grouping there, "
@@ -158,14 +168,54 @@ async def _events(db: AsyncSession, case_ids: list[uuid.UUID]) -> dict[uuid.UUID
     return out
 
 
-async def _open_items(db: AsyncSession, case_id: uuid.UUID) -> list[Any]:
+def case_simulations(case: Any) -> list[str]:
+    """The simulation ids *case* records: its validation references and its attack-path hops (#2389)."""
+    found: list[str] = []
+    for entry in getattr(case, "validations", None) or []:
+        ref = str((entry or {}).get("ref") or "").strip() if isinstance(entry, dict) else ""
+        if ref:
+            found.append(ref)
+    path = getattr(case, "attack_path", None) or {}
+    for hop in (path.get("hops") or []) if isinstance(path, dict) else []:
+        sim = str((hop or {}).get("simulation") or "").strip() if isinstance(hop, dict) else ""
+        if sim:
+            found.append(sim)
+    return list(dict.fromkeys(found))
+
+
+def _uuid_like(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _belongs_to(column: Any, payload: Any, case: Any, *, text_column: Any = None) -> Any:
+    """The rows of *case*: its id in the key, its id in the payload case link, or one of its simulations.
+
+    A simulation matches the payload ``simulation_id``; on a work item filed before
+    any link field existed, a simulation UUID written in its description matches too
+    (a UUID names one simulation only, so a free-text hit cannot belong to another case).
+    """
+    case_id = str(case.id)
+    clauses = [column.contains(case_id), payload[CASE_LINK_FIELD].as_string() == case_id]
+    simulations = case_simulations(case)
+    if simulations:
+        clauses.append(payload[SIMULATION_LINK_FIELD].as_string().in_(simulations))
+        if text_column is not None:
+            clauses.extend(text_column.contains(sim) for sim in simulations if _uuid_like(sim))
+    return or_(*clauses)
+
+
+async def _open_items(db: AsyncSession, case: Any) -> list[Any]:
     from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
 
     return list(
         (
             await db.execute(
                 select(WorkItem).where(
-                    WorkItem.correlation_key.contains(str(case_id)),
+                    _belongs_to(WorkItem.correlation_key, WorkItem.payload, case, text_column=WorkItem.description),
                     WorkItem.status.notin_(WORK_ITEM_TERMINAL_STATUSES),
                 )
             )
@@ -173,14 +223,15 @@ async def _open_items(db: AsyncSession, case_id: uuid.UUID) -> list[Any]:
     )
 
 
-async def _armed_timers(db: AsyncSession, case_id: uuid.UUID) -> list[Any]:
+async def _armed_timers(db: AsyncSession, case: Any) -> list[Any]:
     from app.models.platform_timer import TIMER_ARMED, PlatformTimer
 
     return list(
         (
             await db.execute(
                 select(PlatformTimer).where(
-                    PlatformTimer.correlation_key.contains(str(case_id)), PlatformTimer.state == TIMER_ARMED
+                    _belongs_to(PlatformTimer.correlation_key, PlatformTimer.payload, case),
+                    PlatformTimer.state == TIMER_ARMED,
                 )
             )
         ).scalars()
@@ -209,8 +260,8 @@ async def plan(db: AsyncSession, case: CtemCase, history: list[CtemCaseEvent]) -
         created_at=created.isoformat() if created else None,
         members=len(members),
         events=len(history),
-        work_items=[i.correlation_key for i in await _open_items(db, case.id)],
-        timers=[t.correlation_key for t in await _armed_timers(db, case.id)],
+        work_items=[i.correlation_key for i in await _open_items(db, case)],
+        timers=[t.correlation_key for t in await _armed_timers(db, case)],
         signals=[str(s.id) for s in await _signals(db, case.id)],
         threat_package=threat_package_of(history),
     )
@@ -390,12 +441,12 @@ async def delete_cases(
         summaries.append(deletion.summary())
         if dry_run:
             continue
-        for item in await _open_items(db, case.id):
+        for item in await _open_items(db, case):
             item.status = "cancelled"
             item.needs_human = False
             item.completed_at = now
             item.result = CANCELLED_ITEM_RESULT.format(case_id=case.id, actor=actor_name, reason=note).strip()
-        for timer in await _armed_timers(db, case.id):
+        for timer in await _armed_timers(db, case):
             from app.models.platform_timer import TIMER_CANCELLED
 
             timer.state = TIMER_CANCELLED
