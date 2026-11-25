@@ -1014,9 +1014,9 @@ one tool set and the graph shows which module it works on:
 
 | Slug | Name | Role | Skill | Reads |
 |---|---|---|---|---|
-| `health-opencti-checker` | OpenCTI Health Checker | `opencti_checker` | `health-opencti-checks` | the OpenCTI registration's integration |
-| `health-openaev-checker` | OpenAEV Health Checker | `openaev_checker` | `health-openaev-checks` | the OpenAEV registration's integration |
-| `health-opencrq-checker` | OpenCRQ Health Checker | `opencrq_checker` | `health-opencrq-checks` | the OpenCRQ registration's integration |
+| `health-opencti-checker` | OpenCTI Health Checker | `opencti_checker` | `health-module-checks` (section OpenCTI) | the OpenCTI registration's integration |
+| `health-openaev-checker` | OpenAEV Health Checker | `openaev_checker` | `health-module-checks` (section OpenAEV) | the OpenAEV registration's integration |
+| `health-opencrq-checker` | OpenCRQ Health Checker | `opencrq_checker` | `health-module-checks` (section OpenCRQ) | the OpenCRQ registration's integration |
 
 Why three and not one member with three skills: a member's tool set is fixed at run start
 and the allow-list is per provider (12.3); a single member would hold every provider's
@@ -1052,9 +1052,15 @@ assignment of any of the three members, decided from the database at run start, 
 
 ### 13.3 Check playbooks as built-in skills
 
-Each checker's skill (`builtin_agents.py` skill rows, content in
-`agents/seed_data/skill/health-<module>-checks.md`, bound at seed as the Quality Analyst's
-is) is a playbook: a numbered list of named checks, each with
+The three checkers share one skill since #1943, "Platform Health: module checks"
+(`health-module-checks`, content in `agents/seed_data/skill_content/health-module-checks.md`,
+bound at seed to each checker): shared rules and report, then one `## OpenCTI`,
+`## OpenAEV` and `## OpenCRQ` section. The row of the former `health-opencti-checks` is
+adopted in place (`RENAMED_BUILTIN_SKILL_SLUGS`), the OpenAEV and OpenCRQ rows are deleted
+as stale. A checker runs only the section of the module its trigger names. The check logic
+hash of #1742 (`check_reports._skill_hash`) is the sha256 of `module_playbook(module)`, the
+shared part plus that module's section, so editing one module's section leaves the other
+modules' findings current. Each section is a playbook: a list of named checks, each with
 
 - **id** (`<module>.agentic.<check>`, stable: it is the finding's check id),
 - **read**: the tools and arguments, and the values taken from the result,
@@ -1074,7 +1080,7 @@ feed, collector, injector, executor or third-party data source; there is no per-
 split anywhere. Each list has three parts: module-native health, data health of the
 module's own objects, and generic integration health.
 
-**OpenCTI** (`health-opencti-checks`):
+**OpenCTI** (`health-module-checks`, section OpenCTI):
 
 | Check | Reads | Fail / warn (defaults) |
 |---|---|---|
@@ -1091,7 +1097,7 @@ module's own objects, and generic integration health.
 | `platform_errors` | platform error log entries and error rate of the last 24 h (activity and audit errors) vs the 7-day mean | rate over 2 x the mean warn, over 5 x fail |
 | `works_in_error` | works in error in the last 24 h, counted platform-wide, never per source | over 10% of the works warn, over 30% fail |
 
-**OpenAEV** (`health-openaev-checks`):
+**OpenAEV** (`health-module-checks`, section OpenAEV):
 
 | Check | Reads | Fail / warn (defaults) |
 |---|---|---|
@@ -1106,7 +1112,7 @@ module's own objects, and generic integration health.
 | `platform_errors` | platform error log entries and failed internal jobs in the last 24 h, platform-wide | rate over 2 x the 7-day mean warn, over 5 x fail |
 | `module_link` | the configured link to the Filigran module it reads (OpenCTI): configured and last successful call | configured and failing fail |
 
-**OpenCRQ** (`health-opencrq-checks`):
+**OpenCRQ** (`health-module-checks`, section OpenCRQ):
 
 | Check | Reads | Fail / warn (defaults) |
 |---|---|---|

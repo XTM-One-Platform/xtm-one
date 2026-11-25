@@ -57,7 +57,8 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 
 logger = logging.getLogger(__name__)
 
-FLOW_LAB_GROUP_ID = "flow_lab"
+#: Its functions belong to Platform Health's one internal group (#1943).
+FLOW_LAB_GROUP_ID = "health_specialists"
 SOURCE = f"builtin:{FLOW_LAB_GROUP_ID}"
 
 #: The functions the platform MCP server may serve to a person.

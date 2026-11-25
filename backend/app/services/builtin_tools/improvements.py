@@ -57,7 +57,8 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 
 logger = logging.getLogger(__name__)
 
-IMPROVEMENTS_SUITE_ID = "improvement_proposals"
+#: Its functions belong to Platform Health's one internal group (#1943).
+IMPROVEMENTS_SUITE_ID = "health_specialists"
 _SOURCE = f"builtin:{IMPROVEMENTS_SUITE_ID}"
 #: The Platform Health role that files proposals (PRD 6.1: only the Experimenter).
 FILING_ROLE = "experimenter"
