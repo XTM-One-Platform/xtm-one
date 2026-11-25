@@ -116,6 +116,8 @@ describe("Evaluations", () => {
 
     expect(await screen.findByText(/No target/)).toBeInTheDocument();
     expect(screen.getAllByText(/No target/)).toHaveLength(1);
+    // An ordinary run wrongly tagged would read `Real`.
+    expect(screen.queryByText("Real")).toBeNull();
   });
 
   it("says a shared evaluation can be shared directly, not only through a group", async () => {

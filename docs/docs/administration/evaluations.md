@@ -254,7 +254,7 @@ The evaluation's `Overview` shows a `Placebo comparison` block with one row per 
 
 The results come once every run of the comparison has finished. A row whose runs did not all complete has no verdict. Deleting one of its runs cancels the comparison; deleting every run of the evaluation removes it.
 
-In `Activity`, the run detail and `Compare`, a comparison's runs carry a `Real`, `Placebo · <target>` or `No target · <target>` tag. They stay out of the leaders, the top 10 and the score charts, which rank configurations. The detail of a placebo run shows the placebo texts, their lengths against the originals, the corpus version, the seed and the language. A comparison's run cannot be re-run or re-scored on its own: run the comparison again.
+In `Activity`, `Search Runs`, the run detail and `Compare`, a comparison's runs carry a `Real`, `Placebo · <target>` or `No target · <target>` tag. They stay out of the leaders, the top 10 and the score charts, which rank configurations. The detail of a placebo run shows the placebo texts, their lengths against the originals, the corpus version, the seed and the language. A comparison's run cannot be re-run or re-scored on its own: run the comparison again.
 
 The platform tools offer the same: `trigger_evaluation` takes a `placebo` option, `get_evaluation` returns the configuration, and `get_placebo_comparison` reads a comparison and its statistics.
 
