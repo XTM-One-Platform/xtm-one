@@ -87,6 +87,13 @@ describe("CaseWorkCard", () => {
     expect(screen.queryByRole("button", { name: "Switch on" })).toBeNull();
   });
 
+  it("puts the gate and the last run on one row grid", () => {
+    const wait = caseLoopWait({ state: "analyzing", gates: [gate({ key: "ctem.analyst_review", work_item_id: "wi-1" })] });
+    renderCard(<CaseWorkCard work={{ kind: "on", automations: [ON], last: LAST }} wait={wait} loopFleetId={null} />);
+    expect(screen.getByTestId("ctem-case-work-gate")).toHaveAttribute("data-loop-row");
+    expect(screen.getByTestId("ctem-case-work-last-run")).toHaveAttribute("data-loop-row");
+  });
+
   it("shows the last run outcome and the stage the loop waits on when no gate is open", () => {
     const wait = caseLoopWait({ state: "validating", gates: [gate({ status: "answered" })] });
     renderCard(<CaseWorkCard work={{ kind: "on", automations: [ON], last: LAST }} wait={wait} loopFleetId={null} />);

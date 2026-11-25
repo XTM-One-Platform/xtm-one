@@ -325,6 +325,19 @@ function MoreWorkers({ others, unknownAgent }: { others: CaseAutomation[]; unkno
   );
 }
 
+/** One row of the loop state: the gate and the last run share this box, so their text and actions sit on one grid. */
+function LoopRow({ testId, children }: { testId: string; children: React.ReactNode }) {
+  return (
+    <div
+      className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-elevation-subtle-soft px-4 py-3"
+      data-testid={testId}
+      data-loop-row=""
+    >
+      {children}
+    </div>
+  );
+}
+
 /** The loop's own state on the case while no run works it: the gate it waits on, else its stage, and its last run. */
 function LoopState({ wait, last, unknownAgent }: { wait: CaseLoopWait; last: CtemCaseRun | null; unknownAgent: string }) {
   const { t_i18n, intl } = useFormatter();
@@ -334,7 +347,7 @@ function LoopState({ wait, last, unknownAgent }: { wait: CaseLoopWait; last: Cte
   return (
     <div className="flex flex-col gap-2" data-testid="ctem-case-work-loop">
       {wait.kind === "gate" && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-elevation-subtle-soft px-4 py-3" data-testid="ctem-case-work-gate">
+        <LoopRow testId="ctem-case-work-gate">
           <span className="flex min-w-0 flex-col">
             <span className="content-compact text-default-secondary">{t_i18n("Waits for a decision")}</span>
             <span className="font-medium content-base">{t_i18n(GATE_LABEL[wait.gate] ?? "A decision")}</span>
@@ -345,10 +358,10 @@ function LoopState({ wait, last, unknownAgent }: { wait: CaseLoopWait; last: Cte
               {t_i18n("Open the decision")}
             </Button>
           )}
-        </div>
+        </LoopRow>
       )}
       {last && (
-        <div className="flex flex-wrap items-center justify-between gap-3" data-testid="ctem-case-work-last-run">
+        <LoopRow testId="ctem-case-work-last-run">
           <span className="flex min-w-0 flex-wrap items-center gap-2 content-compact text-default-secondary">
             {t_i18n("Last run by {agent}, {when}", {
               agent: last.agent_name ?? unknownAgent,
@@ -364,7 +377,7 @@ function LoopState({ wait, last, unknownAgent }: { wait: CaseLoopWait; last: Cte
             <Icon name="external-link" size={16} />
             {t_i18n("Open the run")}
           </Button>
-        </div>
+        </LoopRow>
       )}
     </div>
   );
