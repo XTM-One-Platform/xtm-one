@@ -266,6 +266,25 @@ async def test_a_case_with_an_open_item_of_any_declared_fleet_is_left_alone(monk
     assert planned == [(b, FORK)]
 
 
+async def test_every_case_with_an_open_item_is_left_alone_not_only_the_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The vulnerability fleet enabled while the loop runs three of its cases: no second run on any of them.
+    _fleets(monkeypatch, [_loop(), _vuln()])
+    cases = [_case("P1", 1), _case("P1", 2), _case("P2", 1), _case("P3", 1)]
+    db = _Db(cases, asked=[], open_keys=[f"ctem:f1:case:{c.id}" for c in cases[:3]])
+    assert await routing.plan_catch_up(db) == [(cases[3], VULN)]  # type: ignore[arg-type]
+
+
+async def test_cases_opened_or_breached_while_every_owner_was_paused_go_to_the_first_one_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    breached, soon, later, unscored = _case("P1", -3), _case("P1", 4), _case("P2", 5), _case(None, None)
+    threat = _case("P3", -1, path="relevant_threat")
+    cases = [later, breached, threat, soon, unscored]
+    _fleets(monkeypatch, [_loop(active=False), _vuln(active=False)])
+    assert await routing.plan_catch_up(_Db(cases, asked=[], open_keys=[])) == []  # type: ignore[arg-type]
+    _fleets(monkeypatch, [_loop(), _vuln(active=False)])
+    planned = await routing.plan_catch_up(_Db(cases, asked=[], open_keys=[]))  # type: ignore[arg-type]
+    assert planned == [(c, LOOP) for c in (breached, soon, later, threat, unscored)]
+
+
 async def test_enabling_a_fork_hands_it_the_cases_the_loop_never_ran(monkeypatch) -> None:
     _fleets(monkeypatch, [_loop(), _fork()])
     a = _case("P1", 1, path="relevant_threat")
