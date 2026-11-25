@@ -51,7 +51,7 @@ const KIND_TITLES = {
 const KIND_CLASSES: Record<Exclude<FlowKind, "operator">, { frame: string; header: string }> = {
   start: { frame: "border-accent", header: "bg-accent text-negative-primary" },
   action: { frame: "border-accent/40", header: "bg-accent/15 text-accent" },
-  condition: { frame: "border-feedback-warning-primary/50", header: "bg-feedback-warning-primary/15 text-feedback-warning-primary" },
+  condition: { frame: "border-feedback-warning-primary/50", header: "bg-feedback-warning-primary/15 text-feedback-warning-tertiary" },
   asset: { frame: "border-elevation-subtle", header: "bg-elevation-hover text-default-secondary" },
 };
 
@@ -77,7 +77,7 @@ function FlowCard({ data }: NodeProps<Node<CardData>>) {
   const name = prefix && node.label.startsWith(prefix) ? node.label.slice(prefix.length).trim() : node.label;
   return (
     <div
-      className={cn("flex flex-col overflow-hidden rounded-sm border bg-elevation-default text-[12px] shadow-sm", look.frame)}
+      className={cn("flex flex-col overflow-hidden rounded-sm border bg-elevation-default text-[12px]", look.frame)}
       style={{ width: FLOW.width, height: FLOW.height }}
       title={node.description ?? undefined}
       data-flow-kind={kind}

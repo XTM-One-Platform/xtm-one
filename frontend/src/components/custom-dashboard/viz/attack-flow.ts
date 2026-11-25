@@ -29,7 +29,7 @@ export type FlowNode = WidgetGraphData["nodes"][number];
 export const FLOW = { width: 220, height: 92, operator: 56, column: 280, row: 112 } as const;
 
 /** A node's kind: as the data says, else an action (a plain graph's node is a step). */
-export function flowKind(node: FlowNode): FlowKind {
+function flowKind(node: FlowNode): FlowKind {
   return node.kind ?? "action";
 }
 

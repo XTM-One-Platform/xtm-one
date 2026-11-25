@@ -101,7 +101,7 @@ _SIGNED_OUT = "Dashboards can only be built for a signed-in user."
 #: A widget's place on the dashboard's 12-column grid.
 _LAYOUT_SCHEMA: dict = {
     "type": "object",
-    "description": "Place on the 12-column grid: x 0-11, w 1-12 (x + w <= 12), y >= 0, h 1-40 rows of 82 px (a 62 px row and its gap).",
+    "description": "Place on the 12-column grid: x 0-11, w 1-12 (x + w <= 12), y >= 0, h 1-40 rows of 82 px.",
     "properties": {
         "x": {"type": "integer"},
         "y": {"type": "integer"},

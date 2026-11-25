@@ -20,10 +20,10 @@ import { normalizeDashboard } from "./spec";
 const ID = "11111111-1111-4111-8111-111111111111";
 const INTEGRATION = "22222222-2222-4222-8222-222222222222";
 
-function draw(native: Record<string, unknown>, view: string | undefined, dashboardId: string | null = ID) {
+function draw(native: Record<string, unknown>, view: string | undefined, dashboardId: string | null = ID, title = "Reports") {
   const dashboard = normalizeDashboard({
     title: "Threat board",
-    widgets: [{ kind: "platform", id: "live", title: "Reports", source: "opencti", integration_id: INTEGRATION, view, native }],
+    widgets: [{ kind: "platform", id: "live", title, source: "opencti", integration_id: INTEGRATION, view, native }],
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return renderWithProviders(<CustomDashboardView dashboard={dashboard} dashboardId={dashboardId ?? undefined} revision={2} />, client);
@@ -76,9 +76,16 @@ describe("PlatformWidget", () => {
     const expand = screen.getByRole("button", { name: "Expand Reports" });
     const menu = screen.getByRole("button", { name: "Data of Reports" });
     expect(expand.compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // The module's look raises the first letter only: a sentence keeps its own case, in any language.
-    const heading = screen.getByRole("heading", { name: "Reports" });
-    expect(heading.className).not.toContain("capitalize");
+  }, 20_000);
+
+  it("raises only the first letter of a title the module capitalizes: a sentence keeps its own case", async () => {
+    api.post.mockResolvedValue({
+      status: "ok", shape: "number", data: { value: 7, change: 1 }, fetched_at: "2026-10-23T10:00:00Z", open_url: OPEN,
+      presentation: { view: "xtm.singlevalue", options: { titleStyle: "capitalize" } },
+    } satisfies WidgetData);
+    draw(NUMBER, "number", ID, "reports of the last week");
+    await screen.findByText("7", {}, { timeout: 15_000 });
+    expect(screen.getByRole("heading", { name: "Reports of the last week" })).toBeTruthy();
   }, 20_000);
 
   it("puts a tile's change sentence in the widget's header when its look asks, in the module's accent", async () => {
