@@ -92,7 +92,7 @@ def build_organization_context_tool(
         from app.core.database import async_session
         from app.services import organization_context_categories as cats
         from app.services import organizations as orgs
-        from app.services.organization_context import asset_list_counts, current_version, hydrated_profile
+        from app.services.organization_context import agent_list_counts, current_version, hydrated_profile
         from app.services.organization_context_injection import category_counts
 
         ref = str(organization or "").strip()
@@ -112,7 +112,7 @@ def build_organization_context_tool(
                             category_counts(
                                 profile,
                                 tracked_count=len(tracked),
-                                asset_counts=await asset_list_counts(db, getattr(row, "organization_id", None)),
+                                asset_counts=await agent_list_counts(db, getattr(row, "organization_id", None)),
                             )
                         )
                     found_category = cats.get(wanted)
@@ -164,7 +164,7 @@ def build_organization_context_tool(
     async def _primary_block(db: AsyncSession) -> str:
         """The primary profile as an agent reads it, its asset and group counts from the records (#1543)."""
         from app.services.organization_context import (
-            asset_list_counts,
+            agent_list_counts,
             ctem_work_for,
             current_version,
             render_for_agent,
@@ -174,7 +174,7 @@ def build_organization_context_tool(
         return render_for_agent(
             primary,
             ctem_work=await ctem_work_for(db, run_agent),
-            asset_counts=await asset_list_counts(db, primary.organization_id if primary else None),
+            asset_counts=await agent_list_counts(db, primary.organization_id if primary else None),
         )
 
     async def _inventory_assets(
