@@ -2266,10 +2266,15 @@ def test_the_repository_declares_its_own_checks():
     # Every check runs on a locked, offline dev image, except the dependency-bump ones, which must reach the registry.
     # toolchain-rust runs the rustfmt gates and, since #11710 slice 2, the clippy gates on the image that ships
     # the GTK / WebKit / D-Bus libraries CI installs. toolchain-python runs the shellcheck and betterleaks
-    # scanners over the checkout's tree: no dependency is fetched either.
+    # scanners over the checkout's tree, and since #2160 backend-lock-update (uv lock through the registry
+    # mirror, writes backend/uv.lock only, installs nothing).
     offline = ("python-dev", "nodejs-dev", "toolchain-rust", "toolchain-python")
     online = {name for name, spec in specs.items() if spec.image not in offline}
-    assert {name for name, spec in specs.items() if spec.image == "toolchain-python"} == {"shellcheck", "secrets"}
+    assert {name for name, spec in specs.items() if spec.image == "toolchain-python"} == {
+        "shellcheck",
+        "secrets",
+        "backend-lock-update",
+    }
     assert {name for name, spec in specs.items() if spec.image == "toolchain-rust"} == {
         "runner-fmt",
         "relay-fmt",
