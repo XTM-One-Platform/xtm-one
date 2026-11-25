@@ -361,6 +361,10 @@
     "cve.list",
     "tenants.getTenants"
   ],
+  "list_opencrq_dependency_rules": [
+    "assetDependencies.listDependencyRules",
+    "tenants.getTenants"
+  ],
   "list_opencrq_drata_controls": [
     "drata.getControlsForFramework",
     "drata.getControlsForRequirement",

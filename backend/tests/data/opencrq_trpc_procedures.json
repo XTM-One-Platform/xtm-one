@@ -2,7 +2,7 @@
   "pinnedFrom": {
     "repository": "OpenCRQ-Platform/opencrq",
     "path": "back/trpc-procedures.json",
-    "commit": "043206a5dc1635137c67953ee9fa7e5501dc6b97"
+    "commit": "31465e685b10c81a3a81a1bd8a393cec7f18656e"
   },
   "formatVersion": 1,
   "procedures": [
@@ -19,6 +19,10 @@
       "type": "query"
     },
     {
+      "path": "assetDependencies.createDependencyRule",
+      "type": "mutation"
+    },
+    {
       "path": "assetDependencies.createPrimaryToPrimaryLinks",
       "type": "mutation"
     },
@@ -28,6 +32,10 @@
     },
     {
       "path": "assetDependencies.createSupportToSupportLinks",
+      "type": "mutation"
+    },
+    {
+      "path": "assetDependencies.deleteDependencyRules",
       "type": "mutation"
     },
     {
@@ -67,8 +75,20 @@
       "type": "query"
     },
     {
+      "path": "assetDependencies.listDependencyRules",
+      "type": "query"
+    },
+    {
       "path": "assetDependencies.listSupportingAssetCandidates",
       "type": "query"
+    },
+    {
+      "path": "assetDependencies.previewDependencyRule",
+      "type": "query"
+    },
+    {
+      "path": "assetDependencies.updateDependencyRule",
+      "type": "mutation"
     },
     {
       "path": "assetDependencies.updatePrimaryToPrimaryLinks",
@@ -264,6 +284,10 @@
     },
     {
       "path": "connectors.resetState",
+      "type": "mutation"
+    },
+    {
+      "path": "connectors.runInventoryNow",
       "type": "mutation"
     },
     {
@@ -1035,7 +1059,15 @@
       "type": "query"
     },
     {
+      "path": "opencti.getReaderLink",
+      "type": "query"
+    },
+    {
       "path": "opencti.getSettings",
+      "type": "query"
+    },
+    {
+      "path": "opencti.getThreatVisibility",
       "type": "query"
     },
     {
@@ -1044,6 +1076,10 @@
     },
     {
       "path": "opencti.setEnabled",
+      "type": "mutation"
+    },
+    {
+      "path": "opencti.setThreatVisibility",
       "type": "mutation"
     },
     {
@@ -1667,6 +1703,10 @@
       "type": "query"
     },
     {
+      "path": "threats.isHidden",
+      "type": "query"
+    },
+    {
       "path": "threats.list",
       "type": "query"
     },
@@ -1768,6 +1808,10 @@
     },
     {
       "path": "xtm.products",
+      "type": "query"
+    },
+    {
+      "path": "xtm.readerAccess",
       "type": "query"
     },
     {

@@ -104,6 +104,7 @@ EXPECTED_TOOLS = {
     "delete_opencrq_supporting_assets",
     "reset_opencrq_supporting_asset_to_connectors",
     "list_opencrq_asset_dependencies",
+    "list_opencrq_dependency_rules",
     "create_opencrq_asset_dependency",
     "update_opencrq_asset_dependency_roles",
     "delete_opencrq_asset_dependencies",
