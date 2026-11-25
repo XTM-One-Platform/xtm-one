@@ -124,6 +124,7 @@ opencrq:list_opencrq_threats
 opencrq:list_opencrq_treatment_plans
 opencrq:list_opencrq_unique_findings
 opencrq:list_opencrq_users
+opencrq:preview_opencrq_dependency_rule
 opencrq:search_opencrq_cves
 opencrq:search_opencrq_mitre_techniques
 opencti:get_opencti_container_full

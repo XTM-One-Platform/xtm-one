@@ -205,7 +205,7 @@ async def close_retired_asset_cases(db: AsyncSession, *, events: Any = None, now
         )
         if not members or any(m.source != loop.SIGNAL_SOURCE or m.external_id not in retired_signal for m in members):
             continue
-        case = await db.get(CtemCase, case_id)
+        case = await loop.locked_case(db, case_id)
         if case is None or case.state not in OPEN_STATES:
             continue
         found = [retired_signal[m.external_id] for m in members]

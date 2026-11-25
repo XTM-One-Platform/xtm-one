@@ -12,6 +12,8 @@
   ``reset_opencrq_supporting_asset_to_connectors`` - back to the connectors' values.
 * ``list/create/delete_opencrq_asset_dependencies`` - dependency links.
 * ``update_opencrq_asset_dependency_roles`` - roles of support-to-primary links.
+* ``list/preview/create/update_opencrq_dependency_rule(s)``,
+  ``delete_opencrq_dependency_rules`` - the rules that write support-to-primary links.
 * ``create_opencrq_asset_evidence`` / ``update_opencrq_evidence_state`` /
   ``delete_opencrq_asset_evidence`` / ``reset_opencrq_evidence_state`` /
   ``get_opencrq_evidence`` / ``list_opencrq_cve_evidences`` - evidence.
@@ -278,6 +280,68 @@ def _fmt_rule_conditions(rule: dict) -> str:
     return " and ".join(parts) if parts else "no condition"
 
 
+# The dependency rule inputs (asset-dependencies/rule-matching.ts, integration-settings/constants.ts).
+_RULE_NAME_MAX = 200
+_RULE_PATTERN_MAX = 500
+_RULE_PREVIEW_LIMIT = 50
+_RULE_PATTERN_KINDS = ["glob", "regex"]
+_RULE_SOURCES = ["first", "nist", "cisa", "microsoft_graph", "openaev", "drata"]
+# Tool argument -> the condition key OpenCRQ takes; every key is sent, null when unset.
+_RULE_CONDITION_KEYS = {
+    "category_id": "categoryId",
+    "subcategory_id": "subcategoryId",
+    "name_pattern": "namePattern",
+    "name_pattern_kind": "namePatternKind",
+    "tag_id": "tagId",
+    "source": "source",
+}
+
+
+def _rule_conditions(values: dict[str, Any]) -> tuple[dict[str, str | None], str | None]:
+    """The conditions of a dependency rule as OpenCRQ takes them; the second item is the refusal, if any."""
+    conditions = {key: (values.get(arg) or "").strip() or None for arg, key in _RULE_CONDITION_KEYS.items()}
+    category, subcategory = conditions["categoryId"], conditions["subcategoryId"]
+    if category and category not in ASSET_CATEGORIES:
+        return conditions, "category_id must be among: " + ", ".join(ASSET_CATEGORIES) + "."
+    if subcategory and subcategory not in _ASSET_SUBCATEGORY_VALUES:
+        return conditions, f"subcategory_id {subcategory} is not an OpenCRQ subcategory."
+    if category and subcategory and subcategory not in ASSET_SUBCATEGORIES.get(category, ()):
+        return conditions, f"subcategory_id {subcategory} is not a subcategory of {category}."
+    pattern, kind = conditions["namePattern"], conditions["namePatternKind"]
+    if (pattern is None) != (kind is None):
+        return conditions, "name_pattern and name_pattern_kind go together: give both or neither."
+    if kind and kind not in _RULE_PATTERN_KINDS:
+        return conditions, "name_pattern_kind must be glob or regex."
+    if pattern and len(pattern) > _RULE_PATTERN_MAX:
+        return conditions, f"name_pattern takes at most {_RULE_PATTERN_MAX} characters."
+    if conditions["source"] and conditions["source"] not in _RULE_SOURCES:
+        return conditions, "source must be among: " + ", ".join(_RULE_SOURCES) + "."
+    if not any(conditions[key] for key in ("categoryId", "subcategoryId", "namePattern", "tagId", "source")):
+        return conditions, (
+            "a rule needs at least one condition: category_id, subcategory_id, name_pattern, tag_id or source."
+        )
+    return conditions, None
+
+
+def _rule_name(name: str) -> tuple[str, str | None]:
+    name = (name or "").strip()
+    if not name:
+        return name, "name is required."
+    if len(name) > _RULE_NAME_MAX:
+        return name, f"name takes at most {_RULE_NAME_MAX} characters."
+    return name, None
+
+
+def _rule_roles(roles: list[str] | None) -> tuple[list[str], str | None]:
+    """A rule's roles: the link role rule, and at least one."""
+    rule_roles, error = _link_roles(roles)
+    if error:
+        return rule_roles, error
+    if not rule_roles:
+        return rule_roles, "roles is required: give at least one role (unknown when not known)."
+    return rule_roles, None
+
+
 def _link_roles(roles: list[str] | None) -> tuple[list[str], str | None]:
     """Normalise a link role list; the second item is the refusal, if any."""
     link_roles = list(dict.fromkeys(r.strip().lower() for r in _clean_ids(roles)))
@@ -380,6 +444,22 @@ _ASSET_PROPERTIES_SCHEMA = {
 }
 
 _ASSET_SUBCATEGORY_VALUES = [s for subs in ASSET_SUBCATEGORIES.values() for s in subs]
+
+_RULE_CONDITIONS_SCHEMA = {
+    "category_id": {"type": "string", "enum": ASSET_CATEGORIES},
+    "subcategory_id": {"type": "string", "enum": _ASSET_SUBCATEGORY_VALUES},
+    "name_pattern": {"type": "string", "maxLength": _RULE_PATTERN_MAX},
+    "name_pattern_kind": {"type": "string", "enum": _RULE_PATTERN_KINDS},
+    "tag_id": {"type": "string", "description": "Tag UUID."},
+    "source": {"type": "string", "enum": _RULE_SOURCES, "description": "Reporting connector."},
+}
+
+_RULE_ROLES_SCHEMA = {
+    "type": "array",
+    "items": {"type": "string", "enum": _LINK_ROLES},
+    "minItems": 1,
+    "description": "Roles of the links the rule writes; unknown cannot be combined.",
+}
 
 _TAG_NAMES_DESCRIPTION = (
     "The complete list of hand-set tags: it replaces every tag set by hand "
@@ -1285,6 +1365,209 @@ def register(
             f"Dependency rules ({len(rules)}):", "\n".join(lines), "dependency rules (rule and asset names)"
         )
 
+    async def preview_opencrq_dependency_rule(
+        primary_asset_id: str = "",
+        category_id: str = "",
+        subcategory_id: str = "",
+        name_pattern: str = "",
+        name_pattern_kind: str = "",
+        tag_id: str = "",
+        source: str = "",
+        limit: int = _RULE_PREVIEW_LIMIT,
+        tenant_id: str = "",
+    ) -> str:
+        primary_asset_id = (primary_asset_id or "").strip()
+        if not primary_asset_id:
+            return "primary_asset_id is required."
+        conditions, error = _rule_conditions(locals())
+        if error:
+            return error
+        try:
+            limit = max(1, min(int(limit), _RULE_PREVIEW_LIMIT))
+        except (TypeError, ValueError):
+            return f"limit must be a whole number from 1 to {_RULE_PREVIEW_LIMIT}."
+        tenant, err = await _resolve_tenant(base_url, headers, tenant_id)
+        if err:
+            return err
+        preview, err = await _trpc(
+            base_url,
+            headers,
+            "assetDependencies.previewDependencyRule",
+            "preview dependency rule",
+            input={**conditions, "primaryAssetId": primary_asset_id, "limit": limit},
+            tenant_id=tenant or "",
+        )
+        if err:
+            return err
+        preview = preview or {}
+        assets = preview.get("assets") or []
+        total = preview.get("total", 0)
+        header = (
+            f"Rule preview: it would link {total} supporting asset(s) to primary asset "
+            f"{primary_asset_id} if applied now (conditions: {_fmt_rule_conditions(conditions)}). "
+            f"Matched but left alone: {preview.get('alreadyManual', 0)} already linked by a person, "
+            f"{preview.get('suppressed', 0)} unlinked by a person (never linked again by a rule)."
+        )
+        if not assets:
+            return header
+        lines = [
+            f"- {_one_line(a.get('name') or a.get('derivedName'), 200, 'unnamed')} (id: {a.get('id')}), "
+            f"{_one_line(a.get('categoryId'), 60)}"
+            + (f" / {_one_line(a.get('subcategoryId'), 60)}" if a.get("subcategoryId") else "")
+            for a in assets
+        ]
+        if total > len(assets):
+            lines.append(f"... {total - len(assets)} more not listed (the preview lists at most {limit}).")
+        return _quarantined(header, "\n".join(lines), "rule preview (asset names)")
+
+    async def create_opencrq_dependency_rule(
+        name: str = "",
+        primary_asset_id: str = "",
+        roles: list[str] | None = None,
+        enabled: bool = True,
+        category_id: str = "",
+        subcategory_id: str = "",
+        name_pattern: str = "",
+        name_pattern_kind: str = "",
+        tag_id: str = "",
+        source: str = "",
+        tenant_id: str = "",
+    ) -> str:
+        rule_name, error = _rule_name(name)
+        if error:
+            return error
+        primary_asset_id = (primary_asset_id or "").strip()
+        if not primary_asset_id:
+            return "primary_asset_id is required."
+        rule_roles, error = _rule_roles(roles)
+        if error:
+            return error
+        conditions, error = _rule_conditions(locals())
+        if error:
+            return error
+        tenant, err = await _resolve_tenant(base_url, headers, tenant_id)
+        if err:
+            return err
+        rule_id = str(uuid.uuid4())
+        _, err = await _trpc(
+            base_url,
+            headers,
+            "assetDependencies.createDependencyRule",
+            "create dependency rule",
+            input={
+                **conditions,
+                "name": rule_name,
+                "primaryAssetId": primary_asset_id,
+                "roles": rule_roles,
+                "enabled": bool(enabled),
+                "id": rule_id,
+            },
+            mutation=True,
+            tenant_id=tenant or "",
+        )
+        if err:
+            return err
+        state = "enabled: OpenCRQ writes its links at the next apply" if enabled else "disabled: it links nothing"
+        return f"Created dependency rule '{rule_name}' (id: {rule_id}), {state}."
+
+    async def update_opencrq_dependency_rule(
+        rule_id: str = "",
+        name: str = "",
+        primary_asset_id: str = "",
+        roles: list[str] | None = None,
+        enabled: bool | None = None,
+        category_id: str = "",
+        subcategory_id: str = "",
+        name_pattern: str = "",
+        name_pattern_kind: str = "",
+        tag_id: str = "",
+        source: str = "",
+        clear_conditions: list[str] | None = None,
+        tenant_id: str = "",
+    ) -> str:
+        rule_id = (rule_id or "").strip()
+        if not rule_id:
+            return "rule_id is required (list_opencrq_dependency_rules shows each rule's id)."
+        cleared = list(dict.fromkeys(_clean_ids(clear_conditions)))
+        if any(c not in _RULE_CONDITION_KEYS for c in cleared):
+            return "clear_conditions takes among: " + ", ".join(_RULE_CONDITION_KEYS) + "."
+        given = locals()
+        tenant, err = await _resolve_tenant(base_url, headers, tenant_id)
+        if err:
+            return err
+        # updateDependencyRule replaces the whole rule: start from the rule as stored.
+        rules, err = await _trpc(
+            base_url,
+            headers,
+            "assetDependencies.listDependencyRules",
+            "list dependency rules",
+            tenant_id=tenant or "",
+        )
+        if err:
+            return err
+        current = next((r for r in rules or [] if r.get("id") == rule_id), None)
+        if current is None:
+            return f"No dependency rule {rule_id} in this tenant; nothing was changed."
+        values = {
+            arg: None if arg in cleared else ((given.get(arg) or "").strip() or current.get(key))
+            for arg, key in _RULE_CONDITION_KEYS.items()
+        }
+        conditions, error = _rule_conditions(values)
+        if error:
+            return error
+        rule_name, error = _rule_name(name or current.get("name") or "")
+        if error:
+            return error
+        rule_roles, error = _rule_roles(roles if roles else current.get("roles"))
+        if error:
+            return error
+        is_enabled = bool(current.get("enabled")) if enabled is None else bool(enabled)
+        _, err = await _trpc(
+            base_url,
+            headers,
+            "assetDependencies.updateDependencyRule",
+            "update dependency rule",
+            input={
+                **conditions,
+                "name": rule_name,
+                "primaryAssetId": (primary_asset_id or "").strip() or current.get("primaryAssetId"),
+                "roles": rule_roles,
+                "enabled": is_enabled,
+                "id": rule_id,
+            },
+            mutation=True,
+            tenant_id=tenant or "",
+        )
+        if err:
+            return err
+        state = "enabled" if is_enabled else "disabled: the links it wrote are removed at the next apply"
+        return f"Updated dependency rule '{rule_name}' (id: {rule_id}), {state}."
+
+    async def delete_opencrq_dependency_rules(rule_ids: list[str] | None = None, tenant_id: str = "") -> str:
+        ids = list(dict.fromkeys(_clean_ids(rule_ids)))
+        if not ids:
+            return "rule_ids is required (one or more dependency rule UUIDs)."
+        if len(ids) > _MAX_LINKS_PER_WRITE:
+            return f"rule_ids takes at most {_MAX_LINKS_PER_WRITE} rules per call."
+        tenant, err = await _resolve_tenant(base_url, headers, tenant_id)
+        if err:
+            return err
+        _, err = await _trpc(
+            base_url,
+            headers,
+            "assetDependencies.deleteDependencyRules",
+            "delete dependency rules",
+            input=ids,
+            mutation=True,
+            tenant_id=tenant or "",
+        )
+        if err:
+            return err
+        return (
+            f"Deleted {len(ids)} dependency rule(s); the links they wrote went with them, "
+            "the links a person took over stay."
+        )
+
     async def create_opencrq_asset_dependency(
         link_type: str = "",
         supporting_asset_id: str = "",
@@ -1804,6 +2087,10 @@ def register(
     executor.register(
         "list_opencrq_dependency_rules", list_opencrq_dependency_rules
     )
+    executor.register("preview_opencrq_dependency_rule", preview_opencrq_dependency_rule)
+    executor.register("create_opencrq_dependency_rule", create_opencrq_dependency_rule)
+    executor.register("update_opencrq_dependency_rule", update_opencrq_dependency_rule)
+    executor.register("delete_opencrq_dependency_rules", delete_opencrq_dependency_rules)
     executor.register(
         "create_opencrq_asset_dependency", create_opencrq_asset_dependency
     )
@@ -2350,6 +2637,103 @@ def register(
             source=_SOURCE,
         ),
         ToolDefinition(
+            name="preview_opencrq_dependency_rule",
+            description=(
+                "Preview what an OpenCRQ dependency rule would link if "
+                "applied now: the matching supporting assets, and how many "
+                "are left alone because a person linked or unlinked them. "
+                "Writes nothing; run it before creating or changing a rule."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "primary_asset_id": _STRING,
+                    **_RULE_CONDITIONS_SCHEMA,
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": _RULE_PREVIEW_LIMIT,
+                        "description": f"Assets listed, at most {_RULE_PREVIEW_LIMIT} (the count covers all).",
+                    },
+                    **_tenant_prop,
+                },
+                "required": ["primary_asset_id"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="create_opencrq_dependency_rule",
+            description=(
+                "Create an OpenCRQ dependency rule: every supporting asset "
+                "matching all its conditions is linked to the primary asset "
+                "with its roles, kept current at each apply. Preview it "
+                "first and confirm with the user before creating."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "maxLength": _RULE_NAME_MAX},
+                    "primary_asset_id": _STRING,
+                    "roles": _RULE_ROLES_SCHEMA,
+                    "enabled": {"type": "boolean", "description": "Default true."},
+                    **_RULE_CONDITIONS_SCHEMA,
+                    **_tenant_prop,
+                },
+                "required": ["name", "primary_asset_id", "roles"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="update_opencrq_dependency_rule",
+            description=(
+                "Change an OpenCRQ dependency rule; what is not passed keeps "
+                "its value. enabled false disables it: its links are removed "
+                "at the next apply. Prefer this to deleting rule links one "
+                "by one. Confirm with the user before updating."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "rule_id": _STRING,
+                    "name": {"type": "string", "maxLength": _RULE_NAME_MAX},
+                    "primary_asset_id": _STRING,
+                    "roles": _RULE_ROLES_SCHEMA,
+                    "enabled": _BOOLEAN,
+                    **_RULE_CONDITIONS_SCHEMA,
+                    "clear_conditions": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": list(_RULE_CONDITION_KEYS)},
+                        "description": "Conditions to remove from the rule.",
+                    },
+                    **_tenant_prop,
+                },
+                "required": ["rule_id"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="delete_opencrq_dependency_rules",
+            description=(
+                "Delete OpenCRQ dependency rules: the links they wrote are "
+                "deleted with them, links a person took over stay. "
+                "Irreversible - confirm the exact rules with the user first."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "rule_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": _MAX_LINKS_PER_WRITE,
+                    },
+                    **_tenant_prop,
+                },
+                "required": ["rule_ids"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
             name="create_opencrq_asset_dependency",
             description=(
                 "Create a dependency link between OpenCRQ assets: "
@@ -2479,6 +2863,9 @@ def register(
             name="delete_opencrq_asset_dependencies",
             description=(
                 "Delete one or more OpenCRQ asset dependency links (bulk). "
+                "Deleting a link a rule wrote suppresses that pair for good: "
+                "no rule links it again. To change rule links, act on the "
+                "rule (update_opencrq_dependency_rule). "
                 "This is irreversible - explicitly confirm the exact links "
                 "with the user before deleting."
             ),

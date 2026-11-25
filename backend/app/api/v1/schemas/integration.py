@@ -345,6 +345,10 @@ class IntegrationResponse(BaseModel):
     #: Requested scopes the token was not granted (a declined consent box);
     #: None when the grant is unknown.
     missing_scopes: list[str] | None = None
+    #: Tool permissions the token lacks, ``Scope (tool, tool)`` (catalog
+    #: ``tool_scopes``, #2386): granted by an admin on the app, never a reason
+    #: to re-authorize. None when nothing is lacking or the grant is unknown.
+    missing_tool_permissions: list[str] | None = None
     # OAuth endpoints (public URLs, not secrets). Editable for integrations
     # that own them — OpenAPI ones pre-fill them from their spec.
     authorize_url: str | None = None
