@@ -355,3 +355,44 @@ async def test_the_owner_s_own_turn_uses_every_binding_and_says_nothing(monkeypa
         w["owner_jira"], w["owner_slack_unshared"],
     }
     assert notice == []
+
+
+@pytest.mark.asyncio
+async def test_a_grantee_s_prompt_lists_only_the_integrations_their_turn_uses(monkeypatch):
+    """The "Connected integrations" block of the system prompt the agent loop
+    receives: the company-managed integration the member's turn uses is
+    listed, the owner's private one withheld from them is not."""
+    from app.services.agent_chat import run_agent_chat
+
+    class _AtTheLoopError(Exception):
+        pass
+
+    seen: dict = {}
+
+    async def _loop(**kwargs):
+        seen["system"] = "\n".join(m.content for m in kwargs["messages"] if m.role == "system")
+        raise _AtTheLoopError
+
+    _stub_turn(monkeypatch)
+    monkeypatch.setattr("app.services.builtin_tools.load_custom_and_mcp_tools", AsyncMock(return_value=None))
+    monkeypatch.setattr("app.services.agent_chat.run_agent_loop", _loop)
+    async with scratch_database("chatbind", tables=ALL_TABLES, extensions=("vector",)) as db:
+        w = await _seed(db.sessions)
+        async with db.sessions() as session:
+            jira_name = (await session.get(Integration, uuid.UUID(w["owner_jira"]))).name
+            agent = _agent(
+                w, "group",
+                integration_bindings={"jira": [w["owner_jira"]], "github": [w["company_github"]]},
+            )
+            session.add(agent)
+            await session.commit()
+            with pytest.raises(_AtTheLoopError):
+                await run_agent_chat(
+                    session, w["users"]["member"], agent, [], "hello",
+                    meter_quota=False, prebuilt_llm=_LLM,
+                )
+
+    block = seen["system"].split("Connected integrations:", 1)[1]
+    assert "- Company GitHub (github)" in block
+    assert jira_name not in seen["system"]
+    assert "(jira)" not in block

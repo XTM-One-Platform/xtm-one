@@ -655,6 +655,20 @@ def listed_integration_bindings(agent: Any, resolved_bindings: Mapping[str, str]
     }
 
 
+def _owner_run_handed_on(owner_run: bool, agent: Any, target: Any) -> bool:
+    """Whether the turn *agent* consults or transfers to acts as its owner too.
+
+    A turn with no person acts as its agent's owner only for that owner's
+    agents: another owner's agent is checked like any turn with no person.
+    """
+    if not owner_run:
+        return False
+    from app.services.integration_credentials import normalize_acting_user_id
+
+    owner = normalize_acting_user_id(getattr(agent, "user_id", None))
+    return owner is not None and owner == normalize_acting_user_id(getattr(target, "user_id", None))
+
+
 async def _load_pipeline_tool_standalone(
     db: AsyncSession,
     tool_ref: dict,
@@ -1949,7 +1963,8 @@ async def run_agent_chat(
     # A turn with no person (``user_id`` not a user's id) acts as the agent's
     # owner: declared by the paths built for it (an anonymous channel user,
     # the platform MCP key, an evaluation with no owner) and handed on to the
-    # turns it consults or transfers to. Any other turn with no person uses
+    # turns it consults or transfers to on an agent of the same owner
+    # (``_owner_run_handed_on``). Any other turn with no person uses
     # none of the agent's integration bindings
     # (``integration_tools.resolve_agent_integration_bindings``).
     owner_run: bool = False,
@@ -6045,9 +6060,10 @@ async def run_agent_chat(
                                     PARENT_CONSULT_MAX_ITERATIONS if _asks_parent else None
                                 ),
                                 delegation_depth=delegation_depth + 1,
-                                # A turn with no person hands on whether it
-                                # acts as its agent's owner.
-                                owner_run=owner_run,
+                                # A turn with no person acts as the owner
+                                # of the agent it consults only when it is
+                                # its own agent's owner too.
+                                owner_run=_owner_run_handed_on(owner_run, agent, target),
                                 handover_context={
                                     "type": "consult",
                                     "source_agent": f'"{agent.name}" (id: {agent.id})',
@@ -8781,9 +8797,10 @@ async def run_agent_chat(
                         user_message,
                         allow_handover=_next_depth < _TRANSFER_MAX_DEPTH,
                         conversation_id=conversation_id,
-                        # A turn with no person hands on whether it acts as
-                        # its agent's owner.
-                        owner_run=owner_run,
+                        # A turn with no person acts as the owner of the
+                        # agent it transfers to only when it is its own
+                        # agent's owner too.
+                        owner_run=_owner_run_handed_on(owner_run, agent, target_agent),
                         handover_context={
                             "type": "transfer",
                             "source_agent": f'"{agent.name}" (id: {agent.id})',

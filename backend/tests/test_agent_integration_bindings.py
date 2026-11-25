@@ -384,8 +384,8 @@ def test_only_an_evaluation_hands_a_turn_prebuilt_tools_and_the_turn_checks_them
 #: The paths whose turn with no person acts as the agent's owner, declared
 #: where they reach ``run_agent_chat`` (``owner_run``): an anonymous channel
 #: user, the platform MCP key, an evaluation with no owner, and a turn handing
-#: its own on to the agents it consults or transfers to. Every other turn with
-#: no person keeps no binding.
+#: its own on to the agents of the same owner it consults or transfers to.
+#: Every other turn with no person keeps no binding.
 _OWNER_RUN_DECLARERS = {
     "channels/router.py",
     "api/v1/mcp_endpoint.py",
@@ -410,10 +410,47 @@ def test_only_the_paths_built_as_owner_runs_declare_one():
         if any(keyword.arg == "owner_run" for keyword in call.keywords)
     }
     # The chat turn passes on what its caller declared; an assignment run
-    # with no person (no owner anywhere, Platform Health) is the agent's own;
-    # an evaluation with no owner too.
+    # with no person (an agent with no owner) is the agent's own, Platform
+    # Health's excepted; an evaluation with no owner too.
     assert resolver_owner_runs == {
         "services/agent_chat.py",
         "services/assignment_engine.py",
         "services/evaluation_engine.py",
     }
+
+
+def test_a_turn_hands_its_owner_run_on_only_through_the_same_owner_check():
+    """Each consult and transfer of a chat turn passes ``owner_run`` through
+    ``_owner_run_handed_on``, never the caller's flag as it is."""
+    chat = dict(app_sources.modules())["services/agent_chat.py"]
+    passed = [
+        keyword.value
+        for call in _calls(chat, "_run_helper_turn")
+        for keyword in call.keywords
+        if keyword.arg == "owner_run"
+    ]
+    assert len(passed) == 2
+    assert all(isinstance(value, ast.Call) and _call_name(value) == "_owner_run_handed_on" for value in passed)
+
+
+_A, _B = uuid.uuid4(), uuid.uuid4()
+
+
+@pytest.mark.parametrize(
+    ("owner_run", "caller_owner", "target_owner", "handed_on"),
+    [
+        pytest.param(True, _A, _A, True, id="the-same-owner-s-agent"),
+        pytest.param(True, _A, str(_A), True, id="the-same-owner-as-text"),
+        pytest.param(True, _A, _B, False, id="another-owner-s-agent"),
+        pytest.param(True, _A, None, False, id="an-agent-with-no-owner"),
+        pytest.param(True, None, None, False, id="no-owner-on-either"),
+        pytest.param(False, _A, _A, False, id="not-an-owner-run"),
+    ],
+)
+def test_an_owner_run_reaches_only_the_same_owner_s_agents(owner_run, caller_owner, target_owner, handed_on):
+    from app.services.agent_chat import _owner_run_handed_on
+
+    caller = SimpleNamespace(user_id=caller_owner)
+    target = SimpleNamespace(user_id=target_owner)
+
+    assert _owner_run_handed_on(owner_run, caller, target) is handed_on

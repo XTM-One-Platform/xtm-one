@@ -249,11 +249,11 @@ def _assignment(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**values)
 
 
-async def _run_bindings(session, acting, assignment=None):
+async def _run_bindings(session, acting, assignment=None, agent=None):
     from app.services import assignment_engine
 
     return await assignment_engine._resolve_run_integration_bindings(
-        session, agent=_shared_agent(), assignment=assignment or _assignment(), effective_user_id=acting
+        session, agent=agent or _shared_agent(), assignment=assignment or _assignment(), effective_user_id=acting
     )
 
 
@@ -272,6 +272,20 @@ async def test_the_owner_s_assignment_run_keeps_every_binding(session, acting):
 
     assert resolved.bindings == {"github": str(_PERSONAL), "jira": str(_LENT)}
     assert resolved.withheld == []
+
+
+async def test_a_platform_health_run_with_no_user_keeps_no_binding(session):
+    """It acts as no one, never as its agent's owner: the tasks it delegates do too."""
+    from app.services.health.identity import HEALTH_ROLES
+
+    agent = _shared_agent()
+    agent.health_role = sorted(HEALTH_ROLES)[0]
+    agent.is_company_managed = True
+
+    resolved = await _run_bindings(session, None, agent=agent)
+
+    assert resolved.bindings == {}
+    assert sorted(entry["provider"] for entry in resolved.withheld) == ["github", "jira"]
 
 
 async def test_a_colleague_s_assignment_run_uses_their_own_integration_of_the_provider(session):
@@ -353,7 +367,8 @@ async def test_a_flow_integration_node_runs_only_what_the_run_s_user_may_use(ses
         assert built["bindings"] == {"github": str(_PERSONAL)}
     else:
         assert "bindings" not in built
-        assert "may not use the configured integration" in (outcome.error or "")
+        # Chat's reason, not a generic refusal.
+        assert outcome.error == "The run's user may not use the configured integration: the acting user cannot see it."
 
 
 # --- The turn's prompt and a run with no person -----------------------------------------

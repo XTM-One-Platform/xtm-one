@@ -4728,17 +4728,26 @@ class FlowWalker:
         # that person may, the rule of an agent's binding in chat (a flow
         # lends nothing).
         bindings = {integration.provider: str(integration.id)}
+        withheld: list[dict] = []
         await shadow_invisible_bindings(
             self.db,
             bindings,
             {},
             acting_user_id=str(self.user.id),
             user_group_ids=await get_user_group_ids(self.db, self.user.id),
+            withheld=withheld,
         )
         if not bindings:
+            from app.services.integration_credentials import unavailable_integration_reasons
+
+            # Chat's reason: connect your own account, the owner's token is
+            # not shared, or it is not shared with you.
+            reason = next(iter(unavailable_integration_reasons(withheld).values()), None)
             return _NodeResult(
                 error=(
-                    "The run's user may not use the configured integration: it is not "
+                    f"The run's user may not use the configured integration: {reason}."
+                    if reason
+                    else "The run's user may not use the configured integration: it is not "
                     "shared with them, or its connected account is not theirs to use."
                 )
             )

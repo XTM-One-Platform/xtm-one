@@ -2673,8 +2673,9 @@ async def _resolve_run_integration_bindings(
     else the agent's, resolved by
     ``integration_tools.resolve_agent_integration_bindings``: chat's rule, so
     someone other than the agent's owner keeps only what they may use or the
-    agent lends, and the run says what it withheld. A run with no person (no
-    owner anywhere, Platform Health) is the agent's own.
+    agent lends, and the run says what it withheld. A run with no person (an
+    agent with no owner) is the agent's own; Platform Health's run with no
+    user is no one's (``_acting_identity``) and keeps no binding.
 
     Then the agent's template bindings, and the providers withheld from the
     person, resolve to that person's own integration or a company-wide one
@@ -2694,7 +2695,9 @@ async def _resolve_run_integration_bindings(
         db,
         agent,
         effective_user_id,
-        owner_run=True,
+        # A run with no person is its agent's own, except Platform Health's,
+        # which acts with no user at all, as the work it delegates does.
+        owner_run=not is_health_agent(agent),
         source=None if inherits else assignment.integration_bindings,
         origin="agent_binding_inherited" if inherits else "assignment_binding_override",
         templates=False,
