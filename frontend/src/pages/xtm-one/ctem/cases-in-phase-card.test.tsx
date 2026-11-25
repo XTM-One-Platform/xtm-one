@@ -32,8 +32,8 @@ function read(over: Record<string, unknown> = {}) {
         waiting: 1,
         counts: { ...zero, remediating: 1, waiting_decision: 1 },
         top: [
-          { id: "c1", title: "Approve the Tomcat fix", state: "waiting_decision", priority: "high", created_at: null, updated_at: null, state_since: null, waiting_on: null, crown_jewel: "Payments" },
-          { id: "c2", title: "Upgrade OpenSSL", state: "remediating", priority: "medium", created_at: null, updated_at: null, state_since: null, waiting_on: null, crown_jewel: null },
+          { id: "c1", title: "Approve the Tomcat fix", state: "waiting_decision", priority: "high", created_at: null, updated_at: null, state_since: null, waiting_on: null, primary_asset: "Payments" },
+          { id: "c2", title: "Upgrade OpenSSL", state: "remediating", priority: "medium", created_at: null, updated_at: null, state_since: null, waiting_on: null, primary_asset: null },
         ],
       },
     },

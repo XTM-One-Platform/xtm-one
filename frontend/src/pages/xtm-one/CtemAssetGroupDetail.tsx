@@ -15,11 +15,14 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EntityPageHeader } from "@/components/ui/entity-page-header";
 import { NotFoundState } from "@/components/ui/not-found-state";
 import { TruncatedText } from "@/components/ui/truncated-text";
-import { useAssetGroup, useCanonicalAssets, type CanonicalAssetSummary } from "@/hooks/api/useOrganizationAssetsApi";
+import { useAssetGroup, useCanonicalAssets, useDeleteAssetGroups, type CanonicalAssetSummary } from "@/hooks/api/useOrganizationAssetsApi";
+import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { AssetSection, Fact } from "./ctem/AssetOverview";
+import { InventoryDeleteAction } from "./ctem/InventoryDeleteAction";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
+import { isSyncedRow } from "./ctem/inventory-entries";
 import { INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, criticalityShortLabel, sourceLabel } from "./ctem/inventory";
 import { CategoryMark, SourceLogo } from "./ctem/inventory-icons";
 
@@ -49,6 +52,23 @@ export default function CtemAssetGroupDetail() {
   });
   const [dialog, setDialog] = useState<EntryDialogMode | null>(null);
   const data = group.data;
+  const { toast } = useToast();
+  // Delete (#1729): a group entered by hand only; a synced group comes back with its sync.
+  const remove = useDeleteAssetGroups();
+  const onDelete = () => {
+    if (!data) return;
+    remove.mutate([data.id], {
+      onSuccess: (out) => {
+        if (out.refused.length > 0) {
+          toast({ title: t_i18n("Nothing was deleted"), description: out.refused.map((r) => r.reason).join("\n"), variant: "error" });
+          return;
+        }
+        toast({ title: t_i18n("Asset group deleted"), variant: "success" });
+        navigate(GROUPS_TAB);
+      },
+      onError: (error) => toast({ title: t_i18n("Nothing was deleted"), description: error.message, variant: "error" }),
+    });
+  };
 
   if (group.isError && !data) {
     return (
@@ -81,7 +101,7 @@ export default function CtemAssetGroupDetail() {
         ...(data.environment ? [<Fact key="environment" icon="layers" label={t_i18n("Environment")} values={[assetFieldLabel(t_i18n, "environment", data.environment)]} />] : []),
         <Fact key="exposure" icon="earth" label={t_i18n("Exposure")} values={[t_i18n((EXPOSURE_LABELS as Record<string, string>)[data.internet_facing] ?? data.internet_facing)]} />,
         ...(data.owner ? [<Fact key="owner" icon="user" label={t_i18n("Owner")} values={[data.owner]} />] : []),
-        ...(data.tech_stack.length ? [<Fact key="tech" icon="layers" label={t_i18n("Software")} values={[data.tech_stack.join(", ")]} />] : []),
+        ...(data.products.length ? [<Fact key="tech" icon="layers" label={t_i18n("Software")} values={[data.products.join(", ")]} />] : []),
       ]
     : [];
 
@@ -148,9 +168,21 @@ export default function CtemAssetGroupDetail() {
         hintLabel={t_i18n("About this asset group")}
         actions={
           isAdmin && data ? (
-            <Button variant="secondary" size="sm" onClick={() => setDialog({ kind: "update", id: data.id })} data-testid="ctem-asset-group-update">
-              {t_i18n("Update")}
-            </Button>
+            <>
+              <Button variant="secondary" size="sm" onClick={() => setDialog({ kind: "update", id: data.id })} data-testid="ctem-asset-group-update">
+                {t_i18n("Update")}
+              </Button>
+              {!isSyncedRow(data) && (
+                <InventoryDeleteAction
+                  name={data.name}
+                  title={t_i18n("Delete the asset group \"{name}\"?", { name: data.name })}
+                  description={t_i18n("This asset group was entered by hand: it is deleted and its assets stay in the inventory without it.")}
+                  pending={remove.isPending}
+                  onConfirm={onDelete}
+                  testId="ctem-asset-group-delete"
+                />
+              )}
+            </>
           ) : undefined
         }
       />

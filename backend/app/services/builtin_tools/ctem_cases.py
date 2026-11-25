@@ -42,11 +42,11 @@ CTEM_CASE_TOOL_NAMES: tuple[str, ...] = (
     "create_ctem_case",
     "update_ctem_case",
     "record_ctem_case_validation",
-    "assess_ctem_validation_inject",
     "record_ctem_case_ticket",
     "decide_ctem_case_remediation",
     "sync_ctem_case_ticket",
     "bulk_update_ctem_cases",
+    "merge_ctem_cases",
     "delete_ctem_cases",
 )
 _SOURCE = "builtin:ctem_cases"
@@ -128,7 +128,22 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         rendered = view_of.hydrate(
             case, rows, events[:_HISTORY_PAGE], await view_of.viewer_view(db, str(scope), vertical)
         )
-        return None if rendered is None else (case, rows, rendered)
+        if rendered is None:
+            return None
+        from app.services import ctem_case_version_history as version_history
+
+        # The list's asset-count rule on the single read (#1704), on every event of the case.
+        version_history.with_asset_count(rendered, events)
+        return case, rows, rendered
+
+    async def _view_only(db: AsyncSession, rows: list[Any], vertical: str) -> str | None:
+        """The refusal of a write on a case the acting person sees only through a CTEM view right (#1748)."""
+        from app.services import ctem_access
+        from app.services import ctem_cases_view as view_of
+
+        if await view_of.acts_on_case(db, str(scope), rows, vertical):
+            return None
+        return f"Refused: {ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
 
     async def _list(
         state: str = "", priority: str = "", owner_user_id: str = "", limit: int = 20, offset: int = 0
@@ -164,13 +179,16 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     version_history.with_asset_count(row, history.get(uuid.UUID(row["id"]), []))
                 from .ctem_signals import case_signal_scope
 
+                # Which signal rule applied, so an empty list is never read as no case (#1359), and the
+                # open cases this person sees none of (a count only), so a page is never the org total.
+                scope_block = await case_signal_scope(db, scope, view.signals)
+                scope_block["hidden_cases"] = view_of.hidden_case_count(cases, view)
                 return _dump(
                     {
                         "vertical": vertical,
                         "counts": {s: counts.get(s, 0) for s in _STATES},
                         "cases": rows,
-                        # Which signal rule applied, so an empty list is never read as no case (#1359).
-                        "scope": await case_signal_scope(db, scope, view.signals),
+                        "scope": scope_block,
                     }
                 )
         except Exception:
@@ -230,7 +248,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 org_id, vertical = await _context(db)
                 if org_id is None or scope is None:
                     return "No organization is set up yet: no case can be created."
+                from app.services import ctem_access
+
                 view = await view_of.viewer_view(db, str(scope), vertical)
+                visible = set(view.open_ids)
+                if await ctem_access.level(db, scope) == "view":
+                    # A CTEM view right is strictly read only (#1748).
+                    return f"Refused: {ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
                 pending = case_loop.PendingEvents()
                 case = await store.create_manual_case(
                     db,
@@ -238,7 +262,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     vertical=vertical,
                     title=title,
                     member_ids=[str(i) for i in (issue_ids or [])],
-                    visible=set(view.open_ids),
+                    visible=visible,
                     actor=agent_id,
                     reason=(reason or "").strip() or None,
                     events=pending,
@@ -266,6 +290,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         gate: dict[str, Any] | None = None,
         treatment_plan: dict[str, Any] | None = None,
         threat_package: dict[str, Any] | None = None,
+        applied_change: dict[str, Any] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -291,6 +316,27 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 if shown is None:
                     return f"No case {case_id}."
                 case, rows, _ = shown
+                refused = await _view_only(db, rows, vertical)
+                if refused:
+                    return refused
+                if isinstance(gate, dict) and str(gate.get("outcome") or "") == "waited":
+                    from app.agents.builtin_fleet_docs import CTEM_GATE_KEYS
+                    from app.services import ctem_gate_order
+
+                    if str(gate.get("key") or "").strip() not in CTEM_GATE_KEYS:
+                        raise rules.CaseRuleError(
+                            f"unknown gate {str(gate.get('key') or '')!r}: one of {', '.join(CTEM_GATE_KEYS)}"
+                        )
+
+                    # A gate waits only on its decision (#1954): no open decision item, no waited event,
+                    # checked before any write of this call so a refusal changes nothing.
+                    refusal = ctem_gate_order.waited_refusal(
+                        str(gate.get("key") or "").strip(),
+                        str(case.id),
+                        await ctem_gate_order.open_gate_item_keys(db, str(case.id)),
+                    )
+                    if refusal:
+                        raise rules.CaseRuleError(refusal)
                 owner = _uuid(owner_user_id)
                 if owner and owner != case.owner_user_id:
                     owner_view = await view_of.viewer_view(db, str(owner), vertical)
@@ -328,6 +374,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         option=str(gate.get("option") or ""),
                         actor=agent_id,
                     )
+                if applied_change is not None:
+                    case_loop.record_applied_change(db, case, applied_change, actor=agent_id)
                 if treatment_plan is not None:
                     history = (await store.events_of(db, [case.id])).get(case.id, [])
                     case_loop.record_treatment_plan(
@@ -363,29 +411,21 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         kind: str = "retest",
         mitigation_only: bool = False,
         note: str = "",
-        safe_mode: bool | None = None,
         run_order: list[str] | None = None,
         conclusive: bool | None = None,
-        inject_class: str = "",
         not_tested: list[str] | None = None,
         evidence_type: str = "",
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
         from app.services import ctem_cases as rules
-        from app.services.ctem_inject_effects import checked_safe_mode
 
-        klass = (inject_class or "").strip() or None
         untested = [str(i).strip() for i in (not_tested or []) if str(i).strip()]
         if untested:
             # #1458: an id with no template was not tested; no negative is ever recorded for it.
             note = ("not tested (no template): " + ", ".join(untested) + ". " + (note or "")).strip()
             if result in rules.PASSING_RESULTS:
                 conclusive = False
-        safe_mode = safe_mode if isinstance(safe_mode, bool) else None
-        warning = None
-        if safe_mode is True:
-            safe_mode, warning = checked_safe_mode(safe_mode, klass)
         wanted = _uuid(case_id)
         if wanted is None:
             return "case_id must be the id list_ctem_cases answers."
@@ -398,6 +438,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
                     return f"No case {case_id}."
+                refused = await _view_only(db, shown[1], vertical)
+                if refused:
+                    return refused
                 await case_loop.record_validation(
                     db,
                     shown[0],
@@ -407,10 +450,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     result=result,
                     mitigation_only=bool(mitigation_only),
                     note=note or None,
-                    safe_mode=safe_mode,
                     run_order=[str(n) for n in run_order] if isinstance(run_order, list) else None,
                     conclusive=conclusive if isinstance(conclusive, bool) else None,
-                    inject_class=klass,
                     evidence_type=(evidence_type or "").strip() or None,
                     actor=agent_id,
                     events=pending,
@@ -434,82 +475,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                             "evidence (a version inventory showing every in-scope endpoint at or above the fixed "
                             "build, evidence_type remediation)"
                         )
-                if warning:
-                    answer["warning"] = warning
                 return _dump(answer)
         except rules.CaseRuleError as exc:
             return f"Refused: {exc}. Nothing was changed."
         except Exception:
             logger.warning("CTEM case validation failed", exc_info=True)
             return "Error: the validation could not be recorded right now. Say so; nothing was changed."
-
-    async def _assess(
-        subject: str = "",
-        injector: str = "",
-        template: str = "",
-        contract_read_only: bool | None = None,
-        target_is_lab: bool = False,
-        passive_option: str = "",
-        templates: list[str] | None = None,
-        requested_ids: list[str] | None = None,
-        authored_payload: bool = False,
-        command: str = "",
-        target_count: int | None = None,
-        inventory_count: int | None = None,
-        inventory_label: str = "",
-        remediation_kind: str = "",
-        passive_reads_version: bool = False,
-        version_check: str = "",
-        draft_text: str = "",
-    ) -> str:
-        from app.services.ctem_inject_effects import (
-            classify_inject,
-            classify_templates,
-            mobilize_done_criterion,
-            template_coverage,
-            validation_gate_ask,
-            wording_problems,
-        )
-
-        texts = [str(t) for t in (templates or []) if str(t).strip()] + ([template] if template.strip() else [])
-        flag = contract_read_only if isinstance(contract_read_only, bool) else None
-        authored = bool(authored_payload) or bool((command or "").strip())
-        effects = (
-            classify_templates(texts)
-            if texts and not authored
-            else classify_inject(
-                injector=injector, template=None, contract_read_only=flag, authored_payload=authored, command=command
-            )
-        )
-        count = target_count if isinstance(target_count, int) and not isinstance(target_count, bool) else None
-        cited = inventory_count if isinstance(inventory_count, int) and not isinstance(inventory_count, bool) else None
-        wanted = [str(i) for i in (requested_ids or []) if str(i).strip()]
-        coverage = template_coverage(texts, wanted) if (texts or wanted) else None
-        ask = validation_gate_ask(
-            effects,
-            subject=(subject or "proposed").strip()[:200],
-            target_is_lab=bool(target_is_lab),
-            passive_option=passive_option or "",
-            coverage=coverage,
-            target_count=count,
-            inventory_count=cited,
-            inventory_label=inventory_label or "",
-            remediation_kind=remediation_kind or "",
-            passive_reads_version=bool(passive_reads_version),
-        )
-        body: dict[str, Any] = {
-            "effects": effects.to_dict(),
-            "gate_ask": ask,
-            "mobilize": mobilize_done_criterion(
-                effects, remediation_kind=remediation_kind or "", target_count=count, version_check=version_check
-            ),
-        }
-        if coverage is not None:
-            body["coverage"] = coverage.to_dict()
-        problems = wording_problems(effects.classification, draft_text)
-        if problems:
-            body["draft_refused"] = problems
-        return _dump(body)
 
     async def _ticket(case_id: str, integration: str = "", key: str = "", url: str = "", status: str = "open") -> str:
         from app.core.database import async_session
@@ -527,6 +498,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
                     return f"No case {case_id}."
+                refused = await _view_only(db, shown[1], vertical)
+                if refused:
+                    return refused
                 case_loop.record_ticket(
                     db, shown[0], integration=integration, key=key, url=url or None, status=status, actor=agent_id
                 )
@@ -565,6 +539,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
                 if shown is None:
                     return f"No case {case_id}."
+                refused = await _view_only(db, shown[1], vertical)
+                if refused:
+                    return refused
                 case = shown[0]
                 figures = await _opencrq_readable(db)
                 if answered_option:
@@ -603,7 +580,14 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 )
                 item_id = ""
                 if decision.waits:
-                    item_id = await _park(case, parsed, recommendation, decision, await _currency(db, org_id))
+                    item_id = await _park(
+                        case,
+                        parsed,
+                        recommendation,
+                        decision,
+                        await _currency(db, org_id),
+                        await _gate_recipient(db),
+                    )
                 case_loop.record_gate(
                     db,
                     case,
@@ -686,12 +670,37 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             logger.info("Organization currency unavailable for the remediation ask", exc_info=True)
             return ""
 
-    async def _park(case: Any, parsed: list[Any], recommendation: str, decision: Any, currency: str = "") -> str:
-        """One work item for a person with the unified decision ask; the existing one when it is still open."""
+    async def _gate_recipient(db: AsyncSession) -> str | None:
+        """The CTEM decide groups a company agent's gate waits for (#1748); ``None``: today's routing."""
+        from sqlalchemy import select
+
+        from app.models.agent import Agent
+        from app.services import ctem_access
+
+        try:
+            company = (
+                await db.execute(select(Agent.is_company_managed).where(Agent.id == agent_id))
+            ).scalar_one_or_none()
+        except Exception:  # unreadable: today's routing, never a widening
+            logger.info("CTEM gate recipient: agent unreadable", exc_info=True)
+            return None
+        return await ctem_access.gate_recipient(db) if company is True else None
+
+    async def _park(
+        case: Any,
+        parsed: list[Any],
+        recommendation: str,
+        decision: Any,
+        currency: str = "",
+        recipient: str | None = None,
+    ) -> str:
+        """One work item for a person with the unified decision ask; the existing one when it is still open.
+
+        *recipient* addresses it to the CTEM decide groups (#1748); ``None`` keeps today's routing.
+        """
         from app.services import ctem_remediation_decision as decision_rules
         from app.services.company_managed_writes import agent_writer
         from app.services.work_item import create_work_item
-
         ask = decision_rules.decision_ask(
             case.title,
             parsed,
@@ -711,6 +720,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             payload={"ctem_case_id": str(case.id), "gate": decision_rules.GATE_KEY},
             needs_human=True,
             ask=ask,
+            recipient=recipient,
             dedupe=True,
             dedupe_by="key",
             writer=agent_writer(is_company_managed=False, agent_id=agent_id),
@@ -735,6 +745,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
                     return f"No case {case_id}."
+                refused = await _view_only(db, shown[1], vertical)
+                if refused:
+                    return refused
                 pending = case_loop.PendingEvents()
                 answer = await ctem_ticketing.sync_one(
                     db,
@@ -764,6 +777,53 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             else:
                 failed.append({"id": one, "reason": answer})
         return _dump({"updated": updated, "failed": failed})
+
+    async def _merge(target_id: str = "", case_ids: list[str] | None = None, reason: str = "") -> str:
+        """Fold duplicate cases into *target_id* on the rules of POST /ctem-cases/merge (#2037).
+
+        Every case named must be one the acting person sees and acts on; the
+        survivor keeps its state, owner and SLA and takes the keys, members,
+        history and signals of the others, so a reconcile maps them to it.
+        """
+        from app.core.database import async_session
+        from app.services import ctem_cases as rules
+        from app.services import ctem_cases_store as store
+
+        target = _uuid(target_id)
+        sources = [_uuid(c) for c in case_ids or []]
+        if target is None or not sources or any(s is None for s in sources):
+            return "target_id and case_ids must be ids list_ctem_cases answers."
+        if len(sources) > 50:
+            return "At most 50 cases at once."
+        try:
+            async with async_session() as db:
+                org_id, vertical = await _context(db)
+                if org_id is None or scope is None:
+                    return "No organization is set up yet: there are no cases."
+                for one in [target, *sources]:
+                    shown = await _shown(db, one, org_id, vertical)
+                    if shown is None:
+                        return f"No case {one}."
+                    refused = await _view_only(db, shown[1], vertical)
+                    if refused:
+                        return refused
+                await store.merge_cases(
+                    db,
+                    organization_id=org_id,
+                    vertical=vertical,
+                    target_id=target,
+                    source_ids=[s for s in sources if s],
+                    actor=agent_id,
+                    reason=(reason or "").strip() or None,
+                )
+                await db.commit()
+                shown = await _shown(db, target, org_id, vertical)
+                return _dump({"merged": [str(s) for s in sources], "into": shown[2] if shown else {"id": str(target)}})
+        except rules.CaseRuleError as exc:
+            return f"Refused: {exc}. Nothing was changed."
+        except Exception:
+            logger.warning("CTEM case merge failed", exc_info=True)
+            return "Error: the cases could not be merged right now. Say so; nothing was changed."
 
     async def _delete(
         case_ids: list[str] | None = None,
@@ -808,20 +868,21 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     db, cases, actor=user, reason=reason or f"by agent {agent_id}", dry_run=bool(dry_run)
                 )
                 await db.commit()
-                return _dump({**result, "unknown": unknown})
+                # Same hand-off as the REST route: released signals decided again after the commit (#1950).
+                return _dump({**case_delete.hand_off_released(result), "unknown": unknown})
         except Exception:
             logger.warning("CTEM case delete failed", exc_info=True)
             return "Error: the cases could not be deleted right now. Say so; nothing was changed."
 
     executor = CallableToolExecutor()
     executor.register("bulk_update_ctem_cases", _bulk_update)
+    executor.register("merge_ctem_cases", _merge)
     executor.register("delete_ctem_cases", _delete)
     executor.register("list_ctem_cases", _list)
     executor.register("get_ctem_case", _get)
     executor.register("create_ctem_case", _create)
     executor.register("update_ctem_case", _update)
     executor.register("record_ctem_case_validation", _validation)
-    executor.register("assess_ctem_validation_inject", _assess)
     executor.register("record_ctem_case_ticket", _ticket)
     executor.register("decide_ctem_case_remediation", _remediation)
     executor.register("sync_ctem_case_ticket", _sync_ticket)
@@ -830,8 +891,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ToolDefinition(
             name="list_ctem_cases",
             description=(
-                "List the organization's CTEM cases (open exposures grouped by the fix that closes them), "
-                "highest priority first, with the counts by state."
+                "List the CTEM cases you can see (open exposures grouped by the fix that closes them), "
+                "highest priority first, with the counts by state. A null count is unknown for you, never "
+                "none (aggregates_reason says why); scope.hidden_cases counts cases you cannot see."
             ),
             input_schema={
                 "type": "object",
@@ -850,7 +912,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="get_ctem_case",
             description=(
                 "Read one CTEM case: its fix, its member issues with their source product and id, "
-                "assets, crown jewels and its latest history."
+                "assets, primary assets and its latest history. A null count is unknown for you, never none."
             ),
             input_schema={
                 "type": "object",
@@ -881,7 +943,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
                 "reading or attack path of the triage step, a loop gate passed or waited, or the risk treatment plan of "
-                "the decision, or the threat package of the review step. Those writes move the status; "
+                "the decision, or the threat package of the review step, or a change applied through an integration "
+                "(with the gate ctem.production_change). Those writes move the status; "
                 "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
                 "an agent (a person accepts risk)."
@@ -974,6 +1037,25 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         },
                         "required": ["grouping_id"],
                     },
+                    "applied_change": {
+                        "type": "object",
+                        "description": (
+                            "A fix applied through a bound integration, read back: what was pushed (indicators "
+                            "with their prevention action, scope, expiry; a rule; a setting), the ids returned "
+                            "and how to revert it."
+                        ),
+                        "properties": {
+                            "integration": {"type": "string"},
+                            "kind": {
+                                "type": "string",
+                                "enum": ["ioc_prevention", "detection_rule", "configuration", "control_restored"],
+                            },
+                            "pushed": {"type": "string"},
+                            "ids": {"type": "array", "items": {"type": "string"}},
+                            "rollback": {"type": "string"},
+                        },
+                        "required": ["integration", "kind", "pushed", "rollback"],
+                    },
                 },
                 "required": ["case_id"],
             },
@@ -983,10 +1065,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="record_ctem_case_validation",
             description=(
                 "Write a validation or re-test result on a CTEM case: the validation module's simulation, "
-                "scenario or test id and its result. A conclusive passed or not_exposed resolves the case "
-                "(mitigation_only: mitigated, watching, the re-test stays on); a pass of an intrusive or unknown "
-                "inject (inject_class from assess_ctem_validation_inject) is inconclusive unless conclusive is true "
-                "(the fixed version proven): the case stays open. failed reopens a resolved case; pending only records."
+                "scenario or test id and its result. A passed or not_exposed resolves the case "
+                "(mitigation_only: mitigated, watching, the re-test stays on) unless you set conclusive false "
+                "(the check does not prove the exposure gone): the case stays open. failed reopens a resolved case; "
+                "pending only records."
             ),
             input_schema={
                 "type": "object",
@@ -1001,19 +1083,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "kind": {"type": "string", "description": "validation or retest (default retest)."},
                     "mitigation_only": {"type": "boolean"},
                     "note": {"type": "string"},
-                    "safe_mode": {
-                        "type": "boolean",
-                        "description": "True only when every inject that ran was classified read_only; else recorded false.",
-                    },
-                    "inject_class": {
-                        "type": "string",
-                        "enum": ["read_only", "intrusive", "unknown"],
-                        "description": "The classification assess_ctem_validation_inject answered for the inject that ran.",
-                    },
                     "not_tested": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Requested ids assess_ctem_validation_inject found no template for.",
+                        "description": "Requested ids with no template: not tested, never recorded as a negative.",
                     },
                     "evidence_type": {
                         "type": "string",
@@ -1034,48 +1107,6 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     },
                 },
                 "required": ["case_id", "provider", "ref", "result"],
-            },
-            source=_SOURCE,
-        ),
-        ToolDefinition(
-            name="assess_ctem_validation_inject",
-            description=(
-                "Read what a proposed validation inject does to its target before the gate "
-                "ctem.validation.non_readonly: read_only, intrusive or unknown, the requests that change state, "
-                "the cleanup, whether it needs credentials, what a no-match proves, the gate ask (title, safe "
-                "mode, targets, evidence per option) and the mobilize done criterion built from it. Write the "
-                "ask from this answer only."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "subject": {"type": "string", "description": "What it tests, e.g. the CVE id."},
-                    "injector": {"type": "string", "description": "The injector, e.g. nuclei."},
-                    "template": {"type": "string", "description": "The Nuclei template's YAML, whole."},
-                    "templates": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Every selected template.",
-                    },
-                    "requested_ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "The CVE or template ids asked for; one with no template is not tested.",
-                    },
-                    "contract_read_only": {"type": "boolean", "description": "The contract's own flag, if any."},
-                    "target_is_lab": {"type": "boolean", "description": "True for a lab asset only."},
-                    "passive_option": {"type": "string", "description": "A read-only check to offer instead."},
-                    "passive_reads_version": {"type": "boolean", "description": "The passive check reads versions."},
-                    "authored_payload": {"type": "boolean", "description": "A payload written for this run."},
-                    "command": {"type": "string", "description": "The authored payload's exact command text."},
-                    "target_count": {"type": "integer", "description": "Targets the inject runs on."},
-                    "inventory_count": {"type": "integer", "description": "Targets the context cites."},
-                    "inventory_label": {"type": "string", "description": "What it counts, e.g. workstations."},
-                    "remediation_kind": {"type": "string", "description": "The case's remediation_kind."},
-                    "version_check": {"type": "string", "description": "A non-intrusive re-test, e.g. a version read."},
-                    "draft_text": {"type": "string", "description": "Your drafted gate title and text, checked."},
-                },
-                "required": ["subject"],
             },
             source=_SOURCE,
         ),
@@ -1176,10 +1207,29 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             source=_SOURCE,
         ),
         ToolDefinition(
+            name="merge_ctem_cases",
+            description=(
+                "Merge duplicate CTEM cases of one fix into target_id (the case a person holds, else the "
+                "oldest): it keeps its state, owner and SLA and takes their keys, issues and history; a "
+                "reconcile never reopens them."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "target_id": {"type": "string", "description": "The surviving case."},
+                    "case_ids": {"type": "array", "items": {"type": "string"}, "description": "Cases folded in."},
+                    "reason": {"type": "string"},
+                },
+                "required": ["target_id", "case_ids"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
             name="delete_ctem_cases",
             description=(
                 "Administrator only: delete CTEM cases by id or filter (states, opened_by legacy). Cancels "
-                "their work items and timers, sends their signals back to the gate, frees the fix key. "
+                "their work items and timers, sends their signals back to the gate, frees the fix key: a "
+                "case whose signals still match reopens at the next reconcile, so merge duplicates instead. "
                 "dry_run (default true) lists what would go."
             ),
             input_schema={

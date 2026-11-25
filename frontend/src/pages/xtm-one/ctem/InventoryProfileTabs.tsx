@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The Asset groups tab of CTEM > Inventory (#1178; the AI systems tab retired by #1501: an AI system is an asset of
- * category AI target). The asset groups are rows of their own table since #1543 (`GET /asset-groups`, written one
+ * The Asset groups tab of CTEM > Inventory (#1178). The asset groups are rows of their own table since #1543 (`GET /asset-groups`, written one
  * row API call per group). The list is short, so search, filters and export run in the page. A row opens the group's
  * page (#1556): its fields and its member assets; the Assets column counts them from the membership index.
  */
@@ -20,6 +19,7 @@ import { formatCount } from "@/lib/number-format";
 import { assetFieldLabel, assetGroupPath, sourceLabel } from "./inventory";
 import { deletableRows, isSyncedRow } from "./inventory-entries";
 import { InventoryEntryDialog, type EntryDialogMode } from "./InventoryEntryDialog";
+import { SourceLogo } from "./inventory-icons";
 
 /** The page header's Add of the Assets and Asset groups tabs (UX round 1 on #1375, B1): one add request the tab answers. */
 export type AddRequest = { open: boolean; onClose: () => void };
@@ -120,15 +120,21 @@ export function AssetGroupsTab({ add }: { add: AddRequest }) {
       key: "tech",
       header: "Software",
       align: "right",
-      cell: (g) => formatCount(intl.locale, g.tech_stack.length),
-      csv: (g) => g.tech_stack.join(" "),
-      sortValue: (g) => g.tech_stack.length,
+      cell: (g) => formatCount(intl.locale, g.products.length),
+      csv: (g) => g.products.join(" "),
+      sortValue: (g) => g.products.length,
       hideable: true,
     },
     {
       key: "source",
       header: "Source",
-      cell: (g) => sourceLabel(t_i18n, g.source || "manual"),
+      // The source's logo and name, as the Assets and Software lists draw them (#1729).
+      cell: (g) => (
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <SourceLogo source={g.source || "manual"} />
+          <TruncatedText text={sourceLabel(t_i18n, g.source || "manual")} className="max-w-[10rem]" />
+        </span>
+      ),
       csv: (g) => g.source || "manual",
       hideable: true,
       hideBelow: "6xl",

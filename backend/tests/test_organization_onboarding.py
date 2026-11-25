@@ -35,15 +35,14 @@ def test_every_contract_field_is_in_exactly_one_group_with_a_hint():
 
 
 def test_the_next_question_is_the_first_missing_field():
-    assert onboarding.next_group(_profile()) == ["crown_jewels"]
+    assert onboarding.next_group(_profile()) == ["primary_assets"]
     assert onboarding.next_group(oc.parse_profile({})) == ["name"]
 
 
 def test_currency_and_hourly_rate_are_asked_together():
     profile = _profile(
-        crown_jewels=[{"name": "SCADA"}],
-        tech_stack=[{"product": "Windows"}],
-        ai_systems=[{"name": "Bot"}],
+        primary_assets=[{"name": "SCADA"}],
+        software=[{"product": "Windows"}],
         pir_ids=["pir-1"],
     )
     assert onboarding.next_group(profile) == ["currency", "loaded_hourly_rate"]
@@ -51,10 +50,10 @@ def test_currency_and_hourly_rate_are_asked_together():
 
 
 def test_a_skipped_field_is_not_asked_again_and_still_reported_missing():
-    profile = onboarding.skip_fields(_profile(), ["crown_jewels"])
-    assert profile.onboarding_skipped == ["crown_jewels"]
-    assert onboarding.next_group(profile) == ["tech_stack"]
-    assert "crown_jewels" in oc.missing_fields(profile)
+    profile = onboarding.skip_fields(_profile(), ["primary_assets"])
+    assert profile.onboarding_skipped == ["primary_assets"]
+    assert onboarding.next_group(profile) == ["software"]
+    assert "primary_assets" in oc.missing_fields(profile)
 
 
 def test_a_filled_field_is_never_skipped_and_an_unknown_one_is_refused():
@@ -94,20 +93,19 @@ def test_a_bad_answer_is_refused_with_its_reason(answers, message):
 
 
 def test_onboarding_skipped_keeps_contract_paths_only():
-    assert oc.parse_profile({"onboarding_skipped": ["tech_stack", "x", "tech_stack"]}).onboarding_skipped == [
-        "tech_stack"
+    assert oc.parse_profile({"onboarding_skipped": ["software", "x", "software"]}).onboarding_skipped == [
+        "software"
     ]
 
 
 def test_the_step_names_the_next_question_and_the_completion():
     text = onboarding.render_step(_profile(), version=3, saved=["sector"])
     assert "Saved as version 3: sector." in text
-    assert "4 of 13 fields filled" in text
-    assert "crown_jewels:" in text
+    assert "4 of 12 fields filled" in text
+    assert "primary_assets:" in text
     full = {
-        "crown_jewels": [{"name": "SCADA"}],
-        "tech_stack": [{"product": "Windows"}],
-        "ai_systems": [{"name": "Bot"}],
+        "primary_assets": [{"name": "SCADA"}],
+        "software": [{"product": "Windows"}],
         "pir_ids": ["pir-1"],
         "currency": "EUR",
         "loaded_hourly_rate": 90,
@@ -120,7 +118,7 @@ def test_the_step_names_the_next_question_and_the_completion():
 
 def test_the_agent_profile_never_shows_the_skipped_list():
     row = SimpleNamespace(
-        profile=onboarding.skip_fields(_profile(), ["tech_stack"]).model_dump(mode="json"),
+        profile=onboarding.skip_fields(_profile(), ["software"]).model_dump(mode="json"),
         version=2,
         created_at=datetime(2026, 11, 11, tzinfo=UTC),
         source="ai_draft",

@@ -19,7 +19,7 @@ import {
   settingsFieldLabelId,
 } from "@/components/ui/settings-form";
 import { useToast } from "@/components/ui/toast";
-import { useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
+import { useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
 import { DEFAULT_CASE_ATTENTION_WEIGHTS, weightsFromProfile, weightsToProfile } from "./case-attention";
 import type { CaseAttentionProfile } from "@/lib/organization-profile";
@@ -33,7 +33,7 @@ const WEIGHT_LABEL = {
   priority_medium: "Medium priority",
   priority_low: "Low priority",
   kev: "KEV",
-  crown_jewel: "Primary asset touched",
+  primary_asset: "Primary asset touched",
   overdue: "Overdue",
   due_soon: "Due soon",
   due_soon_days: "Due soon within (days)",
@@ -49,7 +49,7 @@ const WEIGHT_HELPER = {
   priority_medium: "Points for a medium priority case",
   priority_low: "Points for a low priority case",
   kev: "Points when the case holds a KEV issue",
-  crown_jewel: "Points when the case touches a primary asset",
+  primary_asset: "Points when the case touches a primary asset",
   overdue: "Points when the due date or the SLA has passed",
   due_soon: "Points when the due date is near",
   due_soon_days: "How near the due date is, from 1 to 90 days",
@@ -65,7 +65,7 @@ const WEIGHT_INFO = {
   priority_medium: "Points added to the score of a case whose priority is medium. A case gets the points of one priority only.",
   priority_low: "Points added to the score of a case whose priority is low. A case gets the points of one priority only.",
   kev: "Points added when one issue of the case is in the CISA Known Exploited Vulnerabilities catalog.",
-  crown_jewel: "Points added when the case touches an asset of a primary asset declared in the organization profile.",
+  primary_asset: "Points added when the case touches an asset of a primary asset declared in the organization profile.",
   overdue: "Points added when the due date or the SLA of the case has passed.",
   due_soon: "Points added when the due date falls within the days set in Due soon within.",
   due_soon_days: "A number of days, from 1 to 90: how close the due date must be for Due soon to add its points. With 3, a case due in 2 days gets them, a case due in 5 days does not.",
@@ -94,7 +94,7 @@ const GROUP_DESCRIPTION = {
 
 const GROUP_KEYS: Record<GroupId, readonly Key[]> = {
   priority: ["priority_critical", "priority_high", "priority_medium", "priority_low"],
-  signals: ["kev", "crown_jewel"],
+  signals: ["kev", "primary_asset"],
   due: ["overdue", "due_soon", "due_soon_days"],
   owner_age: ["no_owner", "age_per_day", "age_max"],
 };
@@ -152,7 +152,7 @@ export function CaseAttentionWeightsDialog({ open, onClose }: { open: boolean; o
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const { data } = useOrganizationContext();
-  const save = useSaveOrganizationContext();
+  const save = usePatchOrganizationContext();
   const current = weightsToProfile(weightsFromProfile(data?.profile?.case_attention));
   const [text, setText] = useState<Record<Key, string> | null>(null);
   const values = text ?? asText(current);
@@ -166,7 +166,8 @@ export function CaseAttentionWeightsDialog({ open, onClose }: { open: boolean; o
   const submit = () => {
     if (!valid || !data?.profile) return;
     save.mutate(
-      { profile: { ...data.profile, case_attention: parsed as CaseAttentionProfile }, source: "form" },
+      // #1752: the ranking points alone travel, never the asset rows.
+      { fields: { case_attention: parsed as CaseAttentionProfile }, based_on_version: data.version ?? null },
       {
         onSuccess: () => {
           toast({ title: t_i18n("Ranking points saved"), variant: "success" });

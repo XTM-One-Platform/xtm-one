@@ -53,6 +53,23 @@ class Group(Base):
         Boolean, nullable=False, default=False, server_default=expression.false()
     )
 
+    # The CTEM right the group grants its members (``services/ctem_access.py``,
+    # the one reader): ``view`` reads the organization's system signals and
+    # cases, ``decide`` also acts on them and answers the case gates. NULL = no
+    # CTEM right beyond what the member records and reads in the products.
+    ctem_access: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
+
+    # With ``decide``: whether the members are notified of the case gates
+    # (on by default); off, they decide from the screens with no bell.
+    ctem_notify: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=expression.true()
+    )
+
+    # People who sign in through single sign-on (OIDC or SAML) join the group
+    # at every sign-in (``services/group_auto_join.py``, the one writer of the
+    # memberships it grants, source ``auto_join``). Off by default.
+    auto_join: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=expression.false())
+
     # What the group IS for the analytics: ``org_unit``, ``access``,
     # ``distribution``, or ``auto`` (not classified: every group starts there,
     # a SAML-created one included) - ``GROUP_KINDS``.
@@ -108,9 +125,11 @@ class GroupMember(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
-    # How this membership was created: "manual" (admin/API), "saml" (SAML sync)
-    # or "scim" (SCIM provisioning). SAML sync and SCIM each manage only their
-    # own memberships, preserving the others.
+    # How this membership was created: "manual" (admin/API), "saml" (SAML sync),
+    # "scim" (SCIM provisioning) or "auto_join" (a single sign-on into a group
+    # with ``auto_join`` on). SAML sync and SCIM each manage only their own
+    # memberships, preserving the others; nothing removes an auto-join one but
+    # an administrator.
     source: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="manual", default="manual"
     )

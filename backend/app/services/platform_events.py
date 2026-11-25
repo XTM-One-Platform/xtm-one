@@ -25,7 +25,14 @@ on a schedule::
         "scope": "own",                        # "own" (default), "fleet" or "all"
         "once": False,                         # True: a one-off watch
         "expires_at": "2026-11-02T09:00:00Z",  # optional deadline
+        "role": "observer",                    # optional: watches, never works the object
     }
+
+**Role.** ``role = "observer"`` declares that the assignment watches the
+objects of its events (a supervisor reading a case lifecycle) without working
+them. Delivery is unchanged; readers that ask who works an object (the CTEM
+case page) leave observers out. Absent (or ``"worker"``), the assignment works
+what it hears.
 
 **One-off watch.** ``once = true`` makes the trigger a watch: the first event
 that matches starts one run, and the subscription ends there. The delivery
@@ -127,6 +134,11 @@ FIRED_EVENT_KEY = "fired_event_id"
 FIRED_AT_KEY = "fired_at"
 #: ``trigger_config`` key of the subscription's deadline (ISO 8601 date-time with its offset).
 EXPIRES_AT_KEY = "expires_at"
+#: ``trigger_config`` key of the assignment's role on its events, and its values.
+ROLE_KEY = "role"
+ROLE_OBSERVER = "observer"
+ROLE_WORKER = "worker"
+TRIGGER_ROLES: frozenset[str] = frozenset({ROLE_OBSERVER, ROLE_WORKER})
 #: Dedupe window of a platform event's run (seconds).
 DEDUP_WINDOW_SECONDS = 24 * 3600
 #: Bound of a note text carried in a payload.
@@ -518,6 +530,14 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _CTEM_CASE_KEYS,
     },
+    "ctem_case.opening_changed": {
+        "description": (
+            "An administrator turned CTEM case opening on or off (#1951, services/ctem_case_opening.py). "
+            "Off: no confirmed signal opens a case, they wait; on: the waiting signals open their cases "
+            "at once. Payload: vertical, on, changed_by (user id), waiting (confirmed signals with no case)."
+        ),
+        "filter_keys": ("vertical", "on", "changed_by"),
+    },
     "ctem_signal.recorded": {
         "description": (
             "A CTEM signal was seen for the first time (services/ctem_signals.py), after the scope gate gave it "
@@ -557,6 +577,7 @@ PLATFORM_WIDE_EVENTS: frozenset[str] = frozenset(
         "platform.release.deployed",
         "platform.default_model_route.changed",
         "integration.version.changed",
+        "ctem_case.opening_changed",
     }
 )
 
@@ -611,6 +632,9 @@ def trigger_config_error(trigger_type: object, trigger_config: object) -> str | 
         return "Invalid trigger_config: 'scope' must be 'own', 'fleet' or 'all'."
     if not isinstance(trigger_config.get(ONCE_KEY, False), bool):
         return "Invalid trigger_config: 'once' must be true or false."
+    role = trigger_config.get(ROLE_KEY)
+    if role is not None and not (isinstance(role, str) and role in TRIGGER_ROLES):
+        return "Invalid trigger_config: 'role' must be 'observer' or 'worker'."
     deadline = trigger_config.get(EXPIRES_AT_KEY)
     if deadline is not None and parse_deadline(deadline) is None:
         return (
@@ -1290,7 +1314,7 @@ async def _note_live_holder(
 
 
 async def _lock_current(
-    db: Any, assignment_id: uuid.UUID, name: str, payload: Mapping[str, Any]
+    db: Any, assignment_id: uuid.UUID, name: str, payload: Mapping[str, Any], *, lock: bool = True
 ) -> tuple[Any, bool] | None:
     """Lock the subscriber's row and check it still takes event *name*; (row, once), ``None`` when it does not.
 
@@ -1302,16 +1326,23 @@ async def _lock_current(
     one-off watch is marked fired by this event; nothing is committed here:
     the caller commits the mark with the run (or with the live holder's note),
     and a failure rolls both back, so the watch stays armed.
+
+    *lock* False (a standing subscription) reads the row without ``FOR UPDATE``:
+    a burst of one event (a case-opening drain raising ``ctem_case.opened`` per
+    case) then never queues every delivery on one row lock. A row read that way
+    which turned into a one-off watch since the snapshot is read again locked.
     """
     from sqlalchemy import select
 
     from app.models.assignment import Assignment
     from app.services.integration_event_filters import payload_filter_reason
 
-    row = (
-        await db.execute(select(Assignment).where(Assignment.id == assignment_id).with_for_update())
-    ).scalar_one_or_none()
+    query = select(Assignment).where(Assignment.id == assignment_id)
+    row = (await db.execute(query if not lock else query.with_for_update())).scalar_one_or_none()
     config = row.trigger_config if row is not None and isinstance(row.trigger_config, dict) else None
+    if not lock and config is not None and config.get(ONCE_KEY) is True:
+        row = (await db.execute(query.with_for_update())).scalar_one_or_none()
+        config = row.trigger_config if row is not None and isinstance(row.trigger_config, dict) else None
     if (
         row is None
         or not row.enabled
@@ -1356,7 +1387,7 @@ async def _deliver(name: str, payload: Mapping[str, Any], sub: Subscription, ass
         # snapshot, decides. A one-off watch is consumed by its first matching
         # event, before the live-holder shortcut: in the same transaction as the
         # run it starts, or as the note told to the live run holding the object.
-        current = await _lock_current(db, sub.assignment_id, name, payload)
+        current = await _lock_current(db, sub.assignment_id, name, payload, lock=sub.once)
         if current is None:
             # Fired, past its deadline, disabled or edited since the snapshot.
             return "watch already fired or changed"

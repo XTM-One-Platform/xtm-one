@@ -28,7 +28,7 @@ def _profile() -> oc.OrganizationProfile:
                 {"name": "laptop-7", "type": "workstation", "source": "manual"},
                 {"name": "db-01", "type": "server", "source": "ciso-office", "external_id": "c1"},
             ],
-            "crown_jewels": [{"name": "Billing", "criticality": "critical", "source": "opencrq", "external_id": "j1"}],
+            "primary_assets": [{"name": "Billing", "criticality": "critical", "source": "opencrq", "external_id": "j1"}],
         }
     )
 
@@ -58,7 +58,7 @@ def test_summarize_lists_each_source_once_with_rows_writer_and_syncs_platforms_f
     assert by_key["opencti"].total == 0
     assert by_key["ciso-office"].written_by_agent == "CISO Office"
     # Primary assets are an Inventory source (Sam, 24 Nov 2026): OpenCRQ is listed with its rows there.
-    assert by_key["opencrq"].rows == {"crown_jewels": 1}
+    assert by_key["opencrq"].rows == {"primary_assets": 1}
     business = osources.summarize(_profile(), [sync], scope="profile")
     assert "opencrq" not in {s.key for s in business}
 
@@ -75,7 +75,7 @@ def test_purge_of_one_sync_removes_only_its_rows_and_names_the_same_name_elsewhe
 def test_a_sync_purge_or_release_stays_in_the_field_of_its_section() -> None:
     # Review on #1278: unstamped rows of the same platform in another field are not the sync's.
     profile = _profile()
-    profile.tech_stack = [oc.TechStackEntry(product="nginx", source="openaev")]
+    profile.software = [oc.SoftwareEntry(product="nginx", source="openaev")]
     assert osources.sync_fields("assets") == ("assets_exposure",)
     assert osources.sync_fields("pirs") == () and osources.sync_fields("all") == ()
     for mode in ("purge", "release"):
@@ -83,7 +83,7 @@ def test_a_sync_purge_or_release_stays_in_the_field_of_its_section() -> None:
             profile, source="openaev", mode=mode, sync_id="s1", fields=osources.sync_fields("assets")
         )
         assert set(plan.touched) == {"assets_exposure"} and plan.profile is not None
-        assert [(r.product, r.source) for r in plan.profile.tech_stack] == [("nginx", "openaev")]
+        assert [(r.product, r.source) for r in plan.profile.software] == [("nginx", "openaev")]
     # A pirs sync writes no row field: its purge touches nothing.
     plan = osources.plan_rows(profile, source="opencti", mode="purge", sync_id="p1", fields=())
     assert plan.count == 0 and plan.profile is not None

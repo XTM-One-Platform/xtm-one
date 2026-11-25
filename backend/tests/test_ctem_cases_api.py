@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
@@ -94,7 +98,7 @@ def api(monkeypatch):
         events += [r for r in seen.db.added if isinstance(r, CtemCaseEvent)]
         return seen.case, rows, events
 
-    async def _viewer(_db, user_id, vertical, *, fresh=False):
+    async def _viewer(_db, user_id, vertical, *, fresh=False, members=None):
         return seen.views.get(str(user_id), view_of.ViewerView())
 
     async def _events_of(_db, case_ids):
@@ -130,6 +134,13 @@ def api(monkeypatch):
     monkeypatch.setattr(ctem_case_gate_records_view, "gate_records", _gate_records)
     # XTM One mode: the platform mode of the test settings already is xtm_one.
     monkeypatch.setattr(api_module, "_require_xtm_one", lambda: None)
+
+    @asynccontextmanager
+    async def _detail_session() -> AsyncIterator[_Db]:
+        # The independent detail reads open their own session (#1986); here, the fake one.
+        yield seen.db
+
+    monkeypatch.setattr(api_module, "detail_session", _detail_session)
 
     app = FastAPI()
     app.include_router(api_module.router, prefix="/api/v1/ctem-cases")
@@ -188,6 +199,20 @@ async def test_the_list_without_an_organization_is_empty_never_404(api, monkeypa
     assert body["cases"] == []
     assert body["counts"] == dict.fromkeys(CASE_STATES, 0)
     assert body["details_unavailable"] == []
+    assert body["details_unavailable_reasons"] == {}
+
+
+async def test_the_list_says_why_a_product_did_not_answer(api: SimpleNamespace) -> None:
+    """#1852: each product of details_unavailable carries the reason of this viewer's read."""
+    view = api.views[str(api.user.id)]
+    view.missing = ["opencti", "openaev"]
+    view.reasons = {"opencti": "too_large"}
+    async with api.client as client:
+        response = await client.get("/api/v1/ctem-cases")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["details_unavailable"] == ["opencti", "openaev"]
+    assert body["details_unavailable_reasons"] == {"opencti": "too_large", "openaev": "unavailable"}
 
 
 async def test_the_list_filters_by_state(api):
@@ -198,12 +223,15 @@ async def test_the_list_filters_by_state(api):
 
 
 async def test_a_viewer_sees_the_shared_case_with_only_their_issues_and_restricted_rows(api):
-    """#11613: the hidden issue is a bare Restricted row; scores and assets cover the visible one only."""
+    """#11613: the hidden issue is a bare Restricted row. The detail aggregates are unknown for this
+    viewer (null with aggregates_restricted), never a count of the visible issue read as the case's."""
     async with api.client as client:
         listed = (await client.get("/api/v1/ctem-cases")).json()["cases"][0]
         detail = (await client.get(f"/api/v1/ctem-cases/{api.case.id}")).json()
     assert listed["issue_count"] == 2 and listed["restricted_count"] == 1
-    assert listed["max_cvss"] == 9.8 and listed["asset_count"] == 1 and listed["priority"] == "critical"
+    assert listed["max_cvss"] is None and listed["asset_count"] is None and listed["priority"] == "critical"
+    assert listed["aggregates_restricted"] is True and listed["members_without_details"] == 1
+    assert detail["aggregates_restricted"] is True and detail["asset_count"] == listed["asset_count"]
     assert detail["issues"][0]["name"] == "CVE-2026-1"
     assert detail["issues"][1] == {"restricted": True}
     text = str(detail)
@@ -239,6 +267,42 @@ async def test_a_case_shows_where_its_issues_came_from(api):
     assert issue["cvss"] == 9.8 and issue["assets"] == ["web-1"]
 
 
+async def test_the_detail_reads_of_a_case_run_concurrently(
+    api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1986: the inventory and the settings reads run beside the trail, each on its own session."""
+    started: list[str] = []
+    both = asyncio.Event()
+
+    async def _waits(name: str, answer: Any) -> Any:
+        started.append(name)
+        if len(started) == 2:
+            both.set()
+        # Each read waits for the other: run one after the other, the request would time out.
+        await asyncio.wait_for(both.wait(), timeout=2)
+        return answer
+
+    async def _ticketing_target(_db: object) -> Any:
+        return await _waits("ticketing", {"connected": False})
+
+    async def _for_case(_db: object, _case: object) -> Any:
+        return await _waits("versions", None)
+
+    from app.services import ctem_case_versions
+
+    monkeypatch.setattr(ticketing, "ticketing_target", _ticketing_target)
+    monkeypatch.setattr(ctem_case_versions, "for_case", _for_case)
+    async with api.client as client:
+        response = await client.get(f"/api/v1/ctem-cases/{api.case.id}")
+    assert response.status_code == 200, response.text
+    assert sorted(started) == ["ticketing", "versions"]
+    body = response.json()
+    assert body["ticketing"] == {"connected": False} and body["owner_fleet"]["slug"] == "ctem-loop"
+    timing = response.headers["Server-Timing"]
+    for phase in ("details-trail", "details-inventory", "details-settings", "details"):
+        assert f"{phase};dur=" in timing
+
+
 async def test_an_unknown_case_is_404(api):
     async with api.client as client:
         response = await client.get(f"/api/v1/ctem-cases/{uuid.uuid4()}")
@@ -257,6 +321,56 @@ async def test_starting_a_case_sets_owner_and_state_with_history(api):
     kinds = [e["kind"] for e in body["history"]]
     assert "owner" in kinds and "state" in kinds
     assert api.db.commits == 1
+
+
+@pytest.mark.parametrize("right", ["decide", "view"])
+async def test_decide_sets_owner_and_due_date_and_view_is_refused(
+    api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, right: str
+) -> None:
+    """#1748: a CTEM decide right writes the case like an administrator; view is read only (403)."""
+    from app.services import ctem_access
+
+    async def _right(_db: object, user_id: object) -> str | None:
+        return right if str(user_id) == str(api.user.id) else None
+
+    monkeypatch.setattr(ctem_access, "group_right", _right)
+    api.user.is_admin = False
+    due = (NOW + timedelta(days=7)).isoformat()
+    async with api.client as client:
+        read = await client.get(f"/api/v1/ctem-cases/{api.case.id}")
+        response = await client.patch(
+            f"/api/v1/ctem-cases/{api.case.id}", json={"owner_user_id": str(api.user.id), "due_at": due}
+        )
+    assert read.status_code == 200
+    if right == "view":
+        assert response.status_code == 403
+        assert api.db.commits == 0 and api.db.added == []
+        return
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["owner_user_id"] == str(api.user.id) and body["due_at"]
+    owner_events = [e for e in body["history"] if e["kind"] == "owner"]
+    assert owner_events and owner_events[0]["actor"] == str(api.user.id)
+
+
+async def test_view_is_refused_on_bulk_split_and_merge(api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import ctem_access
+
+    async def _right(_db: object, _user_id: object) -> str:
+        return "view"
+
+    monkeypatch.setattr(ctem_access, "group_right", _right)
+    api.user.is_admin = False
+    async with api.client as client:
+        bulk = await client.post("/api/v1/ctem-cases/bulk", json={"case_ids": [str(api.case.id)], "note": "x"})
+        split = await client.post("/api/v1/ctem-cases/split", json={"title": "t", "issue_ids": ["opencti:vuln--1"]})
+        merge = await client.post(
+            "/api/v1/ctem-cases/merge", json={"target_id": str(api.case.id), "case_ids": [str(api.case.id)]}
+        )
+    assert bulk.status_code == 200 and bulk.json()["updated"] == []
+    assert bulk.json()["failed"][0]["reason"] == ctem_access.VIEW_ONLY_MESSAGE
+    assert split.status_code == 403 and merge.status_code == 403
+    assert api.db.added == []
 
 
 async def test_an_owner_who_sees_none_of_the_issues_is_refused(api):
@@ -461,7 +575,8 @@ async def test_a_bulk_delete_as_administrator_answers_the_dry_run(api, monkeypat
     assert refused.status_code == 422
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body == {"dry_run": True, "count": 1, "cases": [{"id": str(api.case.id)}], "unknown": []}
+    # Every answer carries ``released`` (the count hand_off_released sets, 0 on a dry run; #1950).
+    assert body == {"dry_run": True, "count": 1, "cases": [{"id": str(api.case.id)}], "unknown": [], "released": 0}
     assert calls["select"]["opened_by"] == "legacy" and calls["delete"]["actor"] is api.user
 
 

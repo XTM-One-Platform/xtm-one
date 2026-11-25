@@ -53,11 +53,30 @@ def test_the_case_assignment_is_a_valid_platform_event_trigger() -> None:
 
 
 def test_every_trigger_path_starts_exactly_one_fleet_run() -> None:
-    from app.services.ctem_case_routing import owner_of
+    from datetime import UTC, datetime
+
+    from app.services.ctem_case_routing import CaseFleet, owner_of
+
+    def declared(on: set[str]) -> list[CaseFleet]:
+        t0 = datetime(2026, 1, 1, tzinfo=UTC)
+        return [
+            CaseFleet("ctem-loop", "1", "ctem-loop", "loop", None, "ctem:f1", True, t0, "ctem-loop" in on),
+            CaseFleet(
+                "ctem-vuln-prioritization",
+                "2",
+                "ctem-vuln-prioritization",
+                "vuln",
+                ("new_vulnerability",),
+                "ctem:f2",
+                True,
+                t0,
+                "ctem-vuln-prioritization" in on,
+            ),
+        ]
 
     for active in (set(), {"ctem-loop"}, {"ctem-vuln-prioritization"}, {"ctem-loop", "ctem-vuln-prioritization"}):
         for path in TRIGGER_PATHS:
-            payload = {"case_id": "c", "trigger_path": path, "owner_fleet": owner_of(path, active)}
+            payload = {"case_id": "c", "trigger_path": path, "owner_fleet": owner_of(path, declared(active))}
             heard = [
                 a["agent_slug"]
                 for a in (CTEM_F1_CASE_ASSIGNMENT, CTEM_F2_CASE_ASSIGNMENT)
@@ -95,6 +114,23 @@ def test_the_prompts_make_the_case_the_record() -> None:
     assert len(retests) == 2
     for assignment in retests:
         assert "case_id" in assignment["prompt"] and "record_ctem_case_validation" in assignment["prompt"]
+
+
+def test_the_loop_raises_decisions_instead_of_notes() -> None:
+    """#1828: an SLA breach, contradicting answers, a re-plan and a no-option answer are decisions."""
+    for assignment in (CTEM_F1_CASE_ASSIGNMENT, CTEM_F2_CASE_ASSIGNMENT):
+        prompt = assignment["prompt"]
+        breach = prompt.split("On ctem_case.sla_breached:", 1)[1]
+        assert "needs_human decision keyed `ctem:remediation:`" in breach
+        assert "recommendation" in breach and "contradict" in breach
+        assert "`Verdict PHASE: proven affected | proven not affected | unproven`" in prompt
+    gates = [a for a in BUILTIN_ASSIGNMENTS if a["name"] == "Gate answered" and a["agent_slug"] in _ORCHESTRATORS]
+    assert {a["agent_slug"] for a in gates} == set(_ORCHESTRATORS)
+    for assignment in gates:
+        prompt = assignment["prompt"]
+        assert "file the review decision again under the same key with the new draft link" in prompt
+        assert "picks no option and decides nothing" in prompt
+        assert "file the same decision again under the same key" in prompt
 
 
 def test_no_open_item_lives_only_in_shared_state() -> None:

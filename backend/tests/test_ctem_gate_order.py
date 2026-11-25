@@ -108,6 +108,43 @@ def test_a_waiting_gate_question_is_never_changed_in_place() -> None:
     order.refuse_question_change("dev:x", _ASK, changed, waiting=True)
 
 
+@pytest.mark.parametrize(
+    ("gate", "key"),
+    [
+        ("ctem.analyst_review", "ctem:review:"),
+        ("ctem.validation.non_readonly", "ctem:validation:"),
+        ("ctem.validation.non_readonly", "ctem:f2:validate:"),
+        ("ctem.validation.non_readonly", "ctem:f1:launch:"),
+        ("ctem.remediation.decision", "ctem:remediation:"),
+        ("ctem.mobilize", "ctem:f1:case-mobilize:"),
+        ("ctem.mobilize", "ctem:f2:mobilize:"),
+    ],
+)
+def test_a_waited_gate_rests_on_its_own_decision_key(gate: str, key: str) -> None:
+    """#1954: no open decision of the gate, the waited event is refused with what to file."""
+    refusal = order.waited_refusal(gate, _CASE, set())
+    assert refusal and "create_work_item" in refusal and f"{key}{_CASE}" in refusal
+    # Another gate's open decision is not this gate's.
+    other = "ctem:review:" if key != "ctem:review:" else "ctem:remediation:"
+    assert order.waited_refusal(gate, _CASE, {f"{other}{_CASE}"})
+    # The same key of another case neither.
+    assert order.waited_refusal(gate, _CASE, {f"{key}{uuid.uuid4()}"})
+    assert order.waited_refusal(gate, _CASE, {f"{key}{_CASE}"}) is None
+
+
+def test_a_gate_without_its_own_key_rests_on_any_decision_of_the_case() -> None:
+    for gate in ("ctem.production_change", "ctem.accept_risk", "ctem.close_without_retest"):
+        assert order.waited_item_keys(gate, _CASE) == []
+        assert order.waited_refusal(gate, _CASE, set())
+        assert order.waited_refusal(gate, _CASE, {f"ctem:accept-risk:{_CASE}"}) is None
+
+
+async def test_open_gate_item_keys_reads_once() -> None:
+    db = _Db([f"ctem:review:{_CASE}", None])  # type: ignore[list-item]
+    assert await order.open_gate_item_keys(db, _CASE) == {f"ctem:review:{_CASE}"}
+    assert db.queries == 1
+
+
 def test_a_gate_card_never_sends_the_person_to_a_run() -> None:
     pointing = {**_ASK, "context": "Evidence: see run 4a1fe00c for the details."}
     with pytest.raises(ValueError, match="carries its question, evidence and options"):

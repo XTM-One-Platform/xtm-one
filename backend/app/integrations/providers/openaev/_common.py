@@ -1643,41 +1643,95 @@ async def _api(
     return _require_response(resp), None
 
 
-def keep_findings_schema() -> dict[str, Any]:
-    """Schema of the ``keep_findings`` argument of a delete that cascades to findings.
+#: The finding statuses that close a finding at source (OpenAEV #9233, CTEM-14). ``OPEN`` is the
+#: only other status; a finding is never inferred closed from its absence in a search.
+FINDING_CLOSED_STATUSES: frozenset[str] = frozenset({"NOT_REPRODUCED", "RESOLVED"})
+#: What an OpenAEV delete answers about the findings of what it deleted (OpenAEV #9233: a finding
+#: survives its inject, scenario, simulation or atomic test; its occurrence loses the link).
+FINDINGS_KEPT_AS_HISTORY = "Its findings are kept in OpenAEV as history."
 
-    A fresh dict per tool, so a schema pass on one tool never edits another's.
+
+@dataclass(frozen=True)
+class Finding:
+    """One OpenAEV finding as XTM One reads it (OpenAEV #9233: one per type, value and location).
+
+    The single parser of a finding: every reader (CTEM cases, CTEM metrics, the tool
+    answers) goes through :func:`parse_finding`, so a change of the OpenAEV finding
+    payload is a change of this function and its contract test
+    (``tests/test_openaev_finding_contract.py``).
     """
-    return {
-        "type": "boolean",
-        "default": True,
-        "description": (
-            "Delete only. True (default) keeps the findings it produced, detached; false deletes them with it."
-        ),
-    }
+
+    id: str
+    type: str
+    value: str
+    #: ``OPEN`` | ``NOT_REPRODUCED`` | ``RESOLVED``, upper case; ``None`` when the answer carries none
+    #: (``POST /api/findings/search`` does not return it; ``GET /api/findings/{id}`` does).
+    status: str | None
+    #: The location: ``(asset id, asset name)`` pairs; empty for a user or unknown location.
+    assets: tuple[tuple[str, str], ...]
+    #: The inject of the latest occurrence.
+    inject_id: str | None
+    created_at: str | None
+    updated_at: str | None
+    last_tested: str | None
+    retest_inject_id: str | None
+
+    @property
+    def closed(self) -> bool:
+        """True only when OpenAEV says the finding is closed (re-test status)."""
+        return self.status in FINDING_CLOSED_STATUSES
+
+    @property
+    def asset_ids(self) -> tuple[str, ...]:
+        return tuple(i for i, _ in self.assets if i)
+
+    @property
+    def asset_labels(self) -> tuple[str, ...]:
+        """Each asset's name, else its id."""
+        return tuple(dict.fromkeys(n or i for i, n in self.assets if n or i))
 
 
-def keep_findings_params(keep_findings: bool) -> dict[str, str]:
-    """The ``keep_findings`` query parameter of an OpenAEV delete.
+def _finding_assets(raw: Any) -> tuple[tuple[str, str], ...]:
+    """``finding_assets`` as objects (search) or as id strings (``GET /api/findings/{id}``)."""
+    out: list[tuple[str, str]] = []
+    for a in raw if isinstance(raw, list) else []:
+        if isinstance(a, dict):
+            pair = (str(a.get("asset_id") or ""), str(a.get("asset_name") or ""))
+        elif isinstance(a, str):
+            pair = (a, "")
+        else:
+            continue
+        if (pair[0] or pair[1]) and pair not in out:
+            out.append(pair)
+    return tuple(out)
 
-    Sent on both values: OpenAEV defaults to false (findings deleted), the tools
-    default to true so an agent's clean-up never destroys evidence silently.
-    """
-    return {"keep_findings": "true" if keep_findings else "false"}
 
+def parse_finding(raw: Any) -> Finding | None:
+    """Parse one OpenAEV finding (search row or ``GET /api/findings/{id}``); ``None`` without an id."""
+    if not isinstance(raw, dict):
+        return None
+    fid = str(raw.get("finding_id") or "").strip()
+    if not fid:
+        return None
+    inject = raw.get("finding_inject")
+    inject_id = (inject.get("inject_id") if isinstance(inject, dict) else None) or raw.get("finding_inject_id")
+    status = str(raw.get("finding_status") or "").strip().upper() or None
 
-def findings_fate(keep_findings: bool, owner: str) -> str:
-    """What a delete did to the findings of *owner*, for the tool answer.
+    def _text(key: str) -> str | None:
+        value = raw.get(key)
+        return str(value) if value else None
 
-    An OpenAEV older than the keep_findings parameter ignores it and deletes the
-    findings anyway, so the answer never claims they were kept for sure.
-    """
-    if not keep_findings:
-        return f"Its findings were deleted with the {owner} (keep_findings=false)."
-    return (
-        f"keep_findings=true was sent: OpenAEV keeps the findings of the {owner}, "
-        "detached from it. An OpenAEV version without this option ignores it and "
-        "deletes them; search_openaev_findings shows which is the case."
+    return Finding(
+        id=fid,
+        type=str(raw.get("finding_type") or "").strip().lower(),
+        value=str(raw.get("finding_value") or "").strip(),
+        status=status,
+        assets=_finding_assets(raw.get("finding_assets")),
+        inject_id=str(inject_id) if inject_id else None,
+        created_at=_text("finding_created_at"),
+        updated_at=_text("finding_updated_at"),
+        last_tested=_text("finding_last_tested"),
+        retest_inject_id=_text("finding_retest_inject_id"),
     )
 
 
@@ -2345,24 +2399,25 @@ def _simulation_inject_status_lines(rows: Any) -> list[str]:
 
 
 def _fmt_finding(f: dict, base_url: str = "") -> str:
-    finding_id = f.get("finding_id", "N/A")
-    lines = [f"[Finding] {f.get('finding_value', '?')}"]
-    lines.append(f"  ID: {finding_id}")
-    link = _aev_link(base_url, "finding", finding_id)
+    finding = parse_finding(f)
+    if finding is None:
+        return f"[Finding] {f.get('finding_value', '?') if isinstance(f, dict) else '?'}\n  ID: N/A"
+    lines = [f"[Finding] {finding.value or '?'}"]
+    lines.append(f"  ID: {finding.id}")
+    link = _aev_link(base_url, "finding", finding.id)
     if link:
         lines.append(link)
-    lines.append(f"  Type: {f.get('finding_type', 'N/A')}")
-    # Surface the producing inject so the orchestrator can tie a finding back to the
-    # step that emitted it (the wiring it needs to confirm a discovery ignited a
-    # reactor, and to distinguish its own run's findings on a shared tenant). Only
-    # rendered when present, so this is inert-safe if the field is absent.
-    inject_id = f.get("finding_inject_id")
-    if inject_id:
-        lines.append(f"  Inject: {inject_id}")
-    assets = f.get("finding_assets") or []
-    if assets:
-        asset_names = [a.get("asset_name", a.get("asset_id", "?")) for a in assets]
-        lines.append(f"  Assets: {', '.join(asset_names)}")
+    lines.append(f"  Type: {finding.type or 'N/A'}")
+    if finding.status:
+        lines.append(f"  Status: {finding.status}")
+    # The inject of the latest occurrence, so the orchestrator ties a finding back to the
+    # step that last produced it (search rows carry it as finding_inject.inject_id).
+    if finding.inject_id:
+        lines.append(f"  Inject: {finding.inject_id}")
+    if finding.asset_labels:
+        lines.append(f"  Assets: {', '.join(finding.asset_labels)}")
+    if finding.updated_at:
+        lines.append(f"  Last seen: {finding.updated_at}")
     return "\n".join(lines)
 
 

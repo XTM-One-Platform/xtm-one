@@ -13,7 +13,10 @@
  */
 import { Icon } from "@filigran/design-system";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TruncatedText } from "@/components/ui/truncated-text";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
+import { mayAnswerCaseGate } from "@/lib/ctem-access";
 import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseThreatPackage } from "@/hooks/api/useCtemCasesApi";
 import { useWorkItems } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
@@ -23,7 +26,7 @@ import { waitsForAnswer } from "@/lib/work-item-context";
 import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
 import { REVIEW_GATE, REVIEW_STAGE_LABEL, reviewAnswerer, reviewDecisionKey, reviewStage } from "./case-review";
 import { CaseSectionReason } from "./CaseSectionReason";
-import { GateDecisionRecord, gateRecordOf } from "./GateDecisionRecord";
+import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 
 export function CaseAnalystReview({
   caseId,
@@ -41,7 +44,7 @@ export function CaseAnalystReview({
   personName?: (id: string) => string | null;
 }) {
   const { t_i18n, intl } = useFormatter();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const gate = latestGate(history, REVIEW_GATE);
   // The decision record wins over the case event: an answered decision never reads as waiting (#1518).
   const record = gateRecordOf(gates, REVIEW_GATE);
@@ -68,13 +71,15 @@ export function CaseAnalystReview({
   return (
     <Card data-testid="ctem-case-analyst-review">
       <CardHeader>
-        <CardTitle>{t_i18n("Analyst review")}</CardTitle>
+        <CardTitle>
+          <CaseCardTitleText icon={CASE_SECTION_ICON.analyst_review}>{t_i18n("Analyst review")}</CaseCardTitleText>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
         {record && (
           <GateDecisionRecord
             record={record}
-            byLabel={record.answered_by?.name ? null : who}
+            byLabel={record.answered_by?.name ? null : (gateAnswererName(record, history, personName) ?? who)}
             testId="ctem-case-analyst-review-record"
           />
         )}
@@ -97,16 +102,24 @@ export function CaseAnalystReview({
           </div>
         )}
         {waiting && item && (
-          <WorkItemDecisionCard item={item} canAnswer={!item.is_company_managed || isAdmin} onAnswered={() => items.refetch()} />
+          <WorkItemDecisionCard item={item} canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
+              readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
+              onAnswered={() => items.refetch()}
+            />
         )}
-        {waiting && !item && !items.isLoading && (
+        {waiting && !item && !items.isLoading && record?.decision_filed === false && (
+          <p className="text-default-secondary" data-testid="ctem-case-analyst-review-not-filed">
+            {t_i18n("No review decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case, or an analyst sets the review label on the Grouping in OpenCTI.")}
+          </p>
+        )}
+        {waiting && !item && !items.isLoading && record?.decision_filed !== false && (
           <p className="text-default-secondary" data-testid="ctem-case-analyst-review-elsewhere">
             {t_i18n("The review waits for an analyst: the decision is in their Waiting for you list, or they set the review label on the Grouping in OpenCTI.")}
           </p>
         )}
         <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-case-threat-package">
           {stage === "not_started" && !gate && !record ? (
-            <CaseSectionReason own={t_i18n(REVIEW_STAGE_LABEL[stage])} source="opencti" testId="ctem-case-analyst-review-empty" />
+            <CaseSectionReason own={t_i18n(REVIEW_STAGE_LABEL[stage])} source="opencti" icon={CASE_SECTION_ICON.analyst_review} testId="ctem-case-analyst-review-empty" />
           ) : (
             <span className={stage === "not_started" ? "text-default-secondary" : undefined} data-testid="ctem-case-threat-package-stage">
               {t_i18n(REVIEW_STAGE_LABEL[stage])}
@@ -130,12 +143,12 @@ export function CaseAnalystReview({
                   className="inline-flex min-w-0 items-center gap-1 font-medium hover:underline"
                   data-testid="ctem-case-threat-package-link"
                 >
-                  <span className="truncate" title={name ?? undefined}>{name}</span>
+                  <TruncatedText text={name ?? ""} />
                   <Icon name="external-link" size={16} className="shrink-0" />
                   <span className="sr-only">{t_i18n("Open in OpenCTI")}</span>
                 </a>
               ) : (
-                <span className="min-w-0 truncate font-medium" title={name ?? undefined}>{name}</span>
+                <TruncatedText text={name ?? ""} className="font-medium" />
               )}
               {pkg.at && (
                 <span className="ml-auto whitespace-nowrap text-default-secondary">

@@ -436,6 +436,26 @@ class ToolNameResolver:
         self._names.add(name)
         self._keys.setdefault(normalize_tool_key(name), []).append(name)
 
+    def discard(self, name: str) -> None:
+        """Unregister *name* with its token key and the aliases that point to it.
+
+        The inverse of :meth:`add`, for a tool the run no longer carries (an
+        integration refreshed inside the turn that dropped an operation): the
+        resolver is mutated in place, so every holder of it (the gate, the
+        scoped executor) stops resolving the name at once.
+        """
+        if name not in self._names:
+            return
+        self._names.discard(name)
+        key = normalize_tool_key(name)
+        bucket = self._keys.get(key)
+        if bucket is not None:
+            bucket[:] = [registered for registered in bucket if registered != name]
+            if not bucket:
+                del self._keys[key]
+        for alias in [alias for alias, canonical in self._aliases.items() if canonical == name]:
+            del self._aliases[alias]
+
     def __contains__(self, name: object) -> bool:
         return name in self._names
 
@@ -1364,6 +1384,9 @@ class ToolDefinition:
     #: model sent them, while the round's other calls still run in parallel
     #: (#12182). A tool whose calls are independent leaves it ``False``.
     ordered_calls: bool = False
+    #: The tool's result is people's records (contacts, personnel): a
+    #: ``to_workset`` of it stores each item's reference, never the record.
+    personal_records: bool = False
     workspace_ingest: bool = False
     repository_archive: bool = False
     repository_file: bool = False
@@ -1391,6 +1414,10 @@ class ToolDefinition:
     #: are sent as links (:mod:`app.services.outbound_markers`). Empty: the
     #: body arguments of ``send_guard``.
     outbound_text: tuple[str, ...] = ()
+    #: The send tool delivers the ``[[FILE:id]]`` markers of its outbound
+    #: text itself (as file attachments): the outbound rewrite links every
+    #: other marker and leaves the file markers to the tool.
+    outbound_keeps_file_markers: bool = False
     #: A write tool's read-back: after it succeeds, the loop appends to its
     #: result the object as the system now shows it and the run's
     #: consistency anomalies (:mod:`app.tools.read_back`).
@@ -1435,6 +1462,10 @@ class ToolDefinition:
     #: out of the call's key (:func:`declared_cosmetic_arguments`). Never an
     #: argument that selects what the tool reads.
     cosmetic_arguments: tuple[str, ...] = ()
+    #: A successful call can change the integration tools of the running turn
+    #: (an integration's spec or credentials): the loop reloads its tool list
+    #: through the caller's refresher at the end of that step (#1874).
+    changes_tool_surface: bool = False
 
 
 def declared_cosmetic_arguments(definitions: Iterable[ToolDefinition] | None) -> dict[str, frozenset[str]]:
@@ -2647,8 +2678,10 @@ WORKSET_INGEST_GUIDE = (
 class WorksetIngestor(Protocol):
     """Where a ``to_workset`` call's result goes (``builtin_tools/workset.py``)."""
 
-    async def ingest(self, *, call: ToolCall, result: ToolResult, spec: object) -> ToolResult:
-        """The receipt the model gets instead of *result*'s content."""
+    async def ingest(
+        self, *, call: ToolCall, result: ToolResult, spec: object, personal_records: bool = False
+    ) -> ToolResult:
+        """The receipt the model gets instead of *result*'s content (*personal_records*: store references only)."""
         ...
 
 
@@ -3275,6 +3308,24 @@ class CompositeToolExecutor:
         if callable(on_composite):
             on_composite(self)
 
+    def remove_tools(self, names: Iterable[str]) -> None:
+        """Unregister *names*: their definitions, executors and resolver entries.
+
+        The counterpart of :meth:`add_tools` for a surface refreshed inside the
+        turn: an integration whose spec dropped an operation no longer offers
+        it, and a call to it is unknown rather than routed to a stale handler.
+        A name that is not registered is ignored.
+        """
+        gone = {name for name in names if name in self._executors}
+        if not gone:
+            return
+        for name in gone:
+            del self._executors[name]
+            self._ingest_definitions.pop(name, None)
+            self._workset_definitions.pop(name, None)
+            self.name_resolver.discard(name)
+        self._definitions = [d for d in self._definitions if d.name not in gone]
+
     @property
     def all_tools(self) -> list[ToolDefinition]:
         if self.workspace_sink is None and self.workset_ingestor is None:
@@ -3658,7 +3709,9 @@ class CompositeToolExecutor:
             result = await self._dispatch(inner, executor)
             if result.is_error:
                 return result
-            return await ingestor.ingest(call=inner, result=result, spec=spec)
+            return await ingestor.ingest(
+                call=inner, result=result, spec=spec, personal_records=definition.personal_records
+            )
         sink = self.workspace_sink
         if workspace_reference_keys(call.arguments):
             # ``$workspace:PATH`` arguments become the files' content here, the
@@ -3797,6 +3850,15 @@ class ScopedToolExecutor:
         self, inner: ToolExecutor, allowed: list[ToolDefinition]
     ) -> None:
         self._inner = inner
+        self._set_allowed(allowed)
+
+    def replace_allowed(self, allowed: list[ToolDefinition]) -> None:
+        """Swap the allowed set for *allowed*, the surface a refresh inside the
+        turn rebuilt through the caller's own filters: the scope never holds a
+        name the fresh surface dropped, nor misses one it added."""
+        self._set_allowed(allowed)
+
+    def _set_allowed(self, allowed: list[ToolDefinition]) -> None:
         # Exact / reordered / alias — the same rules the inner composite
         # dispatches with, applied to the ALLOWED subset only.
         self._allowed = ToolNameResolver()

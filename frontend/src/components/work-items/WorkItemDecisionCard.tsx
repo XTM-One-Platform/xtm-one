@@ -89,9 +89,12 @@ export function WorkItemDecisionCard({
   item,
   canAnswer,
   onAnswered,
+  readOnlyNote,
 }: {
   item: WorkItem;
   canAnswer: boolean;
+  /** Shown when the person cannot answer; defaults to the company-managed note. */
+  readOnlyNote?: string;
   /** Runs once the answer or an ask left: the detail dialog closes. */
   onAnswered?: () => void;
 }) {
@@ -130,7 +133,7 @@ export function WorkItemDecisionCard({
       canAnswer={canAnswer}
       pending={answer.isPending}
       onAnswer={(a) => void send(a)}
-      readOnlyNote={t_i18n("Only an administrator can answer a company-managed work item.")}
+      readOnlyNote={readOnlyNote ?? t_i18n("Only an administrator can answer a company-managed work item.")}
       testId="work-item-decision"
     >
       <WorkItemAskAgent item={item} onDone={onAnswered} />

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -574,6 +575,7 @@ def _group(quota_config):
         updated_at=None,
         quota_config=quota_config,
         kind="auto",
+        auto_join=False,
     )
 
 
@@ -598,6 +600,49 @@ async def test_put_group_stores_unlimited_explicitly(monkeypatch, api_stubs):
         "llm_proxy": _saved(_UNLIMITED),
     }
     assert out.quota_config == group.quota_config
+
+
+@pytest.mark.asyncio
+async def test_put_group_grants_and_removes_a_ctem_right(monkeypatch: pytest.MonkeyPatch, api_stubs: None) -> None:
+    """#1748: the CTEM right and its notification switch, audited; an unknown right is a 422."""
+    from fastapi import HTTPException
+
+    from app.api.v1 import groups as groups_api
+
+    audit = AsyncMock()
+    monkeypatch.setattr(groups_api, "log_audit", audit)
+    group = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="G",
+        description=None,
+        created_by=None,
+        created_at=None,
+        updated_at=None,
+        quota_config=None,
+        kind="auto",
+        auto_join=False,
+    )
+
+    async def put(body: groups_api.UpdateGroupRequest) -> groups_api.GroupListItem:
+        db = _db(_result(scalar=group), _result(count=1))
+        route: Any = _put
+        answer: groups_api.GroupListItem = await route(
+            groups_api.update_group, str(group.id), body, request=MagicMock(), admin=MagicMock(), db=db
+        )
+        return answer
+
+    out = await put(groups_api.UpdateGroupRequest(ctem_access="decide", ctem_notify=False))
+    assert group.ctem_access == "decide" and group.ctem_notify is False
+    assert out.ctem_access == "decide" and out.ctem_notify is False
+    assert audit.await_args is not None
+    assert audit.await_args.kwargs["details"]["ctem_access"] == "decide"
+
+    out = await put(groups_api.UpdateGroupRequest(ctem_access="none"))
+    assert group.ctem_access is None and out.ctem_access is None
+
+    with pytest.raises(HTTPException) as refused:
+        await put(groups_api.UpdateGroupRequest(ctem_access="admin"))
+    assert refused.value.status_code == 422
 
 
 @pytest.mark.asyncio

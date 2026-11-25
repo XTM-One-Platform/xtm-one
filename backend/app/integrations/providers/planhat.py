@@ -3,7 +3,9 @@
 """Planhat integration — Customer Success platform.
 
 API docs: https://www.planhat.com/developers/api/introduction
-Auth: Bearer token (API Access Token from Settings > Private Apps)
+Auth: Bearer token, either an OAuth Client access token (App Center > OAuth
+  Client; each person's own account, scoped to their Planhat role) or a
+  Private App API Access Token (user-agnostic). Both reach the same endpoints.
 Base URL: https://api.planhat.com
 
 Planhat field reference (commonly confused):

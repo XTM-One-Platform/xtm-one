@@ -18,7 +18,7 @@ from app.core.utils import safe_uuid
 from app.llm.provider_access import providers_excluding_group
 from app.models.group import GROUP_KINDS, Group, GroupManager, GroupMember
 from app.models.user import User
-from app.services import group_ai_access
+from app.services import ctem_access, group_ai_access
 from app.services.audit import log_audit
 from app.services.group_managers import managed_groups, team_member_clause
 from app.services.quota import legacy_quota_notices, read_override_config
@@ -48,8 +48,16 @@ class UpdateGroupRequest(BaseModel):
     ai_enabled: bool | None = None
     # What the group is for the analytics: one of `GROUP_KINDS`.
     kind: str | None = None
+    # The CTEM right granted to the members (`services/ctem_access.py`):
+    # `view`, `decide`, or `none` to remove it; `null` or omitted leaves it.
+    ctem_access: str | None = None
+    # With `decide`: notify the members of the case gates (`null` leaves it).
+    ctem_notify: bool | None = None
+    # People who sign in through single sign-on join the group at every sign-in
+    # (`services/group_auto_join.py`); `null` or omitted leaves it.
+    auto_join: bool | None = None
 
-    _fit_columns = column_length_validator(Group, "name", "kind", stripped=True)
+    _fit_columns = column_length_validator(Group, "name", "kind", "ctem_access", stripped=True)
 
 
 class GroupListItem(BaseModel):
@@ -61,6 +69,9 @@ class GroupListItem(BaseModel):
     quota_config: dict | None = None
     ai_enabled: bool = True
     kind: str = "auto"
+    ctem_access: str | None = None
+    ctem_notify: bool = True
+    auto_join: bool = False
     created_at: str
     updated_at: str
 
@@ -112,6 +123,9 @@ class GroupDetailResponse(BaseModel):
     quota_notices: dict[str, str] = {}
     ai_enabled: bool = True
     kind: str = "auto"
+    ctem_access: str | None = None
+    ctem_notify: bool = True
+    auto_join: bool = False
     created_at: str
     updated_at: str
 
@@ -280,6 +294,9 @@ async def list_groups(
             member_count=mc or 0,
             created_by=str(g.created_by) if g.created_by else None,
             kind=g.kind or "auto",
+            ctem_access=ctem_access.group_ctem_access(g),
+            ctem_notify=ctem_access.group_ctem_notify(g),
+            auto_join=bool(g.auto_join),
             created_at=g.created_at.isoformat() if g.created_at else "",
             updated_at=g.updated_at.isoformat() if g.updated_at else "",
         )
@@ -343,6 +360,9 @@ async def get_group(
         quota_notices=await legacy_quota_notices(db, group.quota_config, tier="group"),
         ai_enabled=group_ai_access.group_ai_enabled(group),
         kind=group.kind or "auto",
+        ctem_access=ctem_access.group_ctem_access(group),
+        ctem_notify=ctem_access.group_ctem_notify(group),
+        auto_join=bool(group.auto_join),
         created_at=group.created_at.isoformat() if group.created_at else "",
         updated_at=group.updated_at.isoformat() if group.updated_at else "",
     )
@@ -668,16 +688,42 @@ async def update_group(
             raise HTTPException(status_code=422, detail=f"A group's kind must be one of {', '.join(GROUP_KINDS)}.")
         group.kind = kind
 
+    ctem_change: dict[str, object] = {}
+    if "ctem_access" in body.model_fields_set and body.ctem_access is not None:
+        try:
+            right = ctem_access.normalize_right(body.ctem_access)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+        if right != ctem_access.group_ctem_access(group):
+            ctem_change["ctem_access"] = right
+            ctem_change["previous_ctem_access"] = ctem_access.group_ctem_access(group)
+            group.ctem_access = right
+    if body.ctem_notify is not None and body.ctem_notify != ctem_access.group_ctem_notify(group):
+        ctem_change["ctem_notify"] = body.ctem_notify
+        group.ctem_notify = body.ctem_notify
+    # No cache to drop: the CTEM reach is read on every call (signal members included).
+
+    auto_join_change: dict[str, bool] | None = None
+    if body.auto_join is not None and body.auto_join != bool(group.auto_join):
+        # Audited with the value it replaces; it grants memberships at the next
+        # single sign-on of each person, none now.
+        auto_join_change = {"auto_join": body.auto_join, "previous_auto_join": bool(group.auto_join)}
+        group.auto_join = body.auto_join
+
     await db.flush()
 
     # A request that also changes the name, description or quotas keeps the
     # generic summary, so the AI switch never hides the rest of the update.
     other_fields = sorted(body.model_fields_set - {"ai_enabled"})
     summary = f"Updated group '{group.name}'"
-    details: dict | None = None
+    details: dict[str, Any] | None = dict(ctem_change) if ctem_change else None
+    if auto_join_change:
+        details = {**(details or {}), **auto_join_change}
+        if not (body.model_fields_set - {"auto_join"}):
+            summary = f"Switched auto join {'on' if auto_join_change['auto_join'] else 'off'} for group '{group.name}'"
     if ai_change:
         ai_text = "on" if ai_change["ai_enabled"] else "off"
-        details = dict(ai_change)
+        details = {**(details or {}), **ai_change}
         if other_fields:
             summary += f" and switched AI {ai_text}"
         else:
@@ -712,6 +758,9 @@ async def update_group(
         quota_config=read_override_config(group.quota_config),
         ai_enabled=group_ai_access.group_ai_enabled(group),
         kind=group.kind or "auto",
+        ctem_access=ctem_access.group_ctem_access(group),
+        ctem_notify=ctem_access.group_ctem_notify(group),
+        auto_join=bool(group.auto_join),
         created_at=group.created_at.isoformat() if group.created_at else "",
         updated_at=group.updated_at.isoformat() if group.updated_at else "",
     )

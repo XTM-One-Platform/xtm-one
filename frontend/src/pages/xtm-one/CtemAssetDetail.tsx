@@ -20,6 +20,7 @@ import { type CtemCaseSummary, useCtemCasesForAsset } from "@/hooks/api/useCtemC
 import { useOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import {
   useCanonicalAsset,
+  useDeleteAssetRecords,
   useImportAssetSbom,
   useRecordAssetDecision,
   type AssetSoftware,
@@ -30,9 +31,10 @@ import { useFormatter } from "@/i18n";
 import { CasePriorityChip, CaseStateChip } from "./ctem/cases-shared";
 import { EntityPageHeader } from "@/components/ui/entity-page-header";
 import { AssetOverviewCard, AssetSection } from "./ctem/AssetOverview";
-import { recordRefs } from "./ctem/inventory-entries";
+import { deletableRows, recordRefs } from "./ctem/inventory-entries";
+import { InventoryDeleteAction } from "./ctem/InventoryDeleteAction";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
-import { INVENTORY_PATH, assetGroupPath, isCodeRepository, softwarePath, sourceLabel } from "./ctem/inventory";
+import { INVENTORY_PATH, assetGroupPath, isCodeRepository, primaryAssetPath, softwarePath, sourceLabel } from "./ctem/inventory";
 import { CategoryMark, SourceLogo } from "./ctem/inventory-icons";
 
 /** The Software (or Dependencies) table opens at 25 rows, the platform's page size; the picker changes it. */
@@ -66,11 +68,27 @@ export default function CtemAssetDetail() {
   // Update from the asset page (#1367, point 2; row APIs since #1543): the asset records behind it, synced fields locked.
   const [entryDialog, setEntryDialog] = useState<EntryDialogMode | null>(null);
   const rowRefs = data ? recordRefs([data]) : [];
+  // Delete (#1729): only an asset every record of which was entered by hand; a synced record comes back with its sync.
+  const removeRecords = useDeleteAssetRecords();
+  const handOnly = rowRefs.length > 0 && deletableRows(rowRefs).locked === 0;
+  const onDelete = () => {
+    if (!data) return;
+    removeRecords.mutate(
+      { ids: rowRefs.map((r) => r.id), assetIds: [data.id] },
+      {
+        onSuccess: () => {
+          toast({ title: t_i18n("Asset deleted"), variant: "success" });
+          navigate(INVENTORY_PATH);
+        },
+        onError: (error) => toast({ title: t_i18n("Nothing was deleted"), description: error.message, variant: "error" }),
+      },
+    );
+  };
 
   const openCases = (cases.data?.cases ?? []).filter((c) => OPEN_STATES.has(c.state));
   const nameKey = (data?.name ?? "").trim().toLowerCase();
   const jewels = nameKey
-    ? (context?.profile.crown_jewels ?? []).filter((j) => (j.asset_names ?? []).some((n) => n.trim().toLowerCase() === nameKey))
+    ? (context?.profile.primary_assets ?? []).filter((j) => (j.asset_names ?? []).some((n) => n.trim().toLowerCase() === nameKey))
     : [];
 
   const onSbom = (file: File | undefined) => {
@@ -264,15 +282,27 @@ export default function CtemAssetDetail() {
           ) : undefined
         }
         actions={
-          isAdmin && rowRefs.length > 0 ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setEntryDialog(rowRefs.length === 1 ? { kind: "update", id: rowRefs[0].id } : { kind: "bulk", rows: rowRefs })}
-              data-testid="ctem-asset-update"
-            >
-              {t_i18n("Update")}
-            </Button>
+          isAdmin && data && rowRefs.length > 0 ? (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setEntryDialog(rowRefs.length === 1 ? { kind: "update", id: rowRefs[0].id } : { kind: "bulk", rows: rowRefs })}
+                data-testid="ctem-asset-update"
+              >
+                {t_i18n("Update")}
+              </Button>
+              {handOnly && (
+                <InventoryDeleteAction
+                  name={data.name}
+                  title={t_i18n("Delete the asset \"{name}\"?", { name: data.name })}
+                  description={t_i18n("This asset was entered by hand: it leaves the inventory and its asset groups.")}
+                  pending={removeRecords.isPending}
+                  onConfirm={onDelete}
+                  testId="ctem-asset-delete"
+                />
+              )}
+            </>
           ) : undefined
         }
       />
@@ -313,7 +343,7 @@ export default function CtemAssetDetail() {
         <ul className="flex flex-wrap gap-2" data-testid="ctem-asset-jewels">
           {jewels.map((j) => (
             <li key={j.name}>
-              <Link to="/settings/organization?card=crown_jewels" className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
+              <Link to={primaryAssetPath(j.name)} className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
                 <Icon name="gem" size={16} className="text-default-secondary" aria-hidden />
                 {j.name}
               </Link>

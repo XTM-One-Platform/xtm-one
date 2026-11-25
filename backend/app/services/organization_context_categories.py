@@ -14,7 +14,7 @@
 """The categories of the organization context, and how an agent resolves them (#11533).
 
 The profile has a short identity (name, sector, regions, size, risk
-appetite) and long lists: the crown jewels, the software, the AI systems,
+appetite) and long lists: the primary assets, the software,
 the PIRs, the tracked organizations. The identity is always in the prompt
 (``organization_context_injection``); a list is a CATEGORY: announced in the
 prompt with its size, preloaded only when the cascade selects it, and read
@@ -62,7 +62,7 @@ _LABELS: dict[str, str] = {
     "shipped_products": "shipped products",
     "prioritization_policy": "prioritization policy",
     "attack_surface": "attack surface pass: enabled, provider integrations, cadence",
-    "tech_stack": "software: vendor, product, type, versions, CPE, asset count",
+    "software": "software: vendor, product, type, versions, CPE, asset count",
     ENTERPRISE_KNOWLEDGE: "procedures and reference documents, read by query",
 }
 #: Rows a page answers by default, and at most.
@@ -82,26 +82,17 @@ class Category:
 
 
 #: The profile field the Software category reads before the store is built (#1495).
-SOFTWARE_FIELD = "tech_stack"
-#: The category of the organization's software (#1495): the Software entity, ``tech_stack`` its deprecated alias.
+SOFTWARE_FIELD = "software"
+#: The category of the organization's software (#1495): the Software entity. No alias (Sam, 24 Nov 2026).
 SOFTWARE = "software"
-#: Deprecated since #1495 (kept one release): ``tech_stack`` answers the ``software`` category.
-TECH_STACK_ALIAS = "tech_stack"
-#: The profile field the primary assets are stored under (#1591: OpenCRQ's primary assets, the stored key kept).
-PRIMARY_ASSETS_FIELD = "crown_jewels"
-#: The category of the organization's primary assets (#1591), in OpenCRQ's words.
+#: The category of the organization's primary assets (#1591), in OpenCRQ's words, and its profile field.
+#: No alias (#1844, Sam, 24 Nov 2026).
 PRIMARY_ASSETS = "primary_assets"
-#: Deprecated since #1591 (kept one release): ``crown_jewels`` answers the ``primary_assets`` category.
-CROWN_JEWELS_ALIAS = "crown_jewels"
-#: Each deprecated category name, to the category it answers.
-CATEGORY_ALIASES: dict[str, str] = {TECH_STACK_ALIAS: SOFTWARE, CROWN_JEWELS_ALIAS: PRIMARY_ASSETS}
 
 
 def _category_name(field: str) -> str:
     if field == SOFTWARE_FIELD:
         return SOFTWARE
-    if field == PRIMARY_ASSETS_FIELD:
-        return PRIMARY_ASSETS
     # ``pir_ids`` is read as ``pirs``: a category names what it lists.
     return field[: -len("_ids")] + "s" if field.endswith("_ids") else field
 
@@ -139,23 +130,13 @@ def available_names() -> tuple[str, ...]:
     return tuple(category.name for category in available())
 
 
-#: Deprecated since #1501 (kept one release): ``ai_systems`` reads the assets of category ``ai_target``.
-AI_SYSTEMS_ALIAS = Category(
-    "ai_systems", "assets_exposure", "AI systems (deprecated: the assets of category ai_target)"
-)
-
-
 def canonical_name(name: object) -> str:
-    """*name* lower-cased, a deprecated alias read as the category it answers (``crown_jewels`` -> ``primary_assets``)."""
-    wanted = str(name or "").strip().lower()
-    return CATEGORY_ALIASES.get(wanted, wanted)
+    """*name* lower-cased and stripped."""
+    return str(name or "").strip().lower()
 
 
 def get(name: str) -> Category | None:
-    wanted = canonical_name(name)
-    if wanted == AI_SYSTEMS_ALIAS.name:
-        return AI_SYSTEMS_ALIAS
-    return _BY_NAME.get(wanted)
+    return _BY_NAME.get(canonical_name(name))
 
 
 def normalize_categories(value: object) -> list[str]:
@@ -224,8 +205,6 @@ def rows_of(profile: OrganizationProfile, category: Category) -> list[Any]:
     if category.field == "attack_surface":
         return attack_surface_rows(profile)
     values = getattr(profile, category.field, None) or []
-    if category is AI_SYSTEMS_ALIAS:
-        values = [v for v in values if getattr(v, "category", "") == "ai_target"]
     if category.field == "pir_ids":
         # #1773: each PIR with what the organization says about it, when it says something.
         rows: list[Any] = []
@@ -275,6 +254,7 @@ def tracked_rows(organizations: list[Any]) -> list[dict[str, Any]]:
             "relationship": o.relationship,
             "criticality": o.criticality,
             "monitoring": o.monitoring,
+            "opencti_organization_id": getattr(o, "opencti_organization_id", None),
         }
         for o in organizations
         if getattr(o, "role", None) == "tracked"

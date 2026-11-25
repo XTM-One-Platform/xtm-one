@@ -16,20 +16,22 @@ with AI off, like the posture they come from.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_admin
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import async_session, get_db
 from app.core.redis import redis_client
 from app.models.ctem_case import CASE_STATES
 from app.models.user import User
+from app.services import ctem_access
 from app.services import ctem_case_audit_view as case_audit_view
 from app.services import ctem_case_gate_records_view as case_gates_view
 from app.services import ctem_case_loop as case_loop
@@ -74,8 +76,6 @@ class CaseValidation(BaseModel):
     result: Literal["passed", "not_exposed", "failed", "pending"]
     mitigation_only: bool = False
     note: str | None = Field(default=None, max_length=500)
-    #: CTEM-12: only read-only injects ran (true), a non-read-only one ran (false), unknown (None).
-    safe_mode: bool | None = None
     #: The target asset groups in the order they were tested.
     run_order: list[str] | None = Field(default=None, max_length=20)
     #: #1500: remediation (a version inventory) or validation (a test); a patch or upgrade case resolves
@@ -138,15 +138,32 @@ def _with_history(running: dict[str, Any] | None, events: list[Any]) -> dict[str
 
 
 async def visible_case(
-    db: AsyncSession, case_id: uuid.UUID, user_id: str, vertical: str
+    db: AsyncSession, case_id: uuid.UUID, user_id: str, vertical: str, *, read_only: bool = False
 ) -> tuple[Any, dict[str, Any]] | None:
-    """The stored case and its rendering for *user_id*, ``None`` when they see none of its issues."""
+    """The stored case and its rendering for *user_id*, ``None`` when they see none of its issues.
+
+    *read_only* (the case page's read, #1986) lets a view retired by a generation bump
+    answer for this case's members while the new one builds; a change always reads the
+    view of the current generation.
+    """
     found = await store.get_case(db, case_id, organization_id=await _organization_id(db))
     if found is None:
         return None
     case, rows, events = found
-    rendered = view_of.hydrate(case, rows, events, await view_of.viewer_view(db, user_id, vertical))
-    return None if rendered is None else (found, rendered)
+    members = [f"{r.source}:{r.external_id}" for r in rows] if read_only else None
+    view = await view_of.viewer_view(db, user_id, vertical, members=members)
+    rendered = view_of.hydrate(case, rows, events, view)
+    if rendered is None:
+        return None
+    # The list's asset-count rule on the single read (#1704): list and case read agree.
+    version_history.with_asset_count(rendered, events)
+    return found, rendered
+
+
+async def require_acts_on(db: AsyncSession, user: User, rows: list[Any], vertical: str) -> None:
+    """403 when *user* sees the case only through a CTEM view right (#1748): read, never change."""
+    if not await view_of.acts_on_case(db, user, rows, vertical):
+        raise HTTPException(status_code=403, detail=ctem_access.VIEW_ONLY_MESSAGE)
 
 
 async def check_owner_sees(db: AsyncSession, rows: list[Any], owner_user_id: uuid.UUID | None, vertical: str) -> None:
@@ -164,16 +181,22 @@ async def list_ctem_cases(
     priority: Literal["critical", "high", "medium", "low"] | None = Query(default=None),
     owner_user_id: uuid.UUID | None = Query(default=None),
     asset: str | None = Query(default=None, max_length=300),
+    primary_asset: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=store.MAX_PAGE),
     offset: int = Query(default=0, ge=0),
+    *,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """One page of the cases the caller sees and their counts by state (the board and the list).
 
     ``asset`` keeps the cases on one asset (an issue the caller sees names it): the asset page's cases.
+    ``primary_asset`` keeps the cases one of whose issues reaches that primary asset (#1980 S2).
+    The ``Server-Timing`` header names the time of each phase (#1986).
     """
     _require_xtm_one()
+    phases = view_of.start_timing()
     vertical = normalize_vertical(vertical or getattr(user, "ctem_vertical", None))
     primary = await get_primary(db)
     if primary is None:
@@ -184,14 +207,17 @@ async def list_ctem_cases(
             "counts": {s: 0 for s in CASE_STATES},
             "cases": [],
             "details_unavailable": [],
+            "details_unavailable_reasons": {},
             "ticketing": {"connected": False, "reason": ticketing.NOT_CONNECTED, "settings": ticketing.SETTINGS_PATH},
         }
     # Cases stay current with no button (s.4.3): a viewer whose last recompute is
     # older than the interval gets one in the background; the list re-reads on its frame.
     from app.services import ctem_cases_refresh as refresh
 
-    await refresh.refresh_on_open(db, organization_id=primary.id, user_id=str(user.id), vertical=vertical)
-    cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
+    async with view_of.timed("refresh"):
+        await refresh.refresh_on_open(db, organization_id=primary.id, user_id=str(user.id), vertical=vertical)
+    async with view_of.timed("cases"):
+        cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
     view = await view_of.viewer_view(db, str(user.id), vertical)
     rows, counts = view_of.list_for_viewer(
         cases,
@@ -200,6 +226,7 @@ async def list_ctem_cases(
         owner_user_id=str(owner_user_id) if owner_user_id else None,
         priority=priority,
         asset=asset,
+        primary_asset=primary_asset,
         limit=limit,
         offset=offset,
     )
@@ -207,24 +234,32 @@ async def list_ctem_cases(
     # phase, the Kanban lays its columns out by it, a case waiting for decision says on whom.
     from app.services import ctem_case_delete as case_delete
 
-    history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
+    async with view_of.timed("history"):
+        history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
     for row in rows:
         row.update(view_of.case_position(history.get(uuid.UUID(row["id"]), []), view))
         # How the case came to be (#1723): the list's "Opened by" filter, the same reading as bulk-delete.
         row["opened_by"] = case_delete.origin(history.get(uuid.UUID(row["id"]), []))
         # Issues that name no asset: the inventory count, else "unknown" with its reason (#1694).
         version_history.with_asset_count(row, history.get(uuid.UUID(row["id"]), []))
-    return {
+    body = {
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
         "cases": rows,
+        # The open cases the caller sees none of (a count only): the list is never the org total.
+        "hidden_cases": view_of.hidden_case_count(cases, view),
         "details_unavailable": view.missing,
+        # Why each of those products did not answer this viewer's read (#1852): rejected, too_large,
+        # timeout, not_connected or unavailable, so the empty state says what failed.
+        "details_unavailable_reasons": {p: view.reasons.get(p, "unavailable") for p in view.missing},
         # Whether a ticketing target is declared (CTEM-19-UI, #1032): the case
         # screens say "No ticketing connected" with the settings link.
         "ticketing": await ticketing.ticketing_target(db),
         # When the cases were last recomputed, and a product that did not answer since (s.4.3).
         "freshness": await refresh.freshness(vertical),
     }
+    response.headers["Server-Timing"] = view_of.server_timing(phases)
+    return body
 
 
 async def _apply_update(
@@ -273,6 +308,9 @@ async def bulk_update_ctem_cases(
             failed.append({"id": str(case_id), "reason": "Case not found"})
             continue
         (case, rows, _), _ = shown
+        if not await view_of.acts_on_case(db, user, rows, vertical):
+            failed.append({"id": str(case_id), "reason": ctem_access.VIEW_ONLY_MESSAGE})
+            continue
         try:
             await _apply_update(db, case, rows, change, user, vertical)
         except rules.CaseRuleError as exc:
@@ -296,6 +334,10 @@ async def split_ctem_case(
     vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
     organization_id = await _organization_id(db)
     view = await view_of.viewer_view(db, str(user.id), vertical)
+    visible = set(view.open_ids)
+    if await ctem_access.level(db, user) == "view":
+        # A CTEM view right is strictly read only (#1748).
+        raise HTTPException(status_code=403, detail=ctem_access.VIEW_ONLY_MESSAGE)
     pending = case_loop.PendingEvents()
     try:
         case = await store.create_manual_case(
@@ -304,7 +346,7 @@ async def split_ctem_case(
             vertical=vertical,
             title=body.title,
             member_ids=body.issue_ids,
-            visible=set(view.open_ids),
+            visible=visible,
             actor=str(user.id),
             reason=(body.reason or "").strip() or None,
             events=pending,
@@ -333,8 +375,10 @@ async def merge_ctem_cases(
     _require_xtm_one()
     vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
     for case_id in [body.target_id, *body.case_ids]:
-        if await visible_case(db, case_id, str(user.id), vertical) is None:
+        found = await visible_case(db, case_id, str(user.id), vertical)
+        if found is None:
             raise HTTPException(status_code=404, detail="Case not found")
+        await require_acts_on(db, user, found[0][1], vertical)
     try:
         await store.merge_cases(
             db,
@@ -368,12 +412,21 @@ class CaseBulkDelete(BaseModel):
 
 
 async def _delete(db: AsyncSession, admin: User, cases: list[Any], reason: str | None, dry_run: bool) -> dict[str, Any]:
+    from sqlalchemy.exc import DBAPIError
+
     from app.services import ctem_case_delete as case_delete
 
-    result = await case_delete.delete_cases(db, cases, actor=admin, reason=reason, dry_run=dry_run)
-    # A dry run writes nothing, so the commit is a no-op there.
-    await db.commit()
-    return result
+    try:
+        result = await case_delete.delete_cases(db, cases, actor=admin, reason=reason, dry_run=dry_run)
+        # A dry run writes nothing, so the commit is a no-op there.
+        await db.commit()
+    except DBAPIError as exc:
+        await db.rollback()
+        if case_delete.is_lock_wait(exc):
+            raise HTTPException(status_code=409, detail=case_delete.LOCK_BUSY_DETAIL) from exc
+        raise
+    # The released signals are decided again after the commit, outside this request (#1950).
+    return case_delete.hand_off_released(result)
 
 
 @router.post("/bulk-delete")
@@ -465,7 +518,11 @@ async def recompute_ctem_cases(
         raise HTTPException(status_code=429, detail="One recompute per minute: try again shortly")
     from app.services import ctem_cases_refresh as refresh
 
-    return await refresh.recompute_as(db, organization_id=organization_id, user_id=str(user.id), vertical=vertical)
+    answer = await refresh.recompute_as(db, organization_id=organization_id, user_id=str(user.id), vertical=vertical)
+    if answer.get("busy"):
+        # One recompute at a time per organization (#1953): never a second one queued behind it.
+        raise HTTPException(status_code=409, detail="A recompute of the cases is already running: try again shortly")
+    return answer
 
 
 async def recompute_slot(user_id: str, vertical: str) -> bool:
@@ -501,7 +558,7 @@ async def ctem_loop_measures(
     seen = [case for case, rows in cases if view_of.summary(case, rows, view) is not None]
     ids = [case.id for case in seen]
     events = await store.events_of(db, ids)
-    reader = None if getattr(user, "is_admin", False) else str(user.id)
+    reader = await ctem_access.signal_reader(db, user)
     observed = await signal_store.observed_by_case(db, ids, organization_id=primary.id, recorded_by=reader)
     return {"vertical": vertical, "measures": measures.summarize(seen, events, observed)}
 
@@ -531,36 +588,134 @@ async def ctem_cases_overview(
     return {"vertical": vertical, **overview.build(cases, view, history)}
 
 
-@router.get("/{case_id}")
-async def get_ctem_case(
-    case_id: uuid.UUID,
+class CaseOpening(BaseModel):
+    """Turn CTEM case opening on or off (#1951)."""
+
+    on: bool
+    vertical: str | None = None
+
+
+@router.get("/opening")
+async def get_ctem_case_opening(
+    vertical: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """One case as the caller sees it: its fix, their visible issues, Restricted rows, its history."""
+    """Whether case opening runs, and how many confirmed signals wait for their case (#1951).
+
+    Answers ``{vertical, on, waiting}`` to anyone who reads CTEM cases.
+    """
     _require_xtm_one()
+    from app.services import ctem_case_opening as case_opening
+
+    return await case_opening.state(db, normalize_vertical(vertical))
+
+
+@router.put("/opening")
+async def put_ctem_case_opening(
+    body: CaseOpening,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Pause or resume case opening, administrators only (#1951).
+
+    Off: no path opens a case; confirmed signals wait. On: a background drain opens the
+    cases of every waiting signal at once. One audit row and one
+    ``ctem_case.opening_changed`` event per change; the same value again changes nothing.
+    Answers ``{vertical, on, waiting, changed, draining}``.
+    """
+    _require_xtm_one()
+    from app.services import ctem_case_opening as case_opening
+    from app.services.platform_events import publish
+
+    vertical = normalize_vertical(body.vertical)
+    changed = await case_opening.set_opening(db, vertical=vertical, on=body.on, actor=admin)
+    await db.commit()
+    current = await case_opening.state(db, vertical)
+    if changed:
+        await publish(
+            case_opening.OPENING_CHANGED,
+            case_opening.event_data(vertical, body.on, admin, current["waiting"]),
+        )
+    draining = bool(body.on and current["waiting"])
+    if draining:
+        case_opening.start_drain(vertical)
+    return {**current, "changed": changed, "draining": draining}
+
+
+@router.get("/{case_id}")
+async def get_ctem_case(
+    case_id: uuid.UUID,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One case as the caller sees it: its fix, their visible issues, Restricted rows, its history.
+
+    The ``Server-Timing`` header names the time of each phase and whether the
+    viewer's view came from the cache (#1986).
+    """
+    _require_xtm_one()
+    phases = view_of.start_timing()
     vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
-    shown = await visible_case(db, case_id, str(user.id), vertical)
+    async with view_of.timed("case"):
+        shown = await visible_case(db, case_id, str(user.id), vertical, read_only=True)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
     (case, _, events), rendered = shown
-    # The audit trail (#1490): each event with its CTEM phase, autonomy class and actor, and the phases.
-    audit = await case_audit_view.audit_trail(db, rendered.get("history") or [], viewer_id=user.id)
-    # One resolved decision record per gate (#1518): the decision row joined with the gate events;
-    # the waiting gate events of the history carry the same record in ``answer``.
-    gate_records = await case_gates_view.gate_records(db, str(case.id), audit["history"], viewer_id=user.id)
-    return {
-        **rendered,
-        **audit,
-        "gates": gate_records,
-        # The versions the case's product runs on the assets (#1252), never a typed tech stack version.
-        "running_versions": _with_history(await case_versions.for_case(db, case), events),
-        # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
-        "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
-        "ticketing": await ticketing.ticketing_target(db),
-        # The fleet that runs the case (#1390): {slug, name, active}; active false = no active fleet owns it.
-        "owner_fleet": await case_routing.owner_view(db, case),
-    }
+    async with view_of.timed("details"):
+        trail, inventory, settings_of = await asyncio.gather(
+            _trail_of(db, case, rendered, user.id),
+            _inventory_of(case, rendered, events),
+            _settings_of(case),
+        )
+    body = {**rendered, **trail, **inventory, **settings_of}
+    response.headers["Server-Timing"] = view_of.server_timing(phases)
+    return body
+
+
+#: The session the case page's independent detail reads open (#1986): each group of reads runs on
+#: its own connection, concurrently with the others, instead of one after the other on the request's.
+detail_session = async_session
+
+
+async def _trail_of(db: AsyncSession, case: Any, rendered: dict[str, Any], viewer_id: uuid.UUID) -> dict[str, Any]:
+    """The audit trail and the gate records, on the request's session (the records extend the trail)."""
+    async with view_of.timed("details-trail"):
+        # The audit trail (#1490): each event with its CTEM phase, autonomy class and actor, and the phases.
+        audit = await case_audit_view.audit_trail(db, rendered.get("history") or [], viewer_id=viewer_id)
+        # One resolved decision record per gate (#1518): the decision row joined with the gate events;
+        # the waiting gate events of the history carry the same record in ``answer``.
+        gate_records = await case_gates_view.gate_records(db, str(case.id), audit["history"], viewer_id=viewer_id)
+    return {**audit, "gates": gate_records}
+
+
+async def _inventory_of(case: Any, rendered: dict[str, Any], events: list[Any]) -> dict[str, Any]:
+    """The inventory reads of the case, on a session of their own."""
+    async with view_of.timed("details-inventory"), detail_session() as db:
+        # #2047: an upgrade case issue whose source names no host lists the assets running the product.
+        issues = rendered.get("issues") or []
+        if any(not i.get("restricted") and not i.get("assets") for i in issues):
+            # Copies, so a cached view is never changed in place.
+            issues = [dict(i) for i in issues]
+            if case_versions.attribute_assets(issues, await case_versions.running_asset_names(db, case)):
+                rendered["issues"] = issues
+        return {
+            # The versions the case's product runs on the assets (#1252), never a typed software version.
+            "running_versions": _with_history(await case_versions.for_case(db, case), events),
+            # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
+            "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
+        }
+
+
+async def _settings_of(case: Any) -> dict[str, Any]:
+    """The ticketing target and the owner fleet of the case, on a session of their own."""
+    async with view_of.timed("details-settings"), detail_session() as db:
+        return {
+            "ticketing": await ticketing.ticketing_target(db),
+            # The fleet that runs the case (#1390): {slug, name, active}; active false = no active fleet owns it.
+            "owner_fleet": await case_routing.owner_view(db, case),
+        }
 
 
 @router.delete("/{case_id}")
@@ -595,6 +750,7 @@ async def update_ctem_case(
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
     (case, rows, _), _ = shown
+    await require_acts_on(db, user, rows, vertical)
     try:
         await _apply_update(db, case, rows, body, user, vertical)
     except rules.CaseRuleError as exc:
@@ -623,7 +779,8 @@ async def record_ctem_case_validation(
     shown = await visible_case(db, case_id, str(user.id), vertical)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
-    (case, _rows, _), _ = shown
+    (case, rows, _), _ = shown
+    await require_acts_on(db, user, rows, vertical)
     pending = case_loop.PendingEvents()
     try:
         await case_loop.record_validation(
@@ -635,7 +792,6 @@ async def record_ctem_case_validation(
             result=body.result,
             mitigation_only=body.mitigation_only,
             note=body.note,
-            safe_mode=body.safe_mode,
             run_order=body.run_order,
             evidence_type=body.evidence_type,
             actor=str(user.id),

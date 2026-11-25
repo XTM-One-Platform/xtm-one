@@ -1,11 +1,13 @@
-"""A pipeline tool ref loads the integration it pins, as it always did.
+"""A pipeline tool ref loads the integration it pins for whoever may use it.
 
 A prepare / finalize tool ref may pin an ``integration_id``. The pin is checked
 when it is WRITTEN (``integration_credentials.pipeline_refs_refusal``: a writer
-may only pin an integration they can see, ``test_pipeline_ref_writes``); at run
-time the pipeline loads the pinned integration by id, whoever the turn's user
-is - nothing is withheld at run time (maintainer decision of 2026-09-27). A pin naming no connected integration falls back to
-per-user resolution for the provider.
+may only pin an integration they can see, ``test_pipeline_ref_writes``). At run
+time the agent's owner, and a run with no person (the owner's own), load the
+pin by id; anyone else loads it only when they may use it as a direct binding
+(``shadow_invisible_bindings``: visible to them, or lent by the agent), and
+otherwise gets their own integration of the provider. A pin naming no connected
+integration falls back to per-user resolution for the provider.
 """
 
 from __future__ import annotations
@@ -46,13 +48,12 @@ def _build(monkeypatch):
 @pytest.mark.parametrize(
     "user_id",
     [
-        pytest.param(str(COLLEAGUE_ID), id="identified_user"),
+        pytest.param(str(OWNER_ID), id="the_owner"),
         pytest.param("anonymous", id="anonymous_turn"),
     ],
 )
 @pytest.mark.parametrize("auth_type", ["api_key", "oauth"])
-async def test_worked_on_main_a_pinned_integration_is_loaded_by_id(_build, user_id, auth_type):
-    """A pin the turn's user cannot see, a personal OAuth token included, still loads."""
+async def test_the_owner_s_own_run_loads_the_pin_by_id(_build, user_id, auth_type):
     pinned = make_integration(auth_type=auth_type)
     mine = make_integration(user_id=COLLEAGUE_ID, auth_type="api_key")
 
@@ -63,6 +64,20 @@ async def test_worked_on_main_a_pinned_integration_is_loaded_by_id(_build, user_
     assert loaded is not None
     assert _build.await_args.args[1] == {"slack": [str(pinned.id)]}
     assert "credential_user_id" not in _build.await_args.kwargs["context"]
+
+
+@pytest.mark.parametrize("auth_type", ["api_key", "oauth"])
+async def test_a_pin_someone_else_may_not_use_gives_them_their_own(_build, auth_type):
+    """The owner's pin the turn's user cannot see, a personal OAuth token included, is not used."""
+    pinned = make_integration(auth_type=auth_type)
+    mine = make_integration(user_id=COLLEAGUE_ID, auth_type="api_key")
+
+    loaded = await agent_chat._load_pipeline_tool_standalone(
+        FakeSession({Integration: [pinned, mine]}), _ref(str(pinned.id)), str(COLLEAGUE_ID), _AGENT
+    )
+
+    assert loaded is not None
+    assert _build.await_args.args[1] == {"slack": [str(mine.id)]}
 
 
 async def test_a_pin_naming_no_connected_integration_falls_back_to_the_user_s_own(_build):
@@ -82,6 +97,22 @@ async def test_a_pin_naming_no_connected_integration_falls_back_to_the_user_s_ow
 async def test_a_pin_naming_nothing_with_nothing_of_the_user_s_own_builds_nothing(_build):
     loaded = await agent_chat._load_pipeline_tool_standalone(
         FakeSession({Integration: []}), _ref(str(uuid.uuid4())), str(COLLEAGUE_ID), _AGENT
+    )
+
+    assert loaded is None
+    _build.assert_not_awaited()
+
+
+async def test_a_withheld_openapi_pin_never_falls_back_to_another_api(_build):
+    """Each OpenAPI integration is a different API: the person's own is no stand-in."""
+    from app.services.openapi_import.service import OPENAPI_PROVIDER
+
+    pinned = make_integration(auth_type="api_key", provider=OPENAPI_PROVIDER)
+    mine = make_integration(user_id=COLLEAGUE_ID, auth_type="api_key", provider=OPENAPI_PROVIDER)
+    ref = {**_ref(str(pinned.id)), "provider": OPENAPI_PROVIDER}
+
+    loaded = await agent_chat._load_pipeline_tool_standalone(
+        FakeSession({Integration: [pinned, mine]}), ref, str(COLLEAGUE_ID), _AGENT
     )
 
     assert loaded is None

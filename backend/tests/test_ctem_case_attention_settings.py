@@ -15,7 +15,7 @@ def test_the_defaults_are_the_shipped_ranking():
         10,
         0,
     )
-    assert (weights.kev, weights.crown_jewel, weights.overdue, weights.due_soon) == (15, 15, 20, 10)
+    assert (weights.kev, weights.primary_asset, weights.overdue, weights.due_soon) == (15, 15, 20, 10)
     assert (weights.due_soon_days, weights.no_owner, weights.age_per_day, weights.age_max) == (3, 5, 1, 10)
 
 

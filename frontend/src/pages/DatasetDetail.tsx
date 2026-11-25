@@ -484,7 +484,7 @@ function EntriesTab({ datasetId, entries, canManage, globalInstructions, family 
                       {entry.files && entry.files.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
                           {entry.files.map((f) => (
-                            <span key={f.id} className="inline-flex items-center gap-1.5 rounded-full bg-elevation-hover px-2.5 py-1 content-compact text-default-secondary">
+                            <span key={f.id} className="inline-flex items-center gap-1.5 rounded-sm border border-transparent bg-elevation-hover px-2 py-1 content-compact text-default-secondary">
                               <Paperclip className="h-3 w-3" />
                               <span className="max-w-[180px] truncate">{f.filename}</span>
                             </span>

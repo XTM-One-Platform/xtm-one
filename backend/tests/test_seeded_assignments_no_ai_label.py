@@ -25,7 +25,6 @@ _AUTO_CREATE_MODULES = (
     "agents/seed.py",
     "services/fleets.py",
     "services/health/fleet_seed.py",
-    "services/organization_context_fill_agent.py",
 )
 
 

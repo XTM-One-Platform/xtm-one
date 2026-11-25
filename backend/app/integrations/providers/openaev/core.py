@@ -27,6 +27,7 @@ from ._common import (
     COMMAND_EXECUTORS,
     CONTRACT_OUTPUT_TYPES,
     EXPECTATION_TYPES,
+    FINDINGS_KEPT_AS_HISTORY,
     PAYLOAD_TYPES,
     PLATFORMS,
     SCENARIO_CATEGORIES,
@@ -55,11 +56,8 @@ from ._common import (
     _simulation_state_lines,
     asset_group_member_ids_lines,
     count_scenario_injects,
-    findings_fate,
     fmt_asset_group_members,
     inject_targets_line,
-    keep_findings_params,
-    keep_findings_schema,
     mirror_content_targets,
     scoped_safe_request,
     stored_targets_line,
@@ -685,8 +683,8 @@ def register_core(
 
     # ── 14. Delete scenario ───────────────────────────────────────────
 
-    async def delete_openaev_scenario(scenario_id: str, keep_findings: bool = True) -> str:
-        """Delete a scenario (permanent); its findings are kept unless keep_findings is false."""
+    async def delete_openaev_scenario(scenario_id: str) -> str:
+        """Delete a scenario (permanent); OpenAEV keeps its findings as history (OpenAEV #9233)."""
         async with egress_client(timeout=30) as client:
             _, err = await scoped_safe_request(
                 client,
@@ -695,11 +693,10 @@ def register_core(
                 _PROVIDER,
                 "delete scenario",
                 headers=hdrs,
-                params=keep_findings_params(keep_findings),
             )
         if err:
             return err
-        return f"Scenario {scenario_id} deleted. " + findings_fate(keep_findings, "scenario")
+        return f"Scenario {scenario_id} deleted. {FINDINGS_KEPT_AS_HISTORY}"
 
     # ── 15. Create payload ────────────────────────────────────────────
 
@@ -1835,7 +1832,6 @@ def register_core(
                         "type": "string",
                         "description": "Scenario ID to delete",
                     },
-                    "keep_findings": keep_findings_schema(),
                 },
                 "required": ["scenario_id"],
             },

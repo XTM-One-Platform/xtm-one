@@ -2,7 +2,12 @@
 
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_EVIDENCE_HEALTH, evidenceHealthRuns, evidenceHealthSavedIntegration } from "./organization-profile";
+import {
+  DEFAULT_EVIDENCE_HEALTH,
+  evidenceHealthIntegrationChoice,
+  evidenceHealthRuns,
+  evidenceHealthSavedIntegration,
+} from "./organization-profile";
 import { profileFieldHref } from "./organization-profile-tabs";
 
 const pass = (over: Partial<typeof DEFAULT_EVIDENCE_HEALTH> = {}) => ({ ...DEFAULT_EVIDENCE_HEALTH, ...over });
@@ -34,6 +39,15 @@ describe("evidenceHealthRuns", () => {
     expect(evidenceHealthSavedIntegration("", true, ["a"])).toBe("");
     expect(evidenceHealthSavedIntegration("", false, ["a", "b"])).toBe("");
     expect(evidenceHealthSavedIntegration("b", false, ["a", "b"])).toBe("b");
+  });
+
+  it("names the integration the card reads: declared, the single connected one, several with none picked, or none (#1948)", () => {
+    expect(evidenceHealthIntegrationChoice(pass({ integration: "b" }), ["a", "b"])).toBe("declared");
+    expect(evidenceHealthIntegrationChoice(pass(), ["a"])).toBe("single");
+    expect(evidenceHealthIntegrationChoice(pass(), ["a", "b"])).toBe("several");
+    expect(evidenceHealthIntegrationChoice(pass(), [])).toBe("none");
+    // A duplicate id is one integration.
+    expect(evidenceHealthIntegrationChoice(pass(), ["a", "a"])).toBe("single");
   });
 
   it("opens its card on CTEM > Inventory, with the outside lens card", () => {

@@ -5,6 +5,8 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   UsersRound, Trash2, X, Users, Pencil, FileText, Gauge, Save, Zap, Key, UserCog, Sparkles,
 } from "lucide-react";
+import { Icon } from "@filigran/design-system";
+import { GroupAutoJoinCard } from "@/components/groups/GroupAutoJoinCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { userSelectOption } from "@/components/ui/entity-select-options";
@@ -41,7 +43,7 @@ import { useAvailableModels, usePlatformQuotas } from "@/hooks/api/useSettingsAp
 import { QuotaEditor } from "@/components/ui/quota-editor";
 import { useToast } from "@/components/ui/toast";
 import { isUnlimitedOverride, normalizeQuotaOverride } from "@/components/ui/quota-override";
-import type { Group, GroupKind, GroupMemberItem, QuotaTypeConfig } from "@/types";
+import type { Group, GroupCtemAccess, GroupKind, GroupMemberItem, QuotaTypeConfig } from "@/types";
 import { useIsXtmOne, useAgenticQuotas, useIsCommunityEdition } from "@/hooks/usePlatformConfig";
 import { useTabParam } from "@/hooks/useTabParam";
 import { BACKEND_FETCH_LIMIT } from "@/lib/constants";
@@ -138,7 +140,98 @@ function OverviewTab({ group, groupId }: { group: NonNullable<ReturnType<typeof 
     <div className="space-y-6">
       <ProfileCard group={group} groupId={groupId} />
       <GroupAiAccessCard group={group} groupId={groupId} />
+      <GroupCtemAccessCard group={group} groupId={groupId} />
+      <GroupAutoJoinCard group={group} groupId={groupId} />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CTEM access — the right the group grants on system signals and cases (#1748)
+// ---------------------------------------------------------------------------
+
+/** @i18n-keys */
+const CTEM_ACCESS_LABELS = {
+  none: "No CTEM access",
+  view: "View signals and cases",
+  decide: "View and decide",
+} as const;
+
+const CTEM_ACCESS_CHOICES = ["none", "view", "decide"] as const;
+
+/** @i18n-keys */
+const CTEM_ACCESS_HINTS = {
+  none: "Members see only the signals they record themselves.",
+  view: "Members read every signal and case of the organization, read only.",
+  decide: "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.",
+} as const;
+
+function GroupCtemAccessCard({ group, groupId }: { group: NonNullable<ReturnType<typeof useGroup>["data"]>; groupId: string }) {
+  const { t_i18n } = useFormatter();
+  const { toast } = useToast();
+  const updateGroup = useUpdateGroup();
+  const right: GroupCtemAccess | "none" = group.ctem_access ?? "none";
+  const notify = group.ctem_notify !== false;
+  const save = (data: { ctem_access?: GroupCtemAccess | "none"; ctem_notify?: boolean }) =>
+    updateGroup.mutate(
+      { groupId, data },
+      {
+        onSuccess: () => toast({ title: t_i18n("CTEM access updated"), variant: "success" }),
+        onError: (err) => toast({ title: t_i18n("CTEM access could not be updated"), description: err.message, variant: "error" }),
+      },
+    );
+  return (
+    <Card data-testid="group-ctem-access">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Icon name="shield-check" size={16} aria-hidden />
+          {t_i18n("CTEM access")}
+        </CardTitle>
+        <CardDescription>
+          {t_i18n("What the members may do on the signals and cases the platform records. Administrators keep full access.")}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <span className="content-compact text-default-primary">{t_i18n("Access")}</span>
+            <p className="content-compact text-default-secondary" data-testid="group-ctem-access-hint">
+              {t_i18n(CTEM_ACCESS_HINTS[right])}
+            </p>
+          </div>
+          <Select
+            value={right}
+            disabled={updateGroup.isPending}
+            onValueChange={(value) => save({ ctem_access: value as GroupCtemAccess | "none" })}
+          >
+            <SelectTrigger className="w-56 shrink-0" aria-label={t_i18n("CTEM access")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CTEM_ACCESS_CHOICES.map((value) => (
+                <SelectItem key={value} value={value}>{t_i18n(CTEM_ACCESS_LABELS[value])}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {right === "decide" && (
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0 space-y-1">
+              <span className="content-compact text-default-primary">{t_i18n("Notify the members of case decisions")}</span>
+              <p className="content-compact text-default-secondary">
+                {t_i18n("Off: the members can still answer from the case page, without a notification.")}
+              </p>
+            </div>
+            <Switch
+              aria-label={t_i18n("Notify the members of case decisions")}
+              checked={notify}
+              disabled={updateGroup.isPending}
+              onCheckedChange={(checked) => save({ ctem_notify: checked })}
+            />
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

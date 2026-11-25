@@ -30,10 +30,42 @@ interface OrganizationSharedContextNoticeProps {
   className?: string;
   /** The Alert's own surface: 1 on a layer-2 host (a dialog), the DS default 2 elsewhere (DS Alert surface rule). */
   elevation?: ComponentProps<typeof Alert>["elevation"];
+  /** Outbound (#1982 S4): XTM One is the source and the platform is written, so the text says what a push does. */
+  direction?: "inbound" | "outbound";
 }
 
-export function OrganizationSharedContextNotice({ kind = "source", actor, className, elevation }: OrganizationSharedContextNoticeProps) {
+export function OrganizationSharedContextNotice({ kind = "source", actor, className, elevation, direction = "inbound" }: OrganizationSharedContextNoticeProps) {
   const { t_i18n } = useFormatter();
+  if (direction === "outbound") {
+    const runsAs = !actor
+      ? null
+      : actor.savingAs && actor.savingAs !== actor.who
+        ? t_i18n("Writes as {who}. Saving makes it write as {me}.", { who: actor.who, me: actor.savingAs })
+        : t_i18n("Writes as {who}", { who: actor.who });
+    return (
+      <Alert
+        severity="info"
+        elevation={elevation}
+        className={className}
+        data-testid="org-shared-context.outbound"
+        title={t_i18n("Pushed from the organization context")}
+        description={
+          <span className="block space-y-1">
+            <span className="block">
+              {t_i18n(
+                "XTM One rows are written to the target platform with the permissions of the person who sets up this sync. Who can see them there follows that platform's own access rules, not XTM One's.",
+              )}
+            </span>
+            {runsAs && (
+              <span className="block font-medium" data-testid="org-shared-context.actor">
+                {runsAs}
+              </span>
+            )}
+          </span>
+        }
+      />
+    );
+  }
   const visibility = t_i18n("Once imported, the organization context is visible to every user and every agent of this XTM One platform.");
   const scope = t_i18n("This applies to the organization context only. Agent integrations, dashboards and every other feature keep each user's own permissions.");
   const permissions = t_i18n(

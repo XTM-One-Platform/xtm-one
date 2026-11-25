@@ -1764,7 +1764,7 @@ export function SpanInspector({
                 return (
                   <span
                     key={tag}
-                    className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+                    className="inline-flex items-center rounded-sm border border-transparent px-2 py-0.5 text-[11px] font-medium"
                     style={{
                       backgroundColor: `hsl(${hue} 60% 55% / 0.13)`,
                       color: `hsl(${hue} 60% 55%)`,

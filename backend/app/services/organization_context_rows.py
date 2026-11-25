@@ -12,7 +12,7 @@ and ``remove_organization_rows`` tools stand on:
   source is the platform the rows come from (``intune``...), never a hand
   source (``manual``, ``csv``, ``api``): a row a person wrote is never
   updated or removed, and an incoming row named like one is refused;
-- software products, shipped products (#1432) and AI systems have no
+- software products and shipped products (#1432) have no
   source: a new name is added, an existing one is left as it is (never
   overwritten);
 - every row is validated with the profile's own models (the taxonomy of the
@@ -44,18 +44,15 @@ from app.services.organization_context import (
     AssetGroupEntry,
     OrganizationProfile,
     ShippedProduct,
-    TechStackEntry,
+    SoftwareEntry,
 )
 
 #: section -> (profile field, row model, most rows the field holds).
 ROW_SECTIONS: dict[str, tuple[str, type[BaseModel], int]] = {
     "assets": ("assets_exposure", AssetEntry, 5000),
     "asset_groups": ("asset_groups", AssetGroupEntry, 500),
-    # #1495: the organization's software; ``tech_stack`` is its deprecated name, accepted for one release.
-    "software": ("tech_stack", TechStackEntry, 500),
-    "tech_stack": ("tech_stack", TechStackEntry, 500),
-    # Deprecated alias since #1501 (one release): an AI system is an asset of category ai_target.
-    "ai_systems": ("assets_exposure", AssetEntry, 5000),
+    # #1495: the organization's software, written as Software entities.
+    "software": ("software", SoftwareEntry, 500),
     # #1432: what the organization ships, keyed on the product like the software.
     "shipped_products": ("shipped_products", ShippedProduct, 200),
 }
@@ -71,7 +68,7 @@ LISTED = 25
 #: Row formats the upsert maps on the server: ``profile`` rows are taken as they are.
 ROW_FORMATS: tuple[str, ...] = ("profile", "intune_device", "intune_detected_app")
 #: Fields a person may have set on a synced row, kept when the source does not send them.
-_KEPT_FIELDS: tuple[str, ...] = ("environment", "owner", "tech_stack", "group", "description", "criticality")
+_KEPT_FIELDS: tuple[str, ...] = ("environment", "owner", "products", "group", "description", "criticality")
 
 
 @dataclass
@@ -155,38 +152,16 @@ def map_rows(rows: list[Any], row_format: str, *, include_owner: bool = False) -
     return list(rows)
 
 
-def ai_system_row(raw: Any) -> Any:
-    """A row sent to the deprecated ``ai_systems`` section as an ``ai_target`` asset row (#1501).
-
-    A row in the old shape (``kind``, ``exposure``) is mapped as the profile upgrade maps it; an
-    asset row keeps its fields and gets the category.
-    """
-    from app.services.organization_context import ai_system_asset
-
-    if not isinstance(raw, dict):
-        return raw
-    if "kind" in raw or "exposure" in raw or "openaev_asset_id" in raw:
-        mapped = ai_system_asset(raw)
-        if mapped is None:
-            return raw  # refused by the asset model with its own reason
-        return {k: v for k, v in mapped.items() if v not in ("", None) or k in ("name", "category")}
-    return {**raw, "category": "ai_target"}
-
-
 def plan_upsert(profile: OrganizationProfile, section: str, source: str, rows: list[Any]) -> RowPlan:
     """What upserting *rows* from *source* into *section* does (no I/O, *profile* untouched)."""
     source = source.strip().lower()
     check_call(section, source, len(rows))
     attr, model, cap = ROW_SECTIONS[section]
-    if section == "ai_systems":
-        rows = [ai_system_row(r) for r in rows]
-        if source:
-            section = "assets"  # a platform's AI targets are its assets, keyed on its ids
     plan = RowPlan(section=section, source=source)
     draft = profile.model_copy(deep=True)
     current: list[Any] = list(getattr(draft, attr))
     sourced = section in SOURCED_SECTIONS
-    name_key = "product" if section in ("software", "tech_stack", "shipped_products") else "name"
+    name_key = "product" if section in ("software", "shipped_products") else "name"
     by_key = {(r.source, r.external_id): i for i, r in enumerate(current) if sourced and r.external_id}
     by_name = {getattr(r, name_key).casefold(): r for r in current}
     seen: set[Any] = set()
@@ -374,8 +349,8 @@ def plan_record_remove(
     return plan
 
 
-#: Sections whose rows are Software entities of the asset store since #1495 (``tech_stack``: deprecated alias).
-SOFTWARE_SECTIONS: frozenset[str] = frozenset({"software", "tech_stack"})
+#: Sections whose rows are Software entities of the asset store since #1495.
+SOFTWARE_SECTIONS: frozenset[str] = frozenset({"software"})
 
 
 def software_key(vendor: Any, product: Any) -> tuple[str, str]:
@@ -402,7 +377,7 @@ def plan_software_upsert(source: str, rows: list[Any], *, existing: set[tuple[st
             plan.refused.append((label, "not an object"))
             continue
         try:
-            row = TechStackEntry.model_validate(raw)
+            row = SoftwareEntry.model_validate(raw)
         except ValidationError as exc:
             plan.refused.append((label, _first_error(exc)))
             continue

@@ -135,8 +135,41 @@ def test_a_failure_whose_required_checks_still_run_dispatches_nothing():
 def test_a_required_failure_or_an_unread_head_still_dispatches_the_failure():
     assert wipr.reconcile_failure(_failure(), {"head_sha": SHA, "conclusion": "failure"}) == (_failure(), None)
     assert wipr.reconcile_failure(_failure(), None) == (_failure(), None)
-    # The live head moved past the delivery: the delivery stands, its head decides later.
-    assert wipr.reconcile_failure(_failure(), {"head_sha": "6" * 40, "conclusion": "success"}) == (_failure(), None)
+
+
+def test_a_failure_on_a_head_the_pull_request_moved_past_dispatches_nothing() -> None:
+    # A push landed before the red was delivered: that red is spent, the new head's CI decides.
+    for live in ("success", "failure", None):
+        done, skipped = wipr.reconcile_failure(_failure(), {"head_sha": "6" * 40, "conclusion": live})
+        assert done == _failure() and skipped and skipped.startswith("not dispatched")
+        assert "666666666666" in skipped
+
+
+def test_a_spent_red_of_an_old_head_is_forgotten_in_the_payload() -> None:
+    payload = {
+        "pull_requests": [
+            {
+                "repo": "opencti-platform/opencti",
+                "number": 19941,
+                "head_sha": SHA,
+                "ci": {
+                    "head_sha": SHA,
+                    "runs": {"r": {"run_id": 1, "status": "completed", "conclusion": "failure"}},
+                    "failed_at": "2026-11-25T00:00:00+00:00",
+                },
+            }
+        ]
+    }
+    assert wipr.red_pull_requests(payload)
+    new = "6" * 40
+    out, what = wipr.record_unconfirmed_failure(payload, _failure(), {"head_sha": new, "conclusion": None})
+    assert what and "moved from" in what
+    binding = out["pull_requests"][0]
+    assert binding["head_sha"] == new and binding["ci"] == {"head_sha": new}
+    assert wipr.red_pull_requests(out) == []
+    # The new head's CI already recorded (its delivery came first): left as it is.
+    again, what = wipr.record_unconfirmed_failure(out, _failure(), {"head_sha": new, "conclusion": None})
+    assert what is None and again["pull_requests"][0]["ci"] == {"head_sha": new}
 
 
 def test_a_success_is_never_read_again():

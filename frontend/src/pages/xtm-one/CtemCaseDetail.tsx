@@ -10,10 +10,12 @@
  */
 import { useMemo, useState, type ComponentProps } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Icon, Textarea } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./ctem/case-icons";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DateFilterInput } from "@/components/ui/date-filter-input";
@@ -22,13 +24,15 @@ import { SourceBadge } from "@/components/ui/source-badge";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NotFoundState } from "@/components/ui/not-found-state";
 import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
-import { PageSkeleton } from "@/components/ui/skeleton";
+import { ListSkeleton, PageSkeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/ui/stat-card";
 import { useToast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
+  CTEM_CASE_LIST_KEY,
+  cachedCaseSummary,
   isOpenCaseState,
   isRestrictedIssue,
   useCtemCase,
@@ -38,6 +42,7 @@ import {
   useUpdateCtemCase,
   type CtemCaseEvent,
   type CtemCaseIssue,
+  type CtemCaseList,
   type CtemCaseRun,
   type CtemCaseUpdate,
   type CtemCaseVisibleIssue,
@@ -65,6 +70,9 @@ import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseAffectedAssets } from "./ctem/CaseAffectedAssets";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
+import { eventIssueLabel, isSignalIssue, issueLabel, memberAssetCount, memberKev, signalCaption, signalLensLabel, signalPathLabel } from "./ctem/case-issue-label";
+import { signalProviderName } from "./ctem/loop/SignalLoopTrace";
+import { ToneBadge } from "@/components/ui/tone-badge";
 import { CaseOwnedBy } from "./ctem/CaseOwnedBy";
 import { CaseLoopProvider } from "./ctem/CaseSectionReason";
 import { loopFleetOf } from "./ctem/case-loop-reason";
@@ -77,11 +85,12 @@ import { usePlatformRegistrations } from "@/hooks/api/usePlatformApi";
 import { useModuleBaseUrls } from "@/hooks/useModuleBaseUrls";
 import { pivotModuleOf } from "@/lib/module-pivot";
 import { CaseAttentionNow } from "./ctem/CaseAttentionNow";
-import { CASE_STATE_LABEL, CaseOwner, CaseStateChip } from "./ctem/cases-shared";
+import { CASE_STATE_LABEL, CaseOwner, CaseStateChip, CaseToValidateChip } from "./ctem/cases-shared";
 import { EntityHeaderMoreActions, EntityPageHeader } from "@/components/ui/entity-page-header";
 import type { OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { caseActionDef, caseHeaderActions, type CaseActionId } from "./ctem/case-actions";
 import { useCaseActionDialogs } from "./ctem/CasesBulkActions";
+import { useCaseDelete } from "./ctem/CasesDeleteAction";
 
 /** A table row: the issue and its place, so restricted rows keep a stable key. */
 interface IssueRow {
@@ -262,18 +271,28 @@ export default function CtemCaseDetail() {
   const update = useUpdateCtemCase(id);
   const split = useSplitCtemCase();
   // The More actions menu shares the Cases bulk bar's dialogs (#1751): owner, due date and
-  // Merge into another open case hit the same endpoints as the bulk bar.
-  const allCases = useCtemCases({ throwOnError: false });
+  // Merge into another open case hit the same endpoints as the bulk bar. The 200-case list
+  // is read only once Merge is asked for (#1986), never on open: it doubled the first read.
+  const [mergeAsked, setMergeAsked] = useState(false);
+  const allCases = useCtemCases({ throwOnError: false, enabled: mergeAsked });
   const mergeTargets = useMemo(
     () => (allCases.data?.cases ?? []).filter((c) => c.id !== id && isOpenCaseState(c.state)),
     [allCases.data, id],
   );
+  // The list row of this case, when the Cases list is cached (#1986): the header is drawn
+  // from it while the case is read, so a click from the list paints at once.
+  const queryClient = useQueryClient();
+  const listed = kase ? undefined : cachedCaseSummary(queryClient.getQueryData<CtemCaseList>(CTEM_CASE_LIST_KEY), id);
+  const listedOwner = listed?.owner_user_id ?? null;
   const caseActions = useCaseActionDialogs({
     cases: kase ? [kase] : [],
     onDone: () => void refetch(),
     mergeTargets,
+    mergeTargetsLoading: mergeAsked && allCases.isPending,
     onMerged: (targetId) => navigate(`/ctem/cases/${targetId}`),
   });
+  // Delete, administrators only, last row of More actions (#1950): the list's dry run and challenge, then back to the list.
+  const caseDelete = useCaseDelete(kase ? [kase.id] : [], () => navigate("/ctem/cases"));
   const [picked, setPicked] = useState<string[]>([]);
   const [splitTitle, setSplitTitle] = useState("");
   const [dialog, setDialog] = useState<DialogKind>(null);
@@ -296,7 +315,8 @@ export default function CtemCaseDetail() {
     }
     return [...ids];
   }, [kase]);
-  const { data: people } = useUserDirectoryByIds(actorIds);
+  // While the case is read, the owner of its list row is the one person the header names.
+  const { data: people } = useUserDirectoryByIds(listedOwner ? [listedOwner] : actorIds);
   const personName = (personId: string | null | undefined) =>
     personId ? (people?.find((p) => p.id === personId)?.full_name ?? null) : null;
 
@@ -329,6 +349,8 @@ export default function CtemCaseDetail() {
       const target = changeWord("state", e.to);
       return target ? `${eventLabel(e)} ${t_i18n(target)}` : eventLabel(e);
     }
+    // "A signal joined the case" names the signal (#1936), on screen and in the CSV.
+    if (e.kind === "signal" && eventIssueLabel(e, t_i18n)) return `${eventLabel(e)}: ${eventIssueLabel(e, t_i18n)}`;
     const said = reasonLabel(e);
     const detail =
       e.kind === "gate" ? (e.from ? t_i18n(GATE_LABEL[e.from] ?? e.from) : "") : said ? t_i18n(said) : e.kind === "note" ? (e.headline ?? "") : "";
@@ -422,7 +444,31 @@ export default function CtemCaseDetail() {
       />
     );
   }
-  if (isLoading && !kase) return <PageSkeleton cards={3} />;
+  if (isLoading && !kase) {
+    if (!listed) return <PageSkeleton cards={3} />;
+    // The header from the list row (#1986), the sections as skeletons until the case is read.
+    return (
+      <div className="space-y-6" aria-busy="true" data-testid="ctem-case-listed-header">
+        <EntityPageHeader
+          backTo="/ctem/cases"
+          backLabel="Back to Cases"
+          badges={
+            <>
+              <CaseStateChip state={listed.state} />
+              <CaseUrgencyChip severity={listed.severity} priority={listed.priority} />
+              <CaseOwner name={personName(listed.owner_user_id)} />
+              <CaseLoopLine c={listed} now={now} />
+            </>
+          }
+          title={listed.title}
+          wrapTitle
+          hint={t_i18n("Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.")}
+          hintLabel={t_i18n("About cases")}
+        />
+        <ListSkeleton label={t_i18n("Loading…")} variant="card" rows={3} />
+      </div>
+    );
+  }
   if (!kase) {
     return (
       <Card>
@@ -471,6 +517,12 @@ export default function CtemCaseDetail() {
 
   const ownerName = personName(kase.owner_user_id);
   const restricted = kase.restricted_count;
+  // A member seen without its details makes KEV, CVSS and asset counts unknown, never computed (UX round 1 on #1931, B1).
+  const aggregatesRestricted = kase.aggregates_restricted === true;
+  const withoutDetails = kase.members_without_details ?? 0;
+  const aggregatesSubtitle = aggregatesRestricted
+    ? t_i18n("Unknown: {count, plural, one {# open issue} other {# open issues}} not readable with details", { count: withoutDetails })
+    : t_i18n("On the issues you can see");
   // The Re-test column exists only when a member carries the OpenAEV lifecycle,
   // so an older case looks the same as before (UX round 1 on #962, B1).
   const showRetest = hasRetestData(kase.issues ?? []);
@@ -482,12 +534,31 @@ export default function CtemCaseDetail() {
       cell: (r) =>
         isRestrictedIssue(r.issue) ? (
           <RestrictedCell />
+        ) : isSignalIssue(r.issue) ? (
+          // A signal reads its name, its lens and source as chips and its trigger path as the
+          // caption, as the "Opened by" card does (#1936): never its id.
+          <span className="flex min-w-0 max-w-[26rem] flex-col" data-testid="ctem-case-issue-signal">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <TruncatedText text={issueLabel(r.issue, t_i18n)} className="font-medium" />
+              {r.issue.lens && <ToneBadge tone="neutral" className="shrink-0">{t_i18n(signalLensLabel(r.issue.lens))}</ToneBadge>}
+              {r.issue.source_provider && (
+                <ToneBadge tone="neutral" className="shrink-0" data-testid="ctem-case-issue-signal-source">
+                  {t_i18n("From {source}", { source: signalProviderName(r.issue.source_provider) })}
+                </ToneBadge>
+              )}
+            </span>
+            {/* The path caption takes its cell's own 26rem width, not the 9rem cap of the Fixed
+                version caption (UX round 1 B3 on #1945). */}
+            {signalCaption(r.issue, t_i18n) && (
+              <TruncatedText text={signalCaption(r.issue, t_i18n) ?? ""} className="content-compact text-default-secondary" />
+            )}
+          </span>
         ) : (
           // The issue, then "Open in <Module>" on the entity it came from (#1357): an OpenCTI
           // vulnerability by its id, an OpenAEV finding by its id; a signal has no module page.
           <span className="flex min-w-0 max-w-[26rem] items-center gap-1.5">
-            <span className="truncate font-medium" title={r.issue.name ?? r.issue.external_id}>
-              {r.issue.cve ?? r.issue.name ?? r.issue.external_id}
+            <span className="truncate font-medium" title={issueLabel(r.issue, t_i18n)}>
+              {issueLabel(r.issue, t_i18n)}
             </span>
             <ModulePivotLink
               module={pivotModuleOf(r.issue.source)}
@@ -499,8 +570,16 @@ export default function CtemCaseDetail() {
             />
           </span>
         ),
-      sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : (r.issue.cve ?? r.issue.name ?? "")),
-      csv: (r) => (isRestrictedIssue(r.issue) ? t_i18n("Restricted") : (r.issue.cve ?? r.issue.name ?? "")),
+      sortValue: (r) => (isRestrictedIssue(r.issue) ? "~" : issueLabel(r.issue, t_i18n)),
+      csv: (r) => (isRestrictedIssue(r.issue) ? t_i18n("Restricted") : issueLabel(r.issue, t_i18n)),
+    },
+    {
+      // The kind of a signal member in the CSV (#1936): its trigger path, empty for a product issue.
+      key: "trigger_path",
+      header: "Trigger path",
+      cell: () => null,
+      csv: (r) => (isRestrictedIssue(r.issue) || !isSignalIssue(r.issue) ? "" : (signalPathLabel(r.issue, t_i18n) ?? "")),
+      exportOnly: true,
     },
     {
       key: "source",
@@ -534,9 +613,10 @@ export default function CtemCaseDetail() {
     {
       key: "kev",
       header: "KEV",
-      cell: (r) => (isRestrictedIssue(r.issue) ? null : r.issue.kev ? t_i18n("Yes") : t_i18n("No")),
-      sortValue: (r) => (isRestrictedIssue(r.issue) ? -1 : r.issue.kev ? 1 : 0),
-      csv: (r) => (isRestrictedIssue(r.issue) ? "" : r.issue.kev ? "yes" : "no"),
+      // A signal has no KEV: its cell stays empty, never "No" (#1936).
+      cell: (r) => (isRestrictedIssue(r.issue) || memberKev(r.issue) === null ? null : memberKev(r.issue) ? t_i18n("Yes") : t_i18n("No")),
+      sortValue: (r) => (isRestrictedIssue(r.issue) || memberKev(r.issue) === null ? -1 : memberKev(r.issue) ? 1 : 0),
+      csv: (r) => (isRestrictedIssue(r.issue) || memberKev(r.issue) === null ? "" : memberKev(r.issue) ? "yes" : "no"),
       hideBelow: "3xl",
       hideable: true,
     },
@@ -544,8 +624,13 @@ export default function CtemCaseDetail() {
       key: "assets",
       header: "Assets",
       align: "right",
-      cell: (r) => (isRestrictedIssue(r.issue) ? null : formatCount(intl.locale, r.issue.assets?.length ?? 0)),
-      sortValue: (r) => (isRestrictedIssue(r.issue) ? -1 : (r.issue.assets?.length ?? 0)),
+      // A signal counts its assets only when it names one (#1936), never "0".
+      cell: (r) => {
+        if (isRestrictedIssue(r.issue)) return null;
+        const count = memberAssetCount(r.issue);
+        return count === null ? null : formatCount(intl.locale, count);
+      },
+      sortValue: (r) => (isRestrictedIssue(r.issue) ? -1 : (memberAssetCount(r.issue) ?? -1)),
       csv: (r) => (isRestrictedIssue(r.issue) ? "" : (r.issue.assets ?? []).join("; ")),
       hideBelow: "4xl",
       hideable: true,
@@ -606,10 +691,11 @@ export default function CtemCaseDetail() {
   // (secondary first), every other case action in the More actions menu, disabled with its reason
   // when the state refuses it. Before remediation a person starts it (with an owner, #1503); in
   // remediation or validation they resolve it.
-  const header = caseHeaderActions(kase.state);
+  const header = caseHeaderActions(kase.state, true, caseDelete.allowed);
   const primaryKind = header.buttons[header.buttons.length - 1] as "start" | "resolve" | "reopen";
   const primary = { label: t_i18n(caseActionDef(primaryKind).label), kind: primaryKind };
   const runAction = (action: CaseActionId) => {
+    if (action === "merge") setMergeAsked(true);
     if (action === "assign" || action === "due" || action === "merge") caseActions.open(action);
     else open(action);
   };
@@ -624,6 +710,14 @@ export default function CtemCaseDetail() {
       separatorBefore: action === "merge",
     };
   });
+  if (header.canDelete)
+    moreActions.push({
+      id: "ctem-case-delete",
+      label: t_i18n("Delete"),
+      onSelect: caseDelete.ask,
+      destructive: true,
+      separatorBefore: true,
+    });
 
   const dialogTitle: Record<Exclude<DialogKind, null>, string> = {
     start: t_i18n("Start this case"),
@@ -658,6 +752,7 @@ export default function CtemCaseDetail() {
           <>
             <CaseStateChip state={kase.state} />
             <CaseUrgencyChip severity={kase.severity} priority={kase.priority} />
+            <CaseToValidateChip unverified={kase.version_unverified} />
             <CaseOwner name={ownerName} />
             <CaseOwnedBy owner={kase.owner_fleet} fleets={fleets.data} caseId={kase.id} />
             <CaseLoopLine c={kase} now={now} />
@@ -685,6 +780,7 @@ export default function CtemCaseDetail() {
       />
 
       {caseActions.dialogs}
+      {caseDelete.dialog}
 
       {/* Why now, created, age, last change and due (#1176): the same explained score as the Cases list. */}
       <CaseAttentionNow c={kase} now={now} onChanged={() => void refetch()} />
@@ -708,16 +804,31 @@ export default function CtemCaseDetail() {
           icon={IssuesGlyph}
           label={t_i18n("Open issues")}
           value={kase.open_issue_count}
-          subtitle={restricted > 0 ? t_i18n("{count, plural, one {# restricted} other {# restricted}}", { count: restricted }) : t_i18n("All visible to you")}
+          subtitle={
+            restricted > 0
+              ? t_i18n("{count, plural, one {# restricted} other {# restricted}}", { count: restricted })
+              : aggregatesRestricted
+                ? t_i18n("{count, plural, one {# without details} other {# without details}}", { count: withoutDetails })
+                : t_i18n("All visible to you")
+          }
         />
-        <StatCard icon={KevGlyph} label={t_i18n("KEV")} value={kase.kev_count} subtitle={t_i18n("On the issues you can see")} />
+        <StatCard icon={KevGlyph} label={t_i18n("KEV")} value={formatCount(intl.locale, kase.kev_count)} subtitle={aggregatesSubtitle} />
         <StatCard
           icon={ScoreGlyph}
           label={t_i18n("Max CVSS")}
           value={formatCount(intl.locale, kase.max_cvss)}
-          subtitle={t_i18n("On the issues you can see")}
+          subtitle={aggregatesSubtitle}
         />
-        <StatCard icon={AssetsGlyph} label={t_i18n("Assets")} value={kase.asset_count} subtitle={t_i18n("{count, plural, one {# primary asset} other {# primary assets}}", { count: kase.crown_jewel_count })} />
+        <StatCard
+          icon={AssetsGlyph}
+          label={t_i18n("Assets")}
+          value={formatCount(intl.locale, kase.asset_count)}
+          subtitle={
+            aggregatesRestricted || kase.primary_asset_count == null
+              ? aggregatesSubtitle
+              : t_i18n("{count, plural, one {# primary asset} other {# primary assets}}", { count: kase.primary_asset_count })
+          }
+        />
       </div>
 
       {/* The running versions come from the asset inventory, never typed by hand in the software inventory (#1252). */}
@@ -760,13 +871,18 @@ export default function CtemCaseDetail() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t_i18n("Issues")}</CardTitle>
+          <CardTitle>
+            <CaseCardTitleText icon={CASE_SECTION_ICON.issues}>{t_i18n("Issues")}</CaseCardTitleText>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <DataTable
             framed={false}
             rows={issueRows}
             columns={columns}
+            // One row height for the table (UX round 1 B1 on #1945): a signal row holds its chips
+            // and its path caption, so every row takes the two-line height.
+            rowLines={2}
             rowKey={(r) => r.key}
             selection={{
               selected: picked,
@@ -785,7 +901,7 @@ export default function CtemCaseDetail() {
             }}
             defaultSort={{ key: "cvss", direction: "desc" }}
             defaultPageSize={10}
-            searchFields={(r) => (isRestrictedIssue(r.issue) ? [] : [r.issue.cve, r.issue.name])}
+            searchFields={(r) => (isRestrictedIssue(r.issue) ? [] : [r.issue.cve, issueLabel(r.issue, t_i18n)])}
             searchPlaceholder={t_i18n("Search CVE")}
             filtersInPill
             filters={[
@@ -810,7 +926,9 @@ export default function CtemCaseDetail() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t_i18n("History")}</CardTitle>
+          <CardTitle>
+            <CaseCardTitleText icon={CASE_SECTION_ICON.history}>{t_i18n("History")}</CaseCardTitleText>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <CaseAuditTrail
@@ -823,6 +941,9 @@ export default function CtemCaseDetail() {
             changeText={changeTextOf}
             renderRun={renderRun}
             renderEvent={renderEvent}
+            gates={kase.gates}
+            history={kase.history}
+            backTo={`/ctem/cases/${kase.id}`}
           />
         </CardContent>
       </Card>

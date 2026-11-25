@@ -30,6 +30,11 @@ The recipient is resolved at the write, in this order:
 the clause shows such an item (``needs_human``, no recipient, no user) to every
 administrator, which also surfaces the items written before the column. With
 no administrator either, the write is refused and nothing is written.
+
+An explicit recipient may also name groups (#1748): ``group:<uuid>``, several
+comma-separated. The ids are stored in ``work_items.waits_for_group_ids`` and
+membership is read at query time, so a member added later answers and a member
+removed cannot; the first answer closes the decision for all.
 """
 
 from __future__ import annotations
@@ -38,17 +43,23 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import String, and_, cast, exists, func, or_, select
+from sqlalchemy.dialects.postgresql import JSONB
 
+from app.core.json_sql import when_json_parseable
 from app.core.utils import safe_uuid
+
+#: The prefix an explicit recipient names a group with.
+GROUP_PREFIX = "group:"
 
 
 @dataclass(frozen=True)
 class Recipient:
-    """Who a decision item waits for: one person, or the administrators."""
+    """Who a decision item waits for: one person, groups, or the administrators."""
 
     user_id: uuid.UUID | None
-    source: str  # explicit | acting_user | agent_owner | administrators
+    source: str  # explicit | groups | acting_user | agent_owner | administrators
+    group_ids: tuple[str, ...] = ()
 
 
 class RecipientError(ValueError):
@@ -86,6 +97,36 @@ async def _any_admin(db: Any) -> bool:
     return bool((await db.execute(select(exists().where(User.role == "admin", User.is_active.is_(True))))).scalar())
 
 
+def group_refs(explicit: str | None) -> list[str] | None:
+    """The group ids an explicit recipient names (``group:<uuid>``, comma-separated); ``None`` when it names none.
+
+    Raises :class:`RecipientError` for a list that mixes groups with something else or names a malformed id.
+    """
+    parts = [p.strip() for p in (explicit or "").split(",") if p.strip()]
+    if not parts or not any(p.lower().startswith(GROUP_PREFIX) for p in parts):
+        return None
+    ids: list[str] = []
+    for part in parts:
+        gid = safe_uuid(part[len(GROUP_PREFIX) :]) if part.lower().startswith(GROUP_PREFIX) else None
+        if gid is None:
+            raise RecipientError(f"recipient {part!r} is not group: followed by a group id; nothing was written")
+        if str(gid) not in ids:
+            ids.append(str(gid))
+    return ids
+
+
+async def _resolve_groups(db: Any, ids: list[str]) -> Recipient:
+    from app.models.group import Group
+
+    found = {
+        str(g) for g in (await db.execute(select(Group.id).where(Group.id.in_([uuid.UUID(i) for i in ids])))).scalars()
+    }
+    missing = [i for i in ids if i not in found]
+    if missing:
+        raise RecipientError(f"recipient group {missing[0]} does not exist; nothing was written")
+    return Recipient(None, "groups", tuple(ids))
+
+
 async def resolve_recipient(
     db: Any,
     *,
@@ -101,6 +142,9 @@ async def resolve_recipient(
     Raises :class:`RecipientError` when *explicit* names no active user, a user
     who cannot read the item, or when nobody at all can be notified.
     """
+    groups = group_refs(explicit)
+    if groups:
+        return await _resolve_groups(db, groups)
     if explicit and explicit.strip():
         person = await _user_by_ref(db, explicit)
         if person is None or not person.is_active:
@@ -130,19 +174,37 @@ async def resolve_recipient(
     )
 
 
+def group_member_clause(user_uuid: uuid.UUID) -> Any:
+    """SQL: an item addressed to groups (``waits_for_group_ids``) *user_uuid* is a member of now."""
+    from app.models.group import GroupMember
+    from app.models.work_item import WorkItem
+
+    member = exists().where(
+        GroupMember.user_id == user_uuid,
+        cast(WorkItem.waits_for_group_ids, JSONB).has_key(cast(GroupMember.group_id, String)),
+    )
+    return and_(
+        WorkItem.waits_for_group_ids.is_not(None),
+        when_json_parseable(WorkItem.waits_for_group_ids, member),
+    )
+
+
 def recipient_clause(user_uuid: uuid.UUID) -> Any:
     """SQL: a ``needs_human`` item whose recipient is *user_uuid*.
 
-    Its recipient when one is stored, else its user; an item with neither
-    waits for every administrator.
+    A member of its groups when it is addressed to groups; else its recipient
+    when one is stored, else its user; an item with none of them waits for
+    every administrator.
     """
     from app.models.user import User
     from app.models.work_item import WorkItem
 
     is_admin = exists().where(User.id == user_uuid, User.role == "admin", User.is_active.is_(True))
+    no_groups = WorkItem.waits_for_group_ids.is_(None)
     return or_(
-        func.coalesce(WorkItem.waits_for_user_id, WorkItem.user_id) == user_uuid,
-        WorkItem.waits_for_user_id.is_(None) & WorkItem.user_id.is_(None) & is_admin,
+        group_member_clause(user_uuid),
+        no_groups & (func.coalesce(WorkItem.waits_for_user_id, WorkItem.user_id) == user_uuid),
+        no_groups & WorkItem.waits_for_user_id.is_(None) & WorkItem.user_id.is_(None) & is_admin,
     )
 
 
@@ -150,6 +212,8 @@ async def recipient_line(item: dict[str, Any]) -> str | None:
     """The tool line naming who a ``needs_human`` item waits for; ``None`` when it needs nobody."""
     if not item.get("needs_human"):
         return None
+    if item.get("waits_for_group_ids"):
+        return "  - waits for: the members of its groups, notified in the bell; the first answer decides."
     ref = item.get("waits_for_user_id") or item.get("user_id")
     if not ref:
         return "  - waits for: the platform administrators, notified in the bell."

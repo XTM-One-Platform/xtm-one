@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
 import { useAssetIdentity } from "@/hooks/api/useOrganizationAssetsApi";
-import { type OrganizationProfile, useOrganizationContext, useSaveOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
+import { useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import {
@@ -34,19 +34,30 @@ import {
 } from "@/lib/asset-identity";
 import { PLATFORM_NAMES, fromForm, toForm } from "@/lib/organization-profile";
 import { INVENTORY_IMPORT_SECTIONS, OrganizationImportDialog } from "@/pages/settings/OrganizationImportDialog";
-import { OrganizationSourcesSyncs } from "@/pages/settings/OrganizationSourcesSyncs";
+import { OrganizationSourcesSyncs, type SyncPreset } from "@/pages/settings/OrganizationSourcesSyncs";
 
 /**
  * The Sources page: the inventory's syncs, nothing below them. Administrators add a source (platform, section, filters,
  * preview, then a schedule) limited to the inventory sections (#1367, point 4: the ability was lost with the move).
+ * "Set up a sync" on a platform whose rows outlived their sync opens the same import on that platform and section (#1940).
  */
 export function InventorySourcesCard() {
   const { isAdmin } = useAuth();
-  const [adding, setAdding] = useState(false);
+  // false: closed; true: a blank import; a preset: the import of one platform and section.
+  const [adding, setAdding] = useState<boolean | SyncPreset>(false);
+  const preset = typeof adding === "object" ? adding : undefined;
   return (
     <div data-testid="ctem-inventory.sources">
-      <OrganizationSourcesSyncs scope="inventory" onAddSource={isAdmin ? () => setAdding(true) : undefined} />
-      {adding && <OrganizationImportDialog open={adding} onOpenChange={setAdding} sections={INVENTORY_IMPORT_SECTIONS} />}
+      <OrganizationSourcesSyncs scope="inventory" onAddSource={isAdmin ? () => setAdding(true) : undefined} onSetUpSync={isAdmin ? setAdding : undefined} />
+      {adding !== false && (
+        <OrganizationImportDialog
+          open
+          onOpenChange={(next) => !next && setAdding(false)}
+          sections={INVENTORY_IMPORT_SECTIONS}
+          initialSection={preset?.section}
+          initialSource={preset?.source}
+        />
+      )}
     </div>
   );
 }
@@ -76,7 +87,7 @@ export function AssetMatchingCard() {
   const { isAdmin } = useAuth();
   const identity = useAssetIdentity();
   const { data: context } = useOrganizationContext();
-  const save = useSaveOrganizationContext();
+  const save = usePatchOrganizationContext();
   const [draft, setDraft] = useState<IdentityDraft | null>(null);
 
   const defaults = identity.data?.defaults;
@@ -95,8 +106,9 @@ export function AssetMatchingCard() {
     if (!context || !saved || blocked) return;
     const parsed = fromForm({ ...toForm(context.profile), asset_identity: saved });
     if ("invalid" in parsed) return;
+    // #1752: the matching rules alone travel, never the asset rows.
     save.mutate(
-      { profile: parsed.profile as OrganizationProfile, source: "form" },
+      { fields: { asset_identity: parsed.profile.asset_identity }, based_on_version: context.version ?? null },
       {
         onSuccess: () => {
           setDraft(null);

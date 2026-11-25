@@ -61,7 +61,6 @@ import {
   becomesAutomatic,
   becomesGated,
   effectiveAutonomyLevel,
-  gateActionLabel,
   gateNames,
   isAutonomyRaise,
   selectableLevels,
@@ -71,7 +70,7 @@ import { FleetAutonomyCatalog } from "./FleetAutonomyCatalog";
 import { FleetGateReview } from "./FleetGateReview";
 import { FleetPendingApprovals } from "./FleetPendingApprovals";
 import { fleetRefusalMessage } from "./fleet-refusals";
-import { FleetGateMark } from "./FleetModuleMark";
+import { FleetGateList } from "./FleetGateList";
 import { FleetGatesAtLevel } from "./FleetGatesAtLevel";
 
 /** What the level never covers: written once, in the strip (UX round 3 C2, round 1 B4 on #10034). */
@@ -409,15 +408,8 @@ export function FleetAutonomyStrip({
         onConfirm={() => reduceTo && void apply(reduceTo)}
       >
         {unlocked.length > 0 && (
-          <div className="space-y-2" data-testid="fleet-autonomy-unlocked">
-            <ul className="space-y-1.5">
-              {unlocked.map((gate) => (
-                <li key={gate.key} className="flex items-center gap-2 content-compact">
-                  <FleetGateMark gate={gate} />
-                  <span className="min-w-0 truncate">{gateActionLabel(gate, t_i18n)}</span>
-                </li>
-              ))}
-            </ul>
+          <div className="space-y-2">
+            <FleetGateList gates={unlocked} testId="fleet-autonomy-unlocked" />
             <p className="content-compact text-default-secondary">{t_i18n("Every action stays logged and reported in Operations.")}</p>
           </div>
         )}

@@ -102,6 +102,7 @@ from app.api.v1.schemas.fleet import (
     FleetCapabilitySlotsResponse,
     FleetCapabilityTypeSet,
     FleetCardResponse,
+    FleetCaseOwnershipRequest,
     FleetControlResponse,
     FleetCostResponse,
     FleetCreate,
@@ -438,6 +439,7 @@ async def _respond(db: AsyncSession, user: User, fleets: list[Fleet], user_group
             instructions_position=getattr(f, "instructions_position", None),
             health_check=f.health_check if isinstance(getattr(f, "health_check", None), dict) else None,
             forked_from=f.forked_from if isinstance(f.forked_from, dict) else None,
+            case_ownership=f.case_ownership if isinstance(getattr(f, "case_ownership", None), dict) else None,
             automations=FleetAutomationsResponse(
                 total=facts[f.id].automations.total,
                 enabled=facts[f.id].automations.enabled,
@@ -1750,20 +1752,24 @@ async def regenerate_fleet_documentation_endpoint(
 
     The documentation is never typed by hand: this is its one write path
     besides the seed and the shipped restore. One section (``section``) or all;
-    on a built-in fleet the result is a local version the next boot keeps.
+    a built-in fleet is refused (422): the seed writes its documentation (#1956).
 
     The generation is recorded on the server while it runs (#10817): a reload,
     a second tab or a page opened again reads ``generating``; a click while one
     runs starts no second one and answers the documentation with ``generating``.
     """
     from app.services.fleet_doc_generation import FleetDocDraftError, check_section, regenerate_fleet_documentation
+    from app.services.fleet_docs import refuse_builtin_rewrite
 
     fleet = await _manageable_fleet(db, user, fleet_id)
     try:
-        # Refused before the claim (#393): a wrong name never shows as a failure on the About page.
+        # Refused before the claim (#393): a wrong name or a built-in fleet never shows as a failure on the About page.
+        refuse_builtin_rewrite(fleet)
         check_section(body.section)
     except FleetDocDraftError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+    except FleetActionRefusedError as exc:
+        raise _refused(exc) from None
     # Read once: a rollback below expires ``fleet``, and reading its id again in
     # the async ``finally`` would lazy-load outside the greenlet (MissingGreenlet).
     doc_fleet_id = fleet.id
@@ -3028,6 +3034,13 @@ async def _control_response(db: AsyncSession, fleet: Fleet, changed: int) -> Fle
     )
 
 
+async def catch_up_after_change(fleet: Fleet) -> int:
+    """The CTEM case catch-up after *fleet*'s automations changed (#1966); 0 for a fleet that runs no case."""
+    from app.services.ctem_case_routing import catch_up_after_change as catch_up
+
+    return await catch_up(fleet)
+
+
 @router.post("/{fleet_id}/pause", response_model=FleetControlResponse)
 async def pause_fleet_automations(
     fleet_id: str,
@@ -3053,6 +3066,9 @@ async def pause_fleet_automations(
             request=request,
         )
     await db.commit()
+    if outcome.changed:
+        # The case paths it gave back go to their next owner at once (#1966).
+        await catch_up_after_change(fleet)
     return await _control_response(db, fleet, outcome.changed)
 
 
@@ -3084,7 +3100,86 @@ async def resume_fleet_automations(
             request=request,
         )
     await db.commit()
+    if outcome.changed:
+        # A CTEM case fleet takes the open cases it owns again that nobody ran (#1966).
+        await catch_up_after_change(fleet)
     return await _control_response(db, fleet, outcome.changed)
+
+
+@router.put("/{fleet_id}/case-ownership", response_model=FleetResponse)
+async def set_fleet_case_ownership(
+    fleet_id: str,
+    body: FleetCaseOwnershipRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    # Its catch-up hands open cases to the fleet, which starts new AI work, as
+    # Enable does: refused while AI is off.
+    _gate: None = Depends(require_agentic_ai),
+) -> FleetResponse:
+    """Set the CTEM cases a fleet runs (#1966): administrators, any fleet but a built-in one.
+
+    Its home members' "Case opened or reopened" automations are pointed at the
+    fleet (they hear only the cases routed to it) and the catch-up hands the
+    open cases it now owns to it, or the ones it gave back to their next owner.
+    """
+    from app.models.ctem_signal import TRIGGER_PATHS
+    from app.services import ctem_case_routing as routing
+
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
+    fleet = await _manageable_fleet(db, user, fleet_id, action="set the CTEM case ownership of")
+    if fleet.is_builtin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A built-in fleet's case ownership is seeded: fork the fleet to change it.",
+        )
+    before = fleet.case_ownership if isinstance(fleet.case_ownership, dict) else None
+    if body.clear:
+        fleet.case_ownership = None
+    else:
+        if body.paths is not None:
+            unknown = sorted(set(body.paths) - set(TRIGGER_PATHS))
+            if not body.paths or unknown:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"paths: null for every trigger path, or a list of {', '.join(TRIGGER_PATHS)}"
+                    + (f"; unknown: {', '.join(unknown)}" if unknown else ""),
+                )
+        key = (body.key or (before or {}).get("key") or f"ctem:fleet-{fleet.id}").strip()
+        fleet.case_ownership = {
+            "paths": list(dict.fromkeys(body.paths)) if body.paths is not None else None,
+            "key": key,
+        }
+        members = (
+            (
+                await db.execute(
+                    select(FleetMember.agent_id).where(
+                        FleetMember.fleet_id == fleet.id,
+                        FleetMember.role == FLEET_ROLE_MEMBER,
+                        FleetMember.agent_id.is_not(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        await routing.point_case_listeners(db, fleet, members)
+    await log_audit(
+        db,
+        user=user,
+        action="fleet_case_ownership",
+        entity_type="fleet",
+        entity_id=fleet.id,
+        entity_name=fleet.name,
+        summary=f"Set the CTEM case ownership of fleet '{fleet.name}'",
+        details={"before": before, "after": fleet.case_ownership},
+        request=request,
+    )
+    await db.commit()
+    # Every owner is caught up: the cases it took, or gave back (#1966).
+    await routing.catch_up()
+    return (await _respond(db, user, [fleet]))[0]
 
 
 @router.post("/{fleet_id}/unset", response_model=FleetControlResponse)
@@ -3112,6 +3207,9 @@ async def unset_fleet_automations(
             request=request,
         )
     await db.commit()
+    if outcome.changed:
+        # The case paths it gave back go to their next owner at once (#1966).
+        await catch_up_after_change(fleet)
     return await _control_response(db, fleet, outcome.changed)
 
 
@@ -3262,10 +3360,8 @@ async def enable_fleet_automations(
     # Before the answer, every call (a dry run wrote nothing, so it commits nothing).
     await db.commit()
     if not body.dry_run and changed:
-        # A CTEM case fleet takes the open cases it owns that nobody ran (#1390).
-        from app.services.ctem_case_routing import catch_up_after_enable
-
-        await catch_up_after_enable(fleet.slug)
+        # A CTEM case fleet takes the open cases it owns that nobody ran (#1390, #1966).
+        await catch_up_after_change(fleet)
     counts = await fleet_automation_counts(db, fleet)
     return FleetEnableResponse(
         fleet_id=str(fleet.id),
@@ -3646,11 +3742,11 @@ async def get_ctem_loop_setup_status(
     saved = await current_version(db)
     profile = parse_profile(saved.profile) if saved is not None else None
     # #1495: the software count is the Software entities' (synced or typed), the profile rows before any.
-    software = (await software_profile(db))[1].tech_stack if saved is not None else []
+    software = (await software_profile(db))[1].software if saved is not None else []
     profile_facts = status_mod.ProfileFacts(
         saved=saved is not None,
-        crown_jewels=len(profile.crown_jewels) if profile else 0,
-        tech_stack=len(software),
+        primary_assets=len(profile.primary_assets) if profile else 0,
+        software=len(software),
         ticketing_target=bool(profile and profile.ticketing.integration),
         scope_min_criticality=profile.prioritization_policy.scope_min_criticality if profile else "",
     )

@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { FleetAutonomyGate } from "@/hooks/api/useFleetApi";
 
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
+  AUTONOMY_LEVEL_LABELS,
   AUTONOMY_LEVELS,
   autonomyChipLabel,
   autonomyCounts,
@@ -13,7 +17,14 @@ import {
   nextPins,
   pinLowersApproval,
   selectableLevels,
+  CTEM_GATE_CHOICE_LABELS,
+  CTEM_GATE_CHOICES,
+  ctemChoiceFreed,
+  ctemGateChoiceLevel,
+  ctemGateChoiceOf,
+  gatesWaitingAt,
 } from "./fleet-autonomy";
+import en from "@/i18n/lang/en.json";
 
 describe("gate pins (#916, CTEM-34)", () => {
   it("sends the whole pin map, the other gates' pins kept and a cleared pin dropped", () => {
@@ -102,5 +113,43 @@ describe("fleet autonomy (#9769 S3)", () => {
     expect(autonomyStatusLabel("autonomous", 0, null, t)).toBe("No gated actions");
     expect(autonomyStatusLabel("full_gates", undefined, undefined, t)).toBe("No gated actions");
     expect(autonomyStatusLabel("autonomous", 0, "medium_low", t)).toBe("Between Medium and Low, by instruction");
+  });
+});
+
+describe("CTEM loop setup gate choice (#1087 item 4, #1830)", () => {
+  const ctem = [gate("Review", "low"), gate("Decide", "high"), gate("Mobilize", "destructive")];
+
+  it("offers three choices, each label in the catalog", () => {
+    expect(CTEM_GATE_CHOICES).toEqual(["autonomous", "recommended", "custom"]);
+    expect(CTEM_GATE_CHOICE_LABELS).toEqual({ autonomous: "Full autonomous", recommended: "Recommended gates", custom: "Add gates" });
+    for (const label of Object.values(CTEM_GATE_CHOICE_LABELS)) expect((en as Record<string, string>)[label]).toBe(label);
+  });
+
+  it("names the autonomous choice as the level strip names that level (UX round 1 B4 on #1840)", () => {
+    expect(CTEM_GATE_CHOICE_LABELS.autonomous).toBe(AUTONOMY_LEVEL_LABELS.autonomous);
+  });
+
+  it("never cuts a gate name: no gate action label inside a truncated span (UX round 1 B3 on #1840)", () => {
+    const dir = join(process.cwd(), "src/components/fleets");
+    const offenders = readdirSync(dir)
+      .filter((name) => name.endsWith(".tsx") && !name.endsWith(".test.tsx"))
+      .filter((name) => /<span[^>]*\btruncate\b[^>]*>\s*\{gateActionLabel\(/.test(readFileSync(join(dir, name), "utf8")));
+    expect(offenders).toEqual([]);
+  });
+
+  it("reads the seeded level with no pin as the recommended default, Mobilize alone waiting", () => {
+    expect(ctemGateChoiceOf("low", ctem)).toBe("recommended");
+    expect(ctemGateChoiceOf(undefined, ctem)).toBe("custom");
+    expect(ctemGateChoiceOf("autonomous", ctem)).toBe("autonomous");
+    expect(ctemGateChoiceOf("low", [{ ...ctem[2], pin: "wait" }])).toBe("custom");
+    expect(ctemGateChoiceLevel("recommended")).toBe("low");
+    expect(ctemGateChoiceLevel("custom")).toBeNull();
+    expect(gatesWaitingAt(ctem, "low").map((g) => g.action)).toEqual(["Mobilize"]);
+  });
+
+  it("names what loses approval before the choice, a wait pin included", () => {
+    expect(ctemChoiceFreed(ctem, "low", "autonomous").map((g) => g.action)).toEqual(["Mobilize"]);
+    expect(ctemChoiceFreed(ctem, "autonomous", "low")).toEqual([]);
+    expect(ctemChoiceFreed([{ ...ctem[1], pin: "wait" }], "low", "low").map((g) => g.action)).toEqual(["Decide"]);
   });
 });

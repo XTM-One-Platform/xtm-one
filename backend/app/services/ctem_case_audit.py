@@ -86,6 +86,7 @@ KIND_PHASE: dict[str, str] = {
     "issue_closed": STAGE_VALIDATION,
     "treatment_plan": STAGE_REMEDIATION,
     "ticket": STAGE_REMEDIATION,
+    "applied_change": STAGE_REMEDIATION,
 }
 
 #: The phase a gate of the CTEM catalog (``builtin_fleet_docs.CTEM_GATE_KEYS``) belongs to.
@@ -401,6 +402,18 @@ def open_wait(events: list[dict[str, Any]]) -> dict[str, Any] | None:
     moved = max(moves, key=_at)
     actor = moved.get("actor")
     return {"gate": None, "by": None if actor in (None, "", SYSTEM_ACTOR) else actor, "since": moved.get("at")}
+
+
+def stalled_since(events: list[dict[str, Any]]) -> str | None:
+    """When the case sweep found the case waiting on nobody, while that ``stalled`` event is its newest event (#1736).
+
+    Any later event (a gate, an answer, a state move, a note) means something moved the case: ``None``.
+    """
+    dated = [e for e in events if _parse(e.get("at")) is not None]
+    if not dated:
+        return None
+    newest = max(dated, key=lambda e: _parse(e.get("at")) or datetime.min.replace(tzinfo=UTC))
+    return newest.get("at") if newest.get("kind") == "stalled" else None
 
 
 def run_phase(created_at: Any, annotated: list[dict[str, Any]]) -> str:

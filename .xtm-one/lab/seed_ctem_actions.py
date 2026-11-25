@@ -51,7 +51,7 @@ def stored_age(environ: dict) -> timedelta:
 #: (headline, score_read, recommended_action) of each stage's stored assessment.
 STAGE_ACTIONS: dict[str, tuple[str, str, str]] = {
     "scoping": ("OpenCTI and OpenAEV are connected but no scope is defined yet", "unknown",
-                "Define the crown-jewel scope in OpenCTI so every later stage has assets to measure"),
+                "Define the primary-asset scope in OpenCTI so every later stage has assets to measure"),
     "discovery": ("ATT&CK detection coverage is at 42 percent", "at_risk",
                   "Map detection rules to the uncovered ATT&CK techniques used by the tracked actors"),
     "prioritization": ("Seven known-exploited vulnerabilities are open", "critical",
@@ -67,7 +67,7 @@ NEXT_STEPS: tuple[tuple[str, str, str], ...] = (
     ("Validate the EDR policy against the failed prevention expectations",
      "Prevention fails on 6 of 21 expectations in the last simulations", "high"),
     (STAGE_ACTIONS["prioritization"][2],
-     "Known-exploited vulnerabilities are the shortest path to the crown jewels", "medium"),
+     "Known-exploited vulnerabilities are the shortest path to the primary assets", "medium"),
     ("Review the phishing awareness results with the human response team",
      "Human response expectations are mostly pending or partial", "low"),
 )

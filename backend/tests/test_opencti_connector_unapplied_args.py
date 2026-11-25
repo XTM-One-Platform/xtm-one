@@ -1,9 +1,9 @@
-"""manage_opencti_connector refuses fields the action does not apply.
+"""manage_opencti_connector names fields the action does not apply as ignored; the action runs.
 
 Same contract as the user, group, role, profile, ingestion, form, label, workspace,
 notifier, trigger and notification tools: a field the chosen action ignores (config
 on start, name on delete, tail on get, an argument the tool does not declare) is
-named in the answer and nothing is sent to OpenCTI.
+named in the answer as ignored and the action runs with the rest.
 """
 
 import contextlib
@@ -63,15 +63,14 @@ async def _run(executor: CallableToolExecutor, arguments: dict[str, Any]) -> Too
         ({"action": "stop", "connector_id": "c1", "force": True}, "force"),
     ],
 )
-async def test_unapplied_field_is_refused_and_nothing_is_sent(
+async def test_unapplied_field_is_named_as_ignored_and_the_action_runs(
     monkeypatch: pytest.MonkeyPatch, arguments: dict[str, Any], named: str
 ) -> None:
-    executor, calls = _build(monkeypatch)
+    executor, _calls = _build(monkeypatch)
     result = await _run(executor, arguments)
     assert f"action '{arguments['action']}' does not apply" in result.content, result.content
     assert named in result.content
-    assert "nothing was written" in result.content
-    assert calls.count == 0
+    assert "ignored and the rest ran" in result.content
 
 
 async def test_start_with_its_own_field_runs(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -220,7 +220,7 @@ test.describe('Lending an MCP server', () => {
       item({ lost: { ...NOBODY, people_count: 5 }, via: null }),
     ]);
     await page.goto(`/mcp-servers/${SERVER_ID}`);
-    await page.locator('button:has(svg.lucide-trash-2)').first().click();
+    await page.getByRole('button', { name: 'Delete server' }).click();
     const dialog = page.getByTestId('credential-sharing-dialog');
     await expect(dialog.getByText(/No longer usable by 5 people/)).toBeVisible();
     expect(previews.at(-1)).toMatchObject({ entity_type: 'mcp_server', change: { delete: true } });
@@ -231,7 +231,7 @@ test.describe('Lending an MCP server', () => {
   test('deleting a server nobody else uses keeps its own confirmation', async ({ page }) => {
     const { deleted } = await mockServer(page, []);
     await page.goto(`/mcp-servers/${SERVER_ID}`);
-    await page.locator('button:has(svg.lucide-trash-2)').first().click();
+    await page.getByRole('button', { name: 'Delete server' }).click();
     const dialog = page.getByTestId('credential-sharing-dialog');
     await expect(dialog.getByText('Delete MCP Server')).toBeVisible();
     await dialog.getByTestId('credential-sharing-confirm').click();
@@ -253,7 +253,7 @@ test.describe('Deleting asks at once', () => {
       return json(route, { items, requires_confirmation: items.length > 0, truncated: false });
     });
     await page.goto(`/mcp-servers/${SERVER_ID}`);
-    await page.locator('button:has(svg.lucide-trash-2)').first().click();
+    await page.getByRole('button', { name: 'Delete server' }).click();
 
     const dialog = page.getByTestId('credential-sharing-dialog');
     await expect(dialog.getByText('Delete MCP Server')).toBeVisible();
@@ -273,7 +273,7 @@ test.describe('Deleting asks at once', () => {
     await page.route((url) => url.pathname === '/api/v1/exposure/preview', (route) =>
       json(route, { detail: 'Preview unavailable' }, 500));
     await page.goto(`/mcp-servers/${SERVER_ID}`);
-    await page.locator('button:has(svg.lucide-trash-2)').first().click();
+    await page.getByRole('button', { name: 'Delete server' }).click();
 
     const dialog = page.getByTestId('credential-sharing-dialog');
     await expect(dialog.getByText('Delete MCP Server')).toBeVisible();

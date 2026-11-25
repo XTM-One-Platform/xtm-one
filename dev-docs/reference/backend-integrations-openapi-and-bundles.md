@@ -24,6 +24,18 @@ switch, the per-user spec-load rate limit and every validation apply to the
 tools as to the routes. The builder reads the catalog entry's `spec_import`
 marker, never the provider name.
 
+A run builds its tool list, the names the model calls and the gate at the
+start of a turn. A spec, credential or sharing change written by
+`update_integration` reloads the integration tools of the turn that made it
+at the end of that step (`ToolDefinition.changes_tool_surface`, the loop's
+refresh through `services/tool_surface_refresh.py`, see
+`backend-tools-agent-loop.md` 3k); any other agent reads it from its next chat
+turn or assignment run. The answer says so (`services/tool_surface_timing.py`,
+`INTEGRATION_RELOAD_LINE`). A binding or tool-scope change written by
+`update_agent` reaches the agent from its next chat turn or assignment run
+(`NEXT_TURN_LINE`). A label-only change (name, description, tags, scopes)
+carries no such line.
+
 | Piece | Where | Role |
 |-------|-------|------|
 | Loader | `services/openapi_import/document.py` | JSON first, safe YAML second (keys and timestamps kept as literal text, alias bombs and non-JSON tags refused), 10 MB ceiling, URL fetch via `web_fetch.fetch_url_bytes(allow_private=True)` |

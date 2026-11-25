@@ -43,14 +43,7 @@ import { SoftwareTab } from "./ctem/SoftwareTab";
 import { INVENTORY_LABEL, INVENTORY_PATH, assetCategory, assetCategoryLabel, assetFieldLabel, criticalityShortLabel, sourceLabel } from "./ctem/inventory";
 import { BUSINESS_TAB_CARDS, EXPOSURE_TAB_CARDS, INVENTORY_TABS, RETIRED_TABS, type InventoryTab } from "./ctem/inventory-tabs";
 
-/**
- * The retired AI systems tab (#1501: an AI system is an asset of category AI target): its old link lands on the
- * Assets tab filtered on that category, so a bookmark or a fleet link keeps working.
- */
-const RETIRED_AI_SYSTEMS_TAB = "ai-systems";
-
 const ASSETS_URL_KEY = "a_";
-const AI_TARGET_ASSETS_HREF = `${INVENTORY_PATH}?${ASSETS_URL_KEY}f_category=ai_target`;
 const ASSETS_STORAGE_KEY = "ctem-inventory-assets";
 const PAGE_SIZE = 50;
 const NAME_SORT = { key: "name", direction: "asc" } as const;
@@ -341,12 +334,6 @@ function AssetsTab({ add }: { add: AddRequest }) {
 }
 
 export default function CtemInventory() {
-  const [tab] = useTabParam<InventoryTab>("assets");
-  if ((tab as string) === RETIRED_AI_SYSTEMS_TAB) return <Navigate to={AI_TARGET_ASSETS_HREF} replace />;
-  return <InventoryPage />;
-}
-
-function InventoryPage() {
   const { t_i18n } = useFormatter();
   const [tab] = useTabParam<InventoryTab>("assets");
   // No page-level Edit mode any more (#1367, point 2): each tab manages its rows (Add, row menu, bulk actions).

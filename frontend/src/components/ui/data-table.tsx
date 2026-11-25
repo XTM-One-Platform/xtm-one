@@ -40,6 +40,7 @@ import type { Visibility as VisibilityScope } from "@/lib/visibility";
 import { Pagination } from "@/components/ui/pagination";
 import { RowTargetContext } from "@/components/ui/row-target-context";
 import { TotalChip } from "@/components/ui/total-chip";
+import { ToolbarCompactContext } from "@/components/ui/toolbar-compact-context";
 import { SearchInput } from "@/components/ui/search-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -668,6 +669,8 @@ function DataTableView<T>({
   // The lead and box widths at which the one-row toolbar's full labels ran past its box.
   const [toolbarRow, setToolbarRow] = useState<HTMLDivElement | null>(null);
   const [fullLabelsOverflow, setFullLabelsOverflow] = useState<{ lead: number; box: number } | null>(null);
+  // The lead and box widths at which the one-row toolbar still ran past its box once compact.
+  const [compactOverflow, setCompactOverflow] = useState<{ lead: number; box: number } | null>(null);
 
   // A typed search reaches the state after a pause, so the URL (and a server query) follow the words, not the keys.
   const [searchText, setSearchText] = useState(state.search);
@@ -958,16 +961,20 @@ function DataTableView<T>({
     // A row that opens a page (onRowClick without expandedRow) is a keyboard target too:
     // focusable, Enter opens it, so no cell needs a link of its own (#12070).
     const focusable = Boolean(opens && !href && !toggleInCell);
+    // A routed row whose every column is interactive draws no link cell: the row itself is
+    // then the one keyboard target (tab stop, Enter opens it), never a row the keyboard
+    // cannot open (UX round 1 on #2027, B1).
+    const hrefFocusable = Boolean(href && !linkColumnKey);
     const className = cn(
       "border-t border-elevation-subtle-soft transition-colors",
       ROW_HEIGHT[rowLines],
-      focusable && "outline-none focus-visible:bg-elevation-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus",
+      (focusable || hrefFocusable) && "outline-none focus-visible:bg-elevation-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus",
       (href || opens) && "cursor-pointer hover:bg-elevation-hover",
       !href && !opens && "hover:bg-elevation-hover",
       rowClassName?.(row),
     );
     const line = href ? (
-      <HrefRow key={key} href={href} className={className} testId={rowTestId}>
+      <HrefRow key={key} href={href} className={className} testId={rowTestId} focusable={hrefFocusable}>
         {cells}
       </HrefRow>
     ) : (
@@ -1266,12 +1273,27 @@ function DataTableView<T>({
   // wraps, so the right group (total, page size, export) never runs past the box
   // (the Cases list at 1080 ended at 1167 px with two rows selected, UX r2 B6 on #11666).
   const selectionShown = Boolean(selection) && selected.length > 0;
-  const toolbarWraps = !filtersInPill || leadCrowds || selectionShown;
-  // Before paint: a one-row toolbar drawn with its full labels that runs past its box records
-  // the lead and box widths, so the next render draws the compact controls (no flash).
+  // A compact one-row toolbar that still ran past its box at this lead width or a wider one
+  // and this box width or a narrower one wraps too: the page's own controls (the Case opening
+  // switch) count in the row, and the Cases list in ja at 1080 ran 21 px past it (UX r3 B1 on #1963).
+  // Only a row carrying a page's own controls wraps: Worksets at 1024 has none and keeps one row.
+  const compactCrowds =
+    filtersInPill &&
+    Boolean(toolbar) &&
+    compactToolbar &&
+    boxWidth !== null &&
+    compactOverflow !== null &&
+    leadWidth >= compactOverflow.lead &&
+    boxWidth <= compactOverflow.box;
+  const toolbarWraps = !filtersInPill || leadCrowds || selectionShown || compactCrowds;
+  // Before paint: a one-row toolbar that runs past its box records the lead and box widths, so
+  // the next render draws the compact controls, and a compact row that still runs past it wraps
+  // its right group to its own line (no flash).
   useLayoutEffect(() => {
-    if (!toolbarRow || !filtersInPill || toolbarWraps || compactToolbar || boxWidth === null) return;
-    if (toolbarRow.scrollWidth > toolbarRow.clientWidth + 1) setFullLabelsOverflow({ lead: leadWidth, box: boxWidth });
+    if (!toolbarRow || !filtersInPill || toolbarWraps || boxWidth === null) return;
+    if (toolbarRow.scrollWidth <= toolbarRow.clientWidth + 1) return;
+    if (compactToolbar) setCompactOverflow({ lead: leadWidth, box: boxWidth });
+    else setFullLabelsOverflow({ lead: leadWidth, box: boxWidth });
   }, [toolbarRow, filtersInPill, toolbarWraps, compactToolbar, boxWidth, leadWidth]);
   // A card list (`renderGrid`) has no header row: its page box is the first control of the
   // toolbar, never a row of its own above the cards (Sam on /operations/shared-state, 14 Nov 2026).
@@ -1415,7 +1437,8 @@ function DataTableView<T>({
           )}
           <div className={cn("ml-auto flex items-center gap-2", filtersInPill ? "shrink-0 flex-nowrap" : "flex-wrap")}>
             {totalChip}
-            {toolbar}
+            {/* A page's own toolbar controls follow the compact rule too (UX r2 B1 on #1963). */}
+            <ToolbarCompactContext.Provider value={compactToolbar}>{toolbar}</ToolbarCompactContext.Provider>
             {renderGrid && sortableColumns.length > 0 && (
               <GridSort
                 columns={sortableColumns.map((column) => ({ key: column.key, label: t_i18n(column.header) }))}
@@ -1494,10 +1517,37 @@ const COMPACT_TOOLBAR_BELOW_PX = 896;
 const ONE_ROW_TOOLBAR_MIN_PX = 852;
 
 /** A row that opens its detail route; the router hook lives here so a table without links needs no router. */
-function HrefRow({ href, className, testId, children }: { href: string; className: string; testId?: string; children: ReactNode }) {
+function HrefRow({
+  href,
+  className,
+  testId,
+  focusable,
+  children,
+}: {
+  href: string;
+  className: string;
+  testId?: string;
+  /** No link cell in the row: the row is the tab stop and Enter opens it. */
+  focusable: boolean;
+  children: ReactNode;
+}) {
   const navigate = useNavigate();
   return (
-    <tr data-testid={testId} className={className} onClick={() => navigate(href)}>
+    <tr
+      data-testid={testId}
+      className={className}
+      onClick={() => navigate(href)}
+      tabIndex={focusable ? 0 : undefined}
+      onKeyDown={
+        focusable
+          ? (event) => {
+              if (event.target !== event.currentTarget || event.key !== "Enter") return;
+              event.preventDefault();
+              navigate(href);
+            }
+          : undefined
+      }
+    >
       {children}
     </tr>
   );

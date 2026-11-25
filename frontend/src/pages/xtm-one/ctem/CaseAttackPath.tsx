@@ -9,11 +9,16 @@
  * asset". Never blank: a case with no reading says why.
  */
 import { Chip, Icon } from "@filigran/design-system";
+import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TruncatedText } from "@/components/ui/truncated-text";
+import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import type { CtemCaseAttackPath } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { safeExternalUrl } from "@/lib/utils";
 import { CaseSectionReason } from "./CaseSectionReason";
+import { CaseFoldToggle, useCaseFold } from "./case-fold";
+import { primaryAssetPath } from "./inventory";
 
 /** The exposure words, translated where drawn. @i18n-keys */
 const EXPOSURE_LABEL = {
@@ -77,11 +82,15 @@ const RESTRICTED = "Restricted";
 export function CaseAttackPath({ reading }: { reading: CtemCaseAttackPath | null | undefined }) {
   const { t_i18n } = useFormatter();
   const name = (asset: string) => (asset === RESTRICTED ? t_i18n("Restricted asset") : asset);
+  // Up to 40 hops per reading (ATTACK_PATH_MAX in ctem_case_loop): folded past five, nearest kept (#1679, point 5).
+  const hops = useCaseFold(reading?.hops ?? []);
 
   return (
     <Card data-testid="ctem-case-attack-path">
       <CardHeader>
-        <CardTitle>{t_i18n("Attack path and blast radius")}</CardTitle>
+        <CardTitle>
+          <CaseCardTitleText icon={CASE_SECTION_ICON.attack_path}>{t_i18n("Attack path and blast radius")}</CaseCardTitleText>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {!reading ? (
@@ -89,6 +98,7 @@ export function CaseAttackPath({ reading }: { reading: CtemCaseAttackPath | null
             <CaseSectionReason
               own={t_i18n("No attack path yet: triage reads it from OpenCRQ once an OpenAEV simulation has mapped the affected asset.")}
               source="opencrq"
+              icon={CASE_SECTION_ICON.attack_path}
               testId="ctem-case-attack-path-empty"
             />
           </div>
@@ -96,9 +106,7 @@ export function CaseAttackPath({ reading }: { reading: CtemCaseAttackPath | null
           <div className="flex min-w-0 flex-col gap-3 content-base">
             <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
               <span className="text-default-secondary">{t_i18n("Attack starts from")}</span>
-              <span className="min-w-0 truncate font-medium" title={name(reading.origin.asset)}>
-                {name(reading.origin.asset)}
-              </span>
+              <TruncatedText text={name(reading.origin.asset)} className="font-medium" />
               <span className="text-default-secondary">{t_i18n(EXPOSURE_LABEL[reading.origin.exposure] ?? EXPOSURE_LABEL.unknown)}</span>
             </span>
             {reading.hops.length === 0 ? (
@@ -106,28 +114,27 @@ export function CaseAttackPath({ reading }: { reading: CtemCaseAttackPath | null
                 {t_i18n("No attack path leaves this asset in the latest simulations.")}
               </span>
             ) : (
-              <ol className="flex flex-col gap-1" aria-label={t_i18n("Hops, nearest first")}>
-                {reading.hops.map((h, i) => (
-                  <li key={`${h.from}-${h.to}-${i}`} className="flex min-w-0 flex-wrap items-center gap-x-2" data-testid="ctem-case-attack-path-hop">
-                    <span className="min-w-0 truncate" title={name(h.from)}>
-                      {name(h.from)}
-                    </span>
-                    <span aria-hidden="true" className="text-default-secondary">
-                      →
-                    </span>
-                    <span className="min-w-0 truncate font-medium" title={name(h.to)}>
-                      {name(h.to)}
-                    </span>
-                    <Chip
-                      label={t_i18n(NATURE_LABEL[h.nature] ?? NATURE_LABEL.inferred)}
-                      severity={NATURE_TONE[h.nature] ?? NATURE_TONE.inferred}
-                      className="shrink-0"
-                      data-testid="ctem-case-attack-path-nature"
-                    />
-                    <ProvenBy hop={h} />
-                  </li>
-                ))}
-              </ol>
+              <div className="flex flex-col gap-1">
+                <ol className="flex flex-col gap-1" aria-label={t_i18n("Hops, nearest first")} id="ctem-case-attack-path-hops">
+                  {hops.visible.map((h, i) => (
+                    <li key={`${h.from}-${h.to}-${i}`} className="flex min-w-0 flex-wrap items-center gap-x-2" data-testid="ctem-case-attack-path-hop">
+                      <TruncatedText text={name(h.from)} />
+                      <span aria-hidden="true" className="text-default-secondary">
+                        →
+                      </span>
+                      <TruncatedText text={name(h.to)} className="font-medium" />
+                      <Chip
+                        label={t_i18n(NATURE_LABEL[h.nature] ?? NATURE_LABEL.inferred)}
+                        severity={NATURE_TONE[h.nature] ?? NATURE_TONE.inferred}
+                        className="shrink-0"
+                        data-testid="ctem-case-attack-path-nature"
+                      />
+                      <ProvenBy hop={h} />
+                    </li>
+                  ))}
+                </ol>
+                <CaseFoldToggle fold={hops} controls="ctem-case-attack-path-hops" testId="ctem-case-attack-path-more" />
+              </div>
             )}
             <div className="flex min-w-0 flex-col gap-1">
               <span className="text-default-secondary">{t_i18n("Primary assets reached")}</span>
@@ -137,7 +144,15 @@ export function CaseAttackPath({ reading }: { reading: CtemCaseAttackPath | null
                 <ul className="flex flex-wrap items-center gap-1">
                   {reading.primary.map((p, i) => (
                     <li key={`${p}-${i}`} data-testid="ctem-case-attack-path-primary">
-                      <Chip label={name(p)} className="shrink-0" />
+                      {p === RESTRICTED ? (
+                        <Chip label={name(p)} className="shrink-0" />
+                      ) : (
+                        // Opens the primary asset's page (#1980 S2): its supporting assets and the cases on it.
+                        <Link to={primaryAssetPath(p)} className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
+                          <Icon name="gem" size={16} className="text-default-secondary" aria-hidden />
+                          {p}
+                        </Link>
+                      )}
                     </li>
                   ))}
                 </ul>

@@ -71,7 +71,7 @@ export const PREREQUISITE_LABELS = [
   "Regions in the organization profile",
   "Primary assets in the organization profile",
   "Technology in the organization profile",
-  "AI systems listed in the organization profile",
+  "AI target assets in the inventory",
   "A tracked organization with monitoring on",
 ] as const;
 

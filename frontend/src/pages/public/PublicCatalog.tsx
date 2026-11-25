@@ -91,7 +91,7 @@ export default function PublicCatalog() {
 
         {/* Animated resource counter */}
         {data && data.total > 0 && (
-          <div className="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/[0.06] px-4 py-1.5">
+          <div className="inline-flex items-center gap-2 rounded-sm border border-accent/20 bg-accent/[0.06] px-4 py-1.5">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />

@@ -50,7 +50,7 @@ PATH_CATALOG: dict[str, tuple[str, str]] = {
     "new_vulnerability": ("New vulnerability on a running version", "world"),
     "relevant_threat": ("Relevant new threat or actor", "world"),
     "code_flaw": ("Code or dependency flaw before production", "inside"),
-    "proven_exploitable": ("Proven exploitable to a crown jewel", "inside"),
+    "proven_exploitable": ("Proven exploitable to a primary asset", "inside"),
     "new_exposure": ("New exposure", "outside"),
     "stale_asset": ("Stale or orphaned asset", "outside"),
     "surface_drift": ("Attack-surface drift", "outside"),
@@ -485,11 +485,13 @@ def signal_event_id(name: str, signal: CtemSignal, marker: str) -> str:
 
 
 async def user_reads_signal(db: AsyncSession, user_id: str, signal_id: Any) -> bool:
-    """Whether *user_id* reads the signal *signal_id*: an administrator, or the signal's own recorder.
+    """Whether *user_id* reads the signal *signal_id*: an administrator, a CTEM view or decide
+    right (``services/ctem_access.py``), or the signal's own recorder.
 
-    The signal API's rule (:func:`_visible`): a listener's signal (``system``) is an administrator's read only.
+    The signal API's rule: a listener's signal (``system``) is read only with one of those rights.
     """
     from app.models.user import User
+    from app.services import ctem_access
 
     try:
         uid = uuid.UUID(str(user_id))
@@ -502,7 +504,9 @@ async def user_reads_signal(db: AsyncSession, user_id: str, signal_id: Any) -> b
     if recorded_by == str(uid):
         return True
     user = await db.get(User, uid)
-    return bool(getattr(user, "is_admin", False))
+    if bool(getattr(user, "is_admin", False)):
+        return True
+    return user is not None and await ctem_access.group_right(db, uid) is not None
 
 
 def path_catalog(

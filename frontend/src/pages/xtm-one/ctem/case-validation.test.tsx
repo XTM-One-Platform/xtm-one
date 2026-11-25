@@ -1,14 +1,14 @@
-// The validation of a case (CTEM-12-UI): safe mode and run order of each
-// validation reference, gate A passed automatically by safe mode, a waiting
-// non-read-only test on the unified work-item decision card (never a CTEM
-// card), and a case not validated yet says so.
+// The validation of a case (CTEM-12-UI): run order of each validation
+// reference, gate A passed automatically at the fleet's level, a waiting
+// validation on the unified work-item decision card (never a CTEM card), a
+// stored safe_mode never rendered (#1810), and a case not validated yet says so.
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
 
 import { renderWithProviders } from "@/testing/providers";
 import type { CtemCaseEvent } from "@/hooks/api/useCtemCasesApi";
-import { autoPassReason, chosenOptionLabel, latestValidations, safeModeOf } from "./case-validation";
+import { autoPassReason, chosenOptionLabel, latestValidations } from "./case-validation";
 
 const state = vi.hoisted(() => ({ items: [] as unknown[], calls: [] as unknown[] }));
 
@@ -36,7 +36,6 @@ const SAFE = {
   ref: "sc-1",
   result: "not_exposed" as const,
   at: "2026-11-21T10:00:00Z",
-  safe_mode: true,
   run_order: ["DMZ web", "Core services"],
 };
 
@@ -46,18 +45,14 @@ beforeEach(() => {
 });
 
 describe("case-validation helpers", () => {
-  it("lists the newest references first and reads safe mode", () => {
-    const older = { ...SAFE, ref: "old", safe_mode: undefined };
+  it("lists the newest references first", () => {
+    const older = { ...SAFE, ref: "old" };
     expect(latestValidations([older, SAFE]).map((v) => v.ref)).toEqual(["sc-1", "old"]);
-    expect(safeModeOf(SAFE)).toBe("safe");
-    expect(safeModeOf({ safe_mode: false })).toBe("unsafe");
-    expect(safeModeOf({})).toBeNull();
   });
 
-  it("names safe mode as the reason of an automatic pass, else the fleet", () => {
-    expect(autoPassReason("passed_automatically", SAFE)).toBe("safe_mode");
-    expect(autoPassReason("passed_automatically", { safe_mode: false })).toBe("fleet_runs");
-    expect(autoPassReason("waited", SAFE)).toBeNull();
+  it("names the fleet as the reason of an automatic pass, never a class of the inject", () => {
+    expect(autoPassReason("passed_automatically")).toBe("fleet_runs");
+    expect(autoPassReason("waited")).toBeNull();
   });
 
   it("reads the chosen label from payload.answer, the shape the answer endpoint leaves (ask cleared)", () => {
@@ -78,24 +73,31 @@ describe("case-validation helpers", () => {
 });
 
 describe("CaseValidation", () => {
-  it("shows safe mode, the run order and gate A passed automatically by safe mode", () => {
+  it("shows the run order and gate A passed automatically at the fleet's level, never a stored safe mode", () => {
     const history = [ev({ from: "ctem.validation.non_readonly", to: "passed_automatically", reason: "pin run" })];
-    renderWithProviders(<CaseValidation caseId="c1" validations={[SAFE]} history={history} />);
-    expect(screen.getByTestId("ctem-case-validation-gate").textContent).toContain("Passed automatically: safe mode");
-    expect(screen.getByTestId("ctem-case-validation-mode").textContent).toBe("Safe mode: read-only checks only");
+    const stored = { ...SAFE, safe_mode: true } as typeof SAFE;
+    renderWithProviders(<CaseValidation caseId="c1" validations={[stored]} history={history} />);
+    expect(screen.getByTestId("ctem-case-validation-gate").textContent).toContain("The fleet runs this gate without a person");
+    expect(screen.queryByTestId("ctem-case-validation-mode")).toBeNull();
+    expect(screen.queryByText(/safe mode/i)).toBeNull();
+    // Result and run order are chips (#1679), the provider with its logo.
+    expect(screen.getByTestId("ctem-case-validation-result").getAttribute("data-tone")).toBe("green");
+    expect(screen.getByTestId("ctem-case-validation-provider").textContent).toBe("OpenAEV");
     expect(screen.getByTestId("ctem-case-validation-order").textContent).toBe("1. DMZ web2. Core services");
+    expect(screen.getByTestId("ctem-case-validation-order").querySelectorAll("[data-tone]")).toHaveLength(2);
     expect(screen.queryByText(/pin run/)).toBeNull();
     expect(screen.queryByTestId("unified-decision-card")).toBeNull();
     expect(state.calls.every((c) => (c as { enabled: boolean }).enabled === false)).toBe(true);
   });
 
-  it("renders a waiting non-read-only test on the unified decision card", () => {
+  it("renders a waiting validation on the unified decision card", () => {
     state.items = [{ id: "w1", status: "blocked", needs_human: true, ask: { question: "Run it?", options: [] }, is_company_managed: false }];
     const history = [ev({ from: "ctem.validation.non_readonly", to: "waited" })];
-    renderWithProviders(<CaseValidation caseId="c1" validations={[{ ...SAFE, safe_mode: false, result: "pending" }]} history={history} />);
+    renderWithProviders(<CaseValidation caseId="c1" validations={[{ ...SAFE, result: "pending" }]} history={history} />);
     expect(screen.getByText("Waiting for a person")).toBeTruthy();
     expect(state.calls.some((c) => (c as { filters: { correlation_key: string } }).filters.correlation_key === "ctem:validation:c1")).toBe(true);
-    expect(screen.getByTestId("ctem-case-validation-mode").textContent).toBe("Not read-only: a test that changes the target ran");
+    expect(screen.queryByTestId("ctem-case-validation-mode")).toBeNull();
+    expect(screen.getByTestId("ctem-case-validation-result").textContent).toBe("Pending");
   });
 
   it("names the chosen option's label once a person answered, from the closed decision item", () => {

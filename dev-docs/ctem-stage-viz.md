@@ -149,7 +149,7 @@ Validation matrix.
   table. Beside the ring, three labelled figures with no bars (R3-B4: the
   payload returns no total for them): endpoints, asset groups and security
   platforms in scope, each a number and a 3-word label.
-- **Business context:** crown jewels and business services from the
+- **Business context:** primary assets and business services from the
   organization context (item B, `0f898868`) draw an outer ring, each marked
   covered or uncovered, only once those fields are filled. While they are
   empty there is no outer ring: one not-configured row under the ring reads
@@ -526,7 +526,7 @@ which reads the same context), one row of chips, each a select:
 | Context | Values | Default |
 |---|---|---|
 | Framework | The frameworks of 8.1 | The one with the most data |
-| Scope | All, crown jewels, a business service (item B fields) | All |
+| Scope | All, primary assets, a business service (item B fields) | All |
 | Asset groups | OpenAEV asset groups, multi-select | All |
 | Intel type | Threat actors, intrusion sets, campaigns, malware, narratives (FIMI), the types the vertical names | The vertical's types |
 | Period | 7, 30, 90 days | 30 days |

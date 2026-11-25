@@ -35,8 +35,11 @@ class _Ingestor:
     def __init__(self) -> None:
         self.calls: list[tuple[ToolCall, ToolResult, object]] = []
 
-    async def ingest(self, *, call: ToolCall, result: ToolResult, spec: object) -> ToolResult:
+    async def ingest(
+        self, *, call: ToolCall, result: ToolResult, spec: object, personal_records: bool = False
+    ) -> ToolResult:
         self.calls.append((call, result, spec))
+        self.personal_records = personal_records
         return ToolResult(tool_call_id=result.tool_call_id, content="RECEIPT")
 
 

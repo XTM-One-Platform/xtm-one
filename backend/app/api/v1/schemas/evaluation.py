@@ -1286,6 +1286,11 @@ class RunSearchResultItem(BaseModel):
     anomaly_count: int = 0
     # Entries the platform could not run, left out of every headline.
     platform_error_count: int = 0
+    # A placebo comparison's run: its arm and comparison, so a trial is not read
+    # as an ordinary run; ``real`` and null on every other run.
+    arm: str = "real"
+    placebo_target: dict | None = None
+    placebo_comparison_id: str | None = None
 
 
 class RunSearchResponse(BaseModel):

@@ -350,7 +350,7 @@ def test_tech_stack_dedup_on_cpe_and_name() -> None:
         {"product": "NGINX", "vendor": "", "cpe": "", "source": "manual"},
         {"product": "nginx", "vendor": "Other", "cpe": "", "source": "opencti", "external_id": "x9"},
     ]
-    groups = ident.dedupe_section("tech_stack", rows)
+    groups = ident.dedupe_section("software", rows)
     assert len(groups) == 2  # a different vendor of the same product name stays apart
     merged = next(g for g in groups if len(g.records) == 2)
     assert merged.sources == ["manual", "openaev"]
@@ -358,16 +358,16 @@ def test_tech_stack_dedup_on_cpe_and_name() -> None:
 
 def test_hand_rows_with_the_same_name_merge() -> None:
     rows = [{"name": "Payments"}, {"name": "payments "}]
-    [jewel] = ident.dedupe_section("crown_jewels", rows)
+    [jewel] = ident.dedupe_section("primary_assets", rows)
     assert jewel.explanation() == "merged on name"
 
 
-def test_crown_jewel_from_opencrq_merges_with_the_typed_one() -> None:
+def test_primary_asset_from_opencrq_merges_with_the_typed_one() -> None:
     rows = [
         {"name": "Customer data", "source": "manual"},
         {"name": "Customer data", "source": "opencrq", "external_id": "pa-1", "opencrq_asset_id": "pa-1"},
     ]
-    [jewel] = ident.dedupe_section("crown_jewels", rows)
+    [jewel] = ident.dedupe_section("primary_assets", rows)
     assert jewel.sources == ["manual", "opencrq"]
 
 

@@ -40,7 +40,8 @@ if TYPE_CHECKING:
 
     from app.services.health.access import Reader
 
-EXPERIMENTS_GROUP_ID = "health_experiments"
+#: Its functions belong to Platform Health's one internal group (#1943).
+EXPERIMENTS_GROUP_ID = "health_specialists"
 
 #: The read functions of the group: the only ones the platform MCP server serves.
 EXPERIMENTS_READ_TOOLS: frozenset[str] = frozenset({"list_experiments", "get_experiment"})

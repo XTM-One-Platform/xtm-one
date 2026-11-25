@@ -4,7 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
+import type { FxRate, PirDetail } from "@/lib/organization-reference";
 import type {
   AssetIdentitySettings,
   AttackSurfacePass,
@@ -14,7 +14,7 @@ import type {
   TicketingSync,
 } from "@/lib/organization-profile";
 
-interface CrownJewel {
+interface PrimaryAsset {
   name: string;
   business_service: string;
   owner: string;
@@ -28,7 +28,7 @@ interface CrownJewel {
   sync_id?: string;
 }
 
-interface TechStackEntry {
+interface SoftwareEntry {
   product: string;
   vendor: string;
   cpe: string;
@@ -45,14 +45,17 @@ export interface OrganizationProfile {
   sub_sector: string;
   regions: string[];
   size: "" | "1-50" | "51-250" | "251-1000" | "1001-5000" | "5001-20000" | "20000+";
-  crown_jewels: CrownJewel[];
-  tech_stack: TechStackEntry[];
-  // No `ai_systems` list since #1501: the AI systems are the assets of category `ai_target`.
+  primary_assets: PrimaryAsset[];
+  software: SoftwareEntry[];
   /** What the organization ships, with its source repositories (#1432); absent when none is declared. */
   shipped_products?: { product: string; vendor: string; cpe: string; repositories: string[] }[];
   pir_ids: string[];
   /** The last known OpenCTI name of each saved PIR (#9615). */
   pir_names?: Record<string, string>;
+  /** What the organization says about each PIR it follows, by PIR id (#1773); absent on an older backend. */
+  pir_details?: Record<string, PirDetail>;
+  /** The reference exchange rates an agent converts an amount with (#1383, settable in the form since #1773). */
+  fx_rates?: FxRate[];
   risk_appetite: { annual_loss_threshold: number | null; approval_threshold: number | null };
   loaded_hourly_rate: number | null;
   currency: string;
@@ -82,33 +85,13 @@ export interface OrganizationContextResponse {
   source: string | null;
   created_at: string | null;
   author_user_id: string | null;
+  /** No asset or group row since #1752 slice 3b: they are read through `/assets` and `/asset-groups`. */
   profile: OrganizationProfile;
   missing_fields: string[];
-}
-
-interface OpenCrqSyncPlan {
-  linked: { crown_jewel: string; opencrq_asset_id: string }[];
-  pushed_to_opencrq: { opencrq_asset_id: string; name: string; criticality: string }[];
-  pulled_from_opencrq: { opencrq_asset_id: string; name: string }[];
-  ambiguous: string[];
-  not_in_opencrq: { crown_jewel: string; opencrq_asset_id: string }[];
-  /** Whether the profile and OpenCRQ agree (#1134 S2): the only answer that may say so; absent from an older backend. */
-  in_sync?: boolean;
-  /** The lowest OpenCRQ criticality the plan pulled (#1558). */
-  min_criticality?: OpenCrqLevel;
-  /** The supporting assets read, and their count per OpenCRQ criticality ("unknown" first) (#1558). */
-  assets_read?: number;
-  by_criticality?: Partial<Record<"unknown" | OpenCrqLevel, number>>;
-}
-
-/** OpenCRQ's criticality levels, lowest first: the thresholds the primary-asset check accepts (#1558). */
-export type OpenCrqLevel = "low" | "medium" | "high" | "very_high";
-
-export interface OpenCrqSyncResponse {
-  applied: boolean;
-  plan: OpenCrqSyncPlan;
-  errors: string[];
-  version: number | null;
+  /** The provenance the version keeps, field -> {source, basis, confirmed_at?} (#1473, #1773). */
+  sources?: Record<string, unknown> | null;
+  /** How many asset and group rows the organization holds (#1752); the rows have their own paged APIs. */
+  row_counts?: { assets_exposure?: number; asset_groups?: number } | null;
 }
 
 const KEY = ["organization-context"] as const;
@@ -159,27 +142,6 @@ export function useSaveOrganizationContextInjection() {
   return useMutation<OrganizationContextInjection, Error, { enabled: boolean; categories?: string[] }>({
     mutationFn: (body) => api.put("/organization-context/injection", body),
     onSuccess: (saved) => qc.setQueryData([...KEY, "injection"], saved),
-  });
-}
-
-/** A fleet that reads a part of the profile, from its documented prerequisites (#9173, S2). */
-export interface OrganizationFieldReader {
-  fleet_id: string;
-  name: string;
-}
-
-/** A seeded agent whose persona reads a part of the profile (#10063 r1 A3). */
-export interface OrganizationAgentReader {
-  agent_id: string;
-  name: string;
-}
-
-/** Profile field ("sector", "crown_jewels", ...) -> the fleets, and the seeded agents, the reader can see that need it. */
-export function useOrganizationReaders(enabled = true) {
-  return useQuery<{ readers: Record<string, OrganizationFieldReader[]>; agents?: Record<string, OrganizationAgentReader[]> }>({
-    queryKey: [...KEY, "readers"],
-    queryFn: () => api.get("/organization-context/readers"),
-    enabled,
   });
 }
 
@@ -287,7 +249,7 @@ export interface OrganizationDraftResponse {
   missing_fields: string[];
 }
 
-/** "form" for a profile typed by hand, "draft" for one started from the platforms, "ai_draft" for accepted AI proposals. */
+/** "form" for a profile typed by hand, "draft" for one started from the platforms (kept for past versions), "ai_draft" for accepted AI proposals. */
 export type ProfileSource = "form" | "draft" | "ai_draft";
 
 interface SaveOrganizationContextBody {
@@ -329,13 +291,15 @@ export function usePatchOrganizationContext() {
     meta: { suppressGlobalErrorToast: true },
     onSuccess: (saved) => {
       qc.setQueryData(KEY, saved);
+      // A patched software list or matching rule changes what the Inventory tabs read (#1752).
+      void qc.invalidateQueries({ queryKey: ["organization-assets"] });
     },
   });
 }
 
 /** One per-field proposal of "Draft with AI" (#9484): nothing is saved until it is accepted. */
 export interface AiDraftProposal {
-  /** A contract path, such as "tech_stack" or "risk_appetite.approval_threshold". */
+  /** A contract path, such as "software" or "risk_appetite.approval_threshold". */
   field: string;
   value: unknown;
   /** "description", "document:<name>", "website:<url>", "opencti", "openaev" or "opencrq". */
@@ -449,7 +413,7 @@ export function useDraftOrganizationContext() {
 }
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
-export type ImportSectionKey = "assets" | "asset_groups" | "ai_systems" | "tech_stack" | "crown_jewels" | "pirs";
+export type ImportSectionKey = "assets" | "asset_groups" | "software" | "primary_assets" | "pirs";
 /** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
 export type ImportSourceKey =
   | "openaev"
@@ -659,6 +623,36 @@ export function useCreateOrganizationSync() {
   });
 }
 
+/** What a sync's next run would do (#1982): rows that enter, are updated, leave (and are removed) or stay. */
+export interface SyncChangePreview {
+  direction: SyncDirection;
+  counts: { enter: number; update: number; leave: number; kept: number };
+  /** Inbound: rows the platform would add; outbound: platform rows the run would create (a sample). */
+  enter: string[];
+  update: string[];
+  /** Rows this sync wrote that the next run removes (outbound: the platform rows it deletes). */
+  leave: string[];
+  /** Inbound: rows that left the filters but stay, another writer wrote them. */
+  kept: string[];
+  error: string | null;
+}
+
+/** The first run of a new outbound sync, before it is saved (#1982 S4): nothing is written. */
+export function usePreviewNewOutboundSync() {
+  return useMutation<SyncChangePreview, Error, { section: ImportSectionKey; source: ImportSourceKey; filters: Record<string, string | string[]> }>({
+    mutationFn: (body) => api.post("/organization-context/syncs/outbound-preview", body),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** What saving new filters on a saved sync would do on its next run (#1982 S2 endpoint, S4 Edit dialog): nothing is written. */
+export function usePreviewOrganizationSyncChange() {
+  return useMutation<SyncChangePreview, Error, { id: string; body: { filters: Record<string, string | string[]>; batch_type: string; remove_gone: boolean } }>({
+    mutationFn: ({ id, body }) => api.post(`/organization-context/syncs/${id}/preview`, body),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
 export function useUpdateOrganizationSync() {
   const qc = useQueryClient();
   return useMutation<OrganizationSync, Error, { id: string; body: OrganizationSyncBody }>({
@@ -836,7 +830,7 @@ export interface AssetsImportResponse {
   assets: { name: string; type: string; environment: string; internet_facing: string; owner: string; group: string }[];
   links: Record<string, string[]>;
   errors: { line: number; name: string; message: string }[];
-  unknown_crown_jewels: string[];
+  unknown_primary_assets: string[];
   replaced: string[];
   version: number | null;
 }
@@ -858,43 +852,6 @@ export function useImportOrganizationAssets() {
   });
 }
 
-/** The fill agent of one connected integration (#11888): created once, its daily sync with `schedule`. */
-export interface FillAgentResponse {
-  agent_id: string;
-  agent_name: string;
-  created: boolean;
-  assignment_id: string | null;
-  /** The preview instruction the chat starts with. */
-  prompt: string;
-}
-
-export function useCreateOrganizationFillAgent() {
-  const qc = useQueryClient();
-  return useMutation<FillAgentResponse, Error, { integration_id: string; schedule: boolean; cron?: string; timezone?: string }>({
-    mutationFn: (body) => api.post("/organization-context/fill-agent", body),
-    // The chat picks its first agent from the cached agents list: refetch it (an unmounted list too)
-    // before the dialog navigates, else a new fill agent is missing and the chat opens on the default one.
-    onSuccess: () => {
-      // A new agent (and its sync assignment) is a node of the flow catalog too.
-      syncFlowNodeCatalog(qc);
-      return qc.invalidateQueries({ queryKey: ["agents"], refetchType: "all" });
-    },
-    // The dialog says the failure inline.
-    meta: { suppressGlobalErrorToast: true },
-  });
-}
-
-export function useOpenCrqSync() {
-  const qc = useQueryClient();
-  // min_criticality left out: the saved primary-asset sync's filter, else high (#1558).
-  return useMutation<OpenCrqSyncResponse, Error, { apply: boolean; min_criticality?: OpenCrqLevel }>({
-    mutationFn: (body) => api.post("/organization-context/opencrq-sync", body),
-    onSuccess: (result) => {
-      if (result.applied) qc.invalidateQueries({ queryKey: KEY });
-    },
-  });
-}
-
 /** A saved version of the profile, as the history lists it (#1473, #1558). */
 export interface OrganizationContextVersionSummary {
   version: number;
@@ -903,7 +860,7 @@ export interface OrganizationContextVersionSummary {
   author_user_id: string | null;
   missing_fields: string[];
   /** The primary assets the version holds; absent from an older backend. */
-  crown_jewels?: number;
+  primary_assets?: number;
 }
 
 /** The saved versions, newest first (administrators); read only while the restore dialog is open. */

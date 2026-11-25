@@ -35,6 +35,60 @@ def _account_ids(value: Any) -> list[str]:
     return []
 
 
+def _approval_lines(approval: dict[str, Any]) -> list[str]:
+    """One approval step: its final decision, then each approver's own decision.
+
+    A step whose approvers come from several groups stays ``pending`` until its
+    condition is met (e.g. one approver of each group), so the per-approver
+    decisions are what say who has answered and who is still awaited.
+    """
+    lines = [
+        f"  #{approval.get('id', '?')} {approval.get('name', '?')} - "
+        f"final decision: {approval.get('finalDecision') or 'pending'}"
+    ]
+    if approval.get("canAnswerApprovalDecision") is not None:
+        can = "yes" if approval.get("canAnswerApprovalDecision") else "no"
+        lines.append(f"    you can answer: {can}")
+    approvers = approval.get("approvers")
+    if isinstance(approvers, list) and approvers:
+        lines.append("    approvers:")
+        for entry in approvers:
+            if not isinstance(entry, dict):
+                continue
+            raw_person = entry.get("approver")
+            person: dict[str, Any] = raw_person if isinstance(raw_person, dict) else {}
+            name = person.get("displayName") or "?"
+            account = person.get("accountId") or "?"
+            lines.append(f"      {name} ({account}): {entry.get('approverDecision') or 'pending'}")
+    return lines
+
+
+def _answered_approval(issue_key: str, approval_id: str, decision: str, resp: Any) -> str:
+    """What answering an approval did, read from the step Jira returns.
+
+    The caller's decision is recorded on its own line; the step itself may stay
+    pending while other approvers (another group, a quorum) have not answered.
+    """
+    try:
+        approval = resp.json() if resp is not None else None
+    except ValueError:
+        approval = None
+    if not isinstance(approval, dict) or not approval:
+        return (
+            f"Approval {approval_id} on {issue_key}: your decision '{decision}' was sent; "
+            "Jira returned no step state, read it with list_approvals."
+        )
+    final = approval.get("finalDecision") or "pending"
+    lines = [
+        f"Approval {approval_id} on {issue_key}: your decision '{decision}' was recorded; "
+        f"the step's final decision is {final}."
+    ]
+    if final == "pending":
+        lines.append("  The step still waits for other approvers:")
+    lines.extend(_approval_lines(approval)[1:])
+    return "\n".join(lines)
+
+
 def register(
     base: str, headers: dict[str, str], executor: CallableToolExecutor
 ) -> list[ToolDefinition]:
@@ -376,10 +430,7 @@ def register(
                 return f"No approvals on {issue_key}."
             lines = [f"Approvals on {issue_key}:"]
             for a in approvals:
-                lines.append(
-                    f"  #{a.get('id', '?')} {a.get('name', '?')} - "
-                    f"{a.get('finalDecision', 'pending')}"
-                )
+                lines.extend(_approval_lines(a))
             return "\n".join(lines)
         if action == "answer_approval":
             if not (approval_id and decision):
@@ -387,7 +438,7 @@ def register(
             decision_norm = decision.strip().lower()
             if decision_norm not in ("approve", "decline"):
                 return "decision must be 'approve' or 'decline'."
-            _, err = await _request(
+            resp, err = await _request(
                 "post",
                 f"{api}/request/{issue_key}/approval/{approval_id}",
                 f"answer approval {approval_id} on {issue_key}",
@@ -396,7 +447,7 @@ def register(
             )
             if err:
                 return err
-            return f"Approval {approval_id} on {issue_key}: {decision_norm}d."
+            return _answered_approval(issue_key, approval_id, decision_norm, resp)
         return (
             f"Unknown action '{action}'. Valid: list_participants, add_participants, "
             "remove_participants, sla, list_approvals, answer_approval."
@@ -739,8 +790,10 @@ def register(
             description=(
                 "Manage a JSM request's participants, SLA and approvals. Actions: "
                 "'list_participants', 'add_participants'/'remove_participants' "
-                "(account_ids), 'sla', 'list_approvals', 'answer_approval' (approval_id "
-                "+ decision approve/decline)."
+                "(account_ids), 'sla', 'list_approvals' (each step's final decision and "
+                "every approver's own decision), 'answer_approval' (approval_id + decision "
+                "approve/decline; answers your decision and the step's final decision, which "
+                "stays pending while approvers of other groups have not answered)."
             ),
             input_schema={
                 "type": "object",

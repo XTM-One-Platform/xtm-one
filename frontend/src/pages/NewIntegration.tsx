@@ -27,7 +27,7 @@ import { useAuthConfig } from "@/hooks/api/useAuthApi";
 import { useProviderCatalog, useCreateIntegration } from "@/hooks/api/useIntegrationApi";
 import { useCredentialSharingConfirm } from "@/hooks/useCredentialSharingConfirm";
 import { extraFieldDefaults, hasInvalidExtraField, withoutHiddenExtraFields } from "@/lib/extra-fields";
-import { resolveVariant, variantValue } from "@/lib/catalog-variants";
+import { resolveVariant, setupGuideFor, variantValue } from "@/lib/catalog-variants";
 import { offersSlackEventsUrl } from "@/lib/slack-events";
 import { ExtraFieldInputs } from "@/components/ui/extra-field-inputs";
 import { OpenAPIIntegrationForm, type OpenAPIDraft } from "@/components/integrations/openapi/openapi-integration-form";
@@ -159,6 +159,8 @@ export default function NewIntegration() {
   // company-managed stays off for them — for an OpenAPI integration the spec's
   // authentication option decides which one applies.
   const effectiveAuthMode = isOpenAPI ? (openapiDraft?.authType ?? "api_key") : (selectedAuthType || selected?.auth_type);
+  // The guide of the mode chosen in the form, when the provider sets its modes up apart.
+  const setupGuide = setupGuideFor(resolved, effectiveAuthMode);
 
   const handleCreate = async () => {
     if (!selected) return;
@@ -312,8 +314,8 @@ export default function NewIntegration() {
               <p className="mt-2 text-default-secondary">{selected.description}</p>
             </div>
           </div>
-          {resolved?.setup_guide && (
-            <SetupGuideDialog guide={resolved.setup_guide} providerName={selected.name} variant="outline" />
+          {setupGuide && (
+            <SetupGuideDialog guide={setupGuide} providerName={selected.name} variant="outline" />
           )}
         </div>
 

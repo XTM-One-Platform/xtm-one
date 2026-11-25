@@ -11,7 +11,7 @@
 import { expect, test } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
-import { filterPanelAlign } from "./filter-pill";
+import { filterPanelAlign, filterPanelMaxHeight } from "./filter-pill";
 
 // vitest runs from frontend/ (CI and `yarn test`), as shadow-overlay-floating.test.ts.
 const SRC = join(process.cwd(), "src") + sep;
@@ -80,7 +80,7 @@ test("a host lead never pushes the one-row toolbar past its box", () => {
   const table = readFileSync(join(SRC, "components/ui/data-table.tsx"), "utf8");
   expect(table).toContain("const ONE_ROW_TOOLBAR_MIN_PX = 852;");
   expect(table).toContain("boxWidth - leadWidth < ONE_ROW_TOOLBAR_MIN_PX");
-  expect(table).toContain("const toolbarWraps = !filtersInPill || leadCrowds || selectionShown;");
+  expect(table).toContain("const toolbarWraps = !filtersInPill || leadCrowds || selectionShown || compactCrowds;");
   expect(table).toContain('toolbarWraps ? "flex-wrap" : "min-w-0 flex-nowrap"');
   expect(table).toContain("<div ref={setLead}");
 });
@@ -91,10 +91,20 @@ test("a host lead never pushes the one-row toolbar past its box", () => {
 test("full labels that overflow the one-row toolbar fall back to the compact controls", () => {
   const table = readFileSync(join(SRC, "components/ui/data-table.tsx"), "utf8");
   expect(table).toContain("ref={setToolbarRow}");
-  expect(table).toContain("toolbarRow.scrollWidth > toolbarRow.clientWidth + 1");
+  expect(table).toContain("toolbarRow.scrollWidth <= toolbarRow.clientWidth + 1");
   expect(table).toContain("leadWidth >= fullLabelsOverflow.lead");
   expect(table).toContain("boxWidth <= fullLabelsOverflow.box");
   expect(table).toContain("boxWidth < COMPACT_TOOLBAR_BELOW_PX || leadNeedsCompact");
+});
+
+// A compact one-row toolbar that still runs past its box (the page's own Case opening switch
+// on the ja Cases list at 1080, UX r3 B1 on #1963) records the lead and box widths and wraps
+// its right group to its own line from then on, measured before paint.
+test("a compact one-row toolbar that still overflows wraps its right group", () => {
+  const table = readFileSync(join(SRC, "components/ui/data-table.tsx"), "utf8");
+  expect(table).toContain("if (compactToolbar) setCompactOverflow({ lead: leadWidth, box: boxWidth });");
+  expect(table).toContain("leadWidth >= compactOverflow.lead");
+  expect(table).toContain("boxWidth <= compactOverflow.box");
 });
 
 // The selected Properties row keeps its label in the primary ink: accent text on
@@ -377,4 +387,19 @@ test("the pickers of a Filters pill fill the panel width", () => {
 
 test("the filter panel stays on the left edge when the right edge would not fit either", () => {
   expect(filterPanelAlign({ left: 100, right: 180 }, 288, 300)).toBe("left");
+});
+
+test("a fitted filter panel stops above the viewport's bottom edge and keeps a usable height", () => {
+  // The Cases Filters panel opened at y 248 in a 1080 viewport ran to y 1602 (UX r1 B1 on #1822).
+  expect(filterPanelMaxHeight(248, 1080)).toBe(824);
+  expect(filterPanelMaxHeight(248.6, 1080)).toBe(823);
+  // A pill near the bottom still opens a panel the user can scroll inside.
+  expect(filterPanelMaxHeight(1000, 1080)).toBe(160);
+});
+
+test("the Filters pill panel fits the viewport with its own scroller", () => {
+  const source = readFileSync(join(SRC, OWNER), "utf8");
+  const pill = source.slice(source.indexOf("export function FiltersPill("));
+  expect(pill).toMatch(/<FilterPillPanel[\s\S]*?\bfitViewport\b[\s\S]*?>/);
+  expect(source).toContain('fitViewport && "overflow-y-auto overscroll-contain"');
 });

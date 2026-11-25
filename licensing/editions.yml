@@ -50,6 +50,7 @@ ee:
   - backend/app/services/chat_*.py
   - backend/app/services/chat_commands/**
   - backend/app/services/code_interpreter.py
+  - backend/app/services/config_text_search.py
   - backend/app/services/health/**
   - backend/app/services/content_safety.py
   - backend/app/services/context_usage.py
@@ -562,7 +563,6 @@ ee:
   - backend/app/services/organization_assets_import.py
   - backend/app/services/organization_enterprise_knowledge.py
   - frontend/src/pages/settings/OrganizationAssetsImportDialog.tsx
-  - frontend/src/pages/settings/OrganizationFillAgentDialog.tsx  # creates an agent and its schedule (#11888)
   - frontend/src/pages/settings/OrganizationExposureCards.tsx
   - frontend/src/pages/settings/OrganizationOutsideLensCard.tsx  # CTEM-26 outside lens settings (#1140)
   - frontend/src/hooks/api/useCustomDashboardApi.ts
@@ -754,6 +754,7 @@ ce:
   - frontend/src/components/arcade
   - frontend/src/components/audit-logs
   - frontend/src/components/dashboard-grid
+  - frontend/src/components/groups
   - frontend/src/components/integrations
   - frontend/src/components/ui/charts
   - frontend/src/components/users

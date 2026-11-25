@@ -40,7 +40,7 @@ except the loop trace), what the user sees there, and the item that feeds it.
 | 4 | Case opened | Cases board, cases counts row, Act now, Done for you (outcomes lane) | New card on the board in "Needs attention", the counts row moves, an Act now row when the severity asks for it | CTEM-03 cases from signals, stream frame `ctem_case_update` |
 | 5 | Prioritise | Case page summary, Act now ranking | Severity P1 to P3 chip with its one-line why, SLA time left | CTEM-02 severity, CTEM-03 SLA |
 | 5b | Review (step 3) | Case page card "Analyst review", case page History | The threat package drafted in OpenCTI (the Grouping and its link, for a viewer who reads OpenCTI; "restricted" for anyone else), "Coverage requested in OpenCTI"; gate `ctem.analyst_review` as "Analyst review skipped by policy" (the default, never hidden), the waiting review on the unified work-item decision card (item `ctem:review:<case>`), or who answered: a person or the analyst's mark in OpenCTI; never blank | CTEM-16 (`manage_opencti_security_coverage`, `ctem_analyst_mark`), CTEM-16-UI (`threat_package` case event, `update_ctem_case` `threat_package`) |
-| 6 | Validate | Case page card "Validation", case page history, Validation stage page, loop trace | "Validation requested", then "Not exposed" (closes) or "Exposed on N assets" with the link to the OpenAEV run; per validation reference "Safe mode: read-only checks only" or "Not read-only" and the run order of the target asset groups; gate A (`ctem.validation.non_readonly`) as "Passed automatically: safe mode", or the waiting non-read-only test on the unified work-item decision card (item `ctem:validation:<case>`) | CTEM-15 OpenAEV events, CTEM-13 exposure result, CTEM-12 (`validations[].safe_mode`, `validations[].run_order`) |
+| 6 | Validate | Case page card "Validation", case page history, Validation stage page, loop trace | "Validation requested", then "Not exposed" (closes) or "Exposed on N assets" with the link to the OpenAEV run; per validation reference the run order of the target asset groups; gate A (`ctem.validation.non_readonly`) as passed automatically at the fleet's level, or the waiting test on the unified work-item decision card (item `ctem:validation:<case>`) | CTEM-15 OpenAEV events, CTEM-13 exposure result, CTEM-12 (`validations[].run_order`; `safe_mode` no longer rendered, #1810) |
 | 7 | Decide | Act now (case row: "Remediation decision waits"), case page card "Remediation decision", case History | "Decided by policy" with the option and why, or the waiting decision on the unified work-item decision card (options with figures, the recommendation; figures only for a reader of that item), or who answered and the option; each `gate` event of the History in words (gate, passed automatically, waited, answered) | CTEM-17 decision gate (`ctem.remediation.decision`), item `ctem:remediation:<case>` |
 | 8 | Mobilise | Cases board, case page | Owner, due date, ticket key and status chip | CTEM-19 ticketing |
 | 9 | Re-test | Case page history, Done for you (outcomes lane) | "Re-test passed" or "Re-test failed, reopened" with the run link | CTEM-03, CTEM-14, CTEM-15 |
@@ -71,15 +71,15 @@ backend writes on the signal (`decision`) or the case event (`reason`):
 - **outcome chip**: the state in words, its colour from the state tokens of
   `ctem-cases.md` section 7.0 (never a raw state key);
 - **one sentence**, built from the record, never written by a model at read
-  time. Examples: "Ignored: host not in any crown jewel scope (threshold
+  time. Examples: "Ignored: host not in any primary asset scope (threshold
   high)", "Watchlist: criticality medium, below high", "Discarded: not
-  confirmed by inventory", "Case opened: crown jewel Customer SaaS hosting,
+  confirmed by inventory", "Case opened: primary asset Customer SaaS hosting,
   criticality critical";
 - **inputs**, in a tooltip or the loop trace: each input the rule read
   (threshold, criticality found, lenses that confirmed, policy rule) with its
   value and source;
 - **links** to the source objects (the OpenCTI, OpenAEV or Aikido object of
-  the signal's `evidence.link`, the crown jewel in Settings > Organization,
+  the signal's `evidence.link`, the primary asset in Settings > Organization,
   the case).
 
 Contract for the backend items: a decision record carries at least
@@ -116,6 +116,14 @@ loop, and why".
   the `?loop=` links are gone (CTEM is unreleased, no redirect is kept), so a trace can
   be shared and reopened after a reload. Focus returns to the row that opened
   it.
+- **One sheet, opened in place** (#1934, Sam, 24 Nov 2026): the trace is one
+  side sheet, `ctem/loop/LoopTraceSheet.tsx`, used by the Signals page and by
+  the case page's "Opened by" card. On a case, "See the loop trace" opens it over
+  the case: the pathname is kept and the case URL carries `?signal=<id>`, so a
+  reload reopens it and Back, Close or Escape return to the case. Off the
+  Signals page the sheet adds "Open in Signals", the only way to leave the case.
+  A signal with a `case_id` shows "Open case" on its "Case opened" stage,
+  except on that case's own page.
 - **Reached from**: a signal row of Live activity, a case card of the board,
   the case page header (More menu, "Show in the loop"), a Done for you point
   that is a signal or a case, an Act now row that comes from a case. Nothing

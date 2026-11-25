@@ -45,6 +45,7 @@ from app.models.integration import Integration
 from app.models.user import User
 from app.services.audit import log_audit
 from app.services.departments import record_directory_department
+from app.services.group_auto_join import AUTO_JOIN_SOURCE, join_auto_join_groups
 from app.services.vault import reveal_field, reveal_json_field
 from app.services.web_fetch import guarded_client_options
 
@@ -679,18 +680,29 @@ async def _sync_user_groups(
     }
     current_saml_group_ids = set(saml_memberships.keys())
     all_group_ids = set(membership_by_group.keys())
+    # A group with auto join on keeps every person who signs in (#1901): a
+    # SAML-sourced membership of such a group (one the mapping wrote before
+    # the switch was turned on) is never removed as stale.
+    kept_auto_join: set[uuid.UUID] = set()
+    if current_saml_group_ids:
+        result = await db.execute(
+            select(Group.id).where(Group.id.in_(current_saml_group_ids), Group.auto_join.is_(True))
+        )
+        kept_auto_join = set(result.scalars().all())
 
     if not group_names:
         # No groups in assertion — remove all SAML-sourced memberships
-        for membership in saml_memberships.values():
+        # except those of auto-join groups.
+        removed = [m for gid, m in saml_memberships.items() if gid not in kept_auto_join]
+        for membership in removed:
             await db.delete(membership)
-        if saml_memberships:
+        if removed:
             logger.info(
                 "SAML group sync for %s: removed %d SAML memberships (no groups in assertion)",
                 user.email,
-                len(saml_memberships),
+                len(removed),
             )
-        return bool(saml_memberships)
+        return bool(removed)
 
     # Resolve group IDs — find existing groups by name (or old UUID name)
     result = await db.execute(select(Group).where(Group.name.in_(group_names)))
@@ -712,8 +724,11 @@ async def _sync_user_groups(
 
     # Re-tag existing non-SAML memberships whose group is in the assertion
     # so they are progressively marked as "saml" (convergence after the
-    # migration that backfilled all rows as "manual").
-    to_retag = target_group_ids & all_group_ids - current_saml_group_ids
+    # migration that backfilled all rows as "manual"). An auto-join
+    # membership keeps its source: the mapping never takes it over, so it
+    # never removes it either.
+    auto_joined = {gid for gid, m in membership_by_group.items() if m.source == AUTO_JOIN_SOURCE}
+    to_retag = (target_group_ids & all_group_ids) - current_saml_group_ids - auto_joined
     for gid in to_retag:
         membership_by_group[gid].source = "saml"
 
@@ -722,8 +737,9 @@ async def _sync_user_groups(
     for gid in to_add:
         db.add(GroupMember(group_id=gid, user_id=user.id, source="saml"))
 
-    # Remove stale SAML memberships (only SAML-sourced ones)
-    to_remove = current_saml_group_ids - target_group_ids
+    # Remove stale SAML memberships (only SAML-sourced ones, never those of
+    # an auto-join group)
+    to_remove = current_saml_group_ids - target_group_ids - kept_auto_join
     for gid in to_remove:
         await db.delete(saml_memberships[gid])
 
@@ -1350,6 +1366,8 @@ async def oidc_callback(
         await _refuse_deactivated_sign_in(db, exc, "OIDC")
         return _sso_error_redirect("account_deactivated")
     await record_directory_department(db, user, userinfo)
+    # Every group with auto join on, at every single sign-on (#1901).
+    auto_joined = await join_auto_join_groups(db, user, provider="OIDC")
     if entitlement.status is HubStatus.ENTITLED:
         # Applied AFTER account resolution so the Hub is the last word:
         # ``_get_or_create_sso_user`` may have promoted via the promote-only
@@ -1381,6 +1399,11 @@ async def oidc_callback(
         summary=_login_audit_summary(user, "OIDC"),
     )
     await db.commit()
+    if auto_joined:
+        from app.services.quota import invalidate_membership_quota_cache
+
+        # Never raises: a Redis outage must not fail the sign-in.
+        await invalidate_membership_quota_cache({user.id})
 
     redirect_url = _build_frontend_redirect(
         user, provider="oidc", desktop_login=desktop_login
@@ -1587,6 +1610,12 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
     # Whose memberships the mapping changed: their cached quota resolutions
     # (which include their groups' quotas) are dropped once it has committed.
     membership_changed: set[uuid.UUID] = set()
+    # Every group with auto join on, at every single sign-on (#1901). Before
+    # the mapping: it then reads these memberships and leaves them alone (it
+    # manages only its own), and the mapping's pending rows are never flushed
+    # outside the race handling below.
+    if await join_auto_join_groups(db, user, provider="SAML"):
+        membership_changed.add(user.id)
     if cfg.saml_groups_mapping_enabled:
         saml_groups = _extract_saml_groups(attrs)
         if saml_groups:

@@ -2492,11 +2492,16 @@ def _describe_builtin_change(before: list[str], after: list[str]) -> str:
 
 
 def _advertised_builtin_tool_ids() -> tuple[str, ...]:
-    """``_VALID_BUILTIN_TOOL_IDS`` minus the former ids and the ids whose feature flag is off."""
+    """``_VALID_BUILTIN_TOOL_IDS`` minus the former ids, Platform Health's internal group (#1943)
+    and the ids whose feature flag is off."""
+    from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
+
+    internal = {group.id for group in BUILTIN_TOOL_GROUPS if group.internal}
     return tuple(
         tool_id
         for tool_id in _VALID_BUILTIN_TOOL_IDS
         if not is_former_builtin_id(tool_id)
+        and tool_id not in internal
         and (
             tool_id not in _FEATURE_GATED_BUILTIN_TOOL_IDS
             or is_feature_enabled(_FEATURE_GATED_BUILTIN_TOOL_IDS[tool_id])
@@ -4126,6 +4131,7 @@ def build_agent_builder_tool(
         prompt: str = "",
         task_id: str = "",
         file_ids: list[str] | str | None = None,
+        dry_run: bool = False,
         file_context: FileContext | None = None,
     ) -> str:
         """Run an agent once on a prompt and hand back its answer.
@@ -4143,9 +4149,14 @@ def build_agent_builder_tool(
         ``file_ids`` ride on the run's message as a chat message's
         attachments do (images as vision blocks): files of the caller's turn or
         rows the caller owns, at most ``MAX_TURN_FILES``.
+
+        ``dry_run`` (#1911): the run's reads run live and every write is logged
+        and answered that it was not executed (a ``dry_run`` sandbox session),
+        so an agent that sends or writes can be smoke-tested safely.
         """
         from app.core.database import async_session as _builder_session
         from app.services.sub_agent import (
+            RUN_DRY_RUN_KEY,
             RUN_ONCE_TRIGGER_TYPE,
             create_sub_agent_task,
             get_task_result,
@@ -4178,6 +4189,8 @@ def build_agent_builder_tool(
             wanted = [file_ids] if isinstance(file_ids, str) else list(file_ids or [])
             wanted = [str(raw).strip() for raw in wanted if str(raw or "").strip()]
             extra_metadata: dict = {"origin": "run_agent_once"}
+            if dry_run is True or (isinstance(dry_run, str) and dry_run.strip().lower() == "true"):
+                extra_metadata[RUN_DRY_RUN_KEY] = True
             task_files = None
             if wanted:
                 if len(wanted) > MAX_TURN_FILES:
@@ -5272,6 +5285,8 @@ def build_agent_builder_tool(
             line = f"- **{group.name}** (`{group.id}`) — {count} member{'' if count == 1 else 's'}"
             if str(group.id) in own_group_ids:
                 line += ", you are a member"
+            if group.auto_join:
+                line += ", auto join (single sign-on users join it)"
             if group.description:
                 line += f" — {group.description}"
             if members_listed:
@@ -7418,6 +7433,9 @@ def build_agent_builder_tool(
             _result = f"Agent **{agent.name}** updated: {', '.join(updated)}."
             if _builtin_change:
                 _result += f" {_builtin_change}"
+            from app.services.tool_surface_timing import agent_change_line
+
+            _result += agent_change_line(updated)
             if text_read_back:
                 _result += f"\n{text_read_back}"
             if _share_lines:
@@ -9064,6 +9082,13 @@ def build_agent_builder_tool(
                 if r.completed_at and r.started_at:
                     secs = (r.completed_at - r.started_at).total_seconds()
                     line += f" | Duration: {secs:.0f}s"
+                if r.status in ("pending", "delayed") and r.assignment_id:
+                    # Why it waits and its place in the queue (#2040).
+                    from app.services.run_queue_starvation import queue_wait_line
+
+                    waiting = await queue_wait_line(_db, r.id)
+                    if waiting:
+                        line += f"\n  {waiting}"
                 line += _run_degraded_lines(r, prefix="\n  ")
                 if r.status == "failed" and r.error:
                     err_text = " ".join(r.error.split())
@@ -9264,6 +9289,12 @@ def build_agent_builder_tool(
                 budget_line = await _run_budget_line(_db, run.id)
                 if budget_line:
                     parts.append(budget_line)
+                if run.status in ("pending", "delayed"):
+                    from app.services.run_queue_starvation import queue_wait_line
+
+                    waiting = await queue_wait_line(_db, run.id)
+                    if waiting:
+                        parts.append(waiting)
             from app.services.hitl_resume_clock import awaiting_human_seconds
 
             _paused = awaiting_human_seconds(run)
@@ -10144,6 +10175,11 @@ def build_agent_builder_tool(
             return _catalog_list_page(
                 rows, noun="skill", search=search, compact=compact, limit=limit, offset=offset
             )
+
+    async def _search_config_text(query: str = "", scope: object = "") -> str:
+        from app.services.config_text_search import search_config_text
+
+        return await search_config_text(user_id, query, scope)
 
     async def _get_skill(skill_id: str, outline: bool = False, section: str = "") -> str:
         from sqlalchemy import select
@@ -12752,6 +12788,10 @@ def build_agent_builder_tool(
                 await _db.rollback()
                 return "Failed to create integration. Please try again."
             note = spec_tools.tools_line(spec_row) if spec_row is not None else ""
+            if spec_row is not None:
+                from app.services.tool_surface_timing import NEXT_TURN_LINE
+
+                note += NEXT_TURN_LINE
             if effective_auth == "oauth":
                 note += (
                     "\n  • Ready to connect with the platform's OAuth app." if on_admin_app else ""
@@ -13262,6 +13302,9 @@ def build_agent_builder_tool(
                     f"\n  • A2A direction: {wanted_direction}; the credentials and "
                     "targets of the previous direction were cleared."
                 )
+            from app.services.tool_surface_timing import integration_change_line
+
+            note += integration_change_line(updated)
             # Never echo credentials — only report which fields changed.
             changed = ", ".join(updated) or "nothing (the connected-account choice was already so)"
             return f"Integration **{integ.name}** updated: {changed}.{note}"
@@ -13442,6 +13485,7 @@ def build_agent_builder_tool(
     executor.register("update_prompt", _update_prompt)
     executor.register("delete_prompt", _delete_prompt)
     executor.register("list_skills", _list_skills)
+    executor.register("search_config_text", _search_config_text)
     executor.register("get_skill", _get_skill)
     executor.register("create_skill", _create_skill)
     executor.register("update_skill", _update_skill)
@@ -13744,6 +13788,11 @@ def build_agent_builder_tool(
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Attached as in a chat message, at most 30",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "Reads run, writes are logged and not executed",
+                        "default": False,
                     },
                 },
                 "required": [],
@@ -15814,6 +15863,7 @@ def build_agent_builder_tool(
                 "required": ["integration_id"],
             },
             source="builtin:platform",
+            changes_tool_surface=True,
         ),
         ToolDefinition(
             name="delete_integration",
@@ -16016,6 +16066,22 @@ def build_agent_builder_tool(
                 "List skills visible to the user (instruction sets for agents)."
             ),
             input_schema=_catalog_list_schema(),
+            source="builtin:platform",
+        ),
+        ToolDefinition(
+            name="search_config_text",
+            description=(
+                "Find a text in the skills, prompts, agent personas/guardrails "
+                "and assignment prompts you can see: id, field, matching lines."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "scope": {"type": "string", "description": "skill,prompt,agent,assignment (default all)"},
+                },
+                "required": ["query"],
+            },
             source="builtin:platform",
         ),
         ToolDefinition(
