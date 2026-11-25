@@ -39,11 +39,12 @@ def test_a_stored_version_with_a_retired_section_is_read_without_it():
 @pytest.mark.parametrize("slug", _SLUGS)
 def test_the_documentation_names_each_seeded_automation_of_its_fleet(slug):
     from app.agents.builtin_agents import BUILTIN_ASSIGNMENTS
-    from app.agents.builtin_fleets import BUILTIN_FLEET_LEADS
 
     # The orchestrator's automations and every lead's (CTEM-31: a role folded into the
-    # generic loop keeps its automations, so the About page names them all).
-    leads = BUILTIN_FLEET_LEADS[slug]
+    # generic loop keeps its automations, so the About page names them all). Read from
+    # the definition: a fleet defined but not seeded (#2105) keeps its documentation.
+    fleet = next(f for f in BUILTIN_FLEETS if f["slug"] == slug)
+    leads = {fleet["orchestrator"], *(fleet.get("leads") or [])}
     names = [a["name"] for a in BUILTIN_ASSIGNMENTS if a.get("agent_slug") in leads]
     assert names, slug
     triggers = BUILTIN_FLEET_DOCS[slug]["triggers"]

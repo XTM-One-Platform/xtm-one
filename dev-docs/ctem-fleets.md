@@ -144,12 +144,13 @@ intent, kept by design.
 Nine new agents, all `platform_targets: ["xtm_one", "dev"]`, company-managed,
 built-in, JSON output schema per unit of work (section 5 reads it).
 
-## 4. The four seeded fleets
+## 4. The four defined fleets
 
-Since CTEM-31 (#1048, section 14) the seeded set is the generic CTEM loop
+Since CTEM-31 (#1048, section 14) the defined set is the generic CTEM loop
 (F1 core, F4 and M1 to M3 folded in as roles), F2 vulnerability management,
-F3 AI security and F5 third-party risk. The per-fleet sections below keep
-describing each role.
+F3 AI security and F5 third-party risk. Only the CTEM loop is seeded until
+the three use cases are tested (section 14). The per-fleet sections below
+keep describing each role.
 
 Common rules:
 
@@ -2400,11 +2401,11 @@ tools, CTEM-18, `ctem-cases.md` 9quater), so the fleet recommends (work items ke
 
 Tests: `tests/test_opencrq_risk_budget_desk_fleet.py`.
 
-## 14. Four seeded fleets: one generic CTEM loop and three use cases (CTEM-31, #1048)
+## 14. Four defined fleets: one generic CTEM loop and three use cases (CTEM-31, #1048)
 
-Sam, 21 Nov 2026: at most four seeded fleets, one generic loop end to end and
+Sam, 21 Nov 2026: at most four built-in fleets, one generic loop end to end and
 three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
-(`backend/app/agents/builtin_fleets.py`) holds exactly:
+(`backend/app/agents/builtin_fleets.py`) defines exactly:
 
 | # | Slug | Name | What it carries |
 |---|---|---|---|
@@ -2416,6 +2417,26 @@ three use cases, each one understandable out of the box. `BUILTIN_FLEETS`
 A fifth entry fails `tests/test_builtin_fleets.py`: adding one is a product
 decision. An agent has one home fleet: the use-case fleets reach the loop's
 role agents (risk quantifier, remediation coordinator) as connected agents.
+
+### Seeded set: the CTEM loop only (#2105)
+
+Sam, 25 Nov 2026: the three use cases are defined but not seeded until they
+are tested. `SEEDED_BUILTIN_FLEET_SLUGS` is the switch (`{"ctem-loop"}`);
+`SEEDED_BUILTIN_FLEETS` is what `fleet_seed.seed_builtin_fleets` seeds.
+
+- Agents: `UNSEEDED_FLEET_AGENT_SLUGS`, derived from the definitions (the
+  orchestrators and home members of the unseeded fleets that no seeded fleet
+  names), are withheld by the agent seed with their assignments. Shared agents
+  (risk quantifier, remediation coordinator, the product assistants) stay.
+- Upgrade: the stale-fleet sweep removes the three company-managed fleets
+  (members back to the playground), the stale-agent sweep their exclusive
+  agents. A person's fork is kept; `RETIRED_FLEET_SUCCESSORS` names the CTEM
+  loop as its successor. With the F2 declaration gone, `new_vulnerability`
+  cases fall back to the loop (`paths` null).
+- Derived maps (`BUILTIN_FLEET_LEADS`, `BUILTIN_FLEET_LEAD_SLUGS`) cover the
+  seeded set only; the definitions, their documentation and tests stay.
+- Re-enabling a use case is adding its slug to the switch: it seeds again
+  exactly as its definition.
 
 ### Custom case ownership (#1966)
 

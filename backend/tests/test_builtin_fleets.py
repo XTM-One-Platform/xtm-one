@@ -7,7 +7,12 @@ from types import SimpleNamespace
 import pytest
 
 from app.agents import fleet_seed
-from app.agents.builtin_fleets import BUILTIN_FLEETS
+from app.agents.builtin_fleets import (
+    BUILTIN_FLEETS,
+    SEEDED_BUILTIN_FLEET_SLUGS,
+    SEEDED_BUILTIN_FLEETS,
+    UNSEEDED_FLEET_AGENT_SLUGS,
+)
 from app.services.fleets import (
     BUILTIN_FLEET_WRITABLE_FIELDS,
     FleetActionRefusedError,
@@ -36,19 +41,86 @@ def test_copilot_mode_seeds_no_fleet_whatever_the_targets():
 
 
 def test_builtin_fleets_seed_in_xtm_one_and_never_in_copilot():
-    assert [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one")] == [f["slug"] for f in BUILTIN_FLEETS]
+    assert [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one")] == [f["slug"] for f in SEEDED_BUILTIN_FLEETS]
     assert fleet_seed.fleets_for_mode("copilot") == []
 
 
-def test_exactly_four_seeded_fleets_one_generic_and_three_use_cases():
-    # CTEM-31 (#1048, Sam, 21 Nov 2026): a fifth seeded fleet is a product decision, never a fix.
+def test_four_defined_fleets_one_generic_and_three_use_cases():
+    # CTEM-31 (#1048, Sam, 21 Nov 2026): a fifth defined fleet is a product decision, never a fix.
     assert [f["slug"] for f in BUILTIN_FLEETS] == [
         "ctem-loop",
         "ctem-vuln-prioritization",
         "ctem-ai-security",
         "ctem-third-party-risk",
     ]
-    assert [f["slug"] for f in fleet_seed.fleets_for_mode("dev")] == [f["slug"] for f in BUILTIN_FLEETS]
+
+
+def test_only_the_ctem_loop_is_seeded_until_the_use_cases_are_tested():
+    # Sam, 25 Nov 2026 (#2105): the three use cases stay defined, not seeded.
+    assert {"ctem-loop"} == SEEDED_BUILTIN_FLEET_SLUGS
+    for mode in ("xtm_one", "dev"):
+        assert [f["slug"] for f in fleet_seed.fleets_for_mode(mode)] == ["ctem-loop"]
+    assert fleet_seed.fleets_for_mode("copilot") == []
+
+
+def test_the_agents_only_the_unseeded_fleets_hold_are_withheld_with_their_assignments():
+    from app.agents import seed
+    from app.agents.builtin_agents import BUILTIN_ASSIGNMENTS
+    from app.agents.ctem_ai_security import ORCHESTRATOR as AI_ORCH
+    from app.agents.ctem_ai_security import THREAT_ANALYST
+    from app.agents.ctem_third_party_risk import ORCHESTRATOR as TPR_ORCH
+
+    exclusive = {
+        "ctem-vuln-prioritization-orchestrator",
+        "ctem-vuln-triage-analyst",
+        AI_ORCH,
+        THREAT_ANALYST,
+        TPR_ORCH,
+    }
+    assert exclusive == UNSEEDED_FLEET_AGENT_SLUGS
+    # Agents the CTEM loop names stay seeded.
+    loop = next(f for f in BUILTIN_FLEETS if f["slug"] == "ctem-loop")
+    loop_named = {
+        loop["orchestrator"],
+        *(m["agent"] for m in loop["members"]),
+        *(c["agent"] for c in loop["connected"]),
+    }
+    assert not loop_named & UNSEEDED_FLEET_AGENT_SLUGS
+    for shared in ("ctem-risk-quantifier", "ctem-remediation-coordinator", "opencti-detection-rule-converter"):
+        assert shared not in UNSEEDED_FLEET_AGENT_SLUGS
+    seeded = {a["slug"] for a in seed._seeded_builtin_agents()}
+    assert not seeded & exclusive
+    assert exclusive <= seed._withheld_builtin_agent_slugs()
+    # The declarations are untouched: the switch decides what is seeded.
+    assert any(a["agent_slug"] == AI_ORCH for a in BUILTIN_ASSIGNMENTS)
+    for agent in seed._seeded_builtin_agents():
+        assert not set(agent.get("handover_agent_slugs") or []) & exclusive, agent["slug"]
+
+
+def test_switching_a_use_case_back_on_seeds_it_exactly_as_its_definition():
+    from app.agents.builtin_fleets import (
+        CTEM_VULN_PRIORITIZATION_FLEET,
+        seeded_fleets,
+        unseeded_fleet_agent_slugs,
+    )
+
+    both = seeded_fleets({"ctem-loop", "ctem-vuln-prioritization"})
+    assert [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one", both)] == ["ctem-loop", "ctem-vuln-prioritization"]
+    assert both[1] is CTEM_VULN_PRIORITIZATION_FLEET
+    withheld = unseeded_fleet_agent_slugs(both)
+    assert "ctem-vuln-prioritization-orchestrator" not in withheld
+    assert "ctem-vuln-triage-analyst" not in withheld
+    assert unseeded_fleet_agent_slugs(list(BUILTIN_FLEETS)) == frozenset()
+
+
+def test_a_fork_of_an_unseeded_fleet_names_the_ctem_loop_and_no_case_path_is_ownerless():
+    from app.agents.builtin_fleets import RETIRED_FLEET_SUCCESSORS
+
+    for slug in ("ctem-vuln-prioritization", "ctem-ai-security", "ctem-third-party-risk"):
+        assert RETIRED_FLEET_SUCCESSORS[slug] == "ctem-loop"
+    loop = next(f for f in SEEDED_BUILTIN_FLEETS if f["slug"] == "ctem-loop")
+    # Every path, new_vulnerability included, falls back to the loop.
+    assert loop["case_ownership"]["paths"] is None
 
 
 def test_the_generic_loop_folds_the_posture_stage_analysts_under_its_posture_role():
@@ -91,8 +163,13 @@ def test_every_retired_fleet_names_its_successor_and_every_lead_is_a_member():
         "opencti-pir-desk": "ctem-loop",
         "openaev-detection-desk": "ctem-loop",
         "opencrq-risk-budget-desk": "ctem-loop",
+        # Defined, not seeded (#2105): a fork of one names the loop.
+        "ctem-vuln-prioritization": "ctem-loop",
+        "ctem-ai-security": "ctem-loop",
+        "ctem-third-party-risk": "ctem-loop",
     }
-    for fleet in BUILTIN_FLEETS:
+    assert set(BUILTIN_FLEET_LEADS) == SEEDED_BUILTIN_FLEET_SLUGS
+    for fleet in SEEDED_BUILTIN_FLEETS:
         members = {m["agent"] for m in fleet["members"]}
         assert BUILTIN_FLEET_LEADS[fleet["slug"]] <= members, fleet["slug"]
 
@@ -189,7 +266,7 @@ def test_builtin_fleets_are_unique_and_never_in_copilot():
     slugs = [f["slug"] for f in BUILTIN_FLEETS]
     assert len(slugs) == len(set(slugs))
     assert fleet_seed.fleets_for_mode("copilot") == []
-    assert [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one")] == slugs
+    assert [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one")] == [f["slug"] for f in SEEDED_BUILTIN_FLEETS]
 
 
 def test_every_builtin_member_is_a_handover_target_of_its_parent():
