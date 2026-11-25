@@ -29,7 +29,10 @@ the agent-builder tool alike, so the two can never drift:
   goes back, and :func:`retain_agent_bindings`, which a duplicate also uses;
 - who reaches an agent: when :func:`agent_audience` changes,
   :func:`unlink_agent_from_lost_holders` takes it off the handover targets and
-  work-item rosters of the agents whose owner no longer reaches it.
+  work-item rosters of the agents whose owner no longer reaches it;
+  :func:`unlink_agents_shared_with_group` after someone leaves a group, and
+  :func:`unlink_lost_holders_of` for the agents a deleted group was pruned
+  from (``helpers.prune_group_grants``).
 
 Refusals are ``HTTPException`` s; the agent-builder tool turns their ``detail``
 into the message it returns to the model.
@@ -374,6 +377,37 @@ async def unlink_agent_from_lost_holders(db: AsyncSession, agent: Agent) -> int:
             retain_agent_bindings(holder, keep)
             changed += 1
     return changed
+
+
+async def unlink_lost_holders_of(db: AsyncSession, agents: list[Agent]) -> int:
+    """:func:`unlink_agent_from_lost_holders` for each of *agents*, whose
+    audience changed without their own row being edited (a group they are
+    shared with was deleted). Returns the holders changed."""
+    changed = 0
+    for agent in agents:
+        changed += await unlink_agent_from_lost_holders(db, agent)
+    return changed
+
+
+async def unlink_agents_shared_with_group(db: AsyncSession, group_id: uuid.UUID) -> int:
+    """After memberships of *group_id* were removed: every agent shared with
+    the group goes through :func:`unlink_agent_from_lost_holders`, so the
+    former members' agents stop naming the ones they no longer reach."""
+    target = str(group_id)
+    candidates = (
+        (
+            await db.execute(
+                select(Agent).where(
+                    Agent.shared_group_ids.isnot(None),
+                    cast(Agent.shared_group_ids, SAText).contains(target),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    shared = [a for a in candidates if target in {str(g) for g in a.shared_group_ids or []}]
+    return await unlink_lost_holders_of(db, shared)
 
 
 #: How a dropped binding is named in a copy's warnings (singular form).

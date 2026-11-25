@@ -216,7 +216,8 @@ class _Rows:
 
 
 class _SyncDb:
-    """The user's memberships and the asserted groups, by the table queried."""
+    """The user's memberships and the asserted groups, by the table queried;
+    no agent is shared with a group the user leaves."""
 
     def __init__(self, memberships, groups):
         self.memberships = memberships
@@ -226,6 +227,8 @@ class _SyncDb:
 
     async def execute(self, stmt):
         rendered = str(stmt)
+        if "FROM agents" in rendered:
+            return _Rows([])
         return _Rows(self.memberships if "FROM group_members" in rendered else self.groups)
 
     def add(self, obj):

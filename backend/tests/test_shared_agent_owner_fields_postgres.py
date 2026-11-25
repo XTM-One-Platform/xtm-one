@@ -7,9 +7,11 @@ Against PostgreSQL and the agents REST route, as the grantees themselves:
 - an agent shared with people and no group still names, to whoever may edit
   it, the owner's personal integrations those people would use through it;
 - when an agent stops reaching someone (a grant removed, company-managed made
-  private, through the REST route or the agent-builder tool), that person's
-  agents stop naming it as a handover target or a work-item owner, while
-  agents of people who still reach it keep it.
+  private, through the REST route or the agent-builder tool; or the person
+  leaves a group it is shared with, through the groups route, SCIM or the SSO
+  login sync; or that group is deleted), that person's agents stop naming it as
+  a handover target or a work-item owner, while agents of people who still
+  reach it keep it.
 
 ``integration``-marked and skips when PostgreSQL is unreachable, like its
 neighbours; the temporary database is the shared ``tests/scratch_database.py``.
@@ -27,8 +29,10 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.models  # noqa: F401 - registers every table on Base.metadata
-from app.api import deps
+from app.api import auth_sso, deps
 from app.api.v1 import agents as agents_api
+from app.api.v1 import groups as groups_api
+from app.api.v1 import scim as scim_api
 from app.core.database import get_db
 from app.models.agent import Agent
 from app.models.group import Group, GroupMember
@@ -54,6 +58,7 @@ async def _client(session_factory: async_sessionmaker, user: User) -> AsyncItera
     """The agents router, as *user*, on its own session per request."""
     app = FastAPI()
     app.include_router(agents_api.router, prefix="/api/v1/agents")
+    app.include_router(groups_api.router, prefix="/api/v1/groups")
 
     async def _get_db():
         async with session_factory() as db:
@@ -86,12 +91,13 @@ async def _user(session, name: str, *, admin: bool = False) -> User:
     return user
 
 
-async def _group(session, name: str, *members: User) -> Group:
+async def _group(session, name: str, *members: User, sources: dict[uuid.UUID, str] | None = None) -> Group:
     group = Group(id=uuid.uuid4(), name=name)
     session.add(group)
     await session.flush()
     for member in members:
-        session.add(GroupMember(group_id=group.id, user_id=member.id))
+        source = (sources or {}).get(member.id, "manual")
+        session.add(GroupMember(group_id=group.id, user_id=member.id, source=source))
     await session.flush()
     return group
 
@@ -332,3 +338,82 @@ async def test_making_a_company_managed_agent_private_unlinks_everyone_else() ->
             "work_item_owner_agent_ids": True,
         }
         assert await _references(sessions, admins_id, target_id) == ALL_KEPT
+
+
+async def test_leaving_a_group_unlinks_the_agents_of_its_former_member() -> None:
+    """Each path a membership ends by: the groups route, SCIM, the SSO sync."""
+    async with _database() as sessions:
+        async with sessions() as db:
+            sam = await _user(db, "Sam")
+            admin = await _user(db, "Admin", admin=True)
+            marie = await _user(db, "Marie")
+            nina = await _user(db, "Nina")
+            omar = await _user(db, "Omar")
+            soc = await _group(
+                db, "SOC", marie, nina, omar, sources={nina.id: scim_api.SCIM_SOURCE, omar.id: "saml"}
+            )
+            target = _agent(
+                sam,
+                "Onboarding",
+                shared_group_ids=[str(soc.id)],
+                shared_group_permissions={str(soc.id): "read_only"},
+            )
+            db.add(target)
+            await db.flush()
+            desks = {person.full_name: _pointing_at(person, f"{person.full_name} desk", target) for person in (marie, nina, omar)}
+            db.add_all(desks.values())
+            await db.commit()
+            target_id, soc_id = target.id, soc.id
+            ids = {name: desk.id for name, desk in desks.items()}
+            nina_id, omar_id, marie_id = nina.id, omar.id, marie.id
+
+        async with _client(sessions, admin) as client:
+            removed = await client.delete(f"/api/v1/groups/{soc_id}/members/{marie_id}")
+            assert removed.status_code == 204, removed.text
+        assert await _references(sessions, ids["Marie"], target_id) == ALL_GONE
+        assert await _references(sessions, ids["Nina"], target_id) == ALL_KEPT
+
+        async with sessions() as db:
+            group = await db.get(Group, soc_id)
+            await scim_api._change_members(db, group, add=[], remove=[str(nina_id)], replace=None)
+            await db.commit()
+        assert await _references(sessions, ids["Nina"], target_id) == ALL_GONE
+        assert await _references(sessions, ids["Omar"], target_id) == ALL_KEPT
+
+        async with sessions() as db:
+            assert await auth_sso._sync_user_groups(db, await db.get(User, omar_id), [], False)
+            await db.commit()
+        assert await _references(sessions, ids["Omar"], target_id) == ALL_GONE
+
+
+async def test_deleting_a_group_unlinks_the_agents_of_its_members() -> None:
+    async with _database() as sessions:
+        async with sessions() as db:
+            sam = await _user(db, "Sam")
+            admin = await _user(db, "Admin", admin=True)
+            marie = await _user(db, "Marie")
+            alice = await _user(db, "Alice")
+            soc = await _group(db, "SOC", marie, alice)
+            target = _agent(
+                sam,
+                "Onboarding",
+                shared_group_ids=[str(soc.id)],
+                shared_group_permissions={str(soc.id): "read_only"},
+                # Alice keeps her own grant.
+                shared_user_ids=[str(alice.id)],
+                shared_user_permissions={str(alice.id): "read_only"},
+            )
+            db.add(target)
+            await db.flush()
+            maries = _pointing_at(marie, "Marie desk", target)
+            alices = _pointing_at(alice, "Alice desk", target)
+            db.add_all([maries, alices])
+            await db.commit()
+            target_id, soc_id = target.id, soc.id
+            maries_id, alices_id = maries.id, alices.id
+
+        async with _client(sessions, admin) as client:
+            deleted = await client.delete(f"/api/v1/groups/{soc_id}")
+            assert deleted.status_code == 204, deleted.text
+        assert await _references(sessions, maries_id, target_id) == ALL_GONE
+        assert await _references(sessions, alices_id, target_id) == ALL_KEPT

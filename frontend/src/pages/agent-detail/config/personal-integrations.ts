@@ -24,9 +24,10 @@ export interface IntegrationLending {
 
 /**
  * The agent's personal integrations its people would not get otherwise:
- * bound by the agent, not company-managed and shared with none of the
- * agent's groups or people (one shared with them is already theirs). An agent
- * shared with no group and no person has none.
+ * bound by the agent, not company-managed and not shared with every one of
+ * the agent's groups and people (one shared with all of them is already
+ * theirs; one only some of them hold, the others still use the owner's). An
+ * agent shared with no group and no person has none.
  */
 export function unsharedPersonalIntegrations(
   bindings: Record<string, string[]> | null,
@@ -42,8 +43,10 @@ export function unsharedPersonalIntegrations(
     (integ) =>
       boundIds.has(integ.id) &&
       !integ.is_company_managed &&
-      !(integ.shared_group_ids ?? []).some((gid) => groups.includes(gid)) &&
-      !(integ.shared_user_ids ?? []).some((uid) => people.includes(uid)),
+      !(
+        groups.every((gid) => (integ.shared_group_ids ?? []).includes(gid)) &&
+        people.every((uid) => (integ.shared_user_ids ?? []).includes(uid))
+      ),
   );
 }
 

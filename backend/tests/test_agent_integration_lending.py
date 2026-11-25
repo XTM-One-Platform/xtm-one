@@ -126,6 +126,31 @@ async def test_an_agent_shared_with_people_only_lists_what_they_do_not_have():
 
 
 @pytest.mark.asyncio
+async def test_a_row_held_by_only_some_of_the_agents_audience_is_still_listed():
+    """A row is left out only when every group and person the agent is shared
+    with holds it: the others still use the owner's credential."""
+    group, alice, bob = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    alice_only, group_only, everyone = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    agent = SimpleNamespace(
+        user_id=uuid.uuid4(),
+        shared_group_ids=[group],
+        shared_user_ids=[alice, bob],
+        integration_bindings={"p": [str(alice_only), str(group_only), str(everyone)]},
+    )
+    db = _SequencedDB(
+        [
+            _IntegRow(alice_only, "Alice only", "p", None, [alice]),
+            _IntegRow(group_only, "Group only", "p", [group]),
+            _IntegRow(everyone, "Everyone", "p", [group], [alice, bob]),
+        ]
+    )
+    assert [i["id"] for i in await shared_agent_personal_integrations(db, agent)] == [
+        str(alice_only),
+        str(group_only),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_an_agent_shared_with_nobody_lists_nothing():
     agent = SimpleNamespace(
         user_id=uuid.uuid4(),

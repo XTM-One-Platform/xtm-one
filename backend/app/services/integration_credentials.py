@@ -184,8 +184,9 @@ async def shared_agent_personal_integrations(db: AsyncSession, agent: Any) -> li
     editor who is not the owner cannot read the owner's personal rows: the
     banner that says what the people it is shared with get must still show
     them its state. An agent shared with no group and no person lists none.
-    Company-managed rows and rows shared with one of the agent's groups or
-    people are left out (they are already theirs).
+    Company-managed rows are left out, and so is a row shared with every group
+    and person the agent is shared with (it is already theirs); a row only some
+    of them hold is listed, since the others still use the owner's.
     """
     groups = {str(g) for g in (getattr(agent, "shared_group_ids", None) or [])}
     people = {str(u) for u in (getattr(agent, "shared_user_ids", None) or [])}
@@ -212,8 +213,10 @@ async def shared_agent_personal_integrations(db: AsyncSession, agent: Any) -> li
         (
             {"id": str(row.id), "name": row.name, "provider": row.provider}
             for row in rows
-            if not groups & {str(g) for g in (row.shared_group_ids or [])}
-            and not people & {str(u) for u in (row.shared_user_ids or [])}
+            if not (
+                groups <= {str(g) for g in (row.shared_group_ids or [])}
+                and people <= {str(u) for u in (row.shared_user_ids or [])}
+            )
         ),
         key=lambda item: (item["name"] or "").lower(),
     )

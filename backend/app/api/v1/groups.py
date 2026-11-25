@@ -950,5 +950,8 @@ async def remove_member(
     )
 
     await db.delete(member)
+    from app.services.agent_bindings import unlink_agents_shared_with_group
+
+    await unlink_agents_shared_with_group(db, gid)
     # Commit before answering: the get_db teardown only commits after the response is sent.
     await db.commit()

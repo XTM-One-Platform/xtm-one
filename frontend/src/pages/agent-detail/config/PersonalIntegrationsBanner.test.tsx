@@ -46,6 +46,18 @@ describe("unsharedPersonalIntegrations", () => {
     expect(ids).toEqual(["i-1"]);
   });
 
+  it("keeps a row only some of the agent's groups and people hold", () => {
+    const list = [
+      integration("i-1", { shared_user_ids: ["alice"] }),
+      integration("i-2", { shared_group_ids: [GROUP] }),
+      integration("i-3", { shared_group_ids: [GROUP], shared_user_ids: ["alice", "bob"] }),
+    ];
+    const ids = unsharedPersonalIntegrations({ p: ["i-1", "i-2", "i-3"] }, list, [GROUP], ["alice", "bob"]).map(
+      (i) => i.id,
+    );
+    expect(ids).toEqual(["i-1", "i-2"]);
+  });
+
   it("is empty on an agent shared with nobody", () => {
     expect(unsharedPersonalIntegrations(bound, integrations, [], null)).toEqual([]);
   });

@@ -680,10 +680,14 @@ async def _sync_user_groups(
     current_saml_group_ids = set(saml_memberships.keys())
     all_group_ids = set(membership_by_group.keys())
 
+    from app.services.agent_bindings import unlink_agents_shared_with_group
+
     if not group_names:
         # No groups in assertion — remove all SAML-sourced memberships
         for membership in saml_memberships.values():
             await db.delete(membership)
+        for gid in saml_memberships:
+            await unlink_agents_shared_with_group(db, gid)
         if saml_memberships:
             logger.info(
                 "SAML group sync for %s: removed %d SAML memberships (no groups in assertion)",
@@ -726,6 +730,8 @@ async def _sync_user_groups(
     to_remove = current_saml_group_ids - target_group_ids
     for gid in to_remove:
         await db.delete(saml_memberships[gid])
+    for gid in to_remove:
+        await unlink_agents_shared_with_group(db, gid)
 
     if to_add or to_remove or to_retag:
         logger.info(

@@ -393,9 +393,9 @@ class AgentResponse(BaseModel):
     integration_bindings: dict[str, list[str]] | None = None
     #: ``Agent.integration_lending``: {integration_ids, set_by, set_at}.
     integration_lending: dict | None = None
-    #: The owner's personal integrations this group-shared agent binds that
-    #: none of its groups gets otherwise ({id, name, provider}), for a viewer
-    #: who may edit it: an editor cannot read the owner's rows (#8824).
+    #: The owner's personal integrations this shared agent binds that not every
+    #: one of its groups and people gets otherwise ({id, name, provider}), for a
+    #: viewer who may edit it: an editor cannot read the owner's rows.
     #: ``None`` on list responses and for read-only viewers.
     shared_personal_integrations: list[dict] | None = None
     #: The integrations it binds that its owner can no longer see ({id, name,
