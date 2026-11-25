@@ -62,7 +62,12 @@ _RUN_ACTIONS: dict[str, str] = {
     "sync_now": "sync now",
     "reconnect_stream": "reconnect the stream at its live tail",
     "reset_state": "reset the connector state",
+    "run_inventory_now": "run the full asset inventory now",
 }
+
+#: The connectors whose run reads the whole asset inventory apart from its
+#: incremental reads (connectors-router.ts INVENTORY_SOURCES).
+_INVENTORY_SOURCES = ("openaev",)
 
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]+")
 
@@ -109,6 +114,22 @@ def _missing_capability_line(stream: dict[str, object]) -> str:
     if not capability:
         return ""
     return f"the OpenCTI token lacks the {capability[:80]} capability to create the stream"
+
+
+def _inventory_line(inventory: object) -> str:
+    """The full inventory read of a connector (getConnector.inventory), or ''."""
+    if not isinstance(inventory, dict):
+        return ""
+    requested = inventory.get("requestedAt")
+    due = inventory.get("nextDueAt")
+    line = f"Inventory: last completed {inventory.get('lastCompletedAt') or 'never'}"
+    if requested:
+        line += f", requested {requested} (the next run reads it)"
+    elif due:
+        line += f", next due {due}"
+    else:
+        line += ", owed to the next run"
+    return line
 
 
 def _fmt_run(r: dict) -> str:
@@ -238,9 +259,25 @@ def register(
         runs = runs or {}
         in_progress = runs.get("inProgress") or []
         completed = runs.get("completed") or []
+        inventory = ""
+        if source in _INVENTORY_SOURCES:
+            # Best effort: a failed read leaves the runs as listRuns answered them.
+            detail, detail_err = await _trpc(
+                base_url,
+                headers,
+                "connectors.getConnector",
+                "get connector",
+                input={"source": source},
+                tenant_id=tenant,
+            )
+            if not detail_err and isinstance(detail, dict):
+                inventory = _inventory_line(detail.get("inventory"))
         if not in_progress and not completed:
-            return f"The {source} connector has not synced yet."
+            answer = f"The {source} connector has not synced yet."
+            return f"{answer}\n{inventory}" if inventory else answer
         lines = [f"{source} connector syncs:"]
+        if inventory:
+            lines.append(inventory)
         if in_progress:
             lines.append(f"In progress ({runs.get('inProgressCount', len(in_progress))}):")
             lines += [_fmt_run(r) for r in in_progress]
@@ -399,6 +436,8 @@ def register(
             return "opencti is a live stream: use reconnect_stream or reset_state."
         if source != _STREAM_SOURCE and action == "reconnect_stream":
             return f"{source} runs as a job and holds no stream: use sync_now."
+        if action == "run_inventory_now" and source not in _INVENTORY_SOURCES:
+            return "run_inventory_now applies to: " + ", ".join(_INVENTORY_SOURCES) + "."
         tenant, err = await _resolve_tenant(base_url, headers, _text(tenant_id))
         if err or tenant is None:
             return err or "No OpenCRQ tenant resolved."
@@ -410,6 +449,16 @@ def register(
                 base_url,
                 headers,
                 "connectors.syncNow",
+                words,
+                input=payload,
+                mutation=True,
+                tenant_id=tenant,
+            )
+        elif action == "run_inventory_now":
+            answer, err = await _trpc(
+                base_url,
+                headers,
+                "connectors.runInventoryNow",
                 words,
                 input=payload,
                 mutation=True,
@@ -518,8 +567,9 @@ def register(
         ToolDefinition(
             name="run_opencrq_connector",
             description=(
-                "Act on an OpenCRQ connector now: sync_now, reconnect_stream (opencti) "
-                "or reset_state. Confirm with the user; manage-security for all but sync_now."
+                "Act on an OpenCRQ connector now: sync_now, run_inventory_now (openaev: full "
+                "asset re-read), reconnect_stream (opencti) or reset_state. Confirm with the "
+                "user; manage-security for all but sync_now."
             ),
             input_schema={
                 "type": "object",

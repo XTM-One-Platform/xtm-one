@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -536,6 +537,24 @@ async def close_without_retest_answered(db: AsyncSession, case_id: uuid.UUID) ->
     return found is not None
 
 
+async def dismissal_answer(db: AsyncSession, case_id: uuid.UUID) -> CtemCaseEvent | None:
+    """The newest gate of the case a person answered with the close option (#2252), ``None`` when none.
+
+    Read from the case's gate events (``ctem_case_loop.record_gate``: kind ``gate``,
+    the outcome in ``to_value``, who answered in ``reason``, the option in ``evidence``).
+    """
+    rows = await db.scalars(
+        select(CtemCaseEvent)
+        .where(
+            CtemCaseEvent.case_id == case_id,
+            CtemCaseEvent.kind == "gate",
+            CtemCaseEvent.to_value == "answered",
+        )
+        .order_by(CtemCaseEvent.at.desc())
+    )
+    return next((row for row in rows if rules.closes_case(row.evidence)), None)
+
+
 async def update_case(
     db: AsyncSession,
     case: CtemCase,
@@ -543,6 +562,7 @@ async def update_case(
     actor: str,
     actor_kind: str,
     state: str | None = None,
+    resolution_kind: str | None = None,
     owner_user_id: uuid.UUID | None = None,
     clear_owner: bool = False,
     due_at: datetime | None = None,
@@ -563,10 +583,15 @@ async def update_case(
     due_at = rules.as_utc(due_at)
     accepted_until = rules.as_utc(accepted_until)
     new_owner = None if clear_owner else (owner_user_id or case.owner_user_id)
+    dismissal: CtemCaseEvent | None = None
+    if resolution_kind is not None and state is None:
+        raise rules.CaseRuleError("resolution_kind goes with a state change")
     if state is None:
         rules.check_owner(case.state, new_owner)
     else:
         answered = False
+        if resolution_kind == rules.DISMISSED and actor_kind != "user":
+            dismissal = await dismissal_answer(db, case.id)
         if (
             state in ("resolved", "mitigated_watching")
             and actor_kind != "user"
@@ -586,6 +611,8 @@ async def update_case(
             validation_plan=bool(getattr(case, "validation_plan", False)),
             validations=getattr(case, "validations", None),
             close_without_retest_answered=answered,
+            resolution_kind=resolution_kind,
+            dismissal_answered=dismissal is not None,
         )
     if new_owner != case.owner_user_id:
         db.add(
@@ -614,6 +641,13 @@ async def update_case(
     if note and note.strip():
         db.add(_event(case.id, actor, "note", reason=note.strip(), at=now))
     if state is not None:
+        reason_text = (reason or "").strip()
+        evidence_text = (evidence or "").strip()
+        if resolution_kind == rules.DISMISSED:
+            # The person and their reason stay on the history; none given is said (#2252).
+            who = (dismissal.reason or "a person").strip() if dismissal is not None else "a person"
+            reason_text = reason_text or rules.NO_REASON_GIVEN
+            evidence_text = evidence_text or f"dismissed by {who}: not relevant, no action"
         db.add(
             _event(
                 case.id,
@@ -621,13 +655,18 @@ async def update_case(
                 "state",
                 from_value=case.state,
                 to_value=state,
-                reason=(reason or "").strip() or None,
-                evidence=(evidence or "").strip() or None,
+                reason=reason_text[:2000] or None,
+                evidence=evidence_text[:2000] or None,
                 at=now,
             )
         )
         case.state = state
         case.state_since = now
+        if resolution_kind is not None:
+            case.resolution_kind = resolution_kind
+        elif state in OPEN_STATES:
+            # Reopened: how it was closed no longer applies (as the loop's own reopen does).
+            case.resolution_kind = None
         if state == "accepted_risk":
             case.accepted_reason = (reason or "").strip()
             case.accepted_until = accepted_until
@@ -840,6 +879,79 @@ async def case_ids_with_prefix(
         .limit(max(1, limit))
     )
     return list(rows.scalars())
+
+
+@dataclass(frozen=True)
+class MergedCase:
+    """Where a merged-away case went (#2289): the survivor, when and by whom."""
+
+    case_id: uuid.UUID
+    survivor_id: uuid.UUID
+    at: datetime
+    actor: str
+
+    def answer(self) -> str:
+        """What a case tool answers for the merged id."""
+        return (
+            f"Case {self.case_id} was merged into {self.survivor_id} at {self.at.isoformat()} "
+            f"by {self.actor}; read the survivor."
+        )
+
+
+def _merge_lookup(organization_id: uuid.UUID | None) -> Any:
+    """The ``merge`` events, newest first, of *organization_id* (every organization when ``None``).
+
+    Served by the partial index ``ix_ctem_case_events_merged_from`` (``from_value`` of the
+    ``merge`` rows). The merged case's history moves with each merge, so the survivor
+    named is the case that holds the event now: a survivor merged in turn is followed.
+    """
+    query = select(CtemCaseEvent.from_value, CtemCaseEvent.case_id, CtemCaseEvent.at, CtemCaseEvent.actor).where(
+        CtemCaseEvent.kind == "merge"
+    )
+    if organization_id is not None:
+        query = query.join(CtemCase, CtemCase.id == CtemCaseEvent.case_id).where(
+            CtemCase.organization_id == organization_id
+        )
+    return query.order_by(CtemCaseEvent.at.desc())
+
+
+async def merged_into(db: AsyncSession, case_id: uuid.UUID, *, organization_id: uuid.UUID | None) -> MergedCase | None:
+    """The survivor *case_id* was merged into (#2289), ``None`` for a case never merged away.
+
+    A case id is unique across organizations, so a run that only knows the id (a
+    queued ``ctem_case.opened`` run) passes ``organization_id=None``.
+    """
+    row = (
+        await db.execute(_merge_lookup(organization_id).where(CtemCaseEvent.from_value == str(case_id)).limit(1))
+    ).first()
+    if row is None:
+        return None
+    return MergedCase(case_id=case_id, survivor_id=row.case_id, at=row.at, actor=row.actor)
+
+
+async def merged_with_prefix(
+    db: AsyncSession, prefix: str, *, organization_id: uuid.UUID, limit: int = 2
+) -> list[MergedCase]:
+    """The merged-away cases whose id starts with *prefix* (#2289), one per merged id, at most *limit*."""
+    from app.services.organization_asset_store import id_prefix
+
+    text = id_prefix(prefix)
+    if text is None:
+        return []
+    rows = await db.execute(_merge_lookup(organization_id).where(CtemCaseEvent.from_value.like(f"{text}%")))
+    out: dict[str, MergedCase] = {}
+    for row in rows:
+        merged_id = row.from_value
+        if merged_id in out:
+            continue
+        try:
+            case_id = uuid.UUID(merged_id)
+        except (TypeError, ValueError):
+            continue
+        out[merged_id] = MergedCase(case_id=case_id, survivor_id=row.case_id, at=row.at, actor=row.actor)
+        if len(out) >= max(1, limit):
+            break
+    return list(out.values())
 
 
 async def get_case(

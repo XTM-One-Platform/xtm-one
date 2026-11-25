@@ -2599,6 +2599,15 @@ class Settings(BaseSettings):
     #     retention purge.
     work_item_resolved_retention_days: int = 90
 
+    # --- Assignment run retention (Operations > Executions) ---
+    #   - A finished run (completed, failed, skipped, cancelled) is deleted by
+    #     the hourly retention pass once its last activity (``completed_at``,
+    #     else ``created_at``) is older than this many days; a run still
+    #     working, waiting for a person, holding a claim or a lease, or the
+    #     parent of a kept run never is. A window saved in Settings >
+    #     Observability wins. 0 (or negative) keeps every run.
+    assignment_run_retention_days: int = 90
+
     # --- Workset lifecycle ---
     # A workset is a WORKSPACE, not a deliverable: a scoped corpus an agent
     # builds to answer one question, holding documents, chunks and vectors. It

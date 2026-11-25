@@ -2,10 +2,11 @@
 
 Pinned here without a database:
 - every CTEM loop fleet declares the seven CTEM gate keys, in loop order;
-- at the seeded level (Low) two gates wait on a fleet with the OpenAEV
-  validation step (``ctem.validation.non_readonly`` and ``ctem.mobilize``, Sam,
-  23 Nov 2026, #1339), ``ctem.mobilize`` alone on the third-party fleet; Full
-  human gates makes every gate wait; Full autonomous none;
+- at the seeded level (Full human gates, #2279, Sam, 25 Nov 2026) every gate
+  waits, as a decision item between steps; at Low two gates wait on a fleet
+  with the OpenAEV validation step (``ctem.validation.non_readonly`` and
+  ``ctem.mobilize``, #1339), ``ctem.mobilize`` alone on the third-party fleet;
+  Full autonomous none;
 - the remediation ticket tools are the Mobilize action (one decision covers the
   tickets of the case), the OpenAEV launches are the validation gate;
 - per-gate pins are writable on a built-in fleet and the seed never writes
@@ -49,8 +50,16 @@ _VALIDATION_FLEETS = ("ctem-loop", "ctem-vuln-prioritization", "ctem-ai-security
 
 
 @pytest.mark.parametrize("slug", _LOOP_FLEETS)
-def test_out_of_the_box_the_validation_and_mobilize_wait(slug: str) -> None:
+def test_out_of_the_box_every_gate_waits(slug: str) -> None:
+    """#2279: a seeded fleet ships at Full human gates; no gate names a tool (#1675)."""
     catalog = gate_catalog(SEEDED_FLEET_AUTONOMY_LEVEL, _gates(slug))
+    assert [e["key"] for e in catalog if e["gated"]] == list(CTEM_GATE_KEYS)
+    assert gated_tool_rules(SEEDED_FLEET_AUTONOMY_LEVEL, _gates(slug)) == []
+
+
+@pytest.mark.parametrize("slug", _LOOP_FLEETS)
+def test_at_low_the_validation_and_mobilize_wait(slug: str) -> None:
+    catalog = gate_catalog("low", _gates(slug))
     expected = [CTEM_VALIDATION_GATE, CTEM_MOBILIZE_GATE] if slug in _VALIDATION_FLEETS else [CTEM_MOBILIZE_GATE]
     assert [e["key"] for e in catalog if e["gated"]] == expected
 

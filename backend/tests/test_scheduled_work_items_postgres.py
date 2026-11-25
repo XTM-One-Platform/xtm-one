@@ -443,6 +443,55 @@ async def test_the_orchestrator_cancels_its_desks_action_and_a_stranger_does_not
 
 
 @pytest.mark.asyncio
+async def test_an_agent_reaches_its_one_off_scheduled_for_another_person(allowed: object) -> None:
+    """#2220: the owner's run of an agent lists and cancels the one-off it scheduled
+    for another person; that person's own agent and an unrelated owner do not."""
+    async with scratch_database("swi", tables=ALL_TABLES, extensions=("vector",)) as scratch:
+        owner, desk, _conversation = await _seed(scratch.sessions)  # type: ignore[no-untyped-call]
+        other, other_agent, _ = await _seed(scratch.sessions)  # type: ignore[no-untyped-call]
+        async with scratch.sessions() as db:
+            orchestrator = Agent(
+                id=uuid.uuid4(),
+                name="Orchestrator",
+                user_id=owner.id,
+                handover_agent_ids=[str(desk.id)],
+                handover_types={str(desk.id): "delegate"},
+            )
+            db.add(orchestrator)
+            await db.commit()
+        due = swi.parse_due_at((datetime.now(UTC) + timedelta(hours=2)).isoformat())
+        # Scheduled by the owner's desk in a run acting for another person.
+        item = await swi.create_scheduled_work_item(
+            user_id=str(other.id),
+            agent_id=str(desk.id),
+            agent_name=desk.name,
+            title="Renewal watch",
+            due=due,
+            action=swi.build_action("instruction", prompt="Watch the renewal"),
+        )
+
+        listed = await swi.list_scheduled_work_items(user_id=str(owner.id), agent_id=str(desk.id))
+        assert [row["id"] for row in listed] == [item["id"]]
+        # Another person's agent, and the person's own view, keep their scope.
+        assert await swi.list_scheduled_work_items(user_id=str(other.id), agent_id=str(other_agent.id)) == []
+        assert (
+            await swi.cancel_scheduled_work_item(item["id"], user_id=str(other.id), agent_id=str(other_agent.id))
+            is None
+        )
+        # Rescheduling keeps the person scope (cancel only widens).
+        assert (
+            await swi.reschedule_scheduled_work_item(item["id"], due, user_id=str(owner.id), agent_id=str(desk.id))
+            is None
+        )
+
+        # The owner's orchestrator (delegates to the desk) cancels it.
+        cancelled = await swi.cancel_scheduled_work_item(
+            item["id"], user_id=str(owner.id), agent_id=str(orchestrator.id)
+        )
+        assert cancelled is not None and cancelled["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
 async def test_the_scheduler_cancels_a_blocked_action_whose_work_item_is_done(allowed):
     async with scratch_database("swi", tables=ALL_TABLES, extensions=("vector",)) as scratch:
         user, agent, conversation = await _seed(scratch.sessions)

@@ -203,6 +203,53 @@ def _default_ordering(search: str | None) -> str:
     return "_score" if (search or "").strip() else "created_at"
 
 
+# A MITRE ATT&CK identifier OpenCTI stores in ``x_mitre_id``, by the entity
+# type that carries it: a technique or sub-technique (T1557, T1557.001) or a
+# mitigation (M1037). Groups, software and campaigns keep theirs in external
+# references only, so they are not matched here.
+_MITRE_ID_TYPES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^T\d{4}(?:\.\d{3})?$", re.IGNORECASE), "Attack-Pattern"),
+    (re.compile(r"^M\d{4}$", re.IGNORECASE), "Course-Of-Action"),
+)
+
+
+def _mitre_id_lookup(search: str | None, types: list[str] | None) -> tuple[str, str] | None:
+    """``(MITRE ID upper-cased, entity type)`` when *search* is one MITRE ID the *types* allow.
+
+    A full-text search ranks a MITRE ID as free text by ``_score``: T1557
+    returns the Mobile technique sharing its name first and the Enterprise
+    one outside the first page. The search tools look the ID up exactly
+    first; ``None`` when the keyword is no MITRE ID or the types exclude the
+    type that carries it.
+    """
+    keyword = (search or "").strip()
+    for pattern, entity_type in _MITRE_ID_TYPES:
+        if pattern.match(keyword):
+            if types and entity_type not in types:
+                return None
+            return keyword.upper(), entity_type
+    return None
+
+
+def _exact_first(exact: list[dict[str, Any]], ranked: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    """The exact MITRE ID hits, then the ranked hits not already listed, cut at *limit*."""
+    seen = {node.get("id") for node in exact}
+    merged = exact + [node for node in ranked if node.get("id") not in seen]
+    return merged[:limit]
+
+
+def _mitre_id_filter(mitre_id: str, entity_type: str) -> dict[str, Any]:
+    """The FilterGroup of an exact ``x_mitre_id`` lookup on one entity type."""
+    return {
+        "mode": "and",
+        "filters": [
+            {"key": "entity_type", "values": [entity_type], "operator": "eq", "mode": "or"},
+            {"key": "x_mitre_id", "values": [mitre_id], "operator": "eq", "mode": "or"},
+        ],
+        "filterGroups": [],
+    }
+
+
 def _resolve_ordering(
     order_by: str | None,
     valid: tuple[str, ...],
@@ -1555,7 +1602,23 @@ def register_knowledge(
             "  }"
             "}"
         )
+        first = min(limit, 50)
+        exact: list[dict[str, Any]] = []
         async with _client(headers, timeout=30) as client:
+            if mitre := _mitre_id_lookup(search, types):
+                exact_data, exact_err = await _graphql(
+                    client,
+                    base_url,
+                    headers,
+                    "query SearchByMitreId($filters: FilterGroup, $first: Int) {"
+                    "  stixCoreObjects(filters: $filters, first: $first) {"
+                    "    edges { node {" + _ENTITY_FIELDS + "} }"
+                    "  }"
+                    "}",
+                    {"filters": _mitre_id_filter(*mitre), "first": first},
+                )
+                if not exact_err:
+                    exact = _edges(exact_data, "stixCoreObjects")
             data, err = await _graphql(
                 client,
                 base_url,
@@ -1564,18 +1627,17 @@ def register_knowledge(
                 {
                     "search": search,
                     "types": types,
-                    "first": min(limit, 50),
+                    "first": first,
                     "orderBy": _default_ordering(search),
                     "orderMode": "desc",
                 },
             )
-        if err:
+        if err and not exact:
             return err
-        nodes = _edges(data, "stixCoreObjects")
-        total = (
-            data.get("stixCoreObjects", {})
-            .get("pageInfo", {})
-            .get("globalCount", len(nodes))
+        nodes = _exact_first(exact, _edges(data, "stixCoreObjects"), first)
+        total = max(
+            (data or {}).get("stixCoreObjects", {}).get("pageInfo", {}).get("globalCount", len(nodes)),
+            len(nodes),
         )
         return format_entity_list(
             nodes,
@@ -1689,15 +1751,29 @@ def register_knowledge(
                     return f"Error: {status_err}"
                 variables["filters"] = resolved_fg
                 status_note = describe_resolution(resolved_statuses)
+        exact: list[dict[str, Any]] = []
         async with _client(headers, timeout=30) as client:
+            if not filters and (mitre := _mitre_id_lookup(search, types)):
+                exact_data, exact_err = await _graphql(
+                    client,
+                    base_url,
+                    headers,
+                    "query ListSDOsByMitreId($filters: FilterGroup, $first: Int) {"
+                    "  stixDomainObjects(filters: $filters, first: $first) {"
+                    "    edges { node {" + _SDO_ENTITY_FIELDS + "} }"
+                    "  }"
+                    "}",
+                    {"filters": _mitre_id_filter(*mitre), "first": variables["first"]},
+                )
+                if not exact_err:
+                    exact = _edges(exact_data, "stixDomainObjects")
             data, err = await _graphql(client, base_url, headers, query, variables)
-        if err:
+        if err and not exact:
             return await _filter_key_hint(err, base_url, headers) if filters else err
-        nodes = _edges(data, "stixDomainObjects")
-        total = (
-            data.get("stixDomainObjects", {})
-            .get("pageInfo", {})
-            .get("globalCount", len(nodes))
+        nodes = _exact_first(exact, _edges(data, "stixDomainObjects"), variables["first"])
+        total = max(
+            (data or {}).get("stixDomainObjects", {}).get("pageInfo", {}).get("globalCount", len(nodes)),
+            len(nodes),
         )
         text = format_entity_list(
             nodes,
@@ -1851,7 +1927,7 @@ def register_knowledge(
                 from {
                     ... on BasicObject { id entity_type }
                     ... on StixCyberObservable { observable_value }
-                    ... on AttackPattern { name }
+                    ... on AttackPattern { name x_mitre_id }
                     ... on Campaign { name }
                     ... on CourseOfAction { name }
                     ... on Individual { name }
@@ -1880,7 +1956,7 @@ def register_knowledge(
                 to {
                     ... on BasicObject { id entity_type }
                     ... on StixCyberObservable { observable_value }
-                    ... on AttackPattern { name }
+                    ... on AttackPattern { name x_mitre_id }
                     ... on Campaign { name }
                     ... on CourseOfAction { name }
                     ... on Individual { name }
@@ -1954,6 +2030,10 @@ def register_knowledge(
             or to_obj.get("observable_value")
             or to_obj.get("id", "?")
         )
+        if from_obj.get("x_mitre_id"):
+            fn = f"{fn} ({from_obj['x_mitre_id']})"
+        if to_obj.get("x_mitre_id"):
+            tn = f"{tn} ({to_obj['x_mitre_id']})"
         return (
             f"Relationship created: [{from_obj.get('entity_type', '?')}] {fn}"
             f" --{rel.get('relationship_type', relationship_type)}-->"

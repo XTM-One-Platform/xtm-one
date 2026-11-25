@@ -97,6 +97,25 @@ def workflow_run_readers() -> dict[str, WorkflowRunReader]:
     return dict(_WORKFLOW_RUN_READERS)
 
 
+#: ``(repo, pattern, carries_sha, token)`` -> the newest tag of *repo* whose name matches the
+#: glob *pattern* and whose commit is *carries_sha* or a descendant of it, as
+#: ``{"tag", "commit"}``; ``None`` when there is none yet or it cannot be read. A work
+#: item blocked on a ``tag`` reference (a release cut from a merge, #2209).
+TagReader = Callable[[str, str, str, str], Awaitable[dict[str, str] | None]]
+
+_TAG_READERS: dict[str, TagReader] = {}
+
+
+def register_tag_reader(provider: str, reader: TagReader) -> None:
+    """Register *provider*'s tag reader. Idempotent (last wins)."""
+    _TAG_READERS[provider] = reader
+
+
+def tag_readers() -> dict[str, TagReader]:
+    """Every registered tag reader, by provider."""
+    return dict(_TAG_READERS)
+
+
 #: ``(repo, number, token)`` -> the current head of an OPEN pull request and the
 #: verdict of its CI, as ``{"head_sha", "head_branch", "draft", "conclusion",
 #: "run_url"}`` with ``conclusion`` ``success`` / ``failure`` once every check of

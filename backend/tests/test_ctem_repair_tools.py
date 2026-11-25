@@ -149,3 +149,22 @@ async def test_a_non_administrator_gets_the_fact_and_nothing_runs(world: SimpleN
         answer = await executor.handler(name)()
         assert answer.startswith("Not run: these CTEM repairs are for an administrator")
     assert world.calls == []
+
+
+async def test_an_empty_pass_list_says_why(world: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2331: no pass record answers why_empty instead of a bare empty list."""
+
+    async def _none(_db: Any, _org: Any, *, limit: int = 10) -> list[Any]:
+        return []
+
+    async def _why(_db: Any, org: Any) -> str:
+        world.calls.append(("why", org))
+        return "the attack surface pass is turned off"
+
+    monkeypatch.setattr(ctem_attack_surface, "list_passes", _none)
+    monkeypatch.setattr(ctem_attack_surface, "why_no_pass", _why)
+    admin = SimpleNamespace(id=uuid.uuid4(), is_admin=True)
+    world.db = _Db(admin)
+    passes = json.loads(await _tools(str(admin.id)).handler("list_ctem_attack_surface_passes")())
+    assert passes == {"passes": [], "count": 0, "why_empty": "the attack surface pass is turned off"}
+    assert ("why", ORG) in world.calls
