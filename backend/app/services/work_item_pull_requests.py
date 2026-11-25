@@ -715,8 +715,24 @@ def _apply_ci(binding: dict, event: PullRequestEvent) -> CiCompleted | None:
 
 #: ``conclusion`` of a dispatch made because the merge queue dropped the pull request.
 DEQUEUED_CONCLUSION = "dequeued"
+#: What a merge queue removal reason means for the owner, when the reason alone misleads.
+#: GitHub names a conflict inside the queue's group (with a pull request ahead of it)
+#: ``merge_conflict`` too: the pull request itself may merge cleanly with its base.
+DEQUEUE_HINTS = {
+    "merge_conflict": (
+        "the conflict may be with a pull request ahead of it in the queue's group, not its base: "
+        "read its mergeable state against the base first; mergeable means enqueue the same head again"
+    ),
+}
 #: ``conclusion`` of a dispatch made because the pull request conflicts with its base.
 CONFLICT_CONCLUSION = "conflict"
+
+
+def dequeued_run_name(reason: str | None) -> str:
+    """The ``run_name`` of a merge queue removal wake: its reason, and what it means when misleading. Pure."""
+    reason = reason or "unknown"
+    hint = DEQUEUE_HINTS.get(reason)
+    return f"merge queue: removed ({reason})" + (f"; {hint}" if hint else "")
 
 
 def _apply_dequeued(binding: dict[str, Any], event: PullRequestEvent) -> CiCompleted | None:
@@ -745,7 +761,7 @@ def _apply_dequeued(binding: dict[str, Any], event: PullRequestEvent) -> CiCompl
         head_sha=sha,
         conclusion=DEQUEUED_CONCLUSION,
         run_url=event.url or binding.get("url"),
-        run_name=f"merge queue: removed ({event.conclusion or 'unknown'})",
+        run_name=dequeued_run_name(event.conclusion),
         dispatch_key=key,
     )
 
@@ -1240,6 +1256,7 @@ async def _dispatch(item_id: uuid.UUID, done: CiCompleted, now: datetime) -> str
                     "reason": CI_COMPLETED_REASON,
                     "conclusion": done.conclusion,
                     "run_url": done.run_url,
+                    "run_name": done.run_name,
                     "pull_request": {
                         "repo": done.repo,
                         "number": done.number,

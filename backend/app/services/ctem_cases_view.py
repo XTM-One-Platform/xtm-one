@@ -1049,6 +1049,7 @@ def list_for_viewer(
     owner_user_id: str | None = None,
     priority: str | None = None,
     asset: str | None = None,
+    primary_asset: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
@@ -1057,9 +1058,13 @@ def list_for_viewer(
     A case with no issue visible to the viewer is in neither: a count is data.
     *asset* keeps the cases one of whose issues the viewer sees names that asset
     (case-insensitive), the counts included: the cases on one asset.
+    *primary_asset* keeps the cases one of whose visible issues reaches that
+    primary asset (#1980 S2): the primary asset page's cases.
     """
     if asset and asset.strip():
         cases = [(c, members) for c, members in cases if names_asset(members, view, asset)]
+    if primary_asset and primary_asset.strip():
+        cases = [(c, members) for c, members in cases if reaches_primary_asset(members, view, primary_asset)]
     rows = [s for s in (summary(c, members, view) for c, members in cases) if s is not None]
     counts: dict[str, int] = {}
     for row in rows:
@@ -1091,6 +1096,16 @@ def names_asset(rows: list[CtemCaseIssue], view: ViewerView, asset: str) -> bool
     for row in visible_members(rows, view):
         issue = view.issues.get(_member_id(row))
         if issue is not None and any(" ".join(a.split()).casefold() == wanted for a in issue.assets):
+            return True
+    return False
+
+
+def reaches_primary_asset(rows: list[CtemCaseIssue], view: ViewerView, primary_asset: str) -> bool:
+    """Whether an issue of the case this viewer sees reaches *primary_asset* (case-insensitive, spaces folded)."""
+    wanted = " ".join(primary_asset.split()).casefold()
+    for row in visible_members(rows, view):
+        issue = view.issues.get(_member_id(row))
+        if issue is not None and any(" ".join(p.split()).casefold() == wanted for p in issue.primary_assets):
             return True
     return False
 

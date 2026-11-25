@@ -225,7 +225,9 @@ def _row(status: str = "open") -> SimpleNamespace:
 
 
 def _done(conclusion: str = "failure") -> SimpleNamespace:
-    return SimpleNamespace(conclusion=conclusion, run_url="https://ci/1", repo=REPO, number=12, head_sha=SHA)
+    return SimpleNamespace(
+        conclusion=conclusion, run_url="https://ci/1", run_name="ci", repo=REPO, number=12, head_sha=SHA
+    )
 
 
 async def test_a_red_dispatch_while_a_run_diagnoses_the_same_head_starts_no_run(dispatch):

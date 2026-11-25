@@ -961,16 +961,20 @@ function DataTableView<T>({
     // A row that opens a page (onRowClick without expandedRow) is a keyboard target too:
     // focusable, Enter opens it, so no cell needs a link of its own (#12070).
     const focusable = Boolean(opens && !href && !toggleInCell);
+    // A routed row whose every column is interactive draws no link cell: the row itself is
+    // then the one keyboard target (tab stop, Enter opens it), never a row the keyboard
+    // cannot open (UX round 1 on #2027, B1).
+    const hrefFocusable = Boolean(href && !linkColumnKey);
     const className = cn(
       "border-t border-elevation-subtle-soft transition-colors",
       ROW_HEIGHT[rowLines],
-      focusable && "outline-none focus-visible:bg-elevation-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus",
+      (focusable || hrefFocusable) && "outline-none focus-visible:bg-elevation-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus",
       (href || opens) && "cursor-pointer hover:bg-elevation-hover",
       !href && !opens && "hover:bg-elevation-hover",
       rowClassName?.(row),
     );
     const line = href ? (
-      <HrefRow key={key} href={href} className={className} testId={rowTestId}>
+      <HrefRow key={key} href={href} className={className} testId={rowTestId} focusable={hrefFocusable}>
         {cells}
       </HrefRow>
     ) : (
@@ -1513,10 +1517,37 @@ const COMPACT_TOOLBAR_BELOW_PX = 896;
 const ONE_ROW_TOOLBAR_MIN_PX = 852;
 
 /** A row that opens its detail route; the router hook lives here so a table without links needs no router. */
-function HrefRow({ href, className, testId, children }: { href: string; className: string; testId?: string; children: ReactNode }) {
+function HrefRow({
+  href,
+  className,
+  testId,
+  focusable,
+  children,
+}: {
+  href: string;
+  className: string;
+  testId?: string;
+  /** No link cell in the row: the row is the tab stop and Enter opens it. */
+  focusable: boolean;
+  children: ReactNode;
+}) {
   const navigate = useNavigate();
   return (
-    <tr data-testid={testId} className={className} onClick={() => navigate(href)}>
+    <tr
+      data-testid={testId}
+      className={className}
+      onClick={() => navigate(href)}
+      tabIndex={focusable ? 0 : undefined}
+      onKeyDown={
+        focusable
+          ? (event) => {
+              if (event.target !== event.currentTarget || event.key !== "Enter") return;
+              event.preventDefault();
+              navigate(href);
+            }
+          : undefined
+      }
+    >
       {children}
     </tr>
   );

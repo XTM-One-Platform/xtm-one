@@ -181,6 +181,7 @@ async def list_ctem_cases(
     priority: Literal["critical", "high", "medium", "low"] | None = Query(default=None),
     owner_user_id: uuid.UUID | None = Query(default=None),
     asset: str | None = Query(default=None, max_length=300),
+    primary_asset: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=store.MAX_PAGE),
     offset: int = Query(default=0, ge=0),
     *,
@@ -191,6 +192,7 @@ async def list_ctem_cases(
     """One page of the cases the caller sees and their counts by state (the board and the list).
 
     ``asset`` keeps the cases on one asset (an issue the caller sees names it): the asset page's cases.
+    ``primary_asset`` keeps the cases one of whose issues reaches that primary asset (#1980 S2).
     The ``Server-Timing`` header names the time of each phase (#1986).
     """
     _require_xtm_one()
@@ -224,6 +226,7 @@ async def list_ctem_cases(
         owner_user_id=str(owner_user_id) if owner_user_id else None,
         priority=priority,
         asset=asset,
+        primary_asset=primary_asset,
         limit=limit,
         offset=offset,
     )

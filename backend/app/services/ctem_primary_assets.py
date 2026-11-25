@@ -317,6 +317,152 @@ async def load_index(
     return index
 
 
+#: Largest page of supporting assets one read answers.
+SUPPORTERS_PAGE_MAX = 200
+#: The asset criticality scale, lowest first: a descending sort on criticality reads the highest first.
+_CRITICALITY_RANK: tuple[str, ...] = ("unknown", "low", "medium", "high", "very_high")
+#: The orders a page of supporting assets can be read in.
+SUPPORTERS_SORTS: tuple[str, ...] = ("name", "criticality")
+
+
+async def primary_asset_supporters(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    primary_asset: str,
+    *,
+    q: str = "",
+    offset: int = 0,
+    limit: int = 50,
+    through: tuple[str, ...] = (),
+    sources: tuple[str, ...] = (),
+    sort: str = "name",
+    descending: bool = False,
+) -> dict[str, Any]:
+    """The inventory records that support *primary_asset*, paged, searched, filtered and sorted on the server (#1980 S2).
+
+    ``through`` keeps the rows reaching it that way (``asset``, ``asset_group``),
+    ``sources`` the rows of those link sources; ``sort`` is ``name`` or
+    ``criticality`` (``descending`` reads the highest first).
+
+    One row per (record, link): a record linked directly (``through_kind``
+    ``asset``) or as a member of a linked group (``asset_group``, ``through``
+    the group's name), with the link's source, roles, inherited security needs
+    and ``via``. A person's removal (``removed``) is left out. ``total`` is the
+    count of every row the search keeps; ``counts`` splits the rows of the whole
+    primary asset (search ignored) by how they reach it and by source.
+    """
+    from sqlalchemy import case, func, literal, or_, union_all
+
+    from app.models.organization_asset_record import (
+        OrganizationAssetGroup,
+        OrganizationAssetGroupMember,
+        OrganizationAssetRecord,
+        OrganizationPrimaryAssetLink,
+    )
+
+    rec, link, member, grp = (
+        OrganizationAssetRecord,
+        OrganizationPrimaryAssetLink,
+        OrganizationAssetGroupMember,
+        OrganizationAssetGroup,
+    )
+    key = _key(primary_asset)[:200]
+    limit, offset = max(1, min(int(limit or 50), SUPPORTERS_PAGE_MAX)), max(0, int(offset or 0))
+    live = (link.organization_id == organization_id, link.primary_asset_key == key, link.removed.is_(False))
+    direct = (
+        select(
+            rec.id.label("record_id"),
+            rec.asset_id.label("asset_id"),
+            rec.name.label("name"),
+            rec.name_key.label("name_key"),
+            rec.category.label("category"),
+            rec.criticality.label("criticality"),
+            literal("asset").label("through_kind"),
+            literal("").label("through"),
+            link.source.label("source"),
+            link.roles.label("roles"),
+            link.inherited_needs.label("inherited_needs"),
+            link.via.label("via"),
+        )
+        .join(rec, rec.id == link.record_id)
+        .where(*live, rec.organization_id == organization_id)
+    )
+    grouped = (
+        select(
+            rec.id.label("record_id"),
+            rec.asset_id.label("asset_id"),
+            rec.name.label("name"),
+            rec.name_key.label("name_key"),
+            rec.category.label("category"),
+            rec.criticality.label("criticality"),
+            literal("asset_group").label("through_kind"),
+            grp.name.label("through"),
+            link.source.label("source"),
+            link.roles.label("roles"),
+            link.inherited_needs.label("inherited_needs"),
+            link.via.label("via"),
+        )
+        .join(grp, grp.id == link.group_id)
+        .join(member, member.group_id == grp.id)
+        .join(rec, rec.id == member.record_id)
+        .where(*live, rec.organization_id == organization_id)
+    )
+    rows = union_all(direct, grouped).subquery()
+    by = (
+        await db.execute(
+            select(rows.c.through_kind, rows.c.source, func.count()).group_by(rows.c.through_kind, rows.c.source)
+        )
+    ).all()
+    counts: dict[str, dict[str, int]] = {"through": {}, "source": {}}
+    for kind, source, count in by:
+        counts["through"][str(kind)] = counts["through"].get(str(kind), 0) + int(count)
+        counts["source"][str(source or "manual")] = counts["source"].get(str(source or "manual"), 0) + int(count)
+    page = select(rows)
+    wanted = _key(q)
+    if wanted:
+        like = f"%{wanted.replace('%', '').replace('_', '')}%"
+        page = page.where(or_(rows.c.name_key.like(like), func.lower(rows.c.through).like(like)))
+    if through:
+        page = page.where(rows.c.through_kind.in_(list(through)))
+    if sources:
+        page = page.where(func.coalesce(rows.c.source, "manual").in_(list(sources)))
+    total = (await db.execute(select(func.count()).select_from(page.subquery()))).scalar() or 0
+    name_order: list[Any] = [rows.c.name_key, rows.c.through_kind, rows.c.through, rows.c.record_id]
+    order: list[Any]
+    if sort == "criticality":
+        rank = case(
+            {level: index for index, level in enumerate(_CRITICALITY_RANK)},
+            value=func.coalesce(rows.c.criticality, "unknown"),
+            else_=0,
+        )
+        order = [rank.desc() if descending else rank.asc(), *name_order]
+    else:
+        order = [c.desc() for c in name_order] if descending else name_order
+    items = (await db.execute(page.order_by(*order).offset(offset).limit(limit))).all()
+    return {
+        "items": [
+            {
+                "record_id": str(r.record_id),
+                "asset_id": str(r.asset_id) if r.asset_id else None,
+                "name": str(r.name),
+                "category": str(r.category or ""),
+                "criticality": str(r.criticality or "unknown"),
+                "through_kind": str(r.through_kind),
+                "through": str(r.through or ""),
+                "source": str(r.source or "manual"),
+                "roles": [str(x) for x in r.roles or ()],
+                "inherited_needs": {str(k): str(v) for k, v in (r.inherited_needs or {}).items()},
+                "via": str(r.via or ""),
+            }
+            for r in items
+        ],
+        "total": int(total),
+        "offset": offset,
+        "limit": limit,
+        "counts": {"total": sum(counts["through"].values()), **counts},
+    }
+
+
 async def asset_primary_assets(
     db: AsyncSession, organization_id: uuid.UUID, asset_id: uuid.UUID
 ) -> list[dict[str, Any]]:
