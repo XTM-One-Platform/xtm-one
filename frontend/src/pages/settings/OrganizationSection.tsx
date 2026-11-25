@@ -59,6 +59,7 @@ import { EXPOSURE_SECTIONS, type ExposureCard, type ExposureIssue, OrganizationE
 import { primeOrganizationOnboarding } from "@/lib/organization-onboarding";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
+import { exactCount, formatCount } from "@/lib/number-format";
 import {
   type OrganizationDraftResponse,
   type OrganizationProfile,
@@ -819,11 +820,27 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
    * else the count of its stored links (a sync writes hundreds: a count, never a list); the typed names before the
    * link counts answer.
    */
+  const jewelLinkTotal = (jewel: { name: string; asset_names?: string[] }) => {
+    const total = linkCounts.data?.items?.[primaryAssetLinkKey(jewel.name)]?.total ?? 0;
+    return total > (jewel.asset_names ?? []).length ? total : null;
+  };
+  // The count is compact from 1,000 ("1.2K linked assets", UX r1 B1 on #2000), its exact value on the DS tooltip.
+  const linkedAssetsText = (total: number) =>
+    t_i18n("{count, plural, one {{shown} linked asset} other {{shown} linked assets}}", { count: total, shown: formatCount(locale, total) });
   const jewelAssetsText = (jewel: { name: string; asset_names?: string[] }) => {
-    const names = jewel.asset_names ?? [];
-    const count = linkCounts.data?.items?.[primaryAssetLinkKey(jewel.name)];
-    if (!count || count.total === 0 || count.total <= names.length) return names.join(", ");
-    return t_i18n("{count, plural, one {# linked asset} other {# linked assets}}", { count: count.total });
+    const total = jewelLinkTotal(jewel);
+    return total === null ? (jewel.asset_names ?? []).join(", ") : linkedAssetsText(total);
+  };
+  const jewelAssetsCell = (jewel: { name: string; asset_names?: string[] }) => {
+    const total = jewelLinkTotal(jewel);
+    if (total === null || formatCount(locale, total) === exactCount(locale, total)) return readCell(jewelAssetsText(jewel));
+    return (
+      <Tip content={exactCount(locale, total)}>
+        <span tabIndex={0} className={`inline-flex min-w-0 tabular-nums ${TIP_WRAP_FOCUS_RING}`}>
+          <span className="truncate">{linkedAssetsText(total)}</span>
+        </span>
+      </Tip>
+    );
   };
   /** Where a row came from (#1134): the platform's logo and name, or Typed, CSV, API, Agent. */
   const sourceLabel = (value: Provenance) => {
@@ -938,9 +955,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       hideable: true,
       // Steps aside at 1080 so Business service reads whole (UX r2 B2 on #1174); the Columns pill brings it back.
       hideBelow: JEWEL_STEP_ASIDE,
-      cell: ({ value }) => readCell(jewelAssetsText(value)),
+      cell: ({ value }) => jewelAssetsCell(value),
       interactive: true,
-      csv: ({ value }) => jewelAssetsText(value).split(", ").join("; "),
+      // An export keeps exact data: the stored link count as a number, else the typed names.
+      csv: ({ value }) => String(jewelLinkTotal(value) ?? (value.asset_names ?? []).join("; ")),
     },
     {
       key: "opencrq",
@@ -1062,7 +1080,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       // Below 72rem it steps aside, else the two local fields of a synced row kept 61 px (UX r2 B1 on #1174).
       hideBelow: JEWEL_STEP_ASIDE,
       width: readWidth(JEWEL_WIDTHS.assets),
-      read: (v) => readCell(jewelAssetsText(v)),
+      read: (v) => jewelAssetsCell(v),
       edit: (v, set) => {
         const names = v.asset_names ?? [];
         // The groups and assets come from their row APIs (#1752 slice 3b): the profile answers no row.

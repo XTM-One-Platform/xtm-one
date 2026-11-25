@@ -19489,7 +19489,7 @@
   "The last re-score failed: {reason}": "La última re-puntuación falló: {reason}",
   "Storage & retention": "Almacenamiento y retención",
   "{count, plural, one {# file} other {# files}}": "{count, plural, one {# archivo} other {# archivos}}",
-  "{count, plural, one {# linked asset} other {# linked assets}}": "{count, plural, one {# activo vinculado} other {# activos vinculados}}",
+  "{count, plural, one {{shown} linked asset} other {{shown} linked assets}}": "{count, plural, one {{shown} activo vinculado} other {{shown} activos vinculados}}",
   "{count, plural, one {{shown} file} other {{shown} files}}": "{count, plural, one {{shown} archivo} other {{shown} archivos}}",
   "Last sweep": "Última limpieza",
   "Any state": "Cualquier estado",
