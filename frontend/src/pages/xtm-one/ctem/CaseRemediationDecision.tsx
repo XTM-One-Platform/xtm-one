@@ -78,6 +78,7 @@ export function CaseRemediationDecision({
         ) : !gate ? (
           <CaseSectionReason
             own={t_i18n("The remediation options with their cost and the one approved, once the case is validated.")}
+            icon={CASE_SECTION_ICON.remediation_decision}
             testId="ctem-case-remediation-empty"
           />
         ) : (
