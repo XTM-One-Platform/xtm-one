@@ -99,6 +99,16 @@ export function CaseAuditTrail({
 
   const date = (at: string | null) => (at ? intl.formatDate(at, { dateStyle: "medium", timeStyle: "short" }) : "");
 
+  // One empty rendering for both views: the same centred block, so switching the view never
+  // moves the sentence nor changes the card height (UX round 1 on #2008, B1).
+  const emptyBlock = (
+    <div className="flex justify-center py-10" data-testid="ctem-audit-empty-block">
+      <CaseEmptyLine icon={CASE_SECTION_ICON.history} testId="ctem-audit-empty">
+        {t_i18n("Nothing happened on this case yet")}
+      </CaseEmptyLine>
+    </div>
+  );
+
   const autonomyBadge = (row: AuditRow) => <CaseAutonomyChip autonomy={row.autonomy} testId="ctem-audit-autonomy" />;
 
   // The actor's type is said only when it adds to the name shown (UX round 1 on #1520, B5:
@@ -268,24 +278,14 @@ export function CaseAuditTrail({
           exportName="ctem-case-audit-trail"
           urlKey="h_"
           emptyLabel={t_i18n("Nothing happened on this case yet")}
-          emptyContent={
-            <div className="flex justify-center py-10">
-              <CaseEmptyLine icon={CASE_SECTION_ICON.history} testId="ctem-audit-empty">
-                {t_i18n("Nothing happened on this case yet")}
-              </CaseEmptyLine>
-            </div>
-          }
+          emptyContent={emptyBlock}
           rowTestId="ctem-audit-row"
           rowLines={1}
           onRowClick={setOpened}
         />
       ) : (
         <div className="space-y-4" data-testid="ctem-case-history">
-          {groups.length === 0 && (
-            <CaseEmptyLine icon={CASE_SECTION_ICON.history} testId="ctem-audit-empty">
-              {t_i18n("Nothing happened on this case yet")}
-            </CaseEmptyLine>
-          )}
+          {groups.length === 0 && emptyBlock}
           {groups.map((group) => {
             const isCollapsed = collapsed.has(group.phase);
             const info = band.find((p) => p.phase === group.phase);
