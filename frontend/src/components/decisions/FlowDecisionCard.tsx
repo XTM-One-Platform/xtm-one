@@ -31,7 +31,8 @@ export function flowDecisionView(question: string, ask: WorkItemAsk | null | und
   return {
     question: ask?.question?.trim() || question,
     context: (ask?.context ?? "").split("\n"),
-    options: ask?.options ?? [],
+    // A flow park sends on one click: the work item `confirm` flag (#2150) is not read here.
+    options: (ask?.options ?? []).map(({ key, label, effect }) => ({ key, label, effect })),
     recommendation: ask?.recommendation ?? null,
     deadline: ask?.deadline ?? null,
     links: ask?.links ?? [],
