@@ -83,7 +83,8 @@ class ViewRebuildingError(Exception):
 
     def __init__(self, retry_after: int = LIST_RETRY_AFTER_SECONDS) -> None:
         self.retry_after = retry_after
-        super().__init__(f"The case list is rebuilding after new cases opened; retry in {retry_after} s.")
+        # #2287: whatever changed the cases (opened, deleted, reset, reconciled), never a guessed cause.
+        super().__init__(f"The case list is being rebuilt after a change to the cases; retry in {retry_after} s.")
 
 
 @dataclass

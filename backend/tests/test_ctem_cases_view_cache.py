@@ -271,6 +271,13 @@ async def test_a_list_read_with_no_view_waits_briefly_then_says_it_is_rebuilding
     await tasks[0]
 
 
+def test_the_rebuilding_message_never_guesses_that_new_cases_opened() -> None:
+    # #2287: a deletion, a reset or a reconcile also rebuilds the view; the message names no cause.
+    message = str(view_of.ViewRebuildingError(30))
+    assert "new cases opened" not in message
+    assert "after a change to the cases" in message and "retry in 30 s" in message
+
+
 def test_a_list_read_gives_up_waiting_for_the_build_within_two_seconds() -> None:
     # #2139: a 503 held 10 s on ctem.one was no fail-fast answer.
     assert 0 < view_of.LIST_BUILD_WAIT_SECONDS <= 2.0
