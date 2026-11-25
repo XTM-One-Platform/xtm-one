@@ -47,6 +47,8 @@ _NOT_TOOLS = {
     "archive_key",
     "remove_json",
     "update_json",
+    # A ``manage_openaev_scenario`` action (the CTEM orchestrators set the repeat with it).
+    "schedule_recurrence",
 }
 
 
