@@ -4079,6 +4079,35 @@ async def _handle_dealhub_webhook(
     return await dealhub_events.dispatch_delivery(integration_id, payload)
 
 
+async def _handle_drata_webhook(
+    integration_id: str,
+    extra_config_enc: str | None,
+    payload: object,
+    request: Request,
+) -> dict[str, object]:
+    """A Drata workflow webhook delivery on the integration's webhook URL.
+
+    Refused (401) unless ``Authorization: Bearer <token>`` (the custom header of
+    the workflow's Send webhook step) names one of the integration's webhook
+    tokens: no token configured refuses every delivery. Then
+    ``drata_webhooks.dispatch_delivery``, deduplicated on Svix's ``svix-id``.
+    """
+    from app.services import drata_webhooks
+
+    context = f"integration={integration_id}"
+    extra = _read_webhook_config(extra_config_enc, context=context)
+    tokens = drata_webhooks.webhook_tokens(extra)
+    if not tokens:
+        logger.warning("Drata webhook delivery refused (%s): no webhook token configured", context)
+        raise HTTPException(status_code=401, detail="Missing or invalid Drata webhook token")
+    if not drata_webhooks.verify_bearer(request.headers.get("authorization"), tokens):
+        logger.warning("Drata webhook delivery refused (%s): missing or invalid bearer token", context)
+        raise HTTPException(status_code=401, detail="Missing or invalid Drata webhook token")
+    return await drata_webhooks.dispatch_delivery(
+        integration_id, payload, request.headers.get(drata_webhooks.MESSAGE_ID_HEADER)
+    )
+
+
 @router.post("/integrations/{integration_id}")
 async def receive_integration_webhook(integration_id: str, request: Request) -> dict:
     """Receive a webhook for an *integration* and fan out to all bound agents.
@@ -4142,6 +4171,10 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
         # on the integration), then deduplicated per quote change in the seen set
         # the poll shares.
         return await _handle_dealhub_webhook(integration_id, integ_pre.extra_config_enc, payload_raw, request)
+    if integ_pre and integ_pre.provider == "drata":
+        # Drata workflow webhook (Send webhook step, delivered by Svix): the
+        # bearer token of its custom header, then deduplicated per svix-id.
+        return await _handle_drata_webhook(integration_id, integ_pre.extra_config_enc, payload_raw, request)
     if integ_pre and integ_pre.provider == "jira":
         # Jira dynamic webhook: a bearer JWT signed with the OAuth app's client
         # secret, then deduplicated per change in the seen set the poll shares.
