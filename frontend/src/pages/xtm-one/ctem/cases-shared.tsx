@@ -6,7 +6,7 @@
  * ToneBadge, the hot hues of Work items and Tasks, #1267), owners as the DS Avatar,
  * "Unassigned" in secondary text, never a warning colour.
  */
-import { Avatar, Icon } from "@filigran/design-system";
+import { Avatar, Icon, type IconName } from "@filigran/design-system";
 import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCasePriority, CtemCaseState } from "@/hooks/api/useCtemCasesApi";
@@ -63,11 +63,20 @@ export const CASE_PRIORITY_LABEL: Record<CtemCasePriority, string> = {
 export const CASE_PRIORITY_RANK: Record<CtemCasePriority, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
 /**
- * The DS icon a state carries inside its badge, before the label, so the
+ * The DS icon every state carries inside its badge, before the label, so the
  * badge keeps the left edge and baseline of its siblings (UX round 2 of #857,
- * B1).
+ * B1) and every state chip reads with its icon (#1679, point 5).
  */
-const CASE_STATE_ICON: Partial<Record<CtemCaseState, "eye">> = { mitigated_watching: "eye" };
+const CASE_STATE_ICON: Record<CtemCaseState, IconName> = {
+  new: "circle-plus",
+  analyzing: "search",
+  waiting_decision: "clock",
+  remediating: "wrench",
+  validating: "shield-check",
+  mitigated_watching: "eye",
+  resolved: "circle-check",
+  accepted_risk: "scale",
+};
 
 export function CaseStateChip({ state }: { state: CtemCaseState }) {
   const { t_i18n } = useFormatter();

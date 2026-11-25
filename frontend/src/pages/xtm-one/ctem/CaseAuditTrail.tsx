@@ -23,9 +23,9 @@ import {
   AUDIT_PHASE_LABEL,
   AUTONOMY_CLASSES,
   AUTONOMY_LABEL,
-  AUTONOMY_VARIANT,
   COUNTED_AUTONOMY_CLASSES,
   filterRows,
+  foldAnsweredRequests,
   groupByPhase,
   isAuditPhase,
   phaseBand,
@@ -35,7 +35,7 @@ import {
 import { formatCount } from "@/lib/number-format";
 import { formatDurationShort, cn } from "@/lib/utils";
 import { CaseEventDialog } from "./CaseEventDialog";
-import { CaseIcon, actorIcon, caseEventIcon } from "./case-icons";
+import { CASE_SECTION_ICON, CaseAutonomyChip, CaseEmptyLine, CaseIcon, actorIcon, caseEventIcon } from "./case-icons";
 
 type HistoryView = "timeline" | "table";
 
@@ -93,16 +93,13 @@ export function CaseAuditTrail({
   const [collapsed, setCollapsed] = useState<Set<AuditPhase>>(new Set());
   const band = useMemo(() => phaseBand(phases), [phases]);
   const shown = useMemo(() => filterRows(rows, { phase }), [rows, phase]);
-  const groups = useMemo(() => groupByPhase(shown), [shown]);
+  // The Timeline folds a gate request into its answer: one entry per gate (#1679, point 2).
+  const groups = useMemo(() => groupByPhase(foldAnsweredRequests(shown)), [shown]);
   const current = isAuditPhase(currentPhase) ? currentPhase : null;
 
   const date = (at: string | null) => (at ? intl.formatDate(at, { dateStyle: "medium", timeStyle: "short" }) : "");
 
-  const autonomyBadge = (row: AuditRow) => (
-    <Badge variant={AUTONOMY_VARIANT[row.autonomy]} className="shrink-0 whitespace-nowrap" data-testid="ctem-audit-autonomy">
-      {t_i18n(AUTONOMY_LABEL[row.autonomy])}
-    </Badge>
-  );
+  const autonomyBadge = (row: AuditRow) => <CaseAutonomyChip autonomy={row.autonomy} testId="ctem-audit-autonomy" />;
 
   // The actor's type is said only when it adds to the name shown (UX round 1 on #1520, B5:
   // never "System System" or "Agent Agent").
@@ -271,13 +268,24 @@ export function CaseAuditTrail({
           exportName="ctem-case-audit-trail"
           urlKey="h_"
           emptyLabel={t_i18n("Nothing happened on this case yet")}
+          emptyContent={
+            <div className="flex justify-center py-10">
+              <CaseEmptyLine icon={CASE_SECTION_ICON.history} testId="ctem-audit-empty">
+                {t_i18n("Nothing happened on this case yet")}
+              </CaseEmptyLine>
+            </div>
+          }
           rowTestId="ctem-audit-row"
           rowLines={1}
           onRowClick={setOpened}
         />
       ) : (
         <div className="space-y-4" data-testid="ctem-case-history">
-          {groups.length === 0 && <p className="content-base text-default-secondary">{t_i18n("Nothing happened on this case yet")}</p>}
+          {groups.length === 0 && (
+            <CaseEmptyLine icon={CASE_SECTION_ICON.history} testId="ctem-audit-empty">
+              {t_i18n("Nothing happened on this case yet")}
+            </CaseEmptyLine>
+          )}
           {groups.map((group) => {
             const isCollapsed = collapsed.has(group.phase);
             const info = band.find((p) => p.phase === group.phase);
@@ -303,9 +311,7 @@ export function CaseAuditTrail({
                     <span className="content-compact text-default-secondary">{formatDurationShort(info.seconds)}</span>
                   )}
                   {COUNTED_AUTONOMY_CLASSES.filter((c) => group.counts[c] > 0).map((c) => (
-                    <Badge key={c} variant={AUTONOMY_VARIANT[c]} data-testid="ctem-audit-group-count">
-                      {t_i18n(AUTONOMY_LABEL[c])} {formatCount(intl.locale, group.counts[c])}
-                    </Badge>
+                    <CaseAutonomyChip key={c} autonomy={c} count={formatCount(intl.locale, group.counts[c])} testId="ctem-audit-group-count" />
                   ))}
                 </h3>
                 {!isCollapsed && (

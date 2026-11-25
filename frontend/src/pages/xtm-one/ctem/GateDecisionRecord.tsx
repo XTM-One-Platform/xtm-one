@@ -323,7 +323,8 @@ export function GateDecisionRecord({
       ? { label: t_i18n("No answer"), icon: CASE_FACT_ICON.wait }
       : status === "cancelled"
         ? { label: t_i18n("Cancelled"), icon: CASE_FACT_ICON.state }
-        : { label: t_i18n("Decided"), icon: CASE_FACT_ICON.decided };
+        : // Its own key (advisory A1 of #1708 round 4): the shared "Decided" reads as a date label in ja.
+          { label: t_i18n("Decided (gate step)"), icon: CASE_FACT_ICON.decided };
 
   return (
     <div className="flex min-w-0 flex-col gap-3" data-testid={testId} data-status={status} data-chip={chip}>
@@ -335,7 +336,7 @@ export function GateDecisionRecord({
         {statusAt && <span className="ml-auto whitespace-nowrap text-default-secondary">{when(statusAt)}</span>}
       </div>
       {showAsked && (
-        <Step label={t_i18n("Asked")} icon={CASE_FACT_ICON.asked} testId={`${testId}-step-asked`}>
+        <Step label={t_i18n("Asked (gate step)")} icon={CASE_FACT_ICON.asked} testId={`${testId}-step-asked`}>
           {record.asked_by_agent && (
             <Field label={t_i18n("Asked by")} icon={CASE_FACT_ICON.agent} testId={`${testId}-asked-by`}>
               <CaseFactChip icon={CASE_FACT_ICON.agent} tone="blue" to={`/agents/${record.asked_by_agent.id}`}>
