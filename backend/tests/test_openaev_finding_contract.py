@@ -10,6 +10,8 @@ is a change of ``parse_finding`` and of this file only.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.integrations.providers.openaev._common import (
     FINDING_CLOSED_STATUSES,
     FINDINGS_KEPT_AS_HISTORY,
@@ -95,3 +97,41 @@ def test_every_reader_goes_through_the_adapter():
 
 def test_the_delete_answer_says_findings_are_kept_as_history():
     assert FINDINGS_KEPT_AS_HISTORY == "Its findings are kept in OpenAEV as history."
+
+
+#: A search row of an OpenAEV that answers the detection times (OpenAEV #9846): last detected on
+#: 3 Nov, the row rewritten on 20 Nov (a status, an asset link, a migration).
+SEEN_ROW = {
+    **SEARCH_ROW,
+    "finding_first_seen": "2026-10-30T08:00:00Z",
+    "finding_last_seen": "2026-11-03T08:00:00Z",
+}
+
+
+def test_a_row_with_detection_times_reads_first_and_last_seen() -> None:
+    f = parse_finding(SEEN_ROW)
+    assert f is not None and f.seen_reported
+    assert (f.first_seen, f.last_seen) == ("2026-10-30T08:00:00Z", "2026-11-03T08:00:00Z")
+    assert f.updated_at == "2026-11-20T10:00:00Z"
+    text = _fmt_finding(SEEN_ROW)
+    assert "Last seen: 2026-11-03T08:00:00Z" in text and "Updated:" not in text
+    assert source.openaev_issues([SEEN_ROW])[0].first_seen_at == datetime(2026, 10, 30, 8, tzinfo=UTC)
+
+
+def test_a_row_without_detection_times_falls_back_and_says_updated() -> None:
+    """An OpenAEV older than #9846: the row times stand in, labelled as what they are."""
+    f = parse_finding(SEARCH_ROW)
+    assert f is not None and not f.seen_reported
+    assert (f.first_seen, f.last_seen) == ("2026-11-01T10:00:00Z", "2026-11-20T10:00:00Z")
+    text = _fmt_finding(SEARCH_ROW)
+    assert "Updated: 2026-11-20T10:00:00Z" in text and "Last seen" not in text
+    assert source.openaev_issues([SEARCH_ROW])[0].first_seen_at == datetime(2026, 11, 1, 10, tzinfo=UTC)
+
+
+def test_the_case_window_reads_last_seen_when_present() -> None:
+    since = datetime(2026, 11, 10, tzinfo=UTC)
+    # Detected before the window, kept by the server only because a later write moved its update time.
+    assert not source._seen_since(SEEN_ROW, since)
+    assert source._seen_since({**SEEN_ROW, "finding_last_seen": "2026-11-12T08:00:00Z"}, since)
+    # No detection time: the server's filter on finding_updated_at stands.
+    assert source._seen_since(SEARCH_ROW, since)

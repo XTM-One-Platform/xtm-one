@@ -237,9 +237,10 @@ _AEV_CVE_FINDINGS_FILTER = {
     "filters": [{"key": "finding_type", "mode": "or", "operator": "eq", "values": ["cve"]}],
 }
 
-#: The last detection of a Finding as OpenAEV's ``/api/findings/search`` filters it: a finding is
-#: read while it was seen in the window (OpenAEV #9233 moves ``finding_updated_at`` on each
-#: occurrence), not while it was created in it.
+#: The server-side window of ``/api/findings/search``: ``finding_updated_at`` is the queryable
+#: time (OpenAEV #9233 moves it on each occurrence). Any later write moves it too, so the rows it
+#: keeps are a superset; :func:`_seen_since` then keeps a finding by its last detection,
+#: ``finding_last_seen``, when OpenAEV answers it (OpenAEV #9846).
 _AEV_FINDING_UPDATED_AT = "finding_updated_at"
 #: Only the findings still open at source join a case (``finding_status`` is ``@Queryable``).
 _AEV_OPEN_FINDING = {"key": "finding_status", "mode": "or", "operator": "eq", "values": ["OPEN"]}
@@ -768,7 +769,7 @@ def openaev_issues(findings: list[dict[str, Any]]) -> list[rules.SourceIssue]:
                 name=f.value[:300],
                 cve=f.value if f.value.upper().startswith("CVE-") else None,
                 assets=f.asset_labels,
-                first_seen_at=_when(f.created_at),
+                first_seen_at=_when(f.first_seen),
                 **_finding_lifecycle(f),
             )
         )
@@ -965,7 +966,22 @@ async def _read_openaev(
         page += 1
         if not content or page >= int(body.get("totalPages") or 0):
             break
-    return openaev_issues(findings[:AEV_FINDING_CAP])
+    since_at = now - timedelta(days=_AEV_VALIDATION_WINDOW_DAYS)
+    return openaev_issues([f for f in findings[:AEV_FINDING_CAP] if _seen_since(f, since_at)])
+
+
+def _seen_since(raw: dict[str, Any], since: datetime) -> bool:
+    """Whether a search row was detected in the window (OpenAEV #9846).
+
+    An OpenAEV that answers ``finding_last_seen`` is read on it: a row the server window kept only
+    because a later write moved its update time is left out. An older OpenAEV answers no detection
+    time, so its row stays (the server already filtered it on ``finding_updated_at``).
+    """
+    f = parse_finding(raw)
+    if f is None or not f.seen_reported:
+        return True
+    seen = _when(f.last_seen)
+    return seen is None or seen >= since
 
 
 async def _read_opencti_by_id(
