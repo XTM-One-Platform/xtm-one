@@ -129,6 +129,17 @@ async def sandbox_workspaces_overview(db: AsyncSession, own) -> dict[str, Any]:
     return result
 
 
+def _coordination_retention(platform_settings: Any) -> dict[str, int]:
+    """The effective closed work-item and resolved shared-state retention, in days (0: kept forever)."""
+    from app.services.coordination_retention import coordination_retention_days
+
+    windows = coordination_retention_days(getattr(platform_settings, "coordination_retention", None))
+    return {
+        "work_item_retention_days": windows["work_item_resolved_days"],
+        "shared_state_retention_days": windows["shared_state_resolved_days"],
+    }
+
+
 async def get_platform_overview(db: AsyncSession, scope: InsightScope, args: dict[str, Any]) -> dict[str, Any]:
     from app.api.v1.admin_objects import active_entity_arms, objects_union
     from app.api.v1.platform_settings_helpers import get_platform_settings
@@ -225,6 +236,8 @@ async def get_platform_overview(db: AsyncSession, scope: InsightScope, args: dic
         },
         "feature_flags_on": resolve_enabled_feature_flags(),
         "trace_retention_days": platform_settings.trace_retention_days,
+        # The effective coordination retention (#2070): Settings, else the environment default.
+        **_coordination_retention(platform_settings),
         "aggregation": {
             "last_aggregation_at": last_aggregation.isoformat() if last_aggregation else None,
             "stale": last_aggregation is None

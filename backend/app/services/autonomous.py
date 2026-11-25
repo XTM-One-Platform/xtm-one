@@ -1212,12 +1212,14 @@ async def _cleanup_resolved_shared_states(db: AsyncSession) -> int:
     setting is <= 0.
     """
     del db  # purge_resolved_states opens its own session, like the rest of the service
-    days = settings.shared_state_resolved_retention_days
+    from app.services.coordination_retention import effective_coordination_retention
+
+    days = (await effective_coordination_retention())["shared_state_resolved_days"]
     if not days or days <= 0:
         return 0
     from app.services.shared_state import purge_resolved_states
 
-    return await purge_resolved_states(older_than=timedelta(days=days), limit=500)
+    return await purge_resolved_states(older_than=timedelta(days=days), limit=COORDINATION_PURGE_BATCH)
 
 
 async def _cleanup_archived_shared_state_items() -> int:
@@ -1227,7 +1229,9 @@ async def _cleanup_archived_shared_state_items() -> int:
     without this sweep archiving only relocates a list's growth. Disabled
     when the setting is <= 0.
     """
-    days = settings.shared_state_archive_retention_days
+    from app.services.coordination_retention import effective_coordination_retention
+
+    days = (await effective_coordination_retention())["shared_state_archive_days"]
     if not days or days <= 0:
         return 0
     from app.services.shared_state import purge_archived_items
@@ -1244,9 +1248,45 @@ async def _cleanup_work_items(db: AsyncSession) -> dict:
     ``{"cancelled": N, "purged": M}``.
     """
     del db  # reap_work_items opens its own session, like the rest of the service
+    from app.services.coordination_retention import effective_coordination_retention
     from app.services.work_item import reap_work_items
 
-    return await reap_work_items()
+    windows = await effective_coordination_retention()
+    return await reap_work_items(
+        abandon_days=windows["work_item_abandoned_days"],
+        retain_days=windows["work_item_resolved_days"],
+    )
+
+
+#: Rows one coordination purge call deletes; a call that deletes this many may have left more.
+COORDINATION_PURGE_BATCH = 2000
+
+
+async def _drain_coordination_retention() -> tuple[dict, bool]:
+    """One bounded pass of the closed work-item and resolved shared-state purges (#2070).
+
+    Each purge deletes at most :data:`COORDINATION_PURGE_BATCH` rows; a purge
+    that reached it answers ``more``, which keeps
+    :data:`wall_clock_schedule.RETENTION_DRAIN` set so the next ticks run this
+    pass again until the backlog past retention is gone, instead of one batch an
+    hour. Answers the rows deleted per table and whether any purge may have more.
+    """
+    from app.services.coordination_retention import effective_coordination_retention
+    from app.services.shared_state import purge_resolved_states
+    from app.services.work_item import purge_terminal_work_items
+
+    windows = await effective_coordination_retention()
+    work_items = await purge_terminal_work_items(
+        older_than_days=windows["work_item_resolved_days"], limit=COORDINATION_PURGE_BATCH
+    )
+    days = windows["shared_state_resolved_days"]
+    states = (
+        await purge_resolved_states(older_than=timedelta(days=days), limit=COORDINATION_PURGE_BATCH)
+        if days and days > 0
+        else 0
+    )
+    more = work_items >= COORDINATION_PURGE_BATCH or states >= COORDINATION_PURGE_BATCH
+    return {"work_items": work_items, "shared_states": states}, more
 
 
 async def _cleanup_flow_events(db: AsyncSession) -> int:
@@ -1340,7 +1380,7 @@ async def _cleanup_retained_files(db: AsyncSession, *, also: dict[str, int] | No
 
 
 async def _run_retention_pass(db: AsyncSession) -> None:
-    """One bounded pass of the check file and file retention sweeps (#768).
+    """One bounded pass of the check file, file and coordination retention sweeps (#768, #2070).
 
     Each sweep is capped per tick; when one stops at its cap, the backlog flag
     of :data:`wall_clock_schedule.RETENTION_DRAIN` makes the next ticks run this
@@ -1371,7 +1411,21 @@ async def _run_retention_pass(db: AsyncSession) -> None:
     except Exception as e:
         logger.error("File retention error: %s", format_exception_message(e), exc_info=True)
         await db.rollback()
-    await wall_clock_schedule.set_backlog(wall_clock_schedule.RETENTION_DRAIN, more_checks or more_files)
+    more_coordination = False
+    try:
+        purged, more_coordination = await _drain_coordination_retention()
+        if purged["work_items"] or purged["shared_states"]:
+            logger.info(
+                "Coordination retention: deleted %d closed work item(s) and %d resolved shared-state entr%s",
+                purged["work_items"],
+                purged["shared_states"],
+                "y" if purged["shared_states"] == 1 else "ies",
+            )
+    except Exception as e:
+        logger.error("Coordination retention error: %s", format_exception_message(e), exc_info=True)
+    await wall_clock_schedule.set_backlog(
+        wall_clock_schedule.RETENTION_DRAIN, more_checks or more_files or more_coordination
+    )
 
 
 async def _cleanup_kb_figure_sources(db: AsyncSession) -> int:
@@ -1436,9 +1490,10 @@ async def _cleanup_worksets(db: AsyncSession) -> dict:
     run start cold. Returns ``{"resolved": N, "expired": M}``.
     """
     del db  # sweep_worksets opens its own session, like the rest of the service
+    from app.services.coordination_retention import effective_coordination_retention
     from app.services.workset import sweep_worksets
 
-    days = settings.workset_resolved_retention_days
+    days = (await effective_coordination_retention())["workset_resolved_days"]
     return await sweep_worksets(
         resolved_after=timedelta(days=days) if days and days > 0 else None,
         limit=settings.workset_sweep_batch,

@@ -1351,7 +1351,7 @@ async def test_purge_resolved_states_targets_resolved_past_cutoff(monkeypatch):
     """The retention purge selects only resolved rows older than the cutoff and
     returns the real deleted rowcount. The DELETE must re-apply BOTH retention
     predicates (not just the SELECT) - status == resolved AND anchor < cutoff - so
-    neither an entry reactivated nor one re-resolved (resolved_at bumped back
+    neither an entry reactivated nor one re-resolved (updated_at bumped back
     within retention) between the SELECT and the DELETE is ever purged: the TOCTOU
     guard that keeps "only resolved entries past retention are purged" true under
     concurrency."""
@@ -1369,7 +1369,9 @@ async def test_purge_resolved_states_targets_resolved_past_cutoff(monkeypatch):
         session.statements[0].compile(dialect=postgresql.dialect())
     ).lower()
     assert "status =" in select_sql
-    assert "resolved_at" in select_sql  # coalesce anchor on resolved_at
+    # #2070: the window counts from the last update, never the resolution time.
+    assert "updated_at <" in select_sql
+    assert "resolved_at" not in select_sql
     # statements[1] = the DELETE; it must itself constrain to resolved rows so a
     # row flipped back to active mid-sweep can't be removed (TOCTOU).
     delete_sql = str(
@@ -1377,10 +1379,9 @@ async def test_purge_resolved_states_targets_resolved_past_cutoff(monkeypatch):
     ).lower()
     assert delete_sql.startswith("delete")
     assert "status =" in delete_sql
-    # The DELETE must also re-apply the cutoff (coalesce(resolved_at, updated_at)
-    # < cutoff) so a row re-resolved back within retention mid-sweep is spared.
-    assert "resolved_at" in delete_sql
-    assert "coalesce" in delete_sql
+    # The DELETE must also re-apply the cutoff (updated_at < cutoff) so a row
+    # re-resolved back within retention mid-sweep is spared.
+    assert "updated_at <" in delete_sql
 
 
 @pytest.mark.asyncio
