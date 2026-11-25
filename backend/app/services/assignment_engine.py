@@ -3134,11 +3134,12 @@ async def _skip_by_case_start(
     agent: Any,
     assignment: Assignment,
 ) -> bool:
-    """End a ``ctem_case.opened`` run at zero tokens when its case is gone (#2289).
+    """End a ``ctem_case.opened`` run at zero tokens when its case is gone or closed (#2289, #2320).
 
     A case merged away while the run waited adds ``merged_into`` (the survivor)
     to the trigger context and lets the run go ahead; a case deleted ends it
-    skipped with the reason ``case_gone``. ``True`` when the run was ended. Any
+    skipped with the reason ``case_gone``, a case no longer open with
+    ``case_not_open`` and its state in the summary. ``True`` when the run was ended. Any
     other run, and a check that cannot decide, go ahead.
     """
     from app.services import ctem_case_run_start as case_start_mod
@@ -3162,7 +3163,7 @@ async def _skip_by_case_start(
     await ensure_single_writer()
     now = datetime.now(UTC)
     run.status = "skipped"
-    run.error = case_start_mod.CASE_GONE
+    run.error = verdict.error
     run.result_summary = verdict.summary
     run.total_input_tokens = 0
     run.total_output_tokens = 0
