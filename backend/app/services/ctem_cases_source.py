@@ -942,6 +942,21 @@ async def _lookup_by_id(source: str, cred: tuple[str, dict[str, str]], ids: list
         return None
 
 
+async def release_before_network(db: Any) -> None:
+    """Hand *db*'s connection back to the pool before a product read (#2232).
+
+    A source read waits on OpenCTI and OpenAEV for seconds to minutes; the session
+    that read the credentials and the stack would keep its pool connection checked
+    out through it (the case tools of an agent run held one for 340-498 s during a
+    drain). The session re-acquires a connection on its next statement.
+    """
+    if db is None or not callable(getattr(db, "in_transaction", None)):
+        return
+    from app.core.database import release_db_connection_before_loop
+
+    await release_db_connection_before_loop(db)
+
+
 async def _read_product(
     user_id: str, provider: str, read: Callable[[httpx.AsyncClient], Awaitable[Any]]
 ) -> tuple[Any, str | BaseException | None]:
@@ -1017,6 +1032,7 @@ async def read_open_issues(
             reads["openaev"] = _read_product(
                 user_id, "openaev", lambda client: _read_openaev(client, aev_url, aev_headers, now)
             )
+        await release_before_network(db)
         answers = dict(zip(reads, await asyncio.gather(*reads.values()), strict=True))
         if "opencti" in answers:
             found, error = answers["opencti"]
@@ -1260,6 +1276,7 @@ async def _read_case_members(db: AsyncSession, user_id: str, out: SourceRead, wa
                 out.fail(provider, REASON_NOT_CONNECTED)
         octi = creds.get("opencti")
         stack = await _matcher_stack(db) if octi else []
+        await release_before_network(db)
         if octi and stack:
             octi_url, octi_headers = octi
             vuln_ids = sorted(set(wanted["opencti"]))
