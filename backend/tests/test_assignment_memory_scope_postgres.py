@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
@@ -127,3 +128,45 @@ async def test_a_run_with_no_user_at_all_writes_no_agent_memory(redis) -> None:
         background_tasks=tasks,
     )
     assert (redis.data, tasks) == ({}, set())
+
+
+@pytest.mark.asyncio
+async def test_the_engine_stores_a_group_members_run_in_the_members_lane(monkeypatch):
+    """A group member runs an assignment of the owner's shared agent, through the
+    real trigger route and engine: the run's summary goes to the member's lane."""
+    from app.services import assignment_engine
+    from tests.agentic_gate_stub import stub_agentic_gate
+    from tests.scratch_database import ALL_TABLES, scratch_database
+    from tests.test_assignment_run_bindings_postgres import (
+        _agent,
+        _execute,
+        _manual_trigger,
+        _run_of,
+        _seed,
+        _stub_scheduling,
+    )
+
+    stub_agentic_gate(monkeypatch)
+    _stub_scheduling(monkeypatch)
+    store = AsyncMock()
+    monkeypatch.setattr(assignment_engine, "store_assignment_agent_memory", store)
+    async with scratch_database("runmem", tables=ALL_TABLES, extensions=("vector",)) as db:
+        w = await _seed(db.sessions)
+        users = w["users"]
+        agent_id, assignment_id = await _agent(
+            db.sessions,
+            owner=users["owner"],
+            shared_with=w["analysts"],
+            server=w["servers"]["owner"],
+            bot=("telegram", w["bots"]["owner"]),
+            integration=("notion", w["integrations"]["owner"]),
+        )
+
+        await _manual_trigger(db.sessions, assignment_id, users["member"])
+        await _execute(monkeypatch, db.sessions, await _run_of(db.sessions, assignment_id, users["member"]))
+        await asyncio.gather(*list(assignment_engine._background_tasks))
+
+    store.assert_awaited_once()
+    assert store.await_args.kwargs["agent_id"] == str(agent_id)
+    assert store.await_args.kwargs["scope_id"] == str(users["member"])
+    assert store.await_args.kwargs["summary"] == "done"

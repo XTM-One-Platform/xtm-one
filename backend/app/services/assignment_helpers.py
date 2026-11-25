@@ -271,22 +271,22 @@ def _consume_self_heal_task(task: asyncio.Task) -> None:
         )
 
 
-def _schedule_memory_self_heal(agent: Agent) -> None:
+def _schedule_memory_self_heal(agent: Agent, scope_id: str | None) -> None:
     """Fire-and-forget an automatic memory self-heal pass for *agent*.
 
     Called when the combined memory context breaches the assignment prompt
     cap.  ``auto_heal_agent_memory`` is throttled per agent via
     Redis, opens its own DB session, and never raises — so scheduling it
-    from the run setup path is safe and cheap.  Assignment runs use the
-    agent-level memory scope (``scope_id=None``), which is what the heal
-    pass compresses.
+    from the run setup path is safe and cheap.  *scope_id* is the lane the
+    run reads (``assignment_memory_scope``), whose medium-term summary the
+    heal pass compresses.
     """
     from app.services.persistent_memory import auto_heal_agent_memory
 
     # Name the task with the agent id so the done-callback failure log can
     # be correlated back to the agent that scheduled it.
     task = asyncio.create_task(
-        auto_heal_agent_memory(str(agent.id)),
+        auto_heal_agent_memory(str(agent.id), scope_id=scope_id),
         name=f"memory-self-heal-{agent.id}",
     )
     _self_heal_tasks.add(task)
@@ -1033,7 +1033,7 @@ async def _load_memory_context(
         # manually from a log line no user ever sees.  Throttled per agent
         # inside auto_heal_agent_memory, so this is a cheap no-op on
         # subsequent runs within the throttle window.
-        _schedule_memory_self_heal(agent)
+        _schedule_memory_self_heal(agent, assignment_memory_scope(user_id, agent.user_id))
         logger.warning(
             "Agent '%s' combined memory context (%d chars) exceeds cap "
             "(%d chars) for assignment run — truncating for this run and "

@@ -370,7 +370,7 @@ async def test_self_heal_task_named_and_exception_consumed(
         "app.services.persistent_memory.auto_heal_agent_memory",
         new=AsyncMock(side_effect=RuntimeError("broken contract")),
     ):
-        assignment_helpers_mod._schedule_memory_self_heal(agent)
+        assignment_helpers_mod._schedule_memory_self_heal(agent, None)
         tasks = list(assignment_helpers_mod._self_heal_tasks)
         assert tasks
         assert tasks[0].get_name() == f"memory-self-heal-{AGENT_ID}"

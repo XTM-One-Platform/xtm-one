@@ -1457,23 +1457,23 @@ class MemoryRetirement(NamedTuple):
 async def may_manage_shared_memory(db: AsyncSession, *, agent_id: str, user_id: str | None) -> bool:
     """Whether *user_id* may retire the agent-level pool of *agent_id*.
 
-    The rule of the memory screen (``api/v1/agent_memory._can_manage_memory``):
-    the owner of a private agent, an administrator for a company-managed one
-    (an administrator for any agent). Everyone else retires only their own pool.
+    The people who manage the agent (``helpers.can_manage_as``), the same as
+    the memory screen's write routes. Everyone else retires only their own pool.
     """
+    from app.api.v1.helpers import can_manage_as, get_user_group_ids
     from app.models.agent import Agent
     from app.models.user import User
 
     aid, uid = safe_uuid(agent_id), safe_uuid(user_id)
     if aid is None or uid is None:
         return False
-    row = (await db.execute(select(Agent.user_id, Agent.is_company_managed).where(Agent.id == aid))).one_or_none()
-    if row is None:
+    agent = await db.get(Agent, aid)
+    if agent is None:
         return False
     role = (await db.execute(select(User.role).where(User.id == uid))).scalar_one_or_none()
-    if role == "admin":
-        return True
-    return not row.is_company_managed and row.user_id == uid
+    if role is None:
+        return False
+    return can_manage_as(uid, role == "admin", agent, await get_user_group_ids(db, uid))
 
 
 async def retire_memories(
@@ -4136,8 +4136,8 @@ async def auto_heal_agent_memory(agent_id: str, *, scope_id: str | None = None) 
     1. The same persistent-tier hygiene as the hourly scheduler for this
        agent only: prune, cap enforcement, fact consolidation, re-embedding.
     2. A compression pass on the Redis medium-term summary for *scope_id*
-       (``None`` = the agent-level scope used by assignment runs) when it
-       exceeds the prompt cap.
+       (an assignment run passes the lane it reads; ``None`` is the
+       agent-level lane) when it exceeds the prompt cap.
 
     Throttled per agent via Redis (``_AUTO_HEAL_THROTTLE_SECONDS``) so a
     burst of runs on a bloated agent cannot stack LLM calls.  Opens its own

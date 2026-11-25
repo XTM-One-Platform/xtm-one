@@ -103,3 +103,43 @@ async def test_a_manager_changes_the_memory(route: str, caller: str) -> None:
             "update": ["Rewritten"],
             "delete": [],
         }[route]
+
+
+@pytest.mark.parametrize(
+    ("caller", "tier", "expected"),
+    [
+        ("owner", None, True),
+        ("admin", None, True),
+        ("other", None, False),
+        ("other", "read_only", False),
+        ("other", "config", True),
+        ("other", "config_with_chats", True),
+    ],
+)
+async def test_invalidate_memory_retires_the_shared_pool_for_the_same_managers(
+    caller: str, tier: str | None, expected: bool
+) -> None:
+    from app.services.persistent_memory import may_manage_shared_memory
+
+    async with world_database() as (db, session):
+        world = await make_world(session, db.sessions)
+        if tier is not None:
+            await _share(world, tier)
+        acting = getattr(world, caller)
+
+        async with world.sessions() as s:
+            assert await may_manage_shared_memory(s, agent_id=str(world.agent), user_id=str(acting)) is expected
+
+
+async def test_nobody_retires_the_shared_pool_of_a_platform_health_agent() -> None:
+    from app.services.persistent_memory import may_manage_shared_memory
+
+    async with world_database() as (db, session):
+        world = await make_world(session, db.sessions)
+        async with world.sessions() as s:
+            await s.execute(update(Agent).where(Agent.id == world.agent).values(health_role="orchestrator"))
+            await s.commit()
+
+        async with world.sessions() as s:
+            for acting in (world.owner, world.admin):
+                assert not await may_manage_shared_memory(s, agent_id=str(world.agent), user_id=str(acting))
