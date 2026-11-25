@@ -20,7 +20,7 @@ import uuid
 from sqlalchemy import ColumnElement
 from sqlalchemy.dialects import postgresql
 
-from app.a2a.partner_runs import partner_work_items_clause
+from app.a2a.partner_runs import partner_fleet_work_items_clause, partner_work_items_clause
 from app.a2a.partner_scope import PartnerPrincipal, current_partner, partner_task_scope
 
 
@@ -44,6 +44,26 @@ class TestPartnerWorkItemsClause:
         one = _sql(partner_work_items_clause(PartnerPrincipal(exposure_id=exposure, client_id="a")))
         two = _sql(partner_work_items_clause(PartnerPrincipal(exposure_id=exposure, client_id="b")))
         assert one != two
+
+    def test_the_home_fleet_rides_only_behind_the_exposure_opt_in(self) -> None:
+        """#2202: the fleet's items are added under the exposure's opt-in, never the run-as reach."""
+        partner = PartnerPrincipal(exposure_id=uuid.UUID(int=7), client_id="ctem-orchestrator")
+        sql = _sql(partner_work_items_clause(partner))
+        assert "work_items.origin_run_id IN" in sql
+        assert "a2a_exposures.partner_fleet_reads IS true" in sql
+        assert "a2a_exposures.revoked_at IS NULL" in sql
+        assert "fleet_members.role = 'member'" in sql
+        assert "'00000000-0000-0000-0000-000000000007'" in sql
+
+    def test_the_fleet_clause_is_keyed_by_the_exposure_not_the_client(self) -> None:
+        exposure = uuid.UUID(int=7)
+        one = _sql(partner_fleet_work_items_clause(PartnerPrincipal(exposure_id=exposure, client_id="a")))
+        two = _sql(partner_fleet_work_items_clause(PartnerPrincipal(exposure_id=exposure, client_id="b")))
+        # The fleet is the exposed agent's: two clients of one opted-in exposure read the same fleet.
+        assert one == two
+        assert "work_items.owner_agent_id IN" in one
+        assert "work_items.created_by_agent_id IN" in one
+        assert "work_items.workspace_id IN" in one
 
     def test_no_partner_outside_a_partner_task(self) -> None:
         assert current_partner() is None
