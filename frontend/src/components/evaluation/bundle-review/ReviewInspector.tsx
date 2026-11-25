@@ -60,7 +60,7 @@ export function OkMark({ ctx, row, group, source }: { ctx: ReviewContext; row?: 
 
 function StatusPill({ label, status }: { label: string; status: keyof typeof STATUS_SURFACE }) {
   return (
-    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 content-caption font-medium text-default-primary", STATUS_SURFACE[status])}>
+    <span className={cn("inline-flex items-center rounded-sm border px-2 py-0.5 content-caption font-medium text-default-primary", STATUS_SURFACE[status])}>
       {label}
     </span>
   );

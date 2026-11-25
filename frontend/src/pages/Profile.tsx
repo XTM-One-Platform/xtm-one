@@ -1187,7 +1187,7 @@ export function GAToolsSection() {
                   >
                     <div className="shrink-0">{item.icon}</div>
                     <span className="content-compact font-medium truncate">{item.label}</span>
-                    <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full font-medium shrink-0", item.categoryColor)}>
+                    <span className={cn("text-[9px] px-2 py-0.5 rounded-sm border border-transparent font-medium shrink-0", item.categoryColor)}>
                       {t_i18n(CATEGORY_BADGES[item.category])}
                     </span>
                     {item.description && (

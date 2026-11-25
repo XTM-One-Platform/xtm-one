@@ -311,7 +311,7 @@ function ProductPill({
   }
   if (comingSoon) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-elevation-subtle-soft px-2.5 py-1 text-[11px] text-default-secondary">
+      <span className="inline-flex items-center gap-1.5 rounded-sm border border-dashed border-elevation-subtle-soft px-2 py-1 text-[11px] text-default-secondary">
         {info?.logo ? <img src={info.logo} alt="" className="h-3.5 w-3.5 opacity-60" /> : <Scale className="h-3 w-3" />}
         {info?.name ?? product}
         <Badge variant="outline" className="text-[9px] ml-0.5">{t_i18n("Soon")}</Badge>
@@ -340,7 +340,7 @@ function ProductPill({
     return (
       <button
         onClick={onConnect}
-        className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-accent/30 px-2.5 py-1 text-[11px] text-accent/80 hover:bg-accent/10 transition-colors"
+        className="inline-flex items-center gap-1.5 rounded-sm border border-dashed border-accent/30 px-2 py-1 text-[11px] text-accent/80 hover:bg-accent/10 transition-colors"
       >
         <Plus className="h-3 w-3" /> {t_i18n("Connect {name}", { name })}
       </button>

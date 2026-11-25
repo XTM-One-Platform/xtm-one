@@ -693,7 +693,7 @@ export function FleetDataFlow({ flow, loading, error, onRetry, onOpenAgent }: Fl
                         <button
                           key={chip.label}
                           type="button"
-                          className="absolute flex items-center whitespace-nowrap rounded-full border border-elevation-subtle px-2 content-compact text-accent outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                          className="absolute flex items-center whitespace-nowrap rounded-sm border border-elevation-subtle px-2 content-compact text-accent outline-none focus-visible:ring-2 focus-visible:ring-focus"
                           style={{ left: 10 + chip.x, top: chip.y, width: chip.w, height: chip.h }}
                           aria-expanded={chip.toggle === "less"}
                           onClick={() => setExpanded(chip.toggle === "more" ? card.id : null)}

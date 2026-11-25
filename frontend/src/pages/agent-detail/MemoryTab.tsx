@@ -353,7 +353,7 @@ export function MemoryTab({ agent, canManage }: { agent: Agent; canManage: boole
         cell: (mem) => {
           const config = typeConfigOf(mem.memory_type);
           return (
-            <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 content-caption font-medium", config.bg, config.text)}>
+            <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-transparent px-2 py-0.5 content-caption font-medium", config.bg, config.text)}>
               <config.icon className="h-3 w-3 shrink-0" />
               {t_i18n(typeLabelOf(mem.memory_type))}
             </span>
@@ -381,7 +381,7 @@ export function MemoryTab({ agent, canManage }: { agent: Agent; canManage: boole
               <span className="min-w-0 truncate" title={mem.content}>{line}</span>
               {mem.superseded && (
                 <Tip content={t_i18n("This entry no longer holds. It stays searchable and is never added to the agent's context.")}>
-                  <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-elevation-highlight px-2 py-0.5 content-caption font-medium text-default-secondary">
+                  <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-transparent bg-elevation-highlight px-2 py-0.5 content-caption font-medium text-default-secondary">
                     <History className="h-3 w-3" />
                     {t_i18n("Superseded")}
                   </span>

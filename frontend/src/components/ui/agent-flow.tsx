@@ -3695,7 +3695,7 @@ export function AgentFlowGraph({
           data-connect-hint
           title={t_i18n("Click a target agent to connect. Press Esc to cancel.")}
           style={{ width: "max-content", maxWidth: "calc(100% - 2rem)", whiteSpace: "nowrap" }}
-          className="absolute top-2 left-1/2 -translate-x-1/2 z-40 rounded-full border border-accent/30 layer-2 bg-elevation-default/90 px-4 py-1.5 content-compact text-accent animate-in fade-in-0 slide-in-from-top-2 flex items-center gap-2 shadow-overlay backdrop-blur-sm"
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-40 rounded-sm border border-accent/30 layer-2 bg-elevation-default/90 px-4 py-1.5 content-compact text-accent animate-in fade-in-0 slide-in-from-top-2 flex items-center gap-2 shadow-overlay backdrop-blur-sm"
         >
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent animate-pulse" />
           <span className="min-w-0 truncate">{t_i18n("Click a target agent to connect. Press Esc to cancel.")}</span>

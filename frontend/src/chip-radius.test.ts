@@ -12,9 +12,8 @@
  *    `rounded-full`, an inline padding (`px-1` to `px-4`) and a type size
  *    (`content-*`, `text-xs`, `text-[Npx]`) is a chip, unless it is a fixed
  *    square (`h-N w-N`, `size-N`: an avatar, a dot, a round button) or a
- *    numeric counter (`min-w-*`). The chips not moved yet are listed in
- *    PENDING_PILL_CHIPS with their count per file; a slice that moves one
- *    lowers its count, a new pill fails.
+ *    numeric counter (`min-w-*`). Every hand-made chip has moved (#1333):
+ *    the list of pending chips is empty and any new pill fails.
  *
  * 4. a `<Badge>` holding only a count is a `CountBadge` (round counter).
  *
@@ -42,51 +41,11 @@ function isPillChip(classes: string): boolean {
 }
 
 /**
- * Hand-made pill chips still to move onto the shared Badge or the DS radius,
- * by file, with their count (#1333 slices 2 and later). Never add a row: a
- * new chip uses Badge or ToneBadge.
+ * Hand-made pill chips still to move: none since the #1333 sweep. Never add
+ * a row: a new chip uses Badge or ToneBadge (or the rounded-sm chip shape),
+ * a count uses CountBadge.
  */
-const PENDING_PILL_CHIPS: Record<string, number> = {
-  "components/arcade/ArcadeOverlay.tsx": 5,
-  "components/custom-dashboard/widgets.tsx": 1,
-  "components/evaluation/bundle-review/DiffView.tsx": 1,
-  "components/evaluation/bundle-review/ReviewInspector.tsx": 1,
-  "components/evaluation/bundle-review/ReviewRail.tsx": 1,
-  "components/fleets/FleetDataFlow.tsx": 1,
-  "components/investigation/GoalPlanView.tsx": 1,
-  "components/investigation/pack-builder/PackBuilder.tsx": 1,
-  "components/presentation/TemplateGeneratorDialog.tsx": 1,
-  "components/traces/span-inspector.tsx": 1,
-  "components/traces/span-node.tsx": 1,
-  "components/ui/agent-flow.tsx": 1,
-  "components/ui/agent-graph-toolbar.tsx": 1,
-  "components/ui/filter-pill.tsx": 1,
-  "components/video-studio/editor/PreviewStage.tsx": 1,
-  "components/video-studio/editor/SceneInspector.tsx": 1,
-  "pages/Dashboard.tsx": 2,
-  "pages/DatasetDetail.tsx": 1,
-  "pages/Desktop.tsx": 1,
-  "pages/EvaluationRunCompare.tsx": 1,
-  "pages/EvaluationRunDetail.tsx": 1,
-  "pages/KnowledgeBases.tsx": 1,
-  "pages/PresentationViewer.tsx": 1,
-  "pages/Profile.tsx": 1,
-  "pages/VideoStudio.tsx": 1,
-  "pages/agent-detail/MemoryTab.tsx": 2,
-  "pages/agent-detail/config/ChannelsSection.tsx": 1,
-  "pages/chat/AwaitedWorkBanner.tsx": 1,
-  "pages/chat/RunnerActivity.tsx": 1,
-  "pages/new-agent-wizard/WizardAssistant.tsx": 1,
-  "pages/new-agent-wizard/WizardCanvas.tsx": 1,
-  "pages/profile/agent-accounts/AgentAccountRules.tsx": 3,
-  "pages/public/PublicAgentDetail.tsx": 1,
-  "pages/settings/ChannelManagement.tsx": 1,
-  "pages/settings/ScannedToolsField.tsx": 1,
-  "pages/settings/SecurityAuditSection.tsx": 1,
-  "pages/xtm-one/CtemCommandCenter.tsx": 2,
-  "pages/xtm-one/ExposureBriefing.tsx": 1,
-  "pages/xtm-one/ctem/ctem-viz.tsx": 1,
-};
+const PENDING_PILL_CHIPS: Record<string, number> = {};
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
