@@ -387,6 +387,13 @@ On that cancellation, and only that one (`is_graceful_shutdown_cancellation`):
   and the database engine go and before `asyncio.run` cancels what is left. A
   cut turn waits for its reply for `INTERRUPTED_REPLY_WAIT_SECONDS` (10 s)
   before it releases its lock; past it, the drain still waits for the write.
+- **Reads at the stop.** A GET or HEAD that has not started its answer when
+  the worker is asked to stop (`worker_shutdown.on_stop`) is cut
+  `STOP_READ_GRACE_SECONDS` (5 s) later with `STOP_READ_CANCEL_MESSAGE`,
+  which carries the drain hint, so the middleware answers it 503 +
+  `Retry-After: 1` and the client retries on a live pod instead of waiting
+  for the whole `GRACEFUL_TIMEOUT`. Writes, started answers (SSE) and agent
+  turns keep the full drain (#2090).
 
 A client disconnect, a Stop and a cancellation without uvicorn's drain message
 store nothing, as before. Not covered: a turn cut in its persistence phase
