@@ -210,7 +210,9 @@ async def _open_case_item_ids(db: AsyncSession, case_ids: list[str], case_keys: 
     """The case ids (among *case_ids*) that already have an open ``<key>:case:<id>`` item of any declared key."""
     from app.models.work_item import WORK_ITEM_OPEN_STATUSES, WorkItem
 
-    keys = {f"{key}:case:{cid}": cid for cid in case_ids for key in set(case_keys)}
+    # Materialized once: a generator would be spent on the first case id, leaving the others unchecked.
+    declared = set(case_keys)
+    keys = {f"{key}:case:{cid}": cid for cid in case_ids for key in declared}
     if not keys:
         return set()
     rows = (
