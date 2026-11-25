@@ -3841,6 +3841,18 @@ async def run_agent_chat(
 
             _call_parts.extend(format_handover_context_prompt(handover_context))
 
+        # ── Fleet autonomy level (#2376) ──────────────────────────────────
+        # The block an assignment run of the fleet carries, stated once on
+        # every other turn of a member too (chat, channel thread, consult,
+        # background task, work-item turn, transfer), and on a connected agent
+        # reached by a member's delegation (the nearest fleet of the chain).
+        # An agent in no fleet, reached by no member, gets nothing.
+        from app.services.fleet_autonomy import turn_fleet_autonomy_block
+
+        _fleet_block = await turn_fleet_autonomy_block(db, agent, _visited_agents)
+        if _fleet_block:
+            _call_parts.append(_fleet_block)
+
         # ── Element bindings (target element scoping) ─────────────────────
         # When the agent has target elements configured (e.g. specific Slack
         # channels, Teams channels, GitHub repos), inject them so the LLM
