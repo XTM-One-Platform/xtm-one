@@ -17,6 +17,7 @@ confirmed closed, so a narrower view never closes or shrinks a case.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
@@ -235,6 +236,8 @@ async def apply_recompute(
                 if issue is None:
                     continue
                 signal, created = await _source_signal(db, organization_id, issue, remediation, now)
+                # Hand the loop back between signals: a read of hundreds of new issues never holds it in one go.
+                await asyncio.sleep(0)
                 if signal is None:
                     continue
                 counts["signals"] += int(created)
