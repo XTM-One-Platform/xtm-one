@@ -2949,6 +2949,14 @@ async def update_integration(
         # old configuration and is simply never looked up again (the cache
         # key covers every part of it).
         integration.status = _token_grant_status(integration)
+    if integration.provider in ("defender", "sentinel", "purview") and (
+        body.client_id is not None or body.client_secret is not None or body.scopes is not None
+    ):
+        # The delegated per-audience tokens are keyed by the integration alone,
+        # not by its credentials: drop them with the old configuration (#2386).
+        from app.services.integration_tools import forget_azure_delegated_tokens
+
+        await forget_azure_delegated_tokens(str(integration.id))
 
     # Read before the auth-type switch and the share consent below, both of
     # which can reset the acknowledgement; compared again after them.

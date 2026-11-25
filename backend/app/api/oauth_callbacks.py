@@ -515,6 +515,12 @@ async def _complete_integration_callback(
     from app.services.token_refresh import clear_refresh_cooldown, refresh_cooldown_key
 
     await clear_refresh_cooldown(refresh_cooldown_key(holder_ref(target)))
+    if provider in ("defender", "sentinel", "purview"):
+        # A new grant (often right after an admin consent): the per-audience
+        # tokens redeemed from the old one lack its permissions (#2386).
+        from app.services.integration_tools import forget_azure_delegated_tokens
+
+        await forget_azure_delegated_tokens(holder_ref(target))
 
     return _integration_page_redirect(integration, connected=provider)
 

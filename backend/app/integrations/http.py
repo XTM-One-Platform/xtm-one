@@ -757,6 +757,11 @@ def get_cached_app_token(cache_key: str) -> str | None:
     return None
 
 
+def drop_cached_app_token(cache_key: str) -> None:
+    """Forget the cached app-only token of *cache_key* (a token refused by the API)."""
+    _APP_TOKEN_CACHE.pop(cache_key, None)
+
+
 def set_cached_app_token(
     cache_key: str, token: str, expires_in: int | None = None
 ) -> None:
