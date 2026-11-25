@@ -17701,7 +17701,6 @@
   "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).": "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).",
   "Add your assets and exposure": "Add your assets and exposure",
   "Not linked": "Not linked",
-  "No software inventory": "No software inventory",
   "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.": "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.",
   "Business impact": "Business impact",
   "On an asset that supports a primary asset.": "On an asset that supports a primary asset.",
@@ -19490,6 +19489,7 @@
   "The last re-score failed: {reason}": "The last re-score failed: {reason}",
   "Storage & retention": "Storage & retention",
   "{count, plural, one {# file} other {# files}}": "{count, plural, one {# file} other {# files}}",
+  "{count, plural, one {{shown} linked asset} other {{shown} linked assets}}": "{count, plural, one {{shown} linked asset} other {{shown} linked assets}}",
   "{count, plural, one {{shown} file} other {{shown} files}}": "{count, plural, one {{shown} file} other {{shown} files}}",
   "Last sweep": "Last sweep",
   "Any state": "Any state",
@@ -21683,6 +21683,13 @@
   "Example: Payment platform, picked from the primary assets of the inventory. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.": "Example: Payment platform, picked from the primary assets of the inventory. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.",
   "{set} of {total} set": "{set} of {total} set",
   "Details of {name}, {count}": "Details of {name}, {count}",
-  "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.",
-  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, one {# policy rule applied} other {# policy rules applied}}."
+  "Case opening": "Case opening",
+  "Case opening: {state}": "Case opening: {state}",
+  "Case opening on": "Case opening on",
+  "Case opening off": "Case opening off",
+  "Case opening is off": "Case opening is off",
+  "Open a case for each confirmed signal": "Open a case for each confirmed signal",
+  "{count, plural, =0 {Off: no confirmed signal is waiting} one {Off: # confirmed signal is waiting} other {Off: # confirmed signals are waiting}}": "{count, plural, =0 {Off: no confirmed signal is waiting} one {Off: # confirmed signal is waiting} other {Off: # confirmed signals are waiting}}",
+  "Case opening was not changed": "Case opening was not changed",
+  "CTEM case opening turned on or off": "CTEM case opening turned on or off"
 }

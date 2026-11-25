@@ -17701,7 +17701,6 @@
   "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).": "En un activo accesible: expuesto a Internet, o un equipo de usuario (phishing, navegador, correo).",
   "Add your assets and exposure": "Añadir sus activos y su exposición",
   "Not linked": "Sin vincular",
-  "No software inventory": "Sin inventario de software",
   "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.": "{total, plural, one {# activo leído} other {# activos leídos}}. Accesibles: {reachable} (equipos de usuario: {endpoints}). Inaccesibles comprobados: {unreachable}. Desconocidos: {unknown}.",
   "Business impact": "Impacto en el negocio",
   "On an asset that supports a primary asset.": "En un activo que sostiene un activo primario.",
@@ -19490,6 +19489,7 @@
   "The last re-score failed: {reason}": "La última re-puntuación falló: {reason}",
   "Storage & retention": "Almacenamiento y retención",
   "{count, plural, one {# file} other {# files}}": "{count, plural, one {# archivo} other {# archivos}}",
+  "{count, plural, one {{shown} linked asset} other {{shown} linked assets}}": "{count, plural, one {{shown} activo vinculado} other {{shown} activos vinculados}}",
   "{count, plural, one {{shown} file} other {{shown} files}}": "{count, plural, one {{shown} archivo} other {{shown} archivos}}",
   "Last sweep": "Última limpieza",
   "Any state": "Cualquier estado",
@@ -21683,6 +21683,13 @@
   "Example: Payment platform, picked from the primary assets of the inventory. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.": "Ejemplo: Plataforma de pagos, elegida entre los activos principales del inventario. Los agentes los leen con el PIR en el contexto de la organización. Si se deja vacío, el PIR no nombra ningún activo principal.",
   "{set} of {total} set": "{set} de {total} definidos",
   "Details of {name}, {count}": "Detalles de {name}, {count}",
-  "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{primary, plural, one {# activo primario alcanzado} other {# activos primarios alcanzados}} a través de {supporting, plural, one {# activo de soporte} other {# activos de soporte}}.",
-  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, one {# regla de política aplicada} other {# reglas de política aplicadas}}."
+  "Case opening": "Apertura de casos",
+  "Case opening: {state}": "Apertura de casos: {state}",
+  "Case opening on": "Apertura de casos activada",
+  "Case opening off": "Apertura de casos desactivada",
+  "Case opening is off": "La apertura de casos está desactivada",
+  "Open a case for each confirmed signal": "Abrir un caso por cada señal confirmada",
+  "{count, plural, =0 {Off: no confirmed signal is waiting} one {Off: # confirmed signal is waiting} other {Off: # confirmed signals are waiting}}": "{count, plural, =0 {Desactivada: ninguna señal confirmada en espera} one {Desactivada: # señal confirmada en espera} other {Desactivada: # señales confirmadas en espera}}",
+  "Case opening was not changed": "No se cambió la apertura de casos",
+  "CTEM case opening turned on or off": "Apertura de casos CTEM activada o desactivada"
 }
