@@ -1305,7 +1305,12 @@ kinds and `event_poller` polls them every 60 s.
   a JSON summary; its `moved` ids, `movedCount` and, when OpenCRQ reports it,
   `movedAle` travel as `moved_scenario_ids`, `moved_count` and `moved_ale`
   (`risk_scenario_id`, `ale_before`, `ale_after`, `ale_delta`) on the payload
-  top level and the entity, merged across a coalesced page. The filter keys
+  top level and the entity, merged across a coalesced page: `moved_count` is
+  the number of distinct moved scenarios (at least the largest count one run
+  reported, since OpenCRQ caps the ids), never a sum over runs (#2117). The
+  event declares `coalesce_merge` (union of the ids, `moved_ale` by scenario,
+  the count kept whole), so a page folded into a waiting run keeps both
+  pages' moves. The filter keys
   of every OpenCRQ event (`FILTER_KEYS`, declared in the catalog) are
   `tenant_id`, `kind`, `risk_scenario_ids`, `moved_scenario_ids` and
   `moved_count`, all payload fields, so `{"moved_scenario_ids": "<id>"}`
@@ -1320,7 +1325,9 @@ kinds and `event_poller` polls them every 60 s.
   `entity.risk_scenario_ids` and on each `covers` entry. The event carries
   `coalesce_key` = `opencrq:<tenant>:<event>`; the poller copies it into the
   trigger context and `trigger_or_queue_assignment` folds a later event with
-  the same key into the run of the same assignment still queued
+  the same key into the run of the same assignment that has not started,
+  queued or `pending` in a free slot (#2117; the executor re-reads the
+  payload under the row lock before it marks the run running)
   (`services/event_coalescing.py`, status `coalesced`). The risk desk's three
   event assignments run with `max_concurrent_runs: 1`: a burst of 30 jobs
   starts one run and queues at most one more.
