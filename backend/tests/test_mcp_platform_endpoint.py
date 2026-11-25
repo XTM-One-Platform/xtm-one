@@ -290,6 +290,7 @@ def test_opencrq_allow_list_covers_business_domains():
         "create_opencrq_primary_asset",
         "create_opencrq_supporting_asset",
         "list_opencrq_asset_dependencies",
+        "list_opencrq_dependency_rules",
         "list_opencrq_cve_evidences",
         "list_opencrq_cves",
         "get_opencrq_mitre_technique",

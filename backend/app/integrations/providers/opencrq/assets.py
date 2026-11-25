@@ -228,6 +228,56 @@ def _fmt_roles(link: dict) -> str:
     return f"roles {', '.join(_one_line(r, 40) for r in roles)}" if roles else "no role"
 
 
+def _fmt_link_source(link: dict) -> str:
+    """Who made a support-to-primary link: a person, or the dependency rule OpenCRQ names."""
+    source = link.get("source")
+    if source == "manual":
+        return ", set by a person"
+    if source == "rule":
+        rule = _one_line(link.get("ruleName"), 200) or link.get("ruleId")
+        return f", written by rule {rule}" if rule else ", written by a rule"
+    return ""
+
+
+# Default and largest page of each list list_opencrq_asset_dependencies prints.
+_DEPENDENCY_PAGE = 30
+_DEPENDENCY_PAGE_MAX = 500
+
+
+def _page_note(label: str, total: int, offset: int, shown: int) -> str:
+    """The header of one paged list: its total, and which slice is shown when it is not the whole."""
+    if shown == total:
+        return f"  {label} ({total}):"
+    if shown == 0:
+        return f"  {label} ({total}, none from offset {offset}):"
+    return f"  {label} ({total}, showing {offset + 1} to {offset + shown}):"
+
+
+def _more_note(total: int, offset: int, shown: int) -> str | None:
+    """The paging hint under a list that has rows past the slice shown."""
+    rest = total - offset - shown
+    if rest <= 0:
+        return None
+    return f"    ... {rest} more: call again with offset={offset + shown}."
+
+
+def _fmt_rule_conditions(rule: dict) -> str:
+    """A dependency rule's conditions, as OpenCRQ matches them (all must hold)."""
+    parts: list[str] = []
+    if rule.get("categoryId"):
+        parts.append(f"category {_one_line(rule['categoryId'], 60)}")
+    if rule.get("subcategoryId"):
+        parts.append(f"subcategory {_one_line(rule['subcategoryId'], 60)}")
+    if rule.get("namePattern"):
+        kind = _one_line(rule.get("namePatternKind"), 20) or "pattern"
+        parts.append(f"name {kind} {_one_line(rule['namePattern'], 200)}")
+    if rule.get("tagId"):
+        parts.append(f"tag {_one_line(rule.get('tagName'), 120) or rule['tagId']}")
+    if rule.get("source"):
+        parts.append(f"reported by {_one_line(rule['source'], 60)}")
+    return " and ".join(parts) if parts else "no condition"
+
+
 def _link_roles(roles: list[str] | None) -> tuple[list[str], str | None]:
     """Normalise a link role list; the second item is the refusal, if any."""
     link_roles = list(dict.fromkeys(r.strip().lower() for r in _clean_ids(roles)))
@@ -1089,10 +1139,17 @@ def register(
     async def list_opencrq_asset_dependencies(
         supporting_asset_id: str = "",
         primary_asset_id: str = "",
+        offset: int = 0,
+        limit: int = _DEPENDENCY_PAGE,
         tenant_id: str = "",
     ) -> str:
         if not supporting_asset_id and not primary_asset_id:
             return "Provide supporting_asset_id and/or primary_asset_id."
+        if offset < 0:
+            return "offset must be >= 0."
+        if not 1 <= limit <= _DEPENDENCY_PAGE_MAX:
+            return f"limit must be between 1 and {_DEPENDENCY_PAGE_MAX}."
+        end = offset + limit
         # One client for the whole multi-call handler (tenant resolution +
         # up to 3 link queries) so the calls share a connection pool.
         async with _client(headers, timeout=30) as client:
@@ -1121,8 +1178,10 @@ def register(
                 if s2p_err:
                     notes.append(f"Support->primary: lookup failed - {s2p_err}")
                 else:
-                    lines.append(f"  Support->primary ({len(s2p or [])}):")
-                    for x in (s2p or [])[:30]:
+                    s2p = s2p or []
+                    page = s2p[offset:end]
+                    lines.append(_page_note("Support->primary", len(s2p), offset, len(page)))
+                    for x in page:
                         lines.append(
                             f"    - link {x.get('id')}: primary asset "
                             f"{_one_line(x.get('primaryAssetName'), 200) or x.get('primaryAssetId')}"
@@ -1131,16 +1190,18 @@ def register(
                                 if x.get("organizationName")
                                 else ""
                             )
-                            + f", {_fmt_roles(x)} "
+                            + f", {_fmt_roles(x)}{_fmt_link_source(x)} "
                             f"(primary asset id: {x.get('primaryAssetId')})"
                         )
-                    if len(s2p or []) > 30:
-                        lines.append(f"    ... and {len(s2p) - 30} more.")
+                    if more := _more_note(len(s2p), offset, len(page)):
+                        lines.append(more)
                 if s2s_err:
                     notes.append(f"Support->support: lookup failed - {s2s_err}")
                 else:
-                    lines.append(f"  Support->support ({len(s2s or [])}):")
-                    for x in (s2s or [])[:30]:
+                    s2s = s2s or []
+                    page = s2s[offset:end]
+                    lines.append(_page_note("Support->support", len(s2s), offset, len(page)))
+                    for x in page:
                         related = (
                             _one_line(x.get("relatedAssetName"), 200)
                             or _one_line(x.get("relatedAssetDerivedName"), 200)
@@ -1155,8 +1216,8 @@ def register(
                             f"    - link {x.get('id')}: {verb} {related} "
                             f"(asset id: {x.get('relatedAssetId')})"
                         )
-                    if len(s2s or []) > 30:
-                        lines.append(f"    ... and {len(s2s) - 30} more.")
+                    if more := _more_note(len(s2s), offset, len(page)):
+                        lines.append(more)
             if primary_asset_id:
                 p_links, p_err = await _trpc(
                     base_url, headers,
@@ -1168,8 +1229,10 @@ def register(
                 if p_err:
                     notes.append(f"Primary asset links: lookup failed - {p_err}")
                 else:
-                    lines.append(f"  Primary asset links ({len(p_links or [])}):")
-                    for x in (p_links or [])[:30]:
+                    p_links = p_links or []
+                    page = p_links[offset:end]
+                    lines.append(_page_note("Primary asset links", len(p_links), offset, len(page)))
+                    for x in page:
                         name = (
                             _one_line(x.get("supportingAssetName"), 200)
                             or _one_line(x.get("supportingAssetDerivedName"), 200)
@@ -1182,13 +1245,44 @@ def register(
                                 if x.get("supportingAssetCategoryId")
                                 else ""
                             )
-                            + f", {_fmt_roles(x)} "
+                            + f", {_fmt_roles(x)}{_fmt_link_source(x)} "
                             f"(supporting asset id: {x.get('supportingAssetId')})"
                         )
-                    if len(p_links or []) > 30:
-                        lines.append(f"    ... and {len(p_links) - 30} more.")
+                    if more := _more_note(len(p_links), offset, len(page)):
+                        lines.append(more)
         return _quarantined(
             "Asset dependency links:", "\n".join(lines), "asset dependency links (asset names)", *notes
+        )
+
+    async def list_opencrq_dependency_rules(tenant_id: str = "") -> str:
+        tenant, err = await _resolve_tenant(base_url, headers, tenant_id)
+        if err:
+            return err
+        rules, err = await _trpc(
+            base_url,
+            headers,
+            "assetDependencies.listDependencyRules",
+            "list dependency rules",
+            tenant_id=tenant,
+        )
+        if err:
+            return err
+        rules = rules or []
+        if not rules:
+            return "No dependency rules in this tenant."
+        lines = []
+        for r in rules:
+            primary = _one_line(r.get("primaryAssetName"), 200) or r.get("primaryAssetId")
+            lines.append(
+                f"- {_one_line(r.get('name'), 200, 'unnamed')} (id: {r.get('id')}), "
+                + ("enabled" if r.get("enabled") else "disabled")
+                + f"\n  Links matching supporting assets to primary asset {primary} "
+                f"(primary asset id: {r.get('primaryAssetId')}), {_fmt_roles(r)}"
+                f"\n  Conditions: {_fmt_rule_conditions(r)}"
+                f"\n  Links it holds now: {r.get('linkCount', 0)}"
+            )
+        return _quarantined(
+            f"Dependency rules ({len(rules)}):", "\n".join(lines), "dependency rules (rule and asset names)"
         )
 
     async def create_opencrq_asset_dependency(
@@ -1708,6 +1802,9 @@ def register(
         "list_opencrq_asset_dependencies", list_opencrq_asset_dependencies
     )
     executor.register(
+        "list_opencrq_dependency_rules", list_opencrq_dependency_rules
+    )
+    executor.register(
         "create_opencrq_asset_dependency", create_opencrq_asset_dependency
     )
     executor.register(
@@ -2197,8 +2294,10 @@ def register(
             description=(
                 "List the dependency links of an OpenCRQ asset: "
                 "support-to-primary links (which business assets a "
-                "technical asset supports, and with which roles) and "
-                "support-to-support links (technical dependency chains)."
+                "technical asset supports, with which roles, set by a "
+                "person or written by a dependency rule) and "
+                "support-to-support links (technical dependency chains), "
+                "page by page."
             ),
             input_schema={
                 "type": "object",
@@ -2211,6 +2310,19 @@ def register(
                         "type": "string",
                         "description": "Primary asset UUID.",
                     },
+                    "offset": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "default": 0,
+                        "description": "Links to skip in each list.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": _DEPENDENCY_PAGE_MAX,
+                        "default": _DEPENDENCY_PAGE,
+                        "description": "Links shown per list.",
+                    },
                     **_tenant_prop,
                 },
                 # At least one asset selector so pre-dispatch jsonschema
@@ -2220,6 +2332,20 @@ def register(
                     {"required": ["supporting_asset_id"]},
                     {"required": ["primary_asset_id"]},
                 ],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="list_opencrq_dependency_rules",
+            description=(
+                "List the tenant's OpenCRQ dependency rules: each rule's "
+                "conditions, the primary asset and roles it links matching "
+                "supporting assets to, whether it is enabled, and how many "
+                "links it holds."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {**_tenant_prop},
             },
             source=_SOURCE,
         ),
