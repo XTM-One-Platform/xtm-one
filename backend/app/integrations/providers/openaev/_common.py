@@ -1672,10 +1672,18 @@ class Finding:
     assets: tuple[tuple[str, str], ...]
     #: The inject of the latest occurrence.
     inject_id: str | None
+    #: Row times: creation and last write. Any write moves ``updated_at`` (a status, an asset link,
+    #: the #9233 identity migration), so it is not a detection (OpenAEV #9846).
     created_at: str | None
     updated_at: str | None
     last_tested: str | None
     retest_inject_id: str | None
+    #: Detection times: ``finding_first_seen`` / ``finding_last_seen`` when OpenAEV answers them
+    #: (OpenAEV #9846), else the creation and update times of an older OpenAEV.
+    first_seen: str | None = None
+    last_seen: str | None = None
+    #: True when ``last_seen`` is OpenAEV's detection time, False when it is the update time.
+    seen_reported: bool = False
 
     @property
     def closed(self) -> bool:
@@ -1722,6 +1730,10 @@ def parse_finding(raw: Any) -> Finding | None:
         value = raw.get(key)
         return str(value) if value else None
 
+    created_at = _text("finding_created_at")
+    updated_at = _text("finding_updated_at")
+    first_seen = _text("finding_first_seen")
+    last_seen = _text("finding_last_seen")
     return Finding(
         id=fid,
         type=str(raw.get("finding_type") or "").strip().lower(),
@@ -1729,10 +1741,13 @@ def parse_finding(raw: Any) -> Finding | None:
         status=status,
         assets=_finding_assets(raw.get("finding_assets")),
         inject_id=str(inject_id) if inject_id else None,
-        created_at=_text("finding_created_at"),
-        updated_at=_text("finding_updated_at"),
+        created_at=created_at,
+        updated_at=updated_at,
         last_tested=_text("finding_last_tested"),
         retest_inject_id=_text("finding_retest_inject_id"),
+        first_seen=first_seen or created_at,
+        last_seen=last_seen or updated_at,
+        seen_reported=last_seen is not None,
     )
 
 
@@ -2417,8 +2432,12 @@ def _fmt_finding(f: dict, base_url: str = "") -> str:
         lines.append(f"  Inject: {finding.inject_id}")
     if finding.asset_labels:
         lines.append(f"  Assets: {', '.join(finding.asset_labels)}")
-    if finding.updated_at:
-        lines.append(f"  Last seen: {finding.updated_at}")
+    # Only OpenAEV's detection time is a "last seen"; an older OpenAEV answers the row's update
+    # time, which any write moves, so it is labelled as what it is (OpenAEV #9846).
+    if finding.seen_reported:
+        lines.append(f"  Last seen: {finding.last_seen}")
+    elif finding.updated_at:
+        lines.append(f"  Updated: {finding.updated_at}")
     return "\n".join(lines)
 
 

@@ -2214,6 +2214,9 @@ CTEM_FLEET_AGENTS: list[dict] = [
         # The blackboard (ctem:f1:state) and the approval / re-test queue
         # (ctem:f1:<id> work items, needs_human for every environment write).
         "builtin_tool_ids": ["shared_state", "work_items", "generate_file"],
+        # A control_decay case reads EDR and device-management coverage from the
+        # organization inventory those sources sync into (#2354), never through a
+        # template binding here: an unconnected one would be announced as missing.
         "integration_template_bindings": ["opencti", "openaev", "opencrq"],
         "memory_user_enabled": False,
     },
@@ -3012,6 +3015,23 @@ CTEM_GATE_ANSWERED = GATE_ANSWERED
 CTEM_KEY_PREFIX = "ctem:"
 
 
+#: The reconciliation step of a ``control_decay`` case (#2354): "no current evidence in OpenCRQ"
+#: is not "no control", so the existing control sources are read before any scan is proposed.
+CTEM_CONTROL_DECAY_RECONCILE = (
+    "A case whose trigger_path is control_decay (never_measured, attested_only or expired) is "
+    "reconciled before any validation, scan or new control is proposed: read, read-only, the "
+    "control sources you hold for its asset (the OpenAEV results on the asset, the EDR and "
+    "device-management coverage in the organization inventory, get_organization_context category "
+    "assets_exposure, and in any such integration you hold) and what OpenCRQ holds for the control "
+    "(get_opencrq_control_validation); a control found that OpenCRQ lacks or "
+    "under-rates gets one decision keyed `ctem:remediation:` followed by the case id proposing to "
+    "record it in OpenCRQ (update_opencrq_control_capability_assessment or "
+    "manage_opencrq_scope_control_posture, the source as justification), never a scan; none found "
+    "gets the decision to put a control in place and measure it; the decision lists every source "
+    "checked and what it returned (found, not found, not readable)."
+)
+
+
 def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: dict[str, Any]) -> dict[str, Any]:
     """The "Case opened or reopened" listener; *owner_filter* is its whole payload filter on ``owner_fleet``."""
     return {
@@ -3050,7 +3070,8 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "record_ctem_case_validation, the ticket with sync_ctem_case_ticket, notes "
             "with update_ctem_case. A second open case for the same fix (the same product under another "
             "name, the same CVEs and assets) is merged with merge_ctem_cases into the case a person holds, "
-            "else the oldest one, never deleted. On ctem_case.sla_breached: add a note to that work item "
+            "else the oldest one, never deleted. " + CTEM_CONTROL_DECAY_RECONCILE + " "
+            "On ctem_case.sla_breached: add a note to that work item "
             "and to the case naming the breach and the next step, raise its priority, and file one "
             "needs_human decision keyed `ctem:remediation:` followed by the case id (unless one is "
             "already open for the case) with the options left (act now, defer with a new date, "
