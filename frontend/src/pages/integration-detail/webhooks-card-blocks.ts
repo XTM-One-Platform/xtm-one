@@ -23,6 +23,8 @@ interface WebhooksCardBlocks {
   adminEvents: boolean;
   /** The integration webhook URL, for events that can arrive by webhook. */
   webhookUrl: boolean;
+  /** Notion's own setup for its managers: the URL, the verification token and the next step. */
+  notionSetup: boolean;
   /** The provider callback URL of a developer app with no events. */
   callback: boolean;
   /** The GitHub repository webhook manager. */
@@ -55,11 +57,16 @@ export function webhooksCardBlocks(
   // provider hooks key them as a plain message. So the Slack block never depends
   // on which OAuth app the integration uses.
   const hasOwnEventsBlock = isMicrosoft || isSlack;
+  // A Notion manager gets Notion's own setup block (URL, verification token,
+  // next step) in place of the generic URL block, whose content-type line does
+  // not apply to Notion; anyone else keeps the generic URL block.
+  const notionSetup = provider === "notion" && webhookEvents && !!canManage;
   return {
     microsoft: isMicrosoft,
     slack: isSlack,
-    adminEvents: hasEvents && isAdminProvisioned && !hasOwnEventsBlock,
-    webhookUrl: webhookEvents && !isAdminProvisioned && !hasOwnEventsBlock,
+    adminEvents: hasEvents && isAdminProvisioned && !hasOwnEventsBlock && !notionSetup,
+    webhookUrl: webhookEvents && !isAdminProvisioned && !hasOwnEventsBlock && !notionSetup,
+    notionSetup,
     callback: hasWebhookPath && !hasEvents && !isMicrosoft,
     webhookManager: !!catalogEntry?.supports_webhook_management && integration.status === "connected" && !!canManage,
   };

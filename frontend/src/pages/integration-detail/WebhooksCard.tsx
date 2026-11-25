@@ -26,9 +26,11 @@ import {
   useCreateGitHubWebhook,
   useDeleteGitHubWebhook,
   useIntegrationElements,
+  useNotionWebhookSetup,
 } from "@/hooks/api/useIntegrationApi";
 import { useFormatter } from "@/i18n";
 import type { Integration, ProviderCatalogItem, IntegrationElement } from "@/types";
+import { CopyIconButton } from "@/components/ui/copy-icon-button";
 import { CopyableUrl } from "./CopyableUrl";
 import { showsAnyWebhooksBlock, webhooksCardBlocks } from "./webhooks-card-blocks";
 import { formatTimeAgo } from "@/lib/relative-time";
@@ -54,6 +56,7 @@ export function WebhooksCard({
     slack: isSlack,
     adminEvents: showsAdminEventsBlock,
     webhookUrl: showsWebhookUrlBlock,
+    notionSetup: showsNotionSetupBlock,
     callback: showsCallbackBlock,
     webhookManager: showsWebhookManager,
   } = blocks;
@@ -127,6 +130,10 @@ export function WebhooksCard({
           </div>
         )}
 
+        {showsNotionSetupBlock && (
+          <NotionWebhookSetupBlock integration={integration} baseUrl={baseUrl} />
+        )}
+
         {showsCallbackBlock && (
           <div className="rounded-sm bg-elevation-hover p-3 space-y-2">
             <div className="flex items-center gap-2">
@@ -146,6 +153,53 @@ export function WebhooksCard({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Notion webhook setup sub-component
+// ---------------------------------------------------------------------------
+
+/**
+ * Notion's setup for the integration's managers: the URL to subscribe in the
+ * connection's Webhooks tab, then the verification token Notion sends to it,
+ * to paste in Notion's Verify form. Read from GET /integrations/{id}/notion-webhook.
+ */
+function NotionWebhookSetupBlock({ integration, baseUrl }: { integration: Integration; baseUrl: string }) {
+  const { t_i18n } = useFormatter();
+  const { data, isLoading, isError } = useNotionWebhookSetup(integration.id);
+  const url = data?.webhook_url ?? `${baseUrl}/api/hooks/integrations/${integration.id}`;
+  const token = data?.verification_token ?? null;
+  return (
+    <div className="rounded-sm bg-elevation-hover p-3 space-y-2" data-testid="notion-webhook-setup">
+      <div className="flex items-center gap-2">
+        <Globe className="h-3.5 w-3.5 text-accent" />
+        <span className="content-base font-semibold">{t_i18n("Notion webhook setup")}</span>
+      </div>
+      <p className="content-compact text-default-secondary leading-relaxed">
+        {t_i18n("1. In Notion, open the connection's Webhooks tab and create a subscription with this URL.")}
+      </p>
+      <CopyableUrl url={url} />
+      <p className="content-compact text-default-secondary leading-relaxed">
+        {t_i18n("2. Notion then sends a verification token here. Paste it in the Verify form of the subscription in Notion.")}
+      </p>
+      {isLoading ? (
+        <Spinner size="sm" tone="inherit" />
+      ) : isError ? (
+        <p className="content-caption text-default-secondary">{t_i18n("The verification token could not be read. Reload the page to try again.")}</p>
+      ) : token ? (
+        <div className="flex items-center gap-2">
+          <code className="flex-1 rounded-sm bg-elevation-hover px-2.5 py-1.5 content-compact text-accent font-mono-plex break-all select-all">
+            {token}
+          </code>
+          <CopyIconButton value={token} label={t_i18n("Copy the verification token")} className="shrink-0" />
+        </div>
+      ) : (
+        <p className="content-caption text-default-secondary">
+          {t_i18n("No verification token received yet. Create the subscription in Notion first; the token appears here once Notion sends it.")}
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -2096,9 +2096,8 @@ PROVIDER_CATALOG = {
                 "event": event,
                 "label": label,
                 "description": (
-                    f"Triggers when {what}. Delivered by Notion's webhooks: create a subscription in the "
-                    "connection's Webhooks tab with the webhook URL shown below, then paste the verification "
-                    "token the integration page shows in Notion's Verify form."
+                    f"Triggers when {what}. Delivered by Notion's webhooks; set up in the Webhooks card of "
+                    "the integration's Configuration tab."
                 ),
                 "mechanism": "webhook",
                 "filter_keys": _NOTION_FILTER_KEYS,
