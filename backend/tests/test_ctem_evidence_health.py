@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import ctem_evidence_health as health
 from app.services import organization_context as oc
@@ -225,7 +226,8 @@ async def test_an_asset_gap_links_to_its_opencrq_page(monkeypatch: pytest.Monkey
     recorded = _patch_record(monkeypatch)
     reader = _Reader({"s-1": _health(_asset("a1", "expired"))})
     reader.asset_link = lambda asset_id: f"https://crq.example/t1/assets/{asset_id}/overview"  # type: ignore[attr-defined]
-    await health.run_pass(object(), organization_id=uuid.uuid4(), reader=reader, max_age_days=45, now=NOW)
+    db = cast(AsyncSession, object())  # record_signal is patched: the pass never reads the session
+    await health.run_pass(db, organization_id=uuid.uuid4(), reader=reader, max_age_days=45, now=NOW)
     assert recorded[0]["signal"].evidence["link"] == "https://crq.example/t1/assets/a1/overview"
 
 

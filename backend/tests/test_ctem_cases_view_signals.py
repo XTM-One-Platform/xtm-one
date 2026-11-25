@@ -109,7 +109,9 @@ def test_a_signal_member_carries_what_its_module_pivot_needs() -> None:
     )
     assert finding["source_external_id"] == "f-1"
     run = view_of.signal_detail(
-        _signal(source_provider="openaev", source_external_id="s-1", evidence={"platform_url": "https://aev.example/s/1"})
+        _signal(
+            source_provider="openaev", source_external_id="s-1", evidence={"platform_url": "https://aev.example/s/1"}
+        )
     )
     assert run["source_external_id"] is None and run["source_link"] == "https://aev.example/s/1"
     # OpenCRQ: the asset page the pass wrote; no id route is guessed.
