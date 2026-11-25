@@ -20,18 +20,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Rendered only while the agent is exposed, and the exposure read already
  * answers 404 to a caller who may not manage it, so whoever sees the switch
  * may flip it. The server reads the flag at each partner call: switching it
- * off narrows the next call of a running task.
+ * off narrows the next call of a running task. The opt-in route is behind the
+ * AI gate, so the switch is disabled and explained while AI is off.
  */
 
+import { AiDisabledTip } from "@/components/ui/ai-disabled";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { useSetA2APartnerFleetReads, type A2AExposureStatus } from "@/hooks/api/useA2AApi";
+import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { useFormatter } from "@/i18n";
 
 export function A2APartnerFleetReads({ agentId, exposure }: { agentId: string; exposure: A2AExposureStatus }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const setFleetReads = useSetA2APartnerFleetReads(agentId);
+  const aiOff = useAiActionDisabled();
   const enabled = exposure.partner_fleet_reads === true;
   const label = t_i18n("Partners read this agent's fleet");
 
@@ -43,17 +47,19 @@ export function A2APartnerFleetReads({ agentId, exposure }: { agentId: string; e
           {t_i18n("A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.")}
         </p>
       </div>
-      <Switch
-        aria-label={label}
-        checked={enabled}
-        disabled={setFleetReads.isPending}
-        onCheckedChange={(next) =>
-          setFleetReads.mutate(next, {
-            onError: (e: Error) =>
-              toast({ title: t_i18n("Could not change the partner fleet reads"), description: e.message, variant: "error" }),
-          })
-        }
-      />
+      <AiDisabledTip>
+        <Switch
+          aria-label={label}
+          checked={enabled}
+          disabled={setFleetReads.isPending || aiOff}
+          onCheckedChange={(next) =>
+            setFleetReads.mutate(next, {
+              onError: (e: Error) =>
+                toast({ title: t_i18n("Could not change the partner fleet reads"), description: e.message, variant: "error" }),
+            })
+          }
+        />
+      </AiDisabledTip>
     </div>
   );
 }

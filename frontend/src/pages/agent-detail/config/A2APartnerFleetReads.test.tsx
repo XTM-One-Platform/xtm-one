@@ -1,6 +1,7 @@
 // The #2202 opt-in of a live A2A exposure: the switch reflects the exposure,
 // a flip is one PUT on the exposure's opt-in route, and the answer lands in
-// the shared exposure cache entry.
+// the shared exposure cache entry. The route is AI-gated, so the switch is
+// disabled while AI is off.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
@@ -14,12 +15,28 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }));
 
+const ai = vi.hoisted(() => ({ off: false }));
+vi.mock("@/hooks/useAiDisabled", () => ({
+  useAiActionDisabled: () => ai.off,
+  useAiDisabledReason: () => (ai.off ? "AI is disabled on this platform." : null),
+}));
+
 const put = vi.mocked(api.put);
 const AGENT = "agent-1";
 
 describe("A2APartnerFleetReads", () => {
   beforeEach(() => {
     put.mockReset();
+    ai.off = false;
+  });
+
+  it("is disabled while AI is off and sends nothing", () => {
+    ai.off = true;
+    renderWithProviders(<A2APartnerFleetReads agentId={AGENT} exposure={{ exposed: true }} />);
+    const toggle = screen.getByRole("switch", { name: "Partners read this agent's fleet" });
+    expect(toggle).toBeDisabled();
+    fireEvent.click(toggle);
+    expect(put).not.toHaveBeenCalled();
   });
 
   it("shows the opt-in off by default", () => {
