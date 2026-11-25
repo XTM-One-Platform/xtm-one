@@ -150,6 +150,24 @@ def test_the_gap_sorting_covers_prevention_detection_and_logging_and_root_causes
     assert {"no_rule", "no_log", "broken_collector"} <= set(gap["root_cause"]["enum"])
 
 
+def test_no_platform_is_a_configuration_gap_never_a_per_host_remediation():
+    """#2378: an expectation scoped to platform types the tenant never registered is
+    ``no_platform``, left out of the coverage rates, grouped per platform type."""
+    from pathlib import Path
+
+    assert "no_platform" in m2.ROOT_CAUSES
+    gap = m2._GAP_SCHEMA["properties"]["gaps"]["items"]["properties"]
+    assert "no_platform" in gap["root_cause"]["enum"]
+    assert "unmeasurable" in m2._GAP_SCHEMA["properties"]["coverage"]["properties"]
+    prompt = next(a for a in m2.DETECTION_DESK_ASSIGNMENTS if a["name"] == "Simulation finished")["prompt"]
+    assert "no_platform gap is a configuration gap, never a per-host remediation" in prompt
+    assert m2.CONFIGURATION_PREFIX in prompt
+    assert m2.CONFIGURATION_PREFIX.startswith(m2.REMEDIATION_PREFIX)
+    personas = Path(m2.__file__).parent / "seed_data" / "agent_persona"
+    analyst = (personas / "openaev-coverage-gap-analyst.md").read_text(encoding="utf-8")
+    assert "`no_platform`" in analyst and "denominator" in analyst
+
+
 def _not_executed_replay() -> dict:
     """An analyst answer for one simulation where some targets never ran the payload (#2380)."""
     return {

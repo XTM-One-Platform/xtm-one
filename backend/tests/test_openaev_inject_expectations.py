@@ -22,7 +22,10 @@ import json
 import pytest
 
 from app.integrations.providers.openaev import _common, build_tools
-from app.integrations.providers.openaev.core import _contract_default_expectations
+from app.integrations.providers.openaev.core import (
+    _contract_default_expectations,
+    _expectations_for_registered_platforms,
+)
 from app.tools.base import CallableToolExecutor, ToolCall
 
 BASE = "https://demo.openaev.io"
@@ -136,6 +139,9 @@ class _Recorder:
         self.bodies: list[dict] = []
         self.available_expectations: list = []
         self.contract_error: str | None = None
+        #: The registered security platform types; None makes the read fail.
+        self.security_platform_types: list[str] | None = None
+        self.platform_reads = 0
 
     async def __call__(self, client, method, url, provider, action, **kwargs):
         if url == f"{BASE}/api/settings":
@@ -143,6 +149,14 @@ class _Recorder:
         if url == f"{BASE}/api/me/tenants":
             # No membership route: an OpenAEV without default-tenant scoping.
             return None, "OpenAEV error (HTTP 404): Not Found"
+        if "/security_platforms/search" in url:
+            self.platform_reads += 1
+            if self.security_platform_types is None:
+                return None, "OpenAEV error (HTTP 503): Service Unavailable"
+            return (
+                _Resp({"content": [{"security_platform_type": t} for t in self.security_platform_types]}),
+                None,
+            )
         if "/api/injector_contracts/" in url and method == "get":
             # The expectations default reads what the contract offers.
             if self.contract_error:
@@ -454,3 +468,105 @@ async def test_empty_expectations_list_is_rejected(monkeypatch):
 
     assert "cannot be an empty list" in out
     assert recorder.bodies == []
+
+
+# ── #2378: expectations no registered security platform can meet ──────────
+
+#: The Nuclei CVE contract of OpenAEV-Platform/injectors
+#: (``nuclei/nuclei/nuclei_contracts/nuclei_contracts.py``): DETECTION (XDR,
+#: SIEM, NDR), PREVENTION (XDR, NDR) and VULNERABILITY, all predefined.
+NUCLEI_CVE_CONTRACT = [
+    _expectation("DETECTION", predefined=True, platforms=["XDR", "SIEM", "NDR"]),
+    _expectation("PREVENTION", predefined=True, platforms=["XDR", "NDR"]),
+    _expectation("VULNERABILITY", predefined=True),
+]
+
+
+def test_helper_keeps_only_vulnerability_on_an_edr_and_scanner_tenant():
+    kept, left_out = _expectations_for_registered_platforms(
+        _contract_content(NUCLEI_CVE_CONTRACT), {"EDR", "VULNERABILITY_SCANNER"}
+    )
+    assert _types(kept) == ["VULNERABILITY"]
+    assert _types(left_out) == ["DETECTION", "PREVENTION"]
+
+
+def test_helper_keeps_the_full_set_when_an_expected_type_is_registered():
+    kept, left_out = _expectations_for_registered_platforms(_contract_content(NUCLEI_CVE_CONTRACT), {"XDR"})
+    assert _types(kept) == ["DETECTION", "PREVENTION", "VULNERABILITY"]
+    assert left_out == []
+
+
+def test_helper_decides_nothing_when_the_platforms_are_unreadable():
+    assert _expectations_for_registered_platforms(_contract_content(NUCLEI_CVE_CONTRACT), None) == ([], [])
+
+
+def test_helper_keeps_an_unscoped_expectation():
+    # An empty platform scope means "any security platform": never left out.
+    content = _contract_content([_expectation("DETECTION", predefined=True)])
+    kept, left_out = _expectations_for_registered_platforms(content, set())
+    assert _types(kept) == ["DETECTION"] and left_out == []
+
+
+@pytest.mark.asyncio
+async def test_omitting_drops_expectations_no_registered_platform_can_meet(monkeypatch):
+    recorder, executor = _install(monkeypatch)
+    recorder.available_expectations = NUCLEI_CVE_CONTRACT
+    recorder.security_platform_types = ["EDR", "VULNERABILITY_SCANNER"]
+
+    out = await _add(executor)
+
+    written = _content(recorder)["expectations"]
+    assert _types(written) == ["VULNERABILITY"]
+    assert written[0]["expectation_score"] == 100.0
+    assert "Expectations left out" in out
+    assert "DETECTION (expects XDR, SIEM, NDR)" in out and "PREVENTION (expects XDR, NDR)" in out
+    assert "EDR, VULNERABILITY_SCANNER" in out
+
+
+@pytest.mark.asyncio
+async def test_omitting_keeps_the_predefined_set_when_a_platform_matches(monkeypatch):
+    recorder, executor = _install(monkeypatch)
+    recorder.available_expectations = NUCLEI_CVE_CONTRACT
+    recorder.security_platform_types = ["XDR"]
+
+    out = await _add(executor)
+
+    assert "expectations" not in _content(recorder)
+    assert "left out" not in out
+
+
+@pytest.mark.asyncio
+async def test_omitting_keeps_the_predefined_set_when_the_platforms_are_unreadable(monkeypatch):
+    recorder, executor = _install(monkeypatch)
+    recorder.available_expectations = NUCLEI_CVE_CONTRACT
+    recorder.security_platform_types = None
+
+    out = await _add(executor)
+
+    assert "expectations" not in _content(recorder)
+    assert "left out" not in out
+
+
+@pytest.mark.asyncio
+async def test_an_inject_with_nothing_measurable_keeps_its_set_and_says_why(monkeypatch):
+    # An empty list would make OpenAEV seed the predefined set again.
+    recorder, executor = _install(monkeypatch)
+    recorder.available_expectations = HTTP_REQUEST_CONTRACT
+    recorder.security_platform_types = ["EDR"]
+
+    out = await _add(executor)
+
+    assert "expectations" not in _content(recorder)
+    assert "cannot be met" in out
+
+
+@pytest.mark.asyncio
+async def test_explicit_expectations_never_read_the_platforms(monkeypatch):
+    recorder, executor = _install(monkeypatch)
+    recorder.available_expectations = NUCLEI_CVE_CONTRACT
+    recorder.security_platform_types = ["EDR"]
+
+    await _add(executor, expectations=["PREVENTION", "DETECTION"])
+
+    assert _types(_content(recorder)["expectations"]) == ["PREVENTION", "DETECTION"]
+    assert recorder.platform_reads == 0
