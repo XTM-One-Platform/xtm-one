@@ -342,7 +342,8 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
         "- **Weekly validation plan**: Mondays 06:00.\n"
         "- **Weekly coverage report**: Fridays 08:00.\n"
         "- **Re-test due**: a work item keyed `openaev:detection-desk:retest:` once a remediation is done.\n"
-        "- **Gate answered**: a person answers a launch approval; the simulation is launched or the refusal recorded."
+        "- **Gate answered**: a person answers a launch approval or a remediation; the simulation is launched, "
+        "the re-test scheduled, or the refusal recorded."
     ),
     "flow": (
         "1. Plan: the orchestrator picks the techniques with no recent result against the primary assets; the "
