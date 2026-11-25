@@ -21781,5 +21781,18 @@
   "Rows the first run creates in {platform}": "Filas que la primera ejecución crea en {platform}",
   "Observer only": "Solo observador",
   "This automation watches the objects of its events without working them: a CTEM case it hears is not shown as worked by it.": "Esta automatización observa los objetos de sus eventos sin trabajarlos: un caso CTEM que recibe no se muestra como trabajado por ella.",
-  "{count, plural, one {# automation that can work this case is switched off} other {# automations that can work this case are switched off}}": "{count, plural, one {# automatización que puede trabajar este caso está desactivada} other {# automatizaciones que pueden trabajar este caso están desactivadas}}"
+  "{count, plural, one {# automation that can work this case is switched off} other {# automations that can work this case are switched off}}": "{count, plural, one {# automatización que puede trabajar este caso está desactivada} other {# automatizaciones que pueden trabajar este caso están desactivadas}}",
+  "Ticket": "Ticket",
+  "Applied change": "Cambio aplicado",
+  "Ticket and applied change": "Ticket y cambio aplicado",
+  "Indicators blocked": "Indicadores bloqueados",
+  "Detection rule deployed": "Regla de detección desplegada",
+  "Configuration changed": "Configuración modificada",
+  "Control restored": "Control restablecido",
+  "Pushed": "Enviado",
+  "Returned ids": "Identificadores devueltos",
+  "How to revert": "Cómo revertir",
+  "Applied changes": "Cambios aplicados",
+  "Applied a change through an integration": "Aplicó un cambio mediante una integración",
+  "How the fix is carried out once decided: a ticket for the owner, a change applied through a bound integration after the production change gate, or both.": "Cómo se aplica la corrección una vez decidida: un ticket para el responsable, un cambio aplicado mediante una integración vinculada tras la aprobación de cambio en producción, o ambos."
 }
