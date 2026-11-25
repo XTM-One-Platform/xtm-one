@@ -21796,7 +21796,7 @@
   "Applied a change through an integration": "A appliqué un changement via une intégration",
   "How the fix is carried out once decided: a ticket for the owner, a change applied through a bound integration after the production change gate, or both.": "Comment le correctif est mis en œuvre une fois décidé : un ticket pour le responsable, un changement appliqué via une intégration liée après l'étape de changement en production, ou les deux.",
   "Coordination retention": "Rétention de la coordination",
-  "How long work items, shared state and worksets are kept once they are closed. 0 keeps them forever.": "Durée de conservation des work items, de l'état partagé et des worksets une fois clos. 0 les conserve indéfiniment.",
+  "How long work items, shared state, worksets and runs are kept once they are closed. 0 keeps them forever.": "Durée de conservation des work items, de l'état partagé, des worksets et des exécutions une fois clos. 0 les conserve indéfiniment.",
   "Closed work items": "Work items clos",
   "Closed work items (days)": "Work items clos (jours)",
   "Done and cancelled work items are deleted this many days after their last update.": "Les work items terminés et annulés sont supprimés ce nombre de jours après leur dernière mise à jour.",

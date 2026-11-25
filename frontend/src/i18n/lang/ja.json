@@ -21796,7 +21796,7 @@
   "Applied a change through an integration": "インテグレーション経由で変更を適用",
   "How the fix is carried out once decided: a ticket for the owner, a change applied through a bound integration after the production change gate, or both.": "決定後の修正の実施方法: 担当者へのチケット、本番変更ゲートの後に紐付けられたインテグレーション経由で適用する変更、またはその両方。",
   "Coordination retention": "コーディネーションの保持期間",
-  "How long work items, shared state and worksets are kept once they are closed. 0 keeps them forever.": "クローズ後のワークアイテム、共有状態、ワークセットの保持期間です。0 は無期限に保持します。",
+  "How long work items, shared state, worksets and runs are kept once they are closed. 0 keeps them forever.": "クローズ後のワークアイテム、共有状態、ワークセット、実行の保持期間です。0 は無期限に保持します。",
   "Closed work items": "クローズ済みワークアイテム",
   "Closed work items (days)": "クローズ済みワークアイテム（日）",
   "Done and cancelled work items are deleted this many days after their last update.": "完了およびキャンセル済みのワークアイテムは、最終更新からこの日数後に削除されます。",
