@@ -79,6 +79,9 @@ class PullRequestEvent:
     #: delivery does not say. A draft is not waiting on its merge yet.
     draft: bool | None = None
     url: str | None = None
+    #: Provider-specific facts the generic layer may quote verbatim. ``dequeued``:
+    #: ``queue_run_hint``, where the failing merge queue run is read (a removal on
+    #: failed checks), quoted in the wake and the surfaced note.
     extra: dict = field(default_factory=dict, hash=False, compare=False)
 
 

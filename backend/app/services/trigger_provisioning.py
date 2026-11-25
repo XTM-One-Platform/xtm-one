@@ -77,7 +77,9 @@ def provision_spec_error(trigger_type: object, trigger_config: object) -> str | 
     try:
         read_spec(trigger_config)
     except spec_error as exc:
-        return f"Invalid trigger_config: {exc}"
+        # A sentence of its own: the callers append "Nothing was saved." (#2195).
+        reason = str(exc).rstrip()
+        return f"Invalid trigger_config: {reason}{'' if reason.endswith(('.', '!', '?')) else '.'}"
     return None
 
 

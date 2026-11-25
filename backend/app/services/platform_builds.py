@@ -37,7 +37,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import case, literal, literal_column, select
+from sqlalchemy import case, literal, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -115,8 +115,83 @@ async def resolve_build_sha(version: str, git_sha: str | None) -> str:
 RELEASE_DEPLOYED_EVENT = "platform.release.deployed"
 
 
+def _same_build(version: str, git_sha: str, other_version: str, other_git_sha: str) -> bool:
+    """Whether two recorded builds are one, as :func:`is_build` reads it: a side without its commit matches on the
+    version alone. Pure."""
+    if version != other_version:
+        return False
+    return not git_sha or not other_git_sha or git_sha == other_git_sha
+
+
+#: How many of the newest builds the release claim reads: the running one, the rows of its sibling processes
+#: without a commit and the builds whose pods may still be draining.
+_CLAIM_ROWS = 20
+
+
+async def _claim_release(db: AsyncSession, *, now: datetime) -> dict[str, object] | None:
+    """Stamp ``released_at`` on the running build once its rollout is complete; the event payload, else ``None``.
+
+    The release is the build's, not its first boot's (#2214): a build first seen
+    minutes before a newer one booted was never the deployed build, and its
+    event started retests of a build nobody served. So the event waits until the
+    running build is the newest recorded one, was first seen at least
+    :data:`DRAIN_GRACE` ago, and no other build was seen within it (the
+    previous build's pods are gone: the rollout reads ``complete``). The
+    conditional update picks one process. The build before it is the last one
+    released, so a build superseded before it settled is covered by the next
+    event's range.
+    """
+    version, git_sha = running_build()
+    rows = (
+        (await db.execute(select(PlatformBuild).order_by(PlatformBuild.first_seen_at.desc()).limit(_CLAIM_ROWS)))
+        .scalars()
+        .all()
+    )
+    if not rows or not _same_build(rows[0].version, rows[0].git_sha, version, git_sha):
+        return None
+    own = [row for row in rows if _same_build(row.version, row.git_sha, version, git_sha)]
+    if any(row.released_at is not None for row in own):
+        return None
+    first_seen = min(_utc(row.first_seen_at) for row in own)
+    if now - first_seen < DRAIN_GRACE:
+        return None
+    if any(
+        now - _utc(row.last_seen_at) < DRAIN_GRACE
+        for row in rows
+        if not _same_build(row.version, row.git_sha, version, git_sha)
+    ):
+        return None
+    target = next((row for row in own if row.git_sha), own[0])
+    claimed = (
+        await db.execute(
+            update(PlatformBuild)
+            .where(PlatformBuild.id == target.id, PlatformBuild.released_at.is_(None))
+            .values(released_at=now)
+            .returning(PlatformBuild.id)
+        )
+    ).one_or_none()
+    if claimed is None:
+        return None
+    previous = (
+        await db.execute(
+            select(PlatformBuild.version, PlatformBuild.git_sha)
+            .where(PlatformBuild.released_at.is_not(None), PlatformBuild.id.not_in([row.id for row in own]))
+            .order_by(PlatformBuild.released_at.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+    return release_deployed_data(
+        version=target.version,
+        git_sha=target.git_sha,
+        first_seen_at=first_seen,
+        previous_version=previous.version if previous else None,
+        previous_git_sha=previous.git_sha if previous else None,
+    )
+
+
 async def _upsert_running_build(db: AsyncSession, *, now: datetime) -> dict | None:
-    """Upsert the running build; the ``platform.release.deployed`` payload when this call inserted it."""
+    """Upsert the running build; the ``platform.release.deployed`` payload when this call released it
+    (:func:`_claim_release`)."""
     version, git_sha = running_build()
     statement = (
         pg_insert(PlatformBuild)
@@ -125,28 +200,9 @@ async def _upsert_running_build(db: AsyncSession, *, now: datetime) -> dict | No
             constraint="uq_platform_builds_version_sha",
             set_={"last_seen_at": now},
         )
-        # ``xmax = 0`` on the returned row: this statement inserted it (a
-        # conflict update stamps xmax). The unique constraint picks one inserter.
-        .returning(PlatformBuild.first_seen_at, literal_column("(xmax = 0)").label("inserted"))
     )
-    row = (await db.execute(statement)).one_or_none()
-    deployed: dict | None = None
-    if row is not None and row.inserted:
-        previous = (
-            await db.execute(
-                select(PlatformBuild.version, PlatformBuild.git_sha)
-                .where((PlatformBuild.version != version) | (PlatformBuild.git_sha != git_sha))
-                .order_by(PlatformBuild.first_seen_at.desc())
-                .limit(1)
-            )
-        ).one_or_none()
-        deployed = release_deployed_data(
-            version=version,
-            git_sha=git_sha,
-            first_seen_at=_utc(row.first_seen_at),
-            previous_version=previous.version if previous else None,
-            previous_git_sha=previous.git_sha if previous else None,
-        )
+    await db.execute(statement)
+    deployed = await _claim_release(db, now=now)
     await db.commit()
     return deployed
 
@@ -190,7 +246,9 @@ def release_event_id(version: str, git_sha: str) -> str:
 async def record_running_build(db: AsyncSession) -> None:
     """Record the build this process booted with; never raises (a startup step).
 
-    The first boot of a build publishes ``platform.release.deployed`` after the commit.
+    Called at boot and on every refresh (:func:`touch_running_build_if_due`): the
+    call that finds the build's rollout complete publishes
+    ``platform.release.deployed`` after the commit, once per build.
     """
     try:
         deployed = await _upsert_running_build(db, now=datetime.now(UTC))
@@ -348,6 +406,9 @@ ROLLOUT_ROLLED_BACK = "rolled_back"
 #: The newest build by first boot is an ancestor of the one answering: the answering build is the deployed one,
 #: it only recorded itself later (its boot or its refresh comes after the older build's).
 ROLLOUT_SUPERSEDED = "superseded"
+#: The answering build has no row yet: a row is written at a build's first boot, so a build no row names booted
+#: after every recorded one and is the one rolling out (its own record comes with its next refresh).
+ROLLOUT_UNRECORDED = "unrecorded"
 
 #: How long after its last sighting a build still seen after a newer one's first boot counts as draining: two
 #: ``last_seen_at`` refreshes (``TOUCH_INTERVAL_SECONDS``, paced by the 60-second scheduler tick) and slack, so
@@ -383,6 +444,11 @@ class Rollout:
             return (
                 f"rollout of {self.newest.label} started {started}; the previous build {self.previous.label} was "
                 f"still seen at {self.previous.last_seen_at.isoformat()} and may still be draining"
+            )
+        if self.state == ROLLOUT_UNRECORDED:
+            return (
+                f"rollout in progress: {self.answered_by} answers and is newer than every recorded build (its row "
+                f"is not written yet); the newest recorded build is {self.newest.label}, first seen {started}"
             )
         if self.state == ROLLOUT_SUPERSEDED:
             return (
@@ -433,6 +499,10 @@ def rollout(
     true (the answering build's commit contains the newest one's,
     :func:`running_carries`) makes a newest build that is not the one answering
     ``superseded``, never a rollout in progress or a rollback.
+
+    ``unrecorded`` when no window is the answering build: a build records
+    itself at its first boot, so one no row names booted after every recorded
+    build and is newer than the newest, never an older build "still serving".
     """
     version, git_sha = running if running is not None else running_build()
     answered_by = release_label(version, git_sha)
@@ -442,6 +512,8 @@ def rollout(
     previous = windows[-2] if len(windows) > 1 else None
     moment = now or datetime.now(UTC)
     if not is_build(newest, version, git_sha):
+        if not any(is_build(window, version, git_sha) for window in windows):
+            return Rollout(ROLLOUT_UNRECORDED, newest, answered_by, previous)
         if running_carries_newest:
             return Rollout(ROLLOUT_SUPERSEDED, newest, answered_by, previous)
         state = ROLLOUT_IN_PROGRESS if moment - newest.last_seen_at < DRAIN_GRACE else ROLLOUT_ROLLED_BACK

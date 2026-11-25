@@ -489,6 +489,17 @@ def build_sub_agent_tools(
         """
         return task_result_file_ids(payload or {})
 
+    def _child_run_note(payload: dict | None) -> str:
+        """``", run <id>"`` naming the task's own run (``get_run`` reads it), or ``""``.
+
+        A parent that records what a delegate found (a case note, a ticket) cites
+        this run, not its own: the audit trail then leads to the run that did the work.
+        """
+        run_id = str((payload or {}).get("run_id") or "").strip()
+        if not run_id or run_id == str((payload or {}).get("task_id") or ""):
+            return ""
+        return f", run {run_id}"
+
     async def _with_result_files(text: str, file_ids: list[str]) -> str:
         """Register the files behind *file_ids* in the parent's FileContext.
 
@@ -547,7 +558,11 @@ def build_sub_agent_tools(
             result = await get_task_result(db, tid, user_id)
             if not result:
                 parts.append(f"{tid[:12]}: not found")
-            elif result["status"] == "failed":
+                continue
+            # The child's own run (#2240): a verdict the parent records cites the
+            # run that produced it, never the parent's run.
+            run_note = _child_run_note(result)
+            if result["status"] == "failed":
                 # A failed task's partial output (the batches written before
                 # the deadline) is handed over like a completed one's:
                 # for a parent with no conversation there is no wake to carry
@@ -556,7 +571,7 @@ def build_sub_agent_tools(
                 file_ids = _result_file_ids(result)
                 files_note = f", {len(file_ids)} file(s) produced" if file_ids else ""
                 parts.append(
-                    f"{tid[:12]}: failed{files_note}\n"
+                    f"{tid[:12]}: failed{files_note}{run_note}\n"
                     f"  Error: {error[:300].replace(chr(10), ' ')}"
                 )
                 finished_file_ids.extend(file_ids)
@@ -577,7 +592,7 @@ def build_sub_agent_tools(
                     else ""
                 )
                 parts.append(
-                    f"{tid[:12]}: completed ({len(text):,} chars{files_note})\n"
+                    f"{tid[:12]}: completed ({len(text):,} chars{files_note}){run_note}\n"
                     f"  Preview: {preview}...{paging_note}"
                 )
                 finished_file_ids.extend(file_ids)
@@ -599,10 +614,11 @@ def build_sub_agent_tools(
         result = await get_task_result(db, task_id, user_id)
         if not result:
             return f"Task {task_id} not found."
+        run_note = _child_run_note(result)
         if result["status"] == "failed":
             # The failure text plus whatever the task wrote before it failed -
             # a partial export is still the parent's to check.
-            text = f"Task failed: {result.get('error') or 'no error recorded'}"
+            text = f"Task failed: {result.get('error') or 'no error recorded'}{run_note}"
             return await _with_result_files(text, _result_file_ids(result))
         if result["status"] != "completed":
             return f"Task is still {result['status']}. Check back later."
