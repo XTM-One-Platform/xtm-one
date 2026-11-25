@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -9,7 +10,7 @@ from typing import Any
 import pytest
 
 from app.api.v1.integration_catalog import PROVIDER_CATALOG
-from app.services import event_poller, opencrq_job_events
+from app.services import event_coalescing, event_poller, opencrq_job_events
 
 
 class _Redis:
@@ -182,6 +183,49 @@ def test_a_job_that_processed_nothing_is_no_event() -> None:
     assert opencrq_job_events.coalesce_events([noop], "finding_score_changed", base_url="", tenant_id="t") == []
     unknown = {**_run("u", "2026-11-06T07:00:00Z"), "processedTotal": None}
     assert len(opencrq_job_events.coalesce_events([unknown], "finding_score_changed", base_url="", tenant_id="t")) == 1
+
+
+def _score_run(run_id: str, changed: int | None) -> dict[str, Any]:
+    run = {
+        **_run(run_id, "2026-11-25T13:00:00Z", kind="finding-score-recompute"),
+        "processedTotal": 40,
+        "expectedTotal": 40,
+    }
+    if changed is not None:
+        summary = {
+            "scored": 40,
+            "changedFindings": changed,
+            "changedPostures": 0,
+            "changedUniqueFindings": 0,
+            "changedCount": changed,
+        }
+        run["currentStep"] = json.dumps(summary)
+    return run
+
+
+def test_a_finding_score_run_that_changed_nothing_is_no_event() -> None:
+    """OpenCRQ #232 reports changedCount: a recompute that moved no score is dropped (#2169)."""
+    still = _score_run("s0", 0)
+    assert opencrq_job_events.coalesce_events([still], "finding_score_changed", base_url="", tenant_id="t") == []
+    # An OpenCRQ that does not report it yet keeps every run, as before.
+    (older,) = opencrq_job_events.coalesce_events(
+        [_score_run("s1", None)], "finding_score_changed", base_url="", tenant_id="t"
+    )
+    assert "changed_count" not in older and "changed_count" not in older["entity"]
+
+
+def test_the_changed_count_adds_up_over_a_page_and_is_a_filter_key() -> None:
+    runs = [_score_run("s1", 3), _score_run("s2", 0), _score_run("s3", 2)]
+    (event,) = opencrq_job_events.coalesce_events(runs, "finding_score_changed", base_url="", tenant_id="t")
+    assert [c["id"] for c in event["covers"]] == ["s1", "s3"]
+    assert event["changed_count"] == event["entity"]["changed_count"] == 5
+    assert [c["changed_count"] for c in event["covers"]] == [3, 2]
+    assert "changed_count" in opencrq_job_events.FILTER_KEYS
+    (later,) = opencrq_job_events.coalesce_events(
+        [_score_run("s4", 1)], "finding_score_changed", base_url="", tenant_id="t"
+    )
+    merged = event_coalescing.merged_payload(event, later)
+    assert merged["changed_count"] == merged["entity"]["changed_count"] == 6
 
 
 def test_a_kind_that_never_reports_progress_is_kept_at_zero() -> None:
