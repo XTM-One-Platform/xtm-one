@@ -188,8 +188,8 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
     triage = ToolDefinition(
         name=TRIAGE_TOOL,
         description=(
-            "Dismiss, restore or re-check CTEM signals by ids or a filter; a signal that opened "
-            "a case is skipped. dry_run previews each signal, writes nothing."
+            "Dismiss, restore or re-check CTEM signals by ids or filter; case-opening signals "
+            "are skipped. dry_run: preview only."
         ),
         input_schema={
             "type": "object",
