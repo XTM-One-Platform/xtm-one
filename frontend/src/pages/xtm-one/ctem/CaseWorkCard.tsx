@@ -10,7 +10,9 @@
  *   fleet, and "Switch on";
  * - a run works the case, or failed: the agent, its fleet, the run state and
  *   the run;
- * - automations are on and wait for the next case event: who they are.
+ * - automations are on and wait for the next case event: who they are, and
+ *   how many that could also work it are switched off.
+ * An observer of the case events (`trigger_config.role`, #2054) is never named.
  * Calls to action are DS buttons; no inline link in the secondary colour.
  */
 import { useState, type ComponentProps } from "react";
@@ -206,14 +208,49 @@ function CaseAutomationAgentDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Automations exist on the case events but every one is off. */
-function AutomationsOff({ automations, loopFleetId, onStart }: { automations: CaseAutomation[]; loopFleetId: string | null; onStart?: () => void }) {
+/** The switched-off automations of a case, each by name with its Switch on button. */
+function SwitchOnRows({ automations, testId }: { automations: CaseAutomation[]; testId: string }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const update = useUpdateAssignment();
   // Switching an automation on is a gated assignment write: disabled with AI off.
   const aiOff = useAiActionDisabled();
   const unknownAgent = t_i18n("An agent you cannot see");
+  return (
+    <ul className="flex w-full max-w-3xl flex-col gap-2 text-left" data-testid={testId}>
+      {automations.map((a) => (
+        <li key={a.id} className="flex items-center justify-between gap-3 rounded-sm border border-elevation-subtle-soft px-4 py-3">
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate font-medium content-base">{a.name}</span>
+            <span className="truncate content-compact text-default-secondary">{workerLabel(a, unknownAgent)}</span>
+          </span>
+          <AiDisabledTip>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={update.isPending || aiOff}
+              onClick={() =>
+                update.mutate(
+                  { id: a.id, enabled: true },
+                  {
+                    onSuccess: () => toast({ title: t_i18n("Automation switched on"), variant: "success" }),
+                    onError: (err) => toast({ title: err.message, variant: "error" }),
+                  },
+                )
+              }
+            >
+              {t_i18n("Switch on")}
+            </Button>
+          </AiDisabledTip>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Automations exist on the case events but every one is off. */
+function AutomationsOff({ automations, loopFleetId, onStart }: { automations: CaseAutomation[]; loopFleetId: string | null; onStart?: () => void }) {
+  const { t_i18n } = useFormatter();
   return (
     <Card data-testid="ctem-case-work" data-state="off">
       <CardContent className="flex flex-col items-center gap-6 px-6 py-10 text-center">
@@ -228,34 +265,7 @@ function AutomationsOff({ automations, loopFleetId, onStart }: { automations: Ca
             })}
           </p>
         </div>
-        <ul className="flex w-full max-w-3xl flex-col gap-2 text-left" data-testid="ctem-case-work-off-list">
-          {automations.map((a) => (
-            <li key={a.id} className="flex items-center justify-between gap-3 rounded-sm border border-elevation-subtle-soft px-4 py-3">
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate font-medium content-base">{a.name}</span>
-                <span className="truncate content-compact text-default-secondary">{workerLabel(a, unknownAgent)}</span>
-              </span>
-              <AiDisabledTip>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={update.isPending || aiOff}
-                  onClick={() =>
-                    update.mutate(
-                      { id: a.id, enabled: true },
-                      {
-                        onSuccess: () => toast({ title: t_i18n("Automation switched on"), variant: "success" }),
-                        onError: (err) => toast({ title: err.message, variant: "error" }),
-                      },
-                    )
-                  }
-                >
-                  {t_i18n("Switch on")}
-                </Button>
-              </AiDisabledTip>
-            </li>
-          ))}
-        </ul>
+        <SwitchOnRows automations={automations} testId="ctem-case-work-off-list" />
         <CaseWorkChoices loopFleetId={loopFleetId} onStart={onStart} />
       </CardContent>
     </Card>
@@ -275,6 +285,7 @@ function WorkedBy({ work }: { work: Extract<CaseWork, { kind: "running" | "faile
       ? workerLabel(work.automations[0], unknownAgent)
       : unknownAgent;
   const more = work.kind === "on" ? work.automations.length - 1 : 0;
+  const switchedOff = work.kind === "on" ? work.off : [];
   const queued = run && (run.status === "pending" || run.status === "queued");
   const state =
     work.kind === "failed"
@@ -286,27 +297,39 @@ function WorkedBy({ work }: { work: Extract<CaseWork, { kind: "running" | "faile
         : t_i18n("Waits for the next case event.");
   return (
     <Card data-testid="ctem-case-work" data-state={work.kind}>
-      <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
-        <span className="flex min-w-0 items-center gap-3">
-          <Icon name="bot" size={20} className="shrink-0 text-default-secondary" />
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate font-medium content-base">
-              {t_i18n("Worked by {who}", { who })}
-              {more > 0 && ` ${t_i18n("{count, plural, one {and # more} other {and # more}}", { count: more })}`}
-            </span>
-            <span
-              className={work.kind === "failed" ? "content-compact text-feedback-error-primary" : "content-compact text-default-secondary"}
-              data-testid="ctem-case-work-state"
-            >
-              {state}
+      <CardContent className="flex flex-col gap-4 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <span className="flex min-w-0 items-center gap-3">
+            <Icon name="bot" size={20} className="shrink-0 text-default-secondary" />
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate font-medium content-base">
+                {t_i18n("Worked by {who}", { who })}
+                {more > 0 && ` ${t_i18n("{count, plural, one {and # more} other {and # more}}", { count: more })}`}
+              </span>
+              <span
+                className={work.kind === "failed" ? "content-compact text-feedback-error-primary" : "content-compact text-default-secondary"}
+                data-testid="ctem-case-work-state"
+              >
+                {state}
+              </span>
             </span>
           </span>
-        </span>
-        {run && (
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => navigate(`/operations/executions/${run.id}`)}>
-            <Icon name="external-link" size={16} />
-            {t_i18n("Open the run")}
-          </Button>
+          {run && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => navigate(`/operations/executions/${run.id}`)}>
+              <Icon name="external-link" size={16} />
+              {t_i18n("Open the run")}
+            </Button>
+          )}
+        </div>
+        {switchedOff.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <span className="content-compact font-medium text-default-secondary" data-testid="ctem-case-work-switched-off">
+              {t_i18n("{count, plural, one {# automation that can work this case is switched off} other {# automations that can work this case are switched off}}", {
+                count: switchedOff.length,
+              })}
+            </span>
+            <SwitchOnRows automations={switchedOff} testId="ctem-case-work-switched-off-list" />
+          </div>
         )}
       </CardContent>
     </Card>
