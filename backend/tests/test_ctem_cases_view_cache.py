@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.services import ctem_cases as rules
 from app.services import ctem_cases_view as view_of
 
 
@@ -89,6 +90,73 @@ async def test_forget_view_still_drops_the_callers_view_after_a_bump(redis, read
     await view_of.forget_view("u-1", "cyber")
     await view_of.viewer_view(None, "u-1", "cyber")
     assert reads == ["u-1", "u-1"]
+
+
+@pytest.fixture
+def revalidations(monkeypatch):
+    started: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(view_of, "_revalidate", lambda u, v, g: started.append((u, v, g)))
+    return started
+
+
+@pytest.fixture
+def judged(monkeypatch):
+    """A source whose view judged ``opencti:a`` (readable) and ``openaev:b`` (product down)."""
+    calls: list[str] = []
+
+    async def read_view(db, user_id, vertical):
+        calls.append(user_id)
+        issue = rules.SourceIssue(source="opencti", external_id="a", name="CVE-1")
+        return view_of.ViewerView(issues={"opencti:a": issue}, unavailable={"openaev:b"})
+
+    async def signal_members(db, user_id):
+        return set()
+
+    async def source_signal_members(db, seen):
+        return set()
+
+    monkeypatch.setattr("app.services.ctem_cases_source.read_view", read_view)
+    monkeypatch.setattr(view_of, "signal_members", signal_members)
+    monkeypatch.setattr(view_of, "source_signal_members", source_signal_members)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_a_case_read_after_a_bump_answers_from_the_older_view_and_rebuilds_in_background(
+    redis, judged, revalidations
+):
+    await view_of.viewer_view(None, "u-1", "cyber")
+    await view_of.forget_all_views("cyber")
+    phases = view_of.start_timing()
+    view = await view_of.viewer_view(None, "u-1", "cyber", members=["opencti:a", "openaev:b", "signal:s"])
+    assert judged == ["u-1"]  # no cold source read on the request
+    assert view.sees("opencti:a") and view.sees("openaev:b")
+    assert "cache-stale" in phases
+    assert revalidations == [("u-1", "cyber", "1")]
+
+
+@pytest.mark.asyncio
+async def test_a_member_the_older_view_never_judged_waits_for_the_current_view(redis, judged, revalidations):
+    await view_of.viewer_view(None, "u-1", "cyber")
+    await view_of.forget_all_views("cyber")
+    await view_of.viewer_view(None, "u-1", "cyber", members=["opencti:a", "opencti:new"])
+    assert judged == ["u-1", "u-1"] and revalidations == []
+
+
+@pytest.mark.asyncio
+async def test_a_read_without_members_never_takes_the_older_view(redis, judged, revalidations):
+    await view_of.viewer_view(None, "u-1", "cyber")
+    await view_of.forget_all_views("cyber")
+    await view_of.viewer_view(None, "u-1", "cyber")  # a change, the list: the current generation
+    assert judged == ["u-1", "u-1"] and revalidations == []
+
+
+@pytest.mark.asyncio
+async def test_another_viewers_older_view_is_never_served(redis, judged, revalidations):
+    await view_of.viewer_view(None, "u-1", "cyber")
+    await view_of.forget_all_views("cyber")
+    await view_of.viewer_view(None, "u-2", "cyber", members=["opencti:a"])
+    assert judged == ["u-1", "u-2"] and revalidations == []
 
 
 @pytest.mark.asyncio
