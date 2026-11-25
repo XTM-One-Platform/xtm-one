@@ -603,8 +603,53 @@ def inventory_version_counts(
     return out
 
 
-#: Product labels per grouped inventory read of :func:`inventory_versions` (bounded bind parameters).
-_INVENTORY_LABELS_CHUNK = 100
+#: Product keys per grouped inventory read of :func:`inventory_versions` (bounded bind parameters).
+_INVENTORY_KEYS_CHUNK = 500
+
+
+def matching_product_keys(stored: Iterable[str], labels: Iterable[str]) -> list[str]:
+    """The stored product keys a grouped inventory read of *labels* covers (pure, #2232).
+
+    A key is covered when it is one of a label's :func:`product_keys`, or ends with ``" " +`` the
+    label's whole key (a publisher-prefixed product, ``google llc google chrome``): the rule the
+    unanchored ``LIKE '% key'`` of the read applied in the database, which no index serves.
+    Each stored key is indexed by its word suffixes once, so the cost is linear in keys plus labels.
+    """
+    stored = list(dict.fromkeys(k for k in stored if k))
+    present = set(stored)
+    by_suffix: dict[str, list[str]] = {}
+    for key in stored:
+        rest = key
+        while " " in rest:
+            rest = rest.split(" ", 1)[1]
+            by_suffix.setdefault(rest, []).append(key)
+    out: dict[str, None] = {}
+    for label in dict.fromkeys(labels):
+        keys = product_keys(label)
+        if not keys:
+            continue
+        for key in keys:
+            if key in present:
+                out[key] = None
+        for key in by_suffix.get(keys[0], ()):
+            out[key] = None
+    return sorted(out)
+
+
+async def _covered_product_keys(db: AsyncSession, organization_id: uuid.UUID, labels: list[str]) -> list[str]:
+    """The organization's stored product keys *labels* cover (:func:`matching_product_keys`).
+
+    One distinct read on ``ix_organization_asset_software_org_product``, then the match in a thread.
+    """
+    soft = OrganizationAssetSoftware
+    stored = (
+        (await db.execute(select(soft.product_key).where(soft.organization_id == organization_id).distinct()))
+        .scalars()
+        .all()
+    )
+    return await asyncio.to_thread(matching_product_keys, [str(k) for k in stored], labels)
+
+
 #: Seconds an :func:`inventory_versions` answer is reused for the same organization and labels, so
 #: the cases list does not re-read and re-count the inventory on every read (#2072).
 INVENTORY_CACHE_TTL_SECONDS = 120.0
@@ -633,12 +678,9 @@ async def inventory_versions(
     os_assets: dict[str, list[dict[str, Any]]] = {}
     try:
         async with db.begin_nested():
-            for start in range(0, len(wanted), _INVENTORY_LABELS_CHUNK):
-                chunk = wanted[start : start + _INVENTORY_LABELS_CHUNK]
-                keys = sorted({k for label in chunk for k in product_keys(label)})
-                like = [
-                    soft.product_key.like("% " + _like_escape(product_keys(label)[0]), escape="\\") for label in chunk
-                ]
+            covered = await _covered_product_keys(db, organization_id, wanted)
+            for start in range(0, len(covered), _INVENTORY_KEYS_CHUNK):
+                keys = covered[start : start + _INVENTORY_KEYS_CHUNK]
                 rows.extend(
                     (
                         await db.execute(
@@ -648,7 +690,7 @@ async def inventory_versions(
                                 soft.version,
                                 func.array_agg(func.distinct(soft.asset_id)),
                             )
-                            .where(soft.organization_id == organization_id, or_(soft.product_key.in_(keys), *like))
+                            .where(soft.organization_id == organization_id, soft.product_key.in_(keys))
                             .group_by(soft.vendor_key, soft.product_key, soft.version)
                         )
                     ).all()
@@ -702,7 +744,8 @@ async def inventory_platforms(
 ) -> dict[str, tuple[str, ...]]:
     """Per product label, the platforms of every asset running it, when all are known (#2152).
 
-    One grouped read per chunk of labels, joined on the asset row (bind parameters are the
+    One grouped read per chunk of the stored product keys the labels cover
+    (:func:`matching_product_keys`), joined on the asset row (bind parameters are the
     organization and the product keys). ``{}`` when the store cannot be read: the CVE matcher then
     evaluates no platform, as before.
     """
@@ -714,12 +757,9 @@ async def inventory_platforms(
     rows: list[Any] = []
     try:
         async with db.begin_nested():
-            for start in range(0, len(wanted), _INVENTORY_LABELS_CHUNK):
-                chunk = wanted[start : start + _INVENTORY_LABELS_CHUNK]
-                keys = sorted({k for label in chunk for k in product_keys(label)})
-                like = [
-                    soft.product_key.like("% " + _like_escape(product_keys(label)[0]), escape="\\") for label in chunk
-                ]
+            covered = await _covered_product_keys(db, organization_id, wanted)
+            for start in range(0, len(covered), _INVENTORY_KEYS_CHUNK):
+                keys = covered[start : start + _INVENTORY_KEYS_CHUNK]
                 rows.extend(
                     (
                         await db.execute(
@@ -733,7 +773,7 @@ async def inventory_platforms(
                             .where(
                                 soft.organization_id == organization_id,
                                 asset.organization_id == organization_id,
-                                or_(soft.product_key.in_(keys), *like),
+                                soft.product_key.in_(keys),
                             )
                             .group_by(soft.vendor_key, soft.product_key)
                         )
