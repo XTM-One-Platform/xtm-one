@@ -63,7 +63,7 @@ class TestEditingIntentExpansion:
     def test_editing_intent_present_for_all_verticals(self, intent_name):
         """Every editing intent must be wired against every vertical
         assistant declared in ``_EDITING_INTENT_AGENTS`` exactly once
-        (CTI, AEV, GRC, FIMI today).
+        (CTI, AEV, FIMI today).
         """
         rows = [
             row

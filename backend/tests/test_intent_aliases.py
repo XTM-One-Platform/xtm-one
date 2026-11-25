@@ -47,11 +47,9 @@ def test_no_builtin_names_a_former_vertical_or_namespace() -> None:
 
 
 def test_the_opencrq_assistant_serves_the_crq_vertical() -> None:
+    """Bound only to what OpenCRQ sends: rebinding an intent it never sends changes nothing in OpenCRQ."""
     [agent] = [a for a in BUILTIN_AGENTS if a["slug"] == "opencrq-assistant"]
-    intents = agent["supported_intents"]
-    assert intents["global.assistant"] == {"crq": 5}
-    for capability in ("control_gap_analysis", "risk_scenario_generator", "assessment_summary"):
-        assert intents[f"crq.{capability}"] == {"crq": 0}
+    assert agent["supported_intents"] == {"global.assistant": {"crq": 5}}
 
 
 def test_registration_and_catalog_read_the_old_names_under_the_new_ones() -> None:
