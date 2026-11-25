@@ -219,31 +219,40 @@ def _aware(value: datetime | None) -> datetime | None:
     return value
 
 
-async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime]) -> set[str]:
-    """The case ids (keys of *asks*) a case automation ran since their last ask (*asks*: case id -> its time).
+async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime | None]) -> set[str]:
+    """The case ids (keys of *asks*) a case automation already takes (*asks*: case id -> its last ask, None: never asked).
 
-    A run of any fleet's "Case opened or reopened" automation about the case,
-    queued, running or ended, answers the ask; a run that failed or was
-    cancelled does not (the event got no answer from it), and neither does a
-    run that expired in the queue before any worker started it (``skipped``,
-    ``expired_not_started``, #2234): its case is asked again by the next pass.
+    A run of any fleet's "Case opened or reopened" automation about the case
+    that is still waiting or working (queued, pending, delayed, running,
+    awaiting a person) answers any ask, first or again, whatever its creation
+    time: its worker will run the case, a second ``ctem_case.opened`` would
+    only start a second run (#2319). A run that ended answers an ask made
+    before it was created. A run that failed or was cancelled does not (the
+    event got no answer from it), and neither does a run that expired in the
+    queue before any worker started it (``skipped``, ``expired_not_started``,
+    #2234): its case is asked again by the next pass.
     """
     if not asks:
         return set()
-    from sqlalchemy import or_
+    from sqlalchemy import ColumnElement, or_
 
     from app.models.assignment import Assignment, AssignmentRun
+    from app.services.assignment_engine import ACTIVE_RUN_STATUSES, QUEUED_RUN_STATUS
     from app.services.orchestration_adapters.assignment import EXPIRED_NOT_STARTED_STOP_REASON
 
+    waiting = (*ACTIVE_RUN_STATUSES, QUEUED_RUN_STATUS)
     object_id = AssignmentRun.trigger_context["object_id"].as_string()
-    since = min(asks.values())
+    asked_times = [at for at in asks.values() if at is not None]
+    in_window: ColumnElement[bool] = AssignmentRun.status.in_(waiting)
+    if asked_times:
+        in_window = or_(in_window, AssignmentRun.created_at >= min(asked_times))
     rows = (
         await db.execute(
-            select(object_id, AssignmentRun.created_at)
+            select(object_id, AssignmentRun.created_at, AssignmentRun.status)
             .join(Assignment, Assignment.id == AssignmentRun.assignment_id)
             .where(
                 Assignment.name == CTEM_CASE_ASSIGNMENT_NAME,
-                AssignmentRun.created_at >= since,
+                in_window,
                 AssignmentRun.status.not_in(("failed", "cancelled")),
                 or_(
                     AssignmentRun.stop_reason.is_(None),
@@ -254,8 +263,13 @@ async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime]) -> set
         )
     ).all()
     answered: set[str] = set()
-    for cid, created in rows:
-        asked_at = asks.get(str(cid))
+    for cid, created, status in rows:
+        if str(cid) not in asks:
+            continue
+        if status in waiting:
+            answered.add(str(cid))
+            continue
+        asked_at = asks[str(cid)]
         created = _aware(created)
         if asked_at is not None and created is not None and created >= asked_at:
             answered.add(str(cid))
@@ -311,6 +325,8 @@ async def plan_catch_up_asks(
     :data:`REASK_AFTER_SECONDS`, no case automation ran the case since that
     ask and fewer than :data:`MAX_ASKS` asks were made: the event of an
     ask whose delivery was lost (#2101) is raised again under a new event id.
+    No ask, first or again, is made while a case automation run of the case
+    is still queued or running (#2319, :func:`_answered_case_ids`).
     """
     now = now or datetime.now(UTC)
     fleets = await case_fleets(db)
@@ -348,7 +364,8 @@ async def plan_catch_up_asks(
         already[(str(cid), owner)] = (count + 1, at if last is None or (at is not None and at > last) else last)
     reask_before = now - timedelta(seconds=REASK_AFTER_SECONDS)
     picked: list[tuple[CtemCase, str, int]] = []
-    pending_asks: dict[str, datetime] = {}
+    # Case id -> its last ask (None: a first ask), each checked against the case runs (#2319).
+    pending_asks: dict[str, datetime | None] = {}
     for case in sorted(cases, key=_sort_key):
         owner = owner_of(case.trigger_path, fleets)
         if owner not in active or (only is not None and owner not in only):
@@ -361,6 +378,7 @@ async def plan_catch_up_asks(
             pending_asks[str(case.id)] = last
             picked.append((case, owner, count))
             continue
+        pending_asks[str(case.id)] = None
         picked.append((case, owner, 0))
     answered = await _answered_case_ids(db, pending_asks)
     picked = [p for p in picked if str(p[0].id) not in answered]

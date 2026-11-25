@@ -220,7 +220,7 @@ class _Db:
     """Answers the reads plan_catch_up makes: open cases, owner_requested events, case runs, open items.
 
     An ask given as ``(case id, owner)`` was made just now; ``(case id, owner, at)`` at *at*.
-    *runs* are ``(case id, created_at)`` of the case automation's runs.
+    *runs* are ``(case id, created_at)`` (an ended run) or ``(case id, created_at, status)`` of the case automation's runs.
     """
 
     def __init__(
@@ -228,10 +228,11 @@ class _Db:
         cases: list[Any],
         asked: list[tuple[Any, ...]],
         open_keys: list[str],
-        runs: list[tuple[str, datetime]] | None = None,
+        runs: list[tuple[Any, ...]] | None = None,
     ) -> None:
         now = datetime.now(UTC)
-        self.cases, self.open_keys, self.runs = cases, open_keys, runs or []
+        self.cases, self.open_keys = cases, open_keys
+        self.runs = [r if len(r) == 3 else (*r, "completed") for r in runs or []]
         self.asked = [a if len(a) == 3 else (*a, now) for a in asked]
         self.calls = 0
         self.statements: list[Any] = []
@@ -419,11 +420,56 @@ async def test_a_run_expired_before_start_does_not_answer_an_ask() -> None:
     assert "stop_reason" in sql and "expired_not_started" in sql
 
 
-async def test_a_run_before_the_ask_does_not_answer_it(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_an_ended_run_before_the_ask_does_not_answer_it(monkeypatch: pytest.MonkeyPatch) -> None:
     _fleets(monkeypatch, [_loop()])
     x = _case("P1", 1)
     db = _Db([x], asked=[(x.id, LOOP, _OLD)], open_keys=[], runs=[(str(x.id), _OLD - timedelta(hours=1))])
     assert await routing.plan_catch_up_asks(db, now=_NOW) == [(x, LOOP, 1)]  # type: ignore[arg-type]
+
+
+# -- No ask while the case's own run waits or works (#2319) ----------------------
+
+_WAITING = ("queued", "pending", "delayed", "running", "awaiting_human")
+
+
+@pytest.mark.parametrize("status", _WAITING)
+async def test_a_first_ask_is_not_made_while_the_case_run_waits_or_works(
+    monkeypatch: pytest.MonkeyPatch, status: str
+) -> None:
+    # Case x was opened, its ctem_case.opened run is queued or running and has no case item yet.
+    _fleets(monkeypatch, [_loop()])
+    x, y = _case("P1", 1), _case("P1", 2)
+    db = _Db([x, y], asked=[], open_keys=[], runs=[(str(x.id), _NOW - timedelta(minutes=5), status)])
+    assert await routing.plan_catch_up_asks(db, now=_NOW) == [(y, LOOP, 0)]  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("status", _WAITING)
+async def test_a_run_before_the_ask_still_waiting_or_working_answers_it(
+    monkeypatch: pytest.MonkeyPatch, status: str
+) -> None:
+    _fleets(monkeypatch, [_loop()])
+    x = _case("P1", 1)
+    db = _Db([x], asked=[(x.id, LOOP, _OLD)], open_keys=[], runs=[(str(x.id), _OLD - timedelta(hours=1), status)])
+    assert await routing.plan_catch_up_asks(db, now=_NOW) == []  # type: ignore[arg-type]
+
+
+async def test_the_runs_read_takes_every_waiting_run_whatever_its_age() -> None:
+    from sqlalchemy.dialects import postgresql
+
+    db = _Db([], asked=[], open_keys=[])
+    await routing._answered_case_ids(db, {str(uuid.uuid4()): None})  # type: ignore[arg-type]
+    dialect = postgresql.dialect()  # type: ignore[no-untyped-call]
+    sql = str(db.statements[-1].compile(dialect=dialect, compile_kwargs={"literal_binds": True}))
+    assert "'queued'" in sql and "'running'" in sql and "created_at >=" not in sql
+
+
+async def test_a_case_whose_only_run_ended_without_answer_is_still_asked(monkeypatch: pytest.MonkeyPatch) -> None:
+    # #2101 / #2234: failed, cancelled and expired-before-start runs are left out by the read;
+    # the fake hands none back, so first asks and re-asks are both made.
+    _fleets(monkeypatch, [_loop()])
+    x, y = _case("P1", 1), _case("P1", 2)
+    db = _Db([x, y], asked=[(y.id, LOOP, _OLD)], open_keys=[])
+    assert await routing.plan_catch_up_asks(db, now=_NOW) == [(x, LOOP, 0), (y, LOOP, 1)]  # type: ignore[arg-type]
 
 
 async def test_a_recent_ask_is_left_to_its_delivery(monkeypatch: pytest.MonkeyPatch) -> None:
