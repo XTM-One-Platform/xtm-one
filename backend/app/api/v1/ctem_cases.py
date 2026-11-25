@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -175,14 +175,18 @@ async def list_ctem_cases(
     asset: str | None = Query(default=None, max_length=300),
     limit: int = Query(default=50, ge=1, le=store.MAX_PAGE),
     offset: int = Query(default=0, ge=0),
+    *,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """One page of the cases the caller sees and their counts by state (the board and the list).
 
     ``asset`` keeps the cases on one asset (an issue the caller sees names it): the asset page's cases.
+    The ``Server-Timing`` header names the time of each phase (#1986).
     """
     _require_xtm_one()
+    phases = view_of.start_timing()
     vertical = normalize_vertical(vertical or getattr(user, "ctem_vertical", None))
     primary = await get_primary(db)
     if primary is None:
@@ -200,8 +204,10 @@ async def list_ctem_cases(
     # older than the interval gets one in the background; the list re-reads on its frame.
     from app.services import ctem_cases_refresh as refresh
 
-    await refresh.refresh_on_open(db, organization_id=primary.id, user_id=str(user.id), vertical=vertical)
-    cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
+    async with view_of.timed("refresh"):
+        await refresh.refresh_on_open(db, organization_id=primary.id, user_id=str(user.id), vertical=vertical)
+    async with view_of.timed("cases"):
+        cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
     view = await view_of.viewer_view(db, str(user.id), vertical)
     rows, counts = view_of.list_for_viewer(
         cases,
@@ -217,14 +223,15 @@ async def list_ctem_cases(
     # phase, the Kanban lays its columns out by it, a case waiting for decision says on whom.
     from app.services import ctem_case_delete as case_delete
 
-    history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
+    async with view_of.timed("history"):
+        history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
     for row in rows:
         row.update(view_of.case_position(history.get(uuid.UUID(row["id"]), []), view))
         # How the case came to be (#1723): the list's "Opened by" filter, the same reading as bulk-delete.
         row["opened_by"] = case_delete.origin(history.get(uuid.UUID(row["id"]), []))
         # Issues that name no asset: the inventory count, else "unknown" with its reason (#1694).
         version_history.with_asset_count(row, history.get(uuid.UUID(row["id"]), []))
-    return {
+    body = {
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
         "cases": rows,
@@ -240,6 +247,8 @@ async def list_ctem_cases(
         # When the cases were last recomputed, and a product that did not answer since (s.4.3).
         "freshness": await refresh.freshness(vertical),
     }
+    response.headers["Server-Timing"] = view_of.server_timing(phases)
+    return body
 
 
 async def _apply_update(
@@ -571,33 +580,43 @@ async def ctem_cases_overview(
 @router.get("/{case_id}")
 async def get_ctem_case(
     case_id: uuid.UUID,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """One case as the caller sees it: its fix, their visible issues, Restricted rows, its history."""
+    """One case as the caller sees it: its fix, their visible issues, Restricted rows, its history.
+
+    The ``Server-Timing`` header names the time of each phase and whether the
+    viewer's view came from the cache (#1986).
+    """
     _require_xtm_one()
+    phases = view_of.start_timing()
     vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
-    shown = await visible_case(db, case_id, str(user.id), vertical)
+    async with view_of.timed("case"):
+        shown = await visible_case(db, case_id, str(user.id), vertical)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
     (case, _, events), rendered = shown
-    # The audit trail (#1490): each event with its CTEM phase, autonomy class and actor, and the phases.
-    audit = await case_audit_view.audit_trail(db, rendered.get("history") or [], viewer_id=user.id)
-    # One resolved decision record per gate (#1518): the decision row joined with the gate events;
-    # the waiting gate events of the history carry the same record in ``answer``.
-    gate_records = await case_gates_view.gate_records(db, str(case.id), audit["history"], viewer_id=user.id)
-    return {
-        **rendered,
-        **audit,
-        "gates": gate_records,
-        # The versions the case's product runs on the assets (#1252), never a typed software version.
-        "running_versions": _with_history(await case_versions.for_case(db, case), events),
-        # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
-        "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
-        "ticketing": await ticketing.ticketing_target(db),
-        # The fleet that runs the case (#1390): {slug, name, active}; active false = no active fleet owns it.
-        "owner_fleet": await case_routing.owner_view(db, case),
-    }
+    async with view_of.timed("details"):
+        # The audit trail (#1490): each event with its CTEM phase, autonomy class and actor, and the phases.
+        audit = await case_audit_view.audit_trail(db, rendered.get("history") or [], viewer_id=user.id)
+        # One resolved decision record per gate (#1518): the decision row joined with the gate events;
+        # the waiting gate events of the history carry the same record in ``answer``.
+        gate_records = await case_gates_view.gate_records(db, str(case.id), audit["history"], viewer_id=user.id)
+        body = {
+            **rendered,
+            **audit,
+            "gates": gate_records,
+            # The versions the case's product runs on the assets (#1252), never a typed tech stack version.
+            "running_versions": _with_history(await case_versions.for_case(db, case), events),
+            # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
+            "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
+            "ticketing": await ticketing.ticketing_target(db),
+            # The fleet that runs the case (#1390): {slug, name, active}; active false = no active fleet owns it.
+            "owner_fleet": await case_routing.owner_view(db, case),
+        }
+    response.headers["Server-Timing"] = view_of.server_timing(phases)
+    return body
 
 
 @router.delete("/{case_id}")
