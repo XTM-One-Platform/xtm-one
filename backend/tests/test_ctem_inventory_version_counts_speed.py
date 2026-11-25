@@ -5,6 +5,10 @@ from __future__ import annotations
 
 import random
 import time
+import uuid
+from typing import Any
+
+import pytest
 
 from app.services import ctem_case_versions as cv
 
@@ -45,3 +49,20 @@ def test_linear_on_a_large_inventory():
     started = time.perf_counter()
     cv.inventory_version_counts(rows, {}, labels)
     assert time.perf_counter() - started < 1.0
+
+
+@pytest.mark.asyncio
+async def test_a_cached_answer_skips_the_inventory_read() -> None:
+    """The cases list reuses the organization's answer for 120 s instead of re-reading the store (#2072)."""
+    org = uuid.uuid4()
+    cv._INVENTORY_CACHE[(org, ("Google Chrome",))] = (time.monotonic(), {"Google Chrome": {"1.0": 2}})
+
+    class _NoDb:
+        def begin_nested(self) -> Any:
+            raise AssertionError("the cached answer must not read the store")
+
+    try:
+        answer = await cv.inventory_versions(_NoDb(), org, ["Google Chrome"])  # type: ignore[arg-type]
+    finally:
+        cv._INVENTORY_CACHE.pop((org, ("Google Chrome",)), None)
+    assert answer == {"Google Chrome": {"1.0": 2}}

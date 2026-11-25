@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -601,6 +602,11 @@ def inventory_version_counts(
 
 #: Product labels per grouped inventory read of :func:`inventory_versions` (bounded bind parameters).
 _INVENTORY_LABELS_CHUNK = 100
+#: Seconds an :func:`inventory_versions` answer is reused for the same organization and labels, so
+#: the cases list does not re-read and re-count the inventory on every read (#2072).
+INVENTORY_CACHE_TTL_SECONDS = 120.0
+_INVENTORY_CACHE_SIZE = 64
+_INVENTORY_CACHE: dict[tuple[uuid.UUID, tuple[str, ...]], tuple[float, dict[str, dict[str, int]]]] = {}
 
 
 async def inventory_versions(
@@ -615,6 +621,10 @@ async def inventory_versions(
     wanted = [label for label in dict.fromkeys(labels) if product_keys(label)]
     if not wanted:
         return {}
+    cache_key = (organization_id, tuple(sorted(wanted)))
+    cached = _INVENTORY_CACHE.get(cache_key)
+    if cached is not None and time.monotonic() - cached[0] < INVENTORY_CACHE_TTL_SECONDS:
+        return cached[1]
     soft = OrganizationAssetSoftware
     rows: list[Any] = []
     os_assets: dict[str, list[dict[str, Any]]] = {}
@@ -646,7 +656,11 @@ async def inventory_versions(
         logger.info("CTEM inventory versions unavailable", exc_info=True)
         return {}
     # Pure and CPU-bound on a large inventory: off the event loop so no request waits on it.
-    return await asyncio.to_thread(inventory_version_counts, rows, os_assets, wanted)
+    answer = await asyncio.to_thread(inventory_version_counts, rows, os_assets, wanted)
+    _INVENTORY_CACHE[cache_key] = (time.monotonic(), answer)
+    while len(_INVENTORY_CACHE) > _INVENTORY_CACHE_SIZE:
+        _INVENTORY_CACHE.pop(next(iter(_INVENTORY_CACHE)))
+    return answer
 
 
 async def inventory_sources(db: AsyncSession, organization_id: uuid.UUID) -> list[str] | None:
