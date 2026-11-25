@@ -130,6 +130,43 @@ def test_the_screens_cases_source_read_answers_the_fixture_only_when_asked(monke
     assert asyncio.run(ctem_cases_source.read_open_issues(None, "u", "fimi")).issues == []
 
 
+def test_the_peer_reads_the_ivanti_case_without_one_member_so_its_aggregates_are_restricted(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.services import ctem_cases_source, ctem_cases_view
+
+    module = _lab_asgi(monkeypatch)
+    peer = next(
+        node.value.value
+        for node in ast.parse(LAB.read_text(encoding="utf-8")).body
+        if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "PEER_EMAIL"
+    )
+    hidden = module.ctem_sample.SCREENS_RESTRICTED[peer]
+    monkeypatch.setattr(ctem_cases_source, "read_open_issues", ctem_cases_source.read_open_issues)
+    assert module.screens_ctem_cases({"LAB_CTEM_SCREENS": "on"}) is True
+    emails = {"admin": "lab@filigran.io", "peer": peer}
+    original_email = module.screens_viewer_email
+
+    async def email(db, user_id):
+        return emails[user_id]
+
+    monkeypatch.setattr(module, "screens_viewer_email", email)
+    admin = asyncio.run(ctem_cases_source.read_open_issues(object(), "admin", "cyber"))
+    peer_read = asyncio.run(ctem_cases_source.read_open_issues(object(), "peer", "cyber"))
+    assert len(admin.issues) == len(module.ctem_sample.SCREENS_ISSUES)
+    assert {i.member_id for i in admin.issues} - {i.member_id for i in peer_read.issues} == set(hidden)
+    # The real list row: the peer sees the case through its other member, its detail aggregates are null.
+    ivanti = [i for i in admin.issues if i.vendor == "Ivanti"]
+    rows = [SimpleNamespace(source=i.source, external_id=i.external_id, open=True) for i in ivanti]
+    for reader, restricted in ((admin, False), (peer_read, True)):
+        view = ctem_cases_view.ViewerView(issues={i.member_id: i for i in reader.issues})
+        visible = ctem_cases_view.visible_members(rows, view)
+        without = sum(1 for r in rows if ctem_cases_view._member_id(r) not in view.issues)
+        assert bool(visible) and bool(without) is restricted
+    # Unreadable viewer (no session): the whole sample.
+    assert asyncio.run(original_email(None, "x")) is None
+
+
 def test_the_lab_recomputes_the_screens_cases_and_reads_them_back():
     functions = _functions()
     helper = ast.unparse(functions["seed_ctem_screens"]) + ast.unparse(functions["_ctem_screens_recompute"])
