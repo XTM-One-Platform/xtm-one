@@ -81,6 +81,7 @@ from app.services.company_managed_writes import (
     restricted_governors,
 )
 from app.services.ownership_scope import ownership_clause
+from app.services.work_item_a2a_refs import names_a2a_task, refuse_unknown_a2a_tasks
 from app.services.work_item_blocked_refs import all_satisfied as all_refs_satisfied
 from app.services.work_item_blocked_refs import (
     blocked_why,
@@ -2292,6 +2293,9 @@ async def create_work_item(
     async with async_session() as db:
         # A target outside the fleet of its owner or creator is refused.
         await check_targets(db, impact, owner_agent_id=owner_uuid, created_by_agent_id=creator_uuid)
+        if names_a2a_task(refs):
+            # A task id no delegation of this user answered would never release it (#2265).
+            await refuse_unknown_a2a_tasks(db, user_uuid, refs)
         structured_ask = await _complete_case_ask(db, key, structured_ask)
         named_workspace = workspace_id
         if workspace_id is None:
@@ -2432,6 +2436,7 @@ async def create_work_item(
         deployment = item.status == "blocked" and _names_deployment(refs)
         workflow_runs = item.status == "blocked" and _names_workflow_run(refs)
         reference_states = item.status == "blocked" and names_reference_state(refs)
+        a2a_tasks = item.status == "blocked" and names_a2a_task(refs)
         from types import SimpleNamespace
 
         events = created_events(item, writer=SimpleNamespace(agent_id=creator_uuid, run_id=None))
@@ -2462,6 +2467,11 @@ async def create_work_item(
         from app.services.work_item_blocked_refs import schedule_reference_state_check
 
         schedule_reference_state_check(item_id)
+    if a2a_tasks:
+        # Once at creation: the A2A task it waits for may have ended already (#2265).
+        from app.services.work_item_a2a_refs import schedule_a2a_task_check
+
+        schedule_a2a_task_check(item_id)
     created = await _read_back(item_id, user_id=user_id, writer=writer) or {"id": item_id}
     if gate_warning:
         created = {**created, "warnings": [gate_warning]}
@@ -2667,6 +2677,9 @@ async def update_work_item(
                 await _check_blockers(db, user_id, blockers, writer)
         refs = None if blocked_on_refs is None else normalize_blocked_on_refs(blocked_on_refs)
         refuse_unobserved_deployment_refs(refs)
+        if names_a2a_task(refs):
+            # A task id no delegation of the item's user answered would never release it (#2265).
+            await refuse_unknown_a2a_tasks(db, item.user_id, refs)
         stored_reason = getattr(item, "blocked_reason", None)
         reason = stored_reason if blocked_reason is None else normalize_blocked_reason(blocked_reason)
         stored_human = getattr(item, "needs_human", None)
@@ -2987,6 +3000,7 @@ async def update_work_item(
         deployment = bool(refs) and item.status == "blocked" and _names_deployment(refs)
         workflow_runs = bool(refs) and item.status == "blocked" and _names_workflow_run(refs)
         reference_states = bool(refs) and item.status == "blocked" and names_reference_state(refs)
+        a2a_tasks = bool(refs) and item.status == "blocked" and names_a2a_task(refs)
         # A note on an item another live run holds is relayed to that run.
         relay_holder = getattr(item, "claimed_by_run_id", None) if note else None
         relay_title = item.title
@@ -3034,6 +3048,11 @@ async def update_work_item(
         from app.services.work_item_blocked_refs import schedule_reference_state_check
 
         schedule_reference_state_check(item_id)
+    if a2a_tasks:
+        # Once at the write: the A2A task it waits for may have ended already (#2265).
+        from app.services.work_item_a2a_refs import schedule_a2a_task_check
+
+        schedule_a2a_task_check(item_id)
     updated = await _read_back(item_id, user_id=user_id, writer=writer)
     if gate_warning and updated is not None:
         updated = {**updated, "warnings": [gate_warning]}
