@@ -489,10 +489,10 @@ async def test_a_platform_event_run_in_flight_leaves_the_other_slots_free():
     """Three integration events and a platform event in flight: the next
     platform event starts while the cap has room, never queued behind them."""
     rows = [
-        ("running", None, "integration_event"),
-        ("running", None, "integration_event"),
-        ("running", None, "integration_event"),
-        ("running", "run:abc", "platform_event"),
+        ("running", None, "integration_event", False),
+        ("running", None, "integration_event", False),
+        ("running", None, "integration_event", False),
+        ("running", "run:abc", "platform_event", False),
     ]
     usage = await ae._slot_usage(_RowsSession(rows), uuid.uuid4())
     assert usage.exclusive is False and usage.active == 4
@@ -501,8 +501,56 @@ async def test_a_platform_event_run_in_flight_leaves_the_other_slots_free():
 
 @pytest.mark.asyncio
 async def test_a_manual_run_in_flight_still_keeps_the_assignment_to_itself():
-    usage = await ae._slot_usage(_RowsSession([("running", None, "manual")]), uuid.uuid4())
+    usage = await ae._slot_usage(_RowsSession([("running", None, "manual", False)]), uuid.uuid4())
     assert usage.exclusive is True and not usage.has_room(10)
+
+
+@pytest.mark.asyncio
+async def test_a_handed_back_platform_event_run_holds_an_uncapped_assignment():
+    """#2221: a platform event run handed back by a rollout (still running, resuming
+    from its checkpoint) keeps an assignment with no max_concurrent_runs to itself:
+    the release event of the same rollout queues behind it instead of starting beside it."""
+    usage = await ae._slot_usage(_RowsSession([("running", None, "platform_event", True)]), uuid.uuid4())
+    assert usage.resuming is True
+    assert not usage.has_room(10, resume_holds=ae.resume_holds_assignment({"event": "platform.release.deployed"}))
+    # An author-set cap is kept: the resuming run takes one slot like any other.
+    assert usage.has_room(10, resume_holds=ae.resume_holds_assignment({"max_concurrent_runs": 3}))
+
+
+@pytest.mark.asyncio
+async def test_an_ordinary_platform_event_run_leaves_an_uncapped_assignment_free():
+    usage = await ae._slot_usage(_RowsSession([("running", None, "platform_event", None)]), uuid.uuid4())
+    assert usage.resuming is False
+    assert usage.has_room(10, resume_holds=ae.resume_holds_assignment({}))
+
+
+def test_the_resuming_clause_reads_the_hand_back_and_resume_keys():
+    from app.services.background_checkpoint import HANDED_BACK_KEY, RESUMES_KEY
+
+    compiled = str(ae._resuming_run_clause().compile(compile_kwargs={"literal_binds": True}))
+    assert HANDED_BACK_KEY in compiled and RESUMES_KEY in compiled
+
+
+@pytest.mark.asyncio
+async def test_a_platform_event_delivery_queues_behind_a_resuming_run(monkeypatch):
+    """The enqueue decision: a free slot but a resuming run in flight queues the delivery,
+    and the same delivery starts once the run is no longer resuming."""
+    assignment = _build_assignment(uuid.uuid4())
+    assignment.trigger_config = {}
+
+    async def _resuming(_db, _assignment_id):
+        return ae._SlotUsage(active=1, busy_keys=frozenset(), resuming=True)
+
+    result, session, created = await _trigger(monkeypatch, assignment, active=1)
+    assert result.status == "ok" and len(created) == 1
+
+    monkeypatch.setattr(ae, "_slot_usage", _resuming)
+    agent = _build_agent()
+    assignment.agent_id = agent.id
+    session = _FakeSession()
+    queued = await ae.trigger_or_queue_assignment(assignment=assignment, agent=agent, db=session)
+    assert queued.status == "queued"
+    assert session.added[0].status == ae.QUEUED_RUN_STATUS
 
 
 
