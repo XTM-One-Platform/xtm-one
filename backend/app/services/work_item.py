@@ -4265,8 +4265,16 @@ def _awaiting_review(read: Any) -> bool:
     Its next wake is the review event (or the merge), never a green hand-off: the
     item is parked on the merge, not put back in the queue for a run that could
     only read the missing review and stand down (#2213).
+
+    A base protected by a merge queue, or an account GitHub lets bypass the
+    base's requirements, is never read as waiting on the review: GitHub accepts
+    such a pull request into the queue (or merges it), so the green hand-off
+    goes to a run that enqueues it with ``merge_github_pr``; the item is parked
+    only once GitHub refused or ejected it (#2324).
     """
-    return isinstance(read, dict) and read.get("review_decision") in AWAITING_REVIEW_DECISIONS
+    if not isinstance(read, dict) or read.get("review_decision") not in AWAITING_REVIEW_DECISIONS:
+        return False
+    return not (read.get("queue_base") is True or read.get("can_bypass") is True)
 
 
 def _ci_green(binding: dict[str, Any]) -> bool:

@@ -46,21 +46,25 @@ def _facts(
     review: str | None = "APPROVED",
     draft: bool = False,
     head: str = _HEAD,
+    bypass: bool | None = None,
 ) -> dict:
     entry = {"position": 3, "state": "QUEUED"} if in_queue else None
+    pull: dict[str, Any] = {
+        "id": "PR_node",
+        "isDraft": draft,
+        "headRefOid": head,
+        "mergeStateStatus": state,
+        "reviewDecision": review,
+        "isInMergeQueue": in_queue,
+        "mergeQueueEntry": entry,
+    }
+    if bypass is not None:
+        pull["viewerCanMergeAsAdmin"] = bypass
     return {
         "data": {
             "repository": {
                 "mergeQueue": {"id": "MQ_1"} if queue else None,
-                "pullRequest": {
-                    "id": "PR_node",
-                    "isDraft": draft,
-                    "headRefOid": head,
-                    "mergeStateStatus": state,
-                    "reviewDecision": review,
-                    "isInMergeQueue": in_queue,
-                    "mergeQueueEntry": entry,
-                },
+                "pullRequest": pull,
             }
         }
     }
@@ -265,16 +269,55 @@ async def test_a_pr_already_in_the_queue_is_said_queued_without_a_branch_update(
 
 
 @pytest.mark.asyncio
-async def test_an_enqueued_pr_without_its_required_review_is_said_not_to_merge() -> None:
+@pytest.mark.parametrize("entry_state", ["AWAITING_CHECKS", "QUEUED", "MERGEABLE"])
+async def test_an_enqueue_github_accepts_is_a_success_whatever_the_review_decision(entry_state: str) -> None:
+    """GitHub's verdict wins: review_required with an accepted entry is queued, never an error (#2324)."""
+    enqueue = {"data": {"enqueuePullRequest": {"mergeQueueEntry": {"position": 5, "state": entry_state}}}}
+    github = _GitHub(_RULES, facts=_facts(queue=True, review="REVIEW_REQUIRED"), enqueue=enqueue)
+
+    result = await _run(github)
+
+    assert result.startswith("PR #12 in acme/app queued")
+    assert "position 5" in result
+    assert entry_state.lower() in result
+    assert "will NOT merge" not in result
+    assert "Error" not in result
+
+
+@pytest.mark.asyncio
+async def test_an_enqueued_entry_github_reads_unmergeable_is_said_not_to_merge_with_the_cause() -> None:
     enqueue = {"data": {"enqueuePullRequest": {"mergeQueueEntry": {"position": 5, "state": "UNMERGEABLE"}}}}
     github = _GitHub(_RULES, facts=_facts(queue=True, review="REVIEW_REQUIRED"), enqueue=enqueue)
 
     result = await _run(github)
 
     assert result.startswith("Error: PR #12 in acme/app is in the merge queue but will NOT merge")
-    assert "review required" in result
+    assert "UNMERGEABLE" in result
     assert "position 5" in result
     assert "the queue merges it" not in result
+
+
+@pytest.mark.asyncio
+async def test_a_pr_already_queued_with_review_required_is_said_queued() -> None:
+    facts = _facts(queue=True, in_queue=True, review="REVIEW_REQUIRED")
+    facts["data"]["repository"]["pullRequest"]["mergeQueueEntry"]["state"] = "AWAITING_CHECKS"
+    github = _GitHub(_NOT_MERGEABLE, facts=facts)
+
+    result = await _run(github)
+
+    assert "already in the merge queue of main" in result
+    assert "awaiting_checks" in result
+    assert "will NOT merge" not in result
+
+
+@pytest.mark.asyncio
+async def test_the_facts_read_asks_whether_the_viewer_can_bypass() -> None:
+    github = _GitHub(_NOT_MERGEABLE, facts=_facts(state="BLOCKED", review="REVIEW_REQUIRED"))
+
+    await _run(github)
+
+    facts_read = next(g for g in github.graphql if "mergeQueue(branch" in g["query"])
+    assert "viewerCanMergeAsAdmin" in facts_read["query"]
 
 
 @pytest.mark.asyncio
@@ -305,13 +348,36 @@ async def test_a_405_on_a_clean_pr_names_the_protection_rules_not_update_branch(
 
 @pytest.mark.asyncio
 async def test_a_405_blocked_by_a_required_review_names_the_review():
-    github = _GitHub(_NOT_MERGEABLE, facts=_facts(state="BLOCKED", review="REVIEW_REQUIRED"))
+    github = _GitHub(_NOT_MERGEABLE, facts=_facts(state="BLOCKED", review="REVIEW_REQUIRED", bypass=False))
 
     result = await _run(github)
 
     assert "required review is missing" in result
     assert "review required" in result
+    assert "GitHub says this account cannot bypass it" in result
     assert "update_branch" not in result
+
+
+@pytest.mark.asyncio
+async def test_a_405_blocked_with_a_viewer_who_can_bypass_never_blames_the_review() -> None:
+    github = _GitHub(_NOT_MERGEABLE, facts=_facts(state="BLOCKED", review="REVIEW_REQUIRED", bypass=True))
+
+    result = await _run(github)
+
+    assert "cannot bypass" not in result
+    assert "required review is missing" not in result
+    assert "required status check or rule" in result
+
+
+@pytest.mark.asyncio
+async def test_a_405_blocked_without_the_bypass_flag_does_not_claim_it_cannot_bypass() -> None:
+    github = _GitHub(_NOT_MERGEABLE, facts=_facts(state="BLOCKED", review="REVIEW_REQUIRED"))
+
+    result = await _run(github)
+
+    assert "required review is missing" in result
+    assert "cannot bypass" not in result
+    assert "did not say whether this account can bypass it" in result
 
 
 @pytest.mark.asyncio
