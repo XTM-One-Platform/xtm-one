@@ -76,6 +76,30 @@ def _scope_key(scope: str) -> str:
     return scope.rstrip("/").rsplit("/", 1)[-1].lower()
 
 
+def missing_tool_scopes(tool_scopes: Any, granted: Any) -> list[str]:
+    """The tool permissions the token lacks, as ``Scope (tool, tool)`` lines.
+
+    *tool_scopes* is a catalog entry's ``tool_scopes`` (#2386): a list of
+    ``{"any_of": [scope, ...], "tools": [tool, ...]}``, the permissions some
+    tools need beyond the scopes asked at sign-in (an admin grants them on the
+    app; Microsoft then puts them in the token). An entry is satisfied by any
+    one of its scopes. ``[]`` when the grant is unknown.
+    """
+    if granted is None or not isinstance(tool_scopes, list):
+        return []
+    granted_keys = {_scope_key(s) for s in split_scopes(granted)}
+    lacking: list[str] = []
+    for entry in tool_scopes:
+        if not isinstance(entry, dict):
+            continue
+        alternatives = split_scopes(entry.get("any_of"))
+        tools = [t for t in entry.get("tools") or [] if isinstance(t, str)]
+        if not alternatives or any(_scope_key(s) in granted_keys for s in alternatives):
+            continue
+        lacking.append(f"{alternatives[0]} ({', '.join(tools)})" if tools else alternatives[0])
+    return lacking
+
+
 def missing_scopes(requested: Any, granted: Any, optional: Any = None) -> list[str] | None:
     """The requested scopes the token was not granted, in request order.
 

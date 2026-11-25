@@ -141,7 +141,7 @@ from app.core.security import decrypt_json, decrypt_stored_value, decrypt_value,
 from app.core.utils import build_content_disposition, format_exception_message, safe_uuid
 from app.integrations.base_url_policy import base_url_keys, probe_transport
 from app.integrations.connectivity import has_connectivity_probe
-from app.integrations.granted_scopes import missing_scopes, split_scopes
+from app.integrations.granted_scopes import missing_scopes, missing_tool_scopes, split_scopes
 from app.integrations.http import PLATFORM_USER_AGENT
 from app.integrations.lifecycle import (
     IntegrationUpdate,
@@ -188,6 +188,7 @@ from app.services.integration_user_credentials import (
     connected_user_counts,
     credential_connected,
     delete_user_credentials,
+    holder_ref,
     integration_of,
     is_per_user,
     is_user_credential,
@@ -2949,6 +2950,14 @@ async def update_integration(
         # old configuration and is simply never looked up again (the cache
         # key covers every part of it).
         integration.status = _token_grant_status(integration)
+    if integration.provider in ("defender", "sentinel", "purview") and (
+        body.client_id is not None or body.client_secret is not None or body.scopes is not None
+    ):
+        # The delegated per-audience tokens are keyed by the integration alone,
+        # not by its credentials: drop them with the old configuration (#2386).
+        from app.services.integration_tools import forget_azure_delegated_tokens
+
+        await forget_azure_delegated_tokens(str(integration.id))
 
     # Read before the auth-type switch and the share consent below, both of
     # which can reset the acknowledgement; compared again after them.
@@ -4132,10 +4141,13 @@ async def _test_integration(
                 ),
             }
         if integration.provider == "defender":
-            from app.integrations.providers.defender import _GRAPH_SCOPE, _get_token
+            # Each audience has its own admin consent: report both (#2386).
+            from app.api.v1.integration_testing import defender_audience_report
+            from app.integrations.providers.defender import app_only_audience_check
 
-            az_token = await _get_token(
-                az_tenant, az_client_id, az_client_secret, _GRAPH_SCOPE
+            return defender_audience_report(
+                integration.name,
+                await app_only_audience_check(az_tenant, az_client_id, az_client_secret),
             )
         else:
             from app.integrations.providers.sentinel import _get_mgmt_token
@@ -4572,6 +4584,7 @@ async def _test_integration(
             integration=integration_of(integration),
             caller_can_manage=can_manage(user, integration_of(integration), user_group_ids),
             acting_user_id=str(user.id),
+            token_holder=holder_ref(integration),
         )
     # Self-heal: a credential-less integration that just proved its data
     # source reachable IS connected — persist it so the UI badge and the
@@ -4966,7 +4979,12 @@ def _to_response(
     granted = getattr(r, "granted_scopes", None) if has_access_token else None
     granted_scopes = None if granted is None else split_scopes(granted)
     missing = missing_scopes(scopes or required_scopes, granted, catalog.get("optional_scopes"))
+    # Tool permissions not asked at sign-in (#2386): a field of their own, so
+    # they never turn the status to "Re-authorize" (an admin grant fixes them).
+    tool_scopes = catalog.get("tool_scopes") if isinstance(catalog, dict) else None
+    missing_tool_permissions = missing_tool_scopes(tool_scopes, granted) or None
     if uses_own_credential:
+        missing_tool_permissions = None
         status = own_account_status or "configured"
         has_access_token = bool(my_credential and my_credential.has_access_token)
         scopes = required_scopes = None
@@ -4999,6 +5017,7 @@ def _to_response(
         is_registration_only=is_registration_only_provider(r.provider),
         a2a_direction=a2a_direction,
         tags=r.tags or [],
+        missing_tool_permissions=missing_tool_permissions,
         requires_approval=requires_approval,
         approval_managed_by_platform=managed_by_platform,
         signature=_signature_setting(r),
