@@ -400,6 +400,9 @@ describe("OrganizationSection", () => {
     await screen.findByText("Payments");
     expect(screen.getByRole("columnheader", { name: "Business service" })).toBeTruthy();
     expect(screen.getAllByTestId("settings.organization.primary-asset-row")).toHaveLength(1);
+    // The row opens the primary asset's page, by name (#1980 S2).
+    fireEvent.click(screen.getByTestId("settings.organization.primary-asset-row"));
+    expect(screen.getByTestId("location-probe").textContent).toMatch(/^\/ctem\/inventory\/primary-assets\/[^/?]+$/);
   });
 
   it("keeps a list card on CTEM > Inventory always expanded, its count in the header (#1690, Sam 24 Nov 2026)", async () => {

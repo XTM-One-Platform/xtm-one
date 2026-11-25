@@ -572,6 +572,18 @@ export function useCtemCasesForAsset(asset: string | undefined) {
   });
 }
 
+/** The cases one of whose issues reaches a primary asset: the primary asset page (#1980 S2). */
+export function useCtemCasesForPrimaryAsset(primaryAsset: string | undefined) {
+  const name = primaryAsset?.trim() ?? "";
+  return useQuery<CtemCaseList>({
+    queryKey: ["ctem-cases", "primary-asset", name],
+    queryFn: () => api.get(`/ctem-cases?limit=200&primary_asset=${encodeURIComponent(name)}`),
+    enabled: name !== "",
+    retry: ctemCasesRetry,
+    throwOnError: false,
+  });
+}
+
 /** One loop duration over the cases the caller sees: the median in hours, `null` with no sample. */
 interface CtemLoopDuration {
   median_hours: number | null;

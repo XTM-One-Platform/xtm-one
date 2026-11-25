@@ -404,6 +404,9 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
   records that support it, linked directly (`through_kind` `asset`) or as members of a linked group (`asset_group`,
   `through` the group's name), each with the link's `source`, `roles`, `inherited_needs` and `via`, searched on the
   record or group name, with `total` and the whole primary asset's `counts` by path and by source (removals left out).
+  The page `/ctem/inventory/primary-assets/:name` reads it, opened from a row of the Business tab's primary assets
+  table, from an asset page's "Primary assets it supports" and from a case's "Primary assets reached"; its open cases
+  come from `GET /ctem-cases?primary_asset=<name>` (the cases one of whose visible issues reaches it).
 - The profile API never writes a row once the records are imported (#1752): `PUT /api/v1/organization-context`
   and `POST .../versions/{v}/restore` ignore `assets_exposure`, `asset_groups` and `ai_systems` (the stored
   version's lists are kept, so `save_version` applies no row write and the synced-row lock never judges a

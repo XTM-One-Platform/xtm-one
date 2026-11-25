@@ -71,6 +71,8 @@ import {
   useSaveOrganizationContext,
 } from "@/hooks/api/useOrganizationContextApi";
 import { primaryAssetLinkKey, useAssetGroups, useCanonicalAssets, usePrimaryAssetLinkCounts } from "@/hooks/api/useOrganizationAssetsApi";
+import { primaryAssetPath } from "@/pages/xtm-one/ctem/inventory";
+import { useTriggerTabIndex } from "@/components/ui/row-target-context";
 import { useFormatter } from "@/i18n";
 import {
   type AmountField,
@@ -190,6 +192,19 @@ export type OrganizationEmbed = {
   /** A reader's view (#1511): the cards at rest, no Edit (the outside lens and evidence health cards gate theirs too). */
   readOnly?: boolean;
 };
+
+/**
+ * A tooltip trigger in a primary assets cell: a tab stop of its own outside a routed row, none inside one, where the
+ * row (it opens the primary asset's page, #1980 S2) is the one stop (data-table gate 10, #12070).
+ */
+function RowAwareTipTrigger({ className, role, ariaLabel, children }: { className: string; role?: string; ariaLabel?: string; children: ReactNode }) {
+  const tabIndex = useTriggerTabIndex();
+  return (
+    <span tabIndex={tabIndex} role={role} aria-label={ariaLabel} className={className}>
+      {children}
+    </span>
+  );
+}
 
 export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {}) {
   const { t_i18n, locale, intl } = useFormatter();
@@ -851,9 +866,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     if (total === null || formatCount(locale, total) === exactCount(locale, total)) return readCell(jewelAssetsText(jewel));
     return (
       <Tip content={exactCount(locale, total)}>
-        <span tabIndex={0} className={`inline-flex min-w-0 tabular-nums ${TIP_WRAP_FOCUS_RING}`}>
+        <RowAwareTipTrigger className={`inline-flex min-w-0 tabular-nums ${TIP_WRAP_FOCUS_RING}`}>
           <span className="truncate">{linkedAssetsText(total)}</span>
-        </span>
+        </RowAwareTipTrigger>
       </Tip>
     );
   };
@@ -985,9 +1000,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       cell: ({ value }) =>
         value.opencrq_asset_id ? (
           <Tip content={t_i18n("Linked to OpenCRQ")}>
-            <span tabIndex={0} role="img" aria-label={t_i18n("Linked to OpenCRQ")} className={`inline-flex ${TIP_WRAP_FOCUS_RING}`}>
+            <RowAwareTipTrigger role="img" ariaLabel={t_i18n("Linked to OpenCRQ")} className={`inline-flex ${TIP_WRAP_FOCUS_RING}`}>
               <Link2 className="h-4 w-4 text-feedback-success-primary" />
-            </span>
+            </RowAwareTipTrigger>
           </Tip>
         ) : null,
       interactive: true,
@@ -2044,6 +2059,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
                   columns={jewelColumns}
                   layout={tableLayout}
                   rowKey={(row) => String(row.index)}
+                  // Each saved primary asset opens its page (#1980 S2): its supporting assets and the cases on it.
+                  rowHref={(row) => (row.value.name.trim() ? primaryAssetPath(row.value.name) : undefined)}
                   searchFields={(row) => [row.value.name, row.value.business_service, row.value.owner]}
                   searchPlaceholder={t_i18n("Search...")}
                   filters={jewelFilters}

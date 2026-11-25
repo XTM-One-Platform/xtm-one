@@ -21701,5 +21701,19 @@
   "To validate": "Por validar",
   "Running version not verified: validate it before acting on the case.": "Versión en ejecución no verificada: valídela antes de actuar sobre el caso.",
   "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{primary, plural, one {# activo primario alcanzado} other {# activos primarios alcanzados}} a través de {supporting, plural, one {# activo de soporte} other {# activos de soporte}}.",
-  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, one {# regla de política aplicada} other {# reglas de política aplicadas}}."
+  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, one {# regla de política aplicada} other {# reglas de política aplicadas}}.",
+  "Primary asset not found": "Activo principal no encontrado",
+  "No primary asset of the organization has this name: it may have been renamed or removed.": "Ningún activo principal de la organización tiene este nombre: puede que se haya renombrado o eliminado.",
+  "About this primary asset": "Acerca de este activo principal",
+  "Supporting assets": "Activos de soporte",
+  "{count, plural, =0 {None linked yet} one {# linked directly} other {# linked directly}}": "{count, plural, =0 {Ninguno vinculado todavía} one {# vinculado directamente} other {# vinculados directamente}}",
+  "{count, plural, =0 {none through an asset group} one {# through an asset group} other {# through asset groups}}": "{count, plural, =0 {ninguno a través de un grupo de activos} one {# a través de un grupo de activos} other {# a través de grupos de activos}}",
+  "Through the asset group {group}": "A través del grupo de activos {group}",
+  "Linked directly": "Vinculado directamente",
+  "Reaches it": "Cómo lo alcanza",
+  "Inherited security needs": "Necesidades de seguridad heredadas",
+  "Link source": "Origen del vínculo",
+  "No asset of the inventory supports this primary asset yet.": "Ningún activo del inventario soporta todavía este activo principal.",
+  "Search assets or asset groups by name": "Buscar activos o grupos de activos por nombre",
+  "No open case reaches this primary asset.": "Ningún caso abierto alcanza este activo principal."
 }

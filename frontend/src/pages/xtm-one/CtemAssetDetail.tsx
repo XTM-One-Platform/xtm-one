@@ -34,7 +34,7 @@ import { AssetOverviewCard, AssetSection } from "./ctem/AssetOverview";
 import { deletableRows, recordRefs } from "./ctem/inventory-entries";
 import { InventoryDeleteAction } from "./ctem/InventoryDeleteAction";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
-import { INVENTORY_PATH, assetGroupPath, isCodeRepository, softwarePath, sourceLabel } from "./ctem/inventory";
+import { INVENTORY_PATH, assetGroupPath, isCodeRepository, primaryAssetPath, softwarePath, sourceLabel } from "./ctem/inventory";
 import { CategoryMark, SourceLogo } from "./ctem/inventory-icons";
 
 /** The Software (or Dependencies) table opens at 25 rows, the platform's page size; the picker changes it. */
@@ -343,7 +343,7 @@ export default function CtemAssetDetail() {
         <ul className="flex flex-wrap gap-2" data-testid="ctem-asset-jewels">
           {jewels.map((j) => (
             <li key={j.name}>
-              <Link to="/settings/organization?card=primary_assets" className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
+              <Link to={primaryAssetPath(j.name)} className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
                 <Icon name="gem" size={16} className="text-default-secondary" aria-hidden />
                 {j.name}
               </Link>

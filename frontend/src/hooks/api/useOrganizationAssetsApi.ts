@@ -392,6 +392,55 @@ export function usePrimaryAssetLinkCounts() {
   });
 }
 
+/** One record that supports a primary asset, directly or through an asset group (#1980 S2). */
+export interface PrimaryAssetSupporter {
+  record_id: string;
+  /** The canonical asset the record is in; null until the identity engine matched it. */
+  asset_id: string | null;
+  name: string;
+  category: string;
+  criticality: string;
+  /** `asset`: linked directly; `asset_group`: a member of the group named in `through`. */
+  through_kind: "asset" | "asset_group";
+  through: string;
+  source: string;
+  roles: string[];
+  inherited_needs: Record<string, string>;
+  via: string;
+}
+
+/** One primary asset's page: its profile entry and one page of its supporting assets. */
+export interface PrimaryAssetPage {
+  primary_asset: {
+    name: string;
+    criticality?: string;
+    owner?: string;
+    business_service?: string;
+    description?: string;
+    source?: string;
+  };
+  supporters: {
+    items: PrimaryAssetSupporter[];
+    total: number;
+    offset: number;
+    limit: number;
+    counts: { total: number; through: Record<string, number>; source: Record<string, number> };
+  };
+}
+
+/** One primary asset and a page of the assets that support it, searched and paged on the server (#1980 S2). */
+export function usePrimaryAsset(name: string | undefined, page: { q: string; offset: number; limit: number }) {
+  const params = new URLSearchParams({ q: page.q, offset: String(page.offset), limit: String(page.limit) });
+  return useQuery<PrimaryAssetPage>({
+    queryKey: [...KEY, "primary-asset", name, page.q, page.offset, page.limit],
+    queryFn: () => api.get(`/organization-context/primary-assets/${encodeURIComponent(name ?? "")}?${params.toString()}`),
+    enabled: Boolean(name),
+    placeholderData: (previous) => previous,
+    retry: (failureCount, error) => !isAssetNotFound(error) && failureCount < 2,
+    throwOnError: false,
+  });
+}
+
 /** One asset record, for the update form (`GET /assets/records/{id}`). */
 export function useAssetRecord(id: string | undefined) {
   return useQuery<AssetRecord>({
