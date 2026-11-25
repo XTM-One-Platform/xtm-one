@@ -143,6 +143,7 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     data["first_seen_at"] = datetime.fromisoformat(seen) if seen else None
     # Typed facts (#2038); a view cached before it holds (version, outcome) pairs, read the same way.
     data["version_outcomes"] = rules.version_facts(data.get("version_outcomes"))
+    data["kev_cves"] = tuple(data.get("kev_cves") or ())
     return rules.SourceIssue(**data)
 
 
@@ -619,6 +620,30 @@ AGGREGATES_RESTRICTED_REASON = (
 )
 
 
+def kev_count(details: list[Any]) -> int:
+    """The KEV count of a case: each KEV CVE once (#2041).
+
+    A product member counts when it is KEV. A signal member counts each KEV CVE
+    it names (every one, not only its first) that no product member of the case
+    carries and no other signal already counted: a signal enriched from OpenCTI
+    and the OpenCTI issue of the same CVE are one vulnerability.
+    """
+    products = [d for d in details if d.source != SIGNAL_SOURCE]
+    counted = {str(d.cve).upper() for d in products if d.cve}
+    total = sum(1 for d in products if d.kev)
+    for d in details:
+        if d.source != SIGNAL_SOURCE:
+            continue
+        named = tuple(getattr(d, "kev_cves", ()) or ())
+        if not named and d.kev and d.cve:  # a member cached before kev_cves
+            named = (str(d.cve).upper(),)
+        for cve in named:
+            if cve not in counted:
+                counted.add(cve)
+                total += 1
+    return total
+
+
 def case_priority(severity: str | None, details: list[Any]) -> str:
     """The priority a case shows: its loop severity when set, else the default policy."""
     if severity in SEVERITY_PRIORITY:
@@ -633,6 +658,8 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         return None
     details = [view.issues[_member_id(r)] for r in visible if r.open and _member_id(r) in view.issues]
     agg = rules.aggregates(details)
+    # One KEV CVE is counted once, from its product member, when a signal names it too (#2041).
+    agg["kev_count"] = kev_count(details)
     # Open product members this viewer has no details of (hidden by scope, or seen before from a
     # product that does not answer now): the detail aggregates would count only part of the case,
     # so they are null with a reason, never a silent 0 a reader takes for "none". Signal members

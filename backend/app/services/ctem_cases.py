@@ -148,6 +148,8 @@ class SourceIssue:
     cvss: float | None = None
     epss: float | None = None
     kev: bool = False
+    #: A signal member (#2041): every CVE it names that OpenCTI marks KEV, upper case, else ``()``.
+    kev_cves: tuple[str, ...] = ()
     assets: tuple[str, ...] = ()
     primary_assets: tuple[str, ...] = ()
     first_seen_at: datetime | None = None
