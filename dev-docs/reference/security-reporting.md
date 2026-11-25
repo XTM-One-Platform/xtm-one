@@ -39,6 +39,8 @@ An advisory's temporary private fork is invisible to integrations: **CI does not
 3. Close the thread with a neutral pointer ("handled privately"). Credit the reporter in the published advisory.
 4. If the report was a hardening task after all, reword it neutrally and keep it.
 
+**When the fix is already public too** (a public pull request, a merged commit), the private fork protects nothing any more: the race is with the people who read it. Keep the fix in its public pull request, get it reviewed and merged first, cut a release, then publish the advisory (and its CVE) right after, without the waiting period, so self-hosters learn they must upgrade. Clean the public issue once the release is out.
+
 ## Reporting from an agent session
 
 An agent (Claude Code, Copilot, a pi worker, an automation) that spots a vulnerability, in review, while fixing something else or from a scanner:
