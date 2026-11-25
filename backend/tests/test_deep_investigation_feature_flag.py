@@ -137,6 +137,8 @@ def test_the_seed_withholds_the_agent_and_every_reference_to_it():
 
 def test_with_the_flag_on_the_seed_is_the_declaration(monkeypatch):
     monkeypatch.setattr(seed_module, "is_feature_enabled", lambda _flag: True)
+    # Every built-in fleet seeded (none withheld by the fleet switch, #2105).
+    monkeypatch.setattr("app.agents.builtin_fleets.UNSEEDED_FLEET_AGENT_SLUGS", frozenset())
     assert seed_module._seeded_builtin_agents() is BUILTIN_AGENTS
 
 
