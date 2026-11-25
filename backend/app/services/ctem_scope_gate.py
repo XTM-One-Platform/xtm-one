@@ -46,6 +46,8 @@ from app.services.organization_context import (
 
 #: Version of the decision record; a reader keys on it.
 DECISION_VERSION = 1
+#: The chains a primary asset source keeps as examples; ``chain_total`` and ``assets_total`` count them all (#1979).
+CHAINS_KEPT = 5
 #: Outcomes, and the signal state each one writes.
 OUTCOME_STATE: dict[str, str] = {
     "case": "confirmed",
@@ -228,6 +230,8 @@ class Resolution:
     #: #1591 S3: the primary assets reached through the inventory links, each with its chain
     #: (software -> asset or asset group -> primary asset, role, link source).
     primary_assets: list[dict[str, Any]] = field(default_factory=list)
+    #: #1979: per primary asset key, how many inventory assets reach it ``{assets, direct, via_group}``.
+    primary_asset_totals: dict[str, dict[str, int]] = field(default_factory=dict)
     #: #1720: the software references the tech stack and shipped products were matched against.
     software_refs: list[str] = field(default_factory=list)
 
@@ -431,6 +435,7 @@ def resolve(
     if primary_assets is not None:
         refs = list(dict.fromkeys([*software, *out.products]))
         out.primary_assets = primary_assets.reach(refs, keys)
+        out.primary_asset_totals = primary_assets.totals(refs, keys)
     if out.products:
         names = {p.lower() for p in out.products}
         for asset in profile.assets_exposure:
@@ -633,6 +638,9 @@ def decide(
             "hosted_under": resolution.hosted_domains,
             "primary_assets": resolution.primary_assets,
             "inventory_links_read": bool(primary_assets is not None and primary_assets.loaded),
+            # #1979: the real counts behind the chains, and whether the inventory read was cut.
+            "primary_asset_totals": resolution.primary_asset_totals,
+            "inventory_links_truncated": bool(primary_assets is not None and primary_assets.truncated),
             "lenses": lenses,
             "confidence": confidence,
             "proven": proven,
@@ -706,9 +714,13 @@ def decide(
         chains.setdefault(str(hit["primary_asset_key"]), []).append(hit)
     for n, c in jewels:
         source: dict[str, Any] = {"from": "primary_asset", "name": n, "criticality": c}
-        chain = chains.get(" ".join(n.split()).casefold()[:200])
+        key = " ".join(n.split()).casefold()[:200]
+        chain = chains.get(key)
         if chain:
-            source["chain"] = chain[:5]
+            source["chain"] = chain[:CHAINS_KEPT]
+            # #1979: the record keeps the first chains and says how many there are, never a silent cut.
+            source["chain_total"] = len(chain)
+            source["assets_total"] = resolution.primary_asset_totals.get(key, {}).get("assets", 0)
         sources.append(source)
     sources += [
         {"from": "owned_domain", "name": d, "criticality": policy.identity_criticality} for d in resolution.domains

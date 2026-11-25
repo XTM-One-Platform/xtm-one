@@ -235,6 +235,51 @@ async def _primary_assets(db: AsyncSession, organization_id: uuid.UUID) -> Any:
         return ctem_primary_assets.PrimaryAssetIndex()
 
 
+#: Supporting assets one page of the loop trace lists at most (#1979).
+SUPPORTING_PAGE_MAX = 200
+
+
+async def supporting_assets(
+    db: AsyncSession,
+    row: CtemSignal,
+    primary_asset: str,
+    *,
+    query: str = "",
+    offset: int = 0,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """The inventory assets through which *row* reaches *primary_asset*, paged (#1979).
+
+    Read live from the link index with the signal's own software and keys (the
+    same reach the gate ran), so a primary asset 10,000 workstations support
+    lists all of them, not the chains the decision record keeps. *query* filters
+    by asset or group name, case-insensitive. Answers ``{primary_asset, total,
+    offset, limit, truncated, assets}``; ``truncated`` says the index read itself
+    was cut at its bounds.
+    """
+    organization_id = row.organization_id
+    profile = await _profile(db, organization_id)
+    index = await _primary_assets(db, organization_id)
+    facts = facts_of(row)
+    resolution = gate.resolve(profile, facts, None)
+    refs = list(dict.fromkeys([*resolution.software_refs, *resolution.products]))
+    key = " ".join(str(primary_asset).split()).casefold()[:200]
+    rows = index.supporting(refs, resolution.keys, key)
+    needle = query.strip().casefold()
+    if needle:
+        rows = [r for r in rows if needle in r["asset"].casefold() or needle in str(r["through"]).casefold()]
+    limit = max(1, min(int(limit), SUPPORTING_PAGE_MAX))
+    offset = max(0, int(offset))
+    return {
+        "primary_asset": key,
+        "total": len(rows),
+        "offset": offset,
+        "limit": limit,
+        "truncated": bool(index.truncated),
+        "assets": rows[offset : offset + limit],
+    }
+
+
 async def default_scenario_reader(db: AsyncSession) -> uuid.UUID | None:
     """#1591 S3: whose OpenCRQ read decides a ``system`` signal no administrator evaluates (the listener path).
 
