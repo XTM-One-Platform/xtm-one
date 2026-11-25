@@ -790,14 +790,16 @@ async def _read_rows(
     counted = list(
         (
             await db.execute(
-                base(select(
-                    soft.vendor_key,
-                    soft.product_key,
-                    soft.version,
-                    func.min(soft.vendor),
-                    func.min(soft.product),
-                    func.array_agg(func.distinct(soft.asset_id)),
-                ))
+                base(
+                    select(
+                        soft.vendor_key,
+                        soft.product_key,
+                        soft.version,
+                        func.min(soft.vendor),
+                        func.min(soft.product),
+                        func.array_agg(func.distinct(soft.asset_id)),
+                    )
+                )
                 .where(*where)
                 .group_by(soft.vendor_key, soft.product_key, soft.version)
             )

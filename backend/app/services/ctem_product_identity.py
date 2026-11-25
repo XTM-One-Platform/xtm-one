@@ -149,9 +149,13 @@ def conflict(entry: Mapping[str, Any], node: Mapping[str, Any]) -> str | None:
         entry_purl = purl_fields(str(entry.get("purl") or ""))
         if node_purl and node_purl != entry_purl:
             return "ecosystem"
-        if not node_purl and node_fields and node_fields["part"]:
-            if node_fields["part"] != "a" or node_fields["target_sw"] not in ECOSYSTEM_TARGETS[kind]:
-                return "ecosystem"
+        if (
+            not node_purl
+            and node_fields
+            and node_fields["part"]
+            and (node_fields["part"] != "a" or node_fields["target_sw"] not in ECOSYSTEM_TARGETS[kind])
+        ):
+            return "ecosystem"
     platform = platform_of(node_cpe)
     families = {_word(f) for f in entry.get("os_families") or () if _word(f)}
     if platform and families and _word(platform) not in families:
