@@ -283,6 +283,39 @@ async def test_get_carries_the_running_versions_per_platform(
     assert "running_versions" not in body["empty_sections"]
 
 
+async def test_get_carries_the_running_versions_history(read: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An exposed-device count that moved is explained on the read tool too, as on the case tools (#1694)."""
+    from app.services import ctem_case_version_history as version_history
+
+    running = ctem_case_versions.running_versions(
+        [{"vendor": "Acme", "product": "Browser", "version": "36.0", "asset_ids": ["w1"], "sources": ["intune"]}],
+        product_label="Acme Browser",
+        fixed_version="36.0",
+    )
+
+    async def _versions(_db: Any, _case: Any) -> Any:
+        return running
+
+    monkeypatch.setattr(ctem_case_versions, "for_case", _versions)
+    read.db.added.append(
+        _event(
+            version_history.KIND,
+            datetime.now(UTC),
+            to_value="5 devices -> 3 devices",
+            evidence=json.dumps({"changes": ["w2: 35.0 -> removed (intune)"]}),
+        )
+    )
+    body = json.loads(await read.read_for(str(read.user_id))("get_ctem_case", case_id=str(read.case.id)))
+    history = body["running_versions"]["history"]
+    assert history[0]["summary"] == "5 devices -> 3 devices"
+    assert history[0]["changes"] == ["w2: 35.0 -> removed (intune)"]
+
+
+async def test_get_keeps_running_versions_null_without_a_read(read: SimpleNamespace) -> None:
+    body = json.loads(await read.read_for(str(read.user_id))("get_ctem_case", case_id=str(read.case.id)))
+    assert body["running_versions"] is None
+
+
 async def test_the_case_list_counts_the_case_bound_signals_the_scope_hides(
     read: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
