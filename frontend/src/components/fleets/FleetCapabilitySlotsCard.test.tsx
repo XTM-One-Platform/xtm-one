@@ -153,4 +153,19 @@ describe("FleetCapabilitySlotsCard", () => {
       expect(api.setType).toHaveBeenCalledWith({ capability: "ticketing", integrationIds: ["i2"], overrideCustom: false }, expect.anything()),
     );
   });
+
+  it("lists the Mobilization member under EDR / XDR and SIEM, the slots it can apply a change through (#2061)", () => {
+    const mobilizer = { member_id: "m1", agent_id: "a1", name: "Remediation Coordinator", role_label: "Mobilization", can_edit: true, bound: [], custom: false };
+    api.types = [
+      { ...TICKETING_NONE, capability: "edr_xdr", label: "EDR / XDR", members: [mobilizer] },
+      { ...TICKETING_NONE, capability: "siem", label: "SIEM", members: [mobilizer] },
+    ];
+    render(false);
+    expect(screen.getAllByTestId("fleet-capability-slot-row")).toHaveLength(2);
+    for (const label of ["EDR / XDR", "SIEM"]) {
+      fireEvent.click(screen.getByText(label));
+    }
+    expect(screen.getAllByRole("link", { name: "Remediation Coordinator" })).toHaveLength(2);
+    expect(screen.getAllByText("Mobilization")).toHaveLength(2);
+  });
 });

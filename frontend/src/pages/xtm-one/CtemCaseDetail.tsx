@@ -67,6 +67,8 @@ import { CaseRemediationDecision } from "./ctem/CaseRemediationDecision";
 import { CaseAnalystReview } from "./ctem/CaseAnalystReview";
 import { CaseValidation } from "./ctem/CaseValidation";
 import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
+import { CaseMobilization } from "./ctem/CaseMobilization";
+import { APPLIED_CHANGE_KIND_LABEL, appliedChangeKindLabel, isAppliedChangeKind } from "./ctem/case-mobilization";
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseAffectedAssets } from "./ctem/CaseAffectedAssets";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
@@ -351,6 +353,9 @@ export default function CtemCaseDetail() {
     }
     // "A signal joined the case" names the signal (#1936), on screen and in the CSV.
     if (e.kind === "signal" && eventIssueLabel(e, t_i18n)) return `${eventLabel(e)}: ${eventIssueLabel(e, t_i18n)}`;
+    // An applied change names its kind, on screen and in the CSV (UX round 1 on #2076, B1).
+    const changeKind = appliedChangeKindLabel(e);
+    if (changeKind) return `${eventLabel(e)}: ${t_i18n(changeKind)}`;
     const said = reasonLabel(e);
     const detail =
       e.kind === "gate" ? (e.from ? t_i18n(GATE_LABEL[e.from] ?? e.from) : "") : said ? t_i18n(said) : e.kind === "note" ? (e.headline ?? "") : "";
@@ -417,7 +422,11 @@ export default function CtemCaseDetail() {
                 {reasonLabel(e) ? t_i18n(reasonLabel(e) ?? "") : personReason(e)}
               </span>
             )}
-        {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && e.kind !== "treatment_plan" && e.kind !== "threat_package" && (
+        {/* An applied change names its kind; what was pushed and the rollback are on the Mobilization card (#2061). */}
+        {e.kind === "applied_change" && isAppliedChangeKind(e.to) && (
+          <span className="font-medium" data-testid="ctem-case-applied-change-event">{t_i18n(APPLIED_CHANGE_KIND_LABEL[e.to])}</span>
+        )}
+        {e.evidence && e.kind !== "ticket" && e.kind !== "retest_requested" && e.kind !== "treatment_plan" && e.kind !== "threat_package" && e.kind !== "applied_change" && (
           <span className="text-default-secondary">{e.kind === "gate" ? t_i18n("Option {option}", { option: e.evidence }) : e.evidence}</span>
         )}
       </>
@@ -867,6 +876,8 @@ export default function CtemCaseDetail() {
         <CaseRemediationDecision caseId={kase.id} history={kase.history} gates={kase.gates} personName={personName} />
 
         <CaseTreatmentPlan plan={kase.treatment_plan} />
+
+        <CaseMobilization history={kase.history} tickets={kase.tickets} />
       </CaseLoopProvider>
 
       <Card>

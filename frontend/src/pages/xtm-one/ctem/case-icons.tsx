@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 export const CASE_SECTION_ICON = {
   issues: "list-checks",
   history: "history",
+  mobilization: "send",
   affected_assets: "server",
   analyst_review: "user",
   attack_path: "route",
@@ -80,6 +81,7 @@ const CASE_EVENT_ICON: Readonly<Record<string, IconName>> = {
   gate: "badge-check",
   treatment_plan: "wrench",
   threat_package: "package-check",
+  applied_change: "send",
   run: "bot",
 };
 

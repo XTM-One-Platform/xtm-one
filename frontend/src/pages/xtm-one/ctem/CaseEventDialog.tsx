@@ -72,7 +72,12 @@ export function CaseEventDialog({
   const note = event?.kind === "note" ? (event.reason ?? "").trim() || (event.headline ?? "").trim() : "";
   // The member in words, never its id (#1936): a signal by its name, an issue by its CVE.
   const issue = event ? eventIssueLabel(event, t_i18n) : null;
-  const evidence = event && event.kind !== "gate" && event.kind !== "ticket" && event.kind !== "retest_requested" ? event.evidence : null;
+  // An applied change's evidence is its `{ids, rollback}` JSON, drawn in words on the
+  // Mobilization card: never printed raw here (UX round 1 on #2076, B2).
+  const evidence =
+    event && event.kind !== "gate" && event.kind !== "ticket" && event.kind !== "retest_requested" && event.kind !== "applied_change"
+      ? event.evidence
+      : null;
   // Each thing said once (UX round 1 on #1708, B1): a gate row's record says what happened
   // and a note row's text sits under Note alone, so neither repeats it as a fact.
   const isNote = event?.kind === "note";

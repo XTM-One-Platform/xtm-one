@@ -79,6 +79,13 @@ describe("CaseEventDialog", () => {
     expect(within(dialog).queryByTestId("ctem-case-event-what")).toBeNull();
   });
 
+  it("never prints an applied change's evidence JSON (UX round 1 on #2076, B2)", () => {
+    const evidence = JSON.stringify({ ids: ["ioc-1"], rollback: "Delete the indicator" });
+    const dialog = open(row(ev({ kind: "applied_change", from: "Microsoft Defender", to: "ioc_prevention", evidence })), "Applied a change");
+    expect(within(dialog).queryByTestId("ctem-case-event-evidence")).toBeNull();
+    expect(dialog.textContent).not.toContain("ioc-1");
+  });
+
   it("keeps What happened for any other row", () => {
     const dialog = open(row(ev({ kind: "retargeted" })), "Changed the target version");
     expect(within(dialog).getByTestId("ctem-case-event-what").textContent).toContain("rendered retargeted");

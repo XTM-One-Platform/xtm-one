@@ -1485,11 +1485,55 @@ async def _latest_run_not_assessable(
     return list(run.integration_auth_failures or [])
 
 
-def _artifact_status(*, generating: bool, artifact: Any, not_assessable: list[dict[str, Any]] | None) -> str | None:
+async def _latest_run_no_module_account(
+    db: AsyncSession, agent_id: Any, user_id: Any, vertical: str
+) -> list[str] | None:
+    """The modules the member has no account on when the user's newest run of
+    *agent_id* for *vertical* was skipped by the module preflight, else ``None``.
+
+    The card then tells the member to sign in to those modules once instead of
+    answering ``pending``, which would start another skipped run on every
+    landing (#2042).
+    """
+    from app.services.ctem_module_preflight import NO_MODULE_ACCOUNT
+
+    run = (
+        await db.execute(
+            select(AssignmentRun)
+            .where(
+                AssignmentRun.agent_id == agent_id,
+                AssignmentRun.user_id == user_id,
+                AssignmentRun.trigger_context["ctem_vertical"].astext == vertical,
+                AssignmentRun.status.in_(("completed", "skipped")),
+            )
+            .order_by(AssignmentRun.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return _no_module_account_modules(run, NO_MODULE_ACCOUNT)
+
+
+def _no_module_account_modules(run: Any, reason: str) -> list[str] | None:
+    """The modules a run skipped for *reason* found without an account (#2042)."""
+    if run is None or getattr(run, "status", None) != "skipped" or getattr(run, "error", None) != reason:
+        return None
+    states = (getattr(run, "trigger_context", None) or {}).get("module_accounts") or {}
+    return sorted(m for m, state in states.items() if state == "missing")
+
+
+def _artifact_status(
+    *,
+    generating: bool,
+    artifact: Any,
+    not_assessable: list[dict[str, Any]] | None,
+    no_module_account: list[str] | None = None,
+) -> str | None:
     """The card status before the AI-lock check: ``None`` means nothing to show.
 
     ``generating`` outranks a cached artifact; a newest run that read nothing
-    answers ``not_assessable`` when no earlier artifact can be shown (#1589).
+    answers ``not_assessable`` when no earlier artifact can be shown (#1589); a
+    newest run skipped because the member has no module account answers
+    ``no_module_account`` (#2042).
     """
     if generating:
         return "generating"
@@ -1497,6 +1541,8 @@ def _artifact_status(*, generating: bool, artifact: Any, not_assessable: list[di
         return "ready"
     if not_assessable is not None:
         return "not_assessable"
+    if no_module_account is not None:
+        return "no_module_account"
     return None
 
 
@@ -1506,15 +1552,17 @@ def _artifact_stale(
     generated_at: datetime | None,
     not_assessable: list[dict[str, Any]] | None,
     is_stale: Callable[[datetime | None], bool],
+    no_module_account: list[str] | None = None,
 ) -> bool:
     """Whether the card marks its artifact stale, which makes the page
     regenerate it on landing.
 
     Never while the newest run read none of its integrations: a regeneration
     would read nothing again and leave the older artifact in place, so every
-    landing would start another blind run (#1589).
+    landing would start another blind run (#1589). Never while the newest run
+    was skipped for a missing module account either (#2042).
     """
-    if not artifact or not_assessable is not None:
+    if not artifact or not_assessable is not None or no_module_account is not None:
         return False
     return is_stale(generated_at)
 
@@ -1775,12 +1823,18 @@ async def ctem_stage_assessment(
     run, assessment = await _latest_vertical_artifact(db, agent.id, user.id, vertical)
     generating = await _user_has_active_briefing_run(db, agent.id, user.id, vertical)
     not_assessable = await _latest_run_not_assessable(db, agent.id, user.id, vertical)
+    no_module_account = await _latest_run_no_module_account(db, agent.id, user.id, vertical)
 
     # ``generating`` takes precedence over a cached result: when a fresh run is in
     # flight we report "generating" (so the UI spins and polls) even though the
     # previous assessment is still cached and returned alongside it.
     status = (
-        _artifact_status(generating=generating, artifact=assessment, not_assessable=not_assessable)
+        _artifact_status(
+            generating=generating,
+            artifact=assessment,
+            not_assessable=not_assessable,
+            no_module_account=no_module_account,
+        )
         or await _ai_lock_status(db, agent)
         or "pending"
     )
@@ -1793,11 +1847,18 @@ async def ctem_stage_assessment(
         # The newest run could read none of its integrations: the failures,
         # so the card says why (#1589). ``None`` otherwise.
         "not_assessable": not_assessable,
+        # The newest run was skipped before any model call: the modules the
+        # member must sign in to once (#2042). ``None`` otherwise.
+        "no_module_account": no_module_account,
         # Past the weekly window: the stage page regenerates it on visit and
         # marks it stale meanwhile (#12002).
-        # Never while the newest run was unreadable (#1589).
+        # Never while the newest run was unreadable (#1589) or skipped (#2042).
         "stale": _artifact_stale(
-            artifact=assessment, generated_at=generated_at, not_assessable=not_assessable, is_stale=_assessment_is_stale
+            artifact=assessment,
+            generated_at=generated_at,
+            not_assessable=not_assessable,
+            is_stale=_assessment_is_stale,
+            no_module_account=no_module_account,
         ),
         "fresh_days": STAGE_ASSESSMENT_FRESH_DAYS,
         "agent_name": agent.name,
