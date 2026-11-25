@@ -21776,5 +21776,19 @@
   "Which side is the master of the list.": "どちらの側がリストのマスターか。",
   "The part of the organization context the sync writes to the platform.": "同期がプラットフォームに書き込む組織コンテキストの部分。",
   "The part of the organization context the platform fills.": "プラットフォームが入力する組織コンテキストの部分。",
-  "Rows the first run creates in {platform}": "最初の実行が {platform} に作成する行"
+  "Rows the first run creates in {platform}": "最初の実行が {platform} に作成する行",
+  "Coordination retention": "コーディネーションの保持期間",
+  "How long work items, shared state and worksets are kept once they are closed. 0 keeps them forever.": "クローズ後のワークアイテム、共有状態、ワークセットの保持期間です。0 は無期限に保持します。",
+  "Closed work items (days)": "クローズ済みワークアイテム（日）",
+  "Done and cancelled work items are deleted this many days after their last update.": "完了およびキャンセル済みのワークアイテムは、最終更新からこの日数後に削除されます。",
+  "Resolved shared state (days)": "解決済みの共有状態（日）",
+  "Resolved shared state entries are deleted this many days after their last update.": "解決済みの共有状態エントリは、最終更新からこの日数後に削除されます。",
+  "Unclaimed open work items (days)": "未着手のオープンなワークアイテム（日）",
+  "Open work items nobody picks up are cancelled this many days after their last activity.": "誰も着手しないオープンなワークアイテムは、最終アクティビティからこの日数後にキャンセルされます。",
+  "Archived shared state items (days)": "アーカイブ済みの共有状態の項目（日）",
+  "List items moved to an archive entry are dropped this many days after they were archived.": "アーカイブエントリに移されたリスト項目は、アーカイブからこの日数後に削除されます。",
+  "Resolved worksets (days)": "解決済みワークセット（日）",
+  "Resolved worksets are deleted with their documents this many days after they were resolved.": "解決済みのワークセットは、解決からこの日数後にドキュメントとともに削除されます。",
+  "Kept forever": "無期限に保持",
+  "An hourly sweep deletes what is past this window, in batches, until nothing is left. Active entries and work items still open are never deleted. 0 keeps them forever. Allowed range: {min} to {max}.": "1時間ごとのクリーンアップが、この期間を過ぎたものを何も残らなくなるまでバッチで削除します。アクティブなエントリと未完了のワークアイテムは削除されません。0 は無期限に保持します。許容範囲：{min}〜{max}。"
 }
