@@ -168,6 +168,11 @@ def _seen_key(user_id: str, vertical: str) -> str:
     return f"ctem:cases:seen:{user_id}:{vertical}"
 
 
+def _latest_key(user_id: str, vertical: str) -> str:
+    """The generation of the viewer's newest cached view (#1986): the stale copy a case read may serve."""
+    return f"ctem:cases:view-latest:{user_id}:{vertical}"
+
+
 async def _redis() -> Any | None:
     try:
         from app.core.redis import redis_client
@@ -243,15 +248,22 @@ def server_timing(phases: dict[str, float]) -> str:
     return ", ".join(f"{re.sub(r'[^A-Za-z0-9_-]', '_', name)};dur={ms:.1f}" for name, ms in phases.items())
 
 
-async def viewer_view(db: Any, user_id: str, vertical: str, *, fresh: bool = False) -> ViewerView:
+async def viewer_view(
+    db: Any, user_id: str, vertical: str, *, fresh: bool = False, members: list[str] | None = None
+) -> ViewerView:
     """The viewer's own view of the source, from the per-user cache unless *fresh*.
 
     The source read is ``ctem_cases_source.read_view``; it is given the member
     ids of the shared cases so the closed members the viewer can still read
     are found by id. The signal members are read fresh on every call.
+
+    With *members* (the ``source:external_id`` of the one case a read renders,
+    #1986), a view retired by a generation bump still answers while it is in its
+    TTL when it already judged every product member of that case, and the view of
+    the new generation is built in the background (:func:`_stale_view`).
     """
     async with timed("view"):
-        view = await _product_view(db, user_id, vertical, fresh=fresh)
+        view = await _product_view(db, user_id, vertical, fresh=fresh, members=members)
     seen = set(view.issues) | set(view.unavailable)
     async with timed("signals"):
         signals = await signal_members(db, user_id) | await source_signal_members(db, seen)
@@ -298,29 +310,36 @@ async def signal_details(db: Any, members: set[str]) -> dict[str, dict[str, Any]
     return {f"{SIGNAL_SOURCE}:{s.id}": signal_detail(s) for s in rows}
 
 
+#: Issue ids per ``IN`` list of the source signal read (#1986): far under every engine's parameter cap.
+_SEEN_CHUNK = 900
+
+
 async def source_signal_members(db: Any, seen: set[str]) -> set[str]:
     """The ``signal:<id>`` members a source reader recorded for issues this viewer sees (#1529).
 
     A signal of an OpenCTI or OpenAEV issue is recorded by the system; it is
-    as visible as its issue (``evidence.source_issue``), never more.
+    as visible as its issue (``evidence.source_issue``), never more. The issue
+    ids are matched in SQL (#1986), not by loading every case-bound signal's evidence.
     """
     if not seen:
         return set()
     from app.services.ctem_source_signals import SOURCE_PATHS
 
-    query = select(CtemSignal.id, CtemSignal.evidence).where(
-        CtemSignal.case_id.is_not(None), CtemSignal.source_provider.in_(tuple(SOURCE_PATHS))
-    )
+    issue = CtemSignal.evidence["source_issue"].as_string()
+    wanted = sorted(seen)
+    out: set[str] = set()
     try:
-        rows = (await db.execute(query)).all()
+        for start in range(0, len(wanted), _SEEN_CHUNK):
+            query = select(CtemSignal.id).where(
+                CtemSignal.case_id.is_not(None),
+                CtemSignal.source_provider.in_(tuple(SOURCE_PATHS)),
+                issue.in_(wanted[start : start + _SEEN_CHUNK]),
+            )
+            out.update(f"{SIGNAL_SOURCE}:{signal_id}" for signal_id in (await db.execute(query)).scalars())
     except Exception:
         logger.info("CTEM cases: source signal members unreadable", exc_info=True)
         return set()
-    return {
-        f"{SIGNAL_SOURCE}:{signal_id}"
-        for signal_id, evidence in rows
-        if isinstance(evidence, dict) and evidence.get("source_issue") in seen
-    }
+    return out
 
 
 #: One build of a viewer's view at a time per (user, vertical, generation) on this worker (#1986):
@@ -356,7 +375,63 @@ async def _cached_view(client: Any, user_id: str, vertical: str, generation: str
     return None
 
 
-async def _product_view(db: Any, user_id: str, vertical: str, *, fresh: bool) -> ViewerView:
+#: The background builds of a view a stale read answered (#1986), one per view key on this worker.
+_revalidations: dict[str, asyncio.Task[None]] = {}
+
+
+async def _stale_view(
+    client: Any, user_id: str, vertical: str, generation: str, members: list[str]
+) -> ViewerView | None:
+    """The viewer's newest view of an older generation, when it judged every product member of *members*.
+
+    A generation bump says the cases changed (a case opened, a signal joined one),
+    not that the viewer's access did: their own source read of the older generation,
+    still in its TTL (the age a same-generation hit may have), answers for the
+    members it already read or marked unavailable. A member it never judged (a
+    closed member, one restricted to this viewer) makes the read wait for the new
+    view, so nothing is shown that the view of today would not show.
+    """
+    try:
+        latest = await client.get(_latest_key(user_id, vertical))
+    except Exception:
+        return None
+    if isinstance(latest, bytes):
+        latest = latest.decode()
+    if not latest or str(latest) == generation:
+        return None
+    view = await _cached_view(client, user_id, vertical, str(latest))
+    if view is None:
+        return None
+    product = [m for m in members if not m.startswith(f"{SIGNAL_SOURCE}:")]
+    if not all(m in view.issues or m in view.unavailable for m in product):
+        return None
+    return view
+
+
+def _revalidate(user_id: str, vertical: str, generation: str) -> None:
+    """Build the view of *generation* in the background, once per view key on this worker."""
+    key = _view_key(user_id, vertical, generation)
+    if key in _revalidations:
+        return
+
+    async def build() -> None:
+        _timings.set(None)  # the request that started it has answered: its timings are closed
+        try:
+            from app.core.database import async_session
+
+            async with async_session() as db:
+                await _product_view(db, user_id, vertical, fresh=False)
+        except Exception:
+            logger.info("CTEM cases: background view build failed for %s", user_id, exc_info=True)
+
+    task = asyncio.create_task(build())
+    _revalidations[key] = task
+    task.add_done_callback(lambda _t: _revalidations.pop(key, None))
+
+
+async def _product_view(
+    db: Any, user_id: str, vertical: str, *, fresh: bool, members: list[str] | None = None
+) -> ViewerView:
     client = await _redis()
     generation = await _generation(client, vertical) if client is not None else "0"
     if client is not None and not fresh:
@@ -364,6 +439,20 @@ async def _product_view(db: Any, user_id: str, vertical: str, *, fresh: bool) ->
         if cached is not None:
             mark("cache", "hit")
             return cached
+        if members is not None:
+            stale = await _stale_view(client, user_id, vertical, generation, members)
+            if stale is not None:
+                mark("cache", "stale")
+                _revalidate(user_id, vertical, generation)
+                return stale
+            key = _view_key(user_id, vertical, generation)
+            if _build_locks.get(key) is None or key in _revalidations:
+                # No view to answer from and no request building one: read only this case's members and
+                # build the whole view in the background (#1986), never the whole world on the request.
+                mark("cache", "scoped")
+                scoped = await _case_view(db, client, user_id, vertical, members)
+                _revalidate(user_id, vertical, generation)
+                return scoped
     if client is None:
         return await _build_view(db, client, user_id, vertical, generation)
     async with _singleflight(_view_key(user_id, vertical, generation)):
@@ -382,7 +471,7 @@ async def _build_view(db: Any, client: Any, user_id: str, vertical: str, generat
 
     started = time.perf_counter()
     async with timed("source"):
-        view = await source.read_view(db, user_id, vertical)
+        view: ViewerView = await source.read_view(db, user_id, vertical)
     logger.info(
         "CTEM cases: view of %s built in %.0f ms (vertical %s, generation %s, %d issues, missing %s)",
         user_id,
@@ -392,23 +481,43 @@ async def _build_view(db: Any, client: Any, user_id: str, vertical: str, generat
         len(view.issues),
         view.missing,
     )
-    if view.missing and client is not None:
-        # Ids the viewer was shown from a product that does not answer now:
-        # still theirs to see, with the details marked unavailable.
-        try:
-            seen = await client.get(_seen_key(user_id, vertical))
-            for member_id in json.loads(seen) if seen else []:
-                if member_id.split(":", 1)[0] in view.missing and member_id not in view.issues:
-                    view.unavailable.add(member_id)
-        except Exception:
-            logger.info("CTEM cases: last-seen ids unreadable for %s", user_id, exc_info=True)
+    await _seen_while_missing(client, user_id, vertical, view)
     if client is not None:
         try:
             await client.set(_view_key(user_id, vertical, generation), view.to_json(), ex=VIEW_TTL_SECONDS)
+            await client.set(_latest_key(user_id, vertical), generation, ex=VIEW_TTL_SECONDS)
             visible = sorted(set(view.issues) | view.unavailable)
             await client.set(_seen_key(user_id, vertical), json.dumps(visible), ex=LAST_SEEN_TTL_SECONDS)
         except Exception:
             logger.info("CTEM cases: view cache not written for %s", user_id, exc_info=True)
+    return view
+
+
+async def _seen_while_missing(client: Any, user_id: str, vertical: str, view: ViewerView) -> None:
+    """Ids the viewer was shown from a product that does not answer now: still theirs to see, marked unavailable."""
+    if not view.missing or client is None:
+        return
+    try:
+        seen = await client.get(_seen_key(user_id, vertical))
+        for member_id in json.loads(seen) if seen else []:
+            if member_id.split(":", 1)[0] in view.missing and member_id not in view.issues:
+                view.unavailable.add(member_id)
+    except Exception:
+        logger.info("CTEM cases: last-seen ids unreadable for %s", user_id, exc_info=True)
+
+
+async def _case_view(db: Any, client: Any, user_id: str, vertical: str, members: list[str]) -> ViewerView:
+    """The viewer's own view of one case's *members* (``ctem_cases_source.read_case_view``), never cached.
+
+    Same rules as a whole view: what the viewer cannot read stays out (Restricted),
+    an id seen before from a product that does not answer now is marked unavailable.
+    """
+    from app.services import ctem_cases_source as source
+
+    async with timed("source"):
+        view: ViewerView = await source.read_case_view(db, user_id, vertical, members)
+    await _seen_while_missing(client, user_id, vertical, view)
+    view.unavailable &= set(members)
     return view
 
 

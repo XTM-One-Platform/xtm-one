@@ -20,6 +20,7 @@ from . import (
     body_edits,
     closing_refs,
     full_ci_gate,
+    issue_close,
     merge_refusals,
     pr_files,
     pr_inherit,
@@ -924,7 +925,8 @@ def register(
         (number or exact title) the repository does not define refuses the
         call, and a milestone is never created. Another open pull request of
         the same author that shares a file or an issue is named in a warning
-        (:mod:`.pr_overlap`), never a refusal.
+        (:mod:`.pr_overlap`), never a refusal. A body that marks the PR as the
+        last slice of an issue it does not close is refused (:mod:`.issue_close`).
         """
         owner, name, rerr = parse_repo(repo)
         if rerr:
@@ -941,6 +943,9 @@ def register(
             refusal = await closing_refs.pr_closing_refusal(
                 client, f"{owner}/{name}", {"title": title, "body": body}, headers, "create PR"
             )
+            if refusal:
+                return refusal
+            refusal = await issue_close.last_slice_refusal(client, f"{owner}/{name}", body, headers, "create PR")
             if refusal:
                 return refusal
             if wanted_labels:
@@ -1151,6 +1156,12 @@ def register(
                 )
                 if refusal:
                     return refusal
+            if body:
+                refusal = await issue_close.last_slice_refusal(
+                    client, f"{owner}/{name}", body, headers, f"update PR #{number}"
+                )
+                if refusal:
+                    return refusal
             stored = ""
             if attachment_file_ids:
                 if not body:
@@ -1283,7 +1294,10 @@ def register(
 
         Refused with nothing merged when the PR's title or body, or the commit
         title or message given, carries a closing keyword that points at a pull
-        request: GitHub would close that other PR on this merge. The
+        request: GitHub would close that other PR on this merge. A merged answer
+        ends with 'Still open after this merge' for the issues the PR references
+        without a closing keyword (or with one, on a base that is not the
+        default branch) that read open (:mod:`.issue_close`). The
         messages of the PR's own commits are checked too whenever they reach
         the base branch: a squash without *commit_message* (GitHub builds the
         default message from them), a merge commit or a rebase.
@@ -1298,6 +1312,7 @@ def register(
             return f"Invalid merge_method: {merge_method}. Must be 'merge', 'squash', or 'rebase'."
         async with egress_client(timeout=30) as client:
             texts = {"commit_title": commit_title, "commit_message": commit_message}
+            pr_data: Any = None
             pr_resp, pr_err = await _common.safe_request(
                 client,
                 "get",
@@ -1405,8 +1420,11 @@ def register(
                 return (await _merge_state())[0]
 
             async def _receipt(sha: str) -> str:
-                """The commit receipt, then the full CI runs the merge was gated on."""
-                return await _commit_receipt(sha) + gate_note + loop_note
+                """The commit receipt, the full CI runs the merge was gated on, then the issues left open."""
+                still_open = await issue_close.still_open_line(
+                    client, f"{owner}/{name}", number, pr_data if not pr_err else None, headers
+                )
+                return await _commit_receipt(sha) + gate_note + loop_note + still_open
 
             async def _commit_receipt(sha: str) -> str:
                 """' Merge commit <sha>, signed ...' read from the commit itself.
@@ -2076,7 +2094,8 @@ def register(
             name="create_github_pr",
             description=(
                 "Create a new pull request from head branch to base branch. A title that breaks the title rule "
-                "the repository declares ([pull_request] in .xtm-one/checks.toml) is refused, the rule named, nothing written."
+                "the repository declares ([pull_request] in .xtm-one/checks.toml) is refused, the rule named, nothing written. "
+                "A last-slice body that writes 'Refs #N' instead of 'Closes #N' is refused."
             ),
             input_schema={
                 "type": "object",
@@ -2197,7 +2216,7 @@ def register(
                 "Merge a pull request using merge commit, squash, or rebase strategy. On a base protected by a "
                 "merge queue the PR is added to the queue (answered queued, with its position). A repository "
                 "declaring [merge] full_ci_workflows merges only once that full run is green on the head "
-                "(dispatched when absent)."
+                "(dispatched when absent). A merged answer names the referenced issues still open."
             ),
             input_schema={
                 "type": "object",

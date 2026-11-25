@@ -22,7 +22,7 @@ profile, which the API saves as a new version. Nothing is written by
 Columns (header row, case-insensitive, any order; only ``name`` is required):
 ``name``, ``category`` and ``subcategory`` (OpenAEV's taxonomy, #11781),
 ``criticality``, ``environment``, ``internet_facing``, ``owner``,
-``group``, ``tech_stack`` and ``tags`` (separated by ``;`` or ``|``),
+``group``, ``products`` and ``tags`` (separated by ``;`` or ``|``),
 ``primary_assets`` (primary asset names the asset runs, ``;`` separated),
 ``external_id``. The flat ``type`` of #11543 is still read, as its category
 and subcategory; a ``type`` of ``asset_group`` adds the row to ``asset_groups``.
@@ -59,12 +59,12 @@ COLUMNS: tuple[str, ...] = (
     "internet_facing",
     "owner",
     "group",
-    "tech_stack",
+    "products",
     "tags",
     "primary_assets",
     "external_id",
 )
-_LIST_COLUMNS = ("tech_stack", "tags", "primary_assets")
+_LIST_COLUMNS = ("products", "tags", "primary_assets")
 #: Words a spreadsheet writes for ``internet_facing``, read as the stored value.
 _YES_NO = {
     "yes": "yes",
@@ -164,7 +164,7 @@ def parse_assets_csv(data: bytes, profile: OrganizationProfile) -> AssetsPreview
                 values[key] = values[key].lower().replace(" ", "_")
         values.update(
             internet_facing=facing,
-            tech_stack=_split(row.get("tech_stack", "")),
+            products=_split(row.get("products", "")),
             tags=_split(row.get("tags", "")),
             source="csv",
         )

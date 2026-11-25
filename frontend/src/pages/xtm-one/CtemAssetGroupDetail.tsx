@@ -101,7 +101,7 @@ export default function CtemAssetGroupDetail() {
         ...(data.environment ? [<Fact key="environment" icon="layers" label={t_i18n("Environment")} values={[assetFieldLabel(t_i18n, "environment", data.environment)]} />] : []),
         <Fact key="exposure" icon="earth" label={t_i18n("Exposure")} values={[t_i18n((EXPOSURE_LABELS as Record<string, string>)[data.internet_facing] ?? data.internet_facing)]} />,
         ...(data.owner ? [<Fact key="owner" icon="user" label={t_i18n("Owner")} values={[data.owner]} />] : []),
-        ...(data.tech_stack.length ? [<Fact key="tech" icon="layers" label={t_i18n("Software")} values={[data.tech_stack.join(", ")]} />] : []),
+        ...(data.products.length ? [<Fact key="tech" icon="layers" label={t_i18n("Software")} values={[data.products.join(", ")]} />] : []),
       ]
     : [];
 

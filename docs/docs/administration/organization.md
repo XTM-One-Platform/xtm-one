@@ -19,7 +19,7 @@ By default, every agent also starts each chat and each run with a short block: t
 
 A vulnerability on a product named like one of your imported GitHub or GitLab repositories (a CPE product part or a plain name, case, `-` and `_` ignored) resolves to that repository in CTEM without a `shipped_products` row; forks are left out.
 
-`primary_assets` and `tech_stack`, the former names of `primary_assets` and `software`, are still read for one release; a saved selection naming them was renamed on upgrade.
+`crown_jewels` and `tech_stack`, the former names of `primary_assets` and `software`, are no longer read; a saved selection naming them was renamed on upgrade. The product list of an asset or an asset group, and the asset CSV column, are named `products`.
 
 The short block stays the same size whatever the length of the lists. An agent asked about a vulnerability reads the software inventory page by page, or narrows it to a vendor or a product with `query`.
 
@@ -123,6 +123,15 @@ Above the form, a box lists the fields not filled yet: the same list agents repo
 The **Priority intelligence requirements (PIRs)** are not on this page: pick them on **CTEM > Inventory > Exposure policy > Prioritization policy**, next to the two PIR score thresholds (`PIR score minimum: vulnerabilities` and `PIR score minimum: threat activity`). The list is picked from the PIRs of your connected OpenCTI: it filters the two PIR playbooks and raises the context score of a threat or a vulnerability flagged in one. Select `Edit` on the card, change the list, then `Save`.
 
 A value that is not valid (a region that is not a country code, an amount that is not a number) is refused, and the message names the field.
+
+### Pause and resume CTEM case opening
+
+The **Case opening** switch sits in the toolbar of **CTEM > Cases**, beside **Group by** and **Views**, and on the header of **CTEM > Signals > Sources**, for administrators. It is on by default. Hover it to see how many confirmed signals are waiting while it is off.
+
+- **Off**: a confirmed signal opens no case. It stays confirmed and waits; an empty Cases list says case opening is off. Case deadlines, announcements and the stall reminder keep running, and a case can still be split by hand.
+- **On again**: every waiting signal opens (or joins) its case at once, without waiting for the next scheduled pass, and the Cases list fills while you watch.
+
+Other users do not see the switch. Every change is in the audit log.
 
 ## Primary assets and business services
 

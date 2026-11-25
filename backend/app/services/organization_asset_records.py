@@ -743,6 +743,29 @@ async def set_primary_asset_links(
     return [keys[k] for k in keys if k not in found]
 
 
+async def primary_asset_link_counts(db: AsyncSession, organization_id: uuid.UUID) -> dict[str, dict[str, int]]:
+    """Per primary asset key, how many assets and groups support it, by source (#1978 S2).
+
+    Counts the stored links (``manual``, ``opencrq``, ``rule``), a person's
+    removal (``removed``) left out: what the Assets column of the primary
+    assets table reads, so a synced link shows without touching the profile's
+    ``asset_names``. One grouped query, whatever the number of links.
+    """
+    link = OrganizationPrimaryAssetLink
+    rows = (
+        await db.execute(
+            select(link.primary_asset_key, link.source, func.count())
+            .where(link.organization_id == organization_id, link.removed.is_(False))
+            .group_by(link.primary_asset_key, link.source)
+        )
+    ).all()
+    out: dict[str, dict[str, int]] = {}
+    for jewel_key, source, count in rows:
+        by_source = out.setdefault(str(jewel_key), {})
+        by_source[str(source or "manual")] = by_source.get(str(source or "manual"), 0) + int(count)
+    return out
+
+
 # ── Writes ────────────────────────────────────────────────────────────
 
 

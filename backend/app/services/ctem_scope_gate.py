@@ -228,7 +228,7 @@ class Resolution:
     #: #1591 S3: the primary assets reached through the inventory links, each with its chain
     #: (software -> asset or asset group -> primary asset, role, link source).
     primary_assets: list[dict[str, Any]] = field(default_factory=list)
-    #: #1720: the software references the tech stack and shipped products were matched against.
+    #: #1720: the software references the organization's software and shipped products were matched against.
     software_refs: list[str] = field(default_factory=list)
 
     @property
@@ -332,7 +332,7 @@ def shipped_match(entry: ShippedProduct, ref: str) -> str:
 THREAT_SOFTWARE_RELATIONSHIPS: frozenset[str] = frozenset({"targets", "uses", "has"})
 #: #1720: the evidence keys a threat's targeted or used software is listed under.
 THREAT_SOFTWARE_KEYS: tuple[str, ...] = ("targets", "uses", "targeted_software", "targeted_products")
-#: #1720: the scorer's matched field naming the products a threat matched, ``tech_stack (A, B)``.
+#: #1720: the scorer's matched field naming the products a threat matched, ``products (A, B)``.
 _MATCHED_PRODUCTS = re.compile(r"\b(?:tech[ _]stack|software|products?)\s*\(([^()]*)\)", re.IGNORECASE)
 
 
@@ -342,8 +342,8 @@ def threat_software(evidence: dict[str, Any]) -> list[str]:
     Read from the lists of :data:`THREAT_SOFTWARE_KEYS`, from ``relationships``
     (``{relationship_type, target}`` or ``{type, name}`` objects, kept when the
     type is one of :data:`THREAT_SOFTWARE_RELATIONSHIPS`), and from the
-    scorer's ``matched_fields`` (``tech_stack (Microsoft 365, GitHub)``). Each
-    name is then matched to the tech stack like any software reference.
+    scorer's ``matched_fields`` (``products (Microsoft 365, GitHub)``). Each
+    name is then matched to the organization's software like any software reference.
     """
     found = _evidence_list(evidence, *THREAT_SOFTWARE_KEYS)
     relationships = evidence.get("relationships")
@@ -434,7 +434,7 @@ def resolve(
     if out.products:
         names = {p.lower() for p in out.products}
         for asset in profile.assets_exposure:
-            if asset not in out.assets and names & {t.lower() for t in asset.tech_stack}:
+            if asset not in out.assets and names & {t.lower() for t in asset.products}:
                 out.assets.append(asset)
     return out
 
@@ -626,7 +626,7 @@ def decide(
             "assets": [a.name for a in resolution.assets],
             "asset_groups": resolution.groups,
             "primary_assets_named": resolution.named_primary_assets,
-            "tech_stack": resolution.products,
+            "products": resolution.products,
             "shipped_products": resolution.shipped,
             "repositories": resolution.repositories,
             "software_refs": resolution.software_refs,
