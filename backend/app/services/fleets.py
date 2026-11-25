@@ -1320,7 +1320,10 @@ async def ensure_fleet_health_check(db: AsyncSession, fleet: Fleet, agent: Agent
     if existing is not None:
         if existing.activation_check != gate:
             existing.activation_check = gate
-            existing.prompt = fleet_health_check_prompt(fleet)
+        # The prompt names the fleet: a renamed fleet (an upgrade included) gets it rewritten (#2121).
+        prompt = fleet_health_check_prompt(fleet)
+        if existing.prompt != prompt:
+            existing.prompt = prompt
         existing.ai_label = False
         return False
     if fleet_health_check_mode(fleet) != HEALTH_CHECK_DEFAULT:
