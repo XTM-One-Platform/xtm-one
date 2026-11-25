@@ -14,7 +14,7 @@ import { Alert, Radio, RadioGroup, Spinner } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { CompactFigure } from "@/components/ui/compact-figure";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { SettingsField, SettingsSwitchField, settingsFieldLabelId } from "@/components/ui/settings-form";
+import { SettingsField, SettingsGroupDescription, SettingsGroupTitle, SettingsSwitchField, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { useMe } from "@/hooks/api/useAuthApi";
 import {
   useOrganizationSyncDirections,
@@ -32,6 +32,7 @@ import { IMPORT_SOURCE_NAMES } from "@/lib/organization-profile";
 import { defaultSchedule, type SyncSchedule } from "@/lib/organization-sync-schedule";
 import { OrganizationSharedContextNotice } from "./OrganizationSharedContextNotice";
 import { SyncFilterFields, type SyncFilters } from "./OrganizationSyncFilters";
+import { reasonLabel, SyncPreviewError, SyncRowList } from "./OrganizationSyncPreviewParts";
 import { SyncScheduleFields } from "./OrganizationSyncSchedule";
 
 /** @i18n-keys */
@@ -51,23 +52,6 @@ export const DIRECTION_LABELS = {
   inbound: "Inbound",
   outbound: "Outbound",
 } as const satisfies Record<SyncDirection, string>;
-
-/**
- * The reasons GET /syncs/directions gives for a pairing without outbound (backend DIRECTIONS of
- * organization_context_outbound.py), listed so the catalogs translate them; an unknown one shows as sent.
- * @i18n-keys
- */
-const OUTBOUND_REASONS = {
-  openaev_asset_groups: "Planned: OpenAEV asset group writes are not wired for syncs yet.",
-  opencti_pirs: "Planned: OpenCTI PIR writes are not wired for syncs yet.",
-  opencti_assets: "OpenCTI Systems are owned by its connectors.",
-  openaev_software: "OpenAEV software inventory is read from its agents.",
-  other: "This pairing reads only.",
-} as const;
-
-const KNOWN_REASONS: readonly string[] = Object.values(OUTBOUND_REASONS);
-
-const reasonLabel = (t_i18n: (key: string) => string, reason: string): string => (KNOWN_REASONS.includes(reason) ? t_i18n(reason) : reason);
 
 export const directionOf = (sync: OrganizationSync): SyncDirection => sync.direction ?? "inbound";
 
@@ -188,7 +172,11 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="space-y-4">
-          <OrganizationSharedContextNotice elevation={1} actor={sync ? { mode: "runs", who: sync.owner_email ?? t_i18n("Unknown"), savingAs: meLabel } : null} />
+          <OrganizationSharedContextNotice
+            elevation={1}
+            direction={sectionSync ? direction : "inbound"}
+            actor={sync ? { mode: "runs", who: sync.owner_email ?? t_i18n("Unknown"), savingAs: meLabel } : null}
+          />
           {sectionSync && (
             <SettingsField
               id="org-sync-edit-direction"
@@ -240,13 +228,19 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
               )}
             />
           )}
-          <SyncScheduleFields idPrefix="org-sync-edit" value={schedule} onChange={setSchedule} />
+          <SyncScheduleFields idPrefix="org-sync-edit" value={schedule} onChange={setSchedule} direction={sectionSync ? direction : "inbound"} />
           {sectionSync && (
             <div role="group" aria-labelledby="org-sync-edit-filters-title" className="space-y-4" data-testid="org-sync-edit-filters">
-              <p id="org-sync-edit-filters-title" className="content-compact font-medium text-default-primary">
-                {t_i18n("Filters")}
-              </p>
-              {directionChanged && <p className="content-compact text-default-secondary">{t_i18n("A new direction starts with no filter: pick the ones its runs use.")}</p>}
+              <div>
+                <SettingsGroupTitle id="org-sync-edit-filters-title">{t_i18n("Filters")}</SettingsGroupTitle>
+                <SettingsGroupDescription>
+                  {directionChanged
+                    ? t_i18n("A new direction starts with no filter: pick the ones its runs use.")
+                    : direction === "outbound"
+                      ? t_i18n("Which XTM One rows the runs push to {platform}.", { platform })
+                      : t_i18n("Which rows the runs import from {platform}.", { platform })}
+                </SettingsGroupDescription>
+              </div>
               <SyncFilterFields section={sync.section as ImportSectionKey} source={sync.source as ImportSourceKey} direction={direction} filters={filters} onChange={changeFilters} active={open} />
             </div>
           )}
@@ -265,12 +259,15 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
                   {t_i18n("Reading {platform}", { platform })}
                 </p>
               )}
-              {change.isError && <p className="content-compact text-feedback-error-primary">{t_i18n("The preview could not be made. Try again in a moment.")}</p>}
-              {change.data?.error && (
-                <p className="content-compact text-feedback-error-primary" data-testid="org-sync-edit-change.error">
-                  {t_i18n("{platform} could not be read. Nothing will be saved.", { platform })}
-                </p>
-              )}
+              <SyncPreviewError
+                platform={platform}
+                requestError={change.isError ? change.error : null}
+                readFailed={Boolean(change.data?.error)}
+                cause={change.data?.error}
+                onRetry={previewChange}
+                retrying={change.isPending}
+                testId="org-sync-edit-change.error"
+              />
               {change.data && !change.data.error && (
                 <>
                   <p className="content-compact text-default-secondary">{t_i18n("What the next run does with these filters. Nothing is saved before Save the change.")}</p>
@@ -291,13 +288,7 @@ export function SyncEditDialog({ sync, open, saving, onClose, onSave }: EditProp
                           ? t_i18n("Deleted from {platform} on the next run: only rows this sync created.", { platform })
                           : t_i18n("Removed from the list on the next run: rows this sync wrote that leave the filters.")}
                       </p>
-                      <ul className="max-h-32 space-y-0.5 overflow-y-auto content-compact text-default-primary">
-                        {change.data.leave.map((name) => (
-                          <li key={name} className="truncate" title={name}>
-                            {name}
-                          </li>
-                        ))}
-                      </ul>
+                      <SyncRowList rows={change.data.leave} total={Math.max(change.data.counts.leave, change.data.leave.length)} testId="org-sync-edit-change.leave-rows" />
                     </div>
                   )}
                   {change.data.kept.length > 0 && (

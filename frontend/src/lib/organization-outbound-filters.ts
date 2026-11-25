@@ -31,10 +31,11 @@ export function outboundFilterValues(key: FilterKey): string[] {
 
 /** The sections, then the platforms of a section, an outbound sync may take (the backend's DIRECTIONS). */
 export function outboundSections(matrix: SyncDirectionSupport[] | undefined, offered?: readonly ImportSectionKey[]): ImportSectionKey[] {
-  const sections = (matrix ?? []).filter((entry) => entry.directions.includes("outbound")).map((entry) => entry.section);
+  // An entry read before the directions field existed (an older answer, a test double) carries none: no outbound.
+  const sections = (matrix ?? []).filter((entry) => entry.directions?.includes("outbound")).map((entry) => entry.section);
   return [...new Set(sections)].filter((section) => !offered || offered.includes(section));
 }
 
 export function outboundSources(matrix: SyncDirectionSupport[] | undefined, section: ImportSectionKey | null): ImportSourceKey[] {
-  return (matrix ?? []).filter((entry) => entry.section === section && entry.directions.includes("outbound")).map((entry) => entry.source);
+  return (matrix ?? []).filter((entry) => entry.section === section && entry.directions?.includes("outbound")).map((entry) => entry.source);
 }

@@ -74,6 +74,19 @@ const FILTER_HELP = {
   skip_dependencies: { helper: "Off: each repository's dependencies are read.", info: "GitHub: the dependency graph SBOM. GitLab: the dependency list, on GitLab Ultimate only. On: repositories only, faster." },
 } as const;
 
+/**
+ * The words of the filters an outbound sync offers (#1982 S4, UX round 1 on #2020 B2): on a push XTM One is the
+ * source, so each filter reads the XTM One row's own value.
+ * @i18n-keys
+ */
+const OUTBOUND_FILTER_HELP: Partial<Record<FilterKey, { helper: string; info: string }>> = {
+  category: { helper: "Only XTM One assets of these categories. Empty: every category.", info: "The category of the asset row in XTM One, such as Host or Cloud resource." },
+  criticality: { helper: "Only XTM One rows rated at one of these levels. Empty: every level.", info: "The criticality of the row in XTM One." },
+  internet_facing: { helper: "Only XTM One rows with this exposure. Empty: any exposure.", info: "Whether the row in XTM One is marked reachable from the internet." },
+  environment: { helper: "Only XTM One rows of these environments. Empty: every environment.", info: "The environment of the row in XTM One, such as Production." },
+  search: { helper: "Only names holding this text. Empty: every name.", info: "Matched on the name of the XTM One row, ignoring case." },
+};
+
 /** The filters read from the source as a list of values (a picker, never free text). */
 const PICKED: FilterKey[] = [
   "labels",
@@ -171,6 +184,8 @@ export function SyncFilterFields({ section, source, direction, filters, onChange
     return t_i18n("{platform} did not list these values. Try again in a moment.", { platform });
   };
 
+  const help = (key: FilterKey) => (outbound ? (OUTBOUND_FILTER_HELP[key] ?? FILTER_HELP[key]) : FILTER_HELP[key]);
+
   const filterControl = (key: FilterKey) => {
     const id = `org-import-filter-${key}`;
     const reason = reasonOf(key);
@@ -212,7 +227,7 @@ export function SyncFilterFields({ section, source, direction, filters, onChange
             onToggle={(value) => toggle(key, value)}
             disabled={Boolean(reason)}
             sort={!outbound && !keepsSourceOrder(key)}
-            placeholder={options.isLoading ? t_i18n("Reading {platform}", { platform }) : t_i18n("Every value")}
+            placeholder={!outbound && options.isLoading ? t_i18n("Reading {platform}", { platform }) : t_i18n("Every value")}
             searchPlaceholder={t_i18n("Search a value")}
             emptyOptionsLabel={t_i18n("No value in {platform}", { platform })}
             noMatchLabel={t_i18n("No matching value")}
@@ -280,7 +295,7 @@ export function SyncFilterFields({ section, source, direction, filters, onChange
       );
     };
     return (
-      <SettingsField key={key} id={id} label={t_i18n(FILTER_LABELS[key])} helper={reason ?? t_i18n(FILTER_HELP[key].helper)} info={t_i18n(FILTER_HELP[key].info)}>
+      <SettingsField key={key} id={id} label={t_i18n(FILTER_LABELS[key])} helper={reason ?? t_i18n(help(key).helper)} info={t_i18n(help(key).info)}>
         {control()}
       </SettingsField>
     );

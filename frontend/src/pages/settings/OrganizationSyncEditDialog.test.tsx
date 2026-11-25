@@ -108,6 +108,44 @@ describe("SyncEditDialog, filters (#1982 S4)", () => {
     await waitFor(() => expect(screen.queryByText("OpenCTI is not connected for your account.")).toBeNull());
   });
 
+  it("words an outbound sync as a push: notice, schedule helper, filter help and the Filters group title (UX r1 B2, B3)", async () => {
+    renderWithProviders(<SyncEditDialog sync={sync()} open saving={false} onClose={() => {}} onSave={() => {}} />);
+    expect(await screen.findByTestId("org-shared-context.outbound")).toBeTruthy();
+    expect(screen.queryByTestId("org-shared-context.source")).toBeNull();
+    expect(screen.getByText("How often the XTM One rows are pushed to the platform again.")).toBeTruthy();
+    expect(screen.getByText("Only XTM One rows rated at one of these levels. Empty: every level.")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Filters" })).toBeTruthy();
+    expect(screen.getByText("Which XTM One rows the runs push to OpenAEV.")).toBeTruthy();
+  });
+
+  it("lists the first rows to remove, then +N more, with no native title (UX r1 B4)", async () => {
+    const leave = Array.from({ length: 12 }, (_, index) => `row-${index}`);
+    post.mockImplementation(async () => ({ ...CHANGE, counts: { ...CHANGE.counts, leave: 12 }, leave }));
+    renderWithProviders(<SyncEditDialog sync={sync()} open saving={false} onClose={() => {}} onSave={() => {}} />);
+    fireEvent.change(within(await screen.findByTestId("org-sync-edit-filters")).getByRole("textbox"), { target: { value: "prod" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview the change" }));
+    const list = await screen.findByTestId("org-sync-edit-change.leave-rows");
+    expect(list.querySelectorAll("li")).toHaveLength(9);
+    expect(screen.getByTestId("org-sync-edit-change.leave-rows.more").textContent).toBe("+4 more rows");
+    expect(list.querySelector("[title]")).toBeNull();
+  });
+
+  it("shows a read failure's cause with Try again, and a refusal's reason without it (UX r1 B5)", async () => {
+    post.mockImplementationOnce(async () => ({ ...CHANGE, error: "OpenAEV: not connected, or no token for this administrator" }));
+    renderWithProviders(<SyncEditDialog sync={sync()} open saving={false} onClose={() => {}} onSave={() => {}} />);
+    fireEvent.change(within(await screen.findByTestId("org-sync-edit-filters")).getByRole("textbox"), { target: { value: "prod" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview the change" }));
+    const block = await screen.findByTestId("org-sync-edit-change.error");
+    expect(block.textContent).toContain("Reason: OpenAEV: not connected, or no token for this administrator");
+    post.mockImplementationOnce(async () => {
+      throw Object.assign(new Error("OpenCTI Systems are owned by its connectors."), { status: 422, detail: "OpenCTI Systems are owned by its connectors." });
+    });
+    fireEvent.click(within(block).getByRole("button", { name: "Try again" }));
+    const refused = await screen.findByTestId("org-sync-edit-change.error.refused");
+    expect(refused.textContent).toContain("Reason: OpenCTI Systems are owned by its connectors.");
+    expect(within(refused).queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
   it("draws no filter for Sync all", async () => {
     renderWithProviders(<SyncEditDialog sync={sync({ section: "all", source: "" })} open saving={false} onClose={() => {}} onSave={() => {}} />);
     expect(await screen.findByRole("heading", { name: "Edit the sync" })).toBeTruthy();

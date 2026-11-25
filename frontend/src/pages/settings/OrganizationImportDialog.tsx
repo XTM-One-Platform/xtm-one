@@ -26,7 +26,7 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 import { OptionCard } from "@/components/ui/option-card";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { SettingsField, SettingsSwitchField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
+import { SettingsField, SettingsGroupDescription, SettingsGroupTitle, SettingsSwitchField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
 import { useToast } from "@/components/ui/toast";
 import { useMe } from "@/hooks/api/useAuthApi";
 import {
@@ -50,6 +50,7 @@ import { IMPORT_SOURCE_NAMES, IMPORT_SOURCE_PROVIDER } from "@/lib/organization-
 import { defaultSchedule, type SyncSchedule } from "@/lib/organization-sync-schedule";
 import { OrganizationSharedContextNotice } from "./OrganizationSharedContextNotice";
 import { SyncFilterFields, type SyncFilters } from "./OrganizationSyncFilters";
+import { SyncPreviewError, SyncRowList } from "./OrganizationSyncPreviewParts";
 import { SyncScheduleFields } from "./OrganizationSyncSchedule";
 
 /** A library glyph handed to OptionCard, which takes a glyph component (no direct lucide-react import). */
@@ -486,6 +487,11 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
     setResult(null);
     preview.mutate(body(), { onSuccess: setResult });
   };
+  // The first run of a new outbound sync (POST /syncs/outbound-preview); Try again asks for it once more.
+  const previewOutbound = () => {
+    if (!section || !source) return;
+    outboundPreview.mutate({ section, source, filters });
+  };
 
   const showPreview = () => {
     // A failed import belongs to the previous preview: a new preview starts with no error line.
@@ -532,7 +538,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
     if (step === "section" && source === null) setSource(sectionEntry?.sources.find((entry) => entry.available)?.source ?? null);
     if (step === "filters" && outbound) {
       createSync.reset();
-      outboundPreview.mutate({ section: section as ImportSectionKey, source: source as ImportSourceKey, filters });
+      previewOutbound();
     } else if (step === "filters" && !result) readPreview();
     setStep(steps[stepIndex + 1]);
   };
@@ -571,12 +577,18 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
 
   // The shared radio card (OptionCard); auto-rows-fr makes every row of the grid one height, so the six cards match.
   const directionKeys: SyncDirection[] = pushSections.length > 0 ? ["inbound", "outbound"] : ["inbound"];
+  // Two choices, each under its own visible title (UX round 1 on #2020 B1), so they never read as one grid of four cards.
   const sectionStep = (
-    <div className="space-y-3">
+    <div className="space-y-5">
       {directionKeys.length > 1 && (
+        <section className="space-y-2" aria-labelledby="org-import-direction-title">
+          <div>
+            <SettingsGroupTitle id="org-import-direction-title">{t_i18n("Direction")}</SettingsGroupTitle>
+            <SettingsGroupDescription>{t_i18n("Which side is the master of the list.")}</SettingsGroupDescription>
+          </div>
         <div
           role="radiogroup"
-          aria-label={t_i18n("Direction")}
+          aria-labelledby="org-import-direction-title"
           className="grid auto-rows-fr gap-2 sm:grid-cols-2"
           data-testid="org-import.directions"
           onKeyDown={(event) => onRadioKeyDown(event, directionKeys, direction, pickDirection, choiceId)}
@@ -593,6 +605,16 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
               description={t_i18n(DIRECTION_LABELS[key].hint)}
             />
           ))}
+        </div>
+        </section>
+      )}
+      <section className="space-y-2" aria-labelledby={directionKeys.length > 1 ? "org-import-section-title" : undefined}>
+      {directionKeys.length > 1 && (
+        <div>
+          <SettingsGroupTitle id="org-import-section-title">{t_i18n(stepTitle("section"))}</SettingsGroupTitle>
+          <SettingsGroupDescription>
+            {outbound ? t_i18n("The part of the organization context the sync writes to the platform.") : t_i18n("The part of the organization context the platform fills.")}
+          </SettingsGroupDescription>
         </div>
       )}
       <div
@@ -615,6 +637,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
           />
         ))}
       </div>
+      </section>
       {onQuickSetup && !outbound && (
         <div className="flex items-center justify-between gap-3 rounded-sm border border-elevation-subtle px-3 py-2">
           <p className="content-compact text-default-secondary">
@@ -631,7 +654,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
 
   const sourceStep = (
     <div className="space-y-2">
-      <OrganizationSharedContextNotice className="mb-2" elevation={1} />
+      <OrganizationSharedContextNotice className="mb-2" elevation={1} direction={direction} />
       {sources.isLoading && (
         <p className="flex items-center gap-2 content-compact text-default-secondary">
           <Spinner size="sm" />
@@ -785,7 +808,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
           {t_i18n("Reading {platform}", { platform })}
         </p>
       )}
-      {preview.isError && <p className="content-compact text-feedback-error-primary">{t_i18n("The preview could not be made. Try again in a moment.")}</p>}
+      <SyncPreviewError platform={platform} requestError={preview.isError ? preview.error : null} onRetry={readPreview} retrying={preview.isPending} testId="org-import.preview-error" />
       {plan?.error && (
         <div className="space-y-1" data-testid="org-import.read-error">
           <p className="content-compact text-feedback-error-primary">
@@ -825,13 +848,7 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
             />
           )}
           {plan.sample.length > 0 && (
-            <ul className="max-h-40 space-y-0.5 overflow-y-auto content-compact text-default-primary" data-testid="org-import.sample">
-              {plan.sample.map((row, index) => (
-                <li key={index} className="truncate" title={String(row.name ?? row.product ?? "")}>
-                  {String(row.name ?? row.product ?? "")}
-                </li>
-              ))}
-            </ul>
+            <SyncRowList rows={plan.sample.map((row) => String(row.name ?? row.product ?? ""))} testId="org-import.sample" />
           )}
         </>
       )}
@@ -867,12 +884,15 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
           {t_i18n("Reading {platform}", { platform })}
         </p>
       )}
-      {outboundPreview.isError && <p className="content-compact text-feedback-error-primary">{t_i18n("The preview could not be made. Try again in a moment.")}</p>}
-      {pushed?.error && (
-        <p className="content-compact text-feedback-error-primary" data-testid="org-import.read-error">
-          {t_i18n("{platform} could not be read. Nothing will be saved.", { platform })}
-        </p>
-      )}
+      <SyncPreviewError
+        platform={platform}
+        requestError={outboundPreview.isError ? outboundPreview.error : null}
+        readFailed={Boolean(pushed?.error)}
+        cause={pushed?.error}
+        onRetry={previewOutbound}
+        retrying={outboundPreview.isPending}
+        testId="org-import.read-error"
+      />
       {pushed && !pushed.error && (
         <>
           <dl className="grid grid-cols-3 gap-2" data-testid="org-import.outbound-counts">
@@ -889,18 +909,15 @@ export function OrganizationImportDialog({ open, onOpenChange, onQuickSetup, qui
             {t_i18n("The first run writes these rows to {platform}. Later runs update and remove only what this sync created; the rest of {platform} is never touched.", { platform })}
           </p>
           {pushed.enter.length > 0 && (
-            <ul className="max-h-40 space-y-0.5 overflow-y-auto content-compact text-default-primary" data-testid="org-import.sample">
-              {pushed.enter.map((name) => (
-                <li key={name} className="truncate" title={name}>
-                  {name}
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-1">
+              <p className="content-compact font-medium text-default-primary">{t_i18n("Rows the first run creates in {platform}", { platform })}</p>
+              <SyncRowList rows={pushed.enter} total={Math.max(pushed.counts.enter, pushed.enter.length)} testId="org-import.sample" />
+            </div>
           )}
           <SettingsField id="org-import-sync" label={t_i18n("Schedule")} helper={t_i18n("The sync runs on this schedule, with these filters.")}>
-            <SyncScheduleFields idPrefix="org-import-sync" value={schedule} onChange={setSchedule} />
+            <SyncScheduleFields idPrefix="org-import-sync" value={schedule} onChange={setSchedule} direction="outbound" />
           </SettingsField>
-          <OrganizationSharedContextNotice elevation={1} actor={{ mode: "runs", who: meLabel }} />
+          <OrganizationSharedContextNotice elevation={1} direction="outbound" actor={{ mode: "runs", who: meLabel }} />
         </>
       )}
       {createSync.isError && (
