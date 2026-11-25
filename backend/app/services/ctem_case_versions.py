@@ -422,6 +422,24 @@ def all_on_fixed(answer: Mapping[str, Any] | None) -> bool:
     )
 
 
+def every_running_version(answer: Mapping[str, Any] | None) -> tuple[str, ...] | None:
+    """Every version the inventory shows running, from a ``with_devices`` answer (pure, #2047).
+
+    ``None`` when the answer carries no device (not read, or no asset runs the product). An asset
+    whose version is not reported counts as :data:`UNKNOWN`, which compares with nothing, so an
+    issue is never settled over an asset whose version nobody knows.
+    """
+    devices = (answer or {}).get("devices") or {}
+    if not devices:
+        return None
+    versions: set[str] = set()
+    for device in devices.values():
+        versions.update(str(v) for v in device.get("versions") or () if str(v or "").strip())
+        if not device.get("versions"):
+            versions.add(UNKNOWN)
+    return tuple(sorted(versions)) or None
+
+
 async def fixed_in_inventory(db: AsyncSession, case: Any) -> bool:
     """Whether the inventory shows an upgrade *case* fixed on every asset (it leaves the case scope)."""
     if getattr(case, "remediation_kind", None) != "upgrade" or not getattr(case, "fixed_version", None):
@@ -704,6 +722,50 @@ def versions_on_assets(
     return out
 
 
+#: How an issue's asset list was filled when its source names none (#2047).
+ASSETS_FROM_INVENTORY = "inventory"
+
+
+def attribute_assets(issues: list[dict[str, Any]], names: Iterable[str]) -> int:
+    """Give each visible issue that names no asset the assets running the case's product (pure, #2047).
+
+    A CVE read from OpenCTI on a product names no host: on an upgrade case every asset running the
+    product is exposed to it, so its list is the inventory's. An issue with assets of its own keeps
+    them; a restricted row is left as is. Answers how many issues were filled.
+    """
+    running = list(dict.fromkeys(str(n).strip() for n in names if str(n or "").strip()))
+    if not running:
+        return 0
+    filled = 0
+    for issue in issues:
+        if issue.get("restricted") or issue.get("assets"):
+            continue
+        issue["assets"] = list(running)
+        issue["assets_from"] = ASSETS_FROM_INVENTORY
+        filled += 1
+    return filled
+
+
+async def running_asset_names(db: AsyncSession, case: Any) -> list[str]:
+    """The names of the assets running an upgrade *case*'s product (software or OS rows), ``[]`` when none."""
+    if getattr(case, "remediation_kind", None) != "upgrade":
+        return []
+    keys = product_keys(getattr(case, "product_label", None))
+    if not keys:
+        return []
+    family = os_family_of(getattr(case, "product_label", None))
+    try:
+        async with db.begin_nested():
+            rows = await _read_running_names(db, case.organization_id, keys)
+            os_assets = await _read_os_assets(db, case.organization_id, family) if family else []
+    except Exception:  # the inventory never breaks a case read
+        logger.info("CTEM case running assets unavailable", exc_info=True)
+        return []
+    names = [name for name, vendor, product in rows if matches_case(case.product_label, vendor, product)]
+    names += [str(a.get("name") or "") for a in os_assets]
+    return sorted(dict.fromkeys(n for n in names if n), key=_key)
+
+
 async def assets_for_case(db: AsyncSession, case: Any, issues: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """The affected assets of a case as its reader sees them, with the version each runs (#1176 slice 3b).
 
@@ -784,6 +846,24 @@ async def _read_asset_rows(
         }
         for name, asset_id, vendor, product, version, sources, platform in result.all()
     ]
+
+
+async def _read_running_names(
+    db: AsyncSession, organization_id: uuid.UUID, keys: tuple[str, ...]
+) -> list[tuple[str, str, str]]:
+    """(asset name, vendor, product) of every asset with a software row of *keys* (one read, #2047)."""
+    soft, asset = OrganizationAssetSoftware, OrganizationAsset
+    result = await db.execute(
+        select(asset.name, soft.vendor, soft.product)
+        .join(asset, asset.id == soft.asset_id)
+        .where(
+            soft.organization_id == organization_id,
+            asset.organization_id == organization_id,
+            product_filter(soft.product_key, keys),
+        )
+        .distinct()
+    )
+    return [(str(n or ""), str(v or ""), str(p or "")) for n, v, p in result.all()]
 
 
 def _platforms_query(organization_id: uuid.UUID, keys: tuple[str, ...]) -> Select[Any]:

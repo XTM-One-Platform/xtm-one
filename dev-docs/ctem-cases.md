@@ -359,6 +359,34 @@ is unknown never leaves the scope on the inventory; an asset that falls back
 below the fix (or a new one running an old version) brings the case back
 through the usual reopen rule.
 
+**Issues fixed below every running version (#2047).** The same inventory read
+hands the recompute every version the product runs (`ctem_case_versions.every_running_version`;
+an asset with no version counts as `unknown`). A member whose own fixed version is
+known and at or below every one of them (`ctem_cases.fixed_below_running`, every
+per-platform fix included, every version comparable) leaves the active issues
+with an `issue_closed` event carrying "fixed version at or below every version
+the asset inventory shows running"; it stays in history. A new member settled
+that way is not added, and a new upgrade group of the same product whose
+members are all settled opens no case. The priority of the case is then
+recomputed from the members left (`ctem_cases_store._rerank`, which may
+relax). A case whose every member is settled resolves, kind `fixed`, evidence
+"every issue of the case is fixed in a version at or below every version
+running (asset inventory)": this is how an `@latest` case closes. A member
+the read sees open with no known fixed version keeps the case open, to
+validate, and also holds back the inventory resolution above: an unknown fix
+or an unknown running version is never read as fixed.
+
+**Nothing to upgrade (#2047).** A software signal whose fix would be
+`upgrade:-/<product>@latest` and which names no CVE (subject or evidence), no
+affected range and no fixed version (a vendor fix made service-side) opens no
+case: `ctem_case_loop.open_from_signal` parks it `to_validate` with outcome
+`review` and the reason `NOTHING_TO_UPGRADE`.
+
+**Assets per issue (#2047).** On the case page, an upgrade case issue whose
+source names no host (an OpenCTI CVE on a product) lists the assets the
+inventory shows running the product (`ctem_case_versions.attribute_assets`,
+`assets_from: inventory`), so the issue lists agree with the case's asset count.
+
 **Read at opening, before the threat package.** The same check runs when
 `ctem_case_loop.open_from_signal` creates an upgrade case (no validation plan,
 a known fixed version): the installed versions are read from the inventory

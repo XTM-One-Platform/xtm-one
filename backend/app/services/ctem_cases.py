@@ -36,7 +36,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.models.ctem_case import CASE_STATES, OPEN_STATES, RESOLUTION_KINDS
-from app.services.ctem_fixed_version import fold_by_platform, smallest_fixing_every
+from app.services.ctem_fixed_version import compare_versions, fold_by_platform, smallest_fixing_every
 
 #: Actor of the transitions recompute and the expiry sweep make.
 SYSTEM_ACTOR = "system"
@@ -46,6 +46,12 @@ DEFAULT_MAX_ACCEPTANCE = timedelta(days=90)
 CLOSED_AT_SOURCE = "every member issue closed at source"
 #: The evidence of an upgrade case the asset inventory shows fixed on every asset (#1252).
 FIXED_IN_INVENTORY = "every asset running the product runs the fixed version or later (asset inventory)"
+#: The evidence of one issue whose known fixed version is at or below every running version (#2047).
+FIXED_BELOW_RUNNING = "fixed version at or below every version the asset inventory shows running"
+#: The evidence of a case whose every issue is fixed below every running version (#2047).
+ALL_FIXED_BELOW_RUNNING = (
+    "every issue of the case is fixed in a version at or below every version running (asset inventory)"
+)
 
 _SPACES = re.compile(r"\s+")
 
@@ -357,6 +363,9 @@ class CaseSnapshot:
     #: answered not exploitable, a passing re-test), ``None`` for a resolution recompute made (#1646): such
     #: a closure holds while the case's issues stay as they were, whatever their state at source.
     decided_closure: str | None = None
+    #: Every version of the case's product the asset inventory shows running (#2047), ``None`` when not read or
+    #: when no asset runs it. An issue whose known fixed version is at or below all of them leaves the case.
+    running_versions: tuple[str, ...] | None = None
 
 
 @dataclass
@@ -377,6 +386,29 @@ class CasePlan:
     evidence: str | None = None
     #: Keys an existing case takes over: a folded upgrade target that moved (CTEM-11).
     add_keys: list[str] = field(default_factory=list)
+    #: Members of ``resolve`` (or seen members not added) settled because their fix is below every running
+    #: version (#2047): their ``issue_closed`` event carries :data:`FIXED_BELOW_RUNNING`.
+    settled: list[str] = field(default_factory=list)
+
+
+def fixed_below_running(issue: SourceIssue, running: Iterable[str] | None) -> bool:
+    """Whether *issue* is fixed in a version at or below every running version (pure, #2047).
+
+    Known data only: ``False`` without a fixed version, without a running version, or when one
+    running version (or one per-platform fix) cannot be compared. Per-platform fixes count too: the
+    highest of them must be at or below every running version. An unknown is never read as fixed.
+    """
+    running = [str(v).strip() for v in running or ()]
+    fixes = [(issue.fixed_version or "").strip(), *(str(v).strip() for _p, v in issue.fixed_versions)]
+    fixes = [f for f in fixes if f]
+    if not running or not fixes or not (issue.fixed_version or "").strip():
+        return False
+    for fixed in fixes:
+        for version in running:
+            cmp = compare_versions(version, fixed)
+            if cmp is None or cmp < 0:
+                return False
+    return True
 
 
 def _upgrade_prefix(key: str) -> str | None:
@@ -458,6 +490,17 @@ def _holder_of(key: str, members: list[SourceIssue], cases: list[CaseSnapshot]) 
     return best
 
 
+def _running_of_product(key: str, cases: list[CaseSnapshot]) -> tuple[str, ...] | None:
+    """The running versions read on an existing case of the same upgrade product as *key*, else ``None``."""
+    prefix = _upgrade_prefix(key)
+    if prefix is None:
+        return None
+    for case in cases:
+        if case.running_versions and any(k.startswith(prefix) for k in case.keys):
+            return case.running_versions
+    return None
+
+
 def plan_recompute(
     cases: Iterable[CaseSnapshot],
     issues: Iterable[SourceIssue],
@@ -509,6 +552,12 @@ def plan_recompute(
                 key_owner[key] = owner
                 taken_keys.setdefault(owner.id, []).append(key)
         if owner is None:
+            # #2047: a new upgrade group whose issues are all fixed below every version the product runs (read
+            # on a case of the same product) opens no case; the issues fixed below are left out of it.
+            running = _running_of_product(key, cases)
+            members = [m for m in members if not fixed_below_running(m, running)]
+            if not members:
+                continue
             plans.append(
                 CasePlan(
                     case_id=None,
@@ -519,21 +568,40 @@ def plan_recompute(
             continue
         seen_open[owner.id].update(m.member_id for m in members)
 
+    by_member = {i.member_id: i for i in issues}
     for case in cases:
         plan = CasePlan(case_id=case.id, remediation=retarget.get(case.id), add_keys=taken_keys.get(case.id, []))
-        for member_id in sorted(seen_open[case.id]):
+        # #2047: an issue whose known fix is at or below every running version leaves the active issues
+        # (kept in history); an unknown fix or an unknown running version keeps it, to validate.
+        settled = {
+            m for m in seen_open[case.id] if m in by_member and fixed_below_running(by_member[m], case.running_versions)
+        }
+        for member_id in sorted(seen_open[case.id] - settled):
             if member_id not in case.members:
                 plan.add.append(member_id)
             elif not case.members[member_id]:
                 plan.reopen.append(member_id)
+        plan.settled = sorted(m for m in settled if case.members.get(m))
         plan.resolve = sorted(
-            m for m, is_open in case.members.items() if is_open and m in closed_ids and m not in seen_open[case.id]
+            {
+                *(
+                    m
+                    for m, is_open in case.members.items()
+                    if is_open and m in closed_ids and m not in seen_open[case.id]
+                ),
+                *plan.settled,
+            }
         )
         after = dict(case.members)
         after.update({m: True for m in plan.add + plan.reopen})
         after.update({m: False for m in plan.resolve})
         any_open = any(after.values())
-        if case.fixed_in_inventory and case.id not in retarget:
+        # A member this read sees open with no known fixed version keeps the case open, to validate (#2047).
+        unknown_fix = any(
+            is_open and m in by_member and not (by_member[m].fixed_version or "").strip()
+            for m, is_open in after.items()
+        )
+        if case.fixed_in_inventory and case.id not in retarget and not unknown_fix:
             # No asset is left below the fix: the case resolves (a validation plan still needs its proof)
             # and is never reopened by issues that stay open at source on a version nobody runs.
             if case.state in OPEN_STATES and not case.validation_plan:
@@ -541,7 +609,7 @@ def plan_recompute(
                 plan.evidence = FIXED_IN_INVENTORY
         elif after and not any_open and case.state in OPEN_STATES and not case.validation_plan:
             plan.new_state = "resolved"
-            plan.evidence = CLOSED_AT_SOURCE
+            plan.evidence = ALL_FIXED_BELOW_RUNNING if plan.settled else CLOSED_AT_SOURCE
         elif any_open and case.state == "resolved":
             if case.decided_closure is None:
                 plan.new_state = "new"

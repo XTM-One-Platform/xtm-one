@@ -693,6 +693,13 @@ async def _trail_of(db: AsyncSession, case: Any, rendered: dict[str, Any], viewe
 async def _inventory_of(case: Any, rendered: dict[str, Any], events: list[Any]) -> dict[str, Any]:
     """The inventory reads of the case, on a session of their own."""
     async with view_of.timed("details-inventory"), detail_session() as db:
+        # #2047: an upgrade case issue whose source names no host lists the assets running the product.
+        issues = rendered.get("issues") or []
+        if any(not i.get("restricted") and not i.get("assets") for i in issues):
+            # Copies, so a cached view is never changed in place.
+            issues = [dict(i) for i in issues]
+            if case_versions.attribute_assets(issues, await case_versions.running_asset_names(db, case)):
+                rendered["issues"] = issues
         return {
             # The versions the case's product runs on the assets (#1252), never a typed software version.
             "running_versions": _with_history(await case_versions.for_case(db, case), events),
