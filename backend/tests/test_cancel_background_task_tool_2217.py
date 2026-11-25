@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,7 +19,7 @@ from app.services import sub_agent as sub_agent_mod
 from app.services.builtin_tools import handover
 
 
-def _build(user_id: str, agent_id: str):
+def _build(user_id: str, agent_id: str) -> Any:
     built = handover.build_sub_agent_tools(
         MagicMock(),
         user_id=user_id,
@@ -40,7 +41,7 @@ def _build(user_id: str, agent_id: str):
     return built
 
 
-def test_the_tool_is_offered_with_the_other_background_task_tools():
+def test_the_tool_is_offered_with_the_other_background_task_tools() -> None:
     definitions, executor = _build(str(uuid.uuid4()), str(uuid.uuid4()))
     names = [d.name for d in definitions]
     assert "cancel_background_task" in names
@@ -50,12 +51,14 @@ def test_the_tool_is_offered_with_the_other_background_task_tools():
 
 
 @pytest.mark.asyncio
-async def test_the_tool_cancels_through_the_ui_path_scoped_to_this_agent(monkeypatch):
+async def test_the_tool_cancels_through_the_ui_path_scoped_to_this_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     user_id, agent_id = str(uuid.uuid4()), str(uuid.uuid4())
     running, done, foreign = (str(uuid.uuid4()) for _ in range(3))
-    calls: list[tuple] = []
+    calls: list[tuple[str, str, bool, str | None]] = []
 
-    async def _cancel(task_id, requester_id, *, is_admin=False, spawned_by=None):
+    async def _cancel(
+        task_id: str, requester_id: str, *, is_admin: bool = False, spawned_by: str | None = None
+    ) -> dict[str, Any] | None:
         calls.append((task_id, requester_id, is_admin, spawned_by))
         if task_id == running:
             return {"task_id": task_id, "status": "cancelled", "was_running": True}
@@ -66,9 +69,7 @@ async def test_the_tool_cancels_through_the_ui_path_scoped_to_this_agent(monkeyp
     monkeypatch.setattr(sub_agent_mod, "cancel_sub_agent_task", _cancel)
     _defs, executor = _build(user_id, agent_id)
 
-    answer = await executor._handlers["cancel_background_task"](
-        f"{running}, {done},{foreign}, nope"
-    )
+    answer = await executor._handlers["cancel_background_task"](f"{running}, {done},{foreign}, nope")
 
     lines = answer.splitlines()
     assert lines[0] == f"{running}: cancelled (was running)"
@@ -80,29 +81,29 @@ async def test_the_tool_cancels_through_the_ui_path_scoped_to_this_agent(monkeyp
 
 
 class _Result:
-    def __init__(self, row):
+    def __init__(self, row: object) -> None:
         self._row = row
 
-    def scalar_one_or_none(self):
+    def scalar_one_or_none(self) -> object:
         return self._row
 
 
 class _Session:
-    def __init__(self, row):
+    def __init__(self, row: object) -> None:
         self._row = row
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> _Session:
         return self
 
-    async def __aexit__(self, *_exc):
+    async def __aexit__(self, *_exc: object) -> bool:
         return False
 
-    async def execute(self, *_a, **_k):
+    async def execute(self, *_a: object, **_k: object) -> _Result:
         return _Result(self._row)
 
 
 @pytest.mark.asyncio
-async def test_spawned_by_hides_a_task_another_agent_spawned(monkeypatch):
+async def test_spawned_by_hides_a_task_another_agent_spawned(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core import database
 
     user = uuid.uuid4()

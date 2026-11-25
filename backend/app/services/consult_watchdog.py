@@ -384,9 +384,7 @@ def durable_consult_key(target_id: str, question: str) -> str:
 TWIN_ASK_WINDOW = timedelta(minutes=30)
 
 
-async def open_twin_ask(
-    *, user_id: str | None, caller_agent_id: str, target_id: str
-) -> tuple[str, str] | None:
+async def open_twin_ask(*, user_id: str | None, caller_agent_id: str, target_id: str) -> tuple[str, str] | None:
     """The newest open durable ask of *caller_agent_id* to *target_id* (#2218).
 
     ``(id, correlation_key)`` of a ``consult:<target8>-*`` item (never its

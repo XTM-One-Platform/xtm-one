@@ -10,6 +10,7 @@ the same caller to the same target for the same person within
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 
@@ -26,17 +27,19 @@ def _peer_has_an_inbox(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cw, "_peer_has_inbox", has_inbox)
 
 
-def _capture(monkeypatch: pytest.MonkeyPatch) -> tuple[list[dict], list[tuple]]:
+def _capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[list[dict[str, object]], list[tuple[str, dict[str, object]]]]:
     from app.services import work_item
 
-    created: list[dict] = []
-    notes: list[tuple] = []
+    created: list[dict[str, object]] = []
+    notes: list[tuple[str, dict[str, object]]] = []
 
-    async def fake_create(**kwargs: object) -> dict:
+    async def fake_create(**kwargs: object) -> dict[str, object]:
         created.append(dict(kwargs))
         return {"id": f"item-{len(created)}"}
 
-    async def fake_update(item_id: str, **kwargs: object) -> dict:
+    async def fake_update(item_id: str, **kwargs: object) -> dict[str, object]:
         notes.append((item_id, kwargs))
         return {"id": item_id}
 
@@ -117,20 +120,21 @@ async def test_the_twin_read_is_scoped_to_caller_target_person_and_open_asks(
     seen: list[str] = []
 
     class _Rows:
-        def first(self):
+        def first(self) -> None:
             return None
 
     class _Session:
-        async def __aenter__(self):
+        async def __aenter__(self) -> _Session:
             return self
 
-        async def __aexit__(self, *_exc):
+        async def __aexit__(self, *_exc: object) -> bool:
             return False
 
-        async def execute(self, query):
+        async def execute(self, query: Any) -> _Rows:
             from sqlalchemy.dialects import postgresql
 
-            seen.append(str(query.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})))
+            dialect = postgresql.dialect()  # type: ignore[no-untyped-call]
+            seen.append(str(query.compile(dialect=dialect, compile_kwargs={"literal_binds": True})))
             return _Rows()
 
     monkeypatch.setattr(database, "async_session", lambda: _Session())
