@@ -54,17 +54,32 @@ export function modulePivotUrl(
   return `${base.replace(/\/+$/, "")}${route(encodeURIComponent(id.trim()))}`;
 }
 
-/** The base URL of each connected module, as the CTEM posture reports it. */
+/** The base URL of each connected module, as its platform registration reports it. */
 export type ModuleBaseUrls = Partial<Record<PivotModule, string | null | undefined>>;
 
-/** The base URLs read off a posture's `products` (an absent module gives none). */
-export function moduleBaseUrlsOf(
-  products: Partial<Record<string, { present?: boolean; url?: string | null } | undefined>> | null | undefined,
-): ModuleBaseUrls {
+/** The fields of a platform registration (`GET /platform/registrations`) the pivots read. */
+export interface ModuleRegistration {
+  platform_identifier: string;
+  platform_url?: string | null;
+  status?: string;
+}
+
+/**
+ * The base URLs read off the platform registrations (#1986): the active
+ * registration of each module, the canonical identifier preferred over a legacy
+ * one (openbas, opengrc) whatever the order, as the CTEM posture picks it. An
+ * inactive or URL-less registration gives none. The registrations are a light
+ * read the pages already hold, never the posture build.
+ */
+export function moduleBaseUrlsOf(registrations: readonly ModuleRegistration[] | null | undefined): ModuleBaseUrls {
   const out: ModuleBaseUrls = {};
-  for (const module of ["opencti", "openaev", "opencrq"] as const) {
-    const product = products?.[module];
-    if (product?.present && product.url) out[module] = product.url;
+  const canonical = new Set<PivotModule>();
+  for (const registration of Array.isArray(registrations) ? registrations : []) {
+    if (registration.status !== "active" || !registration.platform_url) continue;
+    const module = pivotModuleOf(registration.platform_identifier);
+    if (!module || canonical.has(module)) continue;
+    out[module] = registration.platform_url;
+    if (registration.platform_identifier.toLowerCase() === module) canonical.add(module);
   }
   return out;
 }

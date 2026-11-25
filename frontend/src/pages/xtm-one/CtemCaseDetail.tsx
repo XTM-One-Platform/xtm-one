@@ -10,6 +10,7 @@
  */
 import { useMemo, useState, type ComponentProps } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Icon, Textarea } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,13 +24,15 @@ import { SourceBadge } from "@/components/ui/source-badge";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NotFoundState } from "@/components/ui/not-found-state";
 import { SettingsField, settingsFieldHintId, settingsFieldLabelId } from "@/components/ui/settings-form";
-import { PageSkeleton } from "@/components/ui/skeleton";
+import { ListSkeleton, PageSkeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/ui/stat-card";
 import { useToast } from "@/components/ui/toast";
 import { Input } from "@/components/ui/input";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
+  CTEM_CASE_LIST_KEY,
+  cachedCaseSummary,
   isOpenCaseState,
   isRestrictedIssue,
   useCtemCase,
@@ -39,6 +42,7 @@ import {
   useUpdateCtemCase,
   type CtemCaseEvent,
   type CtemCaseIssue,
+  type CtemCaseList,
   type CtemCaseRun,
   type CtemCaseUpdate,
   type CtemCaseVisibleIssue,
@@ -267,16 +271,24 @@ export default function CtemCaseDetail() {
   const update = useUpdateCtemCase(id);
   const split = useSplitCtemCase();
   // The More actions menu shares the Cases bulk bar's dialogs (#1751): owner, due date and
-  // Merge into another open case hit the same endpoints as the bulk bar.
-  const allCases = useCtemCases({ throwOnError: false });
+  // Merge into another open case hit the same endpoints as the bulk bar. The 200-case list
+  // is read only once Merge is asked for (#1986), never on open: it doubled the first read.
+  const [mergeAsked, setMergeAsked] = useState(false);
+  const allCases = useCtemCases({ throwOnError: false, enabled: mergeAsked });
   const mergeTargets = useMemo(
     () => (allCases.data?.cases ?? []).filter((c) => c.id !== id && isOpenCaseState(c.state)),
     [allCases.data, id],
   );
+  // The list row of this case, when the Cases list is cached (#1986): the header is drawn
+  // from it while the case is read, so a click from the list paints at once.
+  const queryClient = useQueryClient();
+  const listed = kase ? undefined : cachedCaseSummary(queryClient.getQueryData<CtemCaseList>(CTEM_CASE_LIST_KEY), id);
+  const listedOwner = listed?.owner_user_id ?? null;
   const caseActions = useCaseActionDialogs({
     cases: kase ? [kase] : [],
     onDone: () => void refetch(),
     mergeTargets,
+    mergeTargetsLoading: mergeAsked && allCases.isPending,
     onMerged: (targetId) => navigate(`/ctem/cases/${targetId}`),
   });
   // Delete, administrators only, last row of More actions (#1950): the list's dry run and challenge, then back to the list.
@@ -303,7 +315,8 @@ export default function CtemCaseDetail() {
     }
     return [...ids];
   }, [kase]);
-  const { data: people } = useUserDirectoryByIds(actorIds);
+  // While the case is read, the owner of its list row is the one person the header names.
+  const { data: people } = useUserDirectoryByIds(listedOwner ? [listedOwner] : actorIds);
   const personName = (personId: string | null | undefined) =>
     personId ? (people?.find((p) => p.id === personId)?.full_name ?? null) : null;
 
@@ -431,7 +444,31 @@ export default function CtemCaseDetail() {
       />
     );
   }
-  if (isLoading && !kase) return <PageSkeleton cards={3} />;
+  if (isLoading && !kase) {
+    if (!listed) return <PageSkeleton cards={3} />;
+    // The header from the list row (#1986), the sections as skeletons until the case is read.
+    return (
+      <div className="space-y-6" aria-busy="true" data-testid="ctem-case-listed-header">
+        <EntityPageHeader
+          backTo="/ctem/cases"
+          backLabel="Back to Cases"
+          badges={
+            <>
+              <CaseStateChip state={listed.state} />
+              <CaseUrgencyChip severity={listed.severity} priority={listed.priority} />
+              <CaseOwner name={personName(listed.owner_user_id)} />
+              <CaseLoopLine c={listed} now={now} />
+            </>
+          }
+          title={listed.title}
+          wrapTitle
+          hint={t_i18n("Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.")}
+          hintLabel={t_i18n("About cases")}
+        />
+        <ListSkeleton label={t_i18n("Loading…")} variant="card" rows={3} />
+      </div>
+    );
+  }
   if (!kase) {
     return (
       <Card>
@@ -658,6 +695,7 @@ export default function CtemCaseDetail() {
   const primaryKind = header.buttons[header.buttons.length - 1] as "start" | "resolve" | "reopen";
   const primary = { label: t_i18n(caseActionDef(primaryKind).label), kind: primaryKind };
   const runAction = (action: CaseActionId) => {
+    if (action === "merge") setMergeAsked(true);
     if (action === "assign" || action === "due" || action === "merge") caseActions.open(action);
     else open(action);
   };
