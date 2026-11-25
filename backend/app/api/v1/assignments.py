@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.a2a.providers import resolve_submitter_providers
 from app.a2a.run_exchange import run_exchanges
 from app.agents.builtin_agents import (
-    ADMIN_OPT_IN_WRITABLE_FIELDS,
+    builtin_assignment_write_allowed,
     is_admin_opt_in_builtin_assignment,
 )
 from app.api.deps import (
@@ -4154,8 +4154,8 @@ async def update_assignment(
     if not agent_row:
         raise HTTPException(status_code=404, detail="Parent agent not found")
     # Consolidated gate (built-in + company-managed admin + group permission).
-    # A seeded opt-in assignment of a built-in agent lets an
-    # administrator write its switch and run-as identity, nothing else: the
+    # On a built-in agent the switch alone may be written on any assignment
+    # (#2192), and a seeded opt-in one also takes its run-as identity: the
     # built-in gate alone is dropped, the company-managed one still applies.
     assert_writable_assignment(
         assignment,
@@ -4163,11 +4163,7 @@ async def update_assignment(
         user,
         user_group_ids,
         action="edit",
-        allow_builtin=(
-            is_admin_opt_in_builtin_assignment(agent_row, assignment)
-            and bool(body.model_fields_set)
-            and body.model_fields_set <= ADMIN_OPT_IN_WRITABLE_FIELDS
-        ),
+        allow_builtin=builtin_assignment_write_allowed(agent_row, assignment, body.model_fields_set),
     )
     if "tool_sources" in body.model_fields_set:
         await assert_tool_source_additions_allowed(
