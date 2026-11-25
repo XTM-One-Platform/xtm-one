@@ -154,8 +154,7 @@ def test_the_matcher_reads_each_software_with_its_one_known_version() -> None:
             "version": "7.2.4",
             "versions": ["7.2.4"],
             "label": "Fortinet FortiOS",
-            "purl": "",
-            "os_families": [],
+            "version_source": "software",
         },
         # Two known versions run: no single installed version is stated, never a guess; each is listed (#1783).
         {
@@ -165,8 +164,7 @@ def test_the_matcher_reads_each_software_with_its_one_known_version() -> None:
             "version": "",
             "versions": ["130.0", "131.0"],
             "label": "Google Chrome",
-            "purl": "",
-            "os_families": [],
+            "version_source": "software",
         },
         # Only unknown: empty, never the word unknown as a version to match.
         {
@@ -176,8 +174,7 @@ def test_the_matcher_reads_each_software_with_its_one_known_version() -> None:
             "version": "",
             "versions": [],
             "label": "Microsoft Teams",
-            "purl": "",
-            "os_families": [],
+            "version_source": "software",
         },
     ]
 

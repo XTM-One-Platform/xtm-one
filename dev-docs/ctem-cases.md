@@ -89,7 +89,7 @@ in one line (section 7.3).
 
 | Source | What counts as an open issue | Read |
 |---|---|---|
-| OpenCTI | A Vulnerability related by `has` to a Software observable matching the organization tech stack (the match already used by the tailored KEV, `ctem_metrics_collector._stack_matches`: CPE equal, else the product name when nothing known on both sides contradicts it (`ctem_product_identity.conflict`: vendors, a side's vendor being its `vendor` or else the vendor its CPE names, #1693; two CPEs naming another vendor:product; a stack entry with a language-package purl against an OpenCTI Software that is another package, an OS or hardware CPE, or an application CPE not of that ecosystem; an OS-only product against software whose assets all report another OS family; a field unknown on either side never rejects, so a name-only entry still matches by name, #2036); a CVE OpenCTI links to several stack products is one issue, so one case, per product), and passing the prioritization policy of #11543 when one is set | GraphQL, per-user credentials (as the posture) |
+| OpenCTI | A Vulnerability related by `has` to a Software observable matching the organization tech stack (the match already used by the tailored KEV, `ctem_metrics_collector._stack_matches`: CPE equal, else the product name with agreeing vendors, a side's vendor being its `vendor` or else the vendor its CPE names, #1693; a CVE OpenCTI links to several stack products is one issue, so one case, per product), and passing the prioritization policy of #11543 when one is set | GraphQL, per-user credentials (as the posture) |
 | OpenAEV | A finding of type `cve` on an asset or asset group, not older than the validation window | `/api/findings/search`, per-user credentials |
 
 Without a tech stack in the profile, OpenCTI contributes nothing (no case from
@@ -358,6 +358,34 @@ still closes only on its passing validation (#857); a case whose fixed version
 is unknown never leaves the scope on the inventory; an asset that falls back
 below the fix (or a new one running an old version) brings the case back
 through the usual reopen rule.
+
+**Issues fixed below every running version (#2047).** The same inventory read
+hands the recompute every version the product runs (`ctem_case_versions.every_running_version`;
+an asset with no version counts as `unknown`). A member whose own fixed version is
+known and at or below every one of them (`ctem_cases.fixed_below_running`, every
+per-platform fix included, every version comparable) leaves the active issues
+with an `issue_closed` event carrying "fixed version at or below every version
+the asset inventory shows running"; it stays in history. A new member settled
+that way is not added, and a new upgrade group of the same product whose
+members are all settled opens no case. The priority of the case is then
+recomputed from the members left (`ctem_cases_store._rerank`, which may
+relax). A case whose every member is settled resolves, kind `fixed`, evidence
+"every issue of the case is fixed in a version at or below every version
+running (asset inventory)": this is how an `@latest` case closes. A member
+the read sees open with no known fixed version keeps the case open, to
+validate, and also holds back the inventory resolution above: an unknown fix
+or an unknown running version is never read as fixed.
+
+**Nothing to upgrade (#2047).** A software signal whose fix would be
+`upgrade:-/<product>@latest` and which names no CVE (subject or evidence), no
+affected range and no fixed version (a vendor fix made service-side) opens no
+case: `ctem_case_loop.open_from_signal` parks it `to_validate` with outcome
+`review` and the reason `NOTHING_TO_UPGRADE`.
+
+**Assets per issue (#2047).** On the case page, an upgrade case issue whose
+source names no host (an OpenCTI CVE on a product) lists the assets the
+inventory shows running the product (`ctem_case_versions.attribute_assets`,
+`assets_from: inventory`), so the issue lists agree with the case's asset count.
 
 **Read at opening, before the threat package.** The same check runs when
 `ctem_case_loop.open_from_signal` creates an upgrade case (no validation plan,
@@ -1000,6 +1028,9 @@ context: every figure 0.
 | `record_ctem_case_validation` | a validation or re-test reference (provider, ref, result, kind, mitigation_only) through `ctem_case_loop.record_validation`: passed or not_exposed resolves (mitigated, watching when mitigation only), failed reopens, the events raised after the commit |
 | `record_ctem_case_ticket` | a ticket reference (integration, key, url, status) through `ctem_case_loop.record_ticket`: one entry per `(integration, key)` updated in place, a `ticket` event on change, never a state move |
 | `decide_ctem_case_remediation` | the remediation decision (CTEM-17, gate B, key `ctem.remediation.decision`): options with figures and the recommendation; rules in `services/ctem_remediation_decision.py` (see 9ter) |
+| `merge_ctem_cases` | #2037: folds duplicate cases of one fix (`case_ids`) into `target_id` through `ctem_cases_store.merge_cases`, the rules of `POST /ctem-cases/merge`: every case named must be one the acting person sees and acts on (a view right is refused), the agent is the actor of each `merge` event; the survivor keeps its state, owner and SLA and takes the keys, members, history and signals, so a recompute maps them to it and no case reopens. The seeded loop orchestrators merge a duplicate into the case a person holds, else the oldest, and never delete it: `delete_ctem_cases` frees the fix key, so a case whose signals still match reopens at the next reconcile with a new SLA |
+
+Product spelling (#2037): an upgrade key of the same version whose product matches an open case's key once the vendor is set apart (`upgrade:-/minio@latest` and `upgrade:minio/minio@latest`, `upgrade:-/microsoft windows@latest` and `upgrade:microsoft/windows@latest`) joins that open case and adds its key there, in the recompute (`ctem_cases.same_product_key`, `_alias_owner`) and when a signal looks for its case (`ctem_case_loop._open_case_for_key`). Two known vendors that differ, two vendor-less names that differ, or another version never match; a closed case never takes an alias.
 
 ### 9ter. Remediation decision (CTEM-17)
 
