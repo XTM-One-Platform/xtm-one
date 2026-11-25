@@ -21837,5 +21837,22 @@
   "Defender XDR alert evidence": "Defender XDR アラートの証拠",
   "Carries alert_id, title, severity, category, service_source, detection_source and the attack techniques. Real time through the Defender XDR Streaming API to your Azure Event Hub. Each alert runs once.": "alert_id、title、severity、category、service_source、detection_source、攻撃手法を含みます。Defender XDR Streaming API からお使いの Azure Event Hub を経由してリアルタイムに届きます。各アラートは一度だけ実行されます。",
   "Carries alert_id, the entity type, its evidence role and the entity fields (device, file, IP, URL, account). Real time through the Defender XDR Streaming API to your Azure Event Hub. Each row runs once.": "alert_id、エンティティの種類、証拠としての役割、エンティティのフィールド（デバイス、ファイル、IP、URL、アカウント）を含みます。Defender XDR Streaming API からお使いの Azure Event Hub を経由してリアルタイムに届きます。各行は一度だけ実行されます。",
-  "Read in real time from an event stream the platform consumes.": "プラットフォームが受信するイベントストリームからリアルタイムに読み取ります。"
+  "Read in real time from an event stream the platform consumes.": "プラットフォームが受信するイベントストリームからリアルタイムに読み取ります。",
+  "Notion comment created": "Notion のコメントが作成されました",
+  "Notion page created": "Notion のページが作成されました",
+  "Notion page properties updated": "Notion のページのプロパティが更新されました",
+  "Notion page content updated": "Notion のページの内容が更新されました",
+  "Notion data source content updated": "Notion のデータソースの内容が更新されました",
+  "Triggers when a comment is added to a page or a block. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "ページまたはブロックにコメントが追加されたときに起動します。Notion の Webhook で配信されます。統合の「設定」タブの Webhook カードで設定します。",
+  "Triggers when a page is created. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "ページが作成されたときに起動します。Notion の Webhook で配信されます。統合の「設定」タブの Webhook カードで設定します。",
+  "Triggers when a page's properties change. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "ページのプロパティが変更されたときに起動します。Notion の Webhook で配信されます。統合の「設定」タブの Webhook カードで設定します。",
+  "Triggers when a page's content changes. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "ページの内容が変更されたときに起動します。Notion の Webhook で配信されます。統合の「設定」タブの Webhook カードで設定します。",
+  "Triggers when the rows of a data source (database) change. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "データソース（データベース）の行が変更されたときに起動します。Notion の Webhook で配信されます。統合の「設定」タブの Webhook カードで設定します。",
+  "Notion webhook setup": "Notion Webhook の設定",
+  "Loading the verification token...": "検証トークンを読み込んでいます...",
+  "1. In Notion, open the connection's Webhooks tab and create a subscription with this URL.": "1. Notion で接続の Webhooks タブを開き、この URL でサブスクリプションを作成します。",
+  "2. Notion then sends a verification token here. Paste it in the Verify form of the subscription in Notion.": "2. Notion からここに検証トークンが送信されます。Notion のサブスクリプションの Verify フォームに貼り付けてください。",
+  "The verification token could not be read. Reload the page to try again.": "検証トークンを読み取れませんでした。ページを再読み込みしてもう一度お試しください。",
+  "Copy the verification token": "検証トークンをコピー",
+  "No verification token received yet. Create the subscription in Notion first; the token appears here once Notion sends it.": "検証トークンはまだ受信されていません。まず Notion でサブスクリプションを作成してください。Notion が送信するとここにトークンが表示されます。"
 }

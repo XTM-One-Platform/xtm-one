@@ -4001,6 +4001,58 @@ def _verify_rydoo_webhook_token(extra_config_enc: str | None, request: Request, 
         raise HTTPException(status_code=401, detail="Missing or invalid Rydoo webhook token")
 
 
+async def _store_notion_verification_token(integration_id: str, token: str) -> bool:
+    """Keep a Notion handshake's token on the integration when none is stored; ``True`` when kept."""
+    from app.core.security import encrypt_value
+    from app.services import notion_webhooks
+
+    async with async_session() as db:
+        integration = await db.get(Integration, _uuid_mod.UUID(integration_id), with_for_update=True)
+        if integration is None or integration.provider != notion_webhooks.PROVIDER:
+            return False
+        extra = decrypt_webhook_config(integration.extra_config_enc)
+        if notion_webhooks.stored_token(extra):
+            return False
+        extra[notion_webhooks.TOKEN_FIELD] = token
+        integration.extra_config_enc = encrypt_value(json.dumps(extra))
+        await db.commit()
+    return True
+
+
+async def _handle_notion_webhook(
+    integration_id: str,
+    extra_config_enc: str | None,
+    body: bytes,
+    payload: object,
+    request: Request,
+) -> dict[str, object]:
+    """A Notion webhook delivery on the integration's webhook URL.
+
+    The subscription handshake (``{"verification_token": ...}``) is kept when
+    the integration holds no token yet, so the admin reads it on the
+    integration page and pastes it in Notion's Verify form; a handshake while
+    one is stored is refused (401). An event is refused (401) unless
+    ``X-Notion-Signature`` is the HMAC-SHA256 of the raw body with the stored
+    token. Then ``notion_webhooks.dispatch_delivery``.
+    """
+    from app.services import notion_webhooks
+
+    context = f"integration={integration_id}"
+    extra = _read_webhook_config(extra_config_enc, context=context)
+    handshake = notion_webhooks.handshake_token(payload)
+    if handshake is not None:
+        if not await _store_notion_verification_token(integration_id, handshake):
+            logger.warning("Notion handshake refused (%s): a verification token is already stored", context)
+            raise HTTPException(status_code=401, detail="A Notion verification token is already stored")
+        logger.info("Notion subscription handshake stored (%s)", context)
+        return {"status": "ok", "reason": "verification token stored: paste it in Notion's Verify form"}
+    token = notion_webhooks.stored_token(extra)
+    if not notion_webhooks.verify_signature(body, request.headers.get(notion_webhooks.SIGNATURE_HEADER), token):
+        logger.warning("Notion webhook delivery refused (%s): missing or invalid signature", context)
+        raise HTTPException(status_code=401, detail="Missing or invalid Notion signature")
+    return await notion_webhooks.dispatch_delivery(integration_id, payload)
+
+
 async def _handle_dealhub_webhook(
     integration_id: str,
     extra_config_enc: str | None,
@@ -4107,6 +4159,11 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
             payload_raw,
             callback_token=str(request.query_params.get(wordsmith_webhooks.CALLBACK_PARAM) or ""),
         )
+    if integ_pre and integ_pre.provider == "notion":
+        # Notion native webhook: the subscription handshake stores its
+        # verification token; every event is signed with it (X-Notion-Signature),
+        # then deduplicated per event id.
+        return await _handle_notion_webhook(integration_id, integ_pre.extra_config_enc, body, payload_raw, request)
     if integ_pre and integ_pre.provider == "rydoo":
         # Rydoo expense webhook: unsigned, so the integration's webhook token
         # in the URL gates it before the dedup cache; refused without one.

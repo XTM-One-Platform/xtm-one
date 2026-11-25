@@ -21837,5 +21837,22 @@
   "Defender XDR alert evidence": "Defender XDR alert evidence",
   "Carries alert_id, title, severity, category, service_source, detection_source and the attack techniques. Real time through the Defender XDR Streaming API to your Azure Event Hub. Each alert runs once.": "Carries alert_id, title, severity, category, service_source, detection_source and the attack techniques. Real time through the Defender XDR Streaming API to your Azure Event Hub. Each alert runs once.",
   "Carries alert_id, the entity type, its evidence role and the entity fields (device, file, IP, URL, account). Real time through the Defender XDR Streaming API to your Azure Event Hub. Each row runs once.": "Carries alert_id, the entity type, its evidence role and the entity fields (device, file, IP, URL, account). Real time through the Defender XDR Streaming API to your Azure Event Hub. Each row runs once.",
-  "Read in real time from an event stream the platform consumes.": "Read in real time from an event stream the platform consumes."
+  "Read in real time from an event stream the platform consumes.": "Read in real time from an event stream the platform consumes.",
+  "Notion comment created": "Notion comment created",
+  "Notion page created": "Notion page created",
+  "Notion page properties updated": "Notion page properties updated",
+  "Notion page content updated": "Notion page content updated",
+  "Notion data source content updated": "Notion data source content updated",
+  "Triggers when a comment is added to a page or a block. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "Triggers when a comment is added to a page or a block. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.",
+  "Triggers when a page is created. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "Triggers when a page is created. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.",
+  "Triggers when a page's properties change. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "Triggers when a page's properties change. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.",
+  "Triggers when a page's content changes. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "Triggers when a page's content changes. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.",
+  "Triggers when the rows of a data source (database) change. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.": "Triggers when the rows of a data source (database) change. Delivered by Notion's webhooks; set up in the Webhooks card of the integration's Configuration tab.",
+  "Notion webhook setup": "Notion webhook setup",
+  "Loading the verification token...": "Loading the verification token...",
+  "1. In Notion, open the connection's Webhooks tab and create a subscription with this URL.": "1. In Notion, open the connection's Webhooks tab and create a subscription with this URL.",
+  "2. Notion then sends a verification token here. Paste it in the Verify form of the subscription in Notion.": "2. Notion then sends a verification token here. Paste it in the Verify form of the subscription in Notion.",
+  "The verification token could not be read. Reload the page to try again.": "The verification token could not be read. Reload the page to try again.",
+  "Copy the verification token": "Copy the verification token",
+  "No verification token received yet. Create the subscription in Notion first; the token appears here once Notion sends it.": "No verification token received yet. Create the subscription in Notion first; the token appears here once Notion sends it."
 }
