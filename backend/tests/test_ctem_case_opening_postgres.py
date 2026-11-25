@@ -7,24 +7,22 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 import pytest
-from sqlalchemy import Table, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.models  # noqa: F401 - registers every mapper on Base.metadata
 from app.models.audit_log import AuditLog
-from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.models.ctem_case import CtemCase
 from app.models.ctem_signal import CtemSignal
 from app.models.organization import Organization
 from app.models.platform_settings import PlatformSettings
-from app.models.platform_timer import PlatformTimer
 from app.models.user import User
-from app.models.work_item import WorkItem
 from app.services import ctem_case_loop as loop
 from app.services import ctem_case_opening as case_opening
-from tests.scratch_database import scratch_database, with_referenced_tables
+from tests.scratch_database import ALL_TABLES, scratch_database
 
 pytestmark = pytest.mark.integration
 
@@ -36,10 +34,7 @@ NOW = datetime(2026, 11, 24, 18, 0, tzinfo=UTC)
 
 @asynccontextmanager
 async def _database() -> AsyncIterator[async_sessionmaker]:
-    # Work items and timers: the sweep's stall pass reads them (#1736).
-    models = (CtemCase, CtemCaseIssue, CtemCaseEvent, CtemSignal, AuditLog, PlatformSettings, WorkItem, PlatformTimer)
-    tables = with_referenced_tables([cast(Table, m.__table__) for m in models])
-    async with scratch_database("ctemcaseopening", tables=tables) as db:
+    async with scratch_database("ctemcaseopening", tables=ALL_TABLES, extensions=("vector",)) as db:
         yield db.sessions
 
 

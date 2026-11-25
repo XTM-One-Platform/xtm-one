@@ -533,8 +533,8 @@ def _ctem_gates(*, launch_tools: bool, mobilize_action: str) -> list[dict[str, A
         gate(CTEM_VALIDATION_GATE, CTEM_VALIDATION_ACTION, "openaev", _LAUNCH_IMPACT if launch_tools else "high"),
         gate(
             "ctem.analyst_review",
-            "Review: an analyst checks the threat package, then its OpenCTI draft is validated and its security "
-            "coverage requested: approving publishes the package and sends the coverage to OpenAEV",
+            "Review the threat package in its OpenCTI draft, nothing live before approval: approve publishes "
+            "it and sends its coverage to OpenAEV, reject deletes the draft, not publishing keeps it unvalidated",
             "opencti",
             "low",
         ),
