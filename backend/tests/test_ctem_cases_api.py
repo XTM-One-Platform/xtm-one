@@ -98,7 +98,7 @@ def api(monkeypatch):
         events += [r for r in seen.db.added if isinstance(r, CtemCaseEvent)]
         return seen.case, rows, events
 
-    async def _viewer(_db, user_id, vertical, *, fresh=False, members=None):
+    async def _viewer(_db, user_id, vertical, *, fresh=False, members=None, stale_ok=False):
         return seen.views.get(str(user_id), view_of.ViewerView())
 
     async def _events_of(_db, case_ids):

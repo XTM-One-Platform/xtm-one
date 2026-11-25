@@ -55,6 +55,22 @@ VIEW_TTL_SECONDS = 300
 LAST_SEEN_TTL_SECONDS = 7 * 24 * 3600
 #: The label of an issue the viewer cannot see, as OpenCTI shows it.
 RESTRICTED = "Restricted"
+#: How long a list read with no view to answer from waits for the background build (#2092).
+LIST_BUILD_WAIT_SECONDS = 10.0
+#: The retry delay a list read names when the view is still building after that wait.
+LIST_RETRY_AFTER_SECONDS = 30
+
+
+class ViewRebuildingError(Exception):
+    """The viewer's view is being rebuilt and no older one can answer (#2092): retry later.
+
+    A list read never builds the whole view on the request: after a case-opening
+    drain that build took 400 s on ctem.one.
+    """
+
+    def __init__(self, retry_after: int = LIST_RETRY_AFTER_SECONDS) -> None:
+        self.retry_after = retry_after
+        super().__init__(f"The case list is rebuilding after new cases opened; retry in {retry_after} s.")
 
 
 @dataclass
@@ -252,7 +268,13 @@ def server_timing(phases: dict[str, float]) -> str:
 
 
 async def viewer_view(
-    db: Any, user_id: str, vertical: str, *, fresh: bool = False, members: list[str] | None = None
+    db: Any,
+    user_id: str,
+    vertical: str,
+    *,
+    fresh: bool = False,
+    members: list[str] | None = None,
+    stale_ok: bool = False,
 ) -> ViewerView:
     """The viewer's own view of the source, from the per-user cache unless *fresh*.
 
@@ -264,9 +286,14 @@ async def viewer_view(
     #1986), a view retired by a generation bump still answers while it is in its
     TTL when it already judged every product member of that case, and the view of
     the new generation is built in the background (:func:`_stale_view`).
+
+    With *stale_ok* (a list read, #2092), the viewer's newest view of an older
+    generation still in its TTL answers while the new one builds in the background;
+    with none, the read waits :data:`LIST_BUILD_WAIT_SECONDS` for that build and
+    raises :class:`ViewRebuildingError` when it is not done, never a whole build on the request.
     """
     async with timed("view"):
-        view = await _product_view(db, user_id, vertical, fresh=fresh, members=members)
+        view = await _product_view(db, user_id, vertical, fresh=fresh, members=members, stale_ok=stale_ok)
     seen = set(view.issues) | set(view.unavailable)
     async with timed("signals"):
         signals = await signal_members(db, user_id) | await source_signal_members(db, seen)
@@ -394,15 +421,7 @@ async def _stale_view(
     closed member, one restricted to this viewer) makes the read wait for the new
     view, so nothing is shown that the view of today would not show.
     """
-    try:
-        latest = await client.get(_latest_key(user_id, vertical))
-    except Exception:
-        return None
-    if isinstance(latest, bytes):
-        latest = latest.decode()
-    if not latest or str(latest) == generation:
-        return None
-    view = await _cached_view(client, user_id, vertical, str(latest))
+    view = await _older_view(client, user_id, vertical, generation)
     if view is None:
         return None
     product = [m for m in members if not m.startswith(f"{SIGNAL_SOURCE}:")]
@@ -411,11 +430,49 @@ async def _stale_view(
     return view
 
 
-def _revalidate(user_id: str, vertical: str, generation: str) -> None:
+async def _older_view(client: Any, user_id: str, vertical: str, generation: str) -> ViewerView | None:
+    """The viewer's own newest view of a generation older than *generation*, while it is in its TTL."""
+    try:
+        latest = await client.get(_latest_key(user_id, vertical))
+    except Exception:
+        return None
+    if isinstance(latest, bytes):
+        latest = latest.decode()
+    if not latest or str(latest) == generation:
+        return None
+    return await _cached_view(client, user_id, vertical, str(latest))
+
+
+async def _list_view(client: Any, user_id: str, vertical: str, generation: str) -> ViewerView:
+    """A list read's view on a cache miss (#2092): the older view, else a bounded wait for the build.
+
+    A generation bump says the cases changed, not that the viewer's access did: their
+    own older view answers the list (the cases are read fresh from the store, only the
+    issue details come from it) while the new one builds in the background. With no
+    older view, the background build is awaited for :data:`LIST_BUILD_WAIT_SECONDS`.
+    """
+    older = await _older_view(client, user_id, vertical, generation)
+    if older is not None:
+        mark("cache", "stale")
+        _revalidate(user_id, vertical, generation)
+        return older
+    task = _revalidate(user_id, vertical, generation)
+    if task is not None:
+        # Waited on, never cancelled nor raised: a failed or slow build leaves the answer to the cache.
+        await asyncio.wait({task}, timeout=LIST_BUILD_WAIT_SECONDS)
+    built = await _cached_view(client, user_id, vertical, generation)
+    if built is not None:
+        mark("cache", "built")
+        return built
+    mark("cache", "rebuilding")
+    raise ViewRebuildingError()
+
+
+def _revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[None] | None:
     """Build the view of *generation* in the background, once per view key on this worker."""
     key = _view_key(user_id, vertical, generation)
     if key in _revalidations:
-        return
+        return _revalidations[key]
 
     async def build() -> None:
         _timings.set(None)  # the request that started it has answered: its timings are closed
@@ -430,10 +487,17 @@ def _revalidate(user_id: str, vertical: str, generation: str) -> None:
     task = asyncio.create_task(build())
     _revalidations[key] = task
     task.add_done_callback(lambda _t: _revalidations.pop(key, None))
+    return task
 
 
 async def _product_view(
-    db: Any, user_id: str, vertical: str, *, fresh: bool, members: list[str] | None = None
+    db: Any,
+    user_id: str,
+    vertical: str,
+    *,
+    fresh: bool,
+    members: list[str] | None = None,
+    stale_ok: bool = False,
 ) -> ViewerView:
     client = await _redis()
     generation = await _generation(client, vertical) if client is not None else "0"
@@ -456,6 +520,8 @@ async def _product_view(
                 scoped = await _case_view(db, client, user_id, vertical, members)
                 _revalidate(user_id, vertical, generation)
                 return scoped
+        elif stale_ok:
+            return await _list_view(client, user_id, vertical, generation)
     if client is None:
         return await _build_view(db, client, user_id, vertical, generation)
     async with _singleflight(_view_key(user_id, vertical, generation)):
@@ -1181,4 +1247,7 @@ async def user_sees_case(db: Any, user_id: Any, case_id: Any, vertical: Any = No
     if found is None:
         return False
     case, rows, _events = found
-    return bool(visible_members(rows, await viewer_view(db, str(user_id), case.vertical)))
+    # One case's members (#2092): an older view or that case's own read, never a whole
+    # view build per event while a drain bumps the generation.
+    members = [_member_id(r) for r in rows]
+    return bool(visible_members(rows, await viewer_view(db, str(user_id), case.vertical, members=members)))

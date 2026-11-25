@@ -160,6 +160,19 @@ async def visible_case(
     return found, rendered
 
 
+async def list_view(db: AsyncSession, user_id: str, vertical: str) -> view_of.ViewerView:
+    """The caller's view for a list read (#2092): an older view while the new one builds, else 503.
+
+    A list never builds the whole view on the request (400 s on ctem.one after a
+    case-opening drain): with no view to answer from after a short wait, the
+    caller gets a 503 with ``Retry-After`` and retries.
+    """
+    try:
+        return await view_of.viewer_view(db, user_id, vertical, stale_ok=True)
+    except view_of.ViewRebuildingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
+
+
 async def require_acts_on(db: AsyncSession, user: User, rows: list[Any], vertical: str) -> None:
     """403 when *user* sees the case only through a CTEM view right (#1748): read, never change."""
     if not await view_of.acts_on_case(db, user, rows, vertical):
@@ -218,7 +231,7 @@ async def list_ctem_cases(
         await refresh.refresh_on_open(db, organization_id=primary.id, user_id=str(user.id), vertical=vertical)
     async with view_of.timed("cases"):
         cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
-    view = await view_of.viewer_view(db, str(user.id), vertical)
+    view = await list_view(db, str(user.id), vertical)
     rows, counts = view_of.list_for_viewer(
         cases,
         view,
@@ -554,7 +567,7 @@ async def ctem_loop_measures(
     if primary is None:
         return {"vertical": vertical, "measures": measures.summarize([], {}, {})}
     cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
-    view = await view_of.viewer_view(db, str(user.id), vertical)
+    view = await list_view(db, str(user.id), vertical)
     seen = [case for case, rows in cases if view_of.summary(case, rows, view) is not None]
     ids = [case.id for case in seen]
     events = await store.events_of(db, ids)
@@ -582,7 +595,7 @@ async def ctem_cases_overview(
     if primary is None:
         return {"vertical": vertical, **overview.empty()}
     cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
-    view = await view_of.viewer_view(db, str(user.id), vertical)
+    view = await list_view(db, str(user.id), vertical)
     seen = [case.id for case, rows in cases if view_of.visible_members(rows, view)]
     history = await store.events_of(db, seen)
     return {"vertical": vertical, **overview.build(cases, view, history)}
