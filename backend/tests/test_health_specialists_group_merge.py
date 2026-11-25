@@ -95,3 +95,41 @@ def test_allow_lists_keyed_by_retired_ids_merge_under_the_internal_group():
         "health_specialists": None
     }
     assert migration.merged_map({"web": None}) == {"web": None}
+
+
+class _FakeBind:
+    """Answers the SELECT with *rows* and records every UPDATE."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.updates = []
+
+    def execute(self, statement, params=None):
+        text = str(statement)
+        if text.startswith("SELECT"):
+            rows = self.rows
+
+            class _Result:
+                def fetchall(self):
+                    return rows
+
+            return _Result()
+        self.updates.append((text, params))
+        return None
+
+
+def test_a_json_null_id_list_is_skipped_not_decoded():
+    """A JSON column holding the literal ``null`` passes ``IS NOT NULL`` and reads as None (#1943 outage)."""
+    migration = _migration()
+    bind = _FakeBind([(1, None), (2, "null"), (3, '"web"'), (4, "not json"), (5, ["health_diagnosis"])])
+    migration.rewrite_rows(bind, "agents", "builtin_tool_ids", list, migration.merged_ids)
+    assert len(bind.updates) == 1
+    assert bind.updates[0][1] == {"v": '["health_specialists"]', "id": 5}
+
+
+def test_a_json_null_allow_list_is_skipped_not_decoded():
+    migration = _migration()
+    bind = _FakeBind([(1, None), (2, "null"), (3, "[]"), (4, '{"flow_lab": null}')])
+    migration.rewrite_rows(bind, "assignments", "builtin_allowed_tools", dict, migration.merged_map)
+    assert len(bind.updates) == 1
+    assert bind.updates[0][1] == {"v": '{"health_specialists": null}', "id": 4}
