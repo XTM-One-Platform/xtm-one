@@ -40,6 +40,7 @@ import {
   Settings2,
   ShieldCheck,
   XCircle,
+  Zap,
 } from "lucide-react";
 
 import { RoiFigure } from "@/components/roi/RoiFigure";
@@ -52,11 +53,12 @@ import { Sparkline } from "@/components/ui/sparkline";
 import { StatCard } from "@/components/ui/stat-card";
 import { Tip } from "@/components/ui/tooltip";
 import { useAssignments } from "@/hooks/api/useAssignmentApi";
-import { useFleetApprovalGates, type FleetDocumentation, type FleetHealth } from "@/hooks/api/useFleetApi";
+import { useFleetApprovalGates, type FleetDocumentation, type FleetHealth, type FleetHealthStarts } from "@/hooks/api/useFleetApi";
 import { useFleetRoiReport } from "@/hooks/api/useRoiReportApi";
 import { useEnterpriseLockedReason } from "@/hooks/useEnterpriseUpsell";
 import { useFormatter } from "@/i18n";
 import { INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
+import { moduleDisplayName } from "@/lib/fleet-card-facts";
 import type { FleetView } from "@/lib/fleet-operations";
 import { fleetOptIn } from "@/lib/fleet-activity";
 import { scopeHeroFigures } from "@/lib/roi-outcomes";
@@ -83,6 +85,7 @@ import { autonomyChipLabel, effectiveAutonomyLevel } from "./fleet-autonomy";
 import { FleetAboutPrerequisites, FleetPrerequisitesChip } from "./FleetAboutPrerequisites";
 import { FleetAboutSteps } from "./FleetAboutSteps";
 import { FleetAboutSuggestions } from "./FleetAboutSuggestions";
+import { FleetHealthSettingsLink, FleetModuleLogos, useFleetStartsLine } from "./FleetHealthStarts";
 import { FleetModuleMark as ModuleMark } from "./FleetModuleMark";
 import { FleetOptInBadge } from "./FleetOptInBadge";
 import { FleetTriggerList } from "./FleetTriggerList";
@@ -165,10 +168,39 @@ export function FleetAboutFlow({ flow, onOpenGraph, action, className }: { flow:
   );
 }
 
+/**
+ * The Platform Health fleet's starts line, Settings link and Modules row on its About page (#2194), the same
+ * component and keys as its list card: it starts from Settings schedules and signals, never its manual assignments (#974).
+ */
+function AboutHealthStarts({ healthStarts }: { healthStarts: FleetHealthStarts }) {
+  const { t_i18n } = useFormatter();
+  const startsLine = useFleetStartsLine({ events: healthStarts.events, schedules: healthStarts.schedules }, healthStarts);
+  const names = healthStarts.modules.map((m) => moduleDisplayName(m));
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 content-compact text-default-secondary" data-testid="about-health-starts">
+      <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5" data-testid="about-health-starts-line">
+        <Zap className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="min-w-0">{startsLine}</span>
+        <FleetHealthSettingsLink healthStarts={healthStarts} testId="about-health-settings" />
+      </p>
+      {/* Copilot mode: Platform Health covers no module, so the row is left out. */}
+      {healthStarts.modules.length > 0 && (
+        <div className="flex min-w-0 items-center gap-2" data-testid="about-health-modules">
+          <span className="shrink-0">{t_i18n("Modules")}</span>
+          <div className="flex h-6 min-w-0 items-center gap-2" role="group" aria-label={t_i18n("Modules: {names}", { names: names.join(", ") })}>
+            <FleetModuleLogos modules={healthStarts.modules} testId="about-health-modules" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FleetAboutShowcase({
   fleetId,
   doc,
   health,
+  healthStarts,
   orchestratorId,
   onManageAutomations,
   onOpenView,
@@ -182,6 +214,8 @@ export function FleetAboutShowcase({
   fleetId: string;
   doc: FleetDocumentation;
   health: FleetHealth | null | undefined;
+  /** The Platform Health fleet only (`Fleet.health_starts`, #974): its starts line, Settings link and modules (#2194). */
+  healthStarts?: FleetHealthStarts | null;
   /** The fleet's orchestrator: its card comes first and is highlighted. */
   orchestratorId?: string | null;
   /** Opens the members view, where each member's automations are switched on. Starts no run. */
@@ -286,6 +320,7 @@ export function FleetAboutShowcase({
               ))}
             </ul>
           )}
+          {healthStarts && <AboutHealthStarts healthStarts={healthStarts} />}
         </CardContent>
       </Card>
 
