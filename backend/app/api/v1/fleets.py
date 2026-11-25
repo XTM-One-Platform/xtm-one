@@ -3250,9 +3250,29 @@ async def reset_fleet_to_factory(
             entity_id=fleet.id,
             entity_name=fleet.name,
             summary=f"Reset fleet '{fleet.name}' to its factory state",
-            details={"fleet_id": str(fleet.id), "before": outcome.audit_details()},
+            # ``before`` is the fleet as it stood, ``changes`` what the reset undid (#2134).
+            details={"fleet_id": str(fleet.id), "before": outcome.before, "changes": outcome.audit_details()},
             request=request,
         )
+        if outcome.autonomy_level:
+            # The level moved: the same row a person's change writes, so the level's history is whole.
+            await log_audit(
+                db,
+                user=user,
+                action="autonomy_level_change",
+                entity_type="fleet",
+                entity_id=fleet.id,
+                entity_name=fleet.name,
+                summary=f"Reset the autonomy level of fleet '{fleet.name}' to {outcome.autonomy_level}",
+                details={
+                    "from": outcome.before.get("autonomy_level"),
+                    "to": outcome.autonomy_level,
+                    "pins_from": outcome.before.get("approval_pins") or {},
+                    "pins_to": {},
+                    "reason": "fleet_reset",
+                },
+                request=request,
+            )
     # A dry run writes nothing; the commit answers every request the same way.
     await db.commit()
     counts = await fleet_automation_counts(db, fleet)
@@ -3269,6 +3289,8 @@ async def reset_fleet_to_factory(
         settings=outcome.settings,
         documentation=outcome.documentation,
         held_by_stop=list(outcome.held_by_stop),
+        open_gates=int(outcome.before.get("open_gates") or 0),
+        open_items=int(outcome.before.get("open_items") or 0),
         automations_state=FleetAutomationsResponse(
             total=counts.total, enabled=counts.enabled, paused=counts.paused, fleet_paused=counts.fleet_paused
         ),

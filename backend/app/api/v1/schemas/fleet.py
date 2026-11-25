@@ -775,6 +775,10 @@ class FleetResetResponse(BaseModel):
     documentation: bool
     #: Automations an emergency stop holds, left as they are.
     held_by_stop: list[str]
+    #: Open decision items (needs_human) of the home members, kept by the reset (#2134).
+    open_gates: int = 0
+    #: Open work items of the home members, kept by the reset (#2134).
+    open_items: int = 0
     #: The fleet's automations after the call.
     automations_state: FleetAutomationsResponse
 
