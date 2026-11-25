@@ -122,8 +122,9 @@ def parse_options(raw: Any) -> list[RemediationOption]:
     return out
 
 
-#: A version an option's text cites: "9.10.0", "v7.2.6" (two dotted numbers at least).
-_VERSION = re.compile(r"(?<![\w.])v?(\d+(?:\.\d+){1,3})(?![\w.])")
+#: A version an option's text cites: "9.10.0", "v7.2.6" (two dotted numbers at least),
+#: also when a sentence ends on it ("Upgrade to 9.10.0.").
+_VERSION = re.compile(r"(?<![\w.])v?(\d+(?:\.\d+){1,3})(?!\w|\.\d)")
 
 
 def unverified_versions(raw: Any, fixed: Iterable[str]) -> list[str]:

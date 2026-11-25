@@ -26,6 +26,12 @@ def test_versions_the_case_does_not_carry_are_named() -> None:
     assert decision_rules.unverified_versions("not a list", []) == []
 
 
+def test_a_version_ending_a_sentence_is_named() -> None:
+    options = [{"key": "A", "label": "Patch", "runbook": "Upgrade to 9.10.0.", "residual_risk": "none on 7.2.6."}]
+    assert decision_rules.unverified_versions(options, []) == ["7.2.6", "9.10.0"]
+    assert decision_rules.unverified_versions([{"key": "B", "label": "Address 1.2.3.4.5"}], []) == []
+
+
 async def test_the_tool_refuses_an_unbacked_version(env: SimpleNamespace) -> None:  # noqa: F811
     env.case.fixed_version = None
     env.case.fixed_versions = {}
