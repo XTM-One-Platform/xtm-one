@@ -59,6 +59,77 @@ VERSION_AFFECTED = "affected"
 VERSION_NOT_AFFECTED = "not_affected"
 #: No Software of that version in OpenCTI: "version not known to OpenCTI".
 VERSION_UNKNOWN = "unknown"
+VERSION_OUTCOMES: tuple[str, ...] = (VERSION_AFFECTED, VERSION_NOT_AFFECTED, VERSION_UNKNOWN)
+#: Where an installed version was read (#2038): the device inventory (``organization_asset_software``
+#: and the assets' OS fields), a Software entity of the asset store, or a row typed in the profile.
+VERSION_SOURCE_INVENTORY = "inventory"
+VERSION_SOURCE_SOFTWARE = "software"
+VERSION_SOURCE_PROFILE = "profile"
+VERSION_SOURCES: tuple[str, ...] = (VERSION_SOURCE_INVENTORY, VERSION_SOURCE_SOFTWARE, VERSION_SOURCE_PROFILE)
+#: Where a version's fixed version was read: an OpenCTI Software that ``remediates``, or a course of action.
+FIX_SOURCE_OPENCTI_SOFTWARE = "opencti_software"
+FIX_SOURCE_COURSE_OF_ACTION = "course_of_action"
+
+
+@dataclass(frozen=True)
+class VersionFact:
+    """One installed version of an issue's product and what OpenCTI says of it (#1783, typed by #2038).
+
+    ``outcome`` is one of :data:`VERSION_OUTCOMES` (``unknown``: no Software of that version in
+    OpenCTI, kept and to validate, never dropped); ``source`` one of :data:`VERSION_SOURCES`;
+    ``asset_count`` the assets the inventory reports on it (``None`` when not read from the
+    inventory); ``fixed_version`` the smallest fix above it OpenCTI holds, with ``fixed_source``
+    and the remediating Software ``fixed_by`` when one gave it.
+    """
+
+    version: str
+    outcome: str
+    source: str | None = None
+    asset_count: int | None = None
+    fixed_version: str | None = None
+    fixed_source: str | None = None
+    fixed_by: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "version": self.version,
+            "outcome": self.outcome,
+            "source": self.source,
+            "asset_count": self.asset_count,
+            "fixed_version": self.fixed_version,
+            "fixed_source": self.fixed_source,
+            "fixed_by": self.fixed_by,
+        }
+
+
+def version_fact(value: Any) -> VersionFact | None:
+    """*value* as a :class:`VersionFact` (pure, tolerant): a fact, a stored mapping, or the
+    ``(version, outcome)`` pair stored before #2038; ``None`` when it names no version."""
+    if isinstance(value, VersionFact):
+        return value
+    if isinstance(value, dict):
+        version = str(value.get("version") or "").strip()
+        if not version:
+            return None
+        count = value.get("asset_count")
+        return VersionFact(
+            version=version,
+            outcome=str(value.get("outcome") or VERSION_UNKNOWN),
+            source=(str(value["source"]) if value.get("source") else None),
+            asset_count=int(count) if isinstance(count, int | float) and not isinstance(count, bool) else None,
+            fixed_version=(str(value["fixed_version"]) if value.get("fixed_version") else None),
+            fixed_source=(str(value["fixed_source"]) if value.get("fixed_source") else None),
+            fixed_by=(str(value["fixed_by"]) if value.get("fixed_by") else None),
+        )
+    if isinstance(value, list | tuple) and len(value) >= 2:
+        version = str(value[0] or "").strip()
+        return VersionFact(version=version, outcome=str(value[1] or VERSION_UNKNOWN)) if version else None
+    return None
+
+
+def version_facts(values: Any) -> tuple[VersionFact, ...]:
+    """*values* as typed facts, the unreadable ones left out (a case stored before #2038 still reads)."""
+    return tuple(f for f in (version_fact(v) for v in values or ()) if f is not None)
 
 
 @dataclass(frozen=True)
@@ -92,8 +163,8 @@ class SourceIssue:
     fixed_versions: tuple[tuple[str, str], ...] = ()
     #: With installed versions: whether OpenCTI holds a Software of one of them (#928); ``None`` when none is known.
     declared_version_known: bool | None = None
-    #: ``((version, outcome), ...)``: each installed version and what OpenCTI says of it (#1783), else ``()``.
-    version_outcomes: tuple[tuple[str, str], ...] = ()
+    #: Each installed version and what OpenCTI says of it (#1783), typed (#2038), else ``()``.
+    version_outcomes: tuple[VersionFact, ...] = ()
     #: OpenAEV finding lifecycle (CTEM-14-UI): ``open``, ``not_reproduced`` or ``resolved``;
     #: ``None`` when the source does not carry it (OpenCTI, an OpenAEV older than the lifecycle).
     retest_status: str | None = None
@@ -101,6 +172,11 @@ class SourceIssue:
     last_tested_at: str | None = None
     #: A re-test is queued on the finding and has not finished.
     retest_pending: bool = False
+
+    def __post_init__(self) -> None:
+        # A stored pair or mapping (a view cached before #2038) is read as a typed fact.
+        if any(not isinstance(v, VersionFact) for v in self.version_outcomes):
+            object.__setattr__(self, "version_outcomes", version_facts(self.version_outcomes))
 
     @property
     def member_id(self) -> str:

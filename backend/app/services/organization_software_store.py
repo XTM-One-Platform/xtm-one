@@ -751,12 +751,14 @@ def matcher_entries(
     to Software entities (``vendor``, ``product``, ``cpe``, ``version``): a row
     no software entity carries is still matched, so nothing typed is lost.
     Each entry carries ``product``, ``vendor``, ``cpe``, ``version``,
-    ``versions`` and ``label`` (the name the case and the why line show).
+    ``versions``, ``label`` (the name the case and the why line show) and
+    ``version_source`` (``software`` for a store entity, ``profile`` for a typed
+    row: where its versions were read, #2038).
     """
     out: list[dict[str, Any]] = []
     seen: dict[Key, dict[str, Any]] = {}
 
-    def add(vendor: str, product: str, cpe: str, version: str, versions: list[str]) -> None:
+    def add(vendor: str, product: str, cpe: str, version: str, versions: list[str], source: str) -> None:
         vendor, product = vendor.strip(), product.strip()
         if not product:
             return
@@ -778,6 +780,7 @@ def matcher_entries(
             "version": version.strip(),
             "versions": versions,
             "label": display_name(vendor, product),
+            "version_source": source,
         }
         seen[key] = entry
         out.append(entry)
@@ -796,6 +799,7 @@ def matcher_entries(
             str(soft.get("cpe") or ""),
             known[0] if len(known) == 1 else "",
             known,
+            "software",
         )
     for row in typed:
         typed_version = str(row.get("version") or "").strip()
@@ -805,6 +809,7 @@ def matcher_entries(
             str(row.get("cpe") or ""),
             typed_version,
             [typed_version] if typed_version else [],
+            "profile",
         )
     return out
 
