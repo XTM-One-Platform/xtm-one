@@ -20064,6 +20064,7 @@
   "Approval setting of {action}": "Ajuste de aprobación de {action}",
   "Setting": "Ajuste",
   "Back to Case": "Volver al caso",
+  "Back to the work item": "Volver al elemento de trabajo",
   "Ran a fleet step on this case": "Ejecutó un paso de la flota en este caso",
   "Fleet step queued on this case": "Paso de la flota en cola en este caso",
   "Running a fleet step on this case": "Ejecutando un paso de la flota en este caso",
