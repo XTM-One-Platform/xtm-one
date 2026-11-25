@@ -308,6 +308,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     from app.services import ctem_case_version_history as version_history
                     from app.services import ctem_cases_store as store
 
+                    # The asset count agrees with the running versions this read serves (#2225).
+                    version_history.with_live_asset_count(shown[2], running, at=datetime.now(UTC))
+
                     # Why the versions moved, per device (#1694): before, after, when, source, reason.
                     events = (await store.events_of(db, [shown[0].id])).get(shown[0].id, [])
                     running = {**running, "history": version_history.history_of(events)}
@@ -382,6 +385,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         reason: str = "",
         evidence: str = "",
         note: str = "",
+        resolution_kind: str = "",
         exploitation: list[dict[str, Any]] | None = None,
         attack_path: dict[str, Any] | None = None,
         gate: dict[str, Any] | None = None,
@@ -451,6 +455,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     actor=agent_id,
                     actor_kind="agent",
                     state=state or None,
+                    resolution_kind=resolution_kind or None,
                     owner_user_id=_uuid(owner_user_id),
                     due_at=due,
                     reason=reason or None,
@@ -1108,9 +1113,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 "reading or attack path of the triage step, a loop gate passed or waited, or the risk treatment plan of "
                 "the decision, or the threat package of the review step, or a change applied through an integration "
                 "(with the gate ctem.production_change). Those writes move the status; "
-                "resolved needs evidence "
-                "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
-                "an agent (a person accepts risk)."
+                "resolved needs evidence; reopening needs a reason; accepted_risk and resolution_kind "
+                "dismissed (on a reject_and_close answer) need a person."
             ),
             input_schema={
                 "type": "object",
@@ -1122,6 +1126,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "reason": {"type": "string"},
                     "evidence": {"type": "string"},
                     "note": {"type": "string"},
+                    "resolution_kind": {"type": "string"},
                     "exploitation": {
                         "type": "array",
                         "description": "Per supporting asset: techniques in attack order, exposure, reading. Replaces the stored one.",

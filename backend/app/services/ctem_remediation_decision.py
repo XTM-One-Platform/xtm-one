@@ -45,6 +45,8 @@ TEXT_LIMITS: dict[str, int] = {
 }
 #: What an option without figures reads when the agent gave no reason (#2174).
 NOT_PRICED_DEFAULT = "no risk figures given"
+#: The widest currency an effect line names: an ISO 4217 code is three letters (#2179).
+_WIDEST_CURRENCY = "XXX"
 
 
 class DecisionInputError(ValueError):
@@ -149,7 +151,27 @@ def parse_options(raw: Any) -> list[RemediationOption]:
                 not_priced_reason=_field(item, "not_priced_reason", key),
             )
         )
+        _check_effect_room(out[-1])
     return out
+
+
+def _check_effect_room(option: RemediationOption) -> None:
+    """Refuse an option whose effect line, once composed, would not fit the card (#2179).
+
+    Each field fits its own room, but the line joins the figures (or the not-priced
+    reason), the residual risk, the time to apply and the runbook: measured with
+    figures shown in the widest currency, the longest the card can render, so the
+    effect is never cut whoever reads it.
+    """
+    from app.services.decision_ask import MAX_EFFECT_CHARS
+
+    length = len(_effect_line(option, figures=True, currency=_WIDEST_CURRENCY))
+    if length > MAX_EFFECT_CHARS:
+        raise DecisionInputError(
+            f"option {option.key} effect is {length} characters once its figures, residual risk, time to apply "
+            f"and runbook are joined, the card holds {MAX_EFFECT_CHARS}: shorten residual_risk, time_to_apply, "
+            "runbook or not_priced_reason and put the detail in the case notes"
+        )
 
 
 #: A version an option's text cites: "9.10.0", "v7.2.6" (two dotted numbers at least),
@@ -251,7 +273,18 @@ def _money(value: float | None, currency: str = "") -> str:
 
 
 def option_effect(option: RemediationOption, *, figures: bool, currency: str = "") -> str:
-    """One line per option: what it costs, the risk it leaves, how long it takes (figures only when readable)."""
+    """One line per option: what it costs, the risk it leaves, how long it takes (figures only when readable).
+
+    ``parse_options`` refuses an option whose line would exceed the card's room (#2179),
+    so ``fit`` here never cuts a parsed option.
+    """
+    from app.services.decision_ask import MAX_EFFECT_CHARS, fit
+
+    return fit(_effect_line(option, figures=figures, currency=currency), MAX_EFFECT_CHARS) or "no figures given"
+
+
+def _effect_line(option: RemediationOption, *, figures: bool, currency: str) -> str:
+    """The effect line of *option*, whole, before any room is applied."""
     parts: list[str] = []
     if figures and not option.priced:
         # Nothing to print as figures: say why, never "cost unknown" three times (#2174).
@@ -268,9 +301,7 @@ def option_effect(option: RemediationOption, *, figures: bool, currency: str = "
         parts.append(f"time to apply {option.time_to_apply}")
     if option.preapproved:
         parts.append(f"pre-approved runbook {option.runbook}")
-    from app.services.decision_ask import MAX_EFFECT_CHARS, fit
-
-    return fit("; ".join(parts), MAX_EFFECT_CHARS) or "no figures given"
+    return "; ".join(parts)
 
 
 def decision_ask(

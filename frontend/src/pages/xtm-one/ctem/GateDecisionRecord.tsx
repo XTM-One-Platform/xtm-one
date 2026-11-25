@@ -28,7 +28,7 @@ import type {
 import { useFormatter } from "@/i18n";
 import { workItemPath } from "@/lib/task-routes";
 import { CASE_EVENT_LABEL } from "./case-events";
-import { GATE_LABEL, GATE_OUTCOME_LABEL, GATE_REASON_LABEL, isGateOutcome, latestGate } from "./case-gates";
+import { GATE_LABEL, GATE_OUTCOME_LABEL, GATE_REASON_LABEL, isGateOutcome, isUserId, latestGate } from "./case-gates";
 import { CASE_FACT_ICON, CaseFactChip, CaseIcon, actorIcon } from "./case-icons";
 import { CASE_STATE_LABEL, CaseStateChip } from "./cases-shared";
 
@@ -130,11 +130,16 @@ export function gateOptionLabel(option: CtemCaseGateRecord["option"]): string | 
   return option.label || OPTION_LABEL[option.key.toLowerCase()] || null;
 }
 
+/** A gate answer the case names by a word, not by a person (the analyst's mark, the tools' "a person"). */
+const NOT_A_NAME = /analyst'?s? mark|^a person$/i;
+
 /**
  * Who answered a gate when the record cannot name them (the decision row is
  * unreadable to the viewer, or the answer came as free text): the page
- * directory's name of the answering id, else the actor name the case History
- * draws on the `gate answered` event, else null ("a person").
+ * directory's name of the answering id, else the History actor when a person
+ * wrote the `gate answered` event, else the name the event gives as free text,
+ * else null ("a person"). Never the agent that recorded the answer (#2256): an
+ * agent records a person's answer, it does not decide it.
  */
 export function gateAnswererName(
   record: Pick<CtemCaseGateRecord, "key" | "answered_by">,
@@ -146,7 +151,11 @@ export function gateAnswererName(
   if (byId) return byId;
   const event = history ? latestGate(history, record.key) : null;
   if (event?.to !== "answered") return null;
-  return (event.reason && personName?.(event.reason)) || event.actor_name || null;
+  const reason = event.reason?.trim() ?? "";
+  const byReason = isUserId(reason) ? personName?.(reason) : null;
+  if (byReason) return byReason;
+  if (event.actor_type !== "agent" && event.actor_name) return event.actor_name;
+  return reason && !isUserId(reason) && !NOT_A_NAME.test(reason) ? reason : null;
 }
 
 /** The channel an answer came from (`decision_router.SURFACES`). @i18n-keys */

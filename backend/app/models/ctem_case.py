@@ -90,8 +90,8 @@ REMEDIATION_KINDS: tuple[str, ...] = (
 CASE_PRIORITIES: tuple[str, ...] = ("critical", "high", "medium", "low")
 #: ``signal``: a CTEM signal attached to the case (``external_id`` is its id).
 ISSUE_SOURCES: tuple[str, ...] = ("opencti", "openaev", "signal")
-#: How a resolved case was closed.
-RESOLUTION_KINDS: tuple[str, ...] = ("not_exposed", "mitigated", "fixed", "accepted_risk")
+#: How a resolved case was closed. ``dismissed``: a person answered a gate "reject and close" (#2252).
+RESOLUTION_KINDS: tuple[str, ...] = ("not_exposed", "mitigated", "fixed", "accepted_risk", "dismissed")
 #: Severity from the scope gate (P1 most urgent).
 CASE_SEVERITIES: tuple[str, ...] = ("P1", "P2", "P3")
 #: What a validation reference says.

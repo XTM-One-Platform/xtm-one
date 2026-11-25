@@ -11553,7 +11553,7 @@ async def _join_waiting_batch(
         return None
     if event_batching.carries(run.trigger_payload, payload):
         return str(run.id)
-    if not event_batching.can_join(run.trigger_payload):
+    if not event_batching.can_join(run.trigger_payload, event_batching.max_events(assignment.trigger_config)):
         return None
     if run.status != QUEUED_RUN_STATUS:
         run_at = (

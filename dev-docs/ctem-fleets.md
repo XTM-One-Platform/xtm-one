@@ -213,6 +213,17 @@ Common rules:
   signal, and the note lists their identifiers (first 50) so an operator can
   record a signal by hand. Gates are unchanged. Tests:
   `tests/test_ctem_fleets_on_cases.py`.
+- **One writer per counter (#2250).** Each counter of `ctem:f1:state` and
+  `ctem:f2:state` has exactly one seeded writer, named in
+  `CTEM_F1_COUNTER_WRITERS` / `CTEM_F2_COUNTER_WRITERS` (`builtin_agents.py`)
+  and in both personas: the F1 Weekly threat sweep writes `threats_reviewed`,
+  `threats_relevant` and `last_refresh` once per week; the F1 Re-test due
+  writes `cases_resolved` and `loss_avoided` once per resolved case (the note
+  names the case id, so a resumed run adds nothing); the F2 Daily backlog pass
+  sets `cve_triaged`, `cve_validated` and `last_pass` counted from the cases;
+  the F2 Re-test due writes `ticket_closed_retested` once per case. The case
+  listener (up to 5 runs at once) and the F2 triage listeners never write them.
+  Tests: `tests/test_ctem_counter_writers.py`.
 - **Bounded shared state (#10789).** Every seeded persona that keeps a list in
   shared state states its bound: a closed case leaves the open list and only
   bumps the counters, a history or closed list is appended with `keep_last`
@@ -2145,7 +2156,7 @@ The routes (`backend/app/api/v1/fleets.py`) and their service
 
 | Route | What it does | Who | AI off |
 |---|---|---|---|
-| `PATCH /fleets/{id}` `autonomy_level` | `full_gates`, `medium`, `low` (built-in fleet default, #10005), `autonomous`; audit `autonomy_level_change` | lower: whoever manages the fleet; raise: an administrator | allowed (no model call) |
+| `PATCH /fleets/{id}` `autonomy_level` | `full_gates` (default of every new and seeded fleet, #2279), `medium`, `low`, `autonomous`; audit `autonomy_level_change` | lower: whoever manages the fleet; raise: an administrator | allowed (no model call) |
 | `GET /fleets/{id}/approval-gates` | The approval gate catalog the level acts on (`Fleet.approval_gates`, else the documentation's gates; #10000), the gates proposed from the members' configuration (`services/fleet_gate_proposals.py`: one gate per bound integration and impact class naming its write tools, read-only bindings and tool scoping honoured; impact table: read never gated, mark or draft `low`, send, reply, forward, delete, isolate, payment or signature `destructive`, every other write `high`) and the approvals that exist outside the level (agent and automation human in the loop, tool-call approval). Also `autonomy_level`, `effective_catalog` (every gate the level acts on with `source` stored, documentation or computed, `pin`, `tools`, `gated` and `by_level`: the cursor's before-click preview) and `computed_catalog_on` (#10153). No model call, no quota (#10014) | whoever sees the fleet | allowed |
 | `PUT /fleets/{id}/autonomy` | One click of the cursor (#10153): `{level, pins?}` applied in one transaction, `pins` = `{gate key: "wait" \| "run"}` (per-action overrides, `Fleet.approval_pins`; a built-in fleet takes them too since #916, kept across seed upgrades: the seed never writes them). On a custom fleet it turns the computed catalog on. Audit `autonomy_level_change` with level and pins before and after | lower the level, pin "wait", drop a "run" pin: whoever manages the fleet; raise, pin "run", drop a "wait" pin: an administrator | allowed |
 | `PUT /fleets/{id}/approval-gates` | Stores a custom fleet's catalog (accepted proposals or edited gates, validated as `DocGate`, unique keys). On a built-in fleet (#916) the body is the gates added to the seeded catalog, stored in `Fleet.customer_gates` (customer layer, never written by the seed, so kept across upgrades; read after the seeded gates, source `customer`, pinned like any gate); a seeded key is refused (422: pin it instead). Audit `approval_gates_change` | add: whoever manages the fleet; remove a gate, a tool of one or lower its impact: an administrator | allowed |
@@ -2213,21 +2224,31 @@ Opening a page never calls a write route: the setup dialog reads the
 `dry_run` plan and the run estimate (`GET /fleets/{id}/run-estimate`) and
 switches nothing on before Confirm.
 
-### Seeded level: Low (#10005)
+### Seeded and default level: Full human gates (#2279)
 
-Every built-in fleet ships at `low`, the last level before full autonomy:
-only gates of impact `destructive` wait for a person; `low` and `high` gates
-run alone and stay logged in Operations. The seed
-(`backend/app/agents/fleet_seed.py`, `_apply_seed_autonomy`) sets it on a
-new built-in fleet and moves an existing one still at the stored default to
-it at the next boot, unless a person ever changed its level (an
-`autonomy_level_change` audit row on the fleet): a person-set level is never
-overwritten. The move is audited as `autonomy_level_seed_default` under
-`system:fleet-seed`, never attributed to a user. Fleets stay disabled by
-default, so the level changes nothing until someone enables the fleet. Custom
-fleets keep `full_gates`.
+Every fleet created or seeded without a level starts at `full_gates` (Sam,
+25 Nov 2026; built-in fleets shipped at `low` from #10005 to #2279, custom
+fleets without a declared catalog at `autonomous` from #10153 C2): every gate
+waits for a person, as one decision item (a needs_human work item with its ask
+card) the orchestrator files between steps. Full human gates never turns on
+tool approval: `enforce_gates_at_tool_level` stays off (#1467) and is never
+honoured on a built-in fleet (#1675), so no tool call pauses inside a run and
+the fleet's tools stay authorized. `create_fleet`
+(`backend/app/services/fleets.py`) writes `DEFAULT_AUTONOMY_LEVEL` when the
+caller passes no level (REST, the `create_fleet` tool, a spec without
+`autonomy_level`); a fork keeps its source's level. The seed
+(`backend/app/agents/fleet_seed.py`, `_apply_seed_autonomy`) moves an
+existing built-in fleet to `SEEDED_FLEET_AUTONOMY_LEVEL` at the next boot
+unless a person ever chose its level (an `autonomy_level_change` audit row on
+the fleet other than a factory reset's, `details.reason` `fleet_reset`): a
+person-set level is never overwritten. The move is audited as
+`autonomy_level_seed_default` under `system:fleet-seed`, never attributed to a
+user. A factory reset puts the fleet back at `full_gates`. Fleets stay
+disabled by default, so the level changes nothing until someone enables the
+fleet. An administrator raises the level.
 
-What waits and what runs alone at Low, per seeded fleet
+What waits and what runs alone at Low (a level an administrator picks), per
+seeded fleet
 (`backend/app/agents/builtin_fleet_docs.py`):
 
 | Fleet | Still waits for a person | Runs alone, logged |

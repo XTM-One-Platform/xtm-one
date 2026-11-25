@@ -159,6 +159,50 @@ def _fields_refused(status: int | None, err: str, what: str) -> str:
     return err
 
 
+_WRITE_SCOPE_HINT = (
+    "Writing list item fields needs the Sites.ReadWrite.All permission on the Microsoft "
+    "integration, and the account must be able to edit the library."
+)
+
+
+def parse_field_values(fields: object) -> tuple[dict[str, object] | None, str | None]:
+    """The ``{column: value}`` map of a write, given as an object or its JSON text."""
+    value = fields
+    if isinstance(value, str):
+        try:
+            value = json.loads(value) if value.strip() else {}
+        except ValueError:
+            return None, "Error: fields must be a JSON object of column: value."
+    if not isinstance(value, dict) or not value:
+        return None, "Error: give fields as a non-empty object of column: value (null clears a column)."
+    if any(not isinstance(k, str) or not k.strip() for k in value):
+        return None, "Error: every key of fields is a column's internal name."
+    return {k.strip(): v for k, v in value.items()}, None
+
+
+def _same_value(written: object, stored: object) -> bool:
+    if written is None:
+        return stored in (None, "", [])
+    if isinstance(written, bool) or isinstance(stored, bool):
+        return bool(written) == bool(stored) and type(written) is type(stored)
+    if isinstance(written, (int, float)) and isinstance(stored, (int, float)):
+        return float(written) == float(stored)
+    if isinstance(written, str) and isinstance(stored, str) and len(written) >= 10 and written[4:5] == "-":
+        # A date is stored in UTC with seconds: compare its leading date-time part.
+        return stored.startswith(written.rstrip("Z")[:10])
+    return _field_text(written).strip() == _field_text(stored).strip()
+
+
+def unwritten_fields(values: dict[str, object], stored: dict[str, object]) -> list[str]:
+    """The written columns whose read-back value differs from what was sent."""
+    out = []
+    for column, written in values.items():
+        key = _column_key(stored, column)
+        if not _same_value(written, stored.get(key) if key else None):
+            out.append(column)
+    return out
+
+
 def _field_text(value: object) -> str:
     """One column value as text: a multi-value column joined, an object as JSON."""
     if isinstance(value, list):
@@ -609,6 +653,86 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                 )
             return await _read_drive_item(ctx, client, item_base, meta)
 
+    async def _list_item_base(
+        client: AutoRefreshClient, site_id: str, path: str, library: str, link: str
+    ) -> tuple[str | None, str, str | None]:
+        """``(driveItem base, what, None)`` for a file given by url or site_id + item_path."""
+        if link:
+            if not re.match(r"^https?://", link, re.IGNORECASE):
+                return None, "", "Error: url must be the file's http(s) URL or sharing link."
+            return f"{_BASE_URL}/shares/{_encode_share_id(link)}/driveItem", f"the list item fields of '{link}'", None
+        if not path:
+            return (
+                None,
+                "",
+                "Error: give the file as site_id plus item_path (its Path from list_microsoft_site_files), or as its url.",
+            )
+        site_base, err = await _site_base(ctx, client, site_id)
+        if err:
+            return None, "", err
+        drive = f"{site_base}/lists/{_list_ref(library)}/drive" if (library or "").strip() else f"{site_base}/drive"
+        return f"{drive}/root:/{_encode_drive_path(path)}:", f"the list item fields of '{path}'", None
+
+    async def update_microsoft_list_item_fields(
+        fields: dict[str, object] | str,
+        site_id: str = "",
+        item_path: str = "",
+        library: str = "",
+        url: str = "",
+    ) -> str:
+        """Write list item fields of a file in a document library and read them back."""
+        values, err = parse_field_values(fields)
+        if err or values is None:
+            return err or "Error: give fields as a JSON object of column: value."
+        link = (url or "").strip()
+        path = (item_path or "").strip().strip("/")
+        async with _client() as client:
+            base, what, err = await _list_item_base(client, site_id, path, library, link)
+            if err or base is None:
+                return err or "Error: the file was not located."
+            resp, err = await _throttled_request(
+                client,
+                "patch",
+                f"{base}/listItem/fields",
+                _PROVIDER,
+                "write list item fields",
+                json=values,
+                expected_statuses={400, 401, 403, 404},
+            )
+            if err:
+                status = resp.status_code if resp is not None else None
+                if status in (401, 403):
+                    return f"Error: Microsoft Graph refused to write {what} ({err.removeprefix('Error: ').rstrip('.')}). {_WRITE_SCOPE_HINT}"
+                return _fields_refused(status, err, what)
+            back, err = await _throttled_request(
+                client,
+                "get",
+                f"{base}/listItem",
+                _PROVIDER,
+                "read back list item fields",
+                params={"$expand": "fields", "$select": "id,webUrl,fields"},
+            )
+            if err or back is None:
+                return f"Error: the write was accepted but {what} were not read back ({err})."
+        item = back.json() or {}
+        stored = item.get("fields") or {}
+        mismatched = unwritten_fields(values, stored)
+        lines = [
+            f"{stored.get('FileLeafRef') or path or link}",
+            f"  List item ID: {item.get('id', '')}",
+            f"  URL: {item.get('webUrl', '')}",
+            "  Fields read back:",
+            *_format_fields(stored, list(values), indent="    "),
+        ]
+        if mismatched:
+            return (
+                "Error: Microsoft Graph accepted the write but these columns read back with another value: "
+                + ", ".join(mismatched)
+                + ".\n"
+                + "\n".join(lines)
+            )
+        return f"Wrote {len(values)} field(s); read back from Microsoft Graph.\n" + "\n".join(lines)
+
     async def get_microsoft_list_item_fields(
         site_id: str = "",
         item_path: str = "",
@@ -624,25 +748,9 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
         link = (url or "").strip()
         path = (item_path or "").strip().strip("/")
         async with _client() as client:
-            if link:
-                if not re.match(r"^https?://", link, re.IGNORECASE):
-                    return "Error: url must be the file's http(s) URL or sharing link."
-                base = f"{_BASE_URL}/shares/{_encode_share_id(link)}/driveItem"
-                what = f"the list item fields of '{link}'"
-            else:
-                if not path:
-                    return (
-                        "Error: give the file as site_id plus item_path (its Path from "
-                        "list_microsoft_site_files), or as its url."
-                    )
-                site_base, err = await _site_base(ctx, client, site_id)
-                if err:
-                    return err
-                drive = (
-                    f"{site_base}/lists/{_list_ref(library)}/drive" if (library or "").strip() else f"{site_base}/drive"
-                )
-                base = f"{drive}/root:/{_encode_drive_path(path)}:"
-                what = f"the list item fields of '{path}'"
+            base, what, err = await _list_item_base(client, site_id, path, library, link)
+            if err or base is None:
+                return err or "Error: the file was not located."
             resp, err = await _throttled_request(
                 client,
                 "get",
@@ -813,6 +921,7 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
     executor.register("list_microsoft_sharepoint_sites", list_microsoft_sharepoint_sites)
     executor.register("list_microsoft_list_columns", list_microsoft_list_columns)
     executor.register("get_microsoft_list_item_fields", get_microsoft_list_item_fields)
+    executor.register("update_microsoft_list_item_fields", update_microsoft_list_item_fields)
     executor.register("list_microsoft_list_items", list_microsoft_list_items)
     executor.register("list_microsoft_site_files", list_microsoft_site_files)
     executor.register("get_microsoft_site_file_content", get_microsoft_site_file_content)
@@ -958,6 +1067,43 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                     },
                 },
                 "required": [],
+            },
+            source="integration:microsoft",
+            priority=2,
+        ),
+        ToolDefinition(
+            name="update_microsoft_list_item_fields",
+            description=(
+                "Write the SharePoint list item fields (custom metadata columns) of a file in a "
+                "document library and read them back. fields maps internal column name to value: "
+                "text, choice, number, date (ISO 8601), a person as NameLookupId with the user's "
+                "site lookup id, null clears. Needs Sites.ReadWrite.All."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "fields": {
+                        "type": "object",
+                        "description": "Column internal name to value (list_microsoft_list_columns names them); null clears",
+                    },
+                    "site_id": {
+                        "type": "string",
+                        "description": "The site: its ID, the path form 'hostname:/sites/name', or its URL",
+                    },
+                    "item_path": {
+                        "type": "string",
+                        "description": "The file's path relative to the library root",
+                    },
+                    "library": {
+                        "type": "string",
+                        "description": "Optional: the library's display name or list id, when not the default one",
+                    },
+                    "url": {
+                        "type": "string",
+                        "description": "Instead of site_id and item_path: the file's URL or sharing link",
+                    },
+                },
+                "required": ["fields"],
             },
             source="integration:microsoft",
             priority=2,
