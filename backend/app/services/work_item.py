@@ -6255,6 +6255,37 @@ async def _resolved_recipient(
         if recipient and recipient.strip():
             raise ValueError("recipient names who a needs_human item waits for: set needs_human too")
         return None
+    person, _groups = await _resolved_recipient_and_groups(
+        db,
+        needs_human=needs_human,
+        recipient=recipient,
+        acting_user_id=acting_user_id,
+        agent_id=agent_id,
+        item_user_id=item_user_id,
+        is_company_managed=is_company_managed,
+        workspace_id=workspace_id,
+    )
+    return person
+
+
+async def _resolved_recipient_and_groups(
+    db: Any,
+    *,
+    needs_human: bool,
+    recipient: str | None,
+    acting_user_id: uuid.UUID | None,
+    agent_id: uuid.UUID | None,
+    item_user_id: uuid.UUID | None,
+    is_company_managed: bool,
+    workspace_id: uuid.UUID | None,
+) -> tuple[uuid.UUID | None, list[str] | None]:
+    """The person and the groups :func:`resolve_recipient` names, as stored.
+
+    The groups also come from the routing of a company-managed agent with
+    nobody named (the CTEM ``decide`` groups, #2367).
+    """
+    if not needs_human:
+        return None, None
     from app.services.work_item_recipient import resolve_recipient
 
     found = await resolve_recipient(
@@ -6266,7 +6297,9 @@ async def _resolved_recipient(
         is_company_managed=is_company_managed,
         workspace_id=workspace_id,
     )
-    return found.user_id if found.user_id != item_user_id else None
+    if found.group_ids:
+        return None, list(found.group_ids)
+    return (found.user_id if found.user_id != item_user_id else None), None
 
 
 async def _resolved_recipients(
@@ -6291,7 +6324,20 @@ async def _resolved_recipients(
     if groups:
         found = await _resolve_groups(db, groups)
         return None, list(found.group_ids)
-    person = await _resolved_recipient(
+    if not needs_human:
+        # Refuses a recipient on an item that needs nobody.
+        await _resolved_recipient(
+            db,
+            needs_human=False,
+            recipient=recipient,
+            acting_user_id=acting_user_id,
+            agent_id=agent_id,
+            item_user_id=item_user_id,
+            is_company_managed=is_company_managed,
+            workspace_id=workspace_id,
+        )
+        return None, None
+    return await _resolved_recipient_and_groups(
         db,
         needs_human=needs_human,
         recipient=recipient,
@@ -6301,7 +6347,6 @@ async def _resolved_recipients(
         is_company_managed=is_company_managed,
         workspace_id=workspace_id,
     )
-    return person, None
 
 
 def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):

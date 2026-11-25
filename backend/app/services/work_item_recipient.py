@@ -23,10 +23,18 @@ The recipient is resolved at the write, in this order:
 1. an explicit ``recipient`` (a user id or an email), which must be an active
    user who can read the item;
 2. the run's acting user (the person the run acts for);
-3. the owner of the writing agent;
-4. the platform administrators, when none of the above exists.
+3. the owner of the writing agent, for a personal agent; for a company-managed
+   agent (#2367) its owner is the seed account that stands for the platform,
+   never a decider, so the item goes instead to the CTEM ``decide`` groups
+   (``ctem_access.gate_recipient``) when the agent holds CTEM tools or its
+   home fleet is a CTEM fleet, else to the owner of its home fleet when that
+   fleet is a person's (not seeded), else to step 4;
+4. the platform administrators, when none of the above exists (a
+   company-managed agent falls back to its owner only when the platform has
+   no administrator).
 
-1 to 3 are stored in ``work_items.waits_for_user_id``; 4 stores nothing and
+1 to 3 are stored in ``work_items.waits_for_user_id`` (the groups of 3 in
+``work_items.waits_for_group_ids``); 4 stores nothing and
 the clause shows such an item (``needs_human``, no recipient, no user) to every
 administrator, which also surfaces the items written before the column. With
 no administrator either, the write is refused and nothing is written.
@@ -58,7 +66,7 @@ class Recipient:
     """Who a decision item waits for: one person, groups, or the administrators."""
 
     user_id: uuid.UUID | None
-    source: str  # explicit | groups | acting_user | agent_owner | administrators
+    source: str  # explicit | groups | acting_user | agent_owner | fleet_owner | administrators
     group_ids: tuple[str, ...] = ()
 
 
@@ -160,18 +168,62 @@ async def resolve_recipient(
         return Recipient(person.id, "explicit")
     if acting_user_id is not None:
         return Recipient(acting_user_id, "acting_user")
+    owner: uuid.UUID | None = None
     if agent_id is not None:
         from app.models.agent import Agent
 
-        owner = (await db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
-        if owner is not None:
+        agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+        owner = getattr(agent, "user_id", None)
+        if agent is not None and bool(getattr(agent, "is_company_managed", False)):
+            routed = await _company_agent_recipient(db, agent)
+            if routed is not None:
+                return routed
+        elif owner is not None:
             return Recipient(owner, "agent_owner")
     if await _any_admin(db):
         return Recipient(None, "administrators")
+    if owner is not None:
+        # A company-managed agent on a platform with no administrator: its owner is the only person left.
+        return Recipient(owner, "agent_owner")
     raise RecipientError(
         "nobody can be notified of this decision: the run acts for no person, the agent has no owner "
         "and the platform has no administrator; pass recipient (a user id or an email). Nothing was written"
     )
+
+
+async def _company_agent_recipient(db: Any, agent: Any) -> Recipient | None:
+    """Who a company-managed *agent*'s decision waits for when nobody is named (#2367).
+
+    The CTEM ``decide`` groups (notify on) for an agent holding CTEM tools or
+    living in a CTEM fleet; else the owner of its home fleet when a person owns
+    it (a seeded fleet's owner is the seed account too); else ``None``: the
+    administrators. A failed read is ``None``, never a widening.
+    """
+    from app.models.fleet import Fleet, FleetMember
+    from app.services import ctem_access
+    from app.services.organization_context import holds_ctem_tools, is_ctem_fleet
+
+    try:
+        fleet = (
+            await db.execute(
+                select(Fleet.slug, Fleet.is_builtin, Fleet.forked_from, Fleet.user_id)
+                .join(FleetMember, FleetMember.fleet_id == Fleet.id)
+                .where(FleetMember.agent_id == agent.id, FleetMember.role == "member")
+                .limit(1)
+            )
+        ).first()
+    except Exception:  # unreadable: the administrators
+        return None
+    ctem = holds_ctem_tools(agent) or (
+        fleet is not None and is_ctem_fleet(slug=fleet[0], is_builtin=fleet[1], forked_from=fleet[2])
+    )
+    if ctem:
+        groups = group_refs(await ctem_access.gate_recipient(db))
+        if groups:
+            return await _resolve_groups(db, groups)
+    if fleet is not None and not fleet[1] and fleet[3] is not None:
+        return Recipient(fleet[3], "fleet_owner")
+    return None
 
 
 def group_member_clause(user_uuid: uuid.UUID) -> Any:
