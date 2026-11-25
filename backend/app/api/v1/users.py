@@ -44,7 +44,7 @@ from app.models.group import Group, GroupMember
 from app.models.integration import Integration
 from app.models.knowledge_base import KnowledgeBase
 from app.models.mcp_server import MCPServer
-from app.models.user import User, is_platform_admin
+from app.models.user import User, admin_email_change_refusal, is_platform_admin
 from app.services import token_store
 from app.services.assignment_pause import owner_not_deactivated
 from app.services.audit import log_audit
@@ -1479,19 +1479,9 @@ async def update_user_email(
     if email == (old_email or "").strip().lower():
         return {"status": "ok", "user_id": user_id, "email": old_email}
 
-    # Platform administrator standing follows ADMIN_EMAIL, and the boot finds
-    # the account by it.
-    if is_platform_admin(user):
-        raise HTTPException(
-            status_code=400,
-            detail="The platform admin account's email is set by ADMIN_EMAIL and cannot be changed",
-        )
-    # Nor given to another account: the standing would follow it.
-    if settings.admin_email and email == settings.admin_email.strip().lower():
-        raise HTTPException(
-            status_code=400,
-            detail="This address is the platform admin's, set by ADMIN_EMAIL: it cannot be given to an account",
-        )
+    refusal = admin_email_change_refusal(user, email)
+    if refusal:
+        raise HTTPException(status_code=400, detail=refusal)
 
     domain_list = (await get_sso_config(db)).allowed_domain_list
     if not email_domain_allowed(email, domain_list):

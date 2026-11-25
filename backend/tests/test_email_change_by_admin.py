@@ -218,6 +218,61 @@ class TestAnAdministratorChangesIt:
         assert target.email == "jane@corp.com" and not audits and not mail
 
 
+class TestScimKeepsTheAdminEmail:
+    """SCIM writes ``userName`` as the email, under the same ``ADMIN_EMAIL`` rule."""
+
+    _TOKEN = SimpleNamespace(id=uuid.uuid4(), name="Entra", created_by=None)
+
+    @pytest.fixture(autouse=True)
+    def _admin_email(self, monkeypatch):
+        monkeypatch.setattr("app.core.config.settings.admin_email", "root@corp.com")
+
+    async def test_the_admin_account_keeps_its_address(self):
+        from app.api.v1 import scim
+        from app.services import scim as s
+
+        admin = _user("root@corp.com")
+        with pytest.raises(s.ScimError) as exc:
+            await scim._apply_user(_NoReadDB(), admin, s.UserChanges(user_name="root2@corp.com"), self._TOKEN)
+        assert exc.value.status == 400 and "ADMIN_EMAIL" in exc.value.detail
+        assert admin.email == "root@corp.com"
+
+    @pytest.mark.parametrize("email", ["root@corp.com", " Root@Corp.com "])
+    async def test_no_account_takes_the_admin_address(self, email):
+        from app.api.v1 import scim
+        from app.services import scim as s
+
+        target = _user()
+        with pytest.raises(s.ScimError) as exc:
+            await scim._apply_user(_NoReadDB(), target, s.UserChanges(user_name=email), self._TOKEN)
+        assert exc.value.status == 400 and "ADMIN_EMAIL" in exc.value.detail
+        assert target.email == "jane@corp.com"
+
+    async def test_no_account_is_provisioned_on_the_admin_address(self, monkeypatch):
+        """With no account on it (ADMIN_EMAIL changed, its account removed), a new one would carry the standing."""
+        import app.core.sso_helpers as sso_helpers
+        from app.api.v1 import scim
+        from app.services import scim as s
+
+        async def _cfg(_db):
+            return SimpleNamespace(saml_enabled=False, oidc_enabled=False)
+
+        async def _body():
+            return {"schemas": [s.USER_SCHEMA], "userName": "Root@Corp.com", "active": True}
+
+        class _DB:
+            async def execute(self, _stmt):
+                return _Result(None)
+
+            def add(self, _obj):  # pragma: no cover
+                raise AssertionError("no account is created")
+
+        monkeypatch.setattr(sso_helpers, "get_sso_config", _cfg)
+        with pytest.raises(s.ScimError) as exc:
+            await scim.create_user(SimpleNamespace(json=_body), db=_DB(), token=self._TOKEN)
+        assert exc.value.status == 400 and "ADMIN_EMAIL" in exc.value.detail
+
+
 class TestAResetLinkFollowsTheAddressItWasSentTo:
     async def test_the_link_names_its_address(self, monkeypatch):
         stored: dict = {}

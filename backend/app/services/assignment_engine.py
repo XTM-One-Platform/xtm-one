@@ -11169,6 +11169,8 @@ async def trigger_or_queue_assignment(
     """
     await _refuse_if_ai_disabled(assignment)
     await _refuse_if_group_ai_disabled(_run_person(assignment, None, agent))
+    # Before any path: a delivery folded into a waiting run merges its payload.
+    payload = _with_partner_scope(payload)
 
     if not assignment.enabled:
         raise ValueError(f"Assignment '{assignment.name}' is disabled")

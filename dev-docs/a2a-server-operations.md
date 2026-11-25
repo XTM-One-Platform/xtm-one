@@ -171,7 +171,7 @@ every in-process hop inherits with the asyncio context, a background
 delegation carries in its execution payload (`a2a_partner_task`), and an
 assignment run the task starts (`delegate_to_assignment`, then whatever that run
 chains) records on its `trigger_payload` (`assignment_engine.trigger_assignment`,
-`partner_scope.partner_scoped_payload`, which drops the scope keys a caller's payload names), reopened by the assignment worker. In it:
+`trigger_or_queue_assignment`; `partner_scope.partner_scoped_payload`, which drops the scope keys a caller's payload names, so a delivery folded into a waiting run brings none), reopened by the assignment worker. In it:
 
 | Surface | What the task gets |
 | --- | --- |
