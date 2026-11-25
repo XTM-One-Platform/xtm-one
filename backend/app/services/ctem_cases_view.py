@@ -617,6 +617,16 @@ AGGREGATES_RESTRICTED_REASON = (
 )
 
 
+def _without_echoed_signals(details: list[Any]) -> list[Any]:
+    """*details* without the signal members whose CVE a product member of the case already carries (#2041).
+
+    A signal enriched from OpenCTI and the OpenCTI issue of the same CVE are one
+    vulnerability: the KEV count counts it once, from the product member.
+    """
+    carried = {str(d.cve).upper() for d in details if d.source != SIGNAL_SOURCE and d.cve}
+    return [d for d in details if d.source != SIGNAL_SOURCE or not d.cve or str(d.cve).upper() not in carried]
+
+
 def case_priority(severity: str | None, details: list[Any]) -> str:
     """The priority a case shows: its loop severity when set, else the default policy."""
     if severity in SEVERITY_PRIORITY:
@@ -631,6 +641,8 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         return None
     details = [view.issues[_member_id(r)] for r in visible if r.open and _member_id(r) in view.issues]
     agg = rules.aggregates(details)
+    # One KEV CVE is counted once, from its product member, when a signal names it too (#2041).
+    agg["kev_count"] = rules.aggregates(_without_echoed_signals(details))["kev_count"]
     # Open product members this viewer has no details of (hidden by scope, or seen before from a
     # product that does not answer now): the detail aggregates would count only part of the case,
     # so they are null with a reason, never a silent 0 a reader takes for "none". Signal members

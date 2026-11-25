@@ -545,11 +545,15 @@ def _jewels_of(profile: OrganizationProfile, resolution: Resolution) -> list[tup
     return out
 
 
-def _cve_ids(facts: SignalFacts) -> list[str]:
-    found = _CVE.findall(
-        " ".join([facts.subject_ref, facts.subject_label or "", *_evidence_list(facts.evidence, "cve", "cves")])
-    )
+def signal_cve_ids(subject_ref: str | None, subject_label: str | None, evidence: Any) -> list[str]:
+    """The CVE ids a signal names (its subject, label and evidence ``cve`` / ``cves``), upper case, in order."""
+    listed = _evidence_list(evidence, "cve", "cves") if isinstance(evidence, dict) else []
+    found = _CVE.findall(" ".join([subject_ref or "", subject_label or "", *listed]))
     return list(dict.fromkeys(c.upper() for c in found))
+
+
+def _cve_ids(facts: SignalFacts) -> list[str]:
+    return signal_cve_ids(facts.subject_ref, facts.subject_label, facts.evidence)
 
 
 def _accepted(

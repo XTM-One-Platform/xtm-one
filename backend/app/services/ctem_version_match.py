@@ -154,11 +154,23 @@ def unverified_reason(issues: Any) -> str | None:
     running version at all. Nothing is discarded and nothing is derived from
     versions: membership, priority and SLA are unchanged; the marker clears when
     OpenCTI places every running version.
+
+    A signal member that names a CVE (#2041) carries no version outcome: it is
+    unverified the same way, unless an OpenCTI issue of the same CVE is in
+    *issues* (that issue's outcomes judge it). Missing data is unverified.
     """
     not_known: set[str] = set()
     not_reported = False
-    for issue in issues or ():
-        if getattr(issue, "source", None) != "opencti" or getattr(issue, "not_affected", None):
+    issues = list(issues or ())
+    judged = {_clean(getattr(i, "cve", None)).upper() for i in issues if getattr(i, "source", None) == "opencti"}
+    for issue in issues:
+        source = getattr(issue, "source", None)
+        if source == "signal":
+            cve = _clean(getattr(issue, "cve", None)).upper()
+            if cve and cve not in judged:
+                not_reported = True
+            continue
+        if source != "opencti" or getattr(issue, "not_affected", None):
             continue
         outcomes = tuple(getattr(issue, "version_outcomes", None) or ())
         if not outcomes and not _clean(getattr(issue, "installed_version", None)):

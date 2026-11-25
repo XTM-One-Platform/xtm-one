@@ -168,6 +168,16 @@ With it:
   existing gate card wording (`BLIND_ACTION`, "Verify the running version,
   then upgrade") and the existing validation record; nothing is discarded or
   derived from versions;
+- a signal member that names CVE ids (#2041; subject, label or evidence
+  `cve` / `cves`, `ctem_scope_gate.signal_cve_ids`) is enriched from OpenCTI
+  with the viewer's own read, like an OpenCTI issue: its first CVE, KEV, the
+  highest CVSS and EPSS, and the version a course of action names
+  (`ctem_cases_source.enrich_signal_issues`, at most `SIGNAL_CVE_CAP` CVEs a
+  read); a CVE OpenCTI does not know keeps the member with those facts unknown.
+  With no version outcome it marks the case "to validate" ("no running version
+  reported") unless an OpenCTI issue of the same CVE is in the case, whose
+  outcomes judge it; the KEV count counts such a CVE once, from the OpenCTI
+  member;
 - the upgrade members of one product fold onto ONE key, the smallest version
   that fixes every member (the greatest of their fixed versions), titled
   "Upgrade <vendor product> to <version>";
