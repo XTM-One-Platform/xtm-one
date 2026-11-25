@@ -89,6 +89,9 @@ export interface CtemCaseSummary {
   waiting_on?: { gate: string | null; by: string | null; since: string | null } | null;
   /** When the case sweep found the case waiting on nobody, while nothing moved it since (#1736); null otherwise. */
   stalled_since?: string | null;
+  /** A running version OpenCTI cannot place (#2004): kept and to validate first; priority and SLA unchanged. */
+  version_unverified?: boolean;
+  version_unverified_reason?: string | null;
 }
 
 /** Where a synced ticket stands against its case (backend ctem_case_loop.TICKET_SYNC_STATES, #917). */
