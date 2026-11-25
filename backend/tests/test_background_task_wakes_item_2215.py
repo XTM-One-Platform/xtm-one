@@ -69,6 +69,8 @@ def _item(**fields):
         blocked_on=None,
         blocked_on_refs=None,
         needs_human=False,
+        blocked_reason=None,
+        ask=None,
         action_mode=None,
         last_activity_at=None,
     )
@@ -76,17 +78,30 @@ def _item(**fields):
     return SimpleNamespace(**base)
 
 
+def _capture_transitions(monkeypatch):
+    transitions = []
+
+    async def _transition(work_item_id, *, previous_status, note=None, **_kw):
+        transitions.append((work_item_id, previous_status, note))
+
+    monkeypatch.setattr(wi_service, "publish_transition", _transition)
+    return transitions
+
+
 @pytest.mark.asyncio
 async def test_an_item_left_in_progress_by_an_ended_run_is_reopened(monkeypatch):
     item = _item()
     session = _Session(item, alive=False)
     monkeypatch.setattr("app.core.database.async_session", lambda: session)
+    transitions = _capture_transitions(monkeypatch)
     task = uuid.uuid4()
 
     assert await wi_service.wake_on_background_task(item.id, task_id=task, outcome="completed") == "reopened"
     assert item.status == "open" and item.claimed_by_run_id is None and item.claimed_by_agent_id is None
     assert item.claim_notes[-1]["text"] == f"background task {task} completed"
     assert session.committed
+    # The reopen is published (work_item.status_changed) and nudges the dispatcher, as the other reopens.
+    assert transitions == [(item.id, "in_progress", f"background task {task} completed")]
 
 
 @pytest.mark.asyncio
@@ -94,8 +109,10 @@ async def test_an_item_its_live_run_still_holds_is_only_noted(monkeypatch):
     holder = uuid.uuid4()
     item = _item(claimed_by_run_id=holder)
     monkeypatch.setattr("app.core.database.async_session", lambda: _Session(item, alive=True))
+    transitions = _capture_transitions(monkeypatch)
 
     assert await wi_service.wake_on_background_task(item.id, task_id=uuid.uuid4(), outcome="failed") == "noted"
+    assert transitions == []
     assert item.status == "in_progress" and item.claimed_by_run_id == holder
     assert item.claim_notes[-1]["text"].endswith(" failed")
 
@@ -121,11 +138,15 @@ async def test_an_item_waiting_on_something_else_or_finished_keeps_its_status(mo
 
 @pytest.mark.asyncio
 async def test_a_blocked_item_with_no_blocker_is_reopened(monkeypatch):
-    item = _item(status="blocked", claimed_by_run_id=None)
+    item = _item(status="blocked", claimed_by_run_id=None, blocked_reason="waits for the task", ask={"question": "q"})
     monkeypatch.setattr("app.core.database.async_session", lambda: _Session(item))
+    transitions = _capture_transitions(monkeypatch)
 
     assert await wi_service.wake_on_background_task(item.id, task_id=uuid.uuid4(), outcome="completed") == "reopened"
     assert item.status == "open"
+    # Leaving blocked clears the why fields, as the sibling reopens do.
+    assert item.blocked_reason is None and item.ask is None
+    assert [previous for _id, previous, _note in transitions] == ["blocked"]
 
 
 @pytest.mark.asyncio

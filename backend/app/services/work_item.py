@@ -7476,6 +7476,7 @@ async def wake_on_background_task(work_item_id: object, *, task_id: object, outc
             if item is None:
                 return None
             reopen = False
+            previous_status = item.status
             if item.action_mode is None and not item.needs_human:
                 if item.status in CLAIM_HELD_STATUSES:
                     holder = item.claimed_by_run_id
@@ -7490,7 +7491,14 @@ async def wake_on_background_task(work_item_id: object, *, task_id: object, outc
                 item.claimed_by_agent_id = None
                 item.claimed_by_run_id = None
                 item.claimed_at = None
+                if previous_status == "blocked":
+                    # Leaving blocked clears the why fields, as the sibling reopens do.
+                    item.blocked_reason = None
+                    item.ask = None
             await db.commit()
+        if reopen:
+            # Raises work_item.status_changed and nudges the dispatcher, as the other reopens do.
+            await publish_transition(item_uuid, previous_status=previous_status, note=note["text"])
         return "reopened" if reopen else "noted"
     except Exception as exc:  # best-effort: the event itself is published
         logger.warning(
