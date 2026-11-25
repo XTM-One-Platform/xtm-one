@@ -4201,6 +4201,12 @@ def test_the_ctem_fleet_optin_seed_plans_one_fleet_per_state_and_leaves_the_othe
     }
     assert module.extras(four) == {"ctem-ai-security": ["failing"]}
     assert module.extras(states) == {} and module.extras(six) == {}
+    # #2261: the single seeded CTEM loop (#2105) reads on; the states no fleet carries are not
+    # planned (lab.py logs them skipped), never a RuntimeError that stops the lab.
+    one = module.plan({"ctem-loop": [("l1", False), ("l2", True)]})
+    assert one == {"ctem-loop": "on"} and module.extras(one) == {}
+    script = (LAB.parent / "seed_ctem_fleet_optin.py").read_text(encoding="utf-8")
+    assert "three are needed" not in script
 
     # A KEV automation can serve the tracked organizations; one reading the primary profile cannot.
     kev = {"provider": "opencti", "provision": {"fleet": "F", "purpose": "P", "entity_types": ["Vulnerability"]}}
@@ -4231,9 +4237,11 @@ def test_the_ctem_fleet_optin_seed_plans_one_fleet_per_state_and_leaves_the_othe
     seeded = ast.unparse(functions["seed_entities"])
     call = "seed_ctem_fleet_optin(token, base)"
     assert call in seeded and "'LAB_CTEM_FLEET_OPTIN'" in seeded
-    # #9689: the start fails when the opt-in states cannot be seeded, never a skip.
+    # #2261: an opt-in seed that cannot run is logged skipped and the lab keeps serving.
     assert "CTEM fleet opt-in states not seeded" in seeded
-    assert "skipped['CTEM fleet opt-in states'] = str(exc)" not in seeded
+    assert "lab: CTEM fleet opt-in states not seeded" not in seeded
+    assert "skipped.update(optin_skipped)" in seeded
+    assert "skipped['CTEM fleet opt-in states missing']" in helper
     # #9716: a community lab skips them (GET /fleets is Enterprise Edition), before any fleet call.
     community = "lab_switch('LAB_EDITION', LAB_EDITIONS) == 'community'"
     assert community in seeded

@@ -7,6 +7,8 @@
  * "Signal: <trigger path label>"; a product issue reads its CVE or name.
  */
 import type { CtemCaseEvent, CtemCaseVisibleIssue } from "@/hooks/api/useCtemCasesApi";
+import { modulePivotUrl, pivotModuleOf, type ModuleBaseUrls, type PivotModule } from "@/lib/module-pivot";
+import { safeHttpUrl } from "@/lib/safe-url";
 
 /** A UUID anywhere in a text: the shape no label of the case page may carry. */
 export const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
@@ -49,6 +51,22 @@ export function issueLabel(issue: CtemCaseVisibleIssue, t: Translate): string {
 export function signalCaption(issue: CtemCaseVisibleIssue, t: Translate): string | null {
   if (!isSignalIssue(issue) || !issue.name || UUID_PATTERN.test(issue.name)) return null;
   return signalPathLabel(issue, t);
+}
+
+/**
+ * Where the "Open in <Module>" icon of a signal row goes (#1357): a signal from OpenCTI, OpenAEV
+ * or OpenCRQ opens its object in that module, the link its source delivered first, else the
+ * module page of its id. Null for a non-module source, a module not connected, or no target:
+ * never a dead link.
+ */
+export function signalPivot(issue: CtemCaseVisibleIssue, urls: ModuleBaseUrls): { module: PivotModule; href: string } | null {
+  if (!isSignalIssue(issue)) return null;
+  const module = pivotModuleOf(issue.source_provider);
+  if (!module || !urls[module]) return null;
+  const link = safeHttpUrl(issue.source_link);
+  if (link) return { module, href: link };
+  const href = modulePivotUrl(module, urls[module], issue.source_external_id, module === "openaev" ? "finding" : "entity");
+  return href ? { module, href } : null;
 }
 
 /** The Assets cell of a member: a signal counts its assets only when it names one. */

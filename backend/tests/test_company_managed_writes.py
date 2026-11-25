@@ -274,6 +274,10 @@ _NOT_WRITER_GATED = {
         "holding_runs",
         "release_ended_run_claims",
         "release_orphaned_legacy_claims",
+        # A finished background task noting (and, held by nothing alive,
+        # reopening) the item its spawning run was dispatched for (#2215):
+        # a system write of the platform, like the release sweep.
+        "wake_on_background_task",
         "record_claim_run",
         # The inbox run's finalizer parking the item it holds and could not
         # reach (#11900): bound to its own claim, like record_claim_run.

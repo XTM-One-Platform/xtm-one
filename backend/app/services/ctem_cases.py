@@ -53,7 +53,21 @@ ALL_FIXED_BELOW_RUNNING = (
     "every issue of the case is fixed in a version at or below every version running (asset inventory)"
 )
 
+#: The resolution of a case a person dropped at a gate (#2252): never an agent's own call.
+DISMISSED = "dismissed"
+#: The option key of a CTEM gate ask that rejects and closes the case as not relevant (#2252).
+CLOSE_OPTION = "reject_and_close"
+#: What the history says when the person who closed the case gave no reason (#2252).
+NO_REASON_GIVEN = "no reason given"
+
 _SPACES = re.compile(r"\s+")
+_OPTION_SEPARATORS = re.compile(r"[\s_-]+")
+
+
+def closes_case(option: str | None) -> bool:
+    """Whether a gate answer is the close option (#2252): its key, or its label as a person reads it."""
+    text = _OPTION_SEPARATORS.sub(" ", (option or "").strip().lower())
+    return text.startswith(CLOSE_OPTION.replace("_", " "))
 
 
 class CaseRuleError(ValueError):
@@ -153,9 +167,12 @@ class SourceIssue:
     course_of_action_name: str | None = None
     cvss: float | None = None
     epss: float | None = None
-    kev: bool = False
+    #: ``None`` on a signal member whose CVEs were not read from OpenCTI (#2225): unknown, never "not KEV".
+    kev: bool | None = False
     #: A signal member (#2041): every CVE it names that OpenCTI marks KEV, upper case, else ``()``.
     kev_cves: tuple[str, ...] = ()
+    #: A signal member (#2225): every CVE it names whose facts were not read (OpenCTI unread or silent on it).
+    unknown_cves: tuple[str, ...] = ()
     assets: tuple[str, ...] = ()
     primary_assets: tuple[str, ...] = ()
     first_seen_at: datetime | None = None
@@ -180,6 +197,9 @@ class SourceIssue:
     last_tested_at: str | None = None
     #: A re-test is queued on the finding and has not finished.
     retest_pending: bool = False
+    #: Every OpenCTI Software the vulnerability names is a language package (``pkg:pypi``, a ``java``
+    #: CPE target): the case's running versions then count repository packages too (#2223).
+    language_package: bool = False
 
     def __post_init__(self) -> None:
         # A stored pair or mapping (a view cached before #2038) is read as a typed fact.
@@ -202,6 +222,8 @@ class Remediation:
     fixed_version: str | None = None
     #: ``((platform, version), ...)``: the fix of each platform the remediation names (#1572), else ``()``.
     fixed_versions: tuple[tuple[str, str], ...] = ()
+    #: The product is a language package (#2223): see :attr:`SourceIssue.language_package`.
+    language_package: bool = False
 
 
 def _norm(value: str | None) -> str:
@@ -242,12 +264,14 @@ def remediation_of(issue: SourceIssue) -> Remediation | None:
                 product_label=label,
                 fixed_version=fixed,
                 fixed_versions=issue.fixed_versions,
+                language_package=issue.language_package,
             )
         return Remediation(
             key=f"upgrade:{vendor}/{product}@latest",
             kind="upgrade",
             title=f"Upgrade {label} to a fixed version",
             product_label=label,
+            language_package=issue.language_package,
         )
     return None
 
@@ -674,6 +698,7 @@ def check_transition(
     validations: Iterable[dict[str, Any]] | None = None,
     resolution_kind: str | None = None,
     close_without_retest_answered: bool = False,
+    dismissal_answered: bool = False,
 ) -> None:
     """Raise :class:`CaseRuleError` when the transition is refused.
 
@@ -685,6 +710,10 @@ def check_transition(
     unless a person decided otherwise (#1675): a person's own move, or a
     ``ctem.close_without_retest`` decision answered on the case
     (*close_without_retest_answered*), lets it close without the re-test.
+    ``resolution_kind`` ``dismissed`` (#2252) is a person's decision: a
+    person's own move, or a gate of the case a person answered with the option
+    ``reject_and_close`` (*dismissal_answered*); it closes to ``resolved``
+    without evidence or re-test, and an agent never dismisses on its own.
     """
     if target not in CASE_STATES:
         raise CaseRuleError(f"unknown state {target!r}")
@@ -699,6 +728,14 @@ def check_transition(
         raise CaseRuleError("a person moving a case to remediating names its owner")
     if target == "waiting_decision" and actor_kind == "user" and not reason:
         raise CaseRuleError("waiting for decision needs what the case waits on (the reason)")
+    if resolution_kind == DISMISSED:
+        if target != "resolved":
+            raise CaseRuleError("a dismissed case is resolved: set state resolved with resolution_kind dismissed")
+        if actor_kind != "user" and not dismissal_answered:
+            raise CaseRuleError(
+                f"only a person dismisses a case: a gate of the case answered with the option {CLOSE_OPTION}"
+            )
+        return
     if target == "resolved" and not evidence:
         raise CaseRuleError("resolving a case needs evidence (a ticket, a change or a validation run)")
     proven = passing(latest_validation(validations))

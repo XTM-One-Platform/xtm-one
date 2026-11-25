@@ -39,6 +39,7 @@ Every write is audited with the administrator, the agent and the run.
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -53,6 +54,12 @@ REFUSAL = "Refused: only a platform administrator can administer users and group
 #: At most this many rows a list call, and accounts a batch call.
 MAX_PAGE = 200
 MAX_BATCH = 100
+#: Seconds a deactivation batch may spend before it answers, under the 300 s
+#: tool timeout: the accounts not reached by then are answered ``not_reached``
+#: so the caller always gets the per-user result of what was done (#2182).
+DEACTIVATE_TIME_BUDGET_SECONDS = 240.0
+#: The clock the budget reads (a test replaces it).
+_clock = time.monotonic
 _STATUSES = ("active", "inactive", "deprovisioned")
 _SOURCES = ("scim", "sso", "local")
 
@@ -459,7 +466,13 @@ def build_user_admin_tools(
             # awaited load before any attribute is read, for the rest of the batch.
             targets = [(user, user.id, user.email) for user in users]
             rolled_back = False
+            started = _clock()
+            not_reached: list[str] = []
             for user, user_id, email in targets:
+                if not_reached or _clock() - started >= DEACTIVATE_TIME_BUDGET_SECONDS:
+                    not_reached.append(email)
+                    results.append({"user": email, "user_id": str(user_id), "status": "not_reached"})
+                    continue
                 if rolled_back:
                     await db.refresh(admin)
                     await db.refresh(user)
@@ -503,7 +516,14 @@ def build_user_admin_tools(
                         "review_items": outcome.review_items,
                     }
                 )
-            return _json({"dry_run": False, "reason": reason, "results": results})
+            answer: dict[str, Any] = {"dry_run": False, "reason": reason, "results": results}
+            if not_reached:
+                answer["not_reached"] = not_reached
+                answer["next_step"] = (
+                    f"The time budget of {int(DEACTIVATE_TIME_BUDGET_SECONDS)} s ran out: call again with "
+                    "the accounts in not_reached, which were left untouched."
+                )
+            return _json(answer)
 
     async def _reactivate(**args: Any) -> str:
         from app.core.database import async_session

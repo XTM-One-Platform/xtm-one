@@ -458,6 +458,10 @@ _ROLE_GATES = {
     # list_module_findings: read by the Platform Health Module Analyst or an
     # administrator only, a permission gate on the role (#101, S14a-2b).
     ("services/builtin_tools/health_modules.py", "_may_read"): 1,
+    # get_platform_health shows the alert e-mail settings to an administrator only,
+    # as the admin-only health settings route; the page itself is read through the
+    # page's own role-scoped reads (#2199): a permission gate on the role.
+    ("services/builtin_tools/health_orchestrator.py", "get_platform_health"): 1,
     # unbind_agent_from_intent: an administrator removes the global binding, anyone
     # else only their own personal override: a permission gate on the role.
     ("services/builtin_tools/intent_bindings.py", "_unbind_agent_from_intent"): 1,

@@ -89,7 +89,7 @@ in one line (section 7.3).
 
 | Source | What counts as an open issue | Read |
 |---|---|---|
-| OpenCTI | A Vulnerability related by `has` to a Software observable matching the organization tech stack (the match already used by the tailored KEV, `ctem_metrics_collector._stack_matches`: CPE equal, else the product name when nothing known on both sides contradicts it (`ctem_product_identity.conflict`: vendors, a side's vendor being its `vendor` or else the vendor its CPE names, #1693; two CPEs naming another vendor:product; a stack entry with a language-package purl against an OpenCTI Software that is another package, an OS or hardware CPE, or an application CPE not of that ecosystem; an OS-only product against software whose assets all report another OS family; a field unknown on either side never rejects, so a name-only entry still matches by name, #2036); a CVE OpenCTI links to several stack products is one issue, so one case, per product), and passing the prioritization policy of #11543 when one is set | GraphQL, per-user credentials (as the posture) |
+| OpenCTI | A Vulnerability related by `has` to a Software observable matching the organization tech stack (the match already used by the tailored KEV, `ctem_metrics_collector._stack_matches`: CPE equal, else the product name when nothing known on both sides contradicts it (`ctem_product_identity.conflict`: vendors, a side's vendor being its `vendor` or else the vendor its CPE names, #1693; two CPEs naming another vendor:product; a stack entry with a language-package purl against an OpenCTI Software that is another package, an OS or hardware CPE, or an application CPE not of that ecosystem; an OS-only product against software whose assets all report another OS family; a field unknown on either side never rejects, so a name-only entry still matches by name, #2036; the case's running versions leave out a language package row (`pkg:maven`, `pkg:pypi`, ...) of a repository unless the vulnerable OpenCTI Software is itself a language package, signal `evidence.case_fix.language_package`, #2223); a CVE OpenCTI links to several stack products is one issue, so one case, per product), and passing the prioritization policy of #11543 when one is set | GraphQL, per-user credentials (as the posture) |
 | OpenAEV | A finding of type `cve` on an asset or asset group, not older than the validation window | `/api/findings/search`, per-user credentials |
 
 Without a tech stack in the profile, OpenCTI contributes nothing (no case from
@@ -296,7 +296,20 @@ same way.
   `asset_count_reason`, never a silent 0. The single case read
   (`GET /ctem/cases/{id}`, `get_ctem_case`) applies the same rule
   (`version_history.with_asset_count` on the hydrated case), so the list row
-  and the case read answer the same `asset_count`, source and marker.
+  and the case read answer the same `asset_count`, source and marker. The
+  case reads that also serve `running_versions` (the page's details, both
+  case tools) then apply `version_history.with_live_asset_count`: when the
+  count is not from the issues and the live answer names assets, its
+  `asset_count` wins (source `inventory`, `asset_count_as_of` the read time),
+  so the aggregate never says "no asset" beside a `running_versions` that
+  lists devices (#2225).
+- unread signal facts (#2225): a signal member whose CVE OpenCTI was not
+  read for (no access for the reader, OpenCTI failed, or the CVE is unknown
+  to it) keeps it in `unknown_cves` with `kev` `null` (unless another of its
+  CVEs is KEV). While one open signal member has an unread CVE, `kev_count`,
+  `max_cvss` and `max_epss` are `null` with `members_facts_unread` and
+  `facts_reason` (`ctem_cases_view.FACTS_UNREAD_REASON`), never "0 KEV" or
+  "no CVSS"; `aggregates_restricted` keeps its scope meaning.
 - scope-limited aggregates: `summary()` counts the open product members the
   viewer reads WITHOUT their details (outside their scope, or seen before from
   a product that does not answer now) as `members_without_details`. When it is
@@ -1096,7 +1109,7 @@ Product spelling (#2037): an upgrade key of the same version whose product match
 
 No decision structure is stored on the case: the decision is the gate `ctem.remediation.decision` of the fleet catalog (CTEM-34), its outcome a `gate` event plus one `note` event listing every option. Rule, no model call: a level or pin of the agent's home fleet that makes the gate wait always wins (no home fleet, or a fleet that does not declare the gate: it waits); otherwise, only when `risk_appetite.approval_threshold` is set, an expected loss above it (or unknown to the deciding user) waits unless the recommended option is a pre-approved runbook; with no threshold the recommendation is applied and recorded "decided by policy". A wait opens one `needs_human` work item keyed `ctem:remediation:<case id>` whose `ask` is the unified decision (`services/decision_ask.py`): question, options with their effect, recommendation; the answer is recorded with `answered_option`. Option figures come from OpenCRQ read with the acting user's identity; a user with no OpenCRQ access (`organization_context_opencrq._opencrq_connection` refuses) gets the options without cost or expected loss in the ask. The case trail (the `gate` event reason and the `note`) never carries a figure, whoever decides: every viewer of the case reads its history whatever their own OpenCRQ access, so the figures stay in the ask and the tool answer (`Decision.case_reason`, `outcome_note`). Tests: `tests/test_ctem_remediation_decision.py`, `tests/test_ctem_case_tools.py`.
 
-The card the decision opens (#2174): an option's label (120 characters), residual risk (160), time to apply (60), runbook (120) and `not_priced_reason` (120) are refused when longer, naming the field, its length and its room, never cut. An option with no figure reads `not priced: <not_priced_reason>` (`no risk figures given` when the agent gave none) instead of `cost unknown`. The context opens with the case severity and the case's `sla_due_at` is the ask's `deadline`. The `work_item.needs_human` payload names `waits_for_user_id` and `waits_for_group_ids`, so a listener reads who the decision waits for.
+The card the decision opens (#2174): an option's label (120 characters), residual risk (160), time to apply (60), runbook (120) and `not_priced_reason` (120) are refused when longer, naming the field, its length and its room, never cut. An option whose effect line, once its figures (or `not priced: <reason>`), residual risk, time to apply and pre-approved runbook are joined, would pass the card's 400-character effect room (`decision_ask.MAX_EFFECT_CHARS`, measured with figures shown in a three-letter currency) is refused the same way at `parse_options`, naming the option and the composed length, so the effect is never cut (#2179). An option with no figure reads `not priced: <not_priced_reason>` (`no risk figures given` when the agent gave none) instead of `cost unknown`. The context opens with the case severity and the case's `sla_due_at` is the ask's `deadline`. The `work_item.needs_human` payload names `waits_for_user_id` and `waits_for_group_ids`, so a listener reads who the decision waits for.
 
 ### 9quater. Treatment plan in OpenCRQ (CTEM-18)
 

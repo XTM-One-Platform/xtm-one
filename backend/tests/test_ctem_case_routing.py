@@ -407,6 +407,18 @@ async def test_an_answered_ask_is_not_made_again(monkeypatch: pytest.MonkeyPatch
     assert await routing.plan_catch_up_asks(db, now=_NOW) == [(x, LOOP, 1)]  # type: ignore[arg-type]
 
 
+async def test_a_run_expired_before_start_does_not_answer_an_ask() -> None:
+    # #2234: a case-open run that expired in the queue never ran its case: the next pass asks again.
+    from sqlalchemy.dialects import postgresql
+
+    db = _Db([], asked=[], open_keys=[])
+    await routing._answered_case_ids(db, {str(uuid.uuid4()): _OLD})  # type: ignore[arg-type]
+    statement: Any = db.statements[-1]
+    dialect = postgresql.dialect()  # type: ignore[no-untyped-call]
+    sql = str(statement.compile(dialect=dialect, compile_kwargs={"literal_binds": True}))
+    assert "stop_reason" in sql and "expired_not_started" in sql
+
+
 async def test_a_run_before_the_ask_does_not_answer_it(monkeypatch: pytest.MonkeyPatch) -> None:
     _fleets(monkeypatch, [_loop()])
     x = _case("P1", 1)

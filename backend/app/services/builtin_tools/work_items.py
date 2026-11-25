@@ -582,7 +582,7 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
             "type": "object",
             "properties": {
                 "repo": {"type": "string", "description": "owner/name"},
-                "kind": {"type": "string", "enum": ["pull_request", "issue", "deployment", "workflow_run"]},
+                "kind": {"type": "string", "enum": ["pull_request", "issue", "deployment", "workflow_run", "tag"]},
                 "number": {"type": "integer"},
                 "sha": {"type": "string"},
                 "workflow": {"type": "string"},
@@ -590,6 +590,7 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
                 "branch": {"type": "string"},
                 "title_contains": {"type": "string"},
                 "carries": {"type": "string"},
+                "pattern": {"type": "string"},
                 "release_on": {
                     "type": "string",
                     "enum": ["merged", "closed", "merged_or_closed", "deployed", "succeeded"],
@@ -599,8 +600,8 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
         },
         "description": (
             "Waits for (replaces; [] clears), reopens when all met. PR (branch: "
-            "successors too) or issue: release_on (default merged_or_closed, issue closed). deployment (number "
-            "or sha): build has the merge. workflow_run: a later success."
+            "successors too) or issue: release_on. deployment: build has it. workflow_run: a later "
+            "success. tag: carries it."
         ),
     },
     "blocked_reason": {
@@ -2168,6 +2169,11 @@ def build_work_item_tools(
 
     executor.register(_CARD_TOOL, build_send_decision_card(agent_id, acting_user_id, _read_for_card))
 
+    from app.services.notification_feed_tool import TOOL_NAME as _BELL_TOOL
+    from app.services.notification_feed_tool import build_list_my_notifications, notifications_definition
+
+    executor.register(_BELL_TOOL, build_list_my_notifications(acting_user_id))
+
     definitions = [
         ToolDefinition(
             name="create_work_item",
@@ -2540,6 +2546,7 @@ def build_work_item_tools(
             source="builtin:coordination",
         ),
         decision_card_definition(),
+        notifications_definition(),
     ]
 
     return definitions, executor

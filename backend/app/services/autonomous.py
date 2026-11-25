@@ -1289,6 +1289,24 @@ async def _drain_coordination_retention() -> tuple[dict, bool]:
     return {"work_items": work_items, "shared_states": states}, more
 
 
+async def _drain_run_retention() -> tuple[int, bool]:
+    """One bounded pass of the assignment run retention (Operations > Executions).
+
+    Deletes at most :data:`run_retention.RUN_RETENTION_BATCH` finished runs past
+    the window (``services/run_retention.py``) and writes one platform audit entry
+    when it deleted any. Answers the runs deleted and whether more may be left,
+    which keeps :data:`wall_clock_schedule.RETENTION_DRAIN` set.
+    """
+    from app.services import run_retention
+    from app.services.coordination_retention import effective_coordination_retention
+
+    days = (await effective_coordination_retention())["assignment_run_days"]
+    deleted = await run_retention.purge_expired_runs(older_than_days=days)
+    if deleted:
+        await run_retention.audit_run_retention_pass(deleted, days)
+    return deleted, deleted >= run_retention.RUN_RETENTION_BATCH
+
+
 async def _cleanup_flow_events(db: AsyncSession) -> int:
     """Purge flow-event emissions past retention.
 
@@ -1380,7 +1398,7 @@ async def _cleanup_retained_files(db: AsyncSession, *, also: dict[str, int] | No
 
 
 async def _run_retention_pass(db: AsyncSession) -> None:
-    """One bounded pass of the check file, file and coordination retention sweeps (#768, #2070).
+    """One bounded pass of the check file, file, coordination and run retention sweeps (#768, #2070).
 
     Each sweep is capped per tick; when one stops at its cap, the backlog flag
     of :data:`wall_clock_schedule.RETENTION_DRAIN` makes the next ticks run this
@@ -1423,8 +1441,15 @@ async def _run_retention_pass(db: AsyncSession) -> None:
             )
     except Exception as e:
         logger.error("Coordination retention error: %s", format_exception_message(e), exc_info=True)
+    more_runs = False
+    try:
+        deleted_runs, more_runs = await _drain_run_retention()
+        if deleted_runs:
+            logger.info("Run retention: deleted %d finished assignment run(s)", deleted_runs)
+    except Exception as e:
+        logger.error("Run retention error: %s", format_exception_message(e), exc_info=True)
     await wall_clock_schedule.set_backlog(
-        wall_clock_schedule.RETENTION_DRAIN, more_checks or more_files or more_coordination
+        wall_clock_schedule.RETENTION_DRAIN, more_checks or more_files or more_coordination or more_runs
     )
 
 

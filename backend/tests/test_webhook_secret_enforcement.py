@@ -1148,7 +1148,7 @@ async def test_builder_update_assignment_ensures_secret_on_trigger_edit(
     db = _BuilderSeqDb([])
     _builder_env(db, _make_viewer(user_id=caller_id))
 
-    async def _load_writable(_db, _uid, _assignment_uuid, *, action="modify"):
+    async def _load_writable(_db, _uid, _assignment_uuid, *, action="modify", written=frozenset()):
         return assignment, agent, None
 
     monkeypatch.setattr(
@@ -1180,7 +1180,7 @@ async def test_builder_update_without_trigger_edit_never_flips_legacy(
     db = _BuilderSeqDb([])
     _builder_env(db, _make_viewer(user_id=caller_id))
 
-    async def _load_writable(_db, _uid, _assignment_uuid, *, action="modify"):
+    async def _load_writable(_db, _uid, _assignment_uuid, *, action="modify", written=frozenset()):
         return assignment, agent, None
 
     monkeypatch.setattr(

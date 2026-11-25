@@ -230,13 +230,15 @@ PREVIEW_FEATURES = "*"
 OPENCTI_STUB_PORT = 3702
 OPENCTI_STUB_URL = f"http://localhost:{OPENCTI_STUB_PORT}/"
 OPENCTI_STUB_TOKEN = "lab-only-opencti-token-never-used-outside-the-lab"
-#: The OpenCTI objects the stub holds, keyed by what OpenAEV looks them up by (an asset's name, an attack
-#: pattern's MITRE id, a vulnerability's name); lab-mac-01 is absent on purpose, the not-found state.
+#: The OpenCTI objects the stub holds, keyed by what OpenAEV looks them up by (an asset's name or its
+#: hostname, an attack pattern's MITRE id, a vulnerability's name); lab-mac-01 is absent on purpose, the
+#: not-found state. ``hostname`` is a lookup key only (the seeded ``asset_hostname`` of SEED_ASSETS), never
+#: a field of the answered node.
 OPENCTI_COUNTERPARTS = (
-    {"id": "lab-octi-system-web-01", "entity_type": "System", "name": "lab-web-01", "confidence": 80,
-     "reports": 3, "markings": ("TLP:AMBER",)},
-    {"id": "lab-octi-ipv4-dc-01", "entity_type": "IPv4-Addr", "observable_value": "lab-dc-01", "reports": 1,
-     "markings": ("TLP:GREEN",)},
+    {"id": "lab-octi-system-web-01", "entity_type": "System", "name": "lab-web-01",
+     "hostname": "lab-web-01.lab.local", "confidence": 80, "reports": 3, "markings": ("TLP:AMBER",)},
+    {"id": "lab-octi-ipv4-dc-01", "entity_type": "IPv4-Addr", "observable_value": "lab-dc-01",
+     "hostname": "lab-dc-01.lab.local", "reports": 1, "markings": ("TLP:GREEN",)},
     {"id": "lab-octi-attack-pattern-t1486", "entity_type": "Attack-Pattern", "name": "Data Encrypted for Impact",
      "x_mitre_id": "T1486", "confidence": 100, "reports": 12, "markings": ("TLP:CLEAR",)},
     {"id": "lab-octi-vulnerability-cve-2024-3400", "entity_type": "Vulnerability", "name": "CVE-2024-3400",
@@ -293,6 +295,10 @@ def opencti_node(item: dict) -> dict:
     return node
 
 
+#: The fields of a counterpart a lookup value matches, case-insensitively.
+COUNTERPART_LOOKUP_KEYS = ("id", "name", "observable_value", "x_mitre_id", "hostname")
+
+
 def opencti_answer(body: dict) -> dict:
     """The stub's GraphQL answer: the counterpart lookup from OPENCTI_COUNTERPARTS, any other query empty."""
     query = str(body.get("query") or "")
@@ -304,7 +310,7 @@ def opencti_answer(body: dict) -> dict:
             {"node": opencti_node(item)}
             for item in OPENCTI_COUNTERPARTS
             if any(str(item.get(f, "")).lower() in wanted_lower
-                   for f in ("id", "name", "observable_value", "x_mitre_id") if item.get(f))
+                   for f in COUNTERPART_LOOKUP_KEYS if item.get(f))
         ]
         return {"data": {"stixCoreObjects": {"edges": edges}}}
     if "externalReferences" in query:

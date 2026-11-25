@@ -105,14 +105,18 @@ async def create_fleet(
     """Insert a fleet, retrying once if its slug was taken mid-flight.
 
     A new fleet acts on its computed approval catalog (``approval_pins`` ``{}``,
-    #10153 C1) and, without a declared catalog, starts at ``autonomous``: the
-    level it shows is the one that holds (C2), and a person moves the cursor to
-    make its actions wait. A caller that passes either field keeps its value
-    (a fork passes its source's catalog and ``approval_pins=None``).
+    #10153 C1) and, without a level, starts at Full human gates
+    (``DEFAULT_AUTONOMY_LEVEL``, #2279, Sam, 25 Nov 2026): every gate that waits
+    is one decision item between steps, never a tool approval inside a run
+    (``Fleet.enforce_gates_at_tool_level`` stays off). An administrator raises
+    the level. A caller that passes either field keeps its value (a fork passes
+    its source's catalog and ``approval_pins=None``).
     """
+    from app.services.fleet_autonomy import DEFAULT_AUTONOMY_LEVEL
+
     fields.setdefault("approval_pins", {})
-    if fields.get("approval_gates") is None:
-        fields.setdefault("autonomy_level", "autonomous")
+    if fields.get("autonomy_level") is None:
+        fields["autonomy_level"] = DEFAULT_AUTONOMY_LEVEL
     await db.flush()
     for attempt in (1, 2):
         fleet = Fleet(

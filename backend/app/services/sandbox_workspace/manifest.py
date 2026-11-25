@@ -127,7 +127,11 @@ def plan_commit(
             f"{format_size(limits.quota_bytes)} quota. Nothing it wrote under workspace/ was saved; remove files "
             "(sandbox_remove_files or os.remove in the code) or write less, then run it again."
         )
-    if len(entries) > limits.max_files:
+    # Net growth only (#2186): a change that leaves no more files than the
+    # workspace held (a rebase rewriting a checkout) passes in a workspace
+    # already over the limit, else a stale checkout there could never be
+    # brought up to date.
+    if len(entries) > limits.max_files and len(entries) > len(current):
         raise QuotaExceededError(
             f"Workspace file limit exceeded: this change would leave {len(entries):,} files in the workspace, over "
             f"its {limits.max_files:,} file limit. Nothing it wrote under workspace/ was saved; remove files or "

@@ -328,6 +328,7 @@
     "tenants.getTenants"
   ],
   "list_opencrq_connector_syncs": [
+    "connectors.getConnector",
     "connectors.getStreamState",
     "connectors.listRuns",
     "tenants.getTenants"
@@ -524,6 +525,7 @@
   "run_opencrq_connector": [
     "connectors.reconnectStream",
     "connectors.resetState",
+    "connectors.runInventoryNow",
     "connectors.syncNow",
     "tenants.getTenants"
   ],

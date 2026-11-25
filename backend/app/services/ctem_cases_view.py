@@ -61,10 +61,14 @@ LIST_BUILD_WAIT_SECONDS = 2.0
 #: The retry delay a list read names when the view is still building after that wait.
 LIST_RETRY_AFTER_SECONDS = 30
 #: How long a viewer's previous view answers a list read, marked stale, while the new one builds (#2232):
-#: a build after a case-opening drain outlived :data:`VIEW_TTL_SECONDS` on ctem.one, leaving only a 503.
-STALE_VIEW_TTL_SECONDS = 3600
-#: How long one pod holds the build of one view (#2232): the other pods serve the previous view meanwhile.
-BUILD_LOCK_SECONDS = 900
+#: a build after a case-opening drain outlived :data:`VIEW_TTL_SECONDS` on ctem.one, leaving only a 503,
+#: and an hour still left a 503 when rollouts killed the builds in flight: any age beats an empty list.
+STALE_VIEW_TTL_SECONDS = 7 * 24 * 3600
+#: How long one pod's build lock lives without a refresh (#2232): short, so a pod a rollout stops while it
+#: builds leaves the lock to the next pod within a minute instead of blocking every build for 15.
+BUILD_LOCK_SECONDS = 60
+#: How often the building pod extends its lock, well inside :data:`BUILD_LOCK_SECONDS`.
+BUILD_LOCK_REFRESH_SECONDS = 20
 #: The reasons a product gives about one identity (``ctem_cases_source.IDENTITY_REASONS``): the
 #: viewer has no access there, so what it did not return is refused, not unjudged (#2113).
 _IDENTITY_REASONS = frozenset({"rejected", "not_connected"})
@@ -79,7 +83,8 @@ class ViewRebuildingError(Exception):
 
     def __init__(self, retry_after: int = LIST_RETRY_AFTER_SECONDS) -> None:
         self.retry_after = retry_after
-        super().__init__(f"The case list is rebuilding after new cases opened; retry in {retry_after} s.")
+        # #2287: whatever changed the cases (opened, deleted, reset, reconciled), never a guessed cause.
+        super().__init__(f"The case list is being rebuilt after a change to the cases; retry in {retry_after} s.")
 
 
 @dataclass
@@ -215,6 +220,7 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     # Typed facts (#2038); a view cached before it holds (version, outcome) pairs, read the same way.
     data["version_outcomes"] = rules.version_facts(data.get("version_outcomes"))
     data["kev_cves"] = tuple(data.get("kev_cves") or ())
+    data["unknown_cves"] = tuple(data.get("unknown_cves") or ())
     return rules.SourceIssue(**data)
 
 
@@ -366,10 +372,37 @@ async def viewer_view(
     return replace(view, signals=signals, signal_details=details)
 
 
+def _pivot_id(signal: CtemSignal, evidence: dict[str, Any]) -> str | None:
+    """The module id a row pivots to when the signal carries no link, or None (never a guessed page).
+
+    An OpenCTI signal names an OpenCTI object by its id; an OpenAEV one is a finding only when a
+    source reader recorded it from an OpenAEV issue (``evidence.source_issue``): a listener delivery
+    names a scenario or a run, which carries its own ``platform_url`` instead.
+    """
+    external_id = (signal.source_external_id or "").strip() or None
+    provider = (signal.source_provider or "").lower()
+    if provider == "opencti":
+        return external_id
+    if provider in ("openaev", "openbas") and evidence.get("source_issue"):
+        return external_id
+    return None
+
+
 def signal_detail(signal: CtemSignal) -> dict[str, Any]:
     """What a signal member is, as a case row names it (#1936): never its id as a label."""
     from app.services.ctem_signals import PATH_CATALOG, provider_name
 
+    # What the row's "Open in <Module>" pivot needs (#1357): the source's own id of the object, and
+    # the link to it the delivery carried (OpenCRQ, OpenCTI: link; OpenAEV: platform_url), http(s) only.
+    evidence = signal.evidence if isinstance(signal.evidence, dict) else {}
+    link = next(
+        (
+            value
+            for value in (evidence.get("link"), evidence.get("platform_url"))
+            if isinstance(value, str) and value.lower().startswith(("https://", "http://"))
+        ),
+        None,
+    )
     return {
         "name": (signal.subject_label or signal.subject_ref or None),
         "trigger_path": signal.trigger_path,
@@ -377,6 +410,8 @@ def signal_detail(signal: CtemSignal) -> dict[str, Any]:
         "lens": signal.lens,
         "source_provider": signal.source_provider,
         "source_name": provider_name(signal.source_provider),
+        "source_external_id": _pivot_id(signal, evidence),
+        "source_link": link,
         "subject_kind": signal.subject_kind,
         "assets": [signal.subject_ref] if signal.subject_kind == "asset" and signal.subject_ref else [],
         "first_seen_at": signal.first_seen_at.isoformat() if signal.first_seen_at else None,
@@ -572,6 +607,7 @@ def _revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[No
             # Another pod builds this view (#2232): the list answers the previous one meanwhile.
             logger.info("CTEM cases: view of %s (generation %s) built by another pod", user_id, generation)
             return
+        keep = asyncio.create_task(_keep_build_lock(client, lock))
         try:
             from app.core.database import async_session
 
@@ -580,6 +616,7 @@ def _revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[No
         except Exception:
             logger.info("CTEM cases: background view build failed for %s", user_id, exc_info=True)
         finally:
+            keep.cancel()
             await _release_build_lock(client, lock)
 
     task = asyncio.create_task(build())
@@ -597,6 +634,18 @@ async def _take_build_lock(client: Any, key: str) -> bool:
     except Exception:
         logger.info("CTEM cases: view build lock unreadable for %s", key, exc_info=True)
         return True
+
+
+async def _keep_build_lock(client: Any, key: str) -> None:
+    """Extend the build lock of *key* every :data:`BUILD_LOCK_REFRESH_SECONDS` while this pod builds (#2232)."""
+    if client is None:
+        return
+    while True:
+        await asyncio.sleep(BUILD_LOCK_REFRESH_SECONDS)
+        try:
+            await client.expire(key, BUILD_LOCK_SECONDS)
+        except Exception:
+            logger.info("CTEM cases: view build lock not extended for %s", key, exc_info=True)
 
 
 async def _release_build_lock(client: Any, key: str) -> None:
@@ -805,6 +854,19 @@ AGGREGATES_RESTRICTED_REASON = (
     "unknown for this reader: some open issues of the case are not readable with their details "
     "(outside your scope, or their product did not answer); this is not a zero"
 )
+#: The aggregates an open signal member leaves unknown when its CVEs' facts were not read (#2225).
+FACT_AGGREGATES: tuple[str, ...] = ("kev_count", "max_cvss", "max_epss")
+#: Why they are null: OpenCTI was not read for this reader (no access, or it failed), or it does not know the CVE.
+FACTS_UNREAD_REASON = (
+    "unknown for this reader: OpenCTI facts (KEV, CVSS, EPSS) were not read for some CVEs the case's "
+    "signals name (no OpenCTI access for this reader, OpenCTI did not answer, or it does not know "
+    "the CVE); this is not a zero"
+)
+
+
+def facts_unread(details: list[Any]) -> int:
+    """The open signal members naming a CVE whose facts were not read (#2225): their KEV and scores are unknown."""
+    return sum(1 for d in details if d.source == SIGNAL_SOURCE and tuple(getattr(d, "unknown_cves", ()) or ()))
 
 
 def kev_count(details: list[Any]) -> int:
@@ -854,6 +916,10 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
     without_details = sum(1 for r in rows if r.open and r.source != SIGNAL_SOURCE and _member_id(r) not in view.issues)
     if without_details:
         agg = {**agg, **{key: None for key in DETAIL_AGGREGATES}}
+    # A signal member whose CVE facts were not read: KEV and scores unknown, never "0 KEV" (#2225).
+    unread = facts_unread(details)
+    if unread:
+        agg = {**agg, **{key: None for key in FACT_AGGREGATES}}
     unavailable = sorted({r.source for r in visible if r.source != SIGNAL_SOURCE and _member_id(r) not in view.issues})
     # Kept and marked, never discarded (#2004): the running version is to validate first.
     unverified = version_match.unverified_reason(details)
@@ -885,6 +951,10 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "members_without_details": without_details,
         "aggregates_restricted": bool(without_details),
         "aggregates_reason": AGGREGATES_RESTRICTED_REASON if without_details else None,
+        # The open signal members whose CVE facts were not read (#2225), and why kev_count, max_cvss
+        # and max_epss are then null.
+        "members_facts_unread": unread,
+        "facts_reason": FACTS_UNREAD_REASON if unread else None,
         "asset_count": agg["asset_count"],
         "primary_asset_count": agg["primary_asset_count"],
         "kev_count": agg["kev_count"],
@@ -1057,7 +1127,7 @@ def review_outcome(events: list[CtemCaseEvent]) -> str | None:
     option = (newest.evidence or "").strip()
     if _APPROVE_OPTION.fullmatch(option) or (not option and _MARK_ANSWER.search(newest.reason or "")):
         return REVIEW_APPROVED
-    if _REJECT_OPTION.fullmatch(option):
+    if _REJECT_OPTION.fullmatch(option) or rules.closes_case(option):
         return REVIEW_REJECTED
     return REVIEW_REPLAN if option else REVIEW_UNREAD
 

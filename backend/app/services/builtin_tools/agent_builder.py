@@ -800,8 +800,13 @@ async def _load_writable_assignment_for_builder(
     assignment_uuid: uuid.UUID,
     *,
     action: str = "modify",
+    written: frozenset[str] = frozenset(),
 ):
     """Load an assignment + parent agent and verify the caller can mutate it.
+
+    *written* names the fields the call writes: the switch alone on a
+    built-in agent's assignment lifts the built-in gate, as on the REST route
+    (``builtin_assignment_write_allowed``, #2192).
 
     Mirrors the REST API's ``assert_writable_assignment`` gates so the
     same built-in / company-managed / group-permission constraints apply
@@ -852,8 +857,15 @@ async def _load_writable_assignment_for_builder(
         # about the assignment we just resolved.
         return None, None, f"Assignment `{assignment_uuid}` not found."
 
+    from app.agents.builtin_agents import builtin_assignment_write_allowed
+
     err = writable_assignment_error(
-        assignment_row, agent_row, user, group_ids, action=action
+        assignment_row,
+        agent_row,
+        user,
+        group_ids,
+        action=action,
+        allow_builtin=builtin_assignment_write_allowed(agent_row, assignment_row, written),
     )
     if err is not None:
         return None, None, err
@@ -7871,6 +7883,17 @@ def build_agent_builder_tool(
                     for _reason, _count in list(_reasons.items())[:10]:
                         parts.append(f"    - {_count} x {_reason}")
 
+            # Webhook deliveries the secret refused (#2180): why a sender gets 401.
+            if assignment.trigger_type == "webhook":
+                from app.services.webhook_refusals import refusals
+
+                _refused = await refusals(assignment.id)
+                if _refused:
+                    parts.append(f"  • Refused deliveries (last {len(_refused)}, newest first):")
+                    for _row in _refused:
+                        _names = ", ".join(_row.get("auth_headers") or []) or "no auth header"
+                        parts.append(f"    - {_row.get('at', '?')}: {_row.get('reason', '?')} ({_names})")
+
             # Surface the prompts in FULL (never truncated) so the agent can
             # faithfully inspect and edit them. The activation gate prompt is a
             # distinct field from the action prompt — both must be visible or
@@ -8018,8 +8041,47 @@ def build_agent_builder_tool(
             # ``Assignment.user_id == uid`` filter blocked admins from
             # editing company-managed assignments through the tool even
             # though the UI allowed it.
+            # The fields this call writes: the switch alone may be written on a
+            # built-in agent's assignment (#2192).
+            _written = frozenset(
+                _arg
+                for _arg, _arg_value in (
+                    ("name", name),
+                    ("prompt", prompt),
+                    ("activation_prompt", activation_prompt),
+                    ("trigger_type", trigger_type),
+                    ("trigger_config", trigger_config),
+                    ("delay", delay),
+                    ("enabled", enabled),
+                    ("description", description),
+                    ("ai_label_prompt", ai_label_prompt),
+                    ("human_in_the_loop_prompt", human_in_the_loop_prompt),
+                    ("human_in_the_loop", human_in_the_loop),
+                    ("ai_label", ai_label),
+                    ("notify_on_complete", notify_on_complete),
+                    ("show_in_digest", show_in_digest),
+                    ("dry_run", dry_run),
+                    ("ignore_self_triggered_events", ignore_self_triggered_events),
+                    ("retry_on_failure", retry_on_failure),
+                    ("max_retries", max_retries),
+                    ("max_iterations", max_iterations),
+                    ("timeout_seconds", timeout_seconds),
+                    ("activation_check", activation_check),
+                    ("wait_policy", wait_policy),
+                    ("organization_context_mode", organization_context_mode),
+                    ("organization_context_categories", organization_context_categories),
+                    ("field", field),
+                    ("edits", edits),
+                    ("section", section),
+                    ("content", content),
+                    ("fix_applied", fix_applied),
+                )
+                if _arg_value is not None and not (isinstance(_arg_value, str) and _arg_value == "")
+            ) | (frozenset({"mode"}) if text_mode != "replace" else frozenset())
+            if assignment_uuid is None:  # _id_arg answered no error
+                return f"Assignment `{assignment_id}` not found or you don't have permission to edit it."
             assignment, _agent, perm_err = await _load_writable_assignment_for_builder(
-                _db, uid, assignment_uuid, action="edit"
+                _db, uid, assignment_uuid, action="edit", written=_written
             )
             if perm_err is not None or assignment is None:
                 return perm_err or (

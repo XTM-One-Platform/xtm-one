@@ -3127,6 +3127,61 @@ async def _skip_by_module_preflight(
     return True
 
 
+async def _skip_by_case_start(
+    db: AsyncSession,
+    *,
+    run: AssignmentRun,
+    agent: Any,
+    assignment: Assignment,
+) -> bool:
+    """End a ``ctem_case.opened`` run at zero tokens when its case is gone (#2289).
+
+    A case merged away while the run waited adds ``merged_into`` (the survivor)
+    to the trigger context and lets the run go ahead; a case deleted ends it
+    skipped with the reason ``case_gone``. ``True`` when the run was ended. Any
+    other run, and a check that cannot decide, go ahead.
+    """
+    from app.services import ctem_case_run_start as case_start_mod
+
+    case_id = case_start_mod.case_of(getattr(run, "trigger_context", None))
+    if case_id is None:
+        return False
+    try:
+        verdict = await case_start_mod.case_start(db, case_id)
+    except Exception as exc:  # the check never blocks a run
+        logger.warning(
+            "Assignment '%s': case start check failed (%s) - the run proceeds",
+            assignment.name,
+            format_exception_message(exc),
+        )
+        return False
+    if verdict.context:
+        run.trigger_context = {**(run.trigger_context or {}), **verdict.context}
+    if verdict.proceed:
+        return False
+    await ensure_single_writer()
+    now = datetime.now(UTC)
+    run.status = "skipped"
+    run.error = case_start_mod.CASE_GONE
+    run.result_summary = verdict.summary
+    run.total_input_tokens = 0
+    run.total_output_tokens = 0
+    run.started_at = run.started_at or now
+    run.completed_at = now
+    await db.commit()
+    await _release_run_work_item(run, agent, failed=False)
+    await _publish_run_status(
+        str(run.user_id),
+        str(run.id),
+        "skipped",
+        assignment.name,
+        run.result_summary,
+        is_company=run.is_company_managed,
+    )
+    logger.info("Assignment '%s' skipped at start: %s", assignment.name, verdict.summary)
+    return True
+
+
 async def _end_run_skipped_by_gate_check(
     db: AsyncSession,
     *,
@@ -4842,6 +4897,13 @@ async def execute_assignment_run(
             effective_user_id=effective_user_id,
         ):
             return
+        # ── CTEM case start check (#2289) ───────────────────────────────
+        # A queued ctem_case.opened run whose case was merged starts with the
+        # survivor in its context; one whose case was deleted ends here.
+        if _gate_check_due(run, resuming=_resuming) and await _skip_by_case_start(
+            db, run=run, agent=agent, assignment=assignment
+        ):
+            return None
         # Outcome of the quota enforcement, attached to the workflow trace
         # metadata below so the Trace Explorer can show the platform-action
         # consumption of this run.
@@ -10985,9 +11047,37 @@ class _SlotUsage:
     busy_keys: frozenset[str]
     held: bool = False
     exclusive: bool = False
+    #: A run in flight was handed back by its stopping worker, or resumed
+    #: after a hand-back or a lost attempt: with no ``max_concurrent_runs`` of
+    #: its own, the assignment waits for it (``resume_holds``).
+    resuming: bool = False
 
-    def has_room(self, cap: int) -> bool:
+    def has_room(self, cap: int, *, resume_holds: bool = False) -> bool:
+        if resume_holds and self.resuming:
+            return False
         return not self.held and not self.exclusive and self.active < cap
+
+
+def _resuming_run_clause() -> Any:
+    """A run handed back by its stopping worker, or resumed since (its trigger_context records it)."""
+    from app.services.background_checkpoint import HANDED_BACK_KEY, RESUMES_KEY
+
+    return or_(
+        AssignmentRun.trigger_context[HANDED_BACK_KEY].as_string().is_not(None),
+        AssignmentRun.trigger_context[RESUMES_KEY].as_string().is_not(None),
+    )
+
+
+def resume_holds_assignment(trigger_config: dict[str, Any] | None) -> bool:
+    """Whether a resuming run keeps the assignment to itself: its trigger sets no ``max_concurrent_runs``.
+
+    A delivery (a ``platform.release.deployed`` event during the rollout that
+    handed a run back) then queues behind the resuming run and starts once it
+    ended, instead of working the same object beside it (#2221). An author who
+    set a cap keeps it.
+    """
+    config = trigger_config if isinstance(trigger_config, dict) else {}
+    return config.get(assignment_dispatch.MAX_CONCURRENT_RUNS_KEY) is None
 
 
 async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage:
@@ -10996,6 +11086,7 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
             AssignmentRun.status,
             AssignmentRun.trigger_context[assignment_dispatch.ORDERING_KEY_CONTEXT].as_string(),
             AssignmentRun.trigger_context["type"].as_string(),
+            _resuming_run_clause(),
         ).where(
             AssignmentRun.assignment_id == assignment_id,
             holds_assignment(AssignmentRun, _queue_blocking_statuses()),
@@ -11007,6 +11098,7 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
         busy_keys=frozenset(row[1] for row in rows if row[1]),
         held=any(_holds_on_approval(row[0]) for row in rows),
         exclusive=any(not assignment_dispatch.shares_slots(row[2]) for row in rows),
+        resuming=any(bool(row[3]) for row in rows),
     )
 
 
@@ -11345,7 +11437,10 @@ async def trigger_or_queue_assignment(
 
     usage = await _slot_usage(db, assignment.id)
     depth = await count_queued_runs(db, assignment.id)
-    start_now = usage.has_room(cap) and ordering_key not in usage.busy_keys
+    start_now = (
+        usage.has_room(cap, resume_holds=resume_holds_assignment(assignment.trigger_config))
+        and ordering_key not in usage.busy_keys
+    )
     if start_now and depth:
         if queue:
             start_now = False
@@ -11520,7 +11615,7 @@ async def _join_waiting_batch(
         return None
     if event_batching.carries(run.trigger_payload, payload):
         return str(run.id)
-    if not event_batching.can_join(run.trigger_payload):
+    if not event_batching.can_join(run.trigger_payload, event_batching.max_events(assignment.trigger_config)):
         return None
     if run.status != QUEUED_RUN_STATUS:
         run_at = (
@@ -12190,7 +12285,7 @@ async def _drain_one_assignment(
         if throttled:
             cap = assignment_dispatch.throttled_cap(cap)
         usage = await _slot_usage(db, assignment_id)
-        if not usage.has_room(cap):
+        if not usage.has_room(cap, resume_holds=resume_holds_assignment(assignment.trigger_config)):
             await db.commit()
             break
         candidates = await _queued_candidates(

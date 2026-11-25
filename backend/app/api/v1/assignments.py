@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.a2a.providers import resolve_submitter_providers
 from app.a2a.run_exchange import run_exchanges
 from app.agents.builtin_agents import (
-    ADMIN_OPT_IN_WRITABLE_FIELDS,
+    builtin_assignment_write_allowed,
     is_admin_opt_in_builtin_assignment,
 )
 from app.api.deps import (
@@ -1790,30 +1790,20 @@ async def purge_all_runs(
     Purge removes both sets and resets execution counts on the corresponding
     assignments.
     """
-    # Clean up file attachments for runs being purged
-    from app.services.file_cleanup import delete_file_attachments
+    from app.a2a.tasks import lock_tasks_before_deletion
+    from app.services.run_retention import cascade_before_run_delete
 
     run_ids_result = await db.execute(
         select(AssignmentRun.id).where(run_visible_filter(user.id))
     )
     purged_run_ids = [row[0] for row in run_ids_result.all()]
-    from app.a2a.tasks import lock_tasks_before_deletion
-
     visible_runs = select(AssignmentRun.id).where(run_visible_filter(user.id))
     # Before the first write: the tasks mirroring these runs are the first rows
     # every other writer of a task and its run takes.
     await lock_tasks_before_deletion(db, run_ids=visible_runs)
-    for run_id in purged_run_ids:
-        await delete_file_attachments(db, assignment_run_id=run_id)
-
-    # Cancel orphaned orchestration executions for every purged run so the
-    # engine doesn't keep working deleted rows / holding reconciler slots, then
-    # cancel the decoupled background-task rows spawned under those runs.
-    from app.services.orchestration_engine import cancel_executions_for_runs
-    from app.services.sub_agent import mark_sub_agent_tasks_cancelled_for_runs
-
-    await cancel_executions_for_runs(db, purged_run_ids)
-    await mark_sub_agent_tasks_cancelled_for_runs(db, purged_run_ids)
+    # The cascade every deletion of runs shares (services/run_retention.py):
+    # file attachments, orchestration executions, background tasks.
+    await cascade_before_run_delete(db, purged_run_ids)
 
     # Again in the statement before the DELETE, which also removes the runs
     # created since the first lock: their tasks must be held first too.
@@ -2055,28 +2045,11 @@ async def bulk_delete_runs(
         )
 
     if ids_to_delete:
-        from app.a2a.tasks import lock_tasks_before_deletion
+        from app.services.run_retention import delete_runs_cascade
 
-        # Before the first write: the tasks mirroring these runs are the first
-        # rows every other writer of a task and its run takes.
-        await lock_tasks_before_deletion(db, run_ids=ids_to_delete)
-        # Clean up file attachments for runs being deleted
-        from app.services.file_cleanup import delete_file_attachments
-
-        for rid in ids_to_delete:
-            await delete_file_attachments(db, assignment_run_id=rid)
-        # Cancel orphaned orchestration executions for the deleted runs (and the
-        # sub-agent delegations spawned under them) so they don't keep a
-        # reconciler slot or wedge the fan-out counter on pending, then cancel
-        # the decoupled background-task rows spawned under those runs.
-        from app.services.orchestration_engine import cancel_executions_for_runs
-        from app.services.sub_agent import mark_sub_agent_tasks_cancelled_for_runs
-
-        await cancel_executions_for_runs(db, ids_to_delete)
-        await mark_sub_agent_tasks_cancelled_for_runs(db, ids_to_delete)
-        await db.execute(
-            sql_delete(AssignmentRun).where(AssignmentRun.id.in_(ids_to_delete))
-        )
+        # Task locks first, then files, executions and background tasks, then
+        # the DELETE: the cascade every deletion of runs shares.
+        await delete_runs_cascade(db, ids_to_delete)
         # Commit before answering: the get_db teardown only commits after the response is sent.
         await db.commit()
 
@@ -4154,8 +4127,8 @@ async def update_assignment(
     if not agent_row:
         raise HTTPException(status_code=404, detail="Parent agent not found")
     # Consolidated gate (built-in + company-managed admin + group permission).
-    # A seeded opt-in assignment of a built-in agent lets an
-    # administrator write its switch and run-as identity, nothing else: the
+    # On a built-in agent the switch alone may be written on any assignment
+    # (#2192), and a seeded opt-in one also takes its run-as identity: the
     # built-in gate alone is dropped, the company-managed one still applies.
     assert_writable_assignment(
         assignment,
@@ -4163,11 +4136,7 @@ async def update_assignment(
         user,
         user_group_ids,
         action="edit",
-        allow_builtin=(
-            is_admin_opt_in_builtin_assignment(agent_row, assignment)
-            and bool(body.model_fields_set)
-            and body.model_fields_set <= ADMIN_OPT_IN_WRITABLE_FIELDS
-        ),
+        allow_builtin=builtin_assignment_write_allowed(agent_row, assignment, body.model_fields_set),
     )
     if "tool_sources" in body.model_fields_set:
         await assert_tool_source_additions_allowed(
@@ -4720,23 +4689,14 @@ async def purge_assignment_runs(
         details={"agent_id": str(assignment.agent_id)},
         request=request,
     )
-    # Clean up file attachments for runs being purged
-    from app.services.file_cleanup import delete_file_attachments
+    from app.services.run_retention import delete_runs_cascade
 
     run_ids_result = await db.execute(
         select(AssignmentRun.id).where(AssignmentRun.assignment_id == assignment.id)
     )
     purged_run_ids = [row[0] for row in run_ids_result.all()]
-    for rid in purged_run_ids:
-        await delete_file_attachments(db, assignment_run_id=rid)
-
-    # Cancel orphaned orchestration executions + background tasks for the runs.
-    from app.services.orchestration_engine import cancel_executions_for_runs
-    from app.services.sub_agent import mark_sub_agent_tasks_cancelled_for_runs
-
-    await cancel_executions_for_runs(db, purged_run_ids)
-    await mark_sub_agent_tasks_cancelled_for_runs(db, purged_run_ids)
-
+    # The cascade every deletion of runs shares, A2A task locks included.
+    await delete_runs_cascade(db, purged_run_ids)
     await db.execute(
         sql_delete(AssignmentRun).where(
             AssignmentRun.assignment_id == assignment.id,

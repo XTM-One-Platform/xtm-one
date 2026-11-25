@@ -186,7 +186,13 @@ def _patch(monkeypatch, session, published, unless=None, heard=True, others=()):
     _others(monkeypatch, others)
 
 
-def _others(monkeypatch, others=()):
+def _others(monkeypatch, others=(), company_managed=False):
+    async def _managed(_agent_id):
+        return company_managed
+
+    # The arming agent's company-managed flag (#2235): a personal agent unless a test says otherwise.
+    monkeypatch.setattr(platform_timers, "agent_is_company_managed", _managed)
+
     async def _other(data):
         assert data["object_type"] == "timer"
         if isinstance(others, Exception):
@@ -378,6 +384,7 @@ async def test_unreadable_listeners_give_no_warning(monkeypatch):
         raise RuntimeError("db down")
 
     monkeypatch.setattr(platform_events, "live_subscriptions", _boom)
+    _others(monkeypatch, ())
     timer = _timer()
     assert await platform_timers.unheard_warning(platform_timers.serialize_timer(timer), user_id="u") is None
 

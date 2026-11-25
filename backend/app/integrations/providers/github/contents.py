@@ -996,9 +996,38 @@ _TRANSIENT_GRAPHQL_KINDS = frozenset({"INTERNAL", "INTERNAL_SERVER_ERROR", "SERV
 _TRANSIENT_GRAPHQL_MESSAGES = ("something went wrong while executing your query", "timedout", "timed out")
 
 
+async def _read_branch_tip(
+    client: httpx.AsyncClient, repo_url: str, headers: dict[str, str], branch: str, repo: str
+) -> str:
+    """The commit ``branch`` points at now, '' when it cannot be read."""
+    resp, err = await _common.safe_request(
+        client,
+        "get",
+        f"{repo_url}/git/ref/heads/{_enc(branch)}",
+        _PROVIDER,
+        f"re-read branch {branch} of {repo}",
+        headers=headers,
+    )
+    if err or resp is None:
+        return ""
+    target = _json_object(resp).get("object")
+    sha = _coerce_str(target.get("sha")) if isinstance(target, dict) else ""
+    return sha if _GIT_OBJECT_ID_RE.fullmatch(sha) else ""
+
+
 def _head_moved(message: str) -> bool:
     low = message.lower()
     return "expected branch to point to" in low or "expectedheadoid" in low
+
+
+#: HTTP statuses after which a mutation may have landed: a 5xx, and the 499 a
+#: proxy answers when it closed the request before GitHub's answer came back.
+_ANSWER_UNKNOWN_CLIENT_STATUSES = frozenset({499})
+
+
+def _answer_unknown_status(status: int) -> bool:
+    """True when a failed commit request says nothing of whether GitHub applied it."""
+    return status >= 500 or status in _ANSWER_UNKNOWN_CLIENT_STATUSES
 
 
 def _transient_commit_failure(resp: httpx.Response | None, err: str | None) -> bool:
@@ -1009,7 +1038,7 @@ def _transient_commit_failure(resp: httpx.Response | None, err: str | None) -> b
     rate limit) is not transient: trying again changes nothing.
     """
     if err:
-        return resp is None or resp.status_code >= 500
+        return resp is None or _answer_unknown_status(resp.status_code)
     answer = _json_object(resp)
     data = answer.get("data")
     created = data.get("createCommitOnBranch") if isinstance(data, dict) else None
@@ -2627,7 +2656,7 @@ def register(
                 if err and resp is not None and resp.status_code == 413:
                     unsigned_reason = "GitHub refused the change as too large for a commit it builds itself"
                     signed_alternative = "Split the change into smaller commits, which GitHub builds and signs itself."
-                elif err and (resp is None or resp.status_code >= 500):
+                elif err and (resp is None or _answer_unknown_status(resp.status_code)):
                     return f"{err}{unknown}"
                 elif err:
                     return f"{err}\nBranch '{branch}' of {repo} is unchanged."
@@ -2653,6 +2682,16 @@ def register(
                         if retried and _head_moved(error_text):
                             # The first attempt may have landed and moved the branch itself.
                             return f"Error: GitHub did not answer the first attempt clearly for {repo}.{unknown}"
+                        if "FORBIDDEN" in kinds and not _head_moved(error_text):
+                            # GitHub answers FORBIDDEN for a stale expectedHeadOid too
+                            # (a resumed call on a branch that moved): the tip says which.
+                            now_tip = await _read_branch_tip(client, repo_url, headers, branch, repo)
+                            if now_tip and now_tip != tip:
+                                if retried:
+                                    return (
+                                        f"Error: GitHub did not answer the first attempt clearly for {repo}.{unknown}"
+                                    )
+                                error_text = f"Expected branch to point to {tip} ({error_text})"
                         if not _signing_unavailable(error_text, kinds):
                             refusal = _graphql_commit_refusal(error_text, kinds, branch, repo, tip)
                             return f"{refusal}{_NO_UNSIGNED_FALLBACK}"

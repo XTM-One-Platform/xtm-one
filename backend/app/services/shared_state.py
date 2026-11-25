@@ -2627,6 +2627,7 @@ async def upsert_state(
         """Refuse a take or release of an entry a live other run holds."""
         hold_notes.clear()
         current = getattr(state, "held_by_run_id", None)
+        _refuse_take_of_a_record(state)
         if hold_action is None or current is None or current == hold_run:
             return
         from app.services.work_item import holding_runs
@@ -2645,6 +2646,28 @@ async def upsert_state(
             hold_notes.append(_hold_note("taken", hold_run, current, holder, now))
         else:
             hold_notes.append(_hold_note("released", current, None, holder, now))
+
+    def _refuse_take_of_a_record(state: SharedState) -> None:
+        """Refuse a take of an active entry kept for another purpose (#2208).
+
+        An entry that is not a lease, has no holder and is still active was
+        written for something else (notes, a merge record): a take would stamp
+        a holder on it and merge the lease value into the other purpose's, and
+        its release would leave it active with both mixed. Passing ``lease``
+        explicitly says the caller means that entry.
+        """
+        if hold_action != "take" or lease is not None:
+            return
+        if getattr(state, "id", None) is None or getattr(state, "held_by_run_id", None) is not None:
+            return
+        if getattr(state, "is_lease", None) or getattr(state, "status", None) == SHARED_STATE_RESOLVED_STATUS:
+            return
+        raise ValueError(
+            f"{key!r} is a shared state entry, not a lease: it is active, has no holder and was "
+            "not created by a take, so a take would mix the lease into what it records. Take a "
+            "key of its own, or pass lease=true (or lease=false) to hold this entry on purpose; "
+            "nothing was written"
+        )
 
     def _apply(state: SharedState) -> None:
         # The value first: a refused list change raises before anything else

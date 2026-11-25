@@ -26,8 +26,14 @@ runs reading the same state. An assignment whose ``trigger_config`` sets
 - a batch holds at most ``MAX_BATCH_EVENTS`` events: the next one starts a
   batch of its own.
 
-Absent or ``0`` keeps one run per event, as before. Pure and unit-tested; the
-SQL stays in ``assignment_engine``.
+Absent or ``0`` keeps one run per event, as before.
+
+Two optional keys narrow it (#2286): ``batch_events`` lists the event names the
+window applies to (another event of the same trigger runs alone, at once: a
+CTEM case reopened never waits behind the opened burst), and
+``batch_max_events`` caps the events of one batch below ``MAX_BATCH_EVENTS``
+(the cases one Loop run can work). Pure and unit-tested; the SQL stays in
+``assignment_engine``.
 """
 
 from __future__ import annotations
@@ -43,6 +49,10 @@ WINDOW_CONTEXT = "batch_window_seconds"
 MAX_WINDOW_SECONDS = 600
 #: Events one batch run carries at most; the next one opens a new batch.
 MAX_BATCH_EVENTS = 100
+#: ``trigger_config`` key of the event names the window applies to (absent: every event).
+EVENTS_CONFIG = "batch_events"
+#: ``trigger_config`` key of the most events one batch run carries (absent: ``MAX_BATCH_EVENTS``).
+MAX_EVENTS_CONFIG = "batch_max_events"
 #: Trigger types whose runs a window batches (``trigger_context["type"]``).
 BATCHED_CONTEXT_TYPES = frozenset({"integration_event", "platform_event"})
 #: Trigger types whose ``trigger_config`` may carry the window.
@@ -60,6 +70,14 @@ def window_error(trigger_type: object, trigger_config: object) -> str | None:
         )
     if isinstance(raw, bool) or not isinstance(raw, int) or not 0 <= raw <= MAX_WINDOW_SECONDS:
         return f"Invalid trigger_config: '{WINDOW_CONFIG}' must be a whole number of seconds from 0 to {MAX_WINDOW_SECONDS}."
+    names = trigger_config.get(EVENTS_CONFIG)
+    if names is not None and (
+        not isinstance(names, list) or not names or not all(isinstance(n, str) and n for n in names)
+    ):
+        return f"Invalid trigger_config: '{EVENTS_CONFIG}' must be a non-empty list of event names."
+    cap = trigger_config.get(MAX_EVENTS_CONFIG)
+    if cap is not None and (isinstance(cap, bool) or not isinstance(cap, int) or not 1 <= cap <= MAX_BATCH_EVENTS):
+        return f"Invalid trigger_config: '{MAX_EVENTS_CONFIG}' must be a whole number from 1 to {MAX_BATCH_EVENTS}."
     return None
 
 
@@ -70,11 +88,22 @@ def window_seconds(trigger_config: Mapping[str, Any] | None, trigger_context: Ma
     raw = trigger_config.get(WINDOW_CONFIG) if isinstance(trigger_config, Mapping) else None
     if raw is None or isinstance(raw, bool):
         return 0
+    names = trigger_config.get(EVENTS_CONFIG) if isinstance(trigger_config, Mapping) else None
+    if isinstance(names, list) and names and trigger_context.get("event") not in names:
+        return 0
     try:
         seconds = int(raw)
     except (TypeError, ValueError):
         return 0
     return max(0, min(MAX_WINDOW_SECONDS, seconds))
+
+
+def max_events(trigger_config: Mapping[str, Any] | None) -> int:
+    """The most events one batch run of the trigger carries: ``batch_max_events``, else ``MAX_BATCH_EVENTS``."""
+    raw = trigger_config.get(MAX_EVENTS_CONFIG) if isinstance(trigger_config, Mapping) else None
+    if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 1:
+        return min(raw, MAX_BATCH_EVENTS)
+    return MAX_BATCH_EVENTS
 
 
 def events_of(payload: Mapping[str, Any] | None) -> list[dict[str, Any]]:
@@ -100,9 +129,9 @@ def batch_payload(payload: Mapping[str, Any] | None, window: int) -> dict[str, A
     return batch
 
 
-def can_join(waiting: Mapping[str, Any] | None) -> bool:
-    """Whether the waiting batch has room for one more event."""
-    return len(events_of(waiting)) < MAX_BATCH_EVENTS
+def can_join(waiting: Mapping[str, Any] | None, limit: int = MAX_BATCH_EVENTS) -> bool:
+    """Whether the waiting batch has room for one more event (*limit*: the trigger's :func:`max_events`)."""
+    return len(events_of(waiting)) < min(limit, MAX_BATCH_EVENTS)
 
 
 def carries(waiting: Mapping[str, Any] | None, incoming: Mapping[str, Any] | None) -> bool:

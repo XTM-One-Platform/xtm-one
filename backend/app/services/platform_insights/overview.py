@@ -131,13 +131,14 @@ async def sandbox_workspaces_overview(db: AsyncSession, own) -> dict[str, Any]:
 
 
 def _coordination_retention(platform_settings: Any) -> dict[str, int]:
-    """The effective closed work-item and resolved shared-state retention, in days (0: kept forever)."""
+    """The effective closed work-item, resolved shared-state and run retention, in days (0: kept forever)."""
     from app.services.coordination_retention import coordination_retention_days
 
     windows = coordination_retention_days(getattr(platform_settings, "coordination_retention", None))
     return {
         "work_item_retention_days": windows["work_item_resolved_days"],
         "shared_state_retention_days": windows["shared_state_resolved_days"],
+        "run_retention_days": windows["assignment_run_days"],
     }
 
 

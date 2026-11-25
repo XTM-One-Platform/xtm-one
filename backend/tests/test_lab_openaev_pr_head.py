@@ -100,6 +100,20 @@ def test_the_stub_answers_the_asset_lookup_found_and_not_found():
     assert web["objectMarking"] == [{"definition": "TLP:AMBER"}] and web["modified"]
 
 
+def test_the_stub_finds_an_asset_by_its_seeded_hostname():
+    """OpenAEV looks an endpoint up by its hostname: each seeded asset_hostname finds its counterpart, lab-mac-01 none."""
+    module = _module()
+    hostnames = [asset["asset_hostname"] for asset in module.SEED_ASSETS]
+    filters = {"mode": "and", "filters": [{"key": ["value"], "values": hostnames}], "filterGroups": []}
+    nodes = [e["node"] for e in _lookup(module, filters)["data"]["stixCoreObjects"]["edges"]]
+    assert {n["id"] for n in nodes} == {"lab-octi-system-web-01", "lab-octi-ipv4-dc-01"}
+    assert all("hostname" not in n for n in nodes)
+    upper = {"mode": "and", "filters": [{"key": ["value"], "values": ["LAB-WEB-01.LAB.LOCAL"]}], "filterGroups": []}
+    assert [e["node"]["id"] for e in _lookup(module, upper)["data"]["stixCoreObjects"]["edges"]] == [
+        "lab-octi-system-web-01"
+    ]
+
+
 def test_the_stub_answers_an_attack_pattern_by_its_mitre_id_and_nothing_else_empty():
     module = _module()
     filters = {

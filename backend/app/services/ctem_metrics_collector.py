@@ -1322,16 +1322,19 @@ async def _exposed_join(
     rows: tuple[list[Any], list[Any]] | None,
     tailored: Any,
     user_id: str,
-) -> int | None:
-    """The Exposed layer's count: the last live layer's vulnerabilities left on an exposed asset (#12351).
+) -> tuple[int, int] | None:
+    """The Exposed layer's counts: ``(exposed, observed)`` of the last live layer (#12351, #2268).
 
-    The join: OpenAEV's CVE findings name the endpoints each CVE was found
-    on; a CVE whose every endpoint is proven unreachable in the profile
-    (:func:`~app.services.asset_reachability.unreachable_keys`) is counted
-    once in the last live layer through OpenCTI (its name under that layer's
-    filter) and taken off. Everything else stays in (rule 1). ``None`` when
-    the join cannot be made: no profile asset, OpenCTI or OpenAEV not read,
-    findings past the cap, a layer without a countable filter.
+    The join: OpenAEV's CVE findings name the assets each CVE was found on.
+    ``observed`` counts the layer's vulnerabilities found on at least one
+    asset; ``exposed`` those found on at least one asset not proven
+    unreachable in the profile (:func:`~app.services.asset_reachability.unreachable_keys`;
+    an asset the profile does not hold, or of unknown reachability, stays in:
+    rule 1). A vulnerability found on no asset is not exposed: it is counted
+    apart (``observed``), never passed through (partner gap abb45061). Both
+    are OpenCTI counts of the CVE names under that layer's filter. ``None``
+    when the join cannot be made: no profile asset, OpenCTI or OpenAEV not
+    read, findings past the cap, a layer without a countable filter.
     """
     if rows is None or not {"opencti", "openaev"} <= present:
         return None
@@ -1342,7 +1345,7 @@ async def _exposed_join(
     basis = _exposed_basis(inputs, (tailored.get("funnel_tailored") if isinstance(tailored, dict) else None) or {})
     if basis is None:
         return None
-    layer_count, layer_filter = basis
+    _layer_count, layer_filter = basis
     from app.services.asset_reachability import unreachable_keys
 
     try:
@@ -1350,14 +1353,24 @@ async def _exposed_join(
             by_cve = await _aev_cve_assets(aev[0], aev[1], client)
             if by_cve is None:
                 return None
-            dropped_names = unreachable_keys(by_cve, *rows)
-            if not dropped_names:
-                return layer_count
-            dropped = await _octi_named_count(client, octi[0], octi[1], layer_filter, dropped_names, user_id)
+            dropped = set(unreachable_keys(by_cve, *rows))
+            exposed_names = sorted(name for name in by_cve if name not in dropped)
+            exposed = (
+                await _octi_named_count(client, octi[0], octi[1], layer_filter, exposed_names, user_id)
+                if exposed_names
+                else 0
+            )
+            observed = (
+                await _octi_named_count(client, octi[0], octi[1], layer_filter, sorted(by_cve), user_id)
+                if by_cve
+                else 0
+            )
     except Exception as exc:  # the join is best-effort: Exposed then stays not available
         logger.warning("CTEM exposed join error (user %s): %s", user_id, format_exception_message(exc))
         return None
-    return None if dropped is None else max(0, layer_count - dropped)
+    if exposed is None or observed is None:
+        return None
+    return exposed, max(exposed, observed)
 
 
 # ── Cyber collector ──────────────────────────────────────────────────────────
@@ -2488,7 +2501,7 @@ def _attach_funnel(
     stage_facts: dict[str, dict[str, Any]],
     present: set[str],
     reachability: dict[str, int] | None = None,
-    exposed: int | None = None,
+    exposed: tuple[int, int] | None = None,
     scope: dict[str, dict[str, Any]] | None = None,
     scope_counts: dict[str, int] | None = None,
 ) -> None:
@@ -2496,7 +2509,8 @@ def _attach_funnel(
 
     The inputs never stay in the facts: without OpenCTI there is no funnel.
     ``reachability`` is the split of the profile assets: the Exposed layer
-    shows it, and is live with ``exposed`` (:func:`_exposed_join`), else stays
+    shows it, and is live with ``exposed`` (:func:`_exposed_join`: the exposed
+    and observed counts), else stays
     not available while the vulnerabilities the funnel counts could not be
     joined to an asset (never "not configured" when the profile holds assets).
     ``scope`` (:func:`_funnel_scope`) and ``scope_counts``
@@ -2517,7 +2531,8 @@ def _attach_funnel(
         asset_findings=prio.get("findings_cve") if "openaev" in present else None,
         filters=_funnel_link_filters(tailored),
         reachability=reachability,
-        exposed=exposed,
+        exposed=exposed[0] if exposed else None,
+        observed=exposed[1] if exposed else None,
         business=(scope_counts or {}).get("business"),
         business_scope=(scope or {}).get("business"),
         policy=(scope_counts or {}).get("policy"),

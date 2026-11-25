@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -716,9 +716,12 @@ async def _inventory_of(case: Any, rendered: dict[str, Any], events: list[Any]) 
             issues = [dict(i) for i in issues]
             if case_versions.attribute_assets(issues, await case_versions.running_asset_names(db, case)):
                 rendered["issues"] = issues
+        running = await case_versions.for_case(db, case)
+        # The asset count agrees with the running versions this read serves (#2225).
+        version_history.with_live_asset_count(rendered, running, at=datetime.now(UTC))
         return {
             # The versions the case's product runs on the assets (#1252), never a typed software version.
-            "running_versions": _with_history(await case_versions.for_case(db, case), events),
+            "running_versions": _with_history(running, events),
             # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
             "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
         }

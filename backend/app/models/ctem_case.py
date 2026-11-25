@@ -45,6 +45,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -90,8 +91,8 @@ REMEDIATION_KINDS: tuple[str, ...] = (
 CASE_PRIORITIES: tuple[str, ...] = ("critical", "high", "medium", "low")
 #: ``signal``: a CTEM signal attached to the case (``external_id`` is its id).
 ISSUE_SOURCES: tuple[str, ...] = ("opencti", "openaev", "signal")
-#: How a resolved case was closed.
-RESOLUTION_KINDS: tuple[str, ...] = ("not_exposed", "mitigated", "fixed", "accepted_risk")
+#: How a resolved case was closed. ``dismissed``: a person answered a gate "reject and close" (#2252).
+RESOLUTION_KINDS: tuple[str, ...] = ("not_exposed", "mitigated", "fixed", "accepted_risk", "dismissed")
 #: Severity from the scope gate (P1 most urgent).
 CASE_SEVERITIES: tuple[str, ...] = ("P1", "P2", "P3")
 #: What a validation reference says.
@@ -192,6 +193,16 @@ class CtemCaseIssue(Base):
 
 class CtemCaseEvent(Base):
     __tablename__ = "ctem_case_events"
+    # The merged-away case ids (#2289): a read of a merged id finds the survivor by
+    # one probe of the ``merge`` rows, by full id or by an 8+ character prefix.
+    __table_args__ = (
+        Index(
+            "ix_ctem_case_events_merged_from",
+            "from_value",
+            postgresql_where=text("kind = 'merge'"),
+            postgresql_ops={"from_value": "varchar_pattern_ops"},
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_id: Mapped[uuid.UUID] = mapped_column(
