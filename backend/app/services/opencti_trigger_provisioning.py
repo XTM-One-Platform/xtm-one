@@ -812,8 +812,6 @@ def pir_playbook_nodes(
     entities whose score in those PIRs is at least ``pir_min_score`` (the string
     form OpenCTI stores). The notifier delivers to the integration's own OpenCTI
     user only: OpenCTI filters each delivery by what that user may read.
-    ``entity_types`` of the spec narrows the entry to those types, as the
-    trigger mode does; without it every PIR-flagged type is delivered.
 
     Each chip item carries ``label`` and ``type`` as the OpenCTI form saves
     them (an item with ``value`` alone is drawn as an empty chip); a name
@@ -821,13 +819,13 @@ def pir_playbook_nodes(
     """
     pir_ids = sorted(spec.get("pir_ids") or [])
     names = pir_names or {}
-    entry_filters: list[dict[str, Any]] = [
-        {"key": ["pir_score"], "values": [str(spec.get("pir_min_score", 1))], "operator": "gte", "mode": "or"}
-    ]
-    entity_types = spec.get("entity_types") or []
-    if entity_types:
-        entry_filters.append({"key": ["entity_type"], "values": list(entity_types), "operator": "eq", "mode": "or"})
-    score_filter = {"mode": "and", "filters": entry_filters, "filterGroups": []}
+    score_filter = {
+        "mode": "and",
+        "filters": [
+            {"key": ["pir_score"], "values": [str(spec.get("pir_min_score", 1))], "operator": "gte", "mode": "or"}
+        ],
+        "filterGroups": [],
+    }
     entry = {
         "inPirFilters": [{"value": pid, "label": names.get(pid) or pid, "type": "Pir"} for pid in pir_ids],
         "create": True,

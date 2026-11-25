@@ -559,18 +559,6 @@ def test_pir_playbook_nodes_listen_to_the_profile_pirs_and_notify_the_integratio
     # No name answered: the id, never an empty chip.
     _, bare = prov.pir_playbook_nodes(_pir_spec(), "notifier-1", "user-xtm")
     assert bare["authorized_members"] == [{"value": "user-xtm", "label": "user-xtm", "type": "User"}]
-    # No entity_types: the PIR score is the only filter.
-    assert len(json.loads(entry["filters"])["filters"]) == 1
-
-
-def test_pir_playbook_entry_keeps_the_spec_entity_types() -> None:
-    config = {**PIR_CONFIG, "provision": {**PIR_CONFIG["provision"], "entity_types": ["Intrusion-Set", "Malware"]}}
-    spec = prov.read_provision_spec(config)
-    assert spec is not None
-    entry, _ = prov.pir_playbook_nodes(dict(spec, pir_ids=["pir-1"]), "notifier-1", "user-xtm")
-    filters = json.loads(entry["filters"])["filters"]
-    assert {"key": ["entity_type"], "values": ["Intrusion-Set", "Malware"], "operator": "eq", "mode": "or"} in filters
-    assert filters[0]["key"] == ["pir_score"]
 
 
 def test_chip_items_are_compared_by_value_only() -> None:
