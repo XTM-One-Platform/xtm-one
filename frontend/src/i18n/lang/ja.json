@@ -16566,6 +16566,7 @@
   "New release deployed": "新しいリリースをデプロイ",
   "Timer due": "タイマー期限",
   "Partner answer arrived": "パートナーの回答が届きました",
+  "Partner ticket status changed": "パートナーのチケットのステータスが変更されました",
   "It leaves the queue: its owner agent does not run it again, and its completion still reaches the agents it impacts. Say what was done so the trail is complete. If the problem is gone but the agent should check, keep it open and use Ask the agent > It's solved.": "キューから外れます。担当エージェントは再実行しませんが、完了は影響先のエージェントに届きます。履歴が残るよう、実施した内容を記入してください。問題は解消したがエージェントに確認させたい場合は、開いたままにして「エージェントに聞く」>「解決済み」を使ってください。",
   "It leaves the queue without being done: its owner agent does not run it again and no completion work follows. Say why it is no longer needed.": "完了しないままキューから外れます。担当エージェントは再実行せず、完了処理も行われません。不要になった理由を記入してください。",
   "It's solved": "解決済み",

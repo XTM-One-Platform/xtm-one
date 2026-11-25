@@ -16566,6 +16566,7 @@
   "New release deployed": "Nouvelle version déployée",
   "Timer due": "Minuteur échu",
   "Partner answer arrived": "Réponse du partenaire reçue",
+  "Partner ticket status changed": "Statut du ticket partenaire modifié",
   "It leaves the queue: its owner agent does not run it again, and its completion still reaches the agents it impacts. Say what was done so the trail is complete. If the problem is gone but the agent should check, keep it open and use Ask the agent > It's solved.": "Il quitte la file : son agent propriétaire ne le relance pas, et sa clôture parvient quand même aux agents qu'il concerne. Indiquez ce qui a été fait pour que l'historique soit complet. Si le problème a disparu mais que l'agent doit vérifier, gardez-le ouvert et utilisez Demander à l'agent > C'est réglé.",
   "It leaves the queue without being done: its owner agent does not run it again and no completion work follows. Say why it is no longer needed.": "Il quitte la file sans être réalisé : son agent propriétaire ne le relance pas et aucun travail de clôture ne suit. Indiquez pourquoi il n'est plus nécessaire.",
   "It's solved": "C'est réglé",
