@@ -42,7 +42,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils import format_exception_message
-from app.integrations.providers.openaev._common import _api, _search_body
+from app.integrations.providers.openaev._common import Finding, _api, _search_body, parse_finding
 from app.integrations.providers.opencti._common import _graphql
 from app.integrations.providers.opencti.capabilities import attach_probe
 from app.services import ctem_cases as rules
@@ -119,8 +119,9 @@ def _clear_read_context() -> None:
 
 #: Most vulnerability memberships (software x vulnerability) read from OpenCTI.
 OCTI_ISSUE_CAP = 2000
-#: Most CVE findings read from OpenAEV.
-AEV_FINDING_CAP = 2000
+#: Most open CVE findings read from OpenAEV. Since OpenAEV #9233 a finding is one per CVE and
+#: asset, so this counts (CVE, asset) pairs open in the window: ten pages of :data:`_PAGE`.
+AEV_FINDING_CAP = 5000
 _PAGE = 500
 #: Software ids per ``fromId`` list of the stack vulnerabilities read (#1811).
 _STACK_IDS_CHUNK = 200
@@ -186,8 +187,11 @@ query CtemCaseVulnsById($filters: FilterGroup, $first: Int) {
 }
 """
 
-#: Most closed-member lookups by id one OpenAEV read makes (the rest wait for the next read).
-AEV_LOOKUP_CAP = 200
+#: Most member lookups by id one OpenAEV read makes; past it the read is incomplete and resolves
+#: nothing. One finding per CVE and asset (OpenAEV #9233) makes more members than before.
+AEV_LOOKUP_CAP = 1000
+#: Most CVE searches one identity remap makes (members OpenAEV answers 404 for, OpenAEV #9233).
+AEV_REMAP_CVE_CAP = 200
 #: OpenAEV lookups by id in flight at once (#1986): one finding per call, so they go in parallel, bounded.
 AEV_LOOKUP_CONCURRENCY = 8
 
@@ -199,10 +203,16 @@ _AEV_CVE_FINDINGS_FILTER = {
     "filters": [{"key": "finding_type", "mode": "or", "operator": "eq", "values": ["cve"]}],
 }
 
-#: The creation date of a Finding as OpenAEV's ``/api/findings/search`` filters it
-#: (its ``@Queryable`` field is ``finding_created_at``; ``base_created_at`` is
-#: refused with a 400, #12134).
-_AEV_FINDING_CREATED_AT = "finding_created_at"
+#: The last detection of a Finding as OpenAEV's ``/api/findings/search`` filters it: a finding is
+#: read while it was seen in the window (OpenAEV #9233 moves ``finding_updated_at`` on each
+#: occurrence), not while it was created in it.
+_AEV_FINDING_UPDATED_AT = "finding_updated_at"
+#: Only the findings still open at source join a case (``finding_status`` is ``@Queryable``).
+_AEV_OPEN_FINDING = {"key": "finding_status", "mode": "or", "operator": "eq", "values": ["OPEN"]}
+#: The re-test statuses that close a member at source; anything else, a 404 included, never does.
+_AEV_CLOSED_RETEST = frozenset({"not_reproduced", "resolved"})
+#: The history line of a member whose finding OpenAEV's identity migration replaced by nothing.
+RETIRED_BY_IDENTITY_MIGRATION = "Replaced by OpenAEV finding identity migration"
 
 
 @dataclass
@@ -222,8 +232,16 @@ class SourceRead:
     #: Why each product of :attr:`missing` contributed nothing (``REASON_*``, #1852).
     reasons: dict[str, str] = field(default_factory=dict)
     no_stack: bool = False
-    #: Members the reader can read by id that are no longer open.
+    #: Members the reader can read by id that are closed at source (OpenAEV: re-test status
+    #: NOT_REPRODUCED or RESOLVED only).
     closed: list[rules.SourceIssue] = field(default_factory=list)
+    #: Members the reader can read by id that are not in the open read but not closed either
+    #: (an OpenAEV finding still OPEN, last seen before the window): shown, never resolved.
+    looked_up: list[rules.SourceIssue] = field(default_factory=list)
+    #: OpenAEV members that answer 404 (OpenAEV #9233 rewrote every finding id).
+    gone: list[str] = field(default_factory=list)
+    #: ``openaev:<old id>`` -> ``openaev:<new id>``, or ``None`` to retire the member.
+    remap: dict[str, str | None] = field(default_factory=dict)
     #: False when a read hit its cap: then nothing is resolved from it.
     complete: bool = True
 
@@ -426,30 +444,22 @@ def opencti_issues(
 
 
 def openaev_issues(findings: list[dict[str, Any]]) -> list[rules.SourceIssue]:
-    """Build the OpenAEV issues from raw findings of type ``cve`` (pure)."""
+    """Build the OpenAEV issues from raw findings of type ``cve`` (pure), each parsed once."""
     out: list[rules.SourceIssue] = []
     seen: set[str] = set()
-    for f in findings:
-        fid = f.get("finding_id")
-        value = (f.get("finding_value") or "").strip()
-        if not fid or not value or fid in seen:
+    for raw in findings:
+        f = parse_finding(raw)
+        if f is None or not f.value or f.id in seen:
             continue
-        seen.add(fid)
-        assets = tuple(
-            dict.fromkeys(
-                str(a.get("asset_name") or a.get("asset_id"))
-                for a in (f.get("finding_assets") or [])
-                if isinstance(a, dict) and (a.get("asset_name") or a.get("asset_id"))
-            )
-        )
+        seen.add(f.id)
         out.append(
             rules.SourceIssue(
                 source="openaev",
-                external_id=str(fid)[:200],
-                name=value[:300],
-                cve=value if value.upper().startswith("CVE-") else None,
-                assets=assets,
-                first_seen_at=_when(f.get("finding_created_at") or f.get("base_created_at")),
+                external_id=f.id[:200],
+                name=f.value[:300],
+                cve=f.value if f.value.upper().startswith("CVE-") else None,
+                assets=f.asset_labels,
+                first_seen_at=_when(f.created_at),
                 **_finding_lifecycle(f),
             )
         )
@@ -460,14 +470,13 @@ def openaev_issues(findings: list[dict[str, Any]]) -> list[rules.SourceIssue]:
 _FINDING_STATUSES = {"OPEN": "open", "NOT_REPRODUCED": "not_reproduced", "RESOLVED": "resolved"}
 
 
-def _finding_lifecycle(f: dict[str, Any]) -> dict[str, Any]:
-    """The re-test status of a finding, feature-detected: an OpenAEV without the lifecycle answers none."""
-    status = _FINDING_STATUSES.get(str(f.get("finding_status") or "").upper())
-    tested = _when(f.get("finding_last_tested"))
+def _finding_lifecycle(f: Finding) -> dict[str, Any]:
+    """The re-test status of a finding; a search row carries none (only ``GET /api/findings/{id}`` does)."""
+    tested = _when(f.last_tested)
     return {
-        "retest_status": status,
+        "retest_status": _FINDING_STATUSES.get(f.status or ""),
         "last_tested_at": tested.isoformat() if tested else None,
-        "retest_pending": bool(f.get("finding_retest_inject_id")),
+        "retest_pending": bool(f.retest_inject_id),
     }
 
 
@@ -543,12 +552,14 @@ async def _read_opencti(
 async def _read_openaev(
     client: httpx.AsyncClient, base_url: str, headers: dict[str, str], now: datetime
 ) -> list[rules.SourceIssue] | None:
+    """The CVE findings open at source and seen in the window (last occurrence, OpenAEV #9233)."""
     since = (now - timedelta(days=_AEV_VALIDATION_WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     window = {
         "mode": "and",
         "filters": [
             *_AEV_CVE_FINDINGS_FILTER["filters"],
-            {"key": _AEV_FINDING_CREATED_AT, "mode": "and", "operator": "gte", "values": [since]},
+            _AEV_OPEN_FINDING,
+            {"key": _AEV_FINDING_UPDATED_AT, "mode": "and", "operator": "gte", "values": [since]},
         ],
     }
     findings: list[dict[str, Any]] = []
@@ -616,10 +627,13 @@ async def _read_opencti_by_id(
 
 async def _read_openaev_by_id(
     client: httpx.AsyncClient, base_url: str, headers: dict[str, str], ids: list[str]
-) -> list[rules.SourceIssue] | None:
-    """The findings among *ids* the reader can read; a 403 or 404 is not visible, not an outage.
+) -> tuple[list[rules.SourceIssue], list[str]] | None:
+    """``(the findings among *ids* the reader can read, the ids OpenAEV answers 404 for)``.
 
-    One call per finding, at most :data:`AEV_LOOKUP_CONCURRENCY` in flight (#1986).
+    A 403 is not visible and a 404 is gone (OpenAEV #9233 rewrote every finding id: the
+    identity remap of :func:`recompute_for_user` takes them); neither is an outage. Each
+    finding comes with its re-test status (``GET /api/findings/{id}`` carries it). One call
+    per finding, at most :data:`AEV_LOOKUP_CONCURRENCY` in flight (#1986).
     """
     gate = asyncio.Semaphore(AEV_LOOKUP_CONCURRENCY)
 
@@ -630,16 +644,21 @@ async def _read_openaev_by_id(
             )
 
     found: list[dict[str, Any]] = []
-    for resp, err in await asyncio.gather(*(lookup(fid) for fid in ids[:AEV_LOOKUP_CAP])):
+    gone: list[str] = []
+    asked = ids[:AEV_LOOKUP_CAP]
+    for fid, (resp, err) in zip(asked, await asyncio.gather(*(lookup(fid) for fid in asked)), strict=True):
         if resp is not None and resp.status_code == 200:
             body = resp.json()
             if isinstance(body, dict):
                 found.append(body)
             continue
-        if err and not any(code in err for code in ("403", "404")):
+        if err and "404" in err:
+            gone.append(fid)
+            continue
+        if err and "403" not in err:
             logger.info("CTEM cases: OpenAEV lookup by id unavailable: %s", err)
             return None
-    return openaev_issues(found)
+    return openaev_issues(found), gone
 
 
 async def _read_product(
@@ -673,12 +692,15 @@ async def read_open_issues(
     *,
     now: datetime | None = None,
     members: list[str] | None = None,
+    remap: bool = False,
 ) -> SourceRead:
     """The open issues *user_id* can see in *vertical* (cyber only; other verticals read nothing).
 
     With *members* (``source:external_id`` of the shared cases), the members
     that are not among the open issues are looked up by id with the same
-    credentials: the ones the reader can still read are :attr:`SourceRead.closed`.
+    credentials: the ones closed at source are :attr:`SourceRead.closed`. With
+    *remap*, the OpenAEV members that answer 404 are matched to their finding
+    after OpenAEV's identity migration (:attr:`SourceRead.remap`).
     """
     now = now or datetime.now(UTC)
     out = SourceRead()
@@ -739,6 +761,8 @@ async def read_open_issues(
             logger.info("CTEM cases: OpenAEV missing for user %s: %s", user_id, REASON_NOT_CONNECTED)
         if members:
             await _read_closed_members(out, creds, members)
+        if remap and "openaev" not in out.missing:
+            await _remap_gone_openaev(db, out, creds.get("openaev"))
     finally:
         _clear_read_context()
     return out
@@ -776,9 +800,109 @@ async def _read_closed_members(
         if found is None:
             out.complete = False
             continue
-        if source == "openaev" and len(ids) > AEV_LOOKUP_CAP:
-            out.complete = False
+        if source == "openaev":
+            if len(ids) > AEV_LOOKUP_CAP:
+                out.complete = False
+            issues, gone = found
+            out.gone.extend(f"openaev:{fid}" for fid in gone)
+            # Closed at source only on OpenAEV's own word (NOT_REPRODUCED or RESOLVED): an OPEN finding
+            # last seen before the window stays open and never resolves its case.
+            for issue in issues:
+                (out.closed if issue.retest_status in _AEV_CLOSED_RETEST else out.looked_up).append(issue)
+            continue
         out.closed.extend(found)
+
+
+async def _remap_gone_openaev(db: AsyncSession, out: SourceRead, cred: tuple[str, dict[str, str]] | None) -> None:
+    """Fill :attr:`SourceRead.remap` for the OpenAEV members that answer 404 (OpenAEV #9233).
+
+    OpenAEV's identity migration gave every finding a new id, one per CVE and asset. The CVE
+    and the assets of a gone member are the ones its source signal recorded; the new finding
+    is the one with the same CVE found on the same asset (or with no asset for a member that
+    had none). No such finding: the member is retired (``None``). A CVE search that fails
+    leaves its members out of the remap, so an outage never retires anything.
+    """
+    if not out.gone or cred is None:
+        return
+    from sqlalchemy import select
+
+    from app.models.ctem_signal import CtemSignal
+
+    old_ids = [m.partition(":")[2] for m in out.gone]
+    rows = (
+        await db.execute(
+            select(CtemSignal.source_external_id, CtemSignal.evidence).where(
+                CtemSignal.source_provider == "openaev", CtemSignal.source_external_id.in_(old_ids)
+            )
+        )
+    ).all()
+    known: dict[str, tuple[str, tuple[str, ...]]] = {}
+    for external_id, evidence in rows:
+        evidence = evidence or {}
+        cve = str(evidence.get("cve") or "").strip()
+        if external_id and cve and external_id not in known:
+            known[external_id] = (cve, tuple(str(a) for a in evidence.get("assets") or []))
+    base_url, headers = cred
+    cves = sorted({cve for cve, _ in known.values()})[:AEV_REMAP_CVE_CAP]
+    by_cve: dict[str, list[Finding]] = {}
+    async with httpx.AsyncClient(timeout=30) as client:
+        for cve in cves:
+            found = await _search_cve_findings(client, base_url, headers, cve)
+            if found is not None:
+                by_cve[cve] = found
+    for old in old_ids:
+        member = f"openaev:{old}"
+        if old not in known:
+            # No signal names its CVE: nothing to match it with, so it is retired.
+            out.remap[member] = None
+            continue
+        cve, assets = known[old]
+        if cve not in by_cve:
+            continue  # the search failed or was capped: decided at a later read
+        out.remap[member] = _identity_match(by_cve[cve], assets)
+
+
+def _identity_match(candidates: list[Finding], assets: tuple[str, ...]) -> str | None:
+    """``openaev:<id>`` of the finding found on the first of *assets*, or with no asset for none."""
+    if not assets:
+        match = next((f for f in candidates if not f.assets), None)
+        return f"openaev:{match.id}" if match else None
+    for label in assets:
+        for f in candidates:
+            if label in f.asset_labels or label in f.asset_ids:
+                return f"openaev:{f.id}"
+    return None
+
+
+async def _search_cve_findings(
+    client: httpx.AsyncClient, base_url: str, headers: dict[str, str], cve: str
+) -> list[Finding] | None:
+    """Every CVE finding of value *cve*, whatever its status; ``None`` on an error or past a page."""
+    group = {
+        "mode": "and",
+        "filters": [
+            *_AEV_CVE_FINDINGS_FILTER["filters"],
+            {"key": "finding_value", "mode": "or", "operator": "eq", "values": [cve]},
+        ],
+    }
+    resp, err = await _api(
+        base_url,
+        headers,
+        "post",
+        "/api/findings/search",
+        "search CVE findings",
+        json=_search_body(page=0, size=_PAGE, filter_group=group),
+        client=client,
+        retry_transient=True,
+    )
+    if err or resp is None:
+        logger.info("CTEM cases: OpenAEV identity remap search unavailable: %s", err)
+        return None
+    body = resp.json() or {}
+    if int(body.get("totalPages") or 0) > 1:
+        return None
+    parsed = (parse_finding(f) for f in body.get("content") or [])
+    return [f for f in parsed if f is not None and f.value.upper() == cve.upper()]
 
 
 async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
@@ -793,7 +917,7 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
     view = ViewerView(missing=list(read.missing), reasons=dict(read.reasons), complete=read.complete)
     view.opencrq = await _reads_opencrq(db, user_id)
     view.opencti = await _reads_opencti(db, user_id)
-    for issue in read.closed:
+    for issue in [*read.closed, *read.looked_up]:
         view.issues[issue.member_id] = issue
     for issue in read.issues:
         view.issues[issue.member_id] = issue
@@ -898,7 +1022,7 @@ async def recompute_for_user(
     now = now or datetime.now(UTC)
     vertical = normalize_vertical(vertical)
     members = await store.member_ids(db, organization_id=organization_id, vertical=vertical)
-    read = await read_open_issues(db, user_id, vertical, now=now, members=members)
+    read = await read_open_issues(db, user_id, vertical, now=now, members=members, remap=True)
     answer: dict[str, Any] = {
         "vertical": vertical,
         "missing": read.missing,
@@ -915,6 +1039,17 @@ async def recompute_for_user(
 
     await gate_store.prepare_system_reads(db, organization_id)
     await db.execute(text("SELECT set_config('lock_timeout', :timeout, true)"), {"timeout": WRITE_LOCK_TIMEOUT})
+    # OpenAEV #9233 re-keyed every finding: the members it answers 404 for move onto their new
+    # finding (or are retired) before the merge, so a case keeps its history and never holds the
+    # old and the new id of one finding.
+    remapped = await store.remap_members(
+        db,
+        organization_id=organization_id,
+        vertical=vertical,
+        remap=read.remap,
+        retired_line=RETIRED_BY_IDENTITY_MIGRATION,
+        now=now,
+    )
     pending = PendingEvents()
     counts = await store.apply_recompute(
         db,
@@ -930,6 +1065,7 @@ async def recompute_for_user(
     # After the commit: the loop's listeners start a run on the cases this read opened or moved.
     await publish_pending(pending)
     answer.update(applied=True, issues=len(read.issues), **counts)
+    answer["identity_remap"] = remapped
     # Members the declared version keeps out of every case (CTEM-11), listed with the reason.
     answer["not_affected_issues"] = [
         {"issue": i.member_id, "name": i.name, "product": i.product, "reason": i.not_affected}

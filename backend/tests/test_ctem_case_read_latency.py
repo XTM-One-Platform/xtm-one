@@ -192,8 +192,8 @@ async def test_openaev_lookups_by_id_run_concurrently_and_bounded(monkeypatch: p
     found: Any = await source._read_openaev_by_id(NO_CLIENT, "https://openaev", {}, ids)
     assert sorted(asked) == sorted(ids)
     assert 1 < peak <= source.AEV_LOOKUP_CONCURRENCY
-    # A 404 is not visible, never an outage; the order of the answers is the order asked.
-    assert found == [f"f{i}" for i in range(20)]
+    # A 404 is gone (OpenAEV #9233 re-keyed the findings), never an outage; the order is the order asked.
+    assert found == ([f"f{i}" for i in range(20)], ["gone"])
 
 
 @pytest.mark.asyncio

@@ -61,7 +61,6 @@ def _make_tool(name: str) -> ToolDefinition:
 
 def test_manage_openaev_tools_are_writes():
     for name in (
-        "manage_openaev_finding",
         "manage_openaev_asset",
         "manage_openaev_threat_arsenal",
         "manage_openaev_inject",
@@ -94,6 +93,8 @@ def test_read_only_openaev_tools_are_not_writes():
         "search_openaev_assets",
         "read_openaev_attack_path_state",
         "get_openaev_run_scope",
+        # Read-only since OpenAEV #9233 (get and summary only).
+        "manage_openaev_finding",
     ):
         assert not is_openaev_write_tool(name), name
 
@@ -125,6 +126,7 @@ def test_strip_removes_only_openaev_writes():
 
     # Reads + the specialist's own non-OpenAEV tools survive.
     assert kept == {
+        "manage_openaev_finding",
         "search_openaev_findings",
         "read_openaev_attack_path_state",
         "get_openaev_run_scope",
@@ -154,6 +156,7 @@ def test_strip_keeps_the_arsenal_but_strips_every_other_write():
     assert kept == {
         "manage_openaev_threat_arsenal",
         "search_openaev_injector_contracts",
+        "manage_openaev_finding",
     }
 
 

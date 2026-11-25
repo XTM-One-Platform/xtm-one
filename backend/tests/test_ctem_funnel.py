@@ -249,6 +249,8 @@ class _Resp:
 
 def _finding(cve, *asset_ids):
     return {
+        "finding_id": f"{cve}@{'+'.join(asset_ids) or 'unknown'}",
+        "finding_type": "cve",
         "finding_value": cve,
         "finding_assets": [{"asset_id": a, "asset_name": f"host-{a}"} for a in asset_ids],
     }
@@ -313,6 +315,32 @@ async def test_exposed_layer_keeps_everything_when_no_finding_is_proven_unreacha
     exposed = _layer(facts["prioritization"]["funnel"], "exposed")
     assert exposed["state"] == LIVE and exposed["count"] == 300
     assert sent == []
+
+
+async def test_an_unknown_location_finding_never_counts_in_the_exposed_layer(monkeypatch):
+    # OpenAEV #9233: a CVE found on no asset (a user or unknown location) is no exposure (gap abb45061).
+    # CVE-1 on the unreachable server drops; the same CVE with no asset does not keep it in.
+    findings = [_finding("CVE-1", "srv"), _finding("CVE-1"), _finding("CVE-9")]
+    sent = _wire_join(monkeypatch, findings, named_total=1)
+    facts, _ = await collector.build_posture_for_user(None, "u1", "cyber")
+    exposed = _layer(facts["prioritization"]["funnel"], "exposed")
+    assert exposed["state"] == LIVE and exposed["count"] == 299
+    assert sent == [
+        {"mode": "and", "filters": [{"key": ["name"], "values": ["CVE-1"]}], "filterGroups": [collector._F_EXPLOITABLE]}
+    ]
+
+
+async def test_the_exposed_join_reads_open_cve_findings_only(monkeypatch):
+    bodies: list[dict] = []
+
+    async def fake_api(base_url, headers, method, path, action, *, json=None, **kw):
+        bodies.append(json or {})
+        return _Resp({"content": [], "totalElements": 0, "totalPages": 0}), None
+
+    monkeypatch.setattr(collector, "_api", fake_api)
+    assert await collector._aev_cve_assets("https://aev", {}, None) == {}
+    keys = {f["key"]: f["values"] for f in bodies[0]["filterGroup"]["filters"]}
+    assert keys == {"finding_type": ["cve"], "finding_status": ["OPEN"]}
 
 
 async def test_exposed_layer_stays_not_available_past_the_finding_cap(monkeypatch):

@@ -306,6 +306,73 @@ async def apply_recompute(
     return counts
 
 
+async def remap_members(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    vertical: str,
+    remap: dict[str, str | None],
+    retired_line: str,
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> dict[str, int]:
+    """Move the members a source re-keyed onto their new id, in place; answers the counts.
+
+    *remap* maps ``source:old`` to ``source:new``, or to ``None`` to retire the member. A moved
+    member keeps its row (so the case keeps its history, owner, tickets, SLA and validations);
+    when the case already holds the new id (a duplicate joined since), the two rows merge into
+    one, open when either was. A retired member leaves the case with *retired_line* in its
+    history and counts neither open nor closed. Pinned issues follow their member.
+    """
+    now = now or datetime.now(UTC)
+    counts = {"remapped": 0, "merged": 0, "retired": 0}
+    if not remap:
+        return counts
+    cases = await _scope_cases(db, organization_id, vertical)
+    members = await _members(db, [c.id for c in cases])
+    for case in cases:
+        rows = {f"{r.source}:{r.external_id}": r for r in members.get(case.id, [])}
+        pinned = list(case.pinned_issues or [])
+        for old, new in remap.items():
+            row = rows.get(old)
+            if row is None:
+                continue
+            if new is None:
+                await db.delete(row)
+                rows.pop(old)
+                pinned = [p for p in pinned if p != old]
+                db.add(_event(case.id, actor, "note", issue=old, reason=retired_line, at=now))
+                counts["retired"] += 1
+                continue
+            kept = rows.get(new)
+            if kept is not None:
+                kept.open = kept.open or row.open
+                await db.delete(row)
+                counts["merged"] += 1
+            else:
+                row.source, row.external_id = _split_member(new)
+                rows[new] = row
+                counts["remapped"] += 1
+            rows.pop(old)
+            pinned = list(dict.fromkeys(new if p == old else p for p in pinned))
+            db.add(
+                _event(
+                    case.id,
+                    actor,
+                    "note",
+                    issue=new,
+                    from_value=old,
+                    to_value=new,
+                    reason=f"{retired_line}: {old} is now {new}",
+                    at=now,
+                )
+            )
+        if pinned != list(case.pinned_issues or []):
+            case.pinned_issues = pinned
+    await db.flush()
+    return counts
+
+
 async def _source_signal(
     db: AsyncSession,
     organization_id: uuid.UUID,

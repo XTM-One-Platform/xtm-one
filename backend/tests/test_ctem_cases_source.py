@@ -142,7 +142,7 @@ def test_a_cve_shared_by_two_stack_products_is_one_issue_and_one_case_per_produc
     assert set(grouping.groups) == {"upgrade:google/chrome@latest", "upgrade:microsoft/edge@latest"}
 
 
-def test_openaev_finding_lifecycle_is_read_when_present_and_absent_otherwise():
+def test_openaev_finding_lifecycle_is_read_from_the_finding_and_absent_from_a_search_row():
     findings = [
         {
             "finding_id": "f-1",
@@ -151,7 +151,7 @@ def test_openaev_finding_lifecycle_is_read_when_present_and_absent_otherwise():
             "finding_last_tested": "2026-11-21T10:00:00Z",
         },
         {"finding_id": "f-2", "finding_value": "CVE-2026-2", "finding_status": "OPEN", "finding_retest_inject_id": "inj-9"},
-        {"finding_id": "f-3", "finding_value": "CVE-2026-3"},  # an OpenAEV older than the lifecycle
+        {"finding_id": "f-3", "finding_value": "CVE-2026-3"},  # a search row: no status (OpenAEV #9233)
     ]
     one, two, three = source.openaev_issues(findings)
     assert one.retest_status == "not_reproduced" and one.last_tested_at.startswith("2026-11-21T10:00")
@@ -162,7 +162,7 @@ def test_openaev_finding_lifecycle_is_read_when_present_and_absent_otherwise():
 
 @pytest.mark.asyncio
 async def test_recompute_writes_nothing_when_a_product_cannot_answer(monkeypatch):
-    async def read(db, user_id, vertical, *, now=None, members=None):
+    async def read(db, user_id, vertical, *, now=None, members=None, remap=False):
         return source.SourceRead(issues=[], missing=["openaev"])
 
     async def apply(*a, **kw):
@@ -186,7 +186,8 @@ async def test_recompute_merges_and_resolves_only_what_the_reader_confirms_close
     gone = rules.SourceIssue(source="opencti", external_id="v-9", name="CVE-2026-9")
     asked: list = []
 
-    async def read(db, user_id, vertical, *, now=None, members=None):
+    async def read(db, user_id, vertical, *, now=None, members=None, remap=False):
+        assert remap is True  # the recompute matches the members OpenAEV #9233 re-keyed
         asked.append(members)
         return source.SourceRead(issues=[issue], closed=[gone], complete=complete)
 
@@ -230,6 +231,7 @@ AEV_FINDING_FILTERABLE = frozenset(
         "finding_tags",
         "finding_created_at",
         "finding_updated_at",
+        "finding_status",
         "finding_assets",
         "finding_teams",
         "finding_users",
@@ -266,7 +268,7 @@ async def test_openaev_findings_search_filters_only_on_keys_finding_accepts(monk
         issues = await source._read_openaev(client, "https://aev", {}, source.datetime.now(source.UTC))
     assert issues is not None and [i.external_id for i in issues] == ["f-1"]
     keys = [f["key"] for f in sent[0]["filterGroup"]["filters"]]
-    assert keys == ["finding_type", "finding_created_at"]
+    assert keys == ["finding_type", "finding_status", "finding_updated_at"]
     assert set(keys) <= AEV_FINDING_FILTERABLE
 
 

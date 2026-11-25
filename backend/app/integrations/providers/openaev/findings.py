@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""OpenAEV finding + vulnerability tools (writes).
+"""OpenAEV finding + vulnerability tools.
 
-* ``manage_openaev_finding``       - finding CRUD (search is in the core
-  search_openaev_findings tool).
+* ``manage_openaev_finding``       - finding reads: get and summary (OpenAEV #9233 removed the
+  finding create, update and delete endpoints: a finding is produced by an inject's detection,
+  one per type, value and location; search is the core search_openaev_findings tool).
 * ``manage_openaev_vulnerability`` - vulnerability list/get/create/update/delete
   (CVE lookup is in the core get_openaev_vulnerability tool).
 """
@@ -15,7 +16,7 @@ import logging
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
-from ._common import _api, _search_body, json_answer
+from ._common import _api, _fmt_finding, _search_body, json_answer
 
 logger = logging.getLogger(__name__)
 
@@ -25,80 +26,31 @@ _SOURCE = "integration:openaev"
 def register(
     base_url: str, headers: dict[str, str], executor: CallableToolExecutor
 ) -> list[ToolDefinition]:
-    async def manage_openaev_finding(
-        action: str = "",
-        finding_id: str = "",
-        field: str = "",
-        finding_type: str = "",
-        value: str = "",
-        labels: list[str] | None = None,
-        inject_id: str = "",
-    ) -> str:
+    async def manage_openaev_finding(action: str = "", finding_id: str = "") -> str:
         action = (action or "").strip().lower()
-
-        def _body() -> dict:
-            b: dict = {}
-            if field:
-                b["finding_field"] = field
-            if finding_type:
-                b["finding_type"] = finding_type
-            if value:
-                b["finding_value"] = value
-            if labels is not None:
-                b["finding_labels"] = labels
-            if inject_id:
-                b["finding_inject_id"] = inject_id
-            return b
-
+        if action not in ("get", "summary"):
+            return (
+                f"Unknown action '{action}'. Valid actions: get, summary. "
+                "(Use search_openaev_findings to search; findings are read-only.)"
+            )
+        if not finding_id:
+            return f"finding_id is required for action '{action}'."
         if action == "get":
-            if not finding_id:
-                return "finding_id is required for action 'get'."
             resp, err = await _api(
                 base_url, headers, "get", f"/api/findings/{finding_id}", "get finding"
             )
             if err:
                 return err
-            return json_answer(resp.json(), 2000)
-
-        if action in ("create", "update"):
-            if action == "create" and not (field and finding_type and value):
-                return "field, finding_type and value are required for action 'create'."
-            if action == "update" and not finding_id:
-                return "finding_id is required for action 'update'."
-            body = _body()
-            if action == "update" and not body:
-                return "Provide at least one field to update."
-            if action == "create":
-                resp, err = await _api(
-                    base_url, headers, "post", "/api/findings", "create finding",
-                    json=body,
-                )
-            else:
-                resp, err = await _api(
-                    base_url, headers, "put", f"/api/findings/{finding_id}",
-                    "update finding", json=body,
-                )
-            if err:
-                return err
-            f = resp.json()
-            verb = "Created" if action == "create" else "Updated"
-            return f"{verb} finding (id: {f.get('finding_id')})."
-
-        if action == "delete":
-            if not finding_id:
-                return "finding_id is required for action 'delete'."
-            _, err = await _api(
-                base_url, headers, "delete", f"/api/findings/{finding_id}",
-                "delete finding",
-            )
-            if err:
-                return err
-            return f"Deleted finding {finding_id}."
-
-        return (
-            f"Unknown action '{action}'. Valid actions: get, create, update, delete. "
-            "(Use search_openaev_findings to search.)"
+            body = resp.json()
+            if not isinstance(body, dict):
+                return json_answer(body, 2000)
+            return _fmt_finding(body, base_url) + "\n" + json_answer(body, 2000)
+        resp, err = await _api(
+            base_url, headers, "get", f"/api/findings/{finding_id}/summary", "get finding summary"
         )
+        if err:
+            return err
+        return json_answer(resp.json(), 4000)
 
     async def manage_openaev_vulnerability(
         action: str = "",
@@ -206,23 +158,19 @@ def register(
         ToolDefinition(
             name="manage_openaev_finding",
             description=(
-                "Manage OpenAEV findings. Actions: 'get' (finding_id), 'create' (field "
-                "+ finding_type + value, optional labels, inject_id), 'update' "
-                "(finding_id + fields), 'delete' (finding_id). Use "
-                "search_openaev_findings to search."
+                "Read an OpenAEV finding (read-only: findings are produced by inject "
+                "detections, one per type, value and location). Actions: 'get' "
+                "(finding_id: status OPEN / NOT_REPRODUCED / RESOLVED, assets, latest "
+                "inject, last tested), 'summary' (finding_id: the finding's summary). "
+                "Use search_openaev_findings to search."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["get", "create", "update", "delete"]},
+                    "action": {"type": "string", "enum": ["get", "summary"]},
                     "finding_id": {"type": "string"},
-                    "field": {"type": "string", "description": "Finding field/key."},
-                    "finding_type": {"type": "string", "description": "Contract output type (text, number, port, ...)."},
-                    "value": {"type": "string"},
-                    "labels": {"type": "array", "items": {"type": "string"}},
-                    "inject_id": {"type": "string", "description": "Related inject ID."},
                 },
-                "required": ["action"],
+                "required": ["action", "finding_id"],
             },
             source=_SOURCE,
         ),
