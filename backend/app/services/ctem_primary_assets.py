@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any
 
 from sqlalchemy import select
@@ -41,21 +43,104 @@ def _key(value: Any) -> str:
     return " ".join(str(value or "").split()).casefold()
 
 
+_TOKEN = re.compile(r"[a-z0-9]+")
+
+
+def _word_char(ch: str) -> bool:
+    return ("a" <= ch <= "z") or ("0" <= ch <= "9")
+
+
+def contains_word(p: str, r: str) -> bool:
+    """*p* equal to *r* or found in *r* between non ``[a-z0-9]`` characters (or the ends).
+
+    The whole-word rule the gate states as ``(^|[^a-z0-9])p($|[^a-z0-9])``, checked
+    with ``str.find`` so that no pattern is compiled per call (#2032: a regex per
+    pair thrashed the ``re`` cache and blocked the event loop for minutes).
+    """
+    if p == r:
+        return True
+    size, start = len(p), r.find(p)
+    while start != -1:
+        end = start + size
+        if (start == 0 or not _word_char(r[start - 1])) and (end == len(r) or not _word_char(r[end])):
+            return True
+        start = r.find(p, start + 1)
+    return False
+
+
+@lru_cache(maxsize=65536)
+def _needle(product: str) -> str:
+    """*product* as the word :func:`product_matches` looks for."""
+    return product.strip().lower().replace("_", " ")
+
+
+@lru_cache(maxsize=65536)
+def _haystack(ref: str) -> str:
+    """*ref* as the text :func:`product_matches` looks in (a CPE's product part)."""
+    r = ref.strip().lower()
+    if r.startswith("cpe:"):
+        parts = r.split(":")
+        r = parts[4] if len(parts) > 4 else r
+    return r.replace("_", " ")
+
+
 def product_matches(product: str, ref: str) -> bool:
     """An installed *product* named by a software reference *ref* (a name, or a CPE's product part).
 
     The same rule as the gate's software match: equal, or *product* as a whole
     word of *ref* (``Windows`` in ``windows_10``, never ``win`` in ``windows``).
     """
-    p, r = str(product or "").strip().lower(), str(ref or "").strip().lower()
+    p, r = _needle(str(product or "")), _haystack(str(ref or ""))
     if not p or not r:
         return False
-    if r.startswith("cpe:"):
-        parts = r.split(":")
-        r = parts[4] if len(parts) > 4 else r
-    r = r.replace("_", " ")
-    p = p.replace("_", " ")
-    return p == r or re.search(rf"(^|[^a-z0-9]){re.escape(p)}($|[^a-z0-9])", r) is not None
+    return contains_word(p, r)
+
+
+class ProductIndex:
+    """Software names matched against references in either direction, by token (#2032).
+
+    :meth:`matching` answers the values *v* for which ``product_matches(v, ref)``
+    or ``product_matches(ref, v)`` holds, as a scan of every value would, but
+    reads only the values that share a word with *ref*: a whole-word match
+    keeps every ``[a-z0-9]`` token of the needle a token of the haystack.
+    """
+
+    def __init__(self, values: Iterable[Any]) -> None:
+        self.values: list[str] = list(dict.fromkeys(str(v) for v in values if str(v or "").strip()))
+        self._by_first: dict[str, list[int]] = {}
+        self._by_token: dict[str, list[int]] = {}
+        self._untokened: list[int] = []
+        for i, value in enumerate(self.values):
+            first = _TOKEN.search(_needle(value))
+            if first:
+                self._by_first.setdefault(first.group(), []).append(i)
+            else:
+                self._untokened.append(i)
+            for token in set(_TOKEN.findall(_haystack(value))):
+                self._by_token.setdefault(token, []).append(i)
+
+    def matching(self, ref: Any) -> list[str]:
+        """The values matching *ref* in either direction, in insertion order."""
+        text = str(ref or "")
+        if not text.strip():
+            return []
+        candidates = set(self._untokened)
+        for token in set(_TOKEN.findall(_haystack(text))):
+            candidates.update(self._by_first.get(token, ()))
+        first = _TOKEN.search(_needle(text))
+        if first:
+            candidates.update(self._by_token.get(first.group(), ()))
+        else:
+            candidates = set(range(len(self.values)))
+        return [
+            self.values[i]
+            for i in sorted(candidates)
+            if product_matches(self.values[i], text) or product_matches(text, self.values[i])
+        ]
+
+    def any_match(self, ref: Any) -> bool:
+        """Whether one value matches *ref* in either direction."""
+        return bool(self.matching(ref))
 
 
 @dataclass(frozen=True)
@@ -88,16 +173,20 @@ class PrimaryAssetIndex:
     reachers: list[Reacher] = field(default_factory=list)
     truncated: bool = False
     _cache: dict[str, frozenset[int]] = field(default_factory=dict, repr=False)
+    _labels: tuple[ProductIndex, dict[str, set[int]]] | None = field(default=None, repr=False)
 
     def _running(self, ref: str) -> frozenset[int]:
         """Indexes of the reachers running software *ref*, cached per reference."""
         hit = self._cache.get(ref)
         if hit is None:
-            hit = frozenset(
-                i
-                for i, r in enumerate(self.reachers)
-                if any(product_matches(label, ref) or product_matches(ref, label) for label in r.products.values())
-            )
+            if self._labels is None:
+                holders: dict[str, set[int]] = {}
+                for i, r in enumerate(self.reachers):
+                    for label in r.products.values():
+                        holders.setdefault(str(label), set()).add(i)
+                self._labels = (ProductIndex(holders), holders)
+            labels, holders = self._labels
+            hit = frozenset(i for label in labels.matching(ref) for i in holders[label])
             self._cache[ref] = hit
         return hit
 
@@ -288,16 +377,9 @@ async def load_index(
         soft = OrganizationAssetSoftware
         scope = [soft.organization_id == organization_id, soft.asset_id.in_(asset_ids)]
         if software is not None:
-            refs = [r for r in software if r]
+            refs = ProductIndex(r for r in software if r)
             products = (await db.execute(select(soft.product_key, soft.product).where(*scope).distinct())).all()
-            wanted = sorted(
-                {
-                    str(key)
-                    for key, product in products
-                    if product
-                    and any(product_matches(str(product), r) or product_matches(r, str(product)) for r in refs)
-                }
-            )
+            wanted = sorted({str(key) for key, product in products if product and refs.any_match(str(product))})
             scope.append(soft.product_key.in_(wanted))
         installed = (
             await db.execute(

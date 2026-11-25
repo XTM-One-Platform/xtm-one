@@ -1118,7 +1118,11 @@ async def _funnel_scope(db: AsyncSession | None, stack: list[dict[str, Any]]) ->
     except Exception as exc:  # a bad stored profile never breaks the posture
         logger.info("CTEM funnel scope unreadable: %s", format_exception_message(exc))
         return None
-    return funnel_scope(profile=profile, index=index, stack=stack, today=datetime.now(UTC).date())
+    # Pure CPU work over the whole inventory: off the event loop, so a large
+    # inventory never starves /api/health (#2032).
+    return await asyncio.to_thread(
+        funnel_scope, profile=profile, index=index, stack=stack, today=datetime.now(UTC).date()
+    )
 
 
 async def _octi_scope_counts(

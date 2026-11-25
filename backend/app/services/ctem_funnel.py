@@ -148,17 +148,25 @@ def funnel_scope(
     rules = policy_rules(policy)
 
     def labels_run_by(holders: list[Any]) -> list[str]:
-        from app.services.ctem_primary_assets import product_matches
+        """The stack labels whose product one of *holders* runs (either direction, whole word).
 
-        products = {p for r in holders for p in r.products.values()}
-        return [
-            e["label"]
-            for e in stack
-            if any(
-                product_matches(p, e.get("product") or "") or product_matches(e.get("product") or "", p)
-                for p in products
-            )
-        ]
+        Looked up by token (:class:`ProductIndex`), never as a products x stack
+        scan: that scan blocked the event loop for minutes on a real inventory (#2032).
+        """
+        from app.services.ctem_primary_assets import ProductIndex
+
+        products = ProductIndex(p for r in holders for p in r.products.values())
+        if not products.values:
+            return []
+        verdicts: dict[str, bool] = {}
+        out: list[str] = []
+        for e in stack:
+            ref = e.get("product") or ""
+            if ref not in verdicts:
+                verdicts[ref] = products.any_match(ref)
+            if verdicts[ref]:
+                out.append(e["label"])
+        return out
 
     business: dict[str, Any] = {"configured": bool(reachers)}
     if reachers:
