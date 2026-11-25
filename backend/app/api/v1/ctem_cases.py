@@ -137,14 +137,21 @@ def _with_history(running: dict[str, Any] | None, events: list[Any]) -> dict[str
 
 
 async def visible_case(
-    db: AsyncSession, case_id: uuid.UUID, user_id: str, vertical: str
+    db: AsyncSession, case_id: uuid.UUID, user_id: str, vertical: str, *, read_only: bool = False
 ) -> tuple[Any, dict[str, Any]] | None:
-    """The stored case and its rendering for *user_id*, ``None`` when they see none of its issues."""
+    """The stored case and its rendering for *user_id*, ``None`` when they see none of its issues.
+
+    *read_only* (the case page's read, #1986) lets a view retired by a generation bump
+    answer for this case's members while the new one builds; a change always reads the
+    view of the current generation.
+    """
     found = await store.get_case(db, case_id, organization_id=await _organization_id(db))
     if found is None:
         return None
     case, rows, events = found
-    rendered = view_of.hydrate(case, rows, events, await view_of.viewer_view(db, user_id, vertical))
+    members = [f"{r.source}:{r.external_id}" for r in rows] if read_only else None
+    view = await view_of.viewer_view(db, user_id, vertical, members=members)
+    rendered = view_of.hydrate(case, rows, events, view)
     if rendered is None:
         return None
     # The list's asset-count rule on the single read (#1704): list and case read agree.
@@ -577,6 +584,61 @@ async def ctem_cases_overview(
     return {"vertical": vertical, **overview.build(cases, view, history)}
 
 
+class CaseOpening(BaseModel):
+    """Turn CTEM case opening on or off (#1951)."""
+
+    on: bool
+    vertical: str | None = None
+
+
+@router.get("/opening")
+async def get_ctem_case_opening(
+    vertical: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Whether case opening runs, and how many confirmed signals wait for their case (#1951).
+
+    Answers ``{vertical, on, waiting}`` to anyone who reads CTEM cases.
+    """
+    _require_xtm_one()
+    from app.services import ctem_case_opening as case_opening
+
+    return await case_opening.state(db, normalize_vertical(vertical))
+
+
+@router.put("/opening")
+async def put_ctem_case_opening(
+    body: CaseOpening,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Pause or resume case opening, administrators only (#1951).
+
+    Off: no path opens a case; confirmed signals wait. On: a background drain opens the
+    cases of every waiting signal at once. One audit row and one
+    ``ctem_case.opening_changed`` event per change; the same value again changes nothing.
+    Answers ``{vertical, on, waiting, changed, draining}``.
+    """
+    _require_xtm_one()
+    from app.services import ctem_case_opening as case_opening
+    from app.services.platform_events import publish
+
+    vertical = normalize_vertical(body.vertical)
+    changed = await case_opening.set_opening(db, vertical=vertical, on=body.on, actor=admin)
+    await db.commit()
+    current = await case_opening.state(db, vertical)
+    if changed:
+        await publish(
+            case_opening.OPENING_CHANGED,
+            case_opening.event_data(vertical, body.on, admin, current["waiting"]),
+        )
+    draining = bool(body.on and current["waiting"])
+    if draining:
+        case_opening.start_drain(vertical)
+    return {**current, "changed": changed, "draining": draining}
+
+
 @router.get("/{case_id}")
 async def get_ctem_case(
     case_id: uuid.UUID,
@@ -593,7 +655,7 @@ async def get_ctem_case(
     phases = view_of.start_timing()
     vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
     async with view_of.timed("case"):
-        shown = await visible_case(db, case_id, str(user.id), vertical)
+        shown = await visible_case(db, case_id, str(user.id), vertical, read_only=True)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
     (case, _, events), rendered = shown
@@ -607,7 +669,7 @@ async def get_ctem_case(
             **rendered,
             **audit,
             "gates": gate_records,
-            # The versions the case's product runs on the assets (#1252), never a typed tech stack version.
+            # The versions the case's product runs on the assets (#1252), never a typed software version.
             "running_versions": _with_history(await case_versions.for_case(db, case), events),
             # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
             "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),

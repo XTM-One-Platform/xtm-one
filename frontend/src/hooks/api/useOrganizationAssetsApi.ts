@@ -331,7 +331,7 @@ export interface AssetGroupRecord {
   internet_facing: string;
   owner: string;
   tags: string[];
-  tech_stack: string[];
+  products: string[];
   source: string;
   external_id: string;
   member_count: number;
@@ -363,6 +363,32 @@ export function useAssetGroups(options: { throwOnError?: false } = {}) {
     queryKey: GROUPS_KEY,
     queryFn: () => api.get("/organization-context/asset-groups"),
     ...options,
+  });
+}
+
+/** How many assets and groups support one primary asset, by where the link comes from (#1978 S2). */
+export interface PrimaryAssetLinkCount {
+  total: number;
+  manual: number;
+  opencrq: number;
+  rule: number;
+}
+
+/** The key a primary asset's links are counted under: its name, whitespace collapsed and lower-cased (the API's key). */
+export function primaryAssetLinkKey(name: string): string {
+  return name.split(/\s+/).filter(Boolean).join(" ").toLowerCase();
+}
+
+/**
+ * The stored links of every primary asset, counted (`GET /primary-assets/link-counts`, #1978 S2): a link an OpenCRQ
+ * or rule sync wrote shows here, the profile's `asset_names` holding only the names a person typed. Under the asset
+ * key, so an asset write reads it again.
+ */
+export function usePrimaryAssetLinkCounts() {
+  return useQuery<{ items: Record<string, PrimaryAssetLinkCount> }>({
+    queryKey: [...KEY, "primary-asset-link-counts"],
+    queryFn: () => api.get("/organization-context/primary-assets/link-counts"),
+    throwOnError: false,
   });
 }
 

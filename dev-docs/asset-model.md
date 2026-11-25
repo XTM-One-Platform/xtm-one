@@ -156,6 +156,13 @@ the sync's filters (the import step's keys read on the XTM One row: `tags`, `sea
 `category`, `subcategory`, `criticality`, `internet_facing`, `environment`, `platform`) is deleted from OpenAEV only
 when this sync created it. The same filters select the AI target assets an outbound `assets` sync pushes (section 7).
 
+**Changing a sync's filters (#1982 S2).** `POST /api/v1/organization-context/syncs/{sync_id}/preview` takes the
+settings the Edit dialog would save (`filters`, `batch_type`, `remove_gone`, `excluded_external_ids`) and answers
+what the next run would do with them, nothing written: inbound, the rows that enter, are updated, leave (rows this
+sync wrote, removed only with `remove_gone`, plus excluded ids) and are kept (another writer wrote them); outbound,
+the platform rows the run would create, update and delete (only rows in `outbound_ids`). It reads with the calling
+administrator's token, the one saving then makes the runs read with.
+
 ## 6. Tags, environment, external id, platform
 
 | Concept | OpenAEV | OpenCRQ | OpenCTI | XTM One |
@@ -163,7 +170,7 @@ when this sync created it. The same filters select the AI target assets an outbo
 | Tags | `asset_tags` (tag entities) | `supporting_asset_tags` with their origin (`tag_sources`: a person, OpenAEV, XTM One) | `objectLabel` | `tags` (names) |
 | Environment | none (a tag by convention) | none | none | `environment` (production, staging, development, test, other); pushed to OpenAEV as the tag `env:<value>` |
 | External id | `asset_external_reference` | `external_reference`, and per source `source_asset_id` | `externalReferences` | `external_id`, with `source` naming the origin |
-| Tech stack | none on the asset (Endpoint: `endpoint_platform`, `endpoint_arch`, `endpoint_is_eol`) | endpoint facts: `operating_system`, `os_version`, `platform`, `arch`, `is_eol` | none | `tech_stack` (product names of the profile's tech stack) |
+| Tech stack | none on the asset (Endpoint: `endpoint_platform`, `endpoint_arch`, `endpoint_is_eol`) | endpoint facts: `operating_system`, `os_version`, `platform`, `arch`, `is_eol` | none | `products` (product names of the organization's software) |
 | Network | `asset_hostname`, `asset_ips`, `asset_mac_addresses`, `asset_seen_ip`, `asset_url` | endpoint facts: `hostname`, `ip_addresses`, `mac_addresses`, `seen_ip`; `url` | none | none (the profile names assets, it is not an inventory) |
 | Cloud | `asset_cloud_provider`, `asset_cloud_native_type`, `asset_cloud_region` | `cloud_provider`, `cloud_native_type`, `cloud_region` | none | none |
 
@@ -366,6 +373,10 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
   group page `/ctem/inventory/asset-groups/:id` reads its members through that filter, paged on the server.
 - `PUT /api/v1/organization-context/primary-assets/{name}/links` `{names}`: the records and groups a primary asset
   covers; 404 for an unknown primary asset, 422 naming what matches nothing.
+- `GET /api/v1/organization-context/primary-assets/link-counts`: per primary asset key, the stored links counted
+  `{total, manual, opencrq, rule}` (removals left out, one grouped query, #1978 S2). The Assets column of the primary
+  assets table reads it: a synced link shows as a count, never as a list, the profile's `asset_names` holding only
+  the names a person typed.
 - The profile API never writes a row once the records are imported (#1752): `PUT /api/v1/organization-context`
   and `POST .../versions/{v}/restore` ignore `assets_exposure`, `asset_groups` and `ai_systems` (the stored
   version's lists are kept, so `save_version` applies no row write and the synced-row lock never judges a
@@ -439,7 +450,9 @@ assets running a product.
   import and sync section and the outbound pairing are all `software`. `s1495swprofile01` turned each profile
   tech stack row into a hand-typed Software (a hand CPE kept as the override) and renamed stored category
   selections; `s1495swsection01` renames the saved syncs' section and any selection still naming it.
-  The profile list the rows are stored under keeps its key `tech_stack` until the profile field is dropped.
+  `s1495swfield01` renamed the profile field itself to `software`; `s1495products01` renames the product list
+  each asset and asset group carries (`assets_exposure[].products`, `asset_groups[].products`, the inventory
+  store's `fields.products`, the CSV column `products`) and the scope gate's `reconcile.products`.
 - `upsert_organization_rows(section="software")` writes Software entities, not profile rows:
   a row whose vendor and product a software already carries is reported `unchanged` and never overwritten;
   a new one becomes a hand-typed Software (`create_software`, its typed version stored as a version). Rows are

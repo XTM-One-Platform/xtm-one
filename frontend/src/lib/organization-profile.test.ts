@@ -64,7 +64,7 @@ describe("organization profile form", () => {
       ...PROFILE,
       primary_assets: [{ ...PROFILE.primary_assets[0], asset_names: ["web-1"] }],
       assets_exposure: [
-        { name: "web-1", category: "host", subcategory: "", criticality: "unknown", environment: "production", internet_facing: "yes", owner: "", group: "", tech_stack: ["nginx"], tags: [], source: "csv", external_id: "" },
+        { name: "web-1", category: "host", subcategory: "", criticality: "unknown", environment: "production", internet_facing: "yes", owner: "", group: "", products: ["nginx"], tags: [], source: "csv", external_id: "" },
       ],
       prioritization_policy: {
         cvss_min: 7,

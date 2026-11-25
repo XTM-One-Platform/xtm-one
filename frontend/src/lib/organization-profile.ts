@@ -340,7 +340,7 @@ export interface AssetRow {
   internet_facing: "yes" | "no" | "unknown";
   owner: string;
   group: string;
-  tech_stack: string[];
+  products: string[];
   tags: string[];
   source: string;
   external_id: string;
@@ -357,7 +357,7 @@ export interface AssetGroupRow {
   environment: string;
   internet_facing: "yes" | "no" | "unknown";
   owner: string;
-  tech_stack: string[];
+  products: string[];
   tags: string[];
   source: string;
   external_id: string;

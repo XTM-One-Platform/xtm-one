@@ -445,6 +445,75 @@ async def _run_outbound(
         )
 
 
+def _change_counts(enter: list[str], update: list[str], leave: list[str], kept: list[str]) -> dict[str, Any]:
+    from app.services.organization_context_import import SAMPLE_SIZE
+
+    return {
+        "counts": {"enter": len(enter), "update": len(update), "leave": len(leave), "kept": len(kept)},
+        "enter": enter[:SAMPLE_SIZE],
+        "update": update[:SAMPLE_SIZE],
+        "leave": leave[:SAMPLE_SIZE],
+        "kept": kept[:SAMPLE_SIZE],
+    }
+
+
+async def preview_change(
+    db: AsyncSession,
+    sync: OrganizationContextSync,
+    *,
+    user_id: uuid.UUID,
+    filters: dict[str, Any],
+    batch_type: str,
+    remove_gone: bool,
+    excluded_ids: list[str] | None,
+) -> dict[str, Any]:
+    """What the next run of *sync* would do with these settings, before they are saved (#1982 S2).
+
+    Read with *user_id*'s token (saving makes it the one the runs read with). Inbound: the rows the
+    platform would add (``enter``), update, and the rows this sync wrote that would be removed
+    (``leave``, only with ``remove_gone``) or kept because another writer wrote them (``kept``).
+    Outbound: the platform rows the run would create (``enter``), update and delete (``leave``,
+    only rows this sync created). Nothing is written to the platform, the profile or the sync.
+    """
+    from types import SimpleNamespace
+
+    from app.services import organization_context_import as imp
+    from app.services import organization_context_outbound as outbound
+
+    direction = getattr(sync, "direction", None) or "inbound"
+    if direction == "outbound":
+        proposed = SimpleNamespace(
+            section=sync.section,
+            source=sync.source,
+            filters=filters,
+            outbound_ids=dict(getattr(sync, "outbound_ids", None) or {}),
+        )
+        pushed, _ids = await outbound.run_outbound(db, proposed, user_id=user_id, apply=False)
+        enter = [name for name, _ in pushed.create]
+        update = [name for _, name, _ in pushed.update]
+        leave = [key for key, _ in pushed.delete]
+        return {"direction": direction, **_change_counts(enter, update, leave, []), "error": pushed.error or None}
+    plan, _version = await imp.preview_import(
+        db,
+        user_id=user_id,
+        section=sync.section,
+        source=sync.source,
+        filters=filters,
+        batch_type=batch_type,
+        remove_gone=remove_gone,
+        excluded_ids=clean_exclusions(list(excluded_ids or [])),
+        sync_id=str(sync.id),
+    )
+    kept = list(plan.gone_kept)
+    leave = [name for name in plan.gone if name not in set(kept)] if remove_gone else []
+    leave += list(plan.excluded_removed)
+    return {
+        "direction": direction,
+        **_change_counts(list(plan.new), list(plan.updated), leave, kept),
+        "error": plan.error or None,
+    }
+
+
 async def section_syncs(db: AsyncSession) -> list[OrganizationContextSync]:
     """Every enabled, unpaused section sync, in the order they were saved (what ``all`` runs)."""
     return list(
