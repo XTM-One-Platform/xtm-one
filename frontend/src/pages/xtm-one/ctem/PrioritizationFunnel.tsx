@@ -81,6 +81,7 @@ import {
   type FunnelRow,
 } from "./prioritization-funnel";
 import { HiddenChartValues } from "./stage-heroes";
+import { signalsHref } from "./loop/signals-route";
 
 /** OpenCTI, opened in a new tab; nothing when its URL is unknown or unsafe. */
 function OpenOpenCti({ openctiUrl }: { openctiUrl?: string | null }) {
@@ -820,6 +821,19 @@ function SignalGateCounts() {
       {/* UX r1 B1 on #875: the card already counts open cases; this line names its
           scope (signals) so its "opened a case" never reads as a second case total. */}
       {t_i18n("Signals: {total} in, {confirmed} confirmed, {inScope} in scope, {cases} opened a case, {watchlist} on the watchlist", gate)}
+      {/* #874 S2: the watchlist is a filter of the signals list (`/ctem/signals?state=watchlist`). */}
+      {gate.watchlist > 0 && (
+        <>
+          {" "}
+          <Link
+            to={signalsHref({ state: "watchlist" })}
+            className={cn("rounded-sm text-accent hover:underline", BUTTON_ROLE_FOCUS_RING)}
+            data-testid="ctem-funnel-gate-watchlist"
+          >
+            {t_i18n("Show the watchlist")}
+          </Link>
+        </>
+      )}
     </p>
   );
 }

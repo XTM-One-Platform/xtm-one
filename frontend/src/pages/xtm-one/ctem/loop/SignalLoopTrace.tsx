@@ -26,7 +26,7 @@ import { isNotFoundError } from "@/lib/api";
 import { formatDayIntl, formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { cn, safeExternalUrl } from "@/lib/utils";
-import { DecisionReason, decisionSentence, levelLabel } from "./DecisionReason";
+import { DecisionReason, decisionSentence, gateStep, levelLabel } from "./DecisionReason";
 import { EVIDENCE_HEALTH_ROW_KEYS, EVIDENCE_STATE_LABEL, evidenceHealthFacts, type EvidenceHealthFact } from "./evidence-health";
 import { signalLoop, type LoopStageView } from "./loop-stages";
 import { caseDetailPath } from "../cases-kanban";
@@ -641,6 +641,7 @@ function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCas
   const { t_i18n, intl } = useFormatter();
   const stages = signalLoop(signal);
   const caseLink = signalCaseLink(signal.case_id, currentCaseId);
+  const formatDay = (iso: string) => formatDayIntl(intl, iso);
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 content-compact text-default-secondary">
@@ -655,7 +656,10 @@ function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCas
           896 px at most, so a row of ten cells (81 px each) wraps its labels
           and staggers the status captions; the list keeps one baseline. */}
       <ol className="flex flex-col gap-0" aria-label={t_i18n("Loop stages")} data-testid="ctem-loop-stages">
-        {stages.map((stage, index) => (
+        {stages.map((stage, index) => {
+          // #874 S2: the reconcile and scope gates are drawn as steps with their decision, reason and next step.
+          const gate = gateStep(stage.key, stage.status, signal.state, signal.decision, t_i18n, formatDay);
+          return (
           <li
             key={stage.key}
             data-stage={stage.key}
@@ -677,11 +681,27 @@ function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCas
               <span className="block content-caption text-default-secondary">
                 {t_i18n(STATUS_LABEL[stage.status])}
                 {stage.at ? ` · ${formatShortDateTimeIntl(intl, stage.at)}` : ""}
-                {/* The stage where the loop stopped names why (#851 UX round 2 B4). */}
-                {stage.status === "stopped" || stage.status === "parked"
-                  ? ` · ${decisionSentence(signal.decision, t_i18n, (iso) => formatDayIntl(intl, iso))}`
-                  : ""}
+                {/* The stage where the loop stopped names why (#851 UX round 2 B4); a gate says it in its own lines below. */}
+                {!gate && (stage.status === "stopped" || stage.status === "parked") ? ` · ${decisionSentence(signal.decision, t_i18n, formatDay)}` : ""}
               </span>
+              {gate && (
+                <dl className="mt-0.5 grid grid-cols-[auto_1fr] gap-x-3 content-caption" data-testid="ctem-loop-gate" data-gate={stage.key}>
+                  <dt className="text-default-secondary">{t_i18n("Decision")}</dt>
+                  <dd className="min-w-0 break-words font-medium">{gate.decision}</dd>
+                  {gate.reason && (
+                    <>
+                      <dt className="text-default-secondary">{t_i18n("Reason")}</dt>
+                      <dd className="min-w-0 break-words">{gate.reason}</dd>
+                    </>
+                  )}
+                  {gate.next && (
+                    <>
+                      <dt className="text-default-secondary">{t_i18n("Next step")}</dt>
+                      <dd className="min-w-0 break-words">{gate.next}</dd>
+                    </>
+                  )}
+                </dl>
+              )}
             </span>
             {stage.key === "case" && caseLink && (
               <Button asChild variant="link" size="sm" className="h-auto shrink-0 gap-1 p-0">
@@ -692,7 +712,8 @@ function SignalTrace({ signal, currentCaseId }: { signal: CtemSignal; currentCas
               </Button>
             )}
           </li>
-        ))}
+          );
+        })}
       </ol>
     </div>
   );

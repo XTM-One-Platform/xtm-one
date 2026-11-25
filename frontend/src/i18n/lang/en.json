@@ -20003,6 +20003,8 @@
   "Becomes a case once OpenCRQ can be read and a risk scenario holds it": "Becomes a case once OpenCRQ can be read and a risk scenario holds it",
   "Becomes a case once an asset at or above {threshold} holds it": "Becomes a case once an asset at or above {threshold} holds it",
   "Becomes a case if criticality rises to {threshold}": "Becomes a case if criticality rises to {threshold}",
+  "Confidence {confidence}": "Confidence {confidence}",
+  "Show the watchlist": "Show the watchlist",
   "None matched": "None matched",
   "{lenses} ({count, plural, one {# lens} other {# lenses agree}})": "{lenses} ({count, plural, one {# lens} other {# lenses agree}})",
   "Unknown, threshold {threshold}": "Unknown, threshold {threshold}",
