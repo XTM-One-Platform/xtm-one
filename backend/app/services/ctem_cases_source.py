@@ -370,7 +370,9 @@ async def _matcher_stack(db: AsyncSession) -> list[dict[str, Any]]:
     """The software the OpenCTI issues are read for, each with every version the device inventory
     reports (#2038): the same versions the case's ``running_versions`` shows, so each gets its
     own outcome. The inventory failing keeps the software's own versions."""
+    started = time.perf_counter()
     stack = await _organization_software(db)
+    software_ms = (time.perf_counter() - started) * 1000
     if not stack:
         return stack
     from app.services import ctem_case_versions as case_versions
@@ -381,12 +383,29 @@ async def _matcher_stack(db: AsyncSession) -> list[dict[str, Any]]:
         if row is None:
             return stack
         labels = [e["label"] for e in stack if e.get("label")]
+        lap = time.perf_counter()
         inventory = await case_versions.inventory_versions(db, row.organization_id, labels)
+        versions_ms = (time.perf_counter() - lap) * 1000
+        lap = time.perf_counter()
         platforms = await case_versions.inventory_platforms(db, row.organization_id, labels)
+        platforms_ms = (time.perf_counter() - lap) * 1000
     except Exception as exc:  # the inventory never breaks the issues read
         logger.info("CTEM cases: inventory versions unavailable: %s", format_exception_message(exc))
         return stack
-    return with_inventory_platforms(with_inventory_versions(stack, inventory), platforms)
+    lap = time.perf_counter()
+    merged = with_inventory_platforms(with_inventory_versions(stack, inventory), platforms)
+    # Where the products phase of a view build spends its time before any product call (#2232):
+    # 110 s of a 111 s build on ctem.one with both product reads rejected in under a second.
+    logger.info(
+        "CTEM cases: matcher stack of %d software: software %.0f ms, inventory versions %.0f ms, "
+        "inventory platforms %.0f ms, merge %.0f ms",
+        len(stack),
+        software_ms,
+        versions_ms,
+        platforms_ms,
+        (time.perf_counter() - lap) * 1000,
+    )
+    return merged
 
 
 def with_inventory_platforms(
