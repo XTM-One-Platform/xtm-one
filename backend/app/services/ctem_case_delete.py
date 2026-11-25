@@ -388,8 +388,7 @@ def _package_draft(url: Any) -> str:
 
 async def _patch_coverage(base_url: str, headers: dict[str, str], coverage_id: str, draft_id: str) -> str | None:
     """Set ``auto_enrichment_disable`` true on *coverage_id* in *draft_id* (live when empty); the error or ``None``."""
-    import httpx
-
+    from app.core.egress import egress_client
     from app.integrations.providers.opencti._common import _DRAFT_HEADER, _graphql
     from app.integrations.providers.opencti.capabilities import attach_probe
     from app.integrations.providers.opencti.security_coverage import _PATCH_MUTATION
@@ -398,7 +397,7 @@ async def _patch_coverage(base_url: str, headers: dict[str, str], coverage_id: s
     if draft_id:
         sent[_DRAFT_HEADER] = draft_id
     variables = {"id": coverage_id, "input": [{"key": "auto_enrichment_disable", "value": [True]}]}
-    async with httpx.AsyncClient(timeout=COVERAGE_TIMEOUT) as client:
+    async with egress_client(timeout=COVERAGE_TIMEOUT) as client:
         data, err = await _graphql(client, base_url, attach_probe(sent, base_url), _PATCH_MUTATION, variables)
     if err:
         return err
