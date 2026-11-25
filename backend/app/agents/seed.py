@@ -69,6 +69,7 @@ from app.services.agent_config_versioning import (
 from app.services.assignment_activation_check import parse_activation_check
 from app.services.assignment_dispatch import seeded_trigger_config
 from app.services.assignment_pause import (
+    FLEET_PAUSE_REASON,
     clear_pause_provenance,
     is_emergency_stopped,
     mark_schedule_resumed,
@@ -898,6 +899,14 @@ async def seed_builtin_assignments(
                 # for an automation that writes shared data under an identity
                 # only an administrator can choose.
                 pass
+            elif desired_enabled and existing.paused_reason == FLEET_PAUSE_REASON and not was_enabled:
+                # A fleet's Pause all switched it off (#2157: the dashboard schedules of a
+                # seeded fleet's members): the fleet's Resume re-enables it, a boot never does.
+                logger.info(
+                    "Built-in assignment '%s' (agent '%s') stays paused: its fleet is paused.",
+                    data["name"],
+                    agent_slug,
+                )
             elif desired_enabled and emergency_stopped:
                 # An emergency stop outlives a restart: the stop's resume
                 # re-enables this assignment, a boot never does. The stamp

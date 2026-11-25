@@ -88,10 +88,16 @@ class FleetControlOutcome:
 _AutomationRow = tuple[Any, Agent]
 
 
-async def _fleet_automation_rows(db: AsyncSession, fleet: Fleet, *, lock: bool) -> list[_AutomationRow]:
-    """``(assignment, agent)`` of *fleet*'s home members' fleet automations, assignments locked when *lock*."""
+async def _fleet_automation_rows(
+    db: AsyncSession, fleet: Fleet, *, lock: bool, dashboard: bool = False
+) -> list[_AutomationRow]:
+    """``(assignment, agent)`` of *fleet*'s home members' fleet automations, assignments locked when *lock*.
+
+    *dashboard* adds the dashboard schedules of a built-in fleet's members (#2157), which
+    Pause all and Resume act on beside the fleet automations.
+    """
     from app.models.assignment import Assignment
-    from app.services.fleet_views import home_member_ids, is_fleet_automation
+    from app.services.fleet_views import home_member_ids, is_dashboard_schedule, is_fleet_automation
 
     ids = home_member_ids(await fleet_members(db, fleet.id), fleet.orchestrator_agent_id)
     if not ids:
@@ -109,24 +115,33 @@ async def _fleet_automation_rows(db: AsyncSession, fleet: Fleet, *, lock: bool) 
         (assignment, agent)
         for assignment, agent in (await db.execute(query)).all()
         if is_fleet_automation(agent.slug, bool(agent.is_builtin), assignment.name, builtin_fleet=builtin_fleet)
+        or (
+            dashboard
+            and is_dashboard_schedule(agent.slug, bool(agent.is_builtin), assignment.name, builtin_fleet=builtin_fleet)
+        )
     ]
 
 
-async def _fleet_automations(db: AsyncSession, fleet: Fleet, *, lock: bool) -> list:
-    """The fleet automations of *fleet*'s home members, rows locked for the write when *lock*."""
-    return [assignment for assignment, _agent in await _fleet_automation_rows(db, fleet, lock=lock)]
+async def _fleet_automations(db: AsyncSession, fleet: Fleet, *, lock: bool, dashboard: bool = False) -> list[Any]:
+    """The fleet automations of *fleet*'s home members, rows locked for the write when *lock*.
+
+    *dashboard* adds the members' dashboard schedules (#2157), the population of Pause all and Resume.
+    """
+    return [
+        assignment for assignment, _agent in await _fleet_automation_rows(db, fleet, lock=lock, dashboard=dashboard)
+    ]
 
 
 async def pausable_count(db: AsyncSession, fleet: Fleet) -> int:
     """How many automations Pause all would switch off now (a dry run, nothing locked)."""
-    return sum(1 for a in await _fleet_automations(db, fleet, lock=False) if a.enabled)
+    return sum(1 for a in await _fleet_automations(db, fleet, lock=False, dashboard=True) if a.enabled)
 
 
 async def resumable_count(db: AsyncSession, fleet: Fleet) -> int:
     """How many automations Resume would switch back on now (a dry run, nothing locked)."""
     return sum(
         1
-        for a in await _fleet_automations(db, fleet, lock=False)
+        for a in await _fleet_automations(db, fleet, lock=False, dashboard=True)
         if not a.enabled and a.paused_reason == FLEET_PAUSE_REASON
     )
 
@@ -137,11 +152,12 @@ async def pause_fleet(
     """Switch off every fleet automation of *fleet* that is on, stamped ``fleet_pause``.
 
     Idempotent: nothing on, nothing changed. Off automations keep their own
-    pause stamp, so a resume never switches them on.
+    pause stamp, so a resume never switches them on. The dashboard schedules of a
+    built-in fleet's members (#2157) are paused too: they run while the badge reads off.
     """
     label = actor_display_name(actor)
     details = f"Every automation of the fleet '{fleet.name}' paused by {label}."
-    paused = [a for a in await _fleet_automations(db, fleet, lock=True) if a.enabled]
+    paused = [a for a in await _fleet_automations(db, fleet, lock=True, dashboard=True) if a.enabled]
     for assignment in paused:
         pause_assignment(
             assignment,
@@ -170,7 +186,7 @@ async def resume_fleet(
         raise FleetActionRefusedError(409, RESUME_REFUSED_DURING_STOP)
     resumed = [
         a
-        for a in await _fleet_automations(db, fleet, lock=True)
+        for a in await _fleet_automations(db, fleet, lock=True, dashboard=True)
         if not a.enabled and a.paused_reason == FLEET_PAUSE_REASON
     ]
     for assignment in resumed:
