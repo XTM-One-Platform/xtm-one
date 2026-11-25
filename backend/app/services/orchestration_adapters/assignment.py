@@ -184,6 +184,8 @@ def is_interactive_run(trigger_context: object, answered: object) -> bool:
     A work item dispatched to its owner's inbox (``trigger_context.type`` ``work_item``), a person's answer
     to a decision (the ``work_item.status_changed`` event carrying ``answered``, the "Gate answered"
     assignments), or a work item's release. Every other platform, integration or scheduled event is bulk.
+    ``answered`` is the payload's ``answered`` read as text (``->>``, never a SQL cast: a webhook payload may
+    carry any value under that key), so only the JSON literal ``true`` counts.
     """
     if not isinstance(trigger_context, dict):
         return False
@@ -192,7 +194,7 @@ def is_interactive_run(trigger_context: object, answered: object) -> bool:
         return True
     if kind != "platform_event":
         return False
-    return answered is True or trigger_context.get("event") in _INTERACTIVE_EVENTS
+    return answered is True or answered == "true" or trigger_context.get("event") in _INTERACTIVE_EVENTS
 
 
 async def fair_share_deal(
@@ -227,7 +229,9 @@ async def fair_share_deal(
                 AssignmentRun.parent_run_id,
                 AssignmentRun.assignment_id,
                 AssignmentRun.trigger_context,
-                AssignmentRun.trigger_payload["answered"].as_boolean(),
+                # Text, not a boolean cast: one non-boolean ``answered`` in a webhook payload would fail the
+                # whole read and stall every claim of the cycle.
+                AssignmentRun.trigger_payload["answered"].as_string(),
             ).where(AssignmentRun.id.in_(list(run_of.values())))
         )
     ).all()

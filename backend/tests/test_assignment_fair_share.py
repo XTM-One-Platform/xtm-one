@@ -186,6 +186,11 @@ def test_a_burst_on_a_three_slot_pool_never_holds_a_gate_answer_back() -> None:
     [
         ({"type": "work_item"}, None, True),
         ({"type": "platform_event", "event": "work_item.status_changed"}, True, True),
+        # The payload's ``answered`` as ``->>`` text: only the JSON literal true counts.
+        ({"type": "platform_event", "event": "work_item.status_changed"}, "true", True),
+        ({"type": "platform_event", "event": "work_item.status_changed"}, "3", False),
+        ({"type": "platform_event", "event": "work_item.status_changed"}, '{"by": "x"}', False),
+        ({"type": "platform_event", "event": "work_item.status_changed"}, "yes", False),
         ({"type": "platform_event", "event": "work_item.released"}, None, True),
         ({"type": "platform_event", "event": "ctem_case.opened"}, None, False),
         ({"type": "platform_event", "event": "work_item.status_changed"}, False, False),
