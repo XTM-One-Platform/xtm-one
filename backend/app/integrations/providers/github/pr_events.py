@@ -14,7 +14,9 @@ work-item service reads:
   dequeued without a merge (a ``dequeued`` event, the removal reason as its
   conclusion);
 * ``issues`` closed: an ``issue_closed`` event, which releases the
-  work items blocked on the issue.
+  work items blocked on the issue;
+* ``create`` of a tag: a ``tag_created`` event naming the tag, which hints the
+  work items blocked on a ``tag`` reference (#2209).
 
 Every other delivery answers ``None``.
 """
@@ -186,6 +188,11 @@ def parse_github_pull_request_event(event_key: str, payload: dict) -> PullReques
         )
     if event == "pull_request" and action == "dequeued":
         return _dequeued(repo, payload)
+    if event == "create" and not action and payload.get("ref_type") == "tag":
+        tag = _str(payload.get("ref"))
+        if not tag:
+            return None
+        return PullRequestEvent(kind="tag_created", repo=repo, extra={"tag": tag})
     if event == "issues" and action == "closed":
         issue = payload.get("issue")
         if not isinstance(issue, dict) or issue.get("pull_request"):

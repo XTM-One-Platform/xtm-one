@@ -2783,6 +2783,13 @@ async def _route_pull_request_event(
     event = parse_pull_request_event(provider, event_key, payload)
     if event is None:
         return
+    if event.kind == "tag_created":
+        # A tag may meet a blocked item's tag reference: read back in the background,
+        # signed or not; a tag is no pull request change (#2209).
+        from app.services.work_item_blocked_refs import schedule_tag_release
+
+        schedule_tag_release(event)
+        return
     if event.kind == "ci":
         # A successful workflow run may meet a blocked item's workflow_run reference:
         # read back from the code host in the background, signed or not.

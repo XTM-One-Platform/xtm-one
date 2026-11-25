@@ -16,6 +16,9 @@ reference keeps its item blocked, it never releases it.
 workflow created after a time (a release run deploying an infrastructure change):
 ``GET /repos/{repo}/actions/workflows/{workflow}/runs?status=success&created=>=<after>``.
 
+:func:`read_tag_carrying` answers the newest tag matching a pattern that carries a
+commit (a release cut from a merge, #2209).
+
 :func:`read_pull_request_ci` answers the head of an open pull request and the
 verdict of its checks (:func:`head_ci_verdict`), for a work item parked on it
 whose CI delivery never came.
@@ -23,6 +26,7 @@ whose CI delivery never came.
 
 from __future__ import annotations
 
+import fnmatch
 import re
 from datetime import datetime
 from typing import Any
@@ -195,6 +199,69 @@ async def read_successful_workflow_run(
 
 
 _WORKFLOW_FILE_RE = re.compile(r"^[A-Za-z0-9_.-]+\.ya?ml$")
+
+#: A tag name pattern (a glob such as ``*.*.*``) a ``tag`` reference may give (#2209).
+_TAG_PATTERN_RE = re.compile(r"^[A-Za-z0-9._*?/-]{1,200}$")
+#: Tags compared with the carried commit in one read, newest version first.
+MAX_TAG_COMPARES = 3
+
+
+def _version_key(name: str) -> tuple[tuple[int, int | str], ...]:
+    """*name* as a sortable version: ``1.10.0`` after ``1.9.2``, a number before a word. Pure."""
+    return tuple((0, int(p)) if p.isdigit() else (1, p) for p in re.split(r"[.+-]", name.removeprefix("v")))
+
+
+def matching_tags(data: Any, pattern: str) -> list[dict[str, str]]:
+    """The tags of GitHub's tags answer *data* whose name matches *pattern*, newest version first. Pure."""
+    out: list[dict[str, str]] = []
+    for tag in data if isinstance(data, list) else []:
+        if not isinstance(tag, dict):
+            continue
+        name = _text(tag.get("name"))
+        commit = tag.get("commit")
+        sha = _commitish(str(commit.get("sha") or "")) if isinstance(commit, dict) else None
+        if name and sha and fnmatch.fnmatchcase(name, pattern):
+            out.append({"tag": name, "commit": sha})
+    out.sort(key=lambda t: _version_key(t["tag"]), reverse=True)
+    return out
+
+
+async def read_tag_carrying(repo: str, pattern: str, carries_sha: str, token: str) -> dict[str, str] | None:
+    """The newest tag of *repo* matching *pattern* that carries *carries_sha* (#2209).
+
+    ``GET /repos/{repo}/tags`` (its first 100), then the compare of the commit and
+    each matching tag, newest version first, :data:`MAX_TAG_COMPARES` at most: a
+    tag that is the commit or a descendant of it answers ``{"tag", "commit"}``.
+    ``None`` when no tag carries it yet or a read fails (the item stays blocked).
+    """
+    owner, name, err = parse_repo(repo)
+    sha = _commitish(carries_sha)
+    if err or sha is None or not _TAG_PATTERN_RE.match(pattern or ""):
+        return None
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/tags",
+            "GitHub",
+            f"read the tags of {repo}",
+            headers=_headers(token),
+            params={"per_page": "100"},
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+    if err or resp is None:
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        return None
+    for tag in matching_tags(data, pattern)[:MAX_TAG_COMPARES]:
+        carried = await read_commit_containment(repo, sha, tag["commit"], token)
+        if carried:
+            return tag
+        if carried is None:
+            return None
+    return None
 
 
 def _no_runs(data: Any) -> bool:
