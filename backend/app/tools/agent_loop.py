@@ -96,6 +96,8 @@ from app.services.context_usage import (
     CONTEXT_LEVEL_OVERFLOWED,
     split_tokens,
 )
+from app.services.ctem_module_preflight import refusal_answer as ctem_refusal_answer
+from app.services.ctem_module_preflight import refused_module as ctem_refused_module
 from app.services.langfuse_tracing import (
     USAGE_PARTS_KEY as _LF_USAGE_PARTS_KEY,
 )
@@ -6542,9 +6544,15 @@ def _log_tool_result(tc: ToolCall, result: ToolResult, probe: str | None = None)
         else:
             note_probe_passed(tc.name, probe)
     elif errored:
-        from app.services.frictions import note_tool_error
+        from app.services.ctem_module_preflight import NO_MODULE_ACCOUNT, note_tool_refusal
+        from app.services.frictions import note_expected_error, note_tool_error
 
-        note_tool_error(tc.name, result.content)
+        # A per-user CTEM stage run refused by a module the member has no
+        # account on: expected, recorded already disposed of (#2042).
+        if (refused := note_tool_refusal(tc.name, result.content)) is not None:
+            note_expected_error(tc.name, result.content, f"{NO_MODULE_ACCOUNT}: {refused}")
+        else:
+            note_tool_error(tc.name, result.content)
     if result.is_error:
         logger.warning(
             "Tool '%s' returned error (id=%s): %.500s",
@@ -16019,6 +16027,39 @@ async def run_agent_loop(
             for tc in tool_calls:
                 _lb_orig_name = _tool_name_map.get(tc.name, tc.name)
                 tool_call_totals[tc.name] = tool_call_totals.get(tc.name, 0) + 1
+                # A module that refused the member of a per-user CTEM stage
+                # run is not called again in the run (#2042).
+                if (_refused_module := ctem_refused_module(_lb_orig_name)) is not None:
+                    _refused_answer = ctem_refusal_answer(_refused_module)
+                    logger.info(
+                        "CTEM guard: '%s' not sent, %s already refused this member (id=%s)",
+                        tc.name,
+                        _refused_module,
+                        tc.id,
+                    )
+                    messages.append(
+                        LLMMessage(
+                            role="tool",
+                            content=_refused_answer,
+                            tool_call_id=tc.id,
+                            name=tc.name,
+                            not_run="module_refused",
+                        )
+                    )
+                    await _emit(
+                        on_event,
+                        {
+                            "status": "tool_done",
+                            **_tool_timing(report_tool_durations, 0),
+                            "tool": tc.name,
+                            "success": False,
+                            "tool_input": _serialize_tool_arguments(tc.arguments),
+                            "tool_input_full": _serialize_tool_arguments_full(tc.arguments),
+                            "tool_output": _refused_answer,
+                            "tool_output_full": _refused_answer,
+                        },
+                    )
+                    continue
                 _lb_decision = loop_breaker.screen(_lb_orig_name, tc.arguments)
                 if _lb_decision.action == "allow":
                     _screened_calls.append(tc)
