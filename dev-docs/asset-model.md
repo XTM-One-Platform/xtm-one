@@ -156,6 +156,13 @@ the sync's filters (the import step's keys read on the XTM One row: `tags`, `sea
 `category`, `subcategory`, `criticality`, `internet_facing`, `environment`, `platform`) is deleted from OpenAEV only
 when this sync created it. The same filters select the AI target assets an outbound `assets` sync pushes (section 7).
 
+**Changing a sync's filters (#1982 S2).** `POST /api/v1/organization-context/syncs/{sync_id}/preview` takes the
+settings the Edit dialog would save (`filters`, `batch_type`, `remove_gone`, `excluded_external_ids`) and answers
+what the next run would do with them, nothing written: inbound, the rows that enter, are updated, leave (rows this
+sync wrote, removed only with `remove_gone`, plus excluded ids) and are kept (another writer wrote them); outbound,
+the platform rows the run would create, update and delete (only rows in `outbound_ids`). It reads with the calling
+administrator's token, the one saving then makes the runs read with.
+
 ## 6. Tags, environment, external id, platform
 
 | Concept | OpenAEV | OpenCRQ | OpenCTI | XTM One |
