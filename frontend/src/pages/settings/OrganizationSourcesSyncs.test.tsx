@@ -371,8 +371,8 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     expect(get).toHaveBeenCalledWith(`/organization-context/syncs?scope=${scope}`);
     const header = screen.getByTestId("organization-sources");
     const runAll = within(header).getByRole("button", { name: /Run all syncs/ });
-    // "Run all syncs" (secondary) before "Add a source" (primary), and no button creates a Sync all.
-    const add = within(header).getByRole("button", { name: /Add a source/ });
+    // "Run all syncs" (secondary) before "Add a sync" (primary), and no button creates a Sync all.
+    const add = within(header).getByRole("button", { name: /Add a sync/ });
     expect(runAll.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText(/Add a Sync all schedule|Add Sync all/)).toBeNull();
     fireEvent.click(runAll);
@@ -413,10 +413,10 @@ describe("OrganizationSourcesSyncs (#1276)", () => {
     expect(await screen.findByRole("heading", { name: "Edit the sync" })).toBeTruthy();
   });
 
-  it("shows a centred first-use state with Add a source when nothing feeds the sections", async () => {
+  it("shows a centred first-use state with Add a sync when nothing feeds the sections", async () => {
     serve([], []);
     render();
     const empty = await screen.findByTestId("organization-sources.empty");
-    expect(within(empty).getByRole("button", { name: /Add a source/ })).toBeTruthy();
+    expect(within(empty).getByRole("button", { name: /Add a sync/ })).toBeTruthy();
   });
 });

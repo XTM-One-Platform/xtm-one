@@ -579,7 +579,7 @@ export function OrganizationSourcesSyncs({
         disabled={disabled}
         data-testid="organization-sources.add"
       >
-        <Icon name="plus" size={16} aria-hidden /> {t_i18n("Add a source")}
+        <Icon name="plus" size={16} aria-hidden /> {t_i18n("Add a sync")}
       </Button>
     </Tip>
   );

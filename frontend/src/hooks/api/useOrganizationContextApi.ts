@@ -646,6 +646,14 @@ export function usePreviewNewOutboundSync() {
   });
 }
 
+/** What saving new filters on a saved sync would do on its next run (#1982 S2 endpoint, S4 Edit dialog): nothing is written. */
+export function usePreviewOrganizationSyncChange() {
+  return useMutation<SyncChangePreview, Error, { id: string; body: { filters: Record<string, string | string[]>; batch_type: string; remove_gone: boolean } }>({
+    mutationFn: ({ id, body }) => api.post(`/organization-context/syncs/${id}/preview`, body),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
 export function useUpdateOrganizationSync() {
   const qc = useQueryClient();
   return useMutation<OrganizationSync, Error, { id: string; body: OrganizationSyncBody }>({
