@@ -17,7 +17,6 @@ from functools import partial
 from typing import Any
 from urllib.parse import quote
 
-from app.core.egress import egress_client
 from app.integrations.http import format_entity_list
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -61,6 +60,7 @@ from ._common import (
     mirror_content_targets,
     scoped_safe_request,
     stored_targets_line,
+    tool_client,
 )
 from .read_scope import area_scope, count_text, with_scope
 
@@ -277,7 +277,7 @@ def register_core(
 
     async def get_openaev_asset(asset_id: str) -> str:
         """Get full details of a specific asset by ID."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -296,7 +296,7 @@ def register_core(
 
     async def search_openaev_asset_groups(search: str, limit: int = 20) -> str:
         """Search for asset groups by name."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -331,7 +331,7 @@ def register_core(
         member_search: str = "",
     ) -> str:
         """An asset group with its dynamic filter and its members, paged."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -353,7 +353,7 @@ def register_core(
         page = max(0, int(members_page))
         # Static and dynamic members alike: OpenAEV resolves the dynamic
         # filter server-side on this search, the group read carries ids only.
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             members_resp, members_err = await scoped_safe_request(
                 client,
                 "post",
@@ -373,7 +373,7 @@ def register_core(
 
     async def search_openaev_teams(search: str, limit: int = 20) -> str:
         """Search for teams by name."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -403,7 +403,7 @@ def register_core(
 
     async def get_openaev_team(team_id: str) -> str:
         """Get full details of a specific team by ID."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -422,7 +422,7 @@ def register_core(
 
     async def search_openaev_players(search: str, limit: int = 20) -> str:
         """Search for players/users by email, first name, or last name."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -460,7 +460,7 @@ def register_core(
         # convention) instead of the declared `search`. Accept it as an alias so
         # a mislabelled argument doesn't waste a whole agent iteration.
         search = search or query
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -487,7 +487,7 @@ def register_core(
 
     async def get_openaev_attack_pattern(attack_pattern_id: str) -> str:
         """Get full details of a specific attack pattern by ID."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -510,7 +510,7 @@ def register_core(
 
     async def search_openaev_scenarios(search: str = "", limit: int = 20) -> str:
         """Search for scenarios or list all."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -537,7 +537,7 @@ def register_core(
 
     async def get_openaev_scenario(scenario_id: str) -> str:
         """Get full details of a specific scenario by ID."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -594,7 +594,7 @@ def register_core(
         }
         if tags:
             payload["scenario_tags"] = tags
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -642,7 +642,7 @@ def register_core(
             payload["scenario_severity"] = severity
         if not payload:
             return "No fields to update."
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             # The PUT is a full-entity update (UpdateScenarioInput copied onto
             # the scenario): a missing name is a 400 and the other missing
             # fields are wiped, tags included (only reply-to is kept). Send the
@@ -685,7 +685,7 @@ def register_core(
 
     async def delete_openaev_scenario(scenario_id: str) -> str:
         """Delete a scenario (permanent); OpenAEV keeps its findings as history (OpenAEV #9233)."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             _, err = await scoped_safe_request(
                 client,
                 "delete",
@@ -753,7 +753,7 @@ def register_core(
             body["payload_cleanup_executor"] = cleanup_executor
         if cleanup_command:
             body["payload_cleanup_command"] = cleanup_command
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -771,7 +771,7 @@ def register_core(
 
         contract_id = "unknown"
         try:
-            async with egress_client(timeout=15) as c2:
+            async with tool_client(hdrs, timeout=15) as c2:
                 for _attempt in range(5):
                     await asyncio.sleep(1.0 + _attempt * 1.5)
                     cr, _ = await scoped_safe_request(
@@ -815,7 +815,7 @@ def register_core(
 
     async def get_openaev_payload(payload_id: str) -> str:
         """Get full details of a payload by ID."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -834,7 +834,7 @@ def register_core(
 
     async def search_openaev_payloads(search: str = "", limit: int = 20) -> str:
         """Search for payloads or list all."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -866,7 +866,7 @@ def register_core(
         failure is logged so an unscored inject can be traced to it.
         """
         try:
-            async with egress_client(timeout=15) as client:
+            async with tool_client(hdrs, timeout=15) as client:
                 resp, err = await scoped_safe_request(
                     client,
                     "get",
@@ -962,7 +962,7 @@ def register_core(
             if default_expectations:
                 inject_content["expectations"] = default_expectations
         body["inject_content"] = inject_content
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -1118,7 +1118,7 @@ def register_core(
             return targets_err
         body["inject_assets"] = assets or []
         body["inject_asset_groups"] = groups or []
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -1243,7 +1243,7 @@ def register_core(
 
     async def get_openaev_vulnerability(cve_id: str) -> str:
         """Get a vulnerability by its CVE ID (e.g., CVE-2024-1234)."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -1264,7 +1264,7 @@ def register_core(
 
     async def full_text_search_openaev(search: str) -> str:
         """Full-text search across all OpenAEV entity types. Returns counts per type."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -1293,7 +1293,7 @@ def register_core(
 
     async def list_openaev_kill_chain_phases() -> str:
         """List all kill chain phases available in OpenAEV."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -1322,7 +1322,7 @@ def register_core(
 
     async def list_openaev_tags() -> str:
         """List all tags available in OpenAEV."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -1348,7 +1348,7 @@ def register_core(
 
     async def list_openaev_domains() -> str:
         """List all domains (security domains) available in OpenAEV."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -1395,7 +1395,7 @@ def register_core(
 
     async def search_openaev_exercises(search: str = "", limit: int = 20) -> str:
         """Search for exercises (simulations) or list all."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -1422,7 +1422,7 @@ def register_core(
 
     async def get_openaev_exercise(exercise_id: str) -> str:
         """Get full details of a specific exercise/simulation by ID."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",

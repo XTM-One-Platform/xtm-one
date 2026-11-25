@@ -23,7 +23,6 @@ import logging
 import re
 from urllib.parse import quote
 
-from app.core.egress import egress_client
 from app.integrations.file_delivery import (
     FetchError,
     PersistFileFn,
@@ -45,7 +44,6 @@ from ._common import (
     FINDINGS_KEPT_AS_HISTORY,
     _aev_link,
     _api,
-    _ensure_fresh_token,
     _require_response,
     _scope_path,
     _search_body,
@@ -54,6 +52,7 @@ from ._common import (
     _with_scope_hint,
     json_answer,
     simulation_results_answer,
+    tool_client,
 )
 from .read_scope import area_scope, count_text, with_scope
 
@@ -467,17 +466,13 @@ def register(
         export_path, scope_hint = await _scope_path(
             headers, f"/api/scenarios/{quote(str(scenario_id), safe='')}/export"
         )
-        # auth_only sends a bare bearer through egress_client (no AutoRefreshClient),
-        # so proactively re-mint a platform-managed JWT that is about to expire first;
-        # otherwise a long run sends an expired token and 401s. No-op for a static token.
-        refresh_fn = getattr(headers, "refresh_fn", None)
-        if refresh_fn is not None:
-            await _ensure_fresh_token(headers, refresh_fn)
-        auth_only = {"Authorization": headers.get("Authorization", "")}
         # Stream the archive with a hard cap: fetch_file refuses from the Content-Length
         # and at the first chunk over the limit, so a larger export is never held whole
-        # in memory (the size is not known before the request).
-        async with egress_client(timeout=60) as client:
+        # in memory (the size is not known before the request). tool_client re-mints a
+        # platform-managed JWT before it expires and once on a 401/403 (#2372); the bare
+        # bearer is read inside it, after that re-mint. No-op for a static token.
+        async with tool_client(headers, timeout=60) as client:
+            auth_only = {"Authorization": headers.get("Authorization", "")}
             fetched = await fetch_file(
                 client, "get", f"{base_url}{export_path}",
                 provider=_PROVIDER, action="export scenario",
@@ -520,15 +515,11 @@ def register(
         # auth_only drops the tenant resolver that rides on `headers`, so
         # scope the path with the full headers.
         upload_path, scope_hint = await _scope_path(headers, "/api/scenarios/import")
-        # Re-mint a platform-managed JWT that is about to expire before sending the
-        # bare bearer through egress_client; otherwise a long run 401s. No-op for a
-        # static token. (Same gap the streamed export had.)
-        refresh_fn = getattr(headers, "refresh_fn", None)
-        if refresh_fn is not None:
-            await _ensure_fresh_token(headers, refresh_fn)
-        auth_only = {"Authorization": headers.get("Authorization", "")}
         files = {"file": (filename, upload_bytes, piped_mime or "application/zip")}
-        async with egress_client(timeout=60) as client:
+        # tool_client re-mints a platform-managed JWT before it expires and once on a
+        # 401/403 (#2372); the bare bearer is read inside it, after that re-mint.
+        async with tool_client(headers, timeout=60) as client:
+            auth_only = {"Authorization": headers.get("Authorization", "")}
             # tenant-scoped by hand: upload_path
             resp, err = await safe_request(
                 client, "post", f"{base_url}{upload_path}", _PROVIDER,
