@@ -463,7 +463,7 @@ _OCTI_STACK_SOFTWARE = """
 query CtemStackSoftware($filters: FilterGroup, $first: Int, $after: ID) {
   stixCyberObservables(types: ["Software"], filters: $filters, first: $first, after: $after) {
     pageInfo { hasNextPage endCursor }
-    edges { node { id ... on Software { name vendor cpe } } }
+    edges { node { id ... on Software { name vendor cpe x_opencti_purl } } }
   }
 }
 """
@@ -906,30 +906,6 @@ async def _octi_top_vulns(
     return data or {}
 
 
-def _cpe_vendor(cpe: str | None) -> str:
-    """The vendor field of a CPE 2.3 (``cpe:2.3:a:google:chrome:...``) or 2.2 (``cpe:/a:google:chrome``) name."""
-    value = (cpe or "").strip().lower()
-    if value.startswith("cpe:2.3:"):
-        parts = value.split(":")
-        vendor = parts[3] if len(parts) > 3 else ""
-    elif value.startswith("cpe:/"):
-        parts = value[5:].split(":")
-        vendor = parts[1] if len(parts) > 1 else ""
-    else:
-        return ""
-    return "" if vendor in ("*", "-") else vendor
-
-
-def _vendor_token(value: str) -> str:
-    return "".join(ch for ch in value.lower() if ch.isalnum())
-
-
-def _vendors_agree(a: str, b: str) -> bool:
-    """Two vendor names agree when one is unknown or both fold to the same token (``Palo Alto`` and ``palo_alto``)."""
-    a, b = _vendor_token(a), _vendor_token(b)
-    return not a or not b or a == b
-
-
 def _stack_matches(node: dict[str, Any], stack: list[dict[str, Any]]) -> str | None:
     """The stack product a Software observable stands for, or ``None``.
 
@@ -938,15 +914,21 @@ def _stack_matches(node: dict[str, Any], stack: list[dict[str, Any]]) -> str | N
     A side's vendor is its ``vendor``, else the vendor its CPE names, so a node
     of another vendor's product of the same name (an Edge node whose CPE says
     ``microsoft``) never carries its vulnerabilities into the entry's case.
+    Beyond the vendor, the identity a side knows is compared before the name
+    (#2036, :func:`ctem_product_identity.conflict`): a package entry (purl) is
+    not a server or OS product of the same name, two CPEs must name the same
+    product, and an OS-only product never matches software that runs only on
+    another OS. A field unknown on either side never rejects: a name-only
+    entry still matches by name.
     """
+    from app.services import ctem_product_identity as product_identity
+
     cpe = (node.get("cpe") or "").strip().lower()
     name = (node.get("name") or "").strip().lower()
-    vendor = (node.get("vendor") or "").strip() or _cpe_vendor(cpe)
     for entry in stack:
         if entry["cpe"] and cpe and entry["cpe"].lower() == cpe:
             return entry["label"]
-        entry_vendor = (entry.get("vendor") or "").strip() or _cpe_vendor(entry.get("cpe"))
-        if entry["product"].lower() == name and _vendors_agree(entry_vendor, vendor):
+        if entry["product"].lower() == name and product_identity.conflict(entry, node) is None:
             return entry["label"]
     return None
 

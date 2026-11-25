@@ -474,7 +474,7 @@ async def read_running_versions(
     try:
         # A savepoint, so a failed read never leaves the caller's transaction aborted.
         async with db.begin_nested():
-            counted, named = await _read_rows(db, organization_id, keys)
+            counted, named = await _read_rows(db, organization_id, keys, family)
             os_assets = await _read_os_assets(db, organization_id, family) if family else []
             platforms = await _read_platforms(db, organization_id, keys) if counted else {}
     except Exception:  # the inventory never breaks a case read
@@ -641,7 +641,7 @@ async def assets_for_case(db: AsyncSession, case: Any, issues: Iterable[Mapping[
     family = os_family_of(getattr(case, "product_label", None))
     try:
         async with db.begin_nested():
-            found = await _read_asset_rows(db, case.organization_id, keys, names)
+            found = await _read_asset_rows(db, case.organization_id, keys, names, family)
             os_assets = await _read_os_assets(db, case.organization_id, family, names) if family else []
     except Exception:  # the inventory never breaks a case read
         logger.info("CTEM case asset versions unavailable", exc_info=True)
@@ -666,8 +666,21 @@ async def assets_for_case(db: AsyncSession, case: Any, issues: Iterable[Mapping[
     return answer
 
 
+def os_case_rows(soft: Any, asset: Any, family: str | None) -> list[ColumnElement[bool]]:
+    """The conditions an operating system case puts on software rows (#2036), ``[]`` for any other case.
+
+    A package (a row with a purl: the Rust ``windows`` crate of a repository) is
+    never the OS, and an asset whose known ``os_family`` is another OS (a macOS
+    laptop) never runs it; an asset with no OS family known keeps its row.
+    """
+    if not family:
+        return []
+    os_family = asset.fields["os_family"]["value"].astext
+    return [soft.purl == "", or_(os_family.is_(None), os_family == "", os_family == family)]
+
+
 async def _read_asset_rows(
-    db: AsyncSession, organization_id: uuid.UUID, keys: tuple[str, ...], names: list[str]
+    db: AsyncSession, organization_id: uuid.UUID, keys: tuple[str, ...], names: list[str], family: str | None = None
 ) -> list[dict[str, Any]]:
     """The software entries of the case's product on the named assets (one read)."""
     soft, asset = OrganizationAssetSoftware, OrganizationAsset
@@ -687,6 +700,7 @@ async def _read_asset_rows(
             asset.organization_id == organization_id,
             asset.name_key.in_([n[:300] for n in names]),
             product_filter(soft.product_key, keys),
+            *os_case_rows(soft, asset, family),
         )
     )
     return [
@@ -756,22 +770,34 @@ async def _read_os_assets(
 
 
 async def _read_rows(
-    db: AsyncSession, organization_id: uuid.UUID, keys: tuple[str, ...]
+    db: AsyncSession, organization_id: uuid.UUID, keys: tuple[str, ...], family: str | None = None
 ) -> tuple[list[Any], dict[tuple[str, str, str], set[str]]]:
-    """The (vendor, product, version) groups with their distinct asset ids, and the sources of each."""
-    soft = OrganizationAssetSoftware
-    where = (soft.organization_id == organization_id, product_filter(soft.product_key, keys))
+    """The (vendor, product, version) groups with their distinct asset ids, and the sources of each.
+
+    An operating system case (*family*) keeps only the rows :func:`os_case_rows` allows (#2036).
+    """
+    soft, asset = OrganizationAssetSoftware, OrganizationAsset
+    where = (
+        soft.organization_id == organization_id,
+        product_filter(soft.product_key, keys),
+        *os_case_rows(soft, asset, family),
+    )
+    joined = family is not None
+
+    def base(statement: Select[Any]) -> Select[Any]:
+        return statement.join(asset, asset.id == soft.asset_id) if joined else statement
+
     counted = list(
         (
             await db.execute(
-                select(
+                base(select(
                     soft.vendor_key,
                     soft.product_key,
                     soft.version,
                     func.min(soft.vendor),
                     func.min(soft.product),
                     func.array_agg(func.distinct(soft.asset_id)),
-                )
+                ))
                 .where(*where)
                 .group_by(soft.vendor_key, soft.product_key, soft.version)
             )
@@ -782,7 +808,7 @@ async def _read_rows(
         return counted, named
     source = func.jsonb_array_elements_text(soft.sources).label("source")
     for vk, pk, version, name in (
-        await db.execute(select(soft.vendor_key, soft.product_key, soft.version, source).where(*where).distinct())
+        await db.execute(base(select(soft.vendor_key, soft.product_key, soft.version, source)).where(*where).distinct())
     ).all():
         named.setdefault((vk, pk, version), set()).add(str(name))
     return counted, named
