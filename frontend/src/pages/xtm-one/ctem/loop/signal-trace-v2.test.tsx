@@ -65,7 +65,7 @@ const signal: CtemSignal = {
       lenses: ["world"],
       confidence: "low",
       primary_assets_named: ["Employee workstations"],
-      tech_stack: ["Windows"],
+      products: ["Windows"],
       inventory_links_read: true,
       primary_assets: [chain("LAPTOP-00001"), chain("LAPTOP-00002"), chain("LAPTOP-00003"), chain("LAPTOP-00004"), chain("LAPTOP-00005"), chain("LAPTOP-00006")],
       primary_asset_totals: { "employee workstations": { assets: 10000, direct: 12, via_group: 9988 } },
