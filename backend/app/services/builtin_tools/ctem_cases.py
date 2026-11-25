@@ -215,6 +215,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 except view_of.ViewRebuildingError as exc:
                     # Never a whole view build on the call (#2092): say when to retry.
                     return f"Not available yet: {exc} Nothing is wrong with the cases; do not guess them."
+                # A case deleted between the case read and the view read is gone, never hidden (#2113).
+                cases = await view_of.drop_gone(db, cases, view)
                 rows, counts = view_of.list_for_viewer(
                     cases,
                     view,
@@ -233,9 +235,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 from .ctem_signals import case_signal_scope
 
                 # Which signal rule applied, so an empty list is never read as no case (#1359), and the
-                # open cases this person sees none of (a count only), so a page is never the org total.
+                # open cases this person is refused (hidden) or the view could not judge now (unjudged,
+                # #2113), each a count only with the view's condition, so a page is never the org total.
                 scope_block = await case_signal_scope(db, scope, view.signals)
-                scope_block["hidden_cases"] = view_of.hidden_case_count(cases, view)
+                scope_block.update(view_of.list_visibility(cases, view))
                 return _dump(
                     {
                         "vertical": vertical,
@@ -999,7 +1002,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             description=(
                 "List the CTEM cases you can see (open exposures grouped by the fix that closes them), "
                 "highest priority first, with the counts by state. A null count is unknown for you, never "
-                "none (aggregates_reason says why); scope.hidden_cases counts cases you cannot see."
+                "none (aggregates_reason says why); scope.hidden_cases counts cases you are refused, "
+                "scope.unjudged_cases those not readable now (scope.view says why)."
             ),
             input_schema={
                 "type": "object",
