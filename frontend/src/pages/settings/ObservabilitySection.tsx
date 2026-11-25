@@ -156,6 +156,13 @@ export function ObservabilitySection() {
       label: t_i18n("Resolved worksets (days)"),
       helper: t_i18n("Resolved worksets are deleted with their documents this many days after they were resolved."),
     },
+    assignment_run_days: {
+      title: t_i18n("Runs (Operations > Executions)"),
+      label: t_i18n("Runs (days)"),
+      helper: t_i18n(
+        "Finished runs are deleted this many days after they ended. Runs still working or waiting for a person are kept.",
+      ),
+    },
   };
   const retentionText = (days: number) =>
     days === 0 ? t_i18n("Kept forever") : t_i18n("{count, plural, one {# day} other {# days}}", { count: days });
@@ -661,7 +668,9 @@ export function ObservabilitySection() {
               <div>
                 <SettingsGroupTitle>{t_i18n("Coordination retention")}</SettingsGroupTitle>
                 <SettingsGroupDescription>
-                  {t_i18n("How long work items, shared state and worksets are kept once they are closed. 0 keeps them forever.")}
+                  {t_i18n(
+                    "How long work items, shared state, worksets and runs are kept once they are closed. 0 keeps them forever.",
+                  )}
                 </SettingsGroupDescription>
               </div>
 
