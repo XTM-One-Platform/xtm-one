@@ -209,10 +209,20 @@ class _AgentUpdated(str):
     """
 
     fields: tuple[str, ...]
+    #: The agent's id when the update changed which tools its runs hold
+    #: (``tool_surface_timing.AGENT_TOOL_FIELDS``), else ``None``: the
+    #: executor carries it to the loop, which refreshes the surface of a run
+    #: of that agent (#2205).
+    tool_scope_agent_id: str | None
 
-    def __new__(cls, text: str, *, fields: tuple[str, ...] = ()) -> _AgentUpdated:
+    def __new__(cls, text: str, *, fields: tuple[str, ...] = (), agent_id: str | None = None) -> _AgentUpdated:
+        from app.services.tool_surface_timing import AGENT_TOOL_FIELDS
+
         result = super().__new__(cls, text)
         result.fields = fields
+        result.tool_scope_agent_id = (
+            agent_id if agent_id and any(f.split(" ", 1)[0] in AGENT_TOOL_FIELDS for f in fields) else None
+        )
         return result
 
 
@@ -7498,7 +7508,10 @@ def build_agent_builder_tool(
                         + " — a company-managed agent can only bind company-managed "
                         "knowledge bases."
                     )
-            return _AgentUpdated(_result, fields=tuple(updated))
+            _updated_id = getattr(agent, "id", None)
+            return _AgentUpdated(
+                _result, fields=tuple(updated), agent_id=str(_updated_id) if _updated_id is not None else None
+            )
 
     # ── delete_agent ──────────────────────────────────────────────────
 

@@ -1630,6 +1630,10 @@ class ToolResult:
     refused: bool = False
     structured: Any = None
     transient: bool = False
+    # The id of an agent whose tool scope this call changed (``update_agent``
+    # on its built-in groups, bindings or scoping, #2205): the loop refreshes
+    # its tool surface when that agent is the one the run serves.
+    agent_tool_scope: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -3054,6 +3058,7 @@ class CallableToolExecutor:
                 content=content,
                 is_error=returned_error,
                 error_returned=returned_error,
+                agent_tool_scope=getattr(raw, "tool_scope_agent_id", None),
             )
         except HumanInputRequestedError:
             raise  # Let HITL signal propagate to the assignment engine

@@ -42,6 +42,9 @@ INTEGRATION_SOURCE_PREFIX = "integration:"
 
 RebuildIntegrations = Callable[[], Awaitable[tuple[list[ToolDefinition], ToolExecutor]]]
 NarrowSurface = Callable[[list[ToolDefinition]], list[ToolDefinition]]
+#: The caller's built-in build read again from the agent row: the built-in
+#: definitions and their executors a fresh turn of the same agent would get (#2205).
+RebuildBuiltins = Callable[[], Awaitable[list[tuple[list[ToolDefinition], ToolExecutor]]]]
 
 
 def integration_tool_names(tools: list[ToolDefinition]) -> set[str]:
@@ -66,12 +69,26 @@ class IntegrationSurfaceRefresher:
     executor after the caller's integration allow lists (it opens its own
     database session: the loop holds none). ``narrow`` is the function the
     caller computed its offered surface with from ``composite.all_tools``.
+
+    ``agent_id`` is the agent the run serves: an ``update_agent`` result that
+    changed THAT agent's tool scope (``ToolResult.agent_tool_scope``) asks for
+    a refresh too (#2205). ``rebuild_builtins``, when the caller passes it,
+    answers the built-in groups its own build would wire now; the groups it
+    answers that the composite does not hold yet are added, never removed,
+    and the caller's narrowing still applies, so a refresh never widens past
+    a fresh turn of the same agent.
     """
 
     composite: CompositeToolExecutor
     scoped: ScopedToolExecutor
     rebuild_integrations: RebuildIntegrations
     narrow: NarrowSurface
+    agent_id: str | None = None
+    rebuild_builtins: RebuildBuiltins | None = None
+
+    def follows(self, agent_tool_scope: str | None) -> bool:
+        """Whether a result naming *agent_tool_scope* changed the tools of this run's agent."""
+        return bool(agent_tool_scope) and agent_tool_scope == self.agent_id
 
     async def refresh(self) -> SurfaceRefresh:
         before = self.narrow(self.composite.all_tools)
@@ -81,6 +98,13 @@ class IntegrationSurfaceRefresher:
         self.composite.remove_tools(old_integrations - new_integrations)
         if definitions:
             self.composite.add_tools(definitions, executor)
+        if self.rebuild_builtins is not None:
+            held = {t.name for t in self.composite.all_tools}
+            for builtin_defs, builtin_executor in await self.rebuild_builtins():
+                fresh = [t for t in builtin_defs if t.name not in held]
+                if fresh:
+                    self.composite.add_tools(fresh, builtin_executor)
+                    held.update(t.name for t in fresh)
         after = self.narrow(self.composite.all_tools)
         self.scoped.replace_allowed(after)
         before_names = {t.name for t in before}

@@ -7968,7 +7968,12 @@ async def run_agent_chat(
             # of the turn changes an integration it is bound to (#1874).
             if loop_kwargs["executor"] is not None and _rebuild_integration_tools is not None:
                 loop_kwargs["tool_surface_refresher"] = IntegrationSurfaceRefresher(
-                    composite, loop_kwargs["executor"], _rebuild_integration_tools, _narrow_tool_surface
+                    composite,
+                    loop_kwargs["executor"],
+                    _rebuild_integration_tools,
+                    _narrow_tool_surface,
+                    # update_agent on this turn's own agent refreshes it too (#2205).
+                    agent_id=str(agent.id),
                 )
             # Fast-path: when the agent config declares a finalize_on_builtin_tool,
             # pass it to the loop so it can short-circuit after a successful tool

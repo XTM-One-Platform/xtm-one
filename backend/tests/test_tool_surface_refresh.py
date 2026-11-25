@@ -90,3 +90,48 @@ async def test_refresh_never_widens_past_the_callers_narrowing() -> None:
     assert not scoped.allows("api_delete")
     result = await scoped.execute_tool(ToolCall(id="c2", name="api_delete", arguments={}))
     assert result.is_error
+
+
+def test_follows_only_the_agent_the_run_serves() -> None:
+    composite = CompositeToolExecutor()
+    scoped = ScopedToolExecutor(composite, [])
+
+    async def rebuild() -> tuple[list[ToolDefinition], ToolExecutor]:
+        return [], _Echo("none")
+
+    refresher = IntegrationSurfaceRefresher(composite, scoped, rebuild, _deny(set()), agent_id="agent-a")
+    assert refresher.follows("agent-a")
+    assert not refresher.follows("agent-b")
+    assert not refresher.follows(None)
+    # A caller that names no agent never refreshes on an update_agent result.
+    assert not IntegrationSurfaceRefresher(composite, scoped, rebuild, _deny(set())).follows("agent-a")
+
+
+@pytest.mark.asyncio
+async def test_refresh_adds_a_builtin_group_granted_in_the_run() -> None:
+    composite = CompositeToolExecutor()
+    composite.add_tools([_tool("load_skill")], _Echo("builtin"))
+    narrow = _deny({"delete_user"})
+    scoped = ScopedToolExecutor(composite, narrow(composite.all_tools))
+
+    async def rebuild() -> tuple[list[ToolDefinition], ToolExecutor]:
+        return [], _Echo("none")
+
+    async def rebuild_builtins() -> list[tuple[list[ToolDefinition], ToolExecutor]]:
+        return [
+            ([_tool("load_skill")], _Echo("again")),
+            ([_tool("list_users"), _tool("delete_user")], _Echo("user_admin")),
+        ]
+
+    refresh = await IntegrationSurfaceRefresher(
+        composite, scoped, rebuild, narrow, agent_id="agent-a", rebuild_builtins=rebuild_builtins
+    ).refresh()
+
+    assert refresh.added == ("list_users",)
+    assert refresh.removed == ()
+    result = await scoped.execute_tool(ToolCall(id="c3", name="list_users", arguments={}))
+    assert result.content == "user_admin ran list_users"
+    # The held built-in keeps its own executor; the narrowing still holds.
+    result = await scoped.execute_tool(ToolCall(id="c4", name="load_skill", arguments={}))
+    assert result.content == "builtin ran load_skill"
+    assert not scoped.allows("delete_user")
