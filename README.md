@@ -51,11 +51,11 @@ Security teams drown in findings and still cannot answer the question that matte
 
 | CTEM stage | What XTM One gives your team |
 |---|---|
-| **Scoping** | The attack surface and threat landscape that matter to you: sectors, regions, crown jewels, tech stack and priority intelligence requirements, read by every CTEM agent. |
+| **Scoping** | The attack surface and threat landscape that matter to you: sectors, regions, primary assets, tech stack and priority intelligence requirements, read by every CTEM agent. |
 | **Discovery** | The vulnerabilities, assets and threat activity in that scope, the attacker techniques never tested, and the blind spots where a connected source returns no data. |
 | **Prioritization** | A funnel from every known vulnerability down to the few that are relevant, exploitable and open, ranked by exploitation, targeting adversaries and expected loss. |
 | **Validation** | Proof of whether prevention and detection hold against the techniques that matter, from OpenAEV simulations, failed expectations and detection coverage. |
-| **Mobilization** | Remediation cases grouped by fix, with their assets, crown jewels and known exploitation, followed to closure and re-test by agents and fleets. |
+| **Mobilization** | Remediation cases grouped by fix, with their assets, primary assets and known exploitation, followed to closure and re-test by agents and fleets. |
 
 ## Gallery
 
@@ -83,9 +83,9 @@ Security teams drown in findings and still cannot answer the question that matte
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="./.github/img/readme/g3-dark.webp">
         <source media="(prefers-color-scheme: light)" srcset="./.github/img/readme/g3-light.webp">
-        <img alt="CTEM remediation cases: one row per fix with its priority, issue count, crown jewels, known exploitation and state" src="./.github/img/readme/g3-light.webp" width="100%">
+        <img alt="CTEM remediation cases: one row per fix with its priority, issue count, primary assets, known exploitation and state" src="./.github/img/readme/g3-light.webp" width="100%">
       </picture>
-      <p><b>Remediation cases.</b> One case per fix, ranked, with the crown jewels and exploitation it touches.</p>
+      <p><b>Remediation cases.</b> One case per fix, ranked, with the primary assets and exploitation it touches.</p>
     </td>
     <td width="50%" valign="top">
       <picture>

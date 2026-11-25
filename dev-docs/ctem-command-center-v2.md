@@ -141,8 +141,8 @@ v1 hides the deterministic rows once a briefing exists (D3); v2 keeps both
 and dedupes: a briefing step citing the same object as a module fact replaces
 it. Ranking: severity of the source (KEV and failed prevention first), owner
 is the viewer, age, then the briefing priority. Each row: icon of its source,
-title, one line "why it matters" (organization context when filled: crown
-jewels, PIRs, loss threshold; the profile fields are empty on many instances,
+title, one line "why it matters" (organization context when filled: primary
+assets, PIRs, loss threshold; the profile fields are empty on many instances,
 so the line falls back to the module fact), the source and period on hover,
 one primary action (a 36 px outline button; the page has no filled primary
 button, round 1 A3). "Ask your CTEM agent" stays the last row when AI can

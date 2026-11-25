@@ -193,8 +193,8 @@ Stored as `decision` on the signal (version 1), with the state:
 ```
 
 Third parties and identities (CTEM-29): a `third_party` subject resolves to the
-profile asset row that names the tracked organization and, through a crown
-jewel's `asset_names`, to that primary asset; a primary asset named in
+profile asset row that names the tracked organization and, through a primary
+asset's `asset_names`, to that primary asset; a primary asset named in
 `evidence.primary_assets` and OpenCRQ supporting assets in
 `evidence.opencrq_asset_ids` count too. Unresolved, it goes to the watchlist
 (`no_dependency`), never to "to validate". An `identity` subject

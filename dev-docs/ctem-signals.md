@@ -37,8 +37,8 @@ inside lens of path 1). `GET /api/v1/ctem-signals/paths` answers this table.
 
 Aikido (CTEM-25): the code repository and container image of an issue (name
 and id) go to `evidence.assets`, so the scope gate resolves them to a profile
-asset row (source `aikido`, `external_id` the Aikido id) and to its crown
-jewel by the existing asset names; an unmapped repository is `to_validate`.
+asset row (source `aikido`, `external_id` the Aikido id) and to its primary
+asset by the existing asset names; an unmapped repository is `to_validate`.
 A dependency issue that names its fixed version opens an upgrade case keyed
 and titled on that version (`upgrade:-/<package>@<version>`). An
 `issue.closed` records no signal: it closes the case member of the signals the
