@@ -117,6 +117,12 @@ def env(monkeypatch):
     monkeypatch.setattr(store, "events_of", _events)
     monkeypatch.setattr(view_of, "viewer_view", _viewer)
 
+    async def _never_deleted(_db: object, _case_id: object) -> None:
+        return None
+
+    # No delete audit row in this fake session (#2328): a miss stays "No case".
+    monkeypatch.setattr("app.services.ctem_case_delete.deleted_case_answer", _never_deleted)
+
     def _tools(user_id: str):
         defs, executor = build_ctem_case_tools(user_id=user_id, agent_id=AGENT)
 
