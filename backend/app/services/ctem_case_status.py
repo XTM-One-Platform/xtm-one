@@ -153,6 +153,13 @@ def after_remediation_plan(case: CtemCase, at: datetime, *, actor: str, evidence
     return move(case, "remediating", at, actor=actor, reason="remediation decided", evidence=evidence)
 
 
+def after_applied_change(case: CtemCase, at: datetime, *, actor: str, evidence: str) -> CtemCaseEvent | None:
+    """A change applied through an integration (#2061) means the remediation is under way."""
+    if case.state not in OPEN_STATES or not (case.state == "waiting_decision" or _forward(case.state, "remediating")):
+        return None
+    return move(case, "remediating", at, actor=actor, reason="change applied through an integration", evidence=evidence)
+
+
 def after_validation(case: CtemCase, at: datetime, *, result: str, actor: str, evidence: str) -> CtemCaseEvent | None:
     """A pending re-test puts an open case in validation; a failed one on an open case sends it back to remediation.
 

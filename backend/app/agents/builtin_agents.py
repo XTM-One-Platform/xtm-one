@@ -2268,8 +2268,8 @@ CTEM_FLEET_AGENTS: list[dict] = [
         "name": "Remediation Coordinator",
         "description": (
             "Turns a validated exposure into the three actions of the week, "
-            "with the detections drafted, a ticket proposed for each and the "
-            "re-test that proves it."
+            "with the detections drafted, each carried out as a ticket or a change "
+            "applied through a bound integration, and the re-test that proves it."
         ),
         "icon": "ListChecks",
         "output_schema": "ctem-remediation-coordinator",
