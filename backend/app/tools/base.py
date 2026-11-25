@@ -1613,6 +1613,12 @@ class ToolResult:
             computing (GitHub's ``unknown`` mergeability): not an error, but
             never kept in the loop's identical-call cache, so the next
             identical read executes and reads the settled state.
+        auth_failure_recorded: The integration auth failure (401 / 403, or a
+            call refused after one) this result carries is already recorded
+            on the run by its ``IntegrationAuthGuard``
+            (``integration_auth_failures`` and the coverage notice), as
+            ``"<integration> <status>"``. The loop records its friction
+            already disposed of (#2204). Empty: not such a result.
     """
 
     tool_call_id: str
@@ -1630,6 +1636,7 @@ class ToolResult:
     refused: bool = False
     structured: Any = None
     transient: bool = False
+    auth_failure_recorded: str = ""
 
 
 # ---------------------------------------------------------------------------
