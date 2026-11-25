@@ -238,11 +238,12 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     db, org, q=str(query or ""), offset=_int(offset), limit=_int(limit) or 50, filters=filters
                 )
                 facets = await asset_store.asset_facets(db, org, q=str(query or ""), filters=filters)
+                held = await asset_store.held_values(db, org, filters) if not page.total else None
                 await db.commit()
         except Exception:
             logger.warning("CTEM asset inventory read failed", exc_info=True)
             return "Error: the asset inventory could not be read right now. Say so; do not guess it."
-        return _dump(asset_page(vars(page), facets))
+        return _dump(asset_page(vars(page), facets, held=held))
 
     executor = CallableToolExecutor()
     executor.register("list_ctem_signals", signal_exec.handler("list_ctem_signals"))  # type: ignore[arg-type]
@@ -275,7 +276,10 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "subcategory": {"type": "string"},
                     "criticality": {"type": "string"},
                     "internet_facing": {"type": "string"},
-                    "query": {"type": "string"},
+                    "query": {
+                        "type": "string",
+                        "description": "Case-insensitive text in the name, os_family, os_version or owner.",
+                    },
                     "offset": {"type": "integer"},
                     "limit": {"type": "integer"},
                 },
@@ -287,8 +291,16 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
     return definitions, executor
 
 
-def asset_page(page: dict[str, Any], facets: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
-    """What ``list_ctem_assets`` answers: the page, then the counts by source and by category of the same filters."""
+def asset_page(
+    page: dict[str, Any],
+    facets: dict[str, list[dict[str, Any]]],
+    *,
+    held: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    """What ``list_ctem_assets`` answers: the page, then the counts by source and by category of the same filters.
+
+    A page with no row and field filters names the values those fields hold (``held``, #2085).
+    """
     from app.services.ctem_signals import provider_name
 
     by_source = {
@@ -299,7 +311,7 @@ def asset_page(page: dict[str, Any], facets: dict[str, list[dict[str, Any]]]) ->
     items = page.get("items", [])
     total = int(page.get("total", 0))
     offset = int(page.get("offset", 0))
-    return {
+    answer: dict[str, Any] = {
         "total": total,
         "offset": offset,
         "limit": int(page.get("limit", 0)),
@@ -308,6 +320,12 @@ def asset_page(page: dict[str, Any], facets: dict[str, list[dict[str, Any]]]) ->
         "by_category": by_category,
         "assets": [{k: v for k, v in item.items() if k != "records"} for item in items],
     }
+    if not total and held:
+        from app.services.organization_context_categories import held_values_line
+
+        answer["held_values"] = held
+        answer["note"] = f"no row. {held_values_line(held)}"
+    return answer
 
 
 def _int(value: Any) -> int:
