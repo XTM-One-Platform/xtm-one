@@ -21268,6 +21268,7 @@
   "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.": "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.",
   "Work item decision": "Work item decision",
+  "Work item decision not opened": "Work item decision not opened",
   "What to decide": "What to decide",
   "No waiting decision matches the search and filters.": "No waiting decision matches the search and filters.",
   "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}",

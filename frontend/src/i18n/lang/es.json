@@ -21268,6 +21268,7 @@
   "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.": "Las rutas de activación que inician el ciclo de gestión de la exposición, por enfoque, con las fuentes que alimentan cada una en esta plataforma y si están conectadas.",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "Las plataformas que cada sincronización lee según una programación, los agentes y socios que escriben a través de la API, las importaciones CSV y las filas introducidas a mano. La correspondencia de activos fusiona los registros de varias fuentes en un solo activo.",
   "Work item decision": "Decisión sobre un elemento de trabajo",
+  "Work item decision not opened": "Decisión de elemento de trabajo no abierta",
   "What to decide": "Qué decidir",
   "No waiting decision matches the search and filters.": "Ninguna decisión pendiente coincide con la búsqueda y los filtros.",
   "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, one {# decisión espera a una persona} other {# decisiones esperan a una persona}}",
