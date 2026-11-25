@@ -331,7 +331,7 @@ export interface AssetGroupRecord {
   internet_facing: string;
   owner: string;
   tags: string[];
-  tech_stack: string[];
+  products: string[];
   source: string;
   external_id: string;
   member_count: number;

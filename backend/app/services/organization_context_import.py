@@ -650,8 +650,8 @@ def opencrq_jewel(asset: dict[str, Any], min_level: str) -> PrimaryAsset | None:
 #: section -> (profile field, the row's name attribute, most rows the field holds, the fields a person may
 #: set on a synced row that the source does not send: kept across runs as local enrichment, #1134).
 SOURCED_FIELDS: dict[str, tuple[str, str, int, tuple[str, ...]]] = {
-    "assets": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
-    "asset_groups": ("asset_groups", "name", 500, ("environment", "owner", "tech_stack", "description")),
+    "assets": ("assets_exposure", "name", 5000, ("environment", "owner", "products", "group")),
+    "asset_groups": ("asset_groups", "name", 500, ("environment", "owner", "products", "description")),
     "primary_assets": ("primary_assets", "name", 200, ("owner", "business_service", "asset_names")),
     "software": ("software", "product", 500, ("vendor", "cpe", "version")),
 }

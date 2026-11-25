@@ -56,8 +56,8 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
    software they reach is read from the evidence lists `targets`, `uses`,
    `targeted_software`, `targeted_products`, from `relationships`
    (`{relationship_type, target}` of type `targets`, `uses` or `has`) and
-   from the scorer's `matched_fields` (`tech_stack (Microsoft 365, GitHub)`),
-   then matched to the tech stack like any software reference.
+   from the scorer's `matched_fields` (`software (Microsoft 365, GitHub)`; the former `tech_stack (...)` form is still read),
+   then matched to the organization's software like any software reference.
    `reconcile.software_refs` lists every reference tried; an unresolved
    subject carries `reason_params` `{keys, software}`, the counts tried.
    **Shipped products** (`shipped_products`, what the organization ships,
@@ -160,7 +160,7 @@ Stored as `decision` on the signal (version 1), with the state:
 {
   "version": 1,
   "inputs": {"trigger_path", "lens", "subject": {"kind", "ref"}, "source_provider", "verdict", "cves", "related_signals": [{"id", "lens", "provider", "verdict"}]},
-  "reconcile": {"keys", "assets", "asset_groups", "primary_assets_named", "tech_stack", "lenses", "confidence", "proven", "contradicted_by"},
+  "reconcile": {"keys", "assets", "asset_groups", "primary_assets_named", "products", "lenses", "confidence", "proven", "contradicted_by"},
   "scope": {"criticality", "sources": [{"from", "name", "criticality"}], "threshold", "require_risk_scenario", "opencrq": {"connected", "note"}, "risk_scenarios": [{"id", "name"}]},
   "policy_checks": [{"rule", "value", "threshold", "passed"}],
   "severity": "P1 | P2 | P3 | null",

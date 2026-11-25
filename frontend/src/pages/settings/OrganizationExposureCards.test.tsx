@@ -217,9 +217,9 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
     mockApi();
     const initial: ProfileForm = {
       ...BASE,
-      asset_groups: [{ name: "dmz", description: "", environment: "", internet_facing: "yes", owner: "", tech_stack: [], tags: [], source: "manual", external_id: "" }],
+      asset_groups: [{ name: "dmz", description: "", environment: "", internet_facing: "yes", owner: "", products: [], tags: [], source: "manual", external_id: "" }],
       assets_exposure: [
-        { name: "web-1", category: "host", subcategory: "", criticality: "unknown", environment: "", internet_facing: "yes", owner: "", group: "", tech_stack: [], tags: [], source: "manual", external_id: "" },
+        { name: "web-1", category: "host", subcategory: "", criticality: "unknown", environment: "", internet_facing: "yes", owner: "", group: "", products: [], tags: [], source: "manual", external_id: "" },
       ],
     };
     renderWithProviders(<Harness initial={initial} editing />);
@@ -236,7 +236,7 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
     const initial: ProfileForm = {
       ...BASE,
       assets_exposure: [
-        { name: "db-1", category: "cloud_resource", subcategory: "database", criticality: "very_high", environment: "", internet_facing: "no", owner: "", group: "", tech_stack: [], tags: [], source: "manual", external_id: "" },
+        { name: "db-1", category: "cloud_resource", subcategory: "database", criticality: "very_high", environment: "", internet_facing: "no", owner: "", group: "", products: [], tags: [], source: "manual", external_id: "" },
       ],
     };
     renderWithProviders(<Harness initial={initial} editing={false} />);
@@ -297,7 +297,7 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
     const initial: ProfileForm = {
       ...BASE,
       assets_exposure: [
-        { name: "db-1", category: "cloud_resource", subcategory: "database", criticality: "unknown", environment: "", internet_facing: "no", owner: "", group: "", tech_stack: [], tags: [], source: "manual", external_id: "" },
+        { name: "db-1", category: "cloud_resource", subcategory: "database", criticality: "unknown", environment: "", internet_facing: "no", owner: "", group: "", products: [], tags: [], source: "manual", external_id: "" },
       ],
     };
     renderWithProviders(<Harness initial={initial} editing />);
@@ -313,8 +313,8 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
     const form: ProfileForm = {
       ...BASE,
       assets_exposure: [
-        { name: "web-1", category: "host", subcategory: "", criticality: "unknown", environment: "", internet_facing: "yes", owner: "", group: "web-2", tech_stack: [], tags: [], source: "manual", external_id: "" },
-        { name: "", category: "host", subcategory: "", criticality: "unknown", environment: "", internet_facing: "unknown", owner: "", group: "ghost", tech_stack: [], tags: [], source: "manual", external_id: "" },
+        { name: "web-1", category: "host", subcategory: "", criticality: "unknown", environment: "", internet_facing: "yes", owner: "", group: "web-2", products: [], tags: [], source: "manual", external_id: "" },
+        { name: "", category: "host", subcategory: "", criticality: "unknown", environment: "", internet_facing: "unknown", owner: "", group: "ghost", products: [], tags: [], source: "manual", external_id: "" },
       ],
       prioritization_policy: { ...RECOMMENDED_POLICY, accepted_risks: [{ subject: "CVE-2024-3094", scope: "", owner: "", expires_on: "", reason: "" }] },
     };
@@ -337,8 +337,8 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
     const form: ProfileForm = {
       ...BASE,
       assets_exposure: [
-        { name: "", category: "host", subcategory: "", criticality: "unknown", environment: "", internet_facing: "unknown", owner: "", group: "", tech_stack: [], tags: [], source: "manual", external_id: "" },
-        { name: "web-1", category: "host", subcategory: "", criticality: "unknown", environment: "", internet_facing: "yes", owner: "", group: "web-2", tech_stack: [], tags: [], source: "manual", external_id: "" },
+        { name: "", category: "host", subcategory: "", criticality: "unknown", environment: "", internet_facing: "unknown", owner: "", group: "", products: [], tags: [], source: "manual", external_id: "" },
+        { name: "web-1", category: "host", subcategory: "", criticality: "unknown", environment: "", internet_facing: "yes", owner: "", group: "web-2", products: [], tags: [], source: "manual", external_id: "" },
       ],
     };
     expect(exposureIssueFromRefusal(form, "asset 'web-1' is in group 'web-2', which is not an asset group")).toEqual(

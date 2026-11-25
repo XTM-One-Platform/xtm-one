@@ -211,7 +211,7 @@ function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n:
     { label: t_i18n("Matched assets"), value: matched },
     // UX r1 B3 on #1796: the names the record matched, next to the primary assets reached below.
     { label: t_i18n("Primary assets named"), value: list(reconcile.primary_assets_named) },
-    { label: t_i18n("Software"), value: list(reconcile.tech_stack) },
+    { label: t_i18n("Software"), value: list(reconcile.products) },
     { label: t_i18n("Owned domain"), value: domains },
     { label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
     // #1591 S3: the primary assets reached and their chains, then the one threshold and where it comes from.
