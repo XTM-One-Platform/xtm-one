@@ -21826,5 +21826,15 @@
   "Waits for the remediation to be applied": "修復の適用待ち",
   "Waits for the validation to finish": "検証の完了待ち",
   "Watches whether the exposure comes back": "露出の再発を監視中",
-  "Last run by {agent}, {when}": "{agent} による最終実行、{when}"
+  "Last run by {agent}, {when}": "{agent} による最終実行、{when}",
+  "Notion comment created": "Notion のコメントが作成されました",
+  "Notion page created": "Notion のページが作成されました",
+  "Notion page properties updated": "Notion のページのプロパティが更新されました",
+  "Notion page content updated": "Notion のページの内容が更新されました",
+  "Notion data source content updated": "Notion のデータソースの内容が更新されました",
+  "Triggers when a comment is added to a page or a block. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.": "ページまたはブロックにコメントが追加されたときに起動します。Notion の Webhook で配信されます。接続の Webhooks タブで下に表示される Webhook URL のサブスクリプションを作成し、統合ページに表示される検証トークンを Notion の Verify フォームに貼り付けてください。",
+  "Triggers when a page is created. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.": "ページが作成されたときに起動します。Notion の Webhook で配信されます。接続の Webhooks タブで下に表示される Webhook URL のサブスクリプションを作成し、統合ページに表示される検証トークンを Notion の Verify フォームに貼り付けてください。",
+  "Triggers when a page's properties change. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.": "ページのプロパティが変更されたときに起動します。Notion の Webhook で配信されます。接続の Webhooks タブで下に表示される Webhook URL のサブスクリプションを作成し、統合ページに表示される検証トークンを Notion の Verify フォームに貼り付けてください。",
+  "Triggers when a page's content changes. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.": "ページの内容が変更されたときに起動します。Notion の Webhook で配信されます。接続の Webhooks タブで下に表示される Webhook URL のサブスクリプションを作成し、統合ページに表示される検証トークンを Notion の Verify フォームに貼り付けてください。",
+  "Triggers when the rows of a data source (database) change. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.": "データソース（データベース）の行が変更されたときに起動します。Notion の Webhook で配信されます。接続の Webhooks タブで下に表示される Webhook URL のサブスクリプションを作成し、統合ページに表示される検証トークンを Notion の Verify フォームに貼り付けてください。"
 }
