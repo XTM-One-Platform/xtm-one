@@ -7,7 +7,9 @@
  * "Unassigned" in secondary text, never a warning colour.
  */
 import { Avatar, Icon } from "@filigran/design-system";
+import { useTriggerTabIndex } from "@/components/ui/row-target-context";
 import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
+import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import type { CtemCasePriority, CtemCaseState } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
@@ -87,15 +89,20 @@ export function CasePriorityChip({ priority }: { priority: CtemCasePriority }) {
 /**
  * The "to validate" marker of a case whose running version OpenCTI cannot
  * place (#2004): the case keeps its members, priority and SLA; the version is
- * validated first. Neutral, so it never reads as a priority or a state.
+ * validated first. Neutral, so it never reads as a priority or a state. The
+ * reason is the DS tooltip, on hover and on keyboard focus, never the native
+ * title (UX round 1 B1 on #2007).
  */
 export function CaseToValidateChip({ unverified }: { unverified?: boolean }) {
   const { t_i18n } = useFormatter();
+  const tabIndex = useTriggerTabIndex();
   if (!unverified) return null;
   return (
-    <ToneBadge tone="neutral" title={t_i18n("Running version not verified: validate it before acting on the case.")} data-testid="ctem-case-to-validate">
-      {t_i18n("To validate")}
-    </ToneBadge>
+    <Tip content={t_i18n("Running version not verified: validate it before acting on the case.")}>
+      <span tabIndex={tabIndex} className={`inline-flex shrink-0 ${TIP_WRAP_FOCUS_RING}`} data-testid="ctem-case-to-validate">
+        <ToneBadge tone="neutral">{t_i18n("To validate")}</ToneBadge>
+      </span>
+    </Tip>
   );
 }
 
