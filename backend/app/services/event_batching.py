@@ -32,8 +32,17 @@ Two optional keys narrow it (#2286): ``batch_events`` lists the event names the
 window applies to (another event of the same trigger runs alone, at once: a
 CTEM case reopened never waits behind the opened burst), and
 ``batch_max_events`` caps the events of one batch below ``MAX_BATCH_EVENTS``
-(the cases one Loop run can work). Pure and unit-tested; the SQL stays in
-``assignment_engine``.
+(the cases one Loop run can work).
+
+``batch_split`` (#2379) keeps the batch a dispatch bound only: a batch run
+works its FIRST event alone, in a context of its own, and hands the rest of
+the list to one queued run that carries its ordering key, so the next event
+starts in a fresh context once this one ended, and so on down the list. One
+conversation working five cases re-sent the tool results of every earlier
+case with each call (18.1M input tokens for a five-case batch against
+0.95-1.6M per case alone).
+
+Pure and unit-tested; the SQL stays in ``assignment_engine``.
 """
 
 from __future__ import annotations
@@ -53,6 +62,12 @@ MAX_BATCH_EVENTS = 100
 EVENTS_CONFIG = "batch_events"
 #: ``trigger_config`` key of the most events one batch run carries (absent: ``MAX_BATCH_EVENTS``).
 MAX_EVENTS_CONFIG = "batch_max_events"
+#: ``trigger_config`` key: each event of a batch is worked in a run (a context) of its own.
+SPLIT_CONFIG = "batch_split"
+#: ``trigger_context`` key of the queued run a split batch run handed the rest of its list to.
+REMAINDER_CONTEXT = "batch_remainder_run_id"
+#: ``trigger_context`` key of the batch run a remainder run was split from.
+SPLIT_FROM_CONTEXT = "batch_split_from_run_id"
 #: Trigger types whose runs a window batches (``trigger_context["type"]``).
 BATCHED_CONTEXT_TYPES = frozenset({"integration_event", "platform_event"})
 #: Trigger types whose ``trigger_config`` may carry the window.
@@ -78,6 +93,9 @@ def window_error(trigger_type: object, trigger_config: object) -> str | None:
     cap = trigger_config.get(MAX_EVENTS_CONFIG)
     if cap is not None and (isinstance(cap, bool) or not isinstance(cap, int) or not 1 <= cap <= MAX_BATCH_EVENTS):
         return f"Invalid trigger_config: '{MAX_EVENTS_CONFIG}' must be a whole number from 1 to {MAX_BATCH_EVENTS}."
+    split = trigger_config.get(SPLIT_CONFIG)
+    if split is not None and not isinstance(split, bool):
+        return f"Invalid trigger_config: '{SPLIT_CONFIG}' must be true or false."
     return None
 
 
@@ -104,6 +122,58 @@ def max_events(trigger_config: Mapping[str, Any] | None) -> int:
     if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 1:
         return min(raw, MAX_BATCH_EVENTS)
     return MAX_BATCH_EVENTS
+
+
+def splits(trigger_config: Mapping[str, Any] | None) -> bool:
+    """Whether the trigger works each batched event in a context of its own (``batch_split``)."""
+    return isinstance(trigger_config, Mapping) and trigger_config.get(SPLIT_CONFIG) is True
+
+
+def split_batch(payload: Mapping[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """The payload a split batch run works (its first event alone) and the rest of the batch, else ``None``.
+
+    An unbatched payload is worked as it is and a batch of one as its event:
+    nothing is left over. The rest keeps the batch form (window, events in
+    arrival order, count), so it splits again when it runs.
+    """
+    if not isinstance(payload, Mapping) or payload.get("batch") is not True:
+        return dict(payload or {}), None
+    events = events_of(payload)
+    if len(events) < 2:
+        return (dict(events[0]) if events else dict(payload)), None
+    first, rest = events[0], events[1:]
+    remainder: dict[str, Any] = {**dict(payload), "events": rest, "event_count": len(rest)}
+    return dict(first), remainder
+
+
+def split_ordering_key(batch_run_id: str) -> str:
+    """The ordering key a split batch run and every run of its rest share (one case at a time)."""
+    return f"batch:{batch_run_id}"
+
+
+#: ``trigger_context`` keys a remainder run never inherits: the window (no event joins it,
+#: a later event opens a batch of its own), the dedup key of the first event (the batch run
+#: holds it) and the resume record of the batch run.
+_NOT_INHERITED = frozenset({WINDOW_CONTEXT, "dedup_key", "handed_back", "resumes", REMAINDER_CONTEXT})
+
+
+def remainder_context(
+    trigger_context: Mapping[str, Any] | None, remainder: Mapping[str, Any], split_from: str
+) -> dict[str, Any]:
+    """The ``trigger_context`` of the queued run that works *remainder* after the batch run *split_from*.
+
+    It keeps the batch run's type and ordering key, so the drain starts it
+    only once the batch run ended (one case at a time, in arrival order), and
+    names the event it opens with.
+    """
+    context = {k: v for k, v in dict(trigger_context or {}).items() if k not in _NOT_INHERITED}
+    events = events_of(remainder)
+    head = events[0] if events else {}
+    for key in ("event_id", "object_type", "object_id", "occurred_at"):
+        if key in head:
+            context[key] = head[key]
+    context[SPLIT_FROM_CONTEXT] = split_from
+    return context
 
 
 def events_of(payload: Mapping[str, Any] | None) -> list[dict[str, Any]]:
