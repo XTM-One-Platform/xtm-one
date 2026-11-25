@@ -19,8 +19,12 @@ guard. A run resumed again and again across rollouts could stay active for
 hours, its per-attempt timeout restarting at every resume, and every fire in
 between would be lost without a trace.
 
-Three rules close it:
+Four rules close it:
 
+* a fire whose previous fire is still waiting for a worker and never started
+  supersedes it (:func:`supersede_never_started`, #2040): the stale fire ends
+  ``skipped`` (``stop_reason`` ``superseded``) and the new one is created, so a
+  saturated queue costs a monitor one pass, never two;
 * a due fire dropped by the overlap guard is recorded as a ``skipped`` run
   whose summary names the run in the way, its status and since when
   (:func:`skipped_fire_run`);
@@ -51,6 +55,13 @@ SKIPPED_BEHIND_KEY = "skipped_behind_run"
 
 #: The opening words of a run failed for its wall time across resumes.
 WALL_TIME_EXCEEDED = "Assignment timed out across its resumes"
+
+#: The ``stop_reason`` of a fire that waited for a worker, never started, and
+#: was replaced by the next fire of its schedule (#2040).
+SUPERSEDED_STOP_REASON = "superseded"
+
+#: The run statuses of a fire that may still be superseded: waiting, never started.
+SUPERSEDABLE_STATUSES = frozenset({"pending", "delayed"})
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -118,6 +129,59 @@ def wall_time_refusal(
         "rather than resumed once more, and its work item claims are released, so the next fire of its "
         "assignment may run."
     )
+
+
+def superseded_summary(*, now: datetime) -> str:
+    """The summary of a fire replaced by the next one before any worker started it."""
+    return (
+        f"Scheduled fire superseded: it waited for a free worker and never started; the fire of "
+        f"{now.isoformat()} replaces it."
+    )
+
+
+async def supersede_never_started(db: Any, run: Any, *, now: datetime | None = None) -> bool:
+    """End *run*, a fire still waiting for a worker, so the next fire of its schedule runs instead (#2040).
+
+    Only a run that never started is superseded: status ``pending`` or ``delayed``,
+    no ``started_at``, and its dispatch execution still ``pending`` with no start
+    recorded, locked ``FOR UPDATE SKIP LOCKED`` so a worker claiming it at the
+    same moment keeps it (``False``, the caller skips the new fire as before).
+    A run handed back by a stopping worker carries its first start and is
+    never superseded. The execution is cancelled and the run ends ``skipped``
+    with ``stop_reason`` :data:`SUPERSEDED_STOP_REASON`; flushed, not committed.
+    """
+    from sqlalchemy import select
+
+    from app.models.orchestration import OrchestrationExecution
+    from app.services.orchestration_adapters.assignment import execution_dedup_key
+    from app.services.orchestration_engine import STARTED_AT_PAYLOAD_KEY
+
+    if getattr(run, "status", None) not in SUPERSEDABLE_STATUSES or getattr(run, "started_at", None) is not None:
+        return False
+    now = now or datetime.now(UTC)
+    execution = (
+        await db.execute(
+            select(OrchestrationExecution)
+            .where(
+                OrchestrationExecution.dedup_key == execution_dedup_key(run.id),
+                OrchestrationExecution.state == "pending",
+            )
+            .with_for_update(skip_locked=True)
+        )
+    ).scalar_one_or_none()
+    if execution is None or (execution.payload or {}).get(STARTED_AT_PAYLOAD_KEY):
+        return False
+    execution.state = "cancelled"
+    execution.lease_owner = None
+    execution.lease_expires_at = None
+    execution.last_error = "Superseded by the next fire of its schedule before any worker started it."
+    execution.updated_at = now
+    run.status = "skipped"
+    run.stop_reason = SUPERSEDED_STOP_REASON
+    run.result_summary = superseded_summary(now=now)
+    run.completed_at = now
+    await db.flush()
+    return True
 
 
 def skipped_fire_summary(active_run: Any, *, now: datetime | None = None) -> str:

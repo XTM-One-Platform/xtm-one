@@ -278,6 +278,65 @@ async def _record_skipped_fire(
         )
 
 
+async def _supersede_stale_fires(db: AsyncSession, assignment: Assignment, now: datetime) -> bool:
+    """Supersede the earlier fires of *assignment* still waiting for a worker (#2040); whether none is left active.
+
+    Every active run of the assignment must be a scheduled fire that never
+    started (:func:`schedule_overlap.supersede_never_started`): a run that
+    started, an event or manual run, or one a worker claimed meanwhile keeps
+    its place and the new fire is skipped as before. Committed when it
+    supersedes; best effort, a failure is logged and answers ``False``.
+    """
+    from app.services import schedule_overlap
+    from app.services.assignment_engine import ACTIVE_RUN_STATUSES
+    from app.services.decision_waits import holds_assignment
+
+    try:
+        active = list(
+            (
+                await db.execute(
+                    select(AssignmentRun).where(
+                        AssignmentRun.assignment_id == assignment.id,
+                        holds_assignment(AssignmentRun, ACTIVE_RUN_STATUSES),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not active or any(
+            (getattr(run, "trigger_context", None) or {}).get("type") != "schedule"
+            or getattr(run, "status", None) not in schedule_overlap.SUPERSEDABLE_STATUSES
+            or getattr(run, "started_at", None) is not None
+            for run in active
+        ):
+            return False
+        for run in active:
+            if not await schedule_overlap.supersede_never_started(db, run, now=now):
+                await db.rollback()
+                return False
+        await db.commit()
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            await db.rollback()
+        logger.warning(
+            "Scheduled assignment '%s' (%s): stale fire not superseded: %s",
+            assignment.name,
+            assignment.id,
+            format_exception_message(exc),
+        )
+        return False
+    for run in active:
+        logger.info(
+            "Scheduled assignment '%s' (%s): fire %s never started and is superseded by the fire of %s",
+            assignment.name,
+            assignment.id,
+            run.id,
+            now.isoformat(),
+        )
+    return True
+
+
 async def _flag_assignment_cron_misconfiguration(
     db: AsyncSession,
     assignment: Assignment,
@@ -3874,7 +3933,7 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
             # This prevents overlapping executions — an assignment cannot re-run
             # while a previous run is still pending, delayed, running, or
             # awaiting human input.
-            if await has_active_run(db, assignment.id):
+            if await has_active_run(db, assignment.id) and not await _supersede_stale_fires(db, assignment, now):
                 # Never silent: the dropped fire is a ``skipped`` run
                 # naming the run in its way, so a run stuck across resumes
                 # shows in the run list instead of starving the schedule.
