@@ -5426,14 +5426,6 @@ export interface ObservabilityConfig {
   trace_storage_enabled: boolean;
   trace_retention_days: number;
   audit_log_retention_days: number;
-  /** Days the coordination tables keep a row (#2070); 0 keeps forever. */
-  coordination_retention?: {
-    work_item_resolved_days: number;
-    work_item_abandoned_days: number;
-    shared_state_resolved_days: number;
-    shared_state_archive_days: number;
-    workset_resolved_days: number;
-  } | null;
   trace_store_payloads: boolean;
   last_aggregation_at: string | null;
   aggregation_stale: boolean;
@@ -5928,7 +5920,8 @@ interface CtemStageAssessment {
 /** Status of a per-user CTEM AI artifact (briefing, stage assessment). The
  *  locked ones (ee_locked, ai_disabled, no_model) never start a run. */
 type CtemAiArtifactStatus =
-  | "ready" | "generating" | "pending" | "ee_locked" | "ai_disabled" | "no_model" | "unavailable";
+  | "ready" | "generating" | "pending" | "ee_locked" | "ai_disabled" | "no_model" | "unavailable"
+  | "not_assessable" | "no_module_account";
 
 export interface CtemStageAssessmentResponse {
   assessment: CtemStageAssessment | null;
@@ -5950,6 +5943,10 @@ export interface CtemStageAssessmentResponse {
    *  page regenerates it on visit and marks it stale meanwhile. */
   stale?: boolean;
   fresh_days?: number;
+  /** The newest run was skipped before any model call because the member has
+   *  no account on these modules (status no_module_account, #2042): the card
+   *  tells the member to sign in to them once. */
+  no_module_account?: string[] | null;
 }
 
 export interface CtemStage {
@@ -9310,6 +9307,10 @@ interface RunSearchResultItem {
   anomaly_count?: number;
   // Entries the platform could not run, left out of every headline.
   platform_error_count?: number;
+  // A placebo comparison's run: its arm and comparison; `real` and null elsewhere.
+  arm?: EvaluationArm;
+  placebo_target?: PlaceboTarget | null;
+  placebo_comparison_id?: string | null;
 }
 
 export interface RunSearchResponse {
