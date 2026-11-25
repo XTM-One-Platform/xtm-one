@@ -17,9 +17,11 @@ WORKSTATIONS = "Employee workstations (laptops and desktops)"
 def _profile(**policy: object) -> oc.OrganizationProfile:
     return oc.parse_profile(
         {
-            "crown_jewels": [{"name": WORKSTATIONS, "criticality": "high", "source": "opencrq", "external_id": "pa-1"}],
+            "primary_assets": [
+                {"name": WORKSTATIONS, "criticality": "high", "source": "opencrq", "external_id": "pa-1"}
+            ],
             "software": [{"product": "Windows"}],
-            "prioritization_policy": {"min_crown_jewel_criticality": "medium", "cvss_min": 7, **policy},
+            "prioritization_policy": {"min_primary_asset_criticality": "medium", "cvss_min": 7, **policy},
         }
     )
 
@@ -50,17 +52,17 @@ def _cve(**evidence: object) -> gate.SignalFacts:
     )
 
 
-def test_without_links_a_windows_cve_stays_held_by_the_crown_jewel_policy() -> None:
+def test_without_links_a_windows_cve_stays_held_by_the_primary_asset_policy() -> None:
     decision = gate.decide(_profile(), _cve(), today=TODAY)
     assert decision.outcome == "watchlist"
-    assert decision.record["reason_code"] == "crown_jewel_below_policy"
+    assert decision.record["reason_code"] == "primary_asset_below_policy"
     assert decision.record["reconcile"]["inventory_links_read"] is False
 
 
 def test_a_link_through_an_asset_group_of_intune_devices_opens_the_case_with_the_chain() -> None:
     decision = gate.decide(_profile(), _cve(), primary_assets=_index(), today=TODAY)
     assert decision.outcome == "case" and decision.state == "confirmed"
-    jewel = next(s for s in decision.record["scope"]["sources"] if s["from"] == "crown_jewel")
+    jewel = next(s for s in decision.record["scope"]["sources"] if s["from"] == "primary_asset")
     assert jewel["name"] == WORKSTATIONS and jewel["criticality"] == "high"
     hop = jewel["chain"][0]
     assert hop["software"] == "Windows" and hop["asset"] == "LAPTOP-042"
@@ -86,7 +88,7 @@ def test_software_the_devices_do_not_run_reaches_nothing() -> None:
 def test_the_link_removed_sends_it_back_to_the_watchlist() -> None:
     empty = pa.PrimaryAssetIndex(loaded=True)
     decision = gate.decide(_profile(), _cve(), primary_assets=empty, today=TODAY)
-    assert decision.outcome == "watchlist" and decision.record["reason_code"] == "crown_jewel_below_policy"
+    assert decision.outcome == "watchlist" and decision.record["reason_code"] == "primary_asset_below_policy"
     assert decision.record["reconcile"]["inventory_links_read"] is True
 
 
@@ -111,43 +113,6 @@ def test_the_threshold_says_where_it_comes_from() -> None:
     assert default.record["scope"]["threshold"] == "high" and default.record["scope"]["threshold_source"] == "default"
     set_ = gate.decide(_profile(scope_min_criticality="medium"), _cve(), primary_assets=_index(), today=TODAY)
     assert set_.record["scope"]["threshold_source"] == "policy"
-
-
-def _fleet(count: int) -> pa.PrimaryAssetIndex:
-    """*count* Windows laptops in one group linked to the workstations, one also linked directly."""
-    link = pa.Link(_key(WORKSTATIONS), "rule", ("stores",))
-    reachers = []
-    for n in range(count):
-        reacher = pa.Reacher(name=f"LAPTOP-{n:05d}", keys={f"laptop-{n:05d}"}, products={"windows": "Windows 11"})
-        reacher.links.append((link, "asset_group", "All Windows x86_64"))
-        reachers.append(reacher)
-    reachers[0].links.append((pa.Link(_key(WORKSTATIONS), "manual", ("processes",)), "asset", "LAPTOP-00000"))
-    return pa.PrimaryAssetIndex(loaded=True, reachers=reachers)
-
-
-def test_the_record_counts_every_supporting_asset_behind_the_chains_it_keeps() -> None:
-    """#1979: 10,000 laptops read 10,000 on the primary asset source, never the 5 chains kept."""
-    decision = gate.decide(_profile(), _cve(), primary_assets=_fleet(10_000), today=TODAY)
-    jewel = next(s for s in decision.record["scope"]["sources"] if s["from"] == "crown_jewel")
-    assert len(jewel["chain"]) <= gate.CHAINS_KEPT
-    assert jewel["assets_total"] == 10_000
-    assert jewel["chain_total"] == len(
-        [h for h in decision.record["reconcile"]["primary_assets"] if h["primary_asset_key"] == _key(WORKSTATIONS)]
-    )
-    totals = decision.record["reconcile"]["primary_asset_totals"][_key(WORKSTATIONS)]
-    assert totals == {"assets": 10_000, "direct": 1, "via_group": 9_999}
-    assert decision.record["reconcile"]["inventory_links_truncated"] is False
-
-
-def test_supporting_lists_each_asset_once_best_link_first_sorted_by_name() -> None:
-    rows = _fleet(3).supporting(["Windows"], [], _key(WORKSTATIONS))
-    assert [r["asset"] for r in rows] == ["LAPTOP-00000", "LAPTOP-00001", "LAPTOP-00002"]
-    first = rows[0]
-    assert first["source"] == "manual" and first["through_kind"] == "asset"
-    assert first["roles"] == ["processes", "stores"] and first["software"] == "Windows"
-    assert rows[1]["through_kind"] == "asset_group" and rows[1]["through"] == "All Windows x86_64"
-    assert _fleet(3).supporting(["nginx"], [], _key(WORKSTATIONS)) == []
-    assert _fleet(3).supporting(["Windows"], [], "payroll") == []
 
 
 def test_product_matching_is_by_whole_word_and_reads_a_cpe() -> None:

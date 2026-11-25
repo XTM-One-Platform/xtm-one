@@ -29,19 +29,10 @@ interface PrimaryAssetHit {
 }
 
 /** One primary asset reached, its name as the policy writes it, and its chains. */
-export interface PrimaryAssetReached {
+interface PrimaryAssetReached {
   name: string;
-  /** The key the record and the supporting asset read use (#1979). */
-  key: string;
   criticality: string | null;
   chains: PrimaryAssetHit[];
-  /** How many chains the record counted, kept or not; null on a record older than #1979. */
-  chainTotal: number | null;
-  /** How many inventory assets reach it; null on a record older than #1979. */
-  assetsTotal: number | null;
-  /** Of those, linked to it directly and through an asset group only. */
-  direct: number | null;
-  viaGroup: number | null;
 }
 
 function isHit(value: unknown): value is PrimaryAssetHit {
@@ -54,43 +45,28 @@ const keyOf = (name: string) => name.split(/\s+/).filter(Boolean).join(" ").toLo
  * The primary assets reached: the criticality sources first (they carry the
  * name and the criticality the gate used), then any hit no source names, by key.
  */
-export function primaryAssetsReached(decision: CtemDecisionRecord | null | undefined): PrimaryAssetReached[] {
+function primaryAssetsReached(decision: CtemDecisionRecord | null | undefined): PrimaryAssetReached[] {
   if (!decision) return [];
   const hits = (Array.isArray(decision.reconcile?.primary_assets) ? decision.reconcile.primary_assets : []).filter(isHit);
-  const sources = decision.scope?.sources ?? [];
-  // #1979: per key, how many inventory assets reach it (absent on an older record).
-  const totalsRaw = decision.reconcile?.primary_asset_totals;
-  const totals: Record<string, { assets?: number; direct?: number; via_group?: number }> =
-    totalsRaw && typeof totalsRaw === "object" ? (totalsRaw as Record<string, { assets?: number; direct?: number; via_group?: number }>) : {};
-  const counted = (key: string, chainTotal: number | null, sourceAssets?: number) => {
-    const row = totals[key];
-    const assets = typeof sourceAssets === "number" ? sourceAssets : typeof row?.assets === "number" ? row.assets : null;
-    return {
-      chainTotal,
-      assetsTotal: assets,
-      direct: typeof row?.direct === "number" ? row.direct : null,
-      viaGroup: typeof row?.via_group === "number" ? row.via_group : null,
-    };
-  };
+  // `chain` rides on a primary asset source (#1591 S3); the shared record type stays as #1750 words it.
+  const sources: { from: string; name: string; criticality?: string; chain?: unknown }[] = decision.scope?.sources ?? [];
   const out: PrimaryAssetReached[] = [];
   const seen = new Set<string>();
   for (const source of sources) {
-    if (source.from !== "crown_jewel") continue;
+    if (source.from !== "primary_asset") continue;
     const key = keyOf(source.name);
     const chains = Array.isArray(source.chain) ? source.chain.filter(isHit) : hits.filter((h) => h.primary_asset_key === key);
     if (chains.length === 0) continue;
     seen.add(key);
-    const chainTotal = typeof source.chain_total === "number" ? source.chain_total : null;
-    out.push({ name: source.name, key, criticality: source.criticality ?? null, chains, ...counted(key, chainTotal, source.assets_total) });
+    out.push({ name: source.name, criticality: source.criticality ?? null, chains });
   }
   for (const hit of hits) {
     if (seen.has(hit.primary_asset_key)) continue;
-    const existing = out.find((p) => p.key === hit.primary_asset_key);
+    const existing = out.find((p) => keyOf(p.name) === hit.primary_asset_key);
     if (existing) existing.chains.push(hit);
-    else out.push({ name: hit.primary_asset_key, key: hit.primary_asset_key, criticality: null, chains: [hit], ...counted(hit.primary_asset_key, null) });
+    else out.push({ name: hit.primary_asset_key, criticality: null, chains: [hit] });
     // A key no criticality source names keeps every one of its hits in one entry.
   }
-  for (const p of out) if (p.chainTotal === null && p.assetsTotal !== null) p.chainTotal = p.chains.length;
   return out;
 }
 
@@ -119,10 +95,10 @@ export function linkRoleLabel(role: string, t_i18n: Translate): string {
 }
 
 /** At most this many chains per primary asset; the rest is counted on a "+N more" line. */
-export const CHAINS_PER_PRIMARY_ASSET = 5;
+const CHAINS_PER_PRIMARY_ASSET = 5;
 
 /** One chain in words: CVE software, then the asset, the group it sits in, the primary asset and the role. */
-export function chainText(primary: string, hit: PrimaryAssetHit, t_i18n: Translate): string {
+function chainText(primary: string, hit: PrimaryAssetHit, t_i18n: Translate): string {
   const steps: string[] = [];
   if (hit.software) steps.push(hit.software);
   if (hit.asset) steps.push(hit.asset);
@@ -142,8 +118,7 @@ export function primaryAssetsRow(decision: CtemDecisionRecord | null | undefined
   if (reached.length > 0) {
     return reached.flatMap((p) => {
       const lines = p.chains.slice(0, CHAINS_PER_PRIMARY_ASSET).map((hit) => chainText(p.name, hit, t_i18n));
-      // #1979: the record's own count when it has one, never the chains it kept.
-      const rest = Math.max(p.chains.length, p.chainTotal ?? 0) - Math.min(p.chains.length, CHAINS_PER_PRIMARY_ASSET);
+      const rest = p.chains.length - CHAINS_PER_PRIMARY_ASSET;
       return rest > 0 ? [...lines, t_i18n("+{count} more", { count: rest })] : lines;
     });
   }
