@@ -67,6 +67,11 @@ RETEST_PREFIX = "openaev:detection-desk:retest:"
 REMEDIATION_PREFIX = "openaev:detection-desk:gap:"
 #: Work-item key prefix of the launch approvals the fleet files for a person (#1388).
 LAUNCH_PREFIX = "openaev:detection-desk:launch:"
+#: What every item of the desk carries in its payload, so a CTEM case delete cancels it (#2389).
+CASE_LINK_RULE = (
+    "Every item you file names in its payload the simulation it comes from as simulation_id and, when a "
+    "CTEM case launched or recorded that simulation, the case id as ctem_case_id."
+)
 
 #: Existing agents the fleet works with; connected, never members.
 SHARED_AGENTS: tuple[str, ...] = (
@@ -300,7 +305,7 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             f"rule, raise one remediation work item per gap (keyed {REMEDIATION_PREFIX}, owned by you, "
             "needs_human with an ask card: a person makes the fix). When the "
             f"simulation is itself a re-test (a {RETEST_PREFIX} item names it), close each gap it "
-            "proves closed. Answer with the run JSON."
+            f"proves closed. {CASE_LINK_RULE} Answer with the run JSON."
         ),
     },
     {
@@ -359,7 +364,8 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             f"A launch ({LAUNCH_PREFIX}) approved: launch exactly the simulation the approval named, and "
             f"record it in shared state {STATE_KEY}; its results come back through Simulation finished. "
             f"A remediation ({REMEDIATION_PREFIX}) answered done: create the re-test work item keyed "
-            f"{RETEST_PREFIX} followed by the same ids, owned by you (none when one is already open). "
+            f"{RETEST_PREFIX} followed by the same ids, owned by you (none when one is already open), "
+            "with the payload links of the remediation item. "
             f"Rejected, declined or deferred: record the decision and the reason in {STATE_KEY}. "
             "Answer with the run JSON."
         ),
