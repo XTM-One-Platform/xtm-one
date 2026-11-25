@@ -321,7 +321,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     return why
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
-                    return await missing_case_answer(db, case_id, wanted, org_id)
+                    from app.services.ctem_case_delete import deleted_case_answer
+
+                    # A deleted case says so, from its audit row (#2328): never a bare miss.
+                    return await deleted_case_answer(db, wanted) or await missing_case_answer(
+                        db, case_id, wanted, org_id
+                    )
                 from app.services import ctem_case_versions as case_versions
                 from app.services import ctem_version_match as matching
 

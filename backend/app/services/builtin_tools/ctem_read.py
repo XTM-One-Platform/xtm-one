@@ -182,8 +182,13 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
                 found = await store.get_case(db, wanted, organization_id=primary.id)
                 if found is None:
-                    # A merged-away case answers its survivor (#2289).
-                    return await missing_case_answer(db, case_id, wanted, primary.id)
+                    from app.services.ctem_case_delete import deleted_case_answer
+
+                    # A deleted case says so, from its audit row (#2328); a merged-away case
+                    # answers its survivor (#2289): never a bare miss.
+                    return await deleted_case_answer(db, wanted) or await missing_case_answer(
+                        db, case_id, wanted, primary.id
+                    )
                 case, rows, events = found
                 # This case's members only (#2092): never a whole view build on the call during a drain.
                 members = [f"{r.source}:{r.external_id}" for r in rows]
