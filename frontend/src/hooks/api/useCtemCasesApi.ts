@@ -89,9 +89,6 @@ export interface CtemCaseSummary {
   waiting_on?: { gate: string | null; by: string | null; since: string | null } | null;
   /** When the case sweep found the case waiting on nobody, while nothing moved it since (#1736); null otherwise. */
   stalled_since?: string | null;
-  /** A running version OpenCTI cannot place (#2004): kept and to validate first; priority and SLA unchanged. */
-  version_unverified?: boolean;
-  version_unverified_reason?: string | null;
 }
 
 /** Where a synced ticket stands against its case (backend ctem_case_loop.TICKET_SYNC_STATES, #917). */
@@ -777,5 +774,41 @@ export function useSplitCtemCase() {
   return useMutation<CtemCaseDetail, Error, { title: string; issue_ids: string[]; reason?: string }>({
     mutationFn: (body) => api.post("/ctem-cases/split", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-cases"] }),
+  });
+}
+
+/** Whether case opening runs, and the confirmed signals that wait for their case (#1951). */
+export interface CtemCaseOpening {
+  vertical: string;
+  on: boolean;
+  waiting: number;
+}
+
+/** The answer of a change: `draining` when the waiting signals are opening their cases now. */
+export interface CtemCaseOpeningChange extends CtemCaseOpening {
+  changed: boolean;
+  draining: boolean;
+}
+
+/** GET /ctem-cases/opening: read by everyone who reads cases; polled while signals wait. */
+export function useCtemCaseOpening() {
+  return useQuery<CtemCaseOpening>({
+    queryKey: ["ctem-cases", "opening"],
+    queryFn: () => api.get("/ctem-cases/opening"),
+    retry: ctemCasesRetry,
+    // While cases open from the waiting signals the count falls: read it again every few seconds.
+    refetchInterval: (query) => (query.state.data?.on && query.state.data.waiting > 0 ? 3000 : REFETCH_INTERVAL_SLOW),
+  });
+}
+
+/** PUT /ctem-cases/opening, administrators only: pause or resume case opening. */
+export function useSetCtemCaseOpening() {
+  const qc = useQueryClient();
+  return useMutation<CtemCaseOpeningChange, Error, { on: boolean }>({
+    mutationFn: (body) => api.put("/ctem-cases/opening", body),
+    onSuccess: (data) => {
+      qc.setQueryData(["ctem-cases", "opening"], { vertical: data.vertical, on: data.on, waiting: data.waiting });
+      void qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
+    },
   });
 }

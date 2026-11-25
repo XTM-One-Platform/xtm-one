@@ -45,10 +45,11 @@ import { caseWaitWho, caseWaitWhoLabel } from "./ctem/case-wait";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import { useAuth } from "@/hooks/useAuth";
-import { CTEM_CASE_STATES, useCtemCases, type CtemCaseOpenedBy, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import { CTEM_CASE_STATES, useCtemCaseOpening, useCtemCases, type CtemCaseOpenedBy, type CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { CasesBulkActions } from "./ctem/CasesBulkActions";
 import { CasesDeleteAction } from "./ctem/CasesDeleteAction";
 import { CasesFreshness } from "./ctem/CasesFreshness";
+import { CaseOpeningOffEmptyState, CaseOpeningSwitch } from "./ctem/CaseOpeningSwitch";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { useFormatter } from "@/i18n";
 import { formatCount } from "@/lib/number-format";
@@ -59,7 +60,6 @@ import {
   CasePriorityChip,
   CaseOwner,
   CaseStateChip,
-  CaseToValidateChip,
   useCasesEmptyLabel,
 } from "./ctem/cases-shared";
 import { CTEM_STAGE_CONFIG, CTEM_STAGE_KEYS } from "@/lib/constants";
@@ -129,6 +129,9 @@ export default function CtemCases() {
 
   // A product that could not be read never yields the all-clear sentence (#12139).
   const empty = useCasesEmptyLabel(data?.details_unavailable, data?.details_unavailable_reasons);
+  // #1951: while case opening is off, the empty list adds one muted line under its usual sentence.
+  const { data: opening } = useCtemCaseOpening();
+  const paused = opening?.on === false;
   const rows = useMemo(() => applyCaseQuickFilters(cases, scope, toggles, now, meId), [cases, scope, toggles, now, meId]);
   const countOf = (chip: CaseScopeChip | CaseToggle) => (data ? caseQuickFilterCount(chip, cases, scope, toggles, now, meId) : undefined);
   const groupBy = useMemo<DataTableGroupBy<CtemCaseSummary> | undefined>(() => {
@@ -156,13 +159,7 @@ export default function CtemCases() {
       // The default sort (#1503): priority, critical first; the attention score and its band are gone.
       key: "priority",
       header: "Priority",
-      // A version-blind case keeps its priority and says the version is to validate (#2004).
-      cell: (c) => (
-        <span className="inline-flex items-center gap-1">
-          <CasePriorityChip priority={c.priority} />
-          <CaseToValidateChip unverified={c.version_unverified} />
-        </span>
-      ),
+      cell: (c) => <CasePriorityChip priority={c.priority} />,
       sortValue: (c) => CASE_PRIORITY_RANK[c.priority],
       csv: (c) => c.priority,
       firstSort: "desc",
@@ -423,6 +420,8 @@ export default function CtemCases() {
           <>
             <CasesGroupByPill value={groupKey} onChange={setGroupKey} />
             <CasesViewsPill />
+            {/* #1951: administrators only, at the toolbar's 32 px like Group by and Views. */}
+            <CaseOpeningSwitch />
           </>
         }
         defaultSort={{ key: "priority", direction: "desc" }}
@@ -529,6 +528,7 @@ export default function CtemCases() {
         isError={isError}
         onRetry={() => void refetch()}
         emptyLabel={empty.label}
+        emptyContent={paused ? <CaseOpeningOffEmptyState label={empty.label} /> : undefined}
         noResultsLabel={t_i18n("No case matches these filters")}
         rowTestId="ctem-cases-row"
       />
