@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import asyncio
 import random
-import time
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -47,12 +46,41 @@ def test_matching_product_keys_selects_what_the_like_read_selected() -> None:
     assert cv.matching_product_keys(stored, labels) == _sql_rule(stored, labels)
 
 
+class _CountedKey(str):
+    """A stored key that counts the comparisons made on it, so linearity is measured without a clock."""
+
+    calls = 0
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other: object) -> bool:
+        type(self).calls += 1
+        return str.__eq__(self, other)
+
+    def __contains__(self, other: object) -> bool:
+        type(self).calls += 1
+        return str.__contains__(self, other)  # type: ignore[operator]
+
+    def endswith(self, *args: Any) -> bool:
+        type(self).calls += 1
+        return str.endswith(self, *args)
+
+    def startswith(self, *args: Any) -> bool:
+        type(self).calls += 1
+        return str.startswith(self, *args)
+
+
 def test_matching_product_keys_is_linear() -> None:
-    stored = [f"vendor{i % 700} product {i}" for i in range(50000)]
-    labels = [f"Product {i}" for i in range(3000)]
-    started = time.perf_counter()
-    cv.matching_product_keys(stored, labels)
-    assert time.perf_counter() - started < 2.0
+    """Comparisons on stored keys stay linear in keys plus labels (a per-label scan would be keys x labels).
+
+    Counted, never timed: a wall-clock bound failed on a loaded CI shard (3.8 s for a 2 s bound).
+    """
+    stored = [_CountedKey(f"vendor{i % 700} product {i}") for i in range(5000)]
+    labels = [f"Product {i}" for i in range(1000)]
+    _CountedKey.calls = 0
+    matched = cv.matching_product_keys(stored, labels)
+    assert len(matched) == 1000
+    assert _CountedKey.calls <= 4 * (len(stored) + len(labels))
 
 
 class _FakeRedis:
