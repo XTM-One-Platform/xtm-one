@@ -8,6 +8,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -152,6 +153,44 @@ async def test_the_store_reads_the_cve_software_only_for_an_unresolved_cve_signa
     # No CVE: no read.
     plain = gate.SignalFacts(trigger_path="new_threat", lens="world", subject_kind="threat", subject_ref="report--1")
     assert await store._with_cve_software(db, row, plain, _profile(), None) is plain
+    assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_bulk_pass_reads_the_cve_software_up_front_and_never_in_its_loop(monkeypatch: Any) -> None:
+    """#2171 review: the bulk re-decide paths read OpenCTI before any row is written, never inside the loop."""
+    seen: list[tuple[Any, ...]] = []
+
+    async def fake_cve_software(db: Any, reader: Any, cves: list[str]) -> tuple[tuple[str, ...], str]:
+        seen.append((reader, tuple(cves)))
+        return ("Metabase",), "read"
+
+    async def no_fallback(db: Any) -> None:
+        return None
+
+    monkeypatch.setattr(ctem_cve_software, "cve_software", fake_cve_software)
+    monkeypatch.setattr(store, "default_scenario_reader", no_fallback)
+    threat = _threat()
+    monkeypatch.setattr(store, "facts_of", lambda row: threat)
+
+    class _Nested:
+        async def __aenter__(self) -> _Nested:
+            return self
+
+        async def __aexit__(self, *exc: object) -> bool:
+            return False
+
+    db: Any = SimpleNamespace(info={}, begin_nested=lambda: _Nested())
+    recorder = uuid.uuid4()
+    org = uuid.uuid4()
+    row: Any = SimpleNamespace(id="s1", recorded_by=str(recorder), state="to_validate", organization_id=org)
+    # Not prepared: the loop's read is skipped, the facts stay as they are.
+    assert await store._with_cve_software(db, row, threat, _profile(), None, remote=False) is threat
+    assert seen == []
+    await store.prepare_cve_reads(db, [row, row], profiles={org: _profile()}, links={org: None})
+    assert seen == [(recorder, ("CVE-2023-38646",))]
+    facts = await store._with_cve_software(db, row, threat, _profile(), None, remote=False)
+    assert facts.cve_software == ("Metabase",) and facts.cve_lookup == "read"
     assert len(seen) == 1
 
 

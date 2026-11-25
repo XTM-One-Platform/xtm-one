@@ -68,7 +68,10 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
    (`reconcile.cve_software`). `reconcile.cve_lookup` says how the read went
    (`read`, `no reader`, `no OpenCTI access`, `OpenCTI did not answer`;
    `null` when not needed). The case recompute, which holds signal row
-   locks (#1953), decides without this read. `record_ctem_signal` names the
+   locks (#1953), decides without this read; the bulk re-decide passes
+   (`evaluate_open`, `recheck_parked`, `recheck_held`, `triage`) take it up
+   front with `prepare_cve_reads`, before any row is written, and decide with
+   `remote_reads=False` from the session cache. `record_ctem_signal` names the
    evidence keys the gate reads and answers a `hint` when the gate left the
    signal `subject_unresolved` and its evidence holds none of them.
    **Shipped products** (`shipped_products`, what the organization ships,
