@@ -775,6 +775,39 @@ describe("DataTable", () => {
     expect(opened).toEqual([ROWS[0].id]);
   });
 
+  it("makes a routed row with no link column the keyboard target: tab stop, Enter opens its route (#2027, B1)", () => {
+    const interactive = COLUMNS.map((column) => ({ ...column, interactive: true }));
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <DataTable rows={ROWS} columns={interactive} rowKey={(row) => row.id} emptyLabel="No agent yet." rowHref={(row) => `/agents/${row.id}`} rowTestId="routed-row" />
+            }
+          />
+          <Route path="/agents/:id" element={<p>Agent page</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const [first] = screen.getAllByTestId("routed-row");
+    expect(screen.queryAllByRole("link")).toEqual([]);
+    expect(first.getAttribute("tabindex")).toBe("0");
+    fireEvent.keyDown(first, { key: "Enter" });
+    expect(screen.getByText("Agent page")).toBeTruthy();
+  });
+
+  it("keeps a routed row with a link column out of the tab order: the link is its one stop", () => {
+    renderWithProviders(
+      <MemoryRouter>
+        <DataTable rows={ROWS} columns={COLUMNS} rowKey={(row) => row.id} emptyLabel="No agent yet." rowHref={(row) => `/agents/${row.id}`} rowTestId="routed-row" />
+      </MemoryRouter>,
+    );
+    const [first] = screen.getAllByTestId("routed-row");
+    expect(first.hasAttribute("tabindex")).toBe(false);
+    expect(within(first).getAllByRole("link")).toHaveLength(1);
+  });
+
   it("keeps a routed row to ONE tab stop: a date cell adds none there, and one elsewhere (#12070, D2)", () => {
     const created = "2026-11-15T10:00:00Z";
     const columns: DataTableColumn<Row>[] = [

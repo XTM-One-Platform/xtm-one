@@ -9,6 +9,7 @@
  * asset". Never blank: a case with no reading says why.
  */
 import { Chip, Icon } from "@filigran/design-system";
+import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
@@ -17,6 +18,7 @@ import { useFormatter } from "@/i18n";
 import { safeExternalUrl } from "@/lib/utils";
 import { CaseSectionReason } from "./CaseSectionReason";
 import { CaseFoldToggle, useCaseFold } from "./case-fold";
+import { primaryAssetPath } from "./inventory";
 
 /** The exposure words, translated where drawn. @i18n-keys */
 const EXPOSURE_LABEL = {
@@ -142,7 +144,15 @@ export function CaseAttackPath({ reading }: { reading: CtemCaseAttackPath | null
                 <ul className="flex flex-wrap items-center gap-1">
                   {reading.primary.map((p, i) => (
                     <li key={`${p}-${i}`} data-testid="ctem-case-attack-path-primary">
-                      <Chip label={name(p)} className="shrink-0" />
+                      {p === RESTRICTED ? (
+                        <Chip label={name(p)} className="shrink-0" />
+                      ) : (
+                        // Opens the primary asset's page (#1980 S2): its supporting assets and the cases on it.
+                        <Link to={primaryAssetPath(p)} className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
+                          <Icon name="gem" size={16} className="text-default-secondary" aria-hidden />
+                          {p}
+                        </Link>
+                      )}
                     </li>
                   ))}
                 </ul>
