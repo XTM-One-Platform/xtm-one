@@ -578,3 +578,54 @@ async def test_a_person_answer_is_written_on_the_case(env: SimpleNamespace, monk
     assert body == {"decided": True, "option": "B", "by": "user-1"}
     gates = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
     assert [(g.to_value, g.reason, g.evidence) for g in gates] == [("answered", "user-1", "B")]
+
+
+# ── #2037: a duplicate is merged by the loop, never deleted ──
+
+
+async def test_an_agent_merges_a_duplicate_into_the_case_it_names(env: SimpleNamespace, monkeypatch) -> None:
+    duplicate = _case(title="Upgrade windows to a fixed version", keys=["upgrade:-/windows@latest"])
+    env.created[duplicate.id] = duplicate
+    calls: list[dict[str, Any]] = []
+
+    async def _merge(_db, **kw):
+        calls.append(kw)
+        return env.case
+
+    monkeypatch.setattr(store, "merge_cases", _merge)
+    body = json.loads(
+        await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[str(duplicate.id)], reason="same fix")
+    )
+    assert body["merged"] == [str(duplicate.id)] and body["into"]["id"] == str(env.case.id)
+    assert calls[0]["actor"] == AGENT and calls[0]["source_ids"] == [duplicate.id]
+    assert calls[0]["target_id"] == env.case.id and calls[0]["reason"] == "same fix"
+    assert env.db.commits == 1
+
+
+async def test_a_merge_of_a_case_the_agent_does_not_see_is_refused(env: SimpleNamespace, monkeypatch) -> None:
+    async def _merge(_db, **kw):
+        raise AssertionError("no merge on a case the acting person does not see")
+
+    monkeypatch.setattr(store, "merge_cases", _merge)
+    unseen = str(uuid.uuid4())
+    assert "No case" in await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[unseen])
+    _, other = env.tools_for(str(uuid.uuid4()))
+    assert "No case" in await other("merge_ctem_cases", target_id=str(env.case.id), case_ids=[unseen])
+    assert "must be ids" in await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[])
+    assert env.db.commits == 0
+
+
+async def test_a_merge_rule_refusal_writes_nothing(env: SimpleNamespace, monkeypatch) -> None:
+    async def _merge(_db, **kw):
+        raise rules.CaseRuleError("the surviving case cannot also be merged into itself")
+
+    monkeypatch.setattr(store, "merge_cases", _merge)
+    answer = await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[str(env.case.id)])
+    assert answer.startswith("Refused: the surviving case") and env.db.commits == 0
+
+
+def test_delete_points_to_merge_for_duplicates(env: SimpleNamespace) -> None:
+    described = {d.name: d.description for d in env.defs}
+    assert "reopens at the next reconcile" in described["delete_ctem_cases"]
+    assert "merge duplicates" in described["delete_ctem_cases"]
+    assert "never reopens" in described["merge_ctem_cases"]

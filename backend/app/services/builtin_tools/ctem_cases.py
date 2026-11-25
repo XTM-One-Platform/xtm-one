@@ -46,6 +46,7 @@ CTEM_CASE_TOOL_NAMES: tuple[str, ...] = (
     "decide_ctem_case_remediation",
     "sync_ctem_case_ticket",
     "bulk_update_ctem_cases",
+    "merge_ctem_cases",
     "delete_ctem_cases",
 )
 _SOURCE = "builtin:ctem_cases"
@@ -774,6 +775,53 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 failed.append({"id": one, "reason": answer})
         return _dump({"updated": updated, "failed": failed})
 
+    async def _merge(target_id: str = "", case_ids: list[str] | None = None, reason: str = "") -> str:
+        """Fold duplicate cases into *target_id* on the rules of POST /ctem-cases/merge (#2037).
+
+        Every case named must be one the acting person sees and acts on; the
+        survivor keeps its state, owner and SLA and takes the keys, members,
+        history and signals of the others, so a reconcile maps them to it.
+        """
+        from app.core.database import async_session
+        from app.services import ctem_cases as rules
+        from app.services import ctem_cases_store as store
+
+        target = _uuid(target_id)
+        sources = [_uuid(c) for c in case_ids or []]
+        if target is None or not sources or any(s is None for s in sources):
+            return "target_id and case_ids must be ids list_ctem_cases answers."
+        if len(sources) > 50:
+            return "At most 50 cases at once."
+        try:
+            async with async_session() as db:
+                org_id, vertical = await _context(db)
+                if org_id is None or scope is None:
+                    return "No organization is set up yet: there are no cases."
+                for one in [target, *sources]:
+                    shown = await _shown(db, one, org_id, vertical)
+                    if shown is None:
+                        return f"No case {one}."
+                    refused = await _view_only(db, shown[1], vertical)
+                    if refused:
+                        return refused
+                await store.merge_cases(
+                    db,
+                    organization_id=org_id,
+                    vertical=vertical,
+                    target_id=target,
+                    source_ids=[s for s in sources if s],
+                    actor=agent_id,
+                    reason=(reason or "").strip() or None,
+                )
+                await db.commit()
+                shown = await _shown(db, target, org_id, vertical)
+                return _dump({"merged": [str(s) for s in sources], "into": shown[2] if shown else {"id": str(target)}})
+        except rules.CaseRuleError as exc:
+            return f"Refused: {exc}. Nothing was changed."
+        except Exception:
+            logger.warning("CTEM case merge failed", exc_info=True)
+            return "Error: the cases could not be merged right now. Say so; nothing was changed."
+
     async def _delete(
         case_ids: list[str] | None = None,
         states: list[str] | None = None,
@@ -825,6 +873,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
 
     executor = CallableToolExecutor()
     executor.register("bulk_update_ctem_cases", _bulk_update)
+    executor.register("merge_ctem_cases", _merge)
     executor.register("delete_ctem_cases", _delete)
     executor.register("list_ctem_cases", _list)
     executor.register("get_ctem_case", _get)
@@ -1135,10 +1184,29 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             source=_SOURCE,
         ),
         ToolDefinition(
+            name="merge_ctem_cases",
+            description=(
+                "Merge duplicate CTEM cases of one fix into target_id (the case a person holds, else the "
+                "oldest): it keeps its state, owner and SLA and takes their keys, issues and history; a "
+                "reconcile never reopens them."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "target_id": {"type": "string", "description": "The surviving case."},
+                    "case_ids": {"type": "array", "items": {"type": "string"}, "description": "Cases folded in."},
+                    "reason": {"type": "string"},
+                },
+                "required": ["target_id", "case_ids"],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
             name="delete_ctem_cases",
             description=(
                 "Administrator only: delete CTEM cases by id or filter (states, opened_by legacy). Cancels "
-                "their work items and timers, sends their signals back to the gate, frees the fix key. "
+                "their work items and timers, sends their signals back to the gate, frees the fix key: a "
+                "case whose signals still match reopens at the next reconcile, so merge duplicates instead. "
                 "dry_run (default true) lists what would go."
             ),
             input_schema={

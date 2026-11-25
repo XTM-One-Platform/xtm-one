@@ -291,17 +291,25 @@ def _event(case_id: uuid.UUID, actor: str, kind: str, at: datetime, **kw: Any) -
 
 
 async def _open_case_for_key(db: AsyncSession, organization_id: uuid.UUID, vertical: str, key: str) -> CtemCase | None:
-    rows = (
-        await db.execute(
-            select(CtemCase).where(
-                CtemCase.organization_id == organization_id,
-                CtemCase.vertical == vertical,
-                CtemCase.state.in_(OPEN_STATES),
+    rows = list(
+        (
+            await db.execute(
+                select(CtemCase).where(
+                    CtemCase.organization_id == organization_id,
+                    CtemCase.vertical == vertical,
+                    CtemCase.state.in_(OPEN_STATES),
+                )
             )
-        )
-    ).scalars()
+        ).scalars()
+    )
     for case in rows:
         if key in (case.keys or []):
+            return case
+    # The same fix of the same product under another spelling (vendor present or absent, label case)
+    # joins the open case and adds its key there, so one fix never holds two SLAs (#2037).
+    for case in rows:
+        if any(rules.same_product_key(key, k) for k in case.keys or []):
+            case.keys = [*(case.keys or []), key]
             return case
     return None
 
