@@ -581,6 +581,143 @@ async def test_a_manual_split_announces_the_new_case() -> None:
         assert events.items[0][1]["case_id"] == str(manual.id)
 
 
+async def test_the_openaev_identity_remap_keeps_the_case_merges_duplicates_and_retires_the_rest():
+    """OpenAEV #9233 re-keyed every finding (xtm-one #1994): the case keeps its row, owner and history."""
+    async with _database() as sessions, sessions() as session:
+        org_id, owner_id = await _seed(session)
+        case = CtemCase(
+            organization_id=org_id,
+            vertical="cyber",
+            title="Tomcat",
+            remediation_kind="upgrade",
+            keys=[KEY],
+            pinned_issues=["openaev:o1"],
+            state="remediating",
+            owner_user_id=owner_id,
+        )
+        session.add(case)
+        await session.flush()
+        session.add_all(
+            [
+                CtemCaseIssue(case_id=case.id, source="openaev", external_id="o1", open=True),
+                CtemCaseIssue(case_id=case.id, source="openaev", external_id="o2", open=False),
+                # The new id of o2 joined since the OpenAEV deploy: a duplicate.
+                CtemCaseIssue(case_id=case.id, source="openaev", external_id="n2", open=True),
+                CtemCaseIssue(case_id=case.id, source="openaev", external_id="o3", open=True),
+                CtemCaseIssue(case_id=case.id, source="opencti", external_id="v1", open=True),
+            ]
+        )
+        await session.flush()
+        first_row = (await session.execute(select(CtemCaseIssue).where(CtemCaseIssue.external_id == "o1"))).scalar_one()
+
+        counts = await store.remap_members(
+            session,
+            organization_id=org_id,
+            vertical="cyber",
+            remap={"openaev:o1": "openaev:n1", "openaev:o2": "openaev:n2", "openaev:o3": None},
+            retired_line="Replaced by OpenAEV finding identity migration",
+            now=NOW,
+        )
+        await session.commit()
+
+        assert counts == {"remapped": 1, "merged": 1, "retired": 1, "resolved": 0}
+        assert await _members(session, case) == {"openaev:n1": True, "openaev:n2": True, "opencti:v1": True}
+        moved = (await session.execute(select(CtemCaseIssue).where(CtemCaseIssue.external_id == "n1"))).scalar_one()
+        assert moved.id == first_row.id  # the same row: nothing of the case is lost
+        await session.refresh(case)
+        assert case.state == "remediating" and case.owner_user_id == owner_id
+        assert case.pinned_issues == ["openaev:n1"]
+        notes = (
+            (
+                await session.execute(
+                    select(CtemCaseEvent).where(CtemCaseEvent.case_id == case.id, CtemCaseEvent.kind == "note")
+                )
+            )
+            .scalars()
+            .all()
+        )
+        retired = [e for e in notes if e.issue == "openaev:o3"]
+        assert [e.reason for e in retired] == ["Replaced by OpenAEV finding identity migration"]
+        assert {(e.from_value, e.to_value) for e in notes if e.from_value} == {
+            ("openaev:o1", "openaev:n1"),
+            ("openaev:o2", "openaev:n2"),
+        }
+
+        # A second pass with the same answer finds nothing left to move.
+        again = await store.remap_members(
+            session,
+            organization_id=org_id,
+            vertical="cyber",
+            remap={"openaev:o1": "openaev:n1", "openaev:o3": None},
+            retired_line="Replaced by OpenAEV finding identity migration",
+            now=NOW,
+        )
+        assert again == {"remapped": 0, "merged": 0, "retired": 0, "resolved": 0}
+
+
+async def test_a_case_whose_members_were_all_retired_resolves_instead_of_staying_open_empty() -> None:
+    """No member left for a recompute to resolve: the retirement resolves the case (xtm-one #2011 review)."""
+    async with _database() as sessions, sessions() as session:
+        org_id, owner_id = await _seed(session)
+        emptied = CtemCase(
+            organization_id=org_id,
+            vertical="cyber",
+            title="Tomcat",
+            remediation_kind="upgrade",
+            keys=[KEY],
+            state="remediating",
+            owner_user_id=owner_id,
+        )
+        kept = CtemCase(
+            organization_id=org_id,
+            vertical="cyber",
+            title="Nginx",
+            remediation_kind="upgrade",
+            keys=["other"],
+            state="new",
+            owner_user_id=owner_id,
+        )
+        session.add_all([emptied, kept])
+        await session.flush()
+        session.add_all(
+            [
+                CtemCaseIssue(case_id=emptied.id, source="openaev", external_id="o1", open=True),
+                CtemCaseIssue(case_id=emptied.id, source="openaev", external_id="o2", open=False),
+                CtemCaseIssue(case_id=kept.id, source="openaev", external_id="o3", open=True),
+                CtemCaseIssue(case_id=kept.id, source="opencti", external_id="v1", open=True),
+            ]
+        )
+        await session.flush()
+
+        counts = await store.remap_members(
+            session,
+            organization_id=org_id,
+            vertical="cyber",
+            remap={"openaev:o1": None, "openaev:o2": None, "openaev:o3": None},
+            retired_line="Replaced by OpenAEV finding identity migration",
+            now=NOW,
+        )
+        await session.commit()
+
+        assert counts == {"remapped": 0, "merged": 0, "retired": 3, "resolved": 1}
+        await session.refresh(emptied)
+        await session.refresh(kept)
+        assert emptied.state == "resolved" and emptied.owner_user_id == owner_id
+        assert kept.state == "new" and await _members(session, kept) == {"opencti:v1": True}
+        states = (
+            (
+                await session.execute(
+                    select(CtemCaseEvent).where(CtemCaseEvent.case_id == emptied.id, CtemCaseEvent.kind == "state")
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [(e.from_value, e.to_value, e.evidence) for e in states] == [
+            ("remediating", "resolved", "Replaced by OpenAEV finding identity migration")
+        ]
+
+
 async def test_the_schema_refuses_an_incomplete_accepted_risk():
     async with _database() as sessions, sessions() as session:
         org_id, _ = await _seed(session)

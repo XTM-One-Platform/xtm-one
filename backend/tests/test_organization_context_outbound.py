@@ -38,7 +38,9 @@ def test_validate_refuses_outbound_where_the_platform_cannot_be_written():
     with pytest.raises(osync.SyncRefusedError, match="cannot be outbound"):
         osync.validate(section="primary_assets", source="opencrq", direction="outbound", **OK)
     with pytest.raises(osync.SyncRefusedError, match="cannot be outbound"):
-        osync.validate(section="assets", source="opencti", direction="outbound", **OK)
+        osync.validate(section="pirs", source="opencti", direction="outbound", **OK)
+    # #1982 S3: assets to OpenCTI are outbound too.
+    osync.validate(section="assets", source="opencti", direction="outbound", **OK)
     with pytest.raises(osync.SyncRefusedError, match="cannot be outbound"):
         osync.validate(section="all", source="", direction="outbound", **OK)
     with pytest.raises(osync.SyncRefusedError, match="inbound or outbound"):

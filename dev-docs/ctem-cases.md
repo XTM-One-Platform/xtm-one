@@ -158,6 +158,16 @@ With it:
   that reason as evidence;
 - when OpenCTI holds no Software of the declared version, nothing is marked
   not affected and every member says "version not known to OpenCTI: <v>";
+  the case is kept with its members, priority and SLA (a KEV or CVSS >= 9
+  member still sets P1) and is marked "to validate" (#2004): the case row
+  answers `version_unverified` true and `version_unverified_reason`
+  (`ctem_version_match.unverified_reason`: the versions OpenCTI does not know,
+  or "no running version reported"), shown as one neutral "To validate" chip
+  on the Cases list and the case page; the marker clears on the next read once
+  OpenCTI places every running version. Validating comes first through the
+  existing gate card wording (`BLIND_ACTION`, "Verify the running version,
+  then upgrade") and the existing validation record; nothing is discarded or
+  derived from versions;
 - the upgrade members of one product fold onto ONE key, the smallest version
   that fixes every member (the greatest of their fixed versions), titled
   "Upgrade <vendor product> to <version>";
@@ -325,6 +335,13 @@ version to type in the tech stack. A row with `in_inventory` and an `asset_id`
 opens the asset overview (`/ctem/inventory/assets/:id`: its software with every
 version and source, SBOM included, its source records and its cases); a row
 outside the inventory is no link (CTEM-20-UI).
+
+**Detail reads gathered.** The case read runs its independent detail reads
+concurrently: the audit trail and the gate records on the request's session,
+the inventory reads (`running_versions`, `affected_assets`) and the settings
+reads (`ticketing`, `owner_fleet`) each on a session of their own. Its
+`Server-Timing` header names each group (`details-trail`, `details-inventory`,
+`details-settings`) beside the total `details` phase.
 
 **Leaving the scope.** At every recompute (`ctem_cases_store.apply_recompute`)
 an upgrade case with a known fixed version, open or resolved, is checked
