@@ -87,6 +87,8 @@ SHARED_AGENTS: tuple[str, ...] = (
 
 #: The verdicts of one expectation, from the strongest control to none.
 VERDICTS: tuple[str, ...] = ("blocked", "detected", "logged", "missed")
+#: The CTEM case functions the orchestrator holds (#2393): its gaps are proposed on the case.
+CASE_TOOLS: tuple[str, ...] = ("get_ctem_case", "record_ctem_case_detection_gap")
 #: The root causes the gap analyst can name.
 #: ``no_platform``: no security platform of the type the expectation is scoped to
 #: is registered, so the control cannot be measured here (#2378): a configuration
@@ -277,7 +279,9 @@ DETECTION_DESK_AGENTS: list[dict[str, Any]] = [
         "temperature": 0.2,
         "tags": ["builtin", "openaev", "detection", "fleet", "detection-desk"],
         "platform_targets": _TARGETS,
-        "builtin_tool_ids": ["work_items", "shared_state", "generate_file"],
+        "builtin_tool_ids": ["work_items", "shared_state", "generate_file", "ctem"],
+        # The case subset (#2393): read the case, propose the desk's gaps on it; nothing else of ctem.
+        "builtin_allowed_tools": {"ctem": list(CASE_TOOLS)},
         "integration_template_bindings": ["openaev"],
         "handover_agent_slugs": [*_DELEGATES, *_CONSULTS],
         "handover_type_slugs": {**{s: "delegate" for s in _DELEGATES}, **{s: "consult" for s in _CONSULTS}},
@@ -349,7 +353,11 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "An OpenAEV simulation finished; the trigger information below names it.\n"
             "Run one analysis of the detection desk loop: delegate the sorting of its results to the "
             "Coverage Gap Analyst, draft a detection rule for each gap whose root cause is a missing "
-            f"rule, raise one remediation work item per gap (keyed {REMEDIATION_PREFIX}, owned by you, "
+            "rule, and propose each gap on the CTEM case the simulation validates with "
+            "record_ctem_case_detection_gap (validation_provider openaev, the simulation id, decision_key "
+            f"{REMEDIATION_PREFIX} followed by the inject and asset ids): it lists the gap on the case and "
+            "files its decision with payload.ctem_case_id. A simulation with no case: raise one "
+            f"remediation work item per gap (keyed {REMEDIATION_PREFIX}, owned by you, "
             "needs_human with an ask card: a person makes the fix), except a no_platform gap. A "
             "no_platform gap is a configuration gap, never a per-host remediation: group them into at "
             "most one configuration item per expected platform type, keyed "
@@ -415,7 +423,9 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
         apply=(
             f"A launch ({LAUNCH_PREFIX}) approved: launch exactly the simulation the approval named, and "
             f"record it in shared state {STATE_KEY}; its results come back through Simulation finished. "
-            f"A remediation ({REMEDIATION_PREFIX}) answered done: create the re-test work item keyed "
+            f"A remediation ({REMEDIATION_PREFIX}) answered: when its payload names a ctem_case_id, record "
+            "the answer on the case with record_ctem_case_detection_gap (action answer). Answered done: "
+            "create the re-test work item keyed "
             f"{RETEST_PREFIX} followed by the same ids, owned by you (none when one is already open), "
             "with the payload links of the remediation item. "
             f"A configuration item ({CONFIGURATION_PREFIX}) answered: record the decision in {STATE_KEY}; "
