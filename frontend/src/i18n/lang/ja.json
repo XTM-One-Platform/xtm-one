@@ -19489,6 +19489,7 @@
   "The last re-score failed: {reason}": "前回の再採点に失敗しました: {reason}",
   "Storage & retention": "ストレージと保持期間",
   "{count, plural, one {# file} other {# files}}": "{count, plural, other {# 件のファイル}}",
+  "{count, plural, one {# linked asset} other {# linked assets}}": "{count, plural, other {# 件のリンク済み資産}}",
   "{count, plural, one {{shown} file} other {{shown} files}}": "{count, plural, other {{shown} 件のファイル}}",
   "Last sweep": "前回のクリーンアップ",
   "Any state": "すべての状態",
