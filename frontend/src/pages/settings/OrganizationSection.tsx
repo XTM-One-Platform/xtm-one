@@ -1647,7 +1647,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         <div data-testid="settings.organization.overview" className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-elevation-subtle px-3 py-2 content-base">
           <p>
             {missingHere > 0
-              ? t_i18n("{count, plural, one {# field not filled on this tab, reported by every agent that needs it} other {# fields not filled on this tab, reported by every agent that needs them}}", {
+              ? t_i18n("{count, plural, one {# field not filled on this tab, reported by every agent that needs it.} other {# fields not filled on this tab, reported by every agent that needs them.}}", {
                   count: missingHere,
                 })
               : t_i18n("Every field of this tab is filled.")}

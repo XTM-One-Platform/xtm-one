@@ -209,7 +209,9 @@ describe("OrganizationSection panels (#12329, #1690)", () => {
   it("draws two tabs in Settings, Organization then Risk and response; the Business cards live on CTEM > Inventory (#1975, #1690)", async () => {
     renderPage();
     const panel = await screen.findByTestId("settings.organization.panel-organization");
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Organization", "Risk and response"]);
+    // Each tab's name leads with its label; its missing count follows (UX r1 B1 on #1984).
+    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("data-testid"))).toEqual(["settings.organization.tab-organization", "settings.organization.tab-risk"]);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.split(/\d/)[0])).toEqual(["Organization", "Risk and response"]);
     expect(screen.getByTestId("settings.organization.tabs")).toBeTruthy();
     // Organization: the identity, the enterprise knowledge and the agents' context (#1975: no Knowledge and sources page).
     expect(within(panel).getByTestId("settings.organization.identity")).toBeTruthy();
@@ -225,7 +227,7 @@ describe("OrganizationSection panels (#12329, #1690)", () => {
   it("draws the risk appetite, the case sync, the rates and the PIR details on Risk and response (#1975)", async () => {
     renderPage("risk");
     const panel = await screen.findByTestId("settings.organization.panel-risk");
-    expect(screen.getByRole("tab", { name: "Risk and response" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: /^Risk and response/ }).getAttribute("aria-selected")).toBe("true");
     expect(within(panel).getByRole("heading", { name: /Risk appetite/ })).toBeTruthy();
     expect(screen.queryByTestId("settings.organization.panel-organization")).toBeNull();
     expect(screen.queryByTestId("settings.organization.enterprise-knowledge")).toBeNull();
@@ -343,7 +345,8 @@ describe("OrganizationSection", () => {
     const overview = await screen.findByTestId("settings.organization.overview");
     // loaded_hourly_rate here, size on Organization; pir_ids is reported on CTEM > Inventory with the Prioritization
     // policy (#1889). The row counts this tab and names the other one (UX r1 B1 on #1984).
-    expect(overview.textContent).toContain("1 field not filled on this tab");
+    // The first sentence ends before the other tab's count (UX r2 B1 on #1984).
+    expect(overview.textContent).toContain("1 field not filled on this tab, reported by every agent that needs it. 1 more on Organization.");
     expect(screen.getByTestId("settings.organization.overview-organization").textContent).toContain("1 more on Organization.");
     expect(screen.queryByTestId("settings.save-bar")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Loaded hourly rate" }));
@@ -1030,7 +1033,7 @@ describe("OrganizationSection", () => {
     expect(within(panel).getByTestId("settings.organization.enterprise-knowledge")).toBeTruthy();
     expect(within(panel).queryByTestId("organization-sources")).toBeNull();
     expect(screen.queryByTestId("settings.organization.knowledge-header")).toBeNull();
-    expect(screen.getByRole("tab", { name: "Organization" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: /^Organization/ }).getAttribute("aria-selected")).toBe("true");
   });
 
   it("opens ?setup on the first tab with a field not filled, with the save bar (#1975)", async () => {

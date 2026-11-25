@@ -21680,7 +21680,7 @@
   "Organization profile tabs": "Organization profile tabs",
   "Unsaved": "Unsaved",
   "{count, plural, one {# field not filled} other {# fields not filled}}": "{count, plural, one {# field not filled} other {# fields not filled}}",
-  "{count, plural, one {# field not filled on this tab, reported by every agent that needs it} other {# fields not filled on this tab, reported by every agent that needs them}}": "{count, plural, one {# field not filled on this tab, reported by every agent that needs it} other {# fields not filled on this tab, reported by every agent that needs them}}",
+  "{count, plural, one {# field not filled on this tab, reported by every agent that needs it.} other {# fields not filled on this tab, reported by every agent that needs them.}}": "{count, plural, one {# field not filled on this tab, reported by every agent that needs it.} other {# fields not filled on this tab, reported by every agent that needs them.}}",
   "Every field of this tab is filled.": "Every field of this tab is filled.",
   "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}"
 }
