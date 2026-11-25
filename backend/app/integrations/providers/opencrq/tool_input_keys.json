@@ -1022,6 +1022,16 @@
   "list_opencrq_connector_syncs": [
     {
       "procedures": [
+        "connectors.getConnector"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
         "connectors.getStreamState"
       ],
       "fields": [
@@ -1516,6 +1526,16 @@
     {
       "procedures": [
         "connectors.resetState"
+      ],
+      "fields": [
+        "source"
+      ],
+      "conditional": [],
+      "closed": true
+    },
+    {
+      "procedures": [
+        "connectors.runInventoryNow"
       ],
       "fields": [
         "source"
