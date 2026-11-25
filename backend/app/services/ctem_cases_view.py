@@ -45,6 +45,7 @@ from app.models.ctem_signal import CtemSignal
 from app.models.user import User
 from app.services import ctem_case_audit as audit
 from app.services import ctem_cases as rules
+from app.services import ctem_version_match as version_match
 
 logger = logging.getLogger(__name__)
 
@@ -638,6 +639,8 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
     if without_details:
         agg = {**agg, **{key: None for key in DETAIL_AGGREGATES}}
     unavailable = sorted({r.source for r in visible if r.source != SIGNAL_SOURCE and _member_id(r) not in view.issues})
+    # Kept and marked, never discarded (#2004): the running version is to validate first.
+    unverified = version_match.unverified_reason(details)
     return {
         "id": str(case.id),
         "title": case.title,
@@ -688,6 +691,9 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "validations": list(case.validations or []),
         "validation_plan": bool(case.validation_plan),
         "resolution_kind": case.resolution_kind,
+        # A running version OpenCTI cannot place (#2004): to validate; priority and SLA unchanged.
+        "version_unverified": unverified is not None,
+        "version_unverified_reason": unverified,
     }
 
 

@@ -158,6 +158,16 @@ With it:
   that reason as evidence;
 - when OpenCTI holds no Software of the declared version, nothing is marked
   not affected and every member says "version not known to OpenCTI: <v>";
+  the case is kept with its members, priority and SLA (a KEV or CVSS >= 9
+  member still sets P1) and is marked "to validate" (#2004): the case row
+  answers `version_unverified` true and `version_unverified_reason`
+  (`ctem_version_match.unverified_reason`: the versions OpenCTI does not know,
+  or "no running version reported"), shown as one neutral "To validate" chip
+  on the Cases list and the case page; the marker clears on the next read once
+  OpenCTI places every running version. Validating comes first through the
+  existing gate card wording (`BLIND_ACTION`, "Verify the running version,
+  then upgrade") and the existing validation record; nothing is discarded or
+  derived from versions;
 - the upgrade members of one product fold onto ONE key, the smallest version
   that fixes every member (the greatest of their fixed versions), titled
   "Upgrade <vendor product> to <version>";

@@ -193,6 +193,32 @@ async def test_a_refused_enqueue_says_the_queue_and_the_reason():
     assert "not allowed" in result
 
 
+class _QueuedMeanwhile(_GitHub):
+    """The first facts read sees no entry; another run queues it before the enqueue."""
+
+    async def handle(self, client, method, url, provider, action, **kwargs):
+        if method == "post" and url.endswith("/graphql"):
+            query = (kwargs.get("json") or {}).get("query", "")
+            if "enqueuePullRequest" not in query and any(
+                "enqueuePullRequest" in g.get("query", "") for g in self.graphql
+            ):
+                self.graphql.append(kwargs.get("json") or {})
+                return _resp(_facts(queue=True, in_queue=True)), None
+        return await super().handle(client, method, url, provider, action, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_an_enqueue_refused_because_another_run_queued_it_is_said_queued() -> None:
+    github = _QueuedMeanwhile(_RULES, facts=_facts(queue=True))
+
+    result = await _run(github)
+
+    assert not result.startswith("Error")
+    assert "already in the merge queue of main" in result
+    assert "position 3" in result
+    assert "queued meanwhile" in result
+
+
 @pytest.mark.asyncio
 async def test_a_pr_already_in_the_queue_is_said_queued_without_a_branch_update():
     github = _GitHub(_NOT_MERGEABLE, facts=_facts(queue=True, in_queue=True))

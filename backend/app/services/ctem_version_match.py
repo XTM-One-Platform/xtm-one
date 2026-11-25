@@ -140,6 +140,36 @@ def affected_from_outcomes(issues: Any) -> str | None:
     return "; ".join(parts)
 
 
+#: The case marker of a version-blind case (#2004): kept, never discarded, the version to validate first.
+UNVERIFIED_NOT_KNOWN = "running version not verified: OpenCTI does not know"
+UNVERIFIED_NOT_REPORTED = "running version not verified: no running version reported"
+
+
+def unverified_reason(issues: Any) -> str | None:
+    """Why a case's running version is not verified, else ``None`` (pure, #2004).
+
+    *issues* are the case's open OpenCTI issues with their details
+    (``ctem_cases.SourceIssue``). The case is to validate when one of them has
+    an installed version OpenCTI cannot place (outcome ``unknown``) or names no
+    running version at all. Nothing is discarded and nothing is derived from
+    versions: membership, priority and SLA are unchanged; the marker clears when
+    OpenCTI places every running version.
+    """
+    not_known: set[str] = set()
+    not_reported = False
+    for issue in issues or ():
+        if getattr(issue, "source", None) != "opencti" or getattr(issue, "not_affected", None):
+            continue
+        outcomes = tuple(getattr(issue, "version_outcomes", None) or ())
+        if not outcomes and not _clean(getattr(issue, "installed_version", None)):
+            not_reported = True
+            continue
+        not_known.update(_clean(v) for v, o in outcomes if _clean(o) == UNKNOWN and _clean(v))
+    if not_known:
+        return f"{UNVERIFIED_NOT_KNOWN} {', '.join(sorted(not_known))}"
+    return UNVERIFIED_NOT_REPORTED if not_reported else None
+
+
 def blind_reasons(match: Mapping[str, Any]) -> list[str]:
     """What is unknown, in words: ``running version unknown``, ``affected range unknown``."""
     reasons: list[str] = []
