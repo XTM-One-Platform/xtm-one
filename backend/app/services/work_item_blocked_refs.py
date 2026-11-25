@@ -141,8 +141,14 @@ from app.models.work_item import WorkItem
 
 logger = logging.getLogger(__name__)
 
-REF_KINDS = ("pull_request", "issue", "deployment", "workflow_run", "tag")
-RELEASE_ON = ("merged", "closed", "merged_or_closed", "deployed", "succeeded", "created")
+REF_KINDS = ("pull_request", "issue", "deployment", "workflow_run", "tag", "a2a_task")
+#: How an ``a2a_task`` reference is released (#2265): the task completed, or ended whatever its outcome.
+A2A_RELEASE_ON = ("completed", "terminal")
+RELEASE_ON = ("merged", "closed", "merged_or_closed", "deployed", "succeeded", "created", *A2A_RELEASE_ON)
+#: The longest task id an ``a2a_task`` reference may name.
+MAX_A2A_TASK_CHARS = 200
+#: The states the platform records on an ``a2a_task`` reference whose task ended.
+A2A_ENDED_STATES = ("completed", "ended")
 #: A tag name glob a ``tag`` reference may give (#2209).
 _TAG_PATTERN_RE = re.compile(r"^[A-Za-z0-9._*?/-]{1,200}$")
 #: What the tag stage remembers of a reference (with ``state`` and ``at``).
@@ -229,6 +235,9 @@ class BlockedRefError(ValueError):
 def _normalize_ref(entry: object) -> dict:
     if not isinstance(entry, dict):
         raise BlockedRefError("each blocked_on_refs entry must be an object {repo, kind, number, release_on}")
+    if entry.get("kind") == "a2a_task":
+        # Not a code-host reference: no repository (#2265).
+        return _normalize_a2a_task_ref(entry)
     repo = entry.get("repo")
     if not isinstance(repo, str) or repo.strip().count("/") != 1 or " " in repo.strip():
         raise BlockedRefError(f"blocked_on_refs: repo must read owner/name, got {repo!r}")
@@ -252,6 +261,8 @@ def _normalize_ref(entry: object) -> dict:
         raise BlockedRefError('blocked_on_refs: release_on deployed needs kind "deployment"')
     if release_on == "succeeded":
         raise BlockedRefError('blocked_on_refs: release_on succeeded needs kind "workflow_run"')
+    if release_on in A2A_RELEASE_ON:
+        raise BlockedRefError(f'blocked_on_refs: release_on {release_on} needs kind "a2a_task"')
     if release_on == "created":
         raise BlockedRefError('blocked_on_refs: release_on created needs kind "tag"')
     if kind == "issue" and release_on == "merged":
@@ -311,6 +322,32 @@ def _normalize_deployment_ref(entry: dict, repo: str) -> dict:
         )
     for key in ("state", "at", *_DEPLOYMENT_KEPT):
         if key not in out and isinstance(entry.get(key), str):
+            out[key] = entry[key]
+    return out
+
+
+def _normalize_a2a_task_ref(entry: dict[str, Any]) -> dict[str, Any]:
+    """An ``a2a_task`` reference: ``{kind, task, release_on}`` (#2265).
+
+    *task* is the ``collect_task_id`` an outbound delegation answered (the partner's
+    task id); whether the item's owner has such a delegation is checked at the write
+    (``work_item_a2a_refs.refuse_unknown_a2a_tasks``), never here. Pure.
+    """
+    task = entry.get("task")
+    text = task.strip() if isinstance(task, str) else ""
+    if not text or len(text) > MAX_A2A_TASK_CHARS or any(c.isspace() for c in text):
+        raise BlockedRefError(
+            f"blocked_on_refs: an a2a_task names its task (the collect_task_id the delegation answered), got {task!r}"
+        )
+    release_on = entry.get("release_on") or "terminal"
+    if release_on not in A2A_RELEASE_ON:
+        raise BlockedRefError(
+            f"blocked_on_refs: an a2a_task is released on {' or '.join(A2A_RELEASE_ON)}, got {release_on!r}"
+        )
+    out: dict[str, Any] = {"kind": "a2a_task", "task": text, "release_on": release_on}
+    # The end the platform recorded, kept on a rewrite of the same reference.
+    for key in ("state", "at", "outcome"):
+        if isinstance(entry.get(key), str):
             out[key] = entry[key]
     return out
 
@@ -429,6 +466,8 @@ def _ref_key(ref: dict) -> tuple:
             ref.get("title_contains"),
             ref.get("carries_sha"),
         )
+    if ref.get("kind") == "a2a_task":
+        return (None, "a2a_task", ref.get("task"))
     if ref.get("kind") == "tag":
         return (ref.get("repo"), "tag", ref.get("pattern"), ref.get("carries_sha"))
     return (ref.get("repo"), ref.get("kind"), ref.get("number") or ref.get("sha"))
@@ -535,6 +574,8 @@ def ref_label(ref: dict) -> str:
     """``owner/name#12`` (a pull request) or ``owner/name issue #12``."""
     if ref.get("kind") == "issue":
         return f"{ref['repo']} issue #{ref['number']}"
+    if ref.get("kind") == "a2a_task":
+        return f"A2A task {ref.get('task')}"
     if ref.get("kind") == "workflow_run":
         on = f" on {ref['branch']}" if ref.get("branch") else ""
         titled = f" titled '*{ref['title_contains']}*'" if ref.get("title_contains") else ""
@@ -558,6 +599,8 @@ def _satisfied(ref: dict) -> bool:
         return ref.get("state") == "deployed"
     if ref.get("kind") == "workflow_run":
         return ref.get("state") == "succeeded"
+    if ref.get("kind") == "a2a_task":
+        return ref.get("state") in A2A_ENDED_STATES
     if ref.get("kind") == "tag":
         return ref.get("state") == "created"
     return ref.get("state") in ("merged", "closed")
@@ -1580,9 +1623,9 @@ def read_kind(ref: dict) -> str | None:
     """
     if ref.get("kind") == "deployment":
         return "pull_request" if ref.get("number") and not ref.get("merge_sha") else None
-    if ref.get("kind") in ("workflow_run", "tag"):
-        # Read by the workflow run reader (:func:`_poll_workflow_run`) or the tag reader
-        # (:func:`_poll_tag`), never as a pull request.
+    if ref.get("kind") in ("workflow_run", "tag", "a2a_task"):
+        # Read by the workflow run reader (:func:`_poll_workflow_run`), the tag reader
+        # (:func:`_poll_tag`) or the A2A task pass (``work_item_a2a_refs``), never as a pull request.
         return None
     return ref.get("kind")
 

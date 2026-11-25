@@ -81,6 +81,7 @@ from app.services.company_managed_writes import (
     restricted_governors,
 )
 from app.services.ownership_scope import ownership_clause
+from app.services.work_item_a2a_refs import names_a2a_task, refuse_unknown_a2a_tasks
 from app.services.work_item_blocked_refs import all_satisfied as all_refs_satisfied
 from app.services.work_item_blocked_refs import (
     blocked_why,
@@ -2293,6 +2294,9 @@ async def create_work_item(
     async with async_session() as db:
         # A target outside the fleet of its owner or creator is refused.
         await check_targets(db, impact, owner_agent_id=owner_uuid, created_by_agent_id=creator_uuid)
+        if names_a2a_task(refs):
+            # A task id no delegation of this user answered would never release it (#2265).
+            await refuse_unknown_a2a_tasks(db, user_uuid, refs)
         structured_ask = await _complete_case_ask(db, key, structured_ask)
         named_workspace = workspace_id
         if workspace_id is None:
@@ -2433,6 +2437,7 @@ async def create_work_item(
         deployment = item.status == "blocked" and _names_deployment(refs)
         workflow_runs = item.status == "blocked" and _names_workflow_run(refs)
         reference_states = item.status == "blocked" and names_reference_state(refs)
+        a2a_tasks = item.status == "blocked" and names_a2a_task(refs)
         tags = item.status == "blocked" and names_tag(refs)
         from types import SimpleNamespace
 
@@ -2464,6 +2469,11 @@ async def create_work_item(
         from app.services.work_item_blocked_refs import schedule_reference_state_check
 
         schedule_reference_state_check(item_id)
+    if a2a_tasks:
+        # Once at creation: the A2A task it waits for may have ended already (#2265).
+        from app.services.work_item_a2a_refs import schedule_a2a_task_check
+
+        schedule_a2a_task_check(item_id)
     if tags:
         # Once at creation: the tag may be cut already (#2209).
         from app.services.work_item_blocked_refs import schedule_tag_check
@@ -2674,6 +2684,9 @@ async def update_work_item(
                 await _check_blockers(db, user_id, blockers, writer)
         refs = None if blocked_on_refs is None else normalize_blocked_on_refs(blocked_on_refs)
         refuse_unobserved_deployment_refs(refs)
+        if names_a2a_task(refs):
+            # A task id no delegation of the item's user answered would never release it (#2265).
+            await refuse_unknown_a2a_tasks(db, item.user_id, refs)
         stored_reason = getattr(item, "blocked_reason", None)
         reason = stored_reason if blocked_reason is None else normalize_blocked_reason(blocked_reason)
         stored_human = getattr(item, "needs_human", None)
@@ -2747,6 +2760,8 @@ async def update_work_item(
             )
         if writer_run_ids is not None:
             _refuse_work_on_finished_item(item, status)
+            # A note the run has not seen yet holds its terminal write (#2266).
+            await _refuse_terminal_over_unseen_notes(item.id, status, writer_run_ids)
         # The stored card stands only for the decision it was written for: a
         # new park for a person brings its own (#762, never a stale question).
         landing_ask = (
@@ -2997,6 +3012,7 @@ async def update_work_item(
         deployment = bool(refs) and item.status == "blocked" and _names_deployment(refs)
         workflow_runs = bool(refs) and item.status == "blocked" and _names_workflow_run(refs)
         reference_states = bool(refs) and item.status == "blocked" and names_reference_state(refs)
+        a2a_tasks = bool(refs) and item.status == "blocked" and names_a2a_task(refs)
         tags = bool(refs) and item.status == "blocked" and names_tag(refs)
         # A note on an item another live run holds is relayed to that run.
         relay_holder = getattr(item, "claimed_by_run_id", None) if note else None
@@ -3045,6 +3061,11 @@ async def update_work_item(
         from app.services.work_item_blocked_refs import schedule_reference_state_check
 
         schedule_reference_state_check(item_id)
+    if a2a_tasks:
+        # Once at the write: the A2A task it waits for may have ended already (#2265).
+        from app.services.work_item_a2a_refs import schedule_a2a_task_check
+
+        schedule_a2a_task_check(item_id)
     if tags:
         # Once at the write: the tag may be cut already (#2209).
         from app.services.work_item_blocked_refs import schedule_tag_check
@@ -3349,6 +3370,33 @@ async def _signal_finished_to_holder(item_id: str, holder_run_id: object, note: 
     text = finished_under_holder_text({"claim_notes": [note]})
     if text:
         await work_item_note_steering.offer(item_id, holder_run_id, text, title=title, writer_run_ids=(), any_item=True)
+
+
+async def _refuse_terminal_over_unseen_notes(
+    item_id: str | uuid.UUID, status: str | None, writer_run_ids: Sequence[str | uuid.UUID] | None
+) -> None:
+    """Refuse a terminal write by a run that has not seen a note written on the item after its read.
+
+    The note was relayed to the run (``work_item_note_steering.offer``) and is
+    still pending: neither injected by its loop nor read with ``get_work_item``.
+    Before #2266 the run finalised the item over it (a "do not close" landed a
+    second before the completion, the completion notice already sent). A fresh
+    ``get_work_item`` clears it; *take_over* is not an acknowledgement.
+    """
+    if status not in WORK_ITEM_TERMINAL_STATUSES or not writer_run_ids:
+        return
+    from app.services import work_item_note_steering
+
+    unseen = await work_item_note_steering.unseen_notes(writer_run_ids, item_id)
+    if unseen:
+        newest = unseen[-1]
+        shown = newest if len(newest) <= 300 else newest[:300].rstrip() + "..."
+        raise ValueError(
+            f"a note was written on this item after this run read it and the run has not seen it: "
+            f'"{shown}"'
+            + (f" (and {len(unseen) - 1} more)" if len(unseen) > 1 else "")
+            + f". Read the item again with get_work_item, then decide; nothing was {status}"
+        )
 
 
 def _refuse_write_by_former_holder(item: WorkItem, writer_run_ids: Sequence[str | uuid.UUID] | None) -> None:
@@ -3879,6 +3927,8 @@ async def complete_work_item(
     uid = safe_uuid(user_id) if user_id else None
     status = status if status in WORK_ITEM_TERMINAL_STATUSES else "done"
     now = datetime.now(UTC)
+    # A note the run has not seen yet holds its completion (#2266).
+    await _refuse_terminal_over_unseen_notes(wid, status, writer_run_ids)
 
     async with async_session() as db:
         _readable, writable = await _workspace_tiers(db, user_id)
