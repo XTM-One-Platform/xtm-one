@@ -68,8 +68,38 @@ async def _call(executor: CallableToolExecutor, tool: str, /, **arguments: Any) 
     return await executor.execute_tool(ToolCall(id="call-1", name=tool, arguments=arguments))
 
 
+def _fields(entity_type: str, *fields: tuple[str, str, bool]) -> tuple[dict[str, Any], None]:
+    """The answer of the field read a create makes before taking ``attributes``."""
+    return (
+        {
+            "schemaAttributes": [
+                {
+                    "type": entity_type,
+                    "attributes": [
+                        {"name": name, "type": kind, "multiple": multiple}
+                        for name, kind, multiple in fields
+                    ],
+                }
+            ]
+        },
+        None,
+    )
+
+
 async def test_a_report_takes_a_custom_field_and_a_mandatory_field(monkeypatch: pytest.MonkeyPatch) -> None:
-    executor, rec, _ = _build(monkeypatch)
+    executor, rec, _ = _build(
+        monkeypatch,
+        [
+            _fields(
+                "Report",
+                ("x_opencti_reliability", "string", False),
+                ("x_opencti_cf_case_reference", "string", False),
+                ("x_opencti_cf_regions", "string", True),
+                ("x_opencti_cf_score", "numeric", False),
+                ("x_opencti_cf_empty", "string", False),
+            )
+        ],
+    )
     await _call(
         executor,
         "create_opencti_container",
@@ -80,33 +110,126 @@ async def test_a_report_takes_a_custom_field_and_a_mandatory_field(monkeypatch: 
             "x_opencti_reliability": "A - Completely reliable",
             "x_opencti_cf_case_reference": "CR-42",
             "x_opencti_cf_regions": ["EU", "NA"],
+            "x_opencti_cf_score": 3.5,
             "x_opencti_cf_empty": "",
         },
     )
+    assert rec.calls[0][1] == {"t": "Report"}
     sent = rec.inputs[-1]
     assert sent["name"] == "Weekly digest"
     assert sent["x_opencti_reliability"] == "A - Completely reliable"
     assert sent["customFieldValues"] == [
         {"field_name": "x_opencti_cf_case_reference", "value": ["CR-42"]},
         {"field_name": "x_opencti_cf_regions", "value": ["EU", "NA"]},
+        {"field_name": "x_opencti_cf_score", "value": [3.5]},
     ]
     assert not any(k.startswith("x_opencti_cf_") for k in sent)
 
 
 @pytest.mark.parametrize(
-    ("tool", "arguments"),
+    ("tool", "arguments", "entity_type"),
     [
-        ("create_opencti_entity", {"type": "Malware", "name": "Emotet"}),
-        ("create_opencti_relationship", {"from_id": "a", "to_id": "b", "relationship_type": "uses"}),
-        ("create_opencti_note", {"content": "seen", "object_ids": ["a"]}),
-        ("create_opencti_indicator", {"name": "i", "pattern": "[ipv4-addr:value = '1.2.3.4']"}),
+        ("create_opencti_entity", {"type": "Malware", "name": "Emotet"}, "Malware"),
+        (
+            "create_opencti_relationship",
+            {"from_id": "a", "to_id": "b", "relationship_type": "uses"},
+            "uses",
+        ),
+        ("create_opencti_note", {"content": "seen", "object_ids": ["a"]}, "Note"),
+        (
+            "create_opencti_indicator",
+            {"name": "i", "pattern": "[ipv4-addr:value = '1.2.3.4']"},
+            "Indicator",
+        ),
     ],
 )
-async def test_every_create_tool_sends_the_attributes(
-    monkeypatch: pytest.MonkeyPatch, tool: str, arguments: dict[str, Any]
+async def test_every_create_tool_checks_then_sends_the_attributes(
+    monkeypatch: pytest.MonkeyPatch, tool: str, arguments: dict[str, Any], entity_type: str
 ) -> None:
-    executor, rec, _ = _build(monkeypatch)
+    executor, rec, _ = _build(monkeypatch, [_fields(entity_type, ("x_opencti_cf_source", "string", False))])
     await _call(executor, tool, **arguments, attributes={"x_opencti_cf_source": "feed-1"})
+    assert rec.calls[0][1] == {"t": entity_type}
+    assert rec.inputs[-1]["customFieldValues"] == [
+        {"field_name": "x_opencti_cf_source", "value": ["feed-1"]}
+    ]
+
+
+@pytest.mark.parametrize("field", ["update", "stix_id", "x_opencti_stix_ids", "upsertOperations"])
+async def test_a_field_choosing_the_object_written_is_refused(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """``update: true`` would force-merge every matching entity: never through ``attributes``."""
+    executor, rec, _ = _build(monkeypatch)
+    result = await _call(
+        executor,
+        "create_opencti_entity",
+        type="Malware",
+        name="Emotet",
+        attributes={field: True if field == "update" else ["malware--1"]},
+    )
+    assert result.content.startswith(f"Error: {field} cannot be given in 'attributes'")
+    assert rec.calls == []
+
+
+async def test_a_name_that_is_no_field_of_the_type_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OpenCTI drops an unknown custom field and still creates: it is refused before."""
+    executor, rec, _ = _build(monkeypatch, [_fields("Malware", ("x_opencti_cf_source", "string", False))])
+    result = await _call(
+        executor,
+        "create_opencti_entity",
+        type="Malware",
+        name="Emotet",
+        attributes={"x_opencti_cf_unknown": "x", "clientMutationId": "y"},
+    )
+    assert result.content.startswith(
+        "Error: not fields of Malware on this OpenCTI: clientMutationId, x_opencti_cf_unknown."
+    )
+    assert len(rec.calls) == 1  # the field read, no mutation
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "problem"),
+    [
+        (("x_opencti_cf_count", "numeric", False), "3", "x_opencti_cf_count takes numeric values, got '3'"),
+        (("x_opencti_cf_count", "numeric", False), True, "x_opencti_cf_count takes numeric values, got True"),
+        (("x_opencti_cf_flag", "boolean", False), "yes", "x_opencti_cf_flag takes boolean values, got 'yes'"),
+        (("x_opencti_cf_ref", "string", False), ["a", "b"], "x_opencti_cf_ref takes a single value"),
+    ],
+)
+async def test_a_custom_value_of_the_wrong_type_is_refused(
+    monkeypatch: pytest.MonkeyPatch, field: tuple[str, str, bool], value: Any, problem: str
+) -> None:
+    """OpenCTI only logs a wrongly typed custom value and still creates: it is refused before."""
+    executor, rec, _ = _build(monkeypatch, [_fields("Malware", field)])
+    result = await _call(
+        executor, "create_opencti_entity", type="Malware", name="Emotet", attributes={field[0]: value}
+    )
+    assert result.content == f"Error: {problem}. Nothing was created."
+    assert len(rec.calls) == 1
+
+
+async def test_an_older_opencti_checks_against_the_list_of_every_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refused = (
+        "GraphQL error in 'SchemaAttributeTypes': Unknown argument \"entityType\" on field "
+        '"Query.schemaAttributes". [GRAPHQL_VALIDATION_FAILED]'
+    )
+    every_type = {
+        "schemaAttributes": [
+            {"type": "Report", "attributes": [{"name": "x_opencti_cf_other", "type": "string"}]},
+            {"type": "Malware", "attributes": [{"name": "x_opencti_cf_source", "type": "string"}]},
+        ]
+    }
+    executor, rec, _ = _build(monkeypatch, [({}, refused), (every_type, None)])
+    await _call(
+        executor,
+        "create_opencti_entity",
+        type="Malware",
+        name="Emotet",
+        attributes={"x_opencti_cf_source": "feed-1"},
+    )
+    assert "schemaAttributes {" in rec.calls[1][0]
     assert rec.inputs[-1]["customFieldValues"] == [
         {"field_name": "x_opencti_cf_source", "value": ["feed-1"]}
     ]
@@ -145,6 +268,8 @@ def test_the_create_tools_but_the_observable_declare_attributes(monkeypatch: pyt
         "create_opencti_note",
     ):
         assert by_name[name].input_schema["properties"]["attributes"]["type"] == "object"
+        # Nothing makes the agent read the fields before a create: the description says to.
+        assert "call get_opencti_schema_attributes first" in by_name[name].description
     # An observable's input is nested per type: a flat field would land in the wrong place.
     assert "attributes" not in by_name["create_opencti_observable"].input_schema["properties"]
     assert by_name["get_opencti_schema_attributes"].input_schema["required"] == ["entity_type"]

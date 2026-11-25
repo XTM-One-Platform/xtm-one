@@ -351,6 +351,30 @@ _STIX_METADATA_PROPS: dict[str, Any] = {
 #: field is no input field of the type, its value goes in ``customFieldValues``.
 _CUSTOM_FIELD_PREFIX = "x_opencti_cf_"
 
+#: Input fields that choose WHICH object a creation writes rather than what it
+#: holds: ``update`` force-merges every matching existing entity (an
+#: irreversible merge, guarded in ``merge_opencti_entities``), and the STIX ids
+#: and upsert operations pick the object an upsert lands on. Never taken from
+#: ``attributes``, even where ``schemaAttributes`` lists them.
+_WRITE_TARGET_FIELDS = frozenset({"update", "stix_id", "x_opencti_stix_ids", "upsertOperations"})
+
+#: The Python values a custom field of each ``schemaAttributes`` type takes.
+#: OpenCTI drops a custom value of another type with only a log line, and the
+#: creation still succeeds: it is refused before sending instead.
+_CUSTOM_FIELD_VALUE_TYPES: dict[str, tuple[type, ...]] = {
+    "string": (str,),
+    "date": (str,),
+    "numeric": (int, float),
+    "boolean": (bool,),
+}
+
+#: The sentence the create tools' descriptions end with.
+_READ_FIELDS_FIRST = (
+    " When this instance's mandatory or custom fields for the type are not "
+    "known, call get_opencti_schema_attributes first and pass them in "
+    "'attributes': a creation missing a mandatory field is refused."
+)
+
 #: JSON-schema fragment of the ``attributes`` argument of the create tools.
 _SCHEMA_ATTRIBUTES_PROPS: dict[str, Any] = {
     "attributes": {
@@ -360,35 +384,83 @@ _SCHEMA_ATTRIBUTES_PROPS: dict[str, Any] = {
             "Other fields of the object, keyed by the field name "
             "get_opencti_schema_attributes returns for the type: a field made "
             "mandatory on this instance, a custom field (x_opencti_cf_...), or "
-            "any input field this tool has no parameter for. A ref field takes "
-            "IDs; a multiple field takes a list. A field this tool already "
-            "sets through its own parameters is refused here."
+            "another field of the type this tool has no parameter for. A ref "
+            "field takes IDs; a multiple field takes a list. A name that is no "
+            "field of the type, a field this tool already sets through its own "
+            "parameters, and a custom value of the wrong type are refused."
         ),
     },
 }
 
 
-def _apply_schema_attributes(input_data: dict[str, Any], attributes: Any) -> str | None:
-    """Add the agent's free ``attributes`` to a mutation ``input`` dict.
-
-    A custom field goes in ``customFieldValues`` as ``{field_name, value}``
-    (its value always a list), any other field is set as is. Returns an error
-    string, and sets nothing, when ``attributes`` is no object or names a field
-    the tool already set from its own parameters: a field is given once.
-    """
-    if not attributes:
-        return None
+def _attributes_shape_refusal(input_data: dict[str, Any], attributes: Any) -> str | None:
+    """Why ``attributes`` cannot be used whatever the type's fields, or ``None``."""
     if not isinstance(attributes, dict):
         return "Error: 'attributes' must be an object of field name to value."
-    blank = [k for k in attributes if not isinstance(k, str) or not k.strip()]
-    if blank:
+    if any(not isinstance(k, str) or not k.strip() for k in attributes):
         return "Error: every key of 'attributes' must be a field name."
+    target = sorted(k for k in attributes if k in _WRITE_TARGET_FIELDS)
+    if target:
+        return (
+            f"Error: {', '.join(target)} cannot be given in 'attributes': they choose "
+            "which existing object the creation writes to (an upsert, a merge), not "
+            "a field of the new object."
+        )
     clashes = sorted(k for k in attributes if k in input_data)
     if clashes:
         return (
             f"Error: {', '.join(clashes)} already set by this tool's own "
             "parameters; give each field once, outside 'attributes'."
         )
+    return None
+
+
+def _attributes_field_refusal(
+    entity_type: str, attributes: dict[str, Any], fields: dict[str, dict[str, Any]]
+) -> str | None:
+    """Why ``attributes`` does not fit the fields OpenCTI gives *entity_type*, or ``None``.
+
+    A name must be a field of the type; a custom field's value must be of its
+    type, and a single value where the field is not multiple.
+    """
+    unknown = sorted(k for k in attributes if k not in fields)
+    if unknown:
+        return (
+            f"Error: not fields of {entity_type} on this OpenCTI: {', '.join(unknown)}. "
+            f"get_opencti_schema_attributes(entity_type='{entity_type}') lists them."
+        )
+    problems: list[str] = []
+    for key, value in attributes.items():
+        field = fields[key]
+        if not key.startswith(_CUSTOM_FIELD_PREFIX) or value is None or value == "" or value == []:
+            continue
+        values = value if isinstance(value, list) else [value]
+        if len(values) > 1 and not field.get("multiple"):
+            problems.append(f"{key} takes a single value")
+            continue
+        kind = str(field.get("type") or "")
+        accepted = _CUSTOM_FIELD_VALUE_TYPES.get(kind)
+        if accepted is None:
+            continue
+        # bool is an int in Python: a numeric field does not take one.
+        wrong = [
+            v for v in values
+            if not isinstance(v, accepted) or (kind == "numeric" and isinstance(v, bool))
+        ]
+        if wrong:
+            problems.append(f"{key} takes {kind} values, got {wrong[0]!r}")
+    if problems:
+        return f"Error: {'; '.join(problems)}. Nothing was created."
+    return None
+
+
+def _apply_schema_attributes(input_data: dict[str, Any], attributes: dict[str, Any]) -> None:
+    """Add checked ``attributes`` to a mutation ``input`` dict.
+
+    A custom field goes in ``customFieldValues`` as ``{field_name, value}``
+    (its value always a list), any other field is set as is; an empty custom
+    value is left out.
+    """
     custom: list[dict[str, Any]] = []
     for key, value in attributes.items():
         if key.startswith(_CUSTOM_FIELD_PREFIX):
@@ -399,7 +471,11 @@ def _apply_schema_attributes(input_data: dict[str, Any], attributes: Any) -> str
             input_data[key] = value
     if custom:
         input_data["customFieldValues"] = [*(input_data.get("customFieldValues") or []), *custom]
-    return None
+
+
+def _is_legacy_schema_attributes(err: str | None) -> bool:
+    """An OpenCTI before 7.261124.0 refuses ``schemaAttributes(entityType: ...)``."""
+    return bool(err) and "Unknown argument" in str(err) and "entityType" in str(err)
 
 
 def _schema_attribute(raw: dict[str, Any]) -> dict[str, Any]:
@@ -2064,7 +2140,7 @@ def register_knowledge(
             object_label=object_label,
             external_references=external_references,
         )
-        if refused := _apply_schema_attributes(input_data, attributes):
+        if refused := await _checked_schema_attributes(relationship_type, input_data, attributes):
             return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
@@ -2213,7 +2289,7 @@ def register_knowledge(
             object_label=object_label,
             external_references=external_references,
         )
-        if refused := _apply_schema_attributes(input_data, attributes):
+        if refused := await _checked_schema_attributes("Note", input_data, attributes):
             return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
@@ -3301,7 +3377,7 @@ def register_knowledge(
             object_organization=object_organization,
             external_references=external_references,
         )
-        if refused := _apply_schema_attributes(input_data, attributes):
+        if refused := await _checked_schema_attributes("Indicator", input_data, attributes):
             return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
@@ -3419,7 +3495,7 @@ def register_knowledge(
             object_label=object_label,
             external_references=external_references,
         )
-        if refused := _apply_schema_attributes(input_data, attributes):
+        if refused := await _checked_schema_attributes(container_type, input_data, attributes):
             return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
@@ -3550,7 +3626,7 @@ def register_knowledge(
             object_label=object_label,
             external_references=external_references,
         )
-        if refused := _apply_schema_attributes(input_data, attributes):
+        if refused := await _checked_schema_attributes(type, input_data, attributes):
             return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
@@ -3606,7 +3682,7 @@ def register_knowledge(
         )
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(client, base_url, headers, query, {"t": entity_type})
-            if err and "Unknown argument" in err and "entityType" in err:
+            if _is_legacy_schema_attributes(err):
                 return await _legacy_schema_attributes(client, entity_type, mandatory_only)
         if err:
             return err
@@ -3618,6 +3694,61 @@ def register_knowledge(
         return _schema_attributes_answer(
             found.get("type") or entity_type, attributes, mandatory_only=mandatory_only
         )
+
+    async def _fields_of_type(
+        client: Any, entity_type: str
+    ) -> tuple[dict[str, dict[str, Any]], str | None]:
+        """The fields OpenCTI gives *entity_type*, by name, or an error.
+
+        An OpenCTI before 7.261124.0 answers ``schemaAttributes`` for every type
+        at once: the type is picked from that list.
+        """
+        fields = "type attributes { name type multiple }"
+        data, err = await _graphql(
+            client,
+            base_url,
+            headers,
+            f"query SchemaAttributeTypes($t: String!) {{ schemaAttributes(entityType: $t) {{ {fields} }} }}",
+            {"t": entity_type},
+        )
+        maps = data.get("schemaAttributes") or []
+        if _is_legacy_schema_attributes(err):
+            data, err = await _graphql(
+                client,
+                base_url,
+                headers,
+                f"query SchemaAttributeTypesAll {{ schemaAttributes {{ {fields} }} }}",
+            )
+            wanted = entity_type.lower()
+            maps = [m for m in data.get("schemaAttributes") or [] if str(m.get("type") or "").lower() == wanted]
+        if err:
+            return {}, err
+        if not maps:
+            return {}, f"Error: OpenCTI has no type '{entity_type}'."
+        return {str(a["name"]): a for a in maps[0].get("attributes") or [] if a.get("name")}, None
+
+    async def _checked_schema_attributes(
+        entity_type: str, input_data: dict[str, Any], attributes: Any
+    ) -> str | None:
+        """Check the agent's ``attributes`` against the type's fields, then add them.
+
+        Returns an error string, and adds nothing, when one is refused: only a
+        field OpenCTI lists for the type is taken, so an input flag such as
+        ``update`` never comes in this way, and a custom value OpenCTI would drop
+        silently (an unknown name, a wrong type) fails here instead.
+        """
+        if not attributes:
+            return None
+        if refused := _attributes_shape_refusal(input_data, attributes):
+            return refused
+        async with _client(headers, timeout=30) as client:
+            fields, err = await _fields_of_type(client, entity_type)
+        if err:
+            return f"Error: could not read the fields of {entity_type} to check 'attributes': {err}"
+        if refused := _attributes_field_refusal(entity_type, attributes, fields):
+            return refused
+        _apply_schema_attributes(input_data, attributes)
+        return None
 
     async def _legacy_schema_attributes(
         client: Any, entity_type: str, mandatory_only: bool
@@ -5858,6 +5989,7 @@ def register_knowledge(
                 "Create a STIX core relationship between two entities in OpenCTI. "
                 "The relationship connects a source entity (from) to a target entity (to) "
                 "with a specific relationship type (e.g. 'indicates', 'uses', 'targets')."
+                + _READ_FIELDS_FIRST
             ),
             input_schema={
                 "type": "object",
@@ -5959,6 +6091,7 @@ def register_knowledge(
                 "Create an analyst note in OpenCTI attached to one or more entities. "
                 "Use this to annotate findings, add context, or record analysis results. "
                 "Markdown is supported in the content field."
+                + _READ_FIELDS_FIRST
             ),
             input_schema={
                 "type": "object",
@@ -6310,6 +6443,7 @@ def register_knowledge(
                 "via based_on, attach markings/labels/author, and set "
                 "create_observables=true to also create the corresponding "
                 "observable(s)."
+                + _READ_FIELDS_FIRST
             ),
             input_schema={
                 "type": "object",
@@ -6445,6 +6579,7 @@ def register_knowledge(
                 "(Request for Information), Case-Rft (Request for Takedown), or "
                 "Grouping. Containers hold references to other STIX objects. "
                 "Optionally pass object_ids to add entities/relationships at creation."
+                + _READ_FIELDS_FIRST
             ),
             input_schema={
                 "type": "object",
@@ -6528,6 +6663,7 @@ def register_knowledge(
                 + ", ".join(sorted(_SDO_MUTATIONS.keys()))
                 + ". Use this for threat actors, malware, campaigns, incidents, "
                 "vulnerabilities, attack patterns, tools, intrusion sets, etc."
+                + _READ_FIELDS_FIRST
             ),
             input_schema={
                 "type": "object",
