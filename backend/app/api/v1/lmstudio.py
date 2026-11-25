@@ -5,8 +5,8 @@
 The models on the server and their loaded instances, loading and unloading a
 model, downloading one from the LM Studio catalog or Hugging Face, and the
 platform LM Studio LLM provider this integration can feed. Every call to the
-server goes through the integration's relay group: an integration with no
-relay group is refused (409), never reached from the platform.
+server follows the integration's route: through its relay group when it has
+one, directly from the platform otherwise.
 
 Who may do what:
 
@@ -76,7 +76,6 @@ _NOT_FOUND = "Integration not found"
 
 _STATUS_BY_KIND = {
     "not_found": status.HTTP_404_NOT_FOUND,
-    "not_routed": status.HTTP_409_CONFLICT,
     "no_base_url": status.HTTP_409_CONFLICT,
     "invalid_base_url": status.HTTP_409_CONFLICT,
 }
@@ -124,9 +123,7 @@ def _require_server_holder(user: User, integration: Integration) -> None:
 
 
 async def _connection(integration: Integration) -> client.Connection:
-    """The server's connection; a 409 naming what is missing (route, URL)."""
-    if integration.relay_group_id is None:
-        raise _upstream_failure(client.LMStudioError("not_routed", client.PUBLIC_MESSAGES["not_routed"]))
+    """The server's connection; a 409 naming what is missing (the server URL)."""
     try:
         return await client.integration_connection(integration)
     except client.LMStudioError as exc:
@@ -134,7 +131,7 @@ async def _connection(integration: Integration) -> client.Connection:
 
 
 async def _call(db: AsyncSession, integration: Integration, call):
-    """Run ``call(connection)`` through the integration's relay route."""
+    """Run ``call(connection)`` on the integration's route (its relay group, or direct)."""
     from app.services.relays import integration_egress_route
 
     connection = await _connection(integration)
@@ -197,8 +194,6 @@ async def get_overview(
         base_url, has_token = connection.base_url, connection.token is not None
     except client.LMStudioError as exc:
         server_refusal = exc.public_message
-    if integration.relay_group_id is None:
-        server_refusal = client.PUBLIC_MESSAGES["not_routed"]
     refusal = llm_link.link_refusal(integration)
     can_link = user.is_admin and refusal is None
     return OverviewResponse(
@@ -362,7 +357,7 @@ async def get_download(
 
 
 # ---------------------------------------------------------------------------
-# Platform LLM provider (admin, company-managed integration routed through a relay)
+# Platform LLM provider (admin, company-managed integration)
 # ---------------------------------------------------------------------------
 
 
