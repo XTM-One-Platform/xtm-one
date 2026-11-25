@@ -2575,3 +2575,34 @@ before Confirm. Progress is kept per fleet in the browser
 (`fleet-setup-wizard.ts`, key `xtm.fleet-setup.<fleet id>`), cleared on
 enable; no endpoint was added. The end screen names the automations left off
 and the slots not bound, with a link to the Members view.
+
+## 15. Module account preflight of per-user stage runs (#2042)
+
+A per-user CTEM stage run (the five `ctem-*-analyst` stage agents and
+`exposure-briefing-analyst`) acts as one member through that member's own
+OpenCTI / OpenAEV identity. A member who never signed in to a module has no
+account there, and every call answers 401 (OpenCTI) or 403 (OpenAEV): expected,
+but the run used to spend several hundred thousand tokens before completing
+"degraded".
+
+`app.services.ctem_module_preflight` reads the member's identity once per
+module before the run is charged and before any model call
+(`assignment_engine._skip_by_module_preflight`, right after the activation
+check): OpenCTI `query { me { id } }`, OpenAEV `GET /api/me`, with the same
+per-user platform JWT the run's tools send (module auth is unchanged). Answers
+are cached per member and integration (present 30 min, missing 10 min;
+`forget(user_id)` drops them).
+
+- `STAGE_NEEDS` maps each stage slug to its need: groups that must all be met,
+  each met by any of its modules. Every stage today needs OpenCTI or OpenAEV
+  (`ANY_CTEM_MODULE`), since each falls back to the module it has.
+- A need not met ends the run `skipped`, `error = "no_module_account"`, zero
+  tokens, its result naming the module(s) and telling the member to sign in to
+  them once. The states read are kept on `trigger_context.module_accounts`.
+- Anything that is not a clear no-account answer (timeout, 5xx, unreadable
+  body, no credential) is `unknown` and the run goes ahead: the preflight never
+  blocks a run on a guess.
+
+Still to do (#2042): the mid-run short-circuit of a module after its first
+Forbidden, the auto-classification of the expected 401/403 as a disposed
+friction, and the log-in-once hint on the stage card (frontend).

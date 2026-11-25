@@ -3048,6 +3048,75 @@ async def _skip_by_any_of_checks(
     )
 
 
+async def _skip_by_module_preflight(
+    db: AsyncSession,
+    *,
+    run: AssignmentRun,
+    agent,
+    assignment: Assignment,
+    effective_user_id,
+) -> bool:
+    """End a per-user CTEM stage run at zero tokens when the member has no module account.
+
+    ``True`` when the run was ended skipped with the reason ``no_module_account``.
+    Any agent other than a seeded CTEM stage agent, a run with no member, and a
+    preflight that cannot decide all let the run go ahead (#2042).
+    """
+    from app.services import ctem_module_preflight as preflight_mod
+
+    need = preflight_mod.stage_need(getattr(agent, "slug", None), is_builtin=bool(getattr(agent, "is_builtin", False)))
+    if need is None or not effective_user_id:
+        return False
+    user_id = str(effective_user_id)
+
+    async def _resolve(module: str) -> tuple[str, str, str] | None:
+        from app.services.ctem_metrics_collector import _user_creds
+
+        creds = await _user_creds(db, user_id, module)
+        if creds is None:
+            return None
+        base_url, headers = creds
+        token = str(headers.get("Authorization", "")).removeprefix("Bearer ")
+        return (base_url, base_url, token) if token else None
+
+    try:
+        verdict = await preflight_mod.preflight(need, user_id, _resolve)
+    except Exception as exc:  # the preflight never blocks a run
+        logger.warning(
+            "Assignment '%s': CTEM module preflight failed (%s) - the run proceeds",
+            assignment.name,
+            format_exception_message(exc),
+        )
+        return False
+    run.trigger_context = {
+        **(run.trigger_context or {}),
+        "module_accounts": dict(verdict.states),
+    }
+    if verdict.proceed:
+        return False
+    await ensure_single_writer()
+    now = datetime.now(UTC)
+    run.status = "skipped"
+    run.error = preflight_mod.NO_MODULE_ACCOUNT
+    run.result_summary = verdict.summary
+    run.total_input_tokens = 0
+    run.total_output_tokens = 0
+    run.started_at = run.started_at or now
+    run.completed_at = now
+    await db.commit()
+    await _release_run_work_item(run, agent, failed=False)
+    await _publish_run_status(
+        str(run.user_id),
+        str(run.id),
+        "skipped",
+        assignment.name,
+        run.result_summary,
+        is_company=run.is_company_managed,
+    )
+    logger.info("Assignment '%s' skipped by the CTEM module preflight: %s", assignment.name, verdict.summary)
+    return True
+
+
 async def _end_run_skipped_by_gate_check(
     db: AsyncSession,
     *,
@@ -4745,6 +4814,17 @@ async def execute_assignment_run(
         # stop, a rollout) are past it, so a run never reads the lease it took
         # itself as a live holder and skips with its work undone (#8831).
         if _gate_check_due(run, resuming=_resuming) and await _skip_by_activation_check(
+            db,
+            run=run,
+            agent=agent,
+            assignment=assignment,
+            effective_user_id=effective_user_id,
+        ):
+            return
+        # ── CTEM module account preflight (#2042) ───────────────────────
+        # A per-user CTEM stage run for a member with no account on the
+        # modules it reads ends here, before the charge and any model call.
+        if _gate_check_due(run, resuming=_resuming) and await _skip_by_module_preflight(
             db,
             run=run,
             agent=agent,
