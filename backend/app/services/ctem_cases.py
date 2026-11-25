@@ -310,6 +310,55 @@ def _upgrade_prefix(key: str) -> str | None:
     return key.rsplit("@", 1)[0] + "@"
 
 
+def _upgrade_parts(key: str) -> tuple[str, str, str] | None:
+    """``(vendor, product, version)`` of an upgrade key, lower-cased as keys are; ``None`` for another key."""
+    if not key.startswith("upgrade:") or "@" not in key or "/" not in key:
+        return None
+    head, version = key[len("upgrade:") :].rsplit("@", 1)
+    vendor, product = head.split("/", 1)
+    return vendor.strip().casefold(), product.strip().casefold(), version.strip().casefold()
+
+
+def same_product_key(left: str, right: str) -> bool:
+    """Whether two upgrade keys name one fix of one product under two spellings (#2037).
+
+    Same version, and the product named the same once the vendor is set apart:
+    ``-/minio`` and ``minio/minio``, ``-/windows``, ``-/microsoft windows`` and
+    ``microsoft/windows``. Two known vendors that differ never match; two
+    vendor-less names match only when equal (nothing tells their vendor).
+    """
+    if left == right:
+        return True
+    a, b = _upgrade_parts(left), _upgrade_parts(right)
+    if a is None or b is None or a[2] != b[2]:
+        return False
+    (va, pa, _), (vb, pb, _) = a, b
+    if va != "-" and vb != "-" and va != vb:
+        return False
+
+    def bare(vendor: str, product: str) -> str:
+        if vendor != "-" and product.startswith(vendor + " "):
+            return product[len(vendor) + 1 :].strip()
+        return product
+
+    def full(vendor: str, product: str) -> str:
+        if vendor == "-" or product == vendor or product.startswith(vendor + " "):
+            return product
+        return f"{vendor} {product}"
+
+    if va == "-" and vb == "-":
+        return pa == pb
+    return bare(va, pa) == bare(vb, pb) or full(va, pa) == full(vb, pb)
+
+
+def _alias_owner(key: str, cases: list[CaseSnapshot]) -> CaseSnapshot | None:
+    """The open case whose keys name the same fix of the same product under another spelling (#2037)."""
+    for case in cases:
+        if case.state in OPEN_STATES and any(same_product_key(key, k) for k in case.keys):
+            return case
+    return None
+
+
 def _holder_of(key: str, members: list[SourceIssue], cases: list[CaseSnapshot]) -> CaseSnapshot | None:
     """The existing case of the same product that already holds members of an unowned upgrade key.
 
@@ -377,6 +426,12 @@ def plan_recompute(
                 key_owner[key] = owner
                 taken_keys.setdefault(owner.id, []).append(key)
                 retarget[owner.id] = grouping.remediations[key]
+        if owner is None:
+            # The same fix of the same product under another spelling joins its open case (#2037).
+            owner = _alias_owner(key, cases)
+            if owner is not None:
+                key_owner[key] = owner
+                taken_keys.setdefault(owner.id, []).append(key)
         if owner is None:
             plans.append(
                 CasePlan(
