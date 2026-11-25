@@ -8510,12 +8510,7 @@ async def execute_assignment_run(
                 # tool of the run changes an integration it is bound to (#1874).
                 if loop_kwargs["executor"] is not None and _rebuild_integration_tools is not None:
                     loop_kwargs["tool_surface_refresher"] = IntegrationSurfaceRefresher(
-                        composite,
-                        loop_kwargs["executor"],
-                        _rebuild_integration_tools,
-                        _narrow_tool_surface,
-                        # update_agent on this run's own agent refreshes it too (#2205).
-                        agent_id=str(agent.id),
+                        composite, loop_kwargs["executor"], _rebuild_integration_tools, _narrow_tool_surface
                     )
                 # Tool groups the assignment declares are on the wire from the
                 # first request, so the cached prompt prefix holds all run.
@@ -10990,9 +10985,37 @@ class _SlotUsage:
     busy_keys: frozenset[str]
     held: bool = False
     exclusive: bool = False
+    #: A run in flight was handed back by its stopping worker, or resumed
+    #: after a hand-back or a lost attempt: with no ``max_concurrent_runs`` of
+    #: its own, the assignment waits for it (``resume_holds``).
+    resuming: bool = False
 
-    def has_room(self, cap: int) -> bool:
+    def has_room(self, cap: int, *, resume_holds: bool = False) -> bool:
+        if resume_holds and self.resuming:
+            return False
         return not self.held and not self.exclusive and self.active < cap
+
+
+def _resuming_run_clause() -> Any:
+    """A run handed back by its stopping worker, or resumed since (its trigger_context records it)."""
+    from app.services.background_checkpoint import HANDED_BACK_KEY, RESUMES_KEY
+
+    return or_(
+        AssignmentRun.trigger_context[HANDED_BACK_KEY].as_string().is_not(None),
+        AssignmentRun.trigger_context[RESUMES_KEY].as_string().is_not(None),
+    )
+
+
+def resume_holds_assignment(trigger_config: dict[str, Any] | None) -> bool:
+    """Whether a resuming run keeps the assignment to itself: its trigger sets no ``max_concurrent_runs``.
+
+    A delivery (a ``platform.release.deployed`` event during the rollout that
+    handed a run back) then queues behind the resuming run and starts once it
+    ended, instead of working the same object beside it (#2221). An author who
+    set a cap keeps it.
+    """
+    config = trigger_config if isinstance(trigger_config, dict) else {}
+    return config.get(assignment_dispatch.MAX_CONCURRENT_RUNS_KEY) is None
 
 
 async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage:
@@ -11001,6 +11024,7 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
             AssignmentRun.status,
             AssignmentRun.trigger_context[assignment_dispatch.ORDERING_KEY_CONTEXT].as_string(),
             AssignmentRun.trigger_context["type"].as_string(),
+            _resuming_run_clause(),
         ).where(
             AssignmentRun.assignment_id == assignment_id,
             holds_assignment(AssignmentRun, _queue_blocking_statuses()),
@@ -11012,6 +11036,7 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
         busy_keys=frozenset(row[1] for row in rows if row[1]),
         held=any(_holds_on_approval(row[0]) for row in rows),
         exclusive=any(not assignment_dispatch.shares_slots(row[2]) for row in rows),
+        resuming=any(bool(row[3]) for row in rows),
     )
 
 
@@ -11350,7 +11375,10 @@ async def trigger_or_queue_assignment(
 
     usage = await _slot_usage(db, assignment.id)
     depth = await count_queued_runs(db, assignment.id)
-    start_now = usage.has_room(cap) and ordering_key not in usage.busy_keys
+    start_now = (
+        usage.has_room(cap, resume_holds=resume_holds_assignment(assignment.trigger_config))
+        and ordering_key not in usage.busy_keys
+    )
     if start_now and depth:
         if queue:
             start_now = False
@@ -12195,7 +12223,7 @@ async def _drain_one_assignment(
         if throttled:
             cap = assignment_dispatch.throttled_cap(cap)
         usage = await _slot_usage(db, assignment_id)
-        if not usage.has_room(cap):
+        if not usage.has_room(cap, resume_holds=resume_holds_assignment(assignment.trigger_config)):
             await db.commit()
             break
         candidates = await _queued_candidates(

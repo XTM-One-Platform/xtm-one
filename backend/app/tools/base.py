@@ -1613,6 +1613,12 @@ class ToolResult:
             computing (GitHub's ``unknown`` mergeability): not an error, but
             never kept in the loop's identical-call cache, so the next
             identical read executes and reads the settled state.
+        auth_failure_recorded: The integration auth failure (401 / 403, or a
+            call refused after one) this result carries is already recorded
+            on the run by its ``IntegrationAuthGuard``
+            (``integration_auth_failures`` and the coverage notice), as
+            ``"<integration> <status>"``. The loop records its friction
+            already disposed of (#2204). Empty: not such a result.
     """
 
     tool_call_id: str
@@ -1630,10 +1636,7 @@ class ToolResult:
     refused: bool = False
     structured: Any = None
     transient: bool = False
-    # The id of an agent whose tool scope this call changed (``update_agent``
-    # on its built-in groups, bindings or scoping, #2205): the loop refreshes
-    # its tool surface when that agent is the one the run serves.
-    agent_tool_scope: str | None = None
+    auth_failure_recorded: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -3058,7 +3061,6 @@ class CallableToolExecutor:
                 content=content,
                 is_error=returned_error,
                 error_returned=returned_error,
-                agent_tool_scope=getattr(raw, "tool_scope_agent_id", None),
             )
         except HumanInputRequestedError:
             raise  # Let HITL signal propagate to the assignment engine

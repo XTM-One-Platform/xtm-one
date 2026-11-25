@@ -209,20 +209,10 @@ class _AgentUpdated(str):
     """
 
     fields: tuple[str, ...]
-    #: The agent's id when the update changed which tools its runs hold
-    #: (``tool_surface_timing.AGENT_TOOL_FIELDS``), else ``None``: the
-    #: executor carries it to the loop, which refreshes the surface of a run
-    #: of that agent (#2205).
-    tool_scope_agent_id: str | None
 
-    def __new__(cls, text: str, *, fields: tuple[str, ...] = (), agent_id: str | None = None) -> _AgentUpdated:
-        from app.services.tool_surface_timing import AGENT_TOOL_FIELDS
-
+    def __new__(cls, text: str, *, fields: tuple[str, ...] = ()) -> _AgentUpdated:
         result = super().__new__(cls, text)
         result.fields = fields
-        result.tool_scope_agent_id = (
-            agent_id if agent_id and any(f.split(" ", 1)[0] in AGENT_TOOL_FIELDS for f in fields) else None
-        )
         return result
 
 
@@ -810,8 +800,13 @@ async def _load_writable_assignment_for_builder(
     assignment_uuid: uuid.UUID,
     *,
     action: str = "modify",
+    written: frozenset[str] = frozenset(),
 ):
     """Load an assignment + parent agent and verify the caller can mutate it.
+
+    *written* names the fields the call writes: the switch alone on a
+    built-in agent's assignment lifts the built-in gate, as on the REST route
+    (``builtin_assignment_write_allowed``, #2192).
 
     Mirrors the REST API's ``assert_writable_assignment`` gates so the
     same built-in / company-managed / group-permission constraints apply
@@ -862,8 +857,15 @@ async def _load_writable_assignment_for_builder(
         # about the assignment we just resolved.
         return None, None, f"Assignment `{assignment_uuid}` not found."
 
+    from app.agents.builtin_agents import builtin_assignment_write_allowed
+
     err = writable_assignment_error(
-        assignment_row, agent_row, user, group_ids, action=action
+        assignment_row,
+        agent_row,
+        user,
+        group_ids,
+        action=action,
+        allow_builtin=builtin_assignment_write_allowed(agent_row, assignment_row, written),
     )
     if err is not None:
         return None, None, err
@@ -5042,6 +5044,17 @@ def build_agent_builder_tool(
                     _token_caller, agent, group_ids
                 )
 
+            # The agent's tool approval policy, resolved as the gate resolves
+            # it, and the platform tool rules for an administrator (#2189).
+            from app.services.agent_approval_policy import approval_policy_lines
+
+            _approval_caller = await _load_caller_user_for_builder(_db, uid) if uid else None
+            _approval_lines = await approval_policy_lines(
+                _db,
+                agent,
+                caller_is_admin=_approval_caller is not None and bool(agent_tool_admin_bypass(_approval_caller)),
+            )
+
             # Self fan-out: the stored setting and what it does once the
             # platform switch and the delegation depth are applied.
             from app.services.builtin_tools.handover import self_fanout_effective_text
@@ -5147,6 +5160,7 @@ def build_agent_builder_tool(
                 "",
                 "Human-in-the-loop:",
                 f"  • Enabled: {_yn(_g('human_in_the_loop', False))}",
+                *_approval_lines,
                 "",
                 "Channels & web:",
                 f"  • Available channels: {_fmt_channels()}",
@@ -6887,54 +6901,38 @@ def build_agent_builder_tool(
                     _channel_config_changed = True
 
             # handover_types — "<agent_id>:<type>" pairs, or "none"/"clear".
-            # A merge (#2207): the pairs type only the targets they name, the
-            # others keep how they ran (``merged_handover_types``); a target may
-            # hold several types (``A:consult|delegate``, or repeated pairs) or
-            # ``all``.
             if (handover_types or "").strip():
                 if handover_types.strip().lower() in ("none", "clear"):
                     agent.handover_types = {}
                 else:
-                    from app.services.handover_types import (
-                        handover_type_set,
-                        merged_handover_types,
-                        parse_handover_type_entry,
-                    )
-
-                    ht_parts: dict[str, set[str]] = {}
+                    ht_map: dict[str, str] = {}
                     ht_malformed: list[str] = []
+                    valid_types = (
+                        "delegate",
+                        "consult",
+                        "transfer",
+                        "mandatory_transfer",
+                    )
                     for raw_pair in handover_types.split(","):
                         cleaned = raw_pair.strip()
                         if not cleaned:
                             continue
                         aid, sep, htype = cleaned.partition(":")
-                        parsed_aid = safe_uuid(aid.strip())
-                        entry = parse_handover_type_entry(htype) if sep else None
-                        if not parsed_aid or entry is None:
+                        aid, htype = aid.strip(), htype.strip().lower()
+                        parsed_aid = safe_uuid(aid)
+                        if not sep or not parsed_aid or htype not in valid_types:
                             ht_malformed.append(cleaned)
                             continue
-                        ht_parts.setdefault(str(parsed_aid), set()).update(handover_type_set(entry))
-                    ht_map: dict[str, str] = {}
-                    for aid, parts in ht_parts.items():
-                        entry = parse_handover_type_entry("|".join(sorted(parts)))
-                        if entry is None:
-                            ht_malformed.append(f"{aid}:{'|'.join(sorted(parts))}")
-                            continue
-                        ht_map[aid] = entry
+                        ht_map[str(parsed_aid)] = htype
                     if ht_malformed:
                         return (
                             "Invalid handover_types entry(ies): "
                             f"{', '.join(ht_malformed)}. Use 'AGENT_ID:TYPE' "
                             "pairs separated by commas (TYPE is delegate, "
-                            "consult, transfer, several of them joined by '|', "
-                            "all, or mandatory_transfer alone), or "
+                            "consult, transfer or mandatory_transfer), or "
                             "'none'/'clear' to reset."
                         )
-                    agent.handover_types = merged_handover_types(
-                        agent.handover_agent_ids or [],
-                        stored_handover_types,
-                        ht_map,
-                    )
+                    agent.handover_types = ht_map
                 updated.append("handover_types")
 
             # handover_conditions — JSON {agent_id: condition}, or "none"/"clear".
@@ -7508,10 +7506,7 @@ def build_agent_builder_tool(
                         + " — a company-managed agent can only bind company-managed "
                         "knowledge bases."
                     )
-            _updated_id = getattr(agent, "id", None)
-            return _AgentUpdated(
-                _result, fields=tuple(updated), agent_id=str(_updated_id) if _updated_id is not None else None
-            )
+            return _AgentUpdated(_result, fields=tuple(updated))
 
     # ── delete_agent ──────────────────────────────────────────────────
 
@@ -7888,6 +7883,17 @@ def build_agent_builder_tool(
                     for _reason, _count in list(_reasons.items())[:10]:
                         parts.append(f"    - {_count} x {_reason}")
 
+            # Webhook deliveries the secret refused (#2180): why a sender gets 401.
+            if assignment.trigger_type == "webhook":
+                from app.services.webhook_refusals import refusals
+
+                _refused = await refusals(assignment.id)
+                if _refused:
+                    parts.append(f"  • Refused deliveries (last {len(_refused)}, newest first):")
+                    for _row in _refused:
+                        _names = ", ".join(_row.get("auth_headers") or []) or "no auth header"
+                        parts.append(f"    - {_row.get('at', '?')}: {_row.get('reason', '?')} ({_names})")
+
             # Surface the prompts in FULL (never truncated) so the agent can
             # faithfully inspect and edit them. The activation gate prompt is a
             # distinct field from the action prompt — both must be visible or
@@ -8035,8 +8041,47 @@ def build_agent_builder_tool(
             # ``Assignment.user_id == uid`` filter blocked admins from
             # editing company-managed assignments through the tool even
             # though the UI allowed it.
+            # The fields this call writes: the switch alone may be written on a
+            # built-in agent's assignment (#2192).
+            _written = frozenset(
+                _arg
+                for _arg, _arg_value in (
+                    ("name", name),
+                    ("prompt", prompt),
+                    ("activation_prompt", activation_prompt),
+                    ("trigger_type", trigger_type),
+                    ("trigger_config", trigger_config),
+                    ("delay", delay),
+                    ("enabled", enabled),
+                    ("description", description),
+                    ("ai_label_prompt", ai_label_prompt),
+                    ("human_in_the_loop_prompt", human_in_the_loop_prompt),
+                    ("human_in_the_loop", human_in_the_loop),
+                    ("ai_label", ai_label),
+                    ("notify_on_complete", notify_on_complete),
+                    ("show_in_digest", show_in_digest),
+                    ("dry_run", dry_run),
+                    ("ignore_self_triggered_events", ignore_self_triggered_events),
+                    ("retry_on_failure", retry_on_failure),
+                    ("max_retries", max_retries),
+                    ("max_iterations", max_iterations),
+                    ("timeout_seconds", timeout_seconds),
+                    ("activation_check", activation_check),
+                    ("wait_policy", wait_policy),
+                    ("organization_context_mode", organization_context_mode),
+                    ("organization_context_categories", organization_context_categories),
+                    ("field", field),
+                    ("edits", edits),
+                    ("section", section),
+                    ("content", content),
+                    ("fix_applied", fix_applied),
+                )
+                if _arg_value is not None and not (isinstance(_arg_value, str) and _arg_value == "")
+            ) | (frozenset({"mode"}) if text_mode != "replace" else frozenset())
+            if assignment_uuid is None:  # _id_arg answered no error
+                return f"Assignment `{assignment_id}` not found or you don't have permission to edit it."
             assignment, _agent, perm_err = await _load_writable_assignment_for_builder(
-                _db, uid, assignment_uuid, action="edit"
+                _db, uid, assignment_uuid, action="edit", written=_written
             )
             if perm_err is not None or assignment is None:
                 return perm_err or (

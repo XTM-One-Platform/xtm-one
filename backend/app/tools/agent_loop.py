@@ -6546,11 +6546,21 @@ def _log_tool_result(tc: ToolCall, result: ToolResult, probe: str | None = None)
     elif errored:
         from app.services.ctem_module_preflight import NO_MODULE_ACCOUNT, note_tool_refusal
         from app.services.frictions import note_expected_error, note_tool_error
+        from app.services.integration_auth_guard import AUTH_FAILURE_RECORDED_REF
 
         # A per-user CTEM stage run refused by a module the member has no
         # account on: expected, recorded already disposed of (#2042).
         if (refused := note_tool_refusal(tc.name, result.content)) is not None:
             note_expected_error(tc.name, result.content, f"{NO_MODULE_ACCOUNT}: {refused}")
+        elif result.auth_failure_recorded:
+            # An integration 401 / 403 the run's auth guard already recorded on
+            # integration_auth_failures and the coverage notice: reported once,
+            # never an undisposed friction on top (#2204).
+            note_expected_error(
+                tc.name,
+                result.content,
+                f"{AUTH_FAILURE_RECORDED_REF}: {result.auth_failure_recorded}",
+            )
         else:
             note_tool_error(tc.name, result.content)
     if result.is_error:
@@ -10696,8 +10706,8 @@ async def run_agent_loop(
         # and, when the always-on core alone would leave no room for a gated
         # tool, demotes the least important core tools into a catalogued
         # ``builtin:overflow`` group instead of discarding them (see
-        # ``ToolGate._fit_core``) — so no notice is due; the catalogue lists
-        # them like any other group.
+        # ``ToolGate._fit_core``); the catalogue names each demoted tool and
+        # the ``load_tools`` call that brings it back (#2191).
         if tool_gate.demoted_always_on:
             logger.info(
                 "Always-on tool count leaves no room for a gated tool under "
@@ -11014,12 +11024,6 @@ async def run_agent_loop(
         return LLMMessage(
             role="system",
             content=_surface_refresh_note(refreshed.added, refreshed.removed, gated=_gated),
-        )
-
-    def _changes_own_agent_tools(result: Any) -> bool:
-        """An ``update_agent`` result that changed the tools of the agent this run serves (#2205)."""
-        return tool_surface_refresher is not None and tool_surface_refresher.follows(
-            getattr(result, "agent_tool_scope", None)
         )
 
     # Set by a successful call of a ``changes_tool_surface`` tool; the refresh
@@ -17255,7 +17259,7 @@ async def run_agent_loop(
                         _tc_is_write and not result.is_error and not getattr(result, "no_op", False)
                     )
                     if (
-                        (_tc_orig_name in _surface_changing_tools or _changes_own_agent_tools(result))
+                        _tc_orig_name in _surface_changing_tools
                         and not result.is_error
                         and not getattr(result, "no_op", False)
                     ):
@@ -17742,7 +17746,7 @@ async def run_agent_loop(
                         ):
                             _effective_writes.append(_result_orig_name)
                         if (
-                            (_result_orig_name in _surface_changing_tools or _changes_own_agent_tools(result))
+                            _result_orig_name in _surface_changing_tools
                             and not result.is_error
                             and not getattr(result, "no_op", False)
                         ):
