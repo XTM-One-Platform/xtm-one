@@ -70,6 +70,22 @@
       "closed": true
     }
   ],
+  "create_opencrq_dependency_rule": [
+    {
+      "procedures": [
+        "assetDependencies.createDependencyRule"
+      ],
+      "fields": [
+        "enabled",
+        "id",
+        "name",
+        "primaryAssetId",
+        "roles"
+      ],
+      "conditional": [],
+      "closed": false
+    }
+  ],
   "create_opencrq_group": [
     {
       "procedures": [
@@ -1455,6 +1471,19 @@
       "closed": true
     }
   ],
+  "preview_opencrq_dependency_rule": [
+    {
+      "procedures": [
+        "assetDependencies.previewDependencyRule"
+      ],
+      "fields": [
+        "limit",
+        "primaryAssetId"
+      ],
+      "conditional": [],
+      "closed": false
+    }
+  ],
   "remove_opencrq_tenant_user": [
     {
       "procedures": [
@@ -1642,6 +1671,22 @@
         "unknownExposureCountsAs"
       ],
       "closed": true
+    }
+  ],
+  "update_opencrq_dependency_rule": [
+    {
+      "procedures": [
+        "assetDependencies.updateDependencyRule"
+      ],
+      "fields": [
+        "enabled",
+        "id",
+        "name",
+        "primaryAssetId",
+        "roles"
+      ],
+      "conditional": [],
+      "closed": false
     }
   ],
   "update_opencrq_evidence_state": [
