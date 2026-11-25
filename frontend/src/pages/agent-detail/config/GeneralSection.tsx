@@ -70,7 +70,7 @@ import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { FIELD_FOCUS_RING } from "@/lib/field-focus-ring";
 import { useRoutingModelLabel } from "@/hooks/useRoutingModelLabel";
 import { ICON_MAP, OUTPUT_FORMATS, OUTPUT_FORMAT_CONFIG, REASONING_EFFORT_LEVELS, REASONING_EFFORT_CONFIG, ORGANIZATION_CONTEXT_MODE_LABELS, INTEGRATION_PROVIDER_NAMES, DEFAULT_HITL_PROMPT, HANDOVER_TYPES, HANDOVER_TYPE_CONFIG, ALL_HANDOVER_TYPES_CONFIG, MAX_ITERATIONS_CEILING, clampMaxIterations, handoverTypeConfig } from "@/lib/constants";
-import { ALL_HANDOVER_TYPES, consultsBackgroundDelegator, shownHandoverType } from "@/lib/handover-types";
+import { ALL_HANDOVER_TYPES, consultsBackgroundDelegator, editedHandoverType, handoverTypeParts, shownHandoverType } from "@/lib/handover-types";
 import type { Agent, AvailableModel, Integration, LLMProvider, OrganizationContextMode, ProviderCatalogItem, ToolRef } from "@/types";
 import { OrganizationContextModeSelect, useOrganizationContextEffectiveLabel } from "@/components/organization-context-mode-select";
 import {
@@ -1201,8 +1201,19 @@ export function GeneralSection({
                   {handoverCandidates.map((ha) => {
                     const HaIcon = ICON_MAP[ha.icon] ?? Bot;
                     const isSelected = handoverIds.includes(ha.id);
-                    const currentType = handoverLegacy ? ALL_HANDOVER_TYPES : (handoverTypes[ha.id] || "delegate");
+                    // Read as the read view reads it (#2207): a stored "all" is All types,
+                    // an entry of several types is kept whole and named by its types.
+                    const currentType = handoverLegacy ? ALL_HANDOVER_TYPES : editedHandoverType(handoverTypes, ha.id);
+                    const currentParts = handoverTypeParts(currentType);
                     const typeCfg = handoverTypeConfig(currentType);
+                    const currentLabel = currentParts.length > 0
+                      ? currentParts.map((part) => t_i18n(HANDOVER_TYPE_CONFIG[part]?.label ?? part)).join(" + ")
+                      : t_i18n(handoverTypeConfig(currentType).label);
+                    const currentHelper = currentType === ALL_HANDOVER_TYPES && !handoverLegacy
+                      ? t_i18n("Delegate, consult or transfer")
+                      : currentParts.length > 0
+                        ? currentParts.map((part) => t_i18n(HANDOVER_TYPE_CONFIG[part]?.description ?? "").split(".")[0]).join(". ")
+                        : t_i18n(typeCfg.description);
                     // A company-managed agent can only hand over to other
                     // company-managed agents. The current user's own private
                     // agents are surfaced here so they can be promoted inline;
@@ -1272,26 +1283,28 @@ export function GeneralSection({
                             <Select
                               value={currentType}
                               onValueChange={(v) => {
-                                if (v !== ALL_HANDOVER_TYPES) onUpdateHandoverType(ha.id, v);
+                                // Picking the entry it holds (All types, a multi-type entry) keeps it as stored.
+                                if (v !== currentType && v !== ALL_HANDOVER_TYPES) onUpdateHandoverType(ha.id, v);
                               }}
                             >
                               <Tip content={consultsBackgroundDelegator(currentType, ha) ? t_i18n("{name} delegates in the background: a consult may answer before its delegated tasks finish.", { name: ha.name }) : undefined}>
                                 <SelectTrigger className="w-full" aria-label={t_i18n("Handover type")}>
                                   {/* The type label alone: its description is printed below (as GAHandoverPicker, #10876). */}
                                   <SelectValue>
-                                    {currentType === ALL_HANDOVER_TYPES ? (
-                                      <span className={cn("font-medium", ALL_HANDOVER_TYPES_CONFIG.color)}>{t_i18n(ALL_HANDOVER_TYPES_CONFIG.label)}</span>
-                                    ) : (
-                                      <span className={cn("font-medium", HANDOVER_TYPE_CONFIG[currentType]?.color)}>{t_i18n(HANDOVER_TYPE_CONFIG[currentType]?.label ?? currentType)}</span>
-                                    )}
+                                    <span className={cn("font-medium", handoverTypeConfig(currentParts[0] ?? currentType).color)}>{currentLabel}</span>
                                   </SelectValue>
                                 </SelectTrigger>
                               </Tip>
                               <SelectContent>
-                                {handoverLegacy && (
+                                {(handoverLegacy || currentType === ALL_HANDOVER_TYPES) && (
                                   <SelectItem value={ALL_HANDOVER_TYPES}>
                                     <span className={cn("font-medium", ALL_HANDOVER_TYPES_CONFIG.color)}>{t_i18n(ALL_HANDOVER_TYPES_CONFIG.label)}</span>
                                     <span className="ml-1.5 text-default-secondary">{t_i18n("Delegate, consult or transfer")}</span>
+                                  </SelectItem>
+                                )}
+                                {currentParts.length > 0 && (
+                                  <SelectItem value={currentType}>
+                                    <span className={cn("font-medium", handoverTypeConfig(currentParts[0]).color)}>{currentLabel}</span>
                                   </SelectItem>
                                 )}
                                 {HANDOVER_TYPES.map((t) => (
@@ -1302,7 +1315,7 @@ export function GeneralSection({
                                 ))}
                               </SelectContent>
                             </Select>
-                            <p className="text-[9px] text-default-secondary">{t_i18n(typeCfg.description)}</p>
+                            <p className="text-[9px] text-default-secondary">{currentHelper}</p>
                             {currentType === "mandatory_transfer" && (
                               <div className="mt-1">
                                 <label className="content-caption text-default-secondary block mb-1">

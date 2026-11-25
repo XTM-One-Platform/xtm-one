@@ -25,7 +25,7 @@ from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping
 from typing import TYPE_CHECKING
 
 from app.core.utils import format_exception_message, safe_uuid
-from app.services.handover_types import is_legacy_handover_map
+from app.services.handover_types import handover_type_set, is_legacy_handover_map
 from app.services.output_format import (
     CALL_OUTPUT_SCHEMA_KEY,
     CALL_OUTPUT_SCHEMA_PROPERTY,
@@ -220,9 +220,9 @@ def build_sub_agent_tools(
             return None, background_task_refusal(
                 requested, f"it is not a delegate peer of this agent - {how}"
             )
-        if str(owned.id) in (handover_type_map or {}) and peer_handover_type(
+        if str(owned.id) in (handover_type_map or {}) and "delegate" not in peer_handover_types(
             handover_type_map, str(owned.id)
-        ) != "delegate":
+        ):
             return None, background_task_refusal(
                 requested, _other_type_reason(handover_type_map, str(owned.id))
             )
@@ -1487,17 +1487,27 @@ def offered_handover_types(
     )
 
 
-def peer_handover_type(type_map: Mapping[str, str] | None, agent_id: str) -> str | None:
-    """The handover type a peer of an explicit map is reached through, ``None`` for no tool.
+def peer_handover_types(type_map: Mapping[str, str] | None, agent_id: str) -> frozenset[str]:
+    """Every tool type a peer of an explicit map is reached through, empty for no tool.
 
-    A ``mandatory_transfer`` peer is routed after the agent's answer, never by
-    the model. A peer without a type, or with one no tool implements, runs as
-    ``delegate``.
+    An entry holds one type, several joined by ``|`` or ``all``
+    (``handover_type_set``). A ``mandatory_transfer`` peer is routed after the
+    agent's answer, never by the model. A peer without a type runs as ``delegate``.
     """
-    h_type = (type_map or {}).get(agent_id, "delegate")
-    if h_type == "mandatory_transfer":
-        return None
-    return h_type if h_type in TOOL_HANDOVER_TYPES else "delegate"
+    types = handover_type_set((type_map or {}).get(agent_id, "delegate"))
+    if "mandatory_transfer" in types:
+        return frozenset()
+    return types & frozenset(TOOL_HANDOVER_TYPES)
+
+
+def peer_handover_type(type_map: Mapping[str, str] | None, agent_id: str) -> str | None:
+    """The first handover type a peer of an explicit map is reached through, ``None`` for no tool.
+
+    The one a refusal names (``consult``, then ``delegate``, then ``transfer``
+    for a peer of several types, ``peer_handover_types``).
+    """
+    types = peer_handover_types(type_map, agent_id)
+    return next((h_type for h_type in _LEGACY_TOOL_ORDER if h_type in types), None)
 
 
 def peer_tool_types(
@@ -1513,8 +1523,7 @@ def peer_tool_types(
     offered_types = frozenset(offered).intersection(TOOL_HANDOVER_TYPES)
     if is_legacy_handover_map(type_map):
         return offered_types
-    h_type = peer_handover_type(type_map, agent_id)
-    return offered_types & {h_type} if h_type else frozenset()
+    return offered_types & peer_handover_types(type_map, agent_id)
 
 
 def reachable_handover_peers(
@@ -1581,11 +1590,19 @@ def handover_peer_tag(
     (``peer_tool_types``). The legacy tag and instruction are shorter than the
     ``[DELEGATE]`` ones they replace, so the prompt does not grow.
     """
-    if is_legacy_handover_map(type_map):
-        types = peer_tool_types(type_map, agent_id, offered) or frozenset(TOOL_HANDOVER_TYPES)
+    legacy = is_legacy_handover_map(type_map)
+    if legacy or len(peer_handover_types(type_map, agent_id)) > 1:
+        types = peer_tool_types(type_map, agent_id, offered) or (
+            frozenset(TOOL_HANDOVER_TYPES) if legacy else peer_handover_types(type_map, agent_id)
+        )
         tools = [f"`{HANDOVER_TOOL_NAMES[h_type]}`" for h_type in _LEGACY_TOOL_ORDER if h_type in types]
         listed = ", ".join(tools[:-1])
-        return LEGACY_HANDOVER_TAG, f"Use {listed} or {tools[-1]}." if listed else f"Use {tools[-1]}."
+        tag = (
+            LEGACY_HANDOVER_TAG
+            if legacy or len(types) == len(TOOL_HANDOVER_TYPES)
+            else "|".join(h_type.upper() for h_type in _LEGACY_TOOL_ORDER if h_type in types)
+        )
+        return tag, f"Use {listed} or {tools[-1]}." if listed else f"Use {tools[-1]}."
     h_type = peer_handover_type(type_map, agent_id) or "delegate"
     return h_type.upper(), type_instructions[h_type]
 

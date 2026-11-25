@@ -183,7 +183,9 @@ def can_consult(target_id: str, handover_ids: Iterable[object], handover_types: 
         return False
     if not handover_types:
         return True
-    return handover_types.get(target_id, "delegate") == "consult"
+    from app.services.handover_types import handover_type_set
+
+    return "consult" in handover_type_set(handover_types.get(target_id, "delegate"))
 
 
 def back_consult_handovers(
