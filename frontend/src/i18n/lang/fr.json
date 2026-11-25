@@ -21696,5 +21696,7 @@
   "{count, plural, one {# field not filled} other {# fields not filled}}": "{count, plural, one {# champ non rempli} other {# champs non remplis}}",
   "{count, plural, one {# field not filled on this tab, reported by every agent that needs it.} other {# fields not filled on this tab, reported by every agent that needs them.}}": "{count, plural, one {# champ non rempli dans cet onglet, signalé par chaque agent qui en a besoin.} other {# champs non remplis dans cet onglet, signalés par chaque agent qui en a besoin.}}",
   "Every field of this tab is filled.": "Tous les champs de cet onglet sont remplis.",
-  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# de plus dans {tab}.} other {# de plus dans {tab}.}}"
+  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# de plus dans {tab}.} other {# de plus dans {tab}.}}",
+  "To validate": "À valider",
+  "Running version not verified: validate it before acting on the case.": "Version en service non vérifiée : validez-la avant d'agir sur le cas."
 }
