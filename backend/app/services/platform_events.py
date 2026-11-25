@@ -347,6 +347,15 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _WORK_ITEM_KEYS,
     },
+    "work_item.needs_human_unseen": {
+        "description": (
+            "A decision gate (needs_human) waited work_item_decision_unseen_hours hours and nobody opened it "
+            "(services/work_item_decision_reach.py): every active administrator was notified in the bell, once per "
+            "gate. The payload carries waiting_since, unseen_hours, waits_for_user_id, waits_for_group_ids and "
+            "notified_admin_ids."
+        ),
+        "filter_keys": (*_WORK_ITEM_KEYS, "unseen_hours"),
+    },
     "run.completed": {
         "description": (
             "A run completed: an assignment run, or a delegated child run (no assignment; parent_run_id "

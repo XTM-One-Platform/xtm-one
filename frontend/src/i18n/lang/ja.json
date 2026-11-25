@@ -21269,6 +21269,7 @@
   "The trigger paths that start the exposure management loop, by lens, with the sources that feed each one on this platform and whether they are connected.": "エクスポージャー管理ループを開始するトリガーパスを視点別に示し、このプラットフォームで各パスに供給するソースとその接続状態を表示します。",
   "The platforms each sync reads on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand. Asset matching merges the records of several sources into one asset.": "各同期がスケジュールに従って読み取るプラットフォーム、API 経由で書き込むエージェントとパートナー、CSV インポート、手動で入力された行。アセットの照合は、複数のソースのレコードを 1 つのアセットに統合します。",
   "Work item decision": "作業項目の判断",
+  "Work item decision not opened": "作業項目の判断が開かれていません",
   "What to decide": "判断する内容",
   "No waiting decision matches the search and filters.": "検索とフィルターに一致する保留中の判断はありません。",
   "{count, plural, one {# decision waits for a person} other {# decisions wait for a person}}": "{count, plural, other {# 件の判断が担当者を待っています}}",

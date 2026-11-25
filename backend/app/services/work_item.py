@@ -97,6 +97,7 @@ from app.services.work_item_blocked_refs import (
     refuse_unbound_reference_reason,
     refuse_unobserved_deployment_refs,
 )
+from app.services.work_item_decision_reach import carry_decision_marks, clear_decision_marks
 from app.services.work_item_notify import normalize_notify_payload
 from app.services.work_item_past_due import carry_past_due_mark, clear_past_due_mark
 
@@ -2925,12 +2926,16 @@ async def update_work_item(
             # The notify delivery state is the platform's: kept as stored.
             # A test item may only notify a test recipient.
             # The work_item.past_due mark is the platform's too (#1662).
-            item.payload = carry_past_due_mark(
-                normalize_notify_payload(
-                    payload,
+            # So are the decision marks: opened, unseen alert (#2390).
+            item.payload = carry_decision_marks(
+                carry_past_due_mark(
+                    normalize_notify_payload(
+                        payload,
+                        item.payload,
+                        correlation_key=item.correlation_key,
+                        title=item.title,
+                    ),
                     item.payload,
-                    correlation_key=item.correlation_key,
-                    title=item.title,
                 ),
                 item.payload,
             )
@@ -2985,6 +2990,9 @@ async def update_work_item(
         if blocked_reason is not None:
             item.blocked_reason = reason
         if needs_human is not None:
+            if human and not stored_human:
+                # A new decision gate: watched afresh for being opened (#2390).
+                clear_decision_marks(item)
             item.needs_human = human
             if not human and ask is None:
                 # The card goes with the decision it asked for (#762).
