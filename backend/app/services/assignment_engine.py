@@ -2710,12 +2710,8 @@ async def _resolve_run_integration_bindings(
         len(resolved.withheld),
     )
 
-    # The resolution context is ``effective_user_id`` (the run's user, else
-    # the agent's owner). A company-managed run always carries an owner, so it
-    # resolves that person's connected integrations; only a run with no owner
-    # anywhere is restricted to company-wide ones, as no one's private
-    # credentials may be used. Not gated on ``run.user_id``: a company-managed
-    # run keeps its per-user integration tools.
+    # Resolved for ``effective_user_id`` (the run's user, else the agent's
+    # owner); a run with no one gets company-wide integrations only.
     needed = [
         p
         for p in dict.fromkeys([*(agent.integration_template_bindings or []), *resolved.shadowed])

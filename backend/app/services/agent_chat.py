@@ -776,13 +776,8 @@ async def _load_pipeline_tool_unbound(
                     integ_id_str,
                 )
 
-        # The pinned integration acts only for someone who may use it, as a
-        # direct binding: visible to them, or lent by the agent. The agent's
-        # owner too: a pin copied from another agent names its owner's
-        # integration. A run with no person is checked as the agent's owner
-        # when it is the owner's own (*owner_run*), and keeps no pin
-        # otherwise. A pin withheld is replaced by the fallback below, unless
-        # each integration of the provider is a different API.
+        # Checked like a direct binding, for the owner too: a pin copied from
+        # another agent names that agent's owner's integration.
         from app.services.integration_credentials import normalize_acting_user_id
 
         _acting = normalize_acting_user_id(user_id)
@@ -1960,13 +1955,8 @@ async def run_agent_chat(
     # (``integration_tools.template_candidate_filter``). Every other turn,
     # an agent a run hands work to included, is checked like any user's.
     company_automation: bool = False,
-    # A turn with no person (``user_id`` not a user's id) acts as the agent's
-    # owner: declared by the paths built for it (an anonymous channel user,
-    # the platform MCP key, an evaluation with no owner) and handed on to the
-    # turns it consults or transfers to on an agent of the same owner
-    # (``_owner_run_handed_on``). Any other turn with no person uses
-    # none of the agent's integration bindings
-    # (``integration_tools.resolve_agent_integration_bindings``).
+    # A turn with no person acts as the agent's owner (declared by its path);
+    # without it, it uses none of the agent's integration bindings.
     owner_run: bool = False,
     # ``{provider: integration id}`` this turn uses for a provider whatever the
     # agent binds (``integration_tools.pin_bindings``): an agent account's turn
