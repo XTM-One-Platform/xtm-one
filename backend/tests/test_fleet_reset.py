@@ -67,7 +67,8 @@ def _fleet(**overrides: Any) -> SimpleNamespace:
         slug="ctem-loop",
         is_builtin=True,
         orchestrator_agent_id=None,
-        autonomy_level="full_gates",
+        # Not the shipped level (full_gates since #2279): the reset moves it back.
+        autonomy_level="low",
         approval_pins={"close_case": "run", "mobilise": "wait"},
         customer_gates=[{"key": "mine"}],
         enforce_gates_at_tool_level=True,
@@ -195,7 +196,7 @@ async def test_reset_is_refused_while_a_scoped_stop_holds_automations():
         await _run(fleet, agent, [automation], dry_run=False, held=("Daily",))
     assert exc.value.status_code == 409
     assert "Daily" in str(exc.value)
-    assert fleet.approval_pins and fleet.autonomy_level == "full_gates"
+    assert fleet.approval_pins and fleet.autonomy_level == "low"
     assert automation.run_as_user_id is not None
 
 
