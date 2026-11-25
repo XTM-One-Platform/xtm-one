@@ -34,16 +34,18 @@ jobs:
           #   fix: handle missing auth token (#456)
           PATTERN="^(${ALLOWED_TYPES})(\([a-z0-9]+([_-][a-z0-9]+)*(\/[a-z0-9]+([_-][a-z0-9]+)*)*\))?: [a-z0-9].* \(#[0-9]+\)$"
 
-          # The repository is public: `security` is never a scope, it would
-          # mark the change as a vulnerability fix on main for everyone to read
-          # (dev-docs/reference/security-reporting.md).
-          SECURITY_SCOPE='^[a-z]+\(([^)]*/)?security(/[^)]*)?\)'
+          # `security` is never a type or a scope: the repository is public
+          # (dev-docs/reference/security-reporting.md). Same pattern as
+          # .githooks/commit-msg, held together by .github/scripts/security-scope.test.sh.
+          SECURITY_SCOPE='^(security[(!:]|[a-z]+\(([^)]*[,/][[:space:]]*)?security[[:space:]]*([,/][^)]*)?\))'
+          shopt -s nocasematch
           if [[ "${TITLE}" =~ ${SECURITY_SCOPE} ]]; then
-            echo "Invalid PR title: 'security' is not a scope in this public repository."
+            echo "Invalid PR title: 'security' is not a type or a scope in this public repository."
             echo "A vulnerability fix goes through a private security advisory (SECURITY.md);"
             echo "a hardening takes the scope of the area it hardens, e.g. fix(auth): ..."
             exit 1
           fi
+          shopt -u nocasematch
 
           if [[ "${TITLE}" =~ ${PATTERN} ]]; then
             echo "PR title is valid."

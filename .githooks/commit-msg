@@ -1,13 +1,11 @@
 #!/bin/sh
-# Enable with `make setup-hooks`. The repository is public: a commit subject
-# never takes the `security` scope, which would mark it as a vulnerability fix on
-# main for everyone to read (dev-docs/reference/security-reporting.md). A
-# vulnerability fix goes through a private security advisory; a hardening takes
-# the scope of the area it hardens. pr-title-check.yml holds the same rule for
-# the pull request title, which becomes the squash commit.
-subject=$(sed -n '/^[^#]/{p;q;}' "$1")
-if printf '%s\n' "$subject" | grep -qE '^[a-z]+\(([^)]*/)?security(/[^)]*)?\)'; then
-    echo "commit-msg: 'security' is not a scope in this public repository." >&2
+# Enable with `make setup-hooks`. Refuses a `security` type or scope on any line
+# of the message (a squash commit carries every line): the repository is public,
+# see dev-docs/reference/security-reporting.md. Same pattern as
+# pr-title-check.yml, held together by .github/scripts/security-scope.test.sh.
+pattern='^(security[(!:]|[a-z]+\(([^)]*[,/][[:space:]]*)?security[[:space:]]*([,/][^)]*)?\))'
+if grep -v '^#' "$1" | grep -qiE "$pattern"; then
+    echo "commit-msg: 'security' is not a type or a scope in this public repository." >&2
     echo "  A vulnerability fix goes through a private security advisory (SECURITY.md);" >&2
     echo "  a hardening takes the scope of the area it hardens, e.g. fix(auth): ..." >&2
     exit 1
