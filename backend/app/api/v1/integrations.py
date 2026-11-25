@@ -391,7 +391,9 @@ def _is_sensitive_setting_name(key: str) -> bool:
     # `type` of "secret".
     if lowered.endswith(("_id", "_url", "_urls")):
         return False
-    return any(token in lowered for token in ("secret", "token", "key", "password"))
+    # A connection string (``event_hub_connection_string``) embeds its shared
+    # access key: ``Endpoint=...;SharedAccessKey=...``.
+    return any(token in lowered for token in ("secret", "token", "key", "password", "connection_string"))
 
 
 # Placeholder returned instead of secret extra_config values in API responses.

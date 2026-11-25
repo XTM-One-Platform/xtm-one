@@ -6880,10 +6880,10 @@ PROVIDER_CATALOG = {
         "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         "extra_fields": {
             "tenant_id": "Azure AD Tenant ID (required)",
-            "event_hub_namespace": "Event Hub namespace for alert events (<name>.servicebus.windows.net; Streaming API)",
-            "event_hub_name": "Event Hub name the Defender XDR Streaming API sends to",
-            "event_hub_consumer_group": "Event Hub consumer group ($Default when empty)",
-            "event_hub_connection_string": "Event Hub connection string (optional, instead of the Entra app's Data Receiver role)",
+            "event_hub_namespace": "Event Hub namespace: the <name>.servicebus.windows.net host the Defender XDR Streaming API sends alert events to",
+            "event_hub_name": "Event Hub name: the hub of that namespace the Streaming API writes to",
+            "event_hub_consumer_group": "Event Hub consumer group: optional, $Default when empty",
+            "event_hub_connection_string": "Event Hub connection string: optional, used instead of the Entra app's Azure Event Hubs Data Receiver role",
         },
         # Alert events: the Defender XDR Streaming API to the tenant's Azure
         # Event Hub, read by the platform's consumer (services/defender_stream.py).

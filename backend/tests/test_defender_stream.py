@@ -80,6 +80,31 @@ def test_catalog_lists_the_stream_events_and_filter_keys():
     assert "event_hub_namespace" in PROVIDER_CATALOG["defender"]["extra_fields"]
 
 
+def test_the_connection_string_is_a_secret_and_the_hub_identifiers_are_not() -> None:
+    # The connection string embeds SharedAccessKey=...: the API must mask it
+    # like the client secret, while the hub's coordinates stay readable.
+    from app.api.v1.integrations import _is_sensitive_setting_name
+
+    assert _is_sensitive_setting_name("event_hub_connection_string")
+    for key in ("event_hub_namespace", "event_hub_name", "event_hub_consumer_group"):
+        assert not _is_sensitive_setting_name(key)
+
+
+def test_each_event_hub_label_opens_with_its_name() -> None:
+    entry = PROVIDER_CATALOG["defender"]
+    assert isinstance(entry, dict)
+    fields = entry["extra_fields"]
+    assert isinstance(fields, dict)
+    names = {
+        "event_hub_namespace": "Event Hub namespace",
+        "event_hub_name": "Event Hub name",
+        "event_hub_consumer_group": "Event Hub consumer group",
+        "event_hub_connection_string": "Event Hub connection string",
+    }
+    for key, name in names.items():
+        assert fields[key].startswith(f"{name}: "), key
+
+
 def test_stream_settings_name_what_is_missing():
     with pytest.raises(ds.StreamConfigError, match="event_hub_namespace"):
         ds.stream_settings({"tenant_id": "t", "event_hub_name": "h"}, "cid", "secret")
