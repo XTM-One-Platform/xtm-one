@@ -17702,6 +17702,7 @@
   "On a reachable asset: internet-facing, or a user endpoint (phishing, browser, email).": "Sur un actif joignable : exposé à Internet, ou un poste utilisateur (hameçonnage, navigateur, e-mail).",
   "Add your assets and exposure": "Ajouter vos actifs et leur exposition",
   "Not linked": "Non relié",
+  "No software inventory": "Aucun inventaire logiciel",
   "{total, plural, one {# asset read} other {# assets read}}. Reachable: {reachable} (user endpoints: {endpoints}). Proven unreachable: {unreachable}. Unknown: {unknown}.": "{total, plural, one {# actif lu} other {# actifs lus}}. Joignables : {reachable} (postes utilisateurs : {endpoints}). Injoignables avérés : {unreachable}. Inconnus : {unknown}.",
   "Business impact": "Impact métier",
   "On an asset that supports a primary asset.": "Sur un actif qui soutient un actif primaire.",
@@ -21696,5 +21697,7 @@
   "{count, plural, one {# field not filled} other {# fields not filled}}": "{count, plural, one {# champ non rempli} other {# champs non remplis}}",
   "{count, plural, one {# field not filled on this tab, reported by every agent that needs it.} other {# fields not filled on this tab, reported by every agent that needs them.}}": "{count, plural, one {# champ non rempli dans cet onglet, signalé par chaque agent qui en a besoin.} other {# champs non remplis dans cet onglet, signalés par chaque agent qui en a besoin.}}",
   "Every field of this tab is filled.": "Tous les champs de cet onglet sont remplis.",
-  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# de plus dans {tab}.} other {# de plus dans {tab}.}}"
+  "{count, plural, one {# more on {tab}.} other {# more on {tab}.}}": "{count, plural, one {# de plus dans {tab}.} other {# de plus dans {tab}.}}",
+  "{primary, plural, one {# primary asset} other {# primary assets}} reached through {supporting, plural, one {# supporting asset} other {# supporting assets}}.": "{primary, plural, one {# actif primaire atteint} other {# actifs primaires atteints}} via {supporting, plural, one {# actif support} other {# actifs supports}}.",
+  "{count, plural, one {# policy rule applied} other {# policy rules applied}}.": "{count, plural, one {# règle de politique appliquée} other {# règles de politique appliquées}}."
 }
