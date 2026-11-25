@@ -86,11 +86,58 @@ def test_signal_whose_cve_opencti_does_not_know_is_kept_unverified_with_unknown_
     enriched = source.enrich_signal_issues([_signal("s1")], {"signal:s1": ["CVE-2099-0001"]}, KEV_VULNS)
     (issue,) = enriched
     assert issue.cve == "CVE-2099-0001"
-    assert issue.kev is False and issue.cvss is None and issue.epss is None and issue.fixed_version is None
+    # Unknown, never "not KEV" (#2225).
+    assert issue.kev is None and issue.cvss is None and issue.epss is None and issue.fixed_version is None
+    assert issue.unknown_cves == ("CVE-2099-0001",)
     row = _summary(enriched)
     assert row["open_issue_count"] == 1 and row["issue_count"] == 1
-    assert row["kev_count"] == 0 and row["max_cvss"] is None
+    assert row["kev_count"] is None and row["max_cvss"] is None
+    assert row["members_facts_unread"] == 1 and row["facts_reason"] == view_of.FACTS_UNREAD_REASON
     assert row["version_unverified"] is True
+
+
+def test_signal_read_without_opencti_has_unknown_kev_never_zero() -> None:
+    """No OpenCTI answer for this reader (no credentials, OpenCTI failed): KEV unknown, not 0 (#2225)."""
+    (issue,) = source.enrich_signal_issues([_signal("s1")], {"signal:s1": ["CVE-2023-28432"]}, [])
+    assert issue.kev is None and issue.kev_cves == () and issue.unknown_cves == ("CVE-2023-28432",)
+    row = _summary([issue])
+    assert row["kev_count"] is None and row["max_cvss"] is None and row["max_epss"] is None
+    assert row["members_facts_unread"] == 1 and row["facts_reason"] == view_of.FACTS_UNREAD_REASON
+    # The scope restriction is a different reason: never mixed with the facts not read.
+    assert row["aggregates_restricted"] is False
+
+
+def test_signal_read_with_opencti_counts_its_kev_and_reads_facts_as_read() -> None:
+    (issue,) = source.enrich_signal_issues([_signal("s1")], {"signal:s1": ["CVE-2023-28432"]}, KEV_VULNS)
+    assert issue.kev is True and issue.unknown_cves == ()
+    row = _summary([issue])
+    assert row["kev_count"] == 1 and row["max_cvss"] == 7.5
+    assert row["members_facts_unread"] == 0 and row["facts_reason"] is None
+
+
+def test_a_known_non_kev_cve_reads_as_not_kev() -> None:
+    vulns = [{"id": "v0", "name": "CVE-2023-00001", "x_opencti_cvss_base_score": 5.0}]
+    (issue,) = source.enrich_signal_issues([_signal("s1")], {"signal:s1": ["CVE-2023-00001"]}, vulns)
+    assert issue.kev is False and issue.unknown_cves == ()
+    row = _summary([issue])
+    assert row["kev_count"] == 0 and row["max_cvss"] == 5.0 and row["facts_reason"] is None
+
+
+def test_a_kev_cve_beside_an_unread_one_keeps_the_member_kev_and_the_count_unknown() -> None:
+    (issue,) = source.enrich_signal_issues(
+        [_signal("s1")], {"signal:s1": ["CVE-2023-28432", "CVE-2099-0001"]}, KEV_VULNS
+    )
+    assert issue.kev is True and issue.unknown_cves == ("CVE-2099-0001",)
+    # The case's count would only be a lower bound: unknown, with its reason.
+    assert _summary([issue])["kev_count"] is None
+
+
+def test_a_member_cached_before_unknown_cves_still_reads() -> None:
+    (issue,) = source.enrich_signal_issues([_signal("s1")], {"signal:s1": ["CVE-2023-28432"]}, [])
+    data = view_of._issue_json(issue)
+    data.pop("unknown_cves")
+    assert view_of._issue_from_json(data).unknown_cves == ()
+    assert view_of._issue_from_json(view_of._issue_json(issue)).unknown_cves == ("CVE-2023-28432",)
 
 
 def test_signal_without_cve_is_left_as_it_is_and_does_not_mark_the_case() -> None:

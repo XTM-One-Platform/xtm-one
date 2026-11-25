@@ -354,16 +354,26 @@ async def test_a_non_admin_cannot_turn_it_on(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_the_manual_run_is_not_opened(monkeypatch):
+async def test_the_manual_run_takes_its_switch_but_not_its_run_as(monkeypatch):
+    """Every built-in assignment takes its switch (#2192); the run-as identity
+    stays the opt-in assignments' alone."""
     agent, assignment = _opt_in_pair(MANUAL)
 
     with pytest.raises(HTTPException) as exc:
         await _invoke_assignment_update(
-            monkeypatch, UpdateAssignmentRequest(enabled=True), agent, assignment, _admin()
+            monkeypatch,
+            UpdateAssignmentRequest(enabled=True, run_as_user_id=str(uuid.uuid4())),
+            agent,
+            assignment,
+            _admin(),
         )
-
     assert exc.value.status_code == 403
     assert assignment.enabled is False
+
+    await _invoke_assignment_update(
+        monkeypatch, UpdateAssignmentRequest(enabled=True), agent, assignment, _resuming_admin()
+    )
+    assert assignment.enabled is True
 
 
 @pytest.mark.asyncio

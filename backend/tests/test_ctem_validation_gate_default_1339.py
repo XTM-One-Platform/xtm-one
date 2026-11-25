@@ -2,8 +2,9 @@
 
 Pinned here without a database:
 - on every CTEM loop fleet with the OpenAEV validation step, the validation gate
-  waits at the seeded level (two gates wait: validation and Mobilize), none at
-  Full autonomous, every gate at Full human gates; a ``run`` pin lifts it and
+  waits at Low (two gates wait: validation and Mobilize), none at Full
+  autonomous, every gate at Full human gates, the seeded level since #2279; a
+  ``run`` pin lifts it and
   survives a reseed; an existing fleet with no pin gets the new default;
 - a seeded gate never pauses a tool call (#1675, Sam, 24 Nov 2026): every call
   that creates or starts a validation runs at every level; the wait is one
@@ -73,11 +74,12 @@ def _pauses(gate: Any, call: Any) -> bool:
 
 
 @pytest.mark.parametrize("slug", _VALIDATION_FLEETS)
-def test_two_gates_wait_at_the_seeded_level_none_autonomous_all_at_full_gates(slug: str) -> None:
+def test_two_gates_wait_at_low_none_autonomous_all_at_full_gates(slug: str) -> None:
     def waiting(level: str) -> set[str]:
         return {e["key"] for e in gate_catalog(level, _gates(slug)) if e["gated"]}
 
-    assert waiting(SEEDED_FLEET_AUTONOMY_LEVEL) == {CTEM_VALIDATION_GATE, CTEM_MOBILIZE_GATE}
+    assert waiting("low") == {CTEM_VALIDATION_GATE, CTEM_MOBILIZE_GATE}
+    assert waiting(SEEDED_FLEET_AUTONOMY_LEVEL) == waiting("full_gates")
     assert waiting("autonomous") == set()
     assert waiting("full_gates") == {g["key"] for g in _gates(slug)}
 
@@ -85,9 +87,7 @@ def test_two_gates_wait_at_the_seeded_level_none_autonomous_all_at_full_gates(sl
 def test_the_third_party_fleet_validation_gate_does_not_wait() -> None:
     gate = next(g for g in _gates("ctem-third-party-risk") if g["key"] == CTEM_VALIDATION_GATE)
     assert not gate.get("tools") and "grant" not in gate
-    waiting = {
-        e["key"] for e in gate_catalog(SEEDED_FLEET_AUTONOMY_LEVEL, _gates("ctem-third-party-risk")) if e["gated"]
-    }
+    waiting = {e["key"] for e in gate_catalog("low", _gates("ctem-third-party-risk")) if e["gated"]}
     assert waiting == {CTEM_MOBILIZE_GATE}
 
 

@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from datetime import UTC, datetime
 from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
@@ -148,7 +149,7 @@ def empty_sections(
 
 def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The three read tools, acting for *user_id*; nothing is written."""
-    from .ctem_cases import _bounded_issues, _uuid, build_ctem_case_tools, resolve_case_id
+    from .ctem_cases import _bounded_issues, _uuid, build_ctem_case_tools, missing_case_answer, resolve_case_id
     from .ctem_signals import build_ctem_signal_tools
 
     signal_defs, signal_exec = build_ctem_signal_tools(user_id=user_id)
@@ -181,7 +182,8 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
                 found = await store.get_case(db, wanted, organization_id=primary.id)
                 if found is None:
-                    return f"No case {case_id}."
+                    # A merged-away case answers its survivor (#2289).
+                    return await missing_case_answer(db, case_id, wanted, primary.id)
                 case, rows, events = found
                 # This case's members only (#2092): never a whole view build on the call during a drain.
                 members = [f"{r.source}:{r.external_id}" for r in rows]
@@ -194,6 +196,8 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 # The list's asset-count rule on the single read (#1704): list and case read agree.
                 version_history.with_asset_count(rendered, events)
                 running = await case_versions.for_case(db, case)
+                # The asset count agrees with the running versions this read serves (#2225).
+                version_history.with_live_asset_count(rendered, running, at=datetime.now(UTC))
                 sources = (
                     await case_versions.inventory_sources(db, primary.id)
                     if running is None and rendered.get("remediation_kind") == "upgrade"

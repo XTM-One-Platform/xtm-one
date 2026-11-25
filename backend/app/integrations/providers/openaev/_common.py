@@ -2648,13 +2648,45 @@ def _fmt_payload(p: dict, base_url: str = "") -> str:
     return "\n".join(lines)
 
 
-def _inject_row_executed(row: dict) -> bool:
-    """Whether an inject result row has run: OpenAEV sets ``inject_status`` on
-    the first execution and leaves it null before."""
+# OpenAEV ExecutionStatus: only these close an execution (isClosed(), plus the
+# legacy SUCCESS alias of EXECUTED). DRAFT, QUEUING, EXECUTING and PENDING are
+# set before or during a run, so the presence of a status never means it ran.
+_INJECT_STATUSES_EXECUTED = frozenset(
+    {"EXECUTED", "SUCCESS", "ERROR", "PARTIAL", "MAYBE_PREVENTED", "MAYBE_PARTIAL_PREVENTED"}
+)
+_INJECT_STATUSES_IN_PROGRESS = frozenset({"QUEUING", "EXECUTING", "PENDING"})
+
+
+def _inject_row_status_name(row: dict[str, Any]) -> str:
     status = row.get("inject_status")
     if isinstance(status, dict):
-        return bool(status.get("status_name"))
-    return bool(status)
+        status = status.get("status_name")
+    return str(status or "").strip().upper()
+
+
+def _inject_row_state(row: dict[str, Any]) -> str:
+    """Classify an inject result row: ``executed``, ``in_progress`` or ``not_executed``.
+
+    Executed means a closed execution status (xtm-one #2238). A disabled
+    inject, a DRAFT or a null status never sent has not run; a queued,
+    executing or pending one (or one sent with no closed status) may still
+    produce results.
+    """
+    name = _inject_row_status_name(row)
+    if name in _INJECT_STATUSES_EXECUTED:
+        return "executed"
+    if row.get("inject_enabled") is False:
+        return "not_executed"
+    if name in _INJECT_STATUSES_IN_PROGRESS:
+        return "in_progress"
+    if name in ("", "DRAFT"):
+        return "in_progress" if row.get("inject_sent_at") else "not_executed"
+    return "in_progress"
+
+
+def _inject_row_executed(row: dict[str, Any]) -> bool:
+    """Whether an inject result row has run: its status closes an execution."""
+    return _inject_row_state(row) == "executed"
 
 
 def _no_expectation_results_message(executed: bool | None) -> str:
@@ -2684,7 +2716,9 @@ def _simulation_no_results_message(subject: str, rows: Any, rows_err: str | None
 
     ``rows`` is the ``/api/exercises/{id}/injects/results`` answer. Each inject
     is either executed with no expectation (findings only) or not executed
-    yet, so the caller knows whether to wait or to stop looking.
+    yet, so the caller knows whether to wait or to stop looking. A draft,
+    disabled or never sent inject is counted as not executed, never as
+    executed (xtm-one #2238).
     """
     head = f"No expectation results for {subject}." if subject else "No expectation results."
     if rows_err or not isinstance(rows, list):
@@ -2695,8 +2729,10 @@ def _simulation_no_results_message(subject: str, rows: Any, rows_err: str | None
     injects = [r for r in rows if isinstance(r, dict)]
     if not injects:
         return f"{head} The simulation has no inject."
-    executed = [r for r in injects if _inject_row_executed(r)]
-    pending = [r for r in injects if not _inject_row_executed(r)]
+    states = [(r, _inject_row_state(r)) for r in injects]
+    executed = [r for r, s in states if s == "executed"]
+    running = [r for r, s in states if s == "in_progress"]
+    not_run = [r for r, s in states if s == "not_executed"]
     lines = [head]
     if executed:
         lines.append(
@@ -2704,12 +2740,25 @@ def _simulation_no_results_message(subject: str, rows: Any, rows_err: str | None
             "no result will come for them (findings only); they measure nothing "
             "about the security posture."
         )
-    if pending:
-        lines.append(f"  {len(pending)} inject(s) not executed yet: results may still come.")
-    for row in injects[:SIMULATION_INJECT_ROWS]:
+    if running:
+        lines.append(f"  {len(running)} inject(s) in progress (queued, executing or pending): results may still come.")
+    if not_run:
+        lines.append(
+            f"  {len(not_run)} inject(s) not executed (draft, disabled or never sent): "
+            "nothing ran, so nothing was measured; no result comes for them until "
+            "they are enabled and run."
+        )
+    for row, state in states[:SIMULATION_INJECT_ROWS]:
         title = row.get("inject_title") or row.get("inject_id") or "?"
-        state = "executed, no expectations" if _inject_row_executed(row) else "not executed"
-        lines.append(f"    {title} (id: {row.get('inject_id', '?')}): {state}")
+        status = _inject_row_status_name(row) or "no status"
+        if state == "executed":
+            label = f"executed ({status}), no expectations"
+        elif state == "in_progress":
+            label = f"in progress ({status})"
+        else:
+            disabled = ", disabled" if row.get("inject_enabled") is False else ""
+            label = f"not executed ({status}{disabled})"
+        lines.append(f"    {title} (id: {row.get('inject_id', '?')}): {label}")
     if len(injects) > SIMULATION_INJECT_ROWS:
         lines.append(f"    {len(injects) - SIMULATION_INJECT_ROWS} more not shown")
     return "\n".join(lines)

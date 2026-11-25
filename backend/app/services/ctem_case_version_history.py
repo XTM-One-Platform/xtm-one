@@ -231,6 +231,26 @@ def with_asset_count(row: dict[str, Any], events: Iterable[Any]) -> dict[str, An
     return row
 
 
+def with_live_asset_count(row: dict[str, Any], running: Mapping[str, Any] | None, *, at: datetime) -> dict[str, Any]:
+    """*row* (a case read) counted from the live *running* versions the same read answers (#2225).
+
+    The case read reads ``ctem_case_versions.for_case`` live and serves it as ``running_versions``;
+    its ``asset_count`` (the distinct assets running the product) wins over a recorded snapshot or an
+    ``unknown`` count, so the aggregate and ``running_versions`` never disagree. A count from the
+    issues stays; an unread or empty inventory changes nothing. ``asset_count_as_of`` is *at*.
+    """
+    if row.get("asset_count_source") == "issues" or not running:
+        return row
+    count = running.get("asset_count")
+    if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+        return row
+    row["asset_count"] = count
+    row["asset_count_source"] = "inventory"
+    row["asset_count_as_of"] = at.isoformat()
+    row.pop("asset_count_reason", None)
+    return row
+
+
 async def record(db: Any, case: Any, answer: Mapping[str, Any] | None, events: Iterable[Any], *, at: datetime) -> bool:
     """Write the ``versions`` event of *case* when its devices moved since the last record.
 

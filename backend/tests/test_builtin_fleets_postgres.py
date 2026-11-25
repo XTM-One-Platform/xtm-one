@@ -137,8 +137,8 @@ async def _seed_rows(db, fleet: Fleet) -> list[AuditLog]:
     )
 
 
-async def test_a_seeded_fleet_ships_at_low_recorded_as_the_seed_default_once():
-    """#10005: fresh boot = Low, one system audit row, a second boot writes nothing; custom fleets keep full_gates."""
+async def test_a_seeded_fleet_ships_at_full_gates_and_a_second_boot_writes_nothing() -> None:
+    """#2279: fresh boot = Full human gates (the column default, no audit row), a second boot writes nothing."""
     async with (
         scratch_database("bf_level", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True) as s,
         s.sessions() as db,
@@ -150,16 +150,15 @@ async def test_a_seeded_fleet_ships_at_low_recorded_as_the_seed_default_once():
         await seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[_SPEC])
         await seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[_SPEC])
         fleet = (await db.execute(select(Fleet).where(Fleet.is_builtin.is_(True)))).scalar_one()
-        assert fleet.autonomy_level == "low"
-        (row,) = await _seed_rows(db, fleet)
-        assert row.user_email == "system:fleet-seed"
-        assert row.details["from"] == "full_gates" and row.details["to"] == "low"
+        assert fleet.autonomy_level == "full_gates"
+        assert fleet.enforce_gates_at_tool_level is False
+        assert await _seed_rows(db, fleet) == []
         mine = (await db.execute(select(Fleet).where(Fleet.slug == "mine"))).scalar_one()
         assert mine.autonomy_level == "full_gates"
 
 
 async def test_a_level_a_person_set_survives_a_reboot():
-    """#10005: an existing fleet a person moved (back) to full_gates is never moved to Low by the seed."""
+    """#10005, #2279: an existing fleet a person moved to low is never moved back by the seed."""
     async with (
         scratch_database("bf_level_kept", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True) as s,
         s.sessions() as db,
@@ -167,7 +166,7 @@ async def test_a_level_a_person_set_survives_a_reboot():
         admin = await _setup(db)
         await seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[_SPEC])
         fleet = (await db.execute(select(Fleet).where(Fleet.is_builtin.is_(True)))).scalar_one()
-        fleet.autonomy_level = "full_gates"
+        fleet.autonomy_level = "low"
         db.add(
             AuditLog(
                 user_id=admin.id,
@@ -177,14 +176,14 @@ async def test_a_level_a_person_set_survives_a_reboot():
                 entity_id=fleet.id,
                 entity_name=fleet.name,
                 summary="Set by a person",
-                details={"from": "low", "to": "full_gates"},
+                details={"from": "full_gates", "to": "low"},
             )
         )
         await db.commit()
         await seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[_SPEC])
         await db.refresh(fleet)
-        assert fleet.autonomy_level == "full_gates"
-        assert len(await _seed_rows(db, fleet)) == 1
+        assert fleet.autonomy_level == "low"
+        assert await _seed_rows(db, fleet) == []
 
 
 _OLD_ROOT = {**_SPEC, "slug": "t-old-root", "name": "Old root"}
@@ -233,22 +232,39 @@ async def test_an_upgrade_adopts_the_previous_row_folds_the_absorbed_fleet_and_k
         assert await seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[_MERGED]) == 0
 
 
-async def test_an_existing_fleet_never_set_by_a_person_moves_to_low_at_the_next_boot():
+async def test_an_existing_fleet_never_set_by_a_person_moves_to_full_gates_at_the_next_boot() -> None:
+    """#2279: a fleet the #10005 seed left at Low (no person's row; a factory reset's row is none) moves."""
     async with (
         scratch_database(
             "bf_level_upgrade", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True
         ) as s,
         s.sessions() as db,
     ):
-        await _setup(db)
+        admin = await _setup(db)
         await seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[_SPEC])
         fleet = (await db.execute(select(Fleet).where(Fleet.is_builtin.is_(True)))).scalar_one()
-        # A fleet seeded before #10005: still at the stored default, no audit row.
-        fleet.autonomy_level = "full_gates"
-        for row in await _seed_rows(db, fleet):
-            await db.delete(row)
+        # A fleet the #10005 seed moved to Low, then factory-reset to Low once.
+        fleet.autonomy_level = "low"
+        db.add(
+            AuditLog(
+                user_id=admin.id,
+                user_email="admin@example.com",
+                action="autonomy_level_change",
+                entity_type="fleet",
+                entity_id=fleet.id,
+                entity_name=fleet.name,
+                summary="Reset",
+                details={"from": "low", "to": "low", "reason": "fleet_reset"},
+            )
+        )
         await db.commit()
         await seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[_SPEC])
         await db.refresh(fleet)
-        assert fleet.autonomy_level == "low"
+        assert fleet.autonomy_level == "full_gates"
+        (row,) = await _seed_rows(db, fleet)
+        assert row.user_email == "system:fleet-seed"
+        assert row.details is not None
+        assert row.details["from"] == "low" and row.details["to"] == "full_gates"
+        # A second boot writes nothing.
+        await seed_builtin_fleets(db, platform_mode="xtm_one", fleets=[_SPEC])
         assert len(await _seed_rows(db, fleet)) == 1

@@ -144,7 +144,10 @@ alias for one minor release (section 2.3).
   `gate="concierge"`), in the backend `BuiltinToolGate` and the frontend `BuiltinToolGroup`
   type. The gate is computed from the registry on every read, never stored, so no migration.
 - LLM tool names: the orchestrator reads are `list_health_signals`, `list_health_cycles`,
-  `get_health_cycle` and `request_health_cycle`. The former `*_concierge_*` names stay in
+  `get_health_cycle` and `request_health_cycle`, plus `get_platform_health` (#2199), which
+  answers the Platform Health page through its own routes (`health_overview`,
+  `list_health_findings`) for the acting person, so the role scope is the page's, and the
+  alert email settings (recipients counted, never listed) to an administrator alone. The former `*_concierge_*` names stay in
   `RENAMED_BUILTIN_FUNCTIONS` (`builtin_tool_aliases.py`): each definition declares them as
   `ToolDefinition.aliases`, the executor runs them, and a stored `builtin_allowed_tools` or
   deny list naming one keeps its meaning (`test_health_orchestrator_renames.py`). The

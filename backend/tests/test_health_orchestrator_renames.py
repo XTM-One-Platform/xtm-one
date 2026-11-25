@@ -25,7 +25,8 @@ def test_the_former_names_are_declared_renames():
 def test_the_group_offers_only_the_current_names():
     definitions, _executor = build_health_orchestrator_tools("")
     names = {d.name for d in definitions}
-    assert names == set(TOOL_NAMES) == set(RENAMED.values())
+    assert names == set(TOOL_NAMES)
+    assert set(RENAMED.values()) <= names
     assert not names & set(RENAMED)
 
 

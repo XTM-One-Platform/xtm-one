@@ -9,8 +9,10 @@ answered in Graph's own words.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote as _url_encode
 
 from app.integrations.file_content import keep_file, kept_file_line, kilobytes
 from app.integrations.file_delivery import untrusted_file_facts
@@ -19,7 +21,11 @@ from app.tools.base import CallableToolExecutor, FileContext, ToolDefinition, To
 
 from ._common import _BASE_URL, _MS_MAX_FILE_BYTES, _PROVIDER, MicrosoftContext
 from ._drive import _encode_drive_filename, _encode_drive_path, _is_folder, _resolve_drive_url
-from .sharepoint import _site_drive_base
+from .sharepoint import _column_key, _site_drive_base, unwritten_fields
+
+#: How long a cross-library move waits for Graph's asynchronous copy.
+_COPY_POLLS = 20
+_COPY_POLL_SECONDS = 1.5
 
 #: What the upkeep tools read of a driveItem.
 _ITEM_SELECT = "id,name,size,file,folder,eTag,webUrl,parentReference,lastModifiedDateTime,lastModifiedBy,publication"
@@ -241,6 +247,130 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
             )
         return "Renamed the item; read back from Microsoft Graph under its new name.\n" + _facts(after)
 
+    async def _list_fields(client: AutoRefreshClient, item_base: str) -> tuple[dict[str, Any] | None, str | None]:
+        resp, err = await ctx.request(
+            client,
+            "get",
+            f"{item_base}/listItem",
+            _PROVIDER,
+            "read the list item fields",
+            params={"$expand": "fields", "$select": "id,fields"},
+        )
+        if err or resp is None:
+            return None, err or "Error: Microsoft Graph returned no list item."
+        return (resp.json() or {}).get("fields") or {}, None
+
+    async def _writable_columns(client: AutoRefreshClient, list_base: str) -> tuple[set[str] | None, str | None]:
+        columns, err = await ctx.collect_all(
+            client, f"{list_base}/columns", "read the destination library columns", params={"$top": "200"}
+        )
+        if err:
+            return None, err
+        return {
+            str(c.get("name"))
+            for c in columns
+            if c.get("name") and not c.get("readOnly") and not c.get("hidden") and c.get("name") != "FileLeafRef"
+        }, None
+
+    async def _move_across_libraries(
+        client: AutoRefreshClient, item: _Item, library: str, target_path: str, final_name: str, overwrite: bool
+    ) -> str:
+        """Copy *item* into *library* of the same site, re-apply its columns, read back, then delete the source."""
+        if _is_folder(item.meta):
+            return "Error: a move between libraries takes a file, not a folder."
+        site = str((item.meta.get("parentReference") or {}).get("siteId") or "")
+        if not site:
+            return "Error: the item is not in a SharePoint library, so it has no other library to move to."
+        list_base = f"{_BASE_URL}/sites/{site}/lists/{_url_encode(library.strip(), safe='')}"
+        resp, err = await ctx.request(
+            client,
+            "get",
+            f"{list_base}/drive",
+            _PROVIDER,
+            "open the destination library",
+            params={"$select": "id"},
+            expected_statuses={404},
+        )
+        if err or resp is None:
+            return f"Error: the site has no document library '{library}', so nothing was moved ({err})."
+        target_drive = str((resp.json() or {}).get("id") or "")
+        target_base = f"{_BASE_URL}/drives/{target_drive}"
+        folder_url = f"{target_base}/root:/{_encode_drive_path(target_path)}" if target_path else f"{target_base}/root"
+        resp, err = await ctx.request(
+            client, "get", folder_url, _PROVIDER, "open the destination folder", params={"$select": "id,folder"}
+        )
+        if err or resp is None:
+            return f"Error: library '{library}' has no folder '{target_path}', so nothing was moved."
+        folder_id = str((resp.json() or {}).get("id") or "")
+        existing, err = await _child(client, target_base, folder_id, final_name)
+        if err:
+            return err
+        if existing and not overwrite:
+            return (
+                "Error: the destination folder already holds an item with that name, so nothing was moved. "
+                "Pass overwrite=true to replace it."
+            )
+        source_fields, err = await _list_fields(client, item.item_base)
+        if err or source_fields is None:
+            return err or "Error: the source columns were not read."
+        writable, err = await _writable_columns(client, list_base)
+        if err or writable is None:
+            return err or "Error: the destination columns were not read."
+        carried = {
+            col: source_fields[key]
+            for col in sorted(writable)
+            if (key := _column_key(source_fields, col)) is not None and source_fields[key] not in (None, "")
+        }
+        _resp, err = await ctx.request(
+            client,
+            "post",
+            f"{item.item_base}/copy",
+            _PROVIDER,
+            "copy the file to the destination library",
+            params={"@microsoft.graph.conflictBehavior": "replace" if overwrite else "fail"},
+            json={"parentReference": {"driveId": target_drive, "id": folder_id}, "name": final_name},
+        )
+        if err:
+            return err
+        copied: dict[str, Any] | None = None
+        for poll in range(_COPY_POLLS):
+            found, err = await _child(client, target_base, folder_id, final_name)
+            if err:
+                return err
+            # A replaced item may keep its id: after the first wait, its presence is the copy.
+            if found and (found.get("id") != (existing or {}).get("id") or poll > 0):
+                copied = found
+                break
+            await asyncio.sleep(_COPY_POLL_SECONDS)
+        if copied is None:
+            return (
+                "Error: Microsoft Graph accepted the copy but the file did not appear in the destination "
+                "library in time; the source was kept. Check the destination before retrying."
+            )
+        copy_base = f"{target_base}/items/{copied.get('id')}"
+        if carried:
+            _resp, err = await ctx.request(
+                client, "patch", f"{copy_base}/listItem/fields", _PROVIDER, "re-apply the columns", json=carried
+            )
+            if err:
+                return f"Error: the file was copied but its columns were not re-applied ({err}); the source was kept."
+        stored, err = await _list_fields(client, copy_base)
+        if err or stored is None:
+            return f"Error: the copy's columns were not read back ({err}); the source was kept."
+        if lost := unwritten_fields(carried, stored):
+            return "Error: the copy reads back without these columns, so the source was kept: " + ", ".join(lost) + "."
+        _resp, err = await ctx.request(client, "delete", item.item_base, _PROVIDER, "delete the source file")
+        if err:
+            return f"Error: the file was copied with its columns but the source was not deleted ({err})."
+        after, err = await _get_item(client, copy_base)
+        if err or after is None:
+            return err or "Error: the moved file was not read back."
+        return (
+            f"Moved the file to library '{library}' folder '{target_path or '(root)'}' with "
+            f"{len(carried)} column(s) carried over; read back from Microsoft Graph, source sent to the recycle bin.\n"
+            + _facts(after)
+        )
+
     async def move_microsoft_drive_file(
         folder: str,
         url: str = "",
@@ -248,8 +378,9 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
         site_id: str = "",
         new_name: str = "",
         overwrite: bool = False,
+        library: str = "",
     ) -> str:
-        """Move a drive item to another folder of the same drive or library."""
+        """Move a drive item to another folder of the same drive, or to another library of the same site."""
         name = ""
         if (new_name or "").strip():
             name, err = _clean_name(new_name)
@@ -260,6 +391,8 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
             if err or item is None:
                 return err or "Error: item not found."
             target_path = (folder or "").strip().strip("/")
+            if (library or "").strip():
+                return await _move_across_libraries(client, item, library, target_path, name or item.name, overwrite)
             target_url = (
                 f"{item.drive_base}/root:/{_encode_drive_path(target_path)}"
                 if target_path
@@ -445,7 +578,8 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
             name="move_microsoft_drive_file",
             description=(
                 "Move a OneDrive / SharePoint file or folder to another folder of the same drive "
-                "or library, optionally renaming it. Refuses a taken name unless overwrite=true; read back."
+                "or library, optionally renaming it; library moves a file to another library of the same "
+                "site, columns kept. Refuses a taken name unless overwrite=true; read back."
             ),
             input_schema={
                 "type": "object",
@@ -461,6 +595,11 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                         "description": "Optional new name at the destination",
                     },
                     "overwrite": overwrite_prop,
+                    "library": {
+                        "type": "string",
+                        "default": "",
+                        "description": "Optional: another document library of the same site (display name or list id)",
+                    },
                 },
                 "required": ["folder"],
             },

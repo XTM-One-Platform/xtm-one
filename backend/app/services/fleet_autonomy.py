@@ -16,9 +16,10 @@
 A fleet stores one level (``Fleet.autonomy_level``), one of :data:`AUTONOMY_LEVELS`
 from the most supervised to the least:
 
-* ``full_gates`` (the default of a custom fleet): every gated action waits for
-  an approval work item. A built-in seeded fleet ships at ``low``
-  (``app.agents.fleet_seed.SEEDED_FLEET_AUTONOMY_LEVEL``, #10005).
+* ``full_gates`` (the default of every new and seeded fleet, #2279): every
+  gated action waits for a decision item between steps; no tool call pauses
+  unless an administrator opted the fleet in (#1467, never a built-in one,
+  #1675). ``app.agents.fleet_seed.SEEDED_FLEET_AUTONOMY_LEVEL`` names it.
 * ``medium``: low-impact writes go without approval; high-impact and
   destructive actions still wait.
 * ``low``: only destructive or production-impacting actions wait.

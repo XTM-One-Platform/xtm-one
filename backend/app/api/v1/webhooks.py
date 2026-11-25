@@ -2783,6 +2783,13 @@ async def _route_pull_request_event(
     event = parse_pull_request_event(provider, event_key, payload)
     if event is None:
         return
+    if event.kind == "tag_created":
+        # A tag may meet a blocked item's tag reference: read back in the background,
+        # signed or not; a tag is no pull request change (#2209).
+        from app.services.work_item_blocked_refs import schedule_tag_release
+
+        schedule_tag_release(event)
+        return
     if event.kind == "ci":
         # A successful workflow run may meet a blocked item's workflow_run reference:
         # read back from the code host in the background, signed or not.
@@ -3109,6 +3116,23 @@ def _verify_assignment_webhook_secret(
                     "X-Signature (hex HMAC-SHA256)."
                 ),
             )
+
+
+async def _verify_or_record_refusal(
+    body: bytes,
+    request: Request,
+    webhook_secret: object,
+    *,
+    assignment_id: str,
+) -> None:
+    """``_verify_assignment_webhook_secret``, and a refusal kept for the owner to read (#2180)."""
+    try:
+        _verify_assignment_webhook_secret(body, request, webhook_secret, assignment_id=assignment_id)
+    except HTTPException as exc:
+        from app.services.webhook_refusals import record_refusal
+
+        await record_refusal(assignment_id, exc.detail, request.headers.keys())
+        raise
 
 
 def _verify_opencti_token_header(
@@ -4741,6 +4765,10 @@ async def receive_assignment_webhook(
     # transient first-attempt failure (signature mismatch, DB blip,
     # crash) would silently swallow legitimate retries within the TTL
     # with a generic "duplicate" reply.
+    # An OpenAEV occurrence claimed below is kept only once a run started or was
+    # queued; every other path gives it back (finally), so the next delivery of
+    # the same occurrence still runs (#2247).
+    occurrence_claim: str | None = None
     try:
         try:
             payload_raw = json.loads(body)
@@ -4833,6 +4861,22 @@ async def receive_assignment_webhook(
                 "headers": _safe_webhook_headers(request),
                 "method": request.method,
             }
+            repeat = False
+            if provider == "openaev":
+                repeat, occurrence_claim = await ctem_openaev_events.claim_occurrence(
+                    event_key,
+                    payload,
+                    integration_id=str(integration_id),
+                    assignment_id=str(assignment_id),
+                    verified=_signed_with_webhook_secret(integration.extra_config_enc),
+                )
+            if repeat:
+                # A later update of a simulation this assignment already heard
+                # finish: no case moves and no run starts again (c87c8335).
+                return await _finalize_dedup(
+                    dedup_key,
+                    {"status": "ok", "triggered": [], "count": 0, "reason": "occurrence already delivered"},
+                )
             if provider == "openaev":
                 # CTEM-26: a failed reachability assertion is an outside-lens exposure (#1164).
                 await ctem_openaev_events.stamp_reachability_assertion(
@@ -5172,6 +5216,8 @@ async def receive_assignment_webhook(
             )
 
             await db.commit()
+            # The run is recorded: the occurrence stays claimed.
+            occurrence_claim = None
 
         response = {
             "status": "ok",
@@ -5184,6 +5230,8 @@ async def receive_assignment_webhook(
     except Exception:
         await _release_webhook_dedup_slot(dedup_key)
         raise
+    finally:
+        await ctem_openaev_events.release_occurrence(occurrence_claim)
 
 
 # ---------------------------------------------------------------------------
@@ -5301,7 +5349,7 @@ async def receive_direct_assignment_webhook(
     # instead of inheriting the remediated incident's 24-hour downgrade.
     await _clear_direct_webhook_drift_state(str(assignment_uuid))
 
-    _verify_assignment_webhook_secret(
+    await _verify_or_record_refusal(
         body,
         request,
         (wf_pre.trigger_config or {}).get("webhook_secret"),
@@ -5818,7 +5866,7 @@ async def receive_webhook(agent_id: str, path: str, request: Request) -> dict:
     for wf_pre in pre_assignments:
         cfg_pre = wf_pre.trigger_config or {}
         if cfg_pre.get("path", "") == path:
-            _verify_assignment_webhook_secret(
+            await _verify_or_record_refusal(
                 body,
                 request,
                 cfg_pre.get("webhook_secret"),

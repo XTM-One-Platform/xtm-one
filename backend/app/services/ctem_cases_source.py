@@ -49,6 +49,7 @@ from app.integrations.providers.opencti.capabilities import attach_probe
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_store as store
 from app.services import ctem_fixed_version as fixed_versions
+from app.services import ctem_product_identity as product_identity
 from app.services.ctem_cases import VERSION_AFFECTED, VERSION_NOT_AFFECTED, VERSION_UNKNOWN
 from app.services.ctem_metrics_collector import (
     _AEV_VALIDATION_WINDOW_DAYS,
@@ -446,6 +447,8 @@ def opencti_issues(
     """
     entry_by_label = {e["label"]: e for e in stack}
     product_of: dict[str, dict[str, Any]] = {}
+    # The language ecosystem each stack Software is a package of, else ``None`` (#2223).
+    ecosystem_of: dict[str, str | None] = {}
     # The platform each stack Software is built for (CPE target, else its name or version), #2152.
     platform_of: dict[str, str | None] = {}
     # The OpenCTI Software ids of each installed version, per stack entry.
@@ -456,6 +459,8 @@ def opencti_issues(
             continue
         entry = entry_by_label[label]
         product_of[node["id"]] = entry
+        # A language package (pkg:pypi minio) is not the server product of the same name (#2223).
+        ecosystem_of[node["id"]] = product_identity.software_ecosystem(node)
         platform_of[node["id"]] = fixed_versions.platform_of_software(
             node.get("name"), node.get("version"), node.get("cpe")
         )
@@ -577,6 +582,8 @@ def opencti_issues(
                 fixed_versions=tuple(sorted(per_platform.items())) if fixed and fixed_by else (),
                 declared_version_known=any(o != VERSION_UNKNOWN for _v, o in outcomes) if outcomes else None,
                 version_outcomes=facts,
+                # Every Software the vulnerability names is a language package: the repository rows count.
+                language_package=all(ecosystem_of.get(sw) for sw in holders[(vuln_id, label)]),
             )
         )
     return out
@@ -942,6 +949,21 @@ async def _lookup_by_id(source: str, cred: tuple[str, dict[str, str]], ids: list
         return None
 
 
+async def release_before_network(db: Any) -> None:
+    """Hand *db*'s connection back to the pool before a product read (#2232).
+
+    A source read waits on OpenCTI and OpenAEV for seconds to minutes; the session
+    that read the credentials and the stack would keep its pool connection checked
+    out through it (the case tools of an agent run held one for 340-498 s during a
+    drain). The session re-acquires a connection on its next statement.
+    """
+    if db is None or not callable(getattr(db, "in_transaction", None)):
+        return
+    from app.core.database import release_db_connection_before_loop
+
+    await release_db_connection_before_loop(db)
+
+
 async def _read_product(
     user_id: str, provider: str, read: Callable[[httpx.AsyncClient], Awaitable[Any]]
 ) -> tuple[Any, str | BaseException | None]:
@@ -1017,6 +1039,7 @@ async def read_open_issues(
             reads["openaev"] = _read_product(
                 user_id, "openaev", lambda client: _read_openaev(client, aev_url, aev_headers, now)
             )
+        await release_before_network(db)
         answers = dict(zip(reads, await asyncio.gather(*reads.values()), strict=True))
         if "opencti" in answers:
             found, error = answers["opencti"]
@@ -1178,14 +1201,26 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
     from app.services.organizations import get_primary
 
     vertical = normalize_vertical(vertical)
+    phases: dict[str, float] = {}
+    started = time.perf_counter()
+
+    def lap(name: str) -> None:
+        nonlocal started
+        now = time.perf_counter()
+        phases[name] = (now - started) * 1000
+        started = now
+
     primary = await get_primary(db)
     members = await store.member_ids(db, organization_id=primary.id, vertical=vertical) if primary else []
+    lap("members")
     read = await read_open_issues(db, user_id, vertical, members=members)
+    lap("products")
     view = ViewerView(missing=list(read.missing), reasons=dict(read.reasons), complete=read.complete)
     # The members this read judged (#2113): a case opened after it is unjudged, never hidden.
     view.judged, view.built_at = set(members), datetime.now(UTC)
     view.opencrq = await _reads_opencrq(db, user_id)
     view.opencti = await _reads_opencti(db, user_id)
+    lap("access")
     for issue in [*read.closed, *read.looked_up]:
         view.issues[issue.member_id] = issue
     for issue in read.issues:
@@ -1195,6 +1230,14 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
         for issue in await _signal_members(db, organization_id=primary.id, user_id=user_id):
             view.issues[issue.member_id] = issue
             view.open_ids.add(issue.member_id)
+    lap("signals")
+    # Where a slow view build spends its time (#2232): the product reads alone were 5-7 s of 60-616 s.
+    logger.info(
+        "CTEM cases: view read of %s: %s (%d members)",
+        user_id,
+        ", ".join(f"{name} {ms:.0f} ms" for name, ms in phases.items()),
+        len(members),
+    )
     return view
 
 
@@ -1260,6 +1303,7 @@ async def _read_case_members(db: AsyncSession, user_id: str, out: SourceRead, wa
                 out.fail(provider, REASON_NOT_CONNECTED)
         octi = creds.get("opencti")
         stack = await _matcher_stack(db) if octi else []
+        await release_before_network(db)
         if octi and stack:
             octi_url, octi_headers = octi
             vuln_ids = sorted(set(wanted["opencti"]))
@@ -1381,8 +1425,10 @@ def enrich_signal_issues(
     action. A member takes its first CVE, KEV when any of its CVEs is KEV (each
     KEV CVE kept in ``kev_cves`` for the case's KEV count), the
     highest CVSS and EPSS, and the version a course of action names when it is
-    a plain upgrade. A CVE OpenCTI does not know leaves those facts unknown
-    (``None``, never 0); the member is kept either way.
+    a plain upgrade. A CVE OpenCTI does not know, or that was not read (no
+    OpenCTI access for the reader, OpenCTI failed: *vulns* empty), leaves those
+    facts unknown: kept in ``unknown_cves`` and ``kev`` is ``None`` unless another
+    of its CVEs is KEV (#2225), never "not KEV"; the member is kept either way.
     """
     by_name: dict[str, dict[str, Any]] = {}
     for node in vulns:
@@ -1402,6 +1448,7 @@ def enrich_signal_issues(
             out.append(issue)
             continue
         known = [by_name[c] for c in named if c in by_name]
+        unknown = tuple(dict.fromkeys(c.upper() for c in named if c not in by_name))
         kev_cves = tuple(
             dict.fromkeys(c.upper() for c in named if c in by_name and by_name[c].get("x_opencti_cisa_kev"))
         )
@@ -1414,8 +1461,9 @@ def enrich_signal_issues(
             replace(
                 issue,
                 cve=named[0],
-                kev=any(bool(n.get("x_opencti_cisa_kev")) for n in known),
+                kev=True if kev_cves else (None if unknown else False),
                 kev_cves=kev_cves,
+                unknown_cves=unknown,
                 cvss=max(cvss) if cvss else None,
                 epss=max(epss) if epss else None,
                 fixed_version=_highest(fixes),
