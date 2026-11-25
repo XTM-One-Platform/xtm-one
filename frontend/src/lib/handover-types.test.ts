@@ -17,7 +17,9 @@ import { readFileSync } from "node:fs";
 import {
   ALL_HANDOVER_TYPES,
   consultsBackgroundDelegator,
+  editedHandoverType,
   explicitHandoverTypes,
+  handoverTypeParts,
   isLegacyHandoverMap,
   runnableHandoverTypes,
   runsEveryHandoverType,
@@ -86,6 +88,19 @@ test("a stored all runs every type, an entry of several types is shown by the fi
   assert.equal(shownHandoverType(types, "a", RUNNABLE), ALL_HANDOVER_TYPES);
   assert.equal(shownHandoverType(types, "b", RUNNABLE), "consult");
   assert.equal(shownHandoverType(types, "c", RUNNABLE), "transfer");
+});
+
+test("the agent editor's draft reads a stored all and a multi-type entry as the read view, and a save keeps them (#2207)", () => {
+  const stored = { a: "all", b: "consult|delegate", c: "transfer" };
+  assert.equal(editedHandoverType(stored, "a"), ALL_HANDOVER_TYPES);
+  assert.equal(editedHandoverType(stored, "b"), "consult|delegate");
+  assert.deepEqual(handoverTypeParts(editedHandoverType(stored, "b")), ["consult", "delegate"]);
+  assert.deepEqual(handoverTypeParts("transfer"), []);
+  assert.equal(editedHandoverType(stored, "c"), "transfer");
+  assert.equal(editedHandoverType(stored, "untyped"), "delegate");
+  assert.equal(editedHandoverType(null, "a"), "delegate");
+  // A save of the form without touching a target writes each entry as stored.
+  assert.deepEqual(explicitHandoverTypes(["a", "b", "c"], stored), stored);
 });
 
 test("the first type picked in an empty map types every target and names the ones it narrows", () => {

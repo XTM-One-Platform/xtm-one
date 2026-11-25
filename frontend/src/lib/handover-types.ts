@@ -76,6 +76,24 @@ export function shownHandoverType(
   return ["consult", "delegate", "transfer"].find((t) => parts.includes(t) && runnableTypes.includes(t)) ?? "delegate";
 }
 
+/** The entry of `agentId` as the agent editor's picker holds it (#2207): a
+ *  stored "all" is `ALL_HANDOVER_TYPES`, an entry of several types
+ *  ("consult|delegate") is kept whole so a save leaves it as stored, and a
+ *  target without an entry is delegate. */
+export function editedHandoverType(types: HandoverTypeMap | null | undefined, agentId: string): string {
+  const type = types?.[agentId];
+  if (!type) return "delegate";
+  if (type === ALL_HANDOVER_TYPES || type === STORED_ALL_HANDOVER_TYPES) return ALL_HANDOVER_TYPES;
+  return type;
+}
+
+/** The types of an entry of several types ("consult|delegate"), in its
+ *  order; empty for an entry of one type. */
+export function handoverTypeParts(type: string): string[] {
+  const parts = type.split("|").filter((part) => part !== "");
+  return parts.length > 1 ? parts : [];
+}
+
 export function runnableHandoverTypes(
   targetIds: readonly string[],
   stored: HandoverTypeMap | null | undefined,
