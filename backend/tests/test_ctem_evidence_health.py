@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import ctem_evidence_health as health
 from app.services import organization_context as oc
@@ -217,6 +218,23 @@ async def test_pass_signals_are_recorded_by_system_on_the_inside_lens(monkeypatc
     assert {r["recorded_by"] for r in recorded} == {ctem_signals.SYSTEM_ACTOR}
     assert {r["signal"].lens for r in recorded} == {"inside"}
     assert {r["signal"].trigger_path for r in recorded} == {"control_decay", "blind_spot"}
+
+
+@pytest.mark.asyncio
+async def test_an_asset_gap_links_to_its_opencrq_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The case row's "Open in OpenCRQ" icon (#1357) reads the asset page the pass writes."""
+    recorded = _patch_record(monkeypatch)
+    reader = _Reader({"s-1": _health(_asset("a1", "expired"))})
+    reader.asset_link = lambda asset_id: f"https://crq.example/t1/assets/{asset_id}/overview"  # type: ignore[attr-defined]
+    db = cast(AsyncSession, object())  # record_signal is patched: the pass never reads the session
+    await health.run_pass(db, organization_id=uuid.uuid4(), reader=reader, max_age_days=45, now=NOW)
+    assert recorded[0]["signal"].evidence["link"] == "https://crq.example/t1/assets/a1/overview"
+
+
+def test_the_opencrq_reader_builds_the_asset_page_or_nothing() -> None:
+    reader = health.OpenCrqEvidenceReader("https://crq.example/", {}, "t1")
+    assert reader.asset_link("a1") == "https://crq.example/t1/assets/a1/overview"
+    assert reader.asset_link("../a1") is None
 
 
 @pytest.mark.asyncio

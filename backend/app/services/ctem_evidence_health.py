@@ -92,6 +92,18 @@ class EvidenceReader(Protocol):
     async def evidence_health(self, scenario_id: str, max_age_days: int) -> dict[str, Any]: ...
 
 
+def _asset_link(reader: Any, gap: Gap) -> dict[str, str]:
+    """``{"link": <the asset's page in OpenCRQ>}`` when the reader can build it, else ``{}``.
+
+    The case row pivots to it (#1357): an OpenCRQ supporting asset has no id route XTM One
+    could build alone, its page lives under the tenant.
+    """
+    ids = gap.evidence.get("opencrq_asset_ids") or []
+    build = getattr(reader, "asset_link", None)
+    link = build(str(ids[0])) if ids and callable(build) else None
+    return {"link": link} if isinstance(link, str) and link else {}
+
+
 def _iso(value: Any) -> str:
     return str(value or "")[:40]
 
@@ -236,7 +248,7 @@ async def run_pass(
                 lens="inside",
                 subject_label=gap.subject_label,
                 observed_at=at,
-                evidence={**gap.evidence, "reason": gap.reason},
+                evidence={**gap.evidence, "reason": gap.reason, **_asset_link(reader, gap)},
                 dedupe_key=gap.dedupe_key,
             ),
             recorded_via="listener",
@@ -292,6 +304,14 @@ class OpenCrqEvidenceReader:
             {"riskScenarioId": scenario_id, "maxAgeDays": max_age_days, "limit": ASSETS_PER_SCENARIO},
         )
         return data if isinstance(data, dict) else {}
+
+    def asset_link(self, asset_id: str) -> str | None:
+        """The supporting asset's overview page in OpenCRQ, or None when an id is not a plain path segment."""
+        from app.integrations.providers.opencrq._common import _plain_segments
+
+        if not self._base_url or not _plain_segments(self._tenant, asset_id):
+            return None
+        return f"{self._base_url.rstrip('/')}/{self._tenant}/assets/{asset_id}/overview"
 
 
 async def reader_for(db: AsyncSession, profile: Any) -> OpenCrqEvidenceReader | str:
