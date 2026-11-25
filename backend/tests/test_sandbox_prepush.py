@@ -342,3 +342,51 @@ def test_pre_push_on_defaults_to_every_change_and_refuses_an_unknown_kind() -> N
     assert only_added["x"].pre_push_on == ("added", "removed")
     changes = CheckoutChanges(modified=("a.py",), added=("b.py",), removed=("c.py",))
     assert prepush.touched(changes, only_added["x"]) == ["b.py", "c.py"]
+
+
+QUEUE = b"""
+[check.backend-queue-tests]
+argv = ["python", "-m", "scripts.queue_tests"]
+cwd = "backend"
+affected = "files"
+affected_by_default = true
+pre_push = ["*.py"]
+"""
+
+
+@pytest.mark.asyncio
+async def test_a_backend_change_without_the_queue_selection_is_named_and_its_run_on_the_change_counts() -> None:
+    """Gap pr-test-selection-misses-queue-failures (#2073): a pull request's CI runs no backend suite, so a Python
+    change pushed without the queue's selection went red in the merge queue only. ``backend-queue-tests`` runs on the
+    change when called without args (the platform appends the changed files): that run is its whole run."""
+    session = _Session()
+    session.files[f"repo/{CHECKS_FILE}"] = CHECKS + QUEUE
+    session.edit("backend/app/x.py", b"x = 2\n")
+    text = await prepush.commit_warning(session, session.record, await session.changes())
+    assert "backend-queue-tests never ran on this checkout (backend/app/x.py)" in text
+    declared = ("python", "-m", "scripts.queue_tests")
+    on_change = (*declared, "--", "backend/app/x.py")
+    # Files the caller named (args) prove nothing about the change: not kept.
+    assert not await prepush.record_run(session, "repo", check="backend-queue-tests", argv=on_change, exit_code=0)
+    assert "backend-queue-tests never ran" in await prepush.commit_warning(
+        session, session.record, await session.changes()
+    )
+    assert await prepush.record_run(
+        session, "repo", check="backend-queue-tests", argv=on_change, exit_code=0, on_change=True
+    )
+    assert await prepush.commit_warning(session, session.record, await session.changes()) == ""
+    # A check not declared affected_by_default is never kept from a run with files appended.
+    assert not await prepush.record_run(
+        session, "repo", check="frontend-types", argv=("yarn", "typecheck", "src/a.ts"), exit_code=0, on_change=True
+    )
+
+
+def test_the_queue_selection_check_is_a_pre_push_guard_of_backend_python() -> None:
+    from pathlib import Path
+
+    spec = load_checks((Path(__file__).resolve().parents[2] / CHECKS_FILE).read_text())["backend-queue-tests"]
+    assert spec.affected_by_default and spec.cwd == "backend"
+    changes = CheckoutChanges(
+        modified=("backend/app/x.py", "frontend/src/a.ts", "backend/README.md"), added=(), removed=()
+    )
+    assert prepush.touched(changes, spec) == ["backend/app/x.py"]
