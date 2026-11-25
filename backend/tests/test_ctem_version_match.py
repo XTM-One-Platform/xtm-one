@@ -74,7 +74,8 @@ def test_no_asset_reports_the_product_and_no_affected_range_is_blind() -> None:
     }
     lines = matching.card_lines(match)
     assert lines[1] == "Proposed without version matching: running version unknown, affected range unknown."
-    assert lines[2].startswith("Verify the running version, then upgrade")
+    assert lines[2] == matching.BLIND_ACTION
+    assert "upgrade" not in lines[2]  # the recommended option may be another treatment (#2174)
 
 
 def test_running_versions_known_but_no_affected_range_is_still_blind() -> None:

@@ -861,6 +861,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             figures=decision.figures_shown,
             reason=decision.reason,
             currency=currency,
+            severity=str(getattr(case, "severity", None) or ""),
+            sla_due_at=getattr(case, "sla_due_at", None),
         )
         item = await create_work_item(
             user_id=str(scope),
@@ -1308,7 +1310,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "case_id": {"type": "string"},
                     "options": {
                         "type": "array",
-                        "description": "1 to 6 options; figures from the connected risk quantification, in the organization's currency.",
+                        "description": "1 to 6 options; figures from the connected risk quantification, in the organization's currency. Texts over their room are refused.",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -1324,6 +1326,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                                 "version_source": {
                                     "type": "string",
                                     "description": "Where a version the option names comes from, when the case has none.",
+                                },
+                                "not_priced_reason": {
+                                    "type": "string",
+                                    "description": "Why the option carries no figures; the card prints it after 'not priced:'.",
                                 },
                             },
                             "required": ["key", "label"],
