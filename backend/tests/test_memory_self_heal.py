@@ -257,6 +257,40 @@ async def test_auto_heal_skipped_when_throttled():
 
 
 @pytest.mark.asyncio
+async def test_a_heal_of_one_lane_does_not_throttle_another():
+    """The throttle is per lane: one user's heal within the window leaves the
+    next user's lane free to heal, and blocks a second heal of its own lane."""
+    fake_redis = _FakeRedis({f"agent_mem_autoheal:{AGENT_ID}:scope:user-a": "1"})
+
+    async def fake_redis_client():
+        return fake_redis
+
+    with (
+        patch.object(
+            persistent_memory_mod, "prune_old_memories", new_callable=AsyncMock
+        ),
+        patch.object(persistent_memory_mod, "enforce_memory_cap", new_callable=AsyncMock),
+        patch.object(persistent_memory_mod, "consolidate_agent_facts", new_callable=AsyncMock),
+        patch.object(persistent_memory_mod, "reembed_stale_memories", new_callable=AsyncMock),
+        patch("app.core.redis.redis_client", side_effect=fake_redis_client),
+        patch("app.core.database.async_session", new=_FakeSessionFactory()),
+        patch(
+            "app.llm.router.get_llm_for_user",
+            new=AsyncMock(return_value=(SimpleNamespace(), "test-model")),
+        ),
+        patch(
+            "app.services.agent_memory.compress_medium_term_memory",
+            new_callable=AsyncMock,
+        ) as mock_compress,
+    ):
+        assert await auto_heal_agent_memory(AGENT_ID, scope_id="user-a") is False
+        assert await auto_heal_agent_memory(AGENT_ID, scope_id="user-b") is True
+
+    assert mock_compress.await_args.kwargs["scope_id"] == "user-b"
+    assert f"agent_mem_autoheal:{AGENT_ID}:scope:user-b" in fake_redis.store
+
+
+@pytest.mark.asyncio
 async def test_auto_heal_runs_full_hygiene_and_compression():
     """With the throttle acquired, the heal pass must run all four
     persistent-tier hygiene tasks, compress the medium-term summary, and

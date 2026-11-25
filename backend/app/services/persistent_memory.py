@@ -4139,15 +4139,16 @@ async def auto_heal_agent_memory(agent_id: str, *, scope_id: str | None = None) 
        (an assignment run passes the lane it reads; ``None`` is the
        agent-level lane) when it exceeds the prompt cap.
 
-    Throttled per agent via Redis (``_AUTO_HEAL_THROTTLE_SECONDS``) so a
-    burst of runs on a bloated agent cannot stack LLM calls.  Opens its own
+    Throttled per agent and lane via Redis (``_AUTO_HEAL_THROTTLE_SECONDS``)
+    so a burst of runs on a bloated lane cannot stack LLM calls.  Opens its own
     DB session — safe to schedule from any context.
 
     Returns ``True`` when a maintenance pass actually ran (throttle acquired).
     """
     from app.core.redis import redis_client
 
-    throttle_key = f"agent_mem_autoheal:{agent_id}"
+    # Per lane: one user's heal never holds another user's lane truncated.
+    throttle_key = f"agent_mem_autoheal:{agent_id}" + (f":scope:{scope_id}" if scope_id else "")
     try:
         redis = await redis_client()
         acquired = await redis.set(
