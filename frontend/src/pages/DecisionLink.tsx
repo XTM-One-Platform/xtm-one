@@ -37,6 +37,7 @@ import { Icon, Spinner } from "@filigran/design-system";
 
 import { DecisionCard, type DecisionView } from "@/components/decisions/DecisionCard";
 import { Button } from "@/components/ui/button";
+import { askOptions } from "@/components/work-items/WorkItemDecisionCard";
 import {
   TEXT_LINK_OPTION,
   linkErrorStatus,
@@ -57,7 +58,8 @@ function linkDecisionView(view: DecisionLinkView, t_i18n: Translate): DecisionVi
   return {
     question: ask.question?.trim() || t_i18n("An agent waits for your decision."),
     context: (ask.context ?? "").split("\n"),
-    options: ask.options ?? [],
+    // An option picked on the text link's card asks to confirm it like the work item card (#2150).
+    options: askOptions(ask.options ?? [], t_i18n),
     recommendation: ask.recommendation ?? null,
     deadline: view.deadline ?? ask.deadline ?? null,
     links: ask.links ?? [],

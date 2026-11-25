@@ -1192,6 +1192,25 @@ async def _note_pending_commit(
     await note(record, branch=branch, parent=parent, written=written, removed=list(delete_paths or []))
 
 
+#: A commit id as an archive or a person writes it: 7 to 40 hex characters (a full id is 40, or 64 for sha256).
+_SHORT_OBJECT_ID_RE = re.compile(r"[0-9a-f]{7,40}(?:[0-9a-f]{24})?")
+
+
+async def _full_commit_id(client: Any, headers: dict[str, str], repo: str, repo_url: str, short: str) -> str:
+    """The full id of commit *short* in *repo*, ``""`` when GitHub does not name exactly one that starts with it."""
+    resp, err = await _common.safe_request(
+        client,
+        "get",
+        f"{repo_url}/commits/{_enc(short)}",
+        _PROVIDER,
+        f"read commit {short} of {repo}",
+        headers=headers,
+        expected_statuses={404, 422},
+    )
+    sha = _coerce_str(_json_object(resp).get("sha")).lower() if not err else ""
+    return sha if _GIT_OBJECT_ID_RE.fullmatch(sha) and sha.startswith(short) else ""
+
+
 async def _reconcile_checkout_drift(
     headers: dict[str, str],
     repo: str,
@@ -1218,14 +1237,35 @@ async def _reconcile_checkout_drift(
     """
     from .checkout_drift import reconcile
 
-    recorded = _coerce_str(getattr(record, "commit", ""))
-    if not _GIT_OBJECT_ID_RE.fullmatch(recorded):
+    recorded = _coerce_str(getattr(record, "commit", "")).lower()
+    if not _SHORT_OBJECT_ID_RE.fullmatch(recorded):
         return files, delete_paths, "", {}, "", False
-    baseline = _coerce_str(getattr(record, "base_commit", ""))
-    if not _GIT_OBJECT_ID_RE.fullmatch(baseline) or baseline == recorded:
+    baseline = _coerce_str(getattr(record, "base_commit", "")).lower()
+    if not _SHORT_OBJECT_ID_RE.fullmatch(baseline):
         baseline = ""
     repo_url = f"{_BASE_URL}/repos/{owner}/{name}"
     async with egress_client(timeout=60) as client:
+        # A checkout record written from an archive names the commit by the archive's short id
+        # (``<owner>-<repo>-<sha7>``): read the full id, or the drift merge below never runs and the
+        # workspace files are written whole over a tip that moved, reverting it (#2152).
+        for label in ("recorded", "baseline"):
+            short = recorded if label == "recorded" else baseline
+            if not short or _GIT_OBJECT_ID_RE.fullmatch(short):
+                continue
+            full = await _full_commit_id(client, headers, repo, repo_url, short)
+            if not full:
+                return (
+                    f"Error: the checkout record of {directory} names commit {short}, which could not be read in "
+                    f"{repo}, so its files cannot be merged with branch '{branch}' and nothing was committed: "
+                    "writing them whole could revert the branch's changes. "
+                    f'Run sandbox_checkout_rebase(checkout="{directory}", ref="{branch}"), then commit again.'
+                )
+            if label == "recorded":
+                recorded = full
+            else:
+                baseline = full
+        if baseline == recorded:
+            baseline = ""
         resolved, err = await _resolve_branch(client, headers, repo, owner, name, branch)
         if err or not resolved or _branch_name_error(resolved):
             # The commit itself reads the branch again and says what is wrong.
@@ -1299,7 +1339,7 @@ async def _reconcile_workspace_writes(
     grouped: dict[str, tuple[Any, list[dict[str, Any]]]] = {}
     for workspace_path, (repo_path, data) in written.items():
         record = records.get(workspace_path)
-        if record is None or not _GIT_OBJECT_ID_RE.fullmatch(_coerce_str(getattr(record, "commit", ""))):
+        if record is None or not _SHORT_OBJECT_ID_RE.fullmatch(_coerce_str(getattr(record, "commit", "")).lower()):
             continue
         recorded_repo = _coerce_str(getattr(record, "repository", ""))
         if recorded_repo and recorded_repo.casefold() != repo.strip().casefold():

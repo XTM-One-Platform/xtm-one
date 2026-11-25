@@ -25,6 +25,7 @@ as actor. The answers are the API's own shapes (``api/v1/ctem_cases.py``).
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -64,6 +65,10 @@ CTEM_CASE_AGENT_SLUGS: frozenset[str] = frozenset(
 _STATES: tuple[str, ...] = CASE_STATES
 #: History events one ``get_ctem_case`` answer carries.
 _HISTORY_PAGE = 20
+#: Issues one ``get_ctem_case`` answer lists (#2092): a 700-issue case answered 300k characters.
+_ISSUE_PAGE = 100
+#: A case read slower than this is logged with its size (#2092).
+_SLOW_READ_SECONDS = 5.0
 
 
 def offers_ctem_case_tools(agent_slug: str | None, *, is_builtin: bool) -> bool:
@@ -82,6 +87,24 @@ def _uuid(value: object) -> uuid.UUID | None:
         return None
 
 
+async def resolve_case_id(db: AsyncSession, case_id: str, organization_id: uuid.UUID) -> tuple[uuid.UUID | None, str]:
+    """The case *case_id* names: a full id, or a hex prefix of 8+ characters naming one case (#2103).
+
+    Answers ``(id, "")`` or ``(None, why)``: an ambiguous prefix lists the ids it matches.
+    """
+    from app.services import ctem_cases_store as store
+
+    full = _uuid(case_id)
+    if full is not None:
+        return full, ""
+    found = await store.case_ids_with_prefix(db, str(case_id or ""), organization_id=organization_id, limit=5)
+    if len(found) == 1:
+        return found[0], ""
+    if found:
+        return None, f"case_id {case_id!r} matches several cases: {', '.join(str(f) for f in found)}. Pass the full id."
+    return None, f"No case {case_id}. case_id is the id list_ctem_cases answers, or its first 8+ characters."
+
+
 def _when(value: object) -> datetime | None:
     if not value:
         return None
@@ -90,6 +113,53 @@ def _when(value: object) -> datetime | None:
 
 def _dump(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def _bounded_issues(rendered: dict[str, Any], offset: int = 0) -> dict[str, Any]:
+    """*rendered* with at most :data:`_ISSUE_PAGE` issues from *offset*, the total and a truncated flag (#2092).
+
+    The issues come ranked (``ctem_cases_view.hydrate``), Restricted rows last, so
+    the page keeps the ones that matter; the counts and scores stay those of the case.
+    ``issues_next_offset`` reads the next page (#2103), ``None`` on the last one.
+    """
+    issues = list(rendered.get("issues") or [])
+    start = max(0, int(offset or 0))
+    end = start + _ISSUE_PAGE
+    return {
+        **rendered,
+        "issues": issues[start:end],
+        "issues_total": len(issues),
+        "issues_offset": start,
+        "issues_truncated": start > 0 or len(issues) > end,
+        "issues_next_offset": end if len(issues) > end else None,
+    }
+
+
+def _same_gate(events: list[Any], gate: dict[str, Any]) -> bool:
+    """Whether the newest ``gate`` event of this gate key already records this decision (#2092).
+
+    An identical decision written again (a retried call after a timeout) is not
+    recorded twice.
+    """
+    key = str(gate.get("key") or "").strip()
+    newest = next((e for e in reversed(events) if e.kind == "gate" and e.from_value == key), None)
+    if newest is None:
+        return False
+    return (
+        (newest.to_value or "") == str(gate.get("outcome") or "")
+        and (newest.reason or "") == (str(gate.get("by") or "").strip()[:300])
+        and (newest.evidence or "") == (str(gate.get("option") or "").strip()[:300])
+    )
+
+
+def _written(event: Any) -> dict[str, Any]:
+    """One history entry a write added, as the compact update answer names it (#2092)."""
+    return {
+        "kind": event.kind,
+        "from": event.from_value,
+        "to": event.to_value,
+        "reason": (event.reason or "")[:300] or None,
+    }
 
 
 def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:
@@ -125,9 +195,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         if found is None:
             return None
         case, rows, events = found
-        rendered = view_of.hydrate(
-            case, rows, events[:_HISTORY_PAGE], await view_of.viewer_view(db, str(scope), vertical)
-        )
+        # This case's members only (#2092): an older view or the case's own read answers while
+        # a drain rebuilds the whole view, never a whole build on the call.
+        members = [f"{r.source}:{r.external_id}" for r in rows]
+        view = await view_of.viewer_view(db, str(scope), vertical, members=members)
+        rendered = view_of.hydrate(case, rows, events[:_HISTORY_PAGE], view)
         if rendered is None:
             return None
         from app.services import ctem_case_version_history as version_history
@@ -146,7 +218,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         return f"Refused: {ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
 
     async def _list(
-        state: str = "", priority: str = "", owner_user_id: str = "", limit: int = 20, offset: int = 0
+        state: str = "",
+        priority: str = "",
+        owner_user_id: str = "",
+        limit: int = 20,
+        offset: int = 0,
+        asset: str = "",
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_cases_store as store
@@ -161,13 +238,21 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     return "No organization is set up yet: there are no cases."
                 cases = await store.list_cases(db, organization_id=org_id, vertical=vertical)
                 owner = _uuid(owner_user_id)
-                view = await view_of.viewer_view(db, str(scope), vertical)
+                try:
+                    view = await view_of.viewer_view(db, str(scope), vertical, stale_ok=True)
+                except view_of.ViewRebuildingError as exc:
+                    # Never a whole view build on the call (#2092): say when to retry.
+                    return f"Not available yet: {exc} Nothing is wrong with the cases; do not guess them."
+                # A case deleted between the case read and the view read is gone, never hidden (#2113).
+                cases = await view_of.drop_gone(db, cases, view)
                 rows, counts = view_of.list_for_viewer(
                     cases,
                     view,
                     state=state or None,
                     priority=priority or None,
                     owner_user_id=str(owner) if owner else None,
+                    # The cases on one asset (#2103): a duplicate check reads them all in one call.
+                    asset=str(asset or "").strip() or None,
                     limit=max(1, min(int(limit or 20), 50)),
                     offset=max(0, int(offset or 0)),
                 )
@@ -180,9 +265,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 from .ctem_signals import case_signal_scope
 
                 # Which signal rule applied, so an empty list is never read as no case (#1359), and the
-                # open cases this person sees none of (a count only), so a page is never the org total.
+                # open cases this person is refused (hidden) or the view could not judge now (unjudged,
+                # #2113), each a count only with the view's condition, so a page is never the org total.
                 scope_block = await case_signal_scope(db, scope, view.signals)
-                scope_block["hidden_cases"] = view_of.hidden_case_count(cases, view)
+                scope_block.update(view_of.list_visibility(cases, view))
                 return _dump(
                     {
                         "vertical": vertical,
@@ -195,16 +281,21 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             logger.warning("CTEM case list failed", exc_info=True)
             return "Error: the cases could not be read right now. Say so; do not guess them."
 
-    async def _get(case_id: str = "") -> str:
+    async def _get(case_id: str = "", issues_offset: int = 0) -> str:
         from app.core.database import async_session
 
-        wanted = _uuid(case_id)
-        if wanted is None:
+        if not str(case_id or "").strip():
             return "case_id must be the id list_ctem_cases answers."
+        started = time.perf_counter()
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
-                shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
+                if org_id is None or scope is None:
+                    return f"No case {case_id}."
+                wanted, why = await resolve_case_id(db, case_id, org_id)
+                if wanted is None:
+                    return why
+                shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
                     return f"No case {case_id}."
                 from app.services import ctem_case_versions as case_versions
@@ -231,7 +322,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     if shown[0].remediation_kind == "upgrade"
                     else None
                 )
-                return _dump({**shown[2], "running_versions": running, "version_match": match})
+                rendered = _bounded_issues(shown[2], issues_offset)
+                elapsed = time.perf_counter() - started
+                if elapsed > _SLOW_READ_SECONDS:
+                    logger.info(
+                        "CTEM case read of %s took %.1f s (%d issues)", wanted, elapsed, rendered["issues_total"]
+                    )
+                return _dump({**rendered, "running_versions": running, "version_match": match})
         except Exception:
             logger.warning("CTEM case read failed", exc_info=True)
             return "Error: the case could not be read right now. Say so; do not guess it."
@@ -309,6 +406,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             due = _when(due_at)
         except ValueError:
             return "due_at must be an ISO-8601 date and time."
+        committed = False
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
@@ -319,6 +417,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 refused = await _view_only(db, rows, vertical)
                 if refused:
                     return refused
+                before = (await store.events_of(db, [case.id])).get(case.id, [])
+                known = {e.id for e in before}
+                unchanged: list[str] = []
                 if isinstance(gate, dict) and str(gate.get("outcome") or "") == "waited":
                     from app.agents.builtin_fleet_docs import CTEM_GATE_KEYS
                     from app.services import ctem_gate_order
@@ -362,9 +463,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     if not isinstance(attack_path, dict):
                         raise rules.CaseRuleError("attack_path must be an object with its origin")
                     case_loop.record_attack_path(db, case, attack_path, actor=agent_id)
-                if gate is not None:
-                    if not isinstance(gate, dict):
-                        raise rules.CaseRuleError("gate must be an object with key and outcome")
+                if gate is not None and not isinstance(gate, dict):
+                    raise rules.CaseRuleError("gate must be an object with key and outcome")
+                if gate is not None and _same_gate(before, gate):
+                    # The same decision again (a retry after a timeout, #2092): recorded once.
+                    unchanged.append("gate")
+                elif gate is not None:
                     case_loop.record_gate(
                         db,
                         case,
@@ -395,12 +499,51 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         db, case, threat_package, view_of.threat_package_of(history), actor=agent_id
                     )
                 await db.commit()
-                refreshed = await _shown(db, wanted, org_id, vertical)
-                return _dump({"updated": refreshed[2] if refreshed else {"id": str(wanted)}})
+                committed = True
+                # A compact answer (#2092): what this call wrote, never the whole case re-read
+                # (300k characters and a view build on a 700-issue case); get_ctem_case reads it.
+                written: list[dict[str, Any]] = []
+                try:
+                    after = (await store.events_of(db, [case.id])).get(case.id, [])
+                    written = [_written(e) for e in after if e.id not in known]
+                except Exception:
+                    logger.info("CTEM case update: written events unreadable for %s", wanted, exc_info=True)
+                return _dump(
+                    {
+                        "updated": {
+                            "id": str(case.id),
+                            "title": case.title,
+                            "state": case.state,
+                            "owner_user_id": str(case.owner_user_id) if case.owner_user_id else None,
+                            "due_at": case.due_at,
+                            "changed": sorted(
+                                name
+                                for name, value in (
+                                    ("state", state),
+                                    ("owner_user_id", owner_user_id),
+                                    ("due_at", due_at),
+                                    ("note", note),
+                                    ("exploitation", exploitation),
+                                    ("attack_path", attack_path),
+                                    ("gate", gate),
+                                    ("treatment_plan", treatment_plan),
+                                    ("threat_package", threat_package),
+                                    ("applied_change", applied_change),
+                                )
+                                if value not in (None, "") and name not in unchanged
+                            ),
+                            "unchanged": unchanged,
+                            "history_written": written,
+                        }
+                    }
+                )
         except rules.CaseRuleError as exc:
             return f"Refused: {exc}. Nothing was changed."
         except Exception:
             logger.warning("CTEM case update failed", exc_info=True)
+            if committed:
+                # The write is in (#2092): never report a failure for a committed change.
+                return _dump({"updated": {"id": str(wanted), "committed": True}})
             return "Error: the case could not be changed right now. Say so; nothing was changed."
 
     async def _validation(
@@ -543,6 +686,16 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 if refused:
                     return refused
                 case = shown[0]
+                # An option citing a version the case does not carry needs its source (partner 0ae1fa2e).
+                fixed = [case.fixed_version or "", *(case.fixed_versions or {}).values()]
+                unbacked = decision_rules.unverified_versions(options, fixed)
+                if unbacked and not answered_option:
+                    return (
+                        f"Refused: the options cite version(s) {', '.join(unbacked)} that this case does not "
+                        f"carry (fixed version: {case.fixed_version or 'unknown'}). Read the fixed version from "
+                        "the advisory or release notes and give it as version_source on that option, or "
+                        "word the option without a version. Nothing was changed."
+                    )
                 figures = await _opencrq_readable(db)
                 if answered_option:
                     chosen = decision_rules.recommended(parsed, answered_option)
@@ -893,7 +1046,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             description=(
                 "List the CTEM cases you can see (open exposures grouped by the fix that closes them), "
                 "highest priority first, with the counts by state. A null count is unknown for you, never "
-                "none (aggregates_reason says why); scope.hidden_cases counts cases you cannot see."
+                "none (aggregates_reason says why); scope.hidden_cases counts cases you are refused, "
+                "scope.unjudged_cases those not readable now (scope.view says why)."
             ),
             input_schema={
                 "type": "object",
@@ -901,6 +1055,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "state": state_enum,
                     "priority": {"type": "string", "enum": ["critical", "high", "medium", "low"]},
                     "owner_user_id": {"type": "string", "description": "Only the cases this user owns."},
+                    "asset": {"type": "string", "description": "Only the cases with an issue on this asset name."},
                     "limit": {"type": "integer", "description": "Cases a page (default 20, max 50)."},
                     "offset": {"type": "integer"},
                 },
@@ -916,7 +1071,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             ),
             input_schema={
                 "type": "object",
-                "properties": {"case_id": {"type": "string"}},
+                "properties": {
+                    "case_id": {"type": "string", "description": "The id, or its first 8+ characters."},
+                    "issues_offset": {
+                        "type": "integer",
+                        "description": "First issue of the page (issues_next_offset).",
+                    },
+                },
                 "required": ["case_id"],
             },
             source=_SOURCE,
@@ -1090,15 +1251,20 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     },
                     "evidence_type": {
                         "type": "string",
-                        "enum": ["remediation", "validation"],
+                        "enum": ["remediation", "validation", "exposure"],
                         "description": (
                             "remediation: a version inventory, every in-scope endpoint at or above the fixed "
-                            "build; validation: a detection or behaviour test, never resolves a patch case."
+                            "build; validation: a detection or behaviour test, never resolves a patch case; "
+                            "exposure: a passive read proving the case still affected (endpoints below the fixed "
+                            "build), written with result failed and conclusive true."
                         ),
                     },
                     "conclusive": {
                         "type": "boolean",
-                        "description": "True only when the check proves the exposure gone (the fixed version read).",
+                        "description": (
+                            "True when the check proves its claim: the exposure gone for a pass (the fixed "
+                            "version read), the exposure present for exposure evidence."
+                        ),
                     },
                     "run_order": {
                         "type": "array",
@@ -1155,6 +1321,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                                 "time_to_apply": {"type": "string"},
                                 "runbook": {"type": "string"},
                                 "preapproved": {"type": "boolean"},
+                                "version_source": {
+                                    "type": "string",
+                                    "description": "Where a version the option names comes from, when the case has none.",
+                                },
                             },
                             "required": ["key", "label"],
                         },

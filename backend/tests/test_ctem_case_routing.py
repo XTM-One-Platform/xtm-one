@@ -217,20 +217,35 @@ class _Result:
 
 
 class _Db:
-    """Answers the three reads plan_catch_up makes: open cases, owner_requested events, open items."""
+    """Answers the reads plan_catch_up makes: open cases, owner_requested events, case runs, open items.
 
-    def __init__(self, cases: list[Any], asked: list[tuple[Any, str]], open_keys: list[str]) -> None:
-        self.cases, self.asked, self.open_keys = cases, asked, open_keys
+    An ask given as ``(case id, owner)`` was made just now; ``(case id, owner, at)`` at *at*.
+    *runs* are ``(case id, created_at)`` of the case automation's runs.
+    """
+
+    def __init__(
+        self,
+        cases: list[Any],
+        asked: list[tuple[Any, ...]],
+        open_keys: list[str],
+        runs: list[tuple[str, datetime]] | None = None,
+    ) -> None:
+        now = datetime.now(UTC)
+        self.cases, self.open_keys, self.runs = cases, open_keys, runs or []
+        self.asked = [a if len(a) == 3 else (*a, now) for a in asked]
         self.calls = 0
         self.statements: list[Any] = []
 
     async def execute(self, stmt: Any) -> _Result:
         self.calls += 1
         self.statements.append(stmt)
-        if self.calls == 1:
+        table = list(stmt.selected_columns)[-1].table.name
+        if table == "ctem_cases":
             return _Result(self.cases)
-        if self.calls == 2:
+        if table == "ctem_case_events":
             return _Result(self.asked)
+        if table == "assignment_runs":
+            return _Result(self.runs)
         return _Result([(k,) for k in self.open_keys])
 
 
@@ -355,3 +370,106 @@ def test_the_catch_up_event_id_is_stable_per_case_and_owner() -> None:
     cid = uuid.uuid4()
     assert routing._catch_up_event_id(cid, LOOP) == routing._catch_up_event_id(cid, LOOP)
     assert routing._catch_up_event_id(cid, LOOP) != routing._catch_up_event_id(cid, FORK)
+
+
+def test_an_ask_made_again_gets_a_new_event_id() -> None:
+    # The run dedupe of the first ask's event must never swallow the second (#2101).
+    cid = uuid.uuid4()
+    first = routing._catch_up_event_id(cid, LOOP)
+    assert routing._catch_up_event_id(cid, LOOP, 0) == first
+    assert len({first, routing._catch_up_event_id(cid, LOOP, 1), routing._catch_up_event_id(cid, LOOP, 2)}) == 3
+
+
+# -- An ask nobody answered is made again (#2101) -------------------------------
+
+_NOW = datetime(2026, 11, 25, 12, 0, tzinfo=UTC)
+_OLD = _NOW - timedelta(seconds=routing.REASK_AFTER_SECONDS + 60)
+
+
+async def test_an_unanswered_ask_is_made_again_on_a_later_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Case x was asked, its event never became a run of the owner's case automation.
+    _fleets(monkeypatch, [_loop()])
+    x = _case("P1", 1)
+    db = _Db([x], asked=[(x.id, LOOP, _OLD)], open_keys=[])
+    assert await routing.plan_catch_up_asks(db, now=_NOW) == [(x, LOOP, 1)]  # type: ignore[arg-type]
+
+
+async def test_an_answered_ask_is_not_made_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Case y got its run after the ask (its item since closed or not yet open): not raised again.
+    _fleets(monkeypatch, [_loop()])
+    x, y = _case("P1", 1), _case("P1", 2)
+    db = _Db(
+        [x, y],
+        asked=[(x.id, LOOP, _OLD), (y.id, LOOP, _OLD)],
+        open_keys=[],
+        runs=[(str(y.id), _OLD + timedelta(seconds=5))],
+    )
+    assert await routing.plan_catch_up_asks(db, now=_NOW) == [(x, LOOP, 1)]  # type: ignore[arg-type]
+
+
+async def test_a_run_before_the_ask_does_not_answer_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fleets(monkeypatch, [_loop()])
+    x = _case("P1", 1)
+    db = _Db([x], asked=[(x.id, LOOP, _OLD)], open_keys=[], runs=[(str(x.id), _OLD - timedelta(hours=1))])
+    assert await routing.plan_catch_up_asks(db, now=_NOW) == [(x, LOOP, 1)]  # type: ignore[arg-type]
+
+
+async def test_a_recent_ask_is_left_to_its_delivery(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fleets(monkeypatch, [_loop()])
+    x = _case("P1", 1)
+    db = _Db([x], asked=[(x.id, LOOP, _NOW - timedelta(seconds=60))], open_keys=[])
+    assert await routing.plan_catch_up_asks(db, now=_NOW) == []  # type: ignore[arg-type]
+
+
+async def test_an_open_item_answers_an_ask_made_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fleets(monkeypatch, [_loop()])
+    x = _case("P1", 1)
+    db = _Db([x], asked=[(x.id, LOOP, _OLD)], open_keys=[f"ctem:f1:case:{x.id}"])
+    assert await routing.plan_catch_up_asks(db, now=_NOW) == []  # type: ignore[arg-type]
+
+
+async def test_asks_are_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fleets(monkeypatch, [_loop()])
+    x = _case("P1", 1)
+    asks = [(x.id, LOOP, _OLD - timedelta(hours=i)) for i in range(routing.MAX_ASKS)]
+    assert await routing.plan_catch_up_asks(_Db([x], asked=asks, open_keys=[]), now=_NOW) == []  # type: ignore[arg-type]
+    two = asks[: routing.MAX_ASKS - 1]
+    planned = await routing.plan_catch_up_asks(_Db([x], asked=two, open_keys=[]), now=_NOW)  # type: ignore[arg-type]
+    assert planned == [(x, LOOP, routing.MAX_ASKS - 1)]
+
+
+async def test_catch_up_publishes_the_ask_again_under_a_new_event_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.core.database as database
+    from app.services import platform_events
+
+    x = _case("P1", 1)
+    added: list[Any] = []
+
+    class _Session:
+        async def __aenter__(self) -> _Session:
+            return self
+
+        async def __aexit__(self, *exc: Any) -> bool:
+            return False
+
+        def add(self, row: Any) -> None:
+            added.append(row)
+
+        async def commit(self) -> None:
+            return None
+
+    async def plan(_db: Any, **_kw: Any) -> list[tuple[Any, str, int]]:
+        return [(x, LOOP, 1)]
+
+    published: list[str | None] = []
+
+    async def publish(_name: str, _data: Any, *, event_id: str | None = None) -> str | None:
+        published.append(event_id)
+        return event_id
+
+    monkeypatch.setattr(database, "async_session", _Session)
+    monkeypatch.setattr(routing, "plan_catch_up_asks", plan)
+    monkeypatch.setattr(platform_events, "publish", publish)
+    assert await routing.catch_up(now=_NOW) == 1
+    assert published == [routing._catch_up_event_id(x.id, LOOP, 1)]
+    assert added[0].kind == routing.OWNER_REQUESTED and "asked again" in added[0].reason

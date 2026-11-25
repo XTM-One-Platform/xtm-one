@@ -289,15 +289,3 @@ class OrganizationAssetChange(Base):
     at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now, server_default=text("now()")
     )
-
-
-#: Every model of this module, in creation order: what a scratch database for the asset store needs too.
-RECORD_MODELS: tuple[type[Base], ...] = (
-    OrganizationAssetRecord,
-    OrganizationAssetIdentifier,
-    OrganizationAssetGroup,
-    OrganizationAssetGroupMember,
-    OrganizationPrimaryAssetLink,
-    OrganizationAssetImport,
-    OrganizationAssetChange,
-)

@@ -32,6 +32,8 @@ from typing import Any
 
 #: Reason recorded on a member OpenCTI does not relate to the declared version.
 NOT_AFFECTED_PREFIX = "not affected: version"
+#: Reason recorded on a member whose vulnerable Software names only platforms no asset runs (#2152).
+NOT_AFFECTED_PLATFORM_PREFIX = "not affected: platform"
 #: Named for a stack entry whose declared version has no Software node in OpenCTI.
 VERSION_NOT_KNOWN = "version not known to OpenCTI"
 #: Named for a member when neither a remediating Software nor a course of action names a version.

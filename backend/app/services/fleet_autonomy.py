@@ -327,6 +327,19 @@ def effective_gates(
 
 #: The integration context key holding :func:`gate_tool_names` of the run's fleet (#1480).
 FLEET_GATED_TOOLS_CONTEXT_KEY = "fleet_gated_tools"
+#: The integration context key holding :func:`waiting_gate_keys` of the run's fleet (#2102).
+FLEET_WAITING_GATES_CONTEXT_KEY = "fleet_waiting_gates"
+
+
+def waiting_gate_keys(level: Any, gates: Iterable[Mapping[str, Any]] | None) -> frozenset[str]:
+    """The keys of the fleet's gates that wait for a person at *level*, pins included (#2102).
+
+    A tool whose safe use depends on a gate reads it from the run's integration
+    context: the OpenCTI security coverage refuses a periodicity while the
+    CTEM validation gate waits, so OpenAEV never schedules the scenario before
+    the decision.
+    """
+    return frozenset(str(g.get("key")) for g in gates or () if g.get("key") and gate_waits(level, g))
 
 
 def gate_tool_names(gates: Iterable[Mapping[str, Any]] | None) -> frozenset[str]:

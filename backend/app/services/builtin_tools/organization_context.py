@@ -92,7 +92,7 @@ def build_organization_context_tool(
         from app.core.database import async_session
         from app.services import organization_context_categories as cats
         from app.services import organizations as orgs
-        from app.services.organization_context import asset_list_counts, current_version, hydrated_profile
+        from app.services.organization_context import agent_list_counts, current_version, hydrated_profile
         from app.services.organization_context_injection import category_counts
 
         ref = str(organization or "").strip()
@@ -112,7 +112,7 @@ def build_organization_context_tool(
                             category_counts(
                                 profile,
                                 tracked_count=len(tracked),
-                                asset_counts=await asset_list_counts(db, getattr(row, "organization_id", None)),
+                                asset_counts=await agent_list_counts(db, getattr(row, "organization_id", None)),
                             )
                         )
                     found_category = cats.get(wanted)
@@ -164,7 +164,7 @@ def build_organization_context_tool(
     async def _primary_block(db: AsyncSession) -> str:
         """The primary profile as an agent reads it, its asset and group counts from the records (#1543)."""
         from app.services.organization_context import (
-            asset_list_counts,
+            agent_list_counts,
             ctem_work_for,
             current_version,
             render_for_agent,
@@ -174,7 +174,7 @@ def build_organization_context_tool(
         return render_for_agent(
             primary,
             ctem_work=await ctem_work_for(db, run_agent),
-            asset_counts=await asset_list_counts(db, primary.organization_id if primary else None),
+            asset_counts=await agent_list_counts(db, primary.organization_id if primary else None),
         )
 
     async def _inventory_assets(
@@ -195,10 +195,13 @@ def build_organization_context_tool(
             filters, text = cats.split_asset_query(query)
             size = max(1, min(limit or cats.DEFAULT_PAGE, cats.MAX_PAGE))
             page = await store.list_assets(db, built, q=text, offset=offset, limit=size, filters=filters)
+            held = await store.held_values(db, built, filters) if not page.total else None
         except Exception:
             logger.warning("Inventory asset read failed", exc_info=True)
             return None
-        return cats.render_asset_page(list(page.items), total=page.total, query=query, offset=offset, limit=size)
+        return cats.render_asset_page(
+            list(page.items), total=page.total, query=query, offset=offset, limit=size, held=held
+        )
 
     async def _software_rows(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, object]]:
         """The organization's Software entities (#1495), synced and hand-typed; ``[]`` when it has none."""

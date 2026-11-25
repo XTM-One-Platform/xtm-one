@@ -121,6 +121,16 @@ async def set_opening(db: AsyncSession, *, vertical: str, on: bool, actor: User)
     return True
 
 
+async def hold_vertical_lock(db: AsyncSession, vertical: str) -> None:
+    """Take the transaction-scoped advisory lock that keeps the case writers of *vertical* apart.
+
+    A drain pass and the write phase of a source recompute (``ctem_cases_source.recompute_for_user``)
+    both write the vertical's signals and cases: holding one lock, they never interleave their row
+    locks on ``ctem_signals`` and never deadlock (#2084). Released at the commit or the rollback.
+    """
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": _DRAIN_LOCK + vertical})
+
+
 def event_data(vertical: str, on: bool, actor: User, waiting: int) -> dict[str, Any]:
     """The payload of ``ctem_case.opening_changed``."""
     return {"vertical": vertical, "on": on, "changed_by": str(actor.id), "waiting": waiting}
@@ -135,7 +145,7 @@ async def drain_pass(db: AsyncSession, vertical: str) -> dict[str, int]:
     from app.services import ctem_case_loop as loop
 
     counts = {"opened": 0, "joined": 0, "skipped": 0}
-    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": _DRAIN_LOCK + vertical})
+    await hold_vertical_lock(db, vertical)
     if not await is_on(db, vertical):
         await db.rollback()
         return counts

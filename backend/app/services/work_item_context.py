@@ -213,11 +213,16 @@ async def new_item_pickup_state(item: dict) -> str | None:
     return pickup_state(item, entries, datetime.now(UTC))
 
 
-def _retention(item: dict, state: str) -> tuple[str | None, str | None]:
+def _retention(item: dict, state: str, windows: dict[str, int] | None = None) -> tuple[str | None, str | None]:
     """``(auto_cancel_at, purge_at)``: when ``work_item.reap_work_items`` will
-    cancel an open item nobody picks up, or delete a finished one."""
+    cancel an open item nobody picks up, or delete a finished one.
+
+    *windows* are the effective Settings retentions
+    (services/coordination_retention.py); ``None`` reads the environment."""
     if state in ("unassigned", "automatic", "waiting_until_due", "filtered_out", "manual"):
-        days = getattr(settings, "work_item_abandoned_after_days", 14)
+        days = (
+            windows["work_item_abandoned_days"] if windows else getattr(settings, "work_item_abandoned_after_days", 14)
+        )
         anchor = _parse(item.get("last_activity_at")) or _parse(item.get("created_at"))
         if not days or days <= 0 or anchor is None:
             return None, None
@@ -225,7 +230,11 @@ def _retention(item: dict, state: str) -> tuple[str | None, str | None]:
         later = [d for d in (_parse(item.get("due_at")), _parse(item.get("not_before"))) if d]
         return _iso(max([at, *later])), None
     if state == "finished":
-        days = getattr(settings, "work_item_resolved_retention_days", 30)
+        days = (
+            windows["work_item_resolved_days"]
+            if windows
+            else getattr(settings, "work_item_resolved_retention_days", 90)
+        )
         anchor = _parse(item.get("updated_at"))
         if not days or days <= 0 or anchor is None:
             return None, None
@@ -252,6 +261,8 @@ class _Lookup:
         self.pickup: dict[uuid.UUID, list[tuple[WorkItemInbox, bool]]] = {}
         # The items others wait for, as the viewer may see them.
         self.blockers: dict[str, tuple[str, str]] = {}
+        # The effective retention windows of Settings (#2070), read once per page.
+        self.retention: dict[str, int] | None = None
 
     async def load(self, db, items: Sequence[dict], *, extra_agent_ids: Iterable = ()) -> _Lookup:
         from app.api.v1.helpers import (
@@ -537,7 +548,7 @@ class _Lookup:
     def _pickup(self, item: dict, now: datetime) -> dict:
         entries = self.pickup.get(_uuid(item.get("id")), [])
         state = pickup_state(item, entries, now)
-        auto_cancel_at, purge_at = _retention(item, state)
+        auto_cancel_at, purge_at = _retention(item, state, self.retention)
         due = _parse(item.get("not_before"))
         return {
             "state": state,
@@ -570,6 +581,19 @@ class _Lookup:
         return inbox.id in pool
 
 
+async def _retention_windows(db) -> dict[str, int] | None:
+    """The effective Settings retentions on *db*; ``None`` (the environment) when unreadable."""
+    from app.api.v1.platform_settings_helpers import peek_platform_settings
+    from app.services.coordination_retention import coordination_retention_days
+
+    try:
+        ps = await peek_platform_settings(db)
+    except Exception as exc:
+        logger.warning("Could not read the coordination retention: %s", format_exception_message(exc))
+        return None
+    return coordination_retention_days(getattr(ps, "coordination_retention", None) if ps else None)
+
+
 async def describe_work_items(items: Sequence[dict], *, viewer: User) -> list[dict]:
     """*items* (serialized) with the ``context`` block *viewer* reads."""
     from app.core.database import async_session
@@ -578,6 +602,7 @@ async def describe_work_items(items: Sequence[dict], *, viewer: User) -> list[di
         return []
     async with async_session() as db:
         lookup = await _Lookup(viewer).load(db, items)
+        lookup.retention = await _retention_windows(db)
     now = datetime.now(UTC)
     return [{**item, "context": lookup.context(item, now)} for item in items]
 

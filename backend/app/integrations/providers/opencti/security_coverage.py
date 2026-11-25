@@ -18,6 +18,15 @@ validates it, and its coverage belongs in the same draft (a live coverage would
 point at an object the live graph does not hold). With no draft active, or with
 the integration's Live writes on, the coverage is written live and reaches
 OpenAEV at once.
+
+A coverage that carries a periodicity makes OpenAEV schedule the scenario it
+builds two minutes later, then at that periodicity; without one the scenario
+is built and nothing is scheduled. When the run's fleet validation gate
+(``ctem.validation.non_readonly``) waits for a person, ``create`` and
+``update`` refuse a periodicity by naming the gate (#2102): the coverage is
+created without it, and the repeat is set on the OpenAEV scenario after the
+approval (``manage_openaev_scenario`` ``schedule_recurrence``), never through
+the coverage.
 """
 
 from __future__ import annotations
@@ -64,7 +73,16 @@ _APPLIES: dict[str, frozenset[str]] = {
         }
     ),
     "update": frozenset(
-        {"coverage_id", "name", "description", "periodicity", "duration", "type_affinity", "platforms_affinity"}
+        {
+            "coverage_id",
+            "name",
+            "description",
+            "periodicity",
+            "duration",
+            "type_affinity",
+            "platforms_affinity",
+            "auto_enrichment_disable",
+        }
     ),
     "delete": frozenset({"coverage_id"}),
 }
@@ -148,7 +166,25 @@ def _format_covered_entities(label: str, block: Any, *, with_mitre: bool = False
     return lines
 
 
-def register(base_url: str, headers: dict[str, str], executor: CallableToolExecutor) -> list[ToolDefinition]:
+def periodicity_refusal(gate: str, action: str) -> str:
+    """The answer to a periodicity given while the validation *gate* waits (#2102). Pure."""
+    return (
+        f"Error: refused: validation gate {gate} waits for a person; a periodicity on a security coverage "
+        "makes OpenAEV start its scenario two minutes later, before the decision. "
+        f"{'Create' if action == 'create' else 'Update'} the coverage without periodicity and set the repeat "
+        "on the OpenAEV scenario after approval (manage_openaev_scenario schedule_recurrence); nothing was written."
+    )
+
+
+def register(
+    base_url: str,
+    headers: dict[str, str],
+    executor: CallableToolExecutor,
+    *,
+    waiting_validation_gate: str = "",
+) -> list[ToolDefinition]:
+    """The security coverage tool; *waiting_validation_gate* names the run's validation gate when it waits."""
+
     async def _gql(query: str, variables: dict[str, Any] | None = None) -> tuple[dict[str, Any], str | None]:
         async with _client(headers, timeout=30) as client:
             return await _graphql(client, base_url, headers, query, variables)
@@ -163,7 +199,7 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
         duration: str = "",
         type_affinity: str = "",
         platforms_affinity: list[str] | None = None,
-        auto_enrichment_disable: bool = False,
+        auto_enrichment_disable: bool | None = None,
         search: str = "",
         limit: int = _DEFAULT_LIMIT,
         **unknown: object,
@@ -181,7 +217,7 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
                 "duration": duration,
                 "type_affinity": type_affinity,
                 "platforms_affinity": platforms_affinity or None,
-                "auto_enrichment_disable": auto_enrichment_disable or None,
+                "auto_enrichment_disable": auto_enrichment_disable,
                 "search": search,
                 "limit": None if limit == _DEFAULT_LIMIT else limit,
             },
@@ -189,6 +225,8 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
         )
         if refused:
             return refused
+        if waiting_validation_gate and periodicity and action in ("create", "update"):
+            return periodicity_refusal(waiting_validation_gate, action)
 
         if action == "list":
             filters = None
@@ -299,10 +337,13 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
             ]
             if platforms_affinity:
                 edits.append({"key": "platforms_affinity", "value": list(platforms_affinity)})
+            if auto_enrichment_disable is not None:
+                # Tri-state: unset leaves the flag as stored, true and false are written.
+                edits.append({"key": "auto_enrichment_disable", "value": [bool(auto_enrichment_disable)]})
             if not edits:
                 return (
-                    "Error: give name, description, periodicity, duration, type_affinity or platforms_affinity "
-                    "to update; nothing was written."
+                    "Error: give name, description, periodicity, duration, type_affinity, platforms_affinity "
+                    "or auto_enrichment_disable to update; nothing was written."
                 )
             _, err = await _gql(_PATCH_MUTATION, {"id": coverage_id, "input": edits})
             if err:
@@ -345,7 +386,13 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
                     },
                     "name": {"type": "string"},
                     "description": {"type": "string"},
-                    "periodicity": {"type": "string", "description": "How often to re-test, ISO-8601 (e.g. P1D)."},
+                    "periodicity": {
+                        "type": "string",
+                        "description": (
+                            "How often to re-test, ISO-8601 (e.g. P1D). OpenAEV starts the scenario two minutes "
+                            "after a coverage with a periodicity; refused while the fleet's validation gate waits."
+                        ),
+                    },
                     "duration": {"type": "string", "description": "How long the coverage runs, ISO-8601 (e.g. P30D)."},
                     "type_affinity": {"type": "string", "description": "The kind of test, e.g. ENDPOINT or CLOUD."},
                     "platforms_affinity": {
@@ -355,7 +402,7 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
                     },
                     "auto_enrichment_disable": {
                         "type": "boolean",
-                        "description": "true: OpenCTI does not send it to the validation module by itself (create).",
+                        "description": "true: OpenCTI never sends it to the validation module by itself (create, update; omit to keep).",
                     },
                     "search": {"type": "string"},
                     "limit": {"type": "integer", "default": _DEFAULT_LIMIT},

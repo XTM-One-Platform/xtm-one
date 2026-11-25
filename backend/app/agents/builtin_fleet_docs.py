@@ -39,6 +39,13 @@ _OPT_IN = (
     "the CTEM Assistant hands nothing over to it."
 )
 
+#: #2157: the members' dashboard schedules are the one exception to :data:`_OPT_IN`.
+_DASHBOARD_EXCEPTION = (
+    " The members' dashboard schedules (the weekly stage assessments and the monthly exposure "
+    "briefing) are the exception: they ship on, stay outside the Automations count, and Pause "
+    "all switches them off."
+)
+
 #: 1. The generic CTEM loop (CTEM-31, #1048): what it does on day one with the
 #: customer's ecosystem. Absorbs the former threat response (F1), posture (F4)
 #: and the three single-product desks, as roles.
@@ -77,7 +84,8 @@ CTEM_LOOP_DOC: dict[str, str] = {
         "goes to its case. The other threat signals wait for the weekly sweep.\n"
         "- **Weekly threat sweep** and **Re-test due**: catches what the events missed, re-runs a "
         "validated scenario once a fix is deployed.\n"
-        "- **Weekly assessments**: the five stage assessments and the exposure briefing, on by default.\n"
+        "- **Weekly assessments**: the five stage assessments and the exposure briefing, on by default (outside the "
+        "Automations count; Pause all switches them off).\n"
         "- **Event refresh** and **Monthly board report**: a closed case refreshes the stages it "
         "touched; the board report on the 1st of the month.\n"
         "- **PIR match created**: the Intelligence desk answers a PIR match in OpenCTI; with the "
@@ -104,7 +112,7 @@ CTEM_LOOP_DOC: dict[str, str] = {
     "prerequisites": (
         "OpenCTI, OpenAEV and OpenCRQ connected for the administrator who switches it on (each role "
         "works with its own module alone), and an organization profile (sector, regions, "
-        "technology, primary assets). " + _OPT_IN
+        "technology, primary assets). " + _OPT_IN + _DASHBOARD_EXCEPTION
     ),
 }
 
@@ -342,7 +350,8 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
         "- **Weekly validation plan**: Mondays 06:00.\n"
         "- **Weekly coverage report**: Fridays 08:00.\n"
         "- **Re-test due**: a work item keyed `openaev:detection-desk:retest:` once a remediation is done.\n"
-        "- **Gate answered**: a person answers a launch approval; the simulation is launched or the refusal recorded."
+        "- **Gate answered**: a person answers a launch approval or a remediation; the simulation is launched, "
+        "the re-test scheduled, or the refusal recorded."
     ),
     "flow": (
         "1. Plan: the orchestrator picks the techniques with no recent result against the primary assets; the "
@@ -533,8 +542,8 @@ def _ctem_gates(*, launch_tools: bool, mobilize_action: str) -> list[dict[str, A
         gate(CTEM_VALIDATION_GATE, CTEM_VALIDATION_ACTION, "openaev", _LAUNCH_IMPACT if launch_tools else "high"),
         gate(
             "ctem.analyst_review",
-            "Review: an analyst checks the threat package, then its OpenCTI draft is validated and its security "
-            "coverage requested: approving publishes the package and sends the coverage to OpenAEV",
+            "Review the threat package in its OpenCTI draft, nothing live before approval: approve publishes "
+            "it and sends its coverage to OpenAEV, reject deletes the draft, not publishing keeps it unvalidated",
             "opencti",
             "low",
         ),

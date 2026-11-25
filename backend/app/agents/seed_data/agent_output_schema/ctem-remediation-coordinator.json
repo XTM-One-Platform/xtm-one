@@ -16,7 +16,7 @@
           "loss_avoided": {"type": "number"},
           "detections": {"type": "array", "items": {"type": "string"}, "description": "The detection rules drafted for this action."},
           "mode": {"type": "string", "enum": ["ticket", "applied_change", "both"], "description": "How the action is carried out: a ticket for a person, a change applied through a bound integration under the gate ctem.production_change, or both (applied now, ticket for tracking)."},
-          "ticket_draft": {"type": "string", "description": "The ticket body for the ticketing target; proposed, never filed. Empty for an applied_change action."},
+          "ticket_draft": {"type": "string", "description": "The ticket body for the ticketing target. Only sync_ctem_case_ticket opens the case ticket, once the case passed Mobilize; this field never files one. Empty for an applied_change action."},
           "applied_change": {
             "type": "object",
             "description": "For mode applied_change or both: the change applied through a bound integration under ctem.production_change.",

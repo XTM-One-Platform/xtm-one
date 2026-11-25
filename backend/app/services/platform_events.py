@@ -98,11 +98,16 @@ already holds is not a second run: a dated note goes on that item's
 ``services/work_item_pull_requests.py``).
 
 Everything here is best-effort: a failure is logged and never fails the
-write that raised the event.
+write that raised the event. A delivery to an assignment that errors (the
+database pool exhausted, a dropped connection), or subscriptions that cannot
+be read, is kept and delivered again with back-off by the scheduler tick
+(``services/platform_event_retry``, #2101), and counted on the assignment
+with its reason once abandoned: never lost without a trace.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Iterable, Mapping
@@ -1007,7 +1012,9 @@ async def publish(name: str, data: Mapping[str, Any], *, event_id: str | None = 
         **dict(data),
         "event": name,
         "event_id": event_id,
-        "occurred_at": datetime.now(UTC).isoformat(),
+        # A publisher that raises an event after its commit may name when the fact happened (a case's
+        # creation, ctem_case_loop.case_data): that time wins over the time it is raised.
+        "occurred_at": str(data.get("occurred_at") or datetime.now(UTC).isoformat()),
     }
     try:
         await event_bus.emit(name, payload)
@@ -1411,21 +1418,73 @@ async def _deliver(name: str, payload: Mapping[str, Any], sub: Subscription, ass
 
 async def dispatch_event(name: str, payload: Mapping[str, Any]) -> list[str]:
     """Deliver event *name* to every subscribed assignment in scope; one outcome per delivery."""
-    from app.core.database import async_session
-
     if name not in PLATFORM_EVENTS:
         return []
+    outcomes = await _dispatch_assignments(name, payload)
+    # The one-off watches that wake a background task instead of a run.
+    from app.services import platform_event_task_watches
+
+    outcomes.extend(await platform_event_task_watches.dispatch_event(name, payload))
+    # The flows whose platform-event trigger takes it.
+    from app.services.flow_triggers import dispatch_flow_platform_event
+
+    outcomes.extend(await dispatch_flow_platform_event(name, dict(payload)))
+    if outcomes:
+        logger.info("Platform event %s %s: %s", name, payload.get("event_id"), outcomes)
+    return outcomes
+
+
+async def redeliver(name: str, payload: Mapping[str, Any], *, assignment_id: object, attempt: int) -> int:
+    """Deliver again an event whose delivery errored (``platform_event_retry``); the deliveries made.
+
+    *assignment_id* names the one subscriber whose delivery raised, ``None``
+    when the subscriptions were unreadable (every subscriber is tried again;
+    the run dedupe answers the ones already served). Through the same bounded
+    gate as a first dispatch (#2084).
+    """
+    if name not in PLATFORM_EVENTS:
+        return 0
+    async with _gate():
+        outcomes = await _dispatch_assignments(
+            name, payload, only=str(assignment_id) if assignment_id else None, attempt=attempt
+        )
+    if outcomes:
+        logger.info("Platform event %s %s delivered again: %s", name, payload.get("event_id"), outcomes)
+    return len(outcomes)
+
+
+async def _dispatch_assignments(
+    name: str, payload: Mapping[str, Any], *, only: str | None = None, attempt: int = 0
+) -> list[str]:
+    """Deliver *name* to the subscribed assignments in scope (*only*: that one); one outcome per delivery.
+
+    A delivery that raises, or subscriptions that cannot be read, is never
+    dropped: it is kept for a further try (``platform_event_retry``), *attempt*
+    being the tries already made, and counted on the assignment once abandoned.
+    """
+    from app.core.database import async_session
+    from app.services import platform_event_retry
+
     try:
         async with async_session() as db:
             subs = await _subscriptions(db, name)
     except Exception as exc:
         # The assignments only: the task watches and the flows read their own.
-        logger.warning("Platform event %s: subscriptions unreadable: %s", name, format_exception_message(exc))
-        subs = []
+        # Unreadable is not "no subscriber": the whole delivery is tried again.
+        await platform_event_retry.schedule(
+            name,
+            payload,
+            assignment_id=only,
+            attempt=attempt + 1,
+            error=f"subscriptions unreadable: {format_exception_message(exc)}",
+        )
+        return []
     outcomes: list[str] = []
     readable: dict[str, set[str]] = {}
     object_readers: dict[str, bool] = {}
     for sub, assignment, agent in subs:
+        if only is not None and str(sub.assignment_id) != only:
+            continue
         if mismatch_reason(sub, name, payload) is not None:
             continue
         if not await can_read_workspace(sub, payload, readable):
@@ -1444,22 +1503,15 @@ async def dispatch_event(name: str, payload: Mapping[str, Any]) -> list[str]:
         try:
             outcomes.append(await _deliver(name, payload, sub, assignment, agent))
         except Exception as exc:
-            logger.warning(
-                "Platform event %s not delivered to assignment %s: %s",
+            # Kept and tried again: the run dedupe makes a second delivery of
+            # an event that did get its run a duplicate, never a second run.
+            await platform_event_retry.schedule(
                 name,
-                sub.assignment_id,
-                format_exception_message(exc),
+                payload,
+                assignment_id=sub.assignment_id,
+                attempt=attempt + 1,
+                error=format_exception_message(exc),
             )
-    # The one-off watches that wake a background task instead of a run.
-    from app.services import platform_event_task_watches
-
-    outcomes.extend(await platform_event_task_watches.dispatch_event(name, payload))
-    # The flows whose platform-event trigger takes it.
-    from app.services.flow_triggers import dispatch_flow_platform_event
-
-    outcomes.extend(await dispatch_flow_platform_event(name, dict(payload)))
-    if outcomes:
-        logger.info("Platform event %s %s: %s", name, payload.get("event_id"), outcomes)
     return outcomes
 
 
@@ -1554,9 +1606,39 @@ async def can_read_object(sub: Subscription, payload: Mapping[str, Any], cache: 
     return True
 
 
+#: Most platform event dispatches one process runs at once (#2084); see :func:`dispatch_limit`.
+DISPATCH_LIMIT_MAX = 4
+#: One gate per event loop (a test runs several loops in one process).
+_dispatch_gates: dict[int, asyncio.Semaphore] = {}
+
+
+def dispatch_limit() -> int:
+    """How many platform events one process dispatches at once: a tenth of its DB pool, 1 to 4.
+
+    Every dispatch opens sessions (subscriptions, task watches, flows, the run it starts): a burst
+    of events (a case-opening drain raising ``ctem_case.opened`` for 500 cases) dispatched all at
+    once took every pooled connection and starved request handling (#2084). The rest wait their
+    turn in memory, holding no connection.
+    """
+    from app.core.config import settings
+
+    capacity = int(settings.db_pool_size) + int(settings.db_max_overflow)
+    return max(1, min(DISPATCH_LIMIT_MAX, capacity // 10))
+
+
+def _gate() -> asyncio.Semaphore:
+    loop_id = id(asyncio.get_running_loop())
+    gate = _dispatch_gates.get(loop_id)
+    if gate is None:
+        _dispatch_gates.clear()  # a process runs one loop at a time: an older loop's gate is dead
+        gate = _dispatch_gates[loop_id] = asyncio.Semaphore(dispatch_limit())
+    return gate
+
+
 async def dispatch(event: Any) -> None:
-    """Event-bus listener: deliver a platform event to its subscribers."""
-    await dispatch_event(event.name, event.data)
+    """Event-bus listener: deliver a platform event to its subscribers, a bounded few at a time."""
+    async with _gate():
+        await dispatch_event(event.name, event.data)
 
 
 _registered = False

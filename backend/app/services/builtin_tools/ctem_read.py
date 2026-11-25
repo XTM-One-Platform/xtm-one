@@ -148,14 +148,14 @@ def empty_sections(
 
 def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The three read tools, acting for *user_id*; nothing is written."""
-    from .ctem_cases import _uuid, build_ctem_case_tools
+    from .ctem_cases import _bounded_issues, _uuid, build_ctem_case_tools, resolve_case_id
     from .ctem_signals import build_ctem_signal_tools
 
     signal_defs, signal_exec = build_ctem_signal_tools(user_id=user_id)
     case_defs, case_exec = build_ctem_case_tools(user_id=user_id, agent_id=agent_id)
     scope = _uuid(user_id)
 
-    async def _get(case_id: str = "") -> str:
+    async def _get(case_id: str = "", issues_offset: int = 0) -> str:
         from app.core.database import async_session
         from app.models.user import User
         from app.services import ctem_case_versions as case_versions
@@ -164,8 +164,7 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         from app.services.ctem_verticals import normalize_vertical
         from app.services.organizations import get_primary
 
-        wanted = _uuid(case_id)
-        if wanted is None:
+        if not str(case_id or "").strip():
             return "case_id must be the id list_ctem_cases answers."
         if scope is None:
             return f"No case {case_id}."
@@ -174,13 +173,19 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 primary = await get_primary(db)
                 if primary is None:
                     return f"No case {case_id}."
+                # A full id or a unique 8+ character prefix (#2103), as the case tools.
+                wanted, why = await resolve_case_id(db, case_id, primary.id)
+                if wanted is None:
+                    return why
                 user = await db.get(User, scope)
                 vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
                 found = await store.get_case(db, wanted, organization_id=primary.id)
                 if found is None:
                     return f"No case {case_id}."
                 case, rows, events = found
-                view = await view_of.viewer_view(db, str(scope), vertical)
+                # This case's members only (#2092): never a whole view build on the call during a drain.
+                members = [f"{r.source}:{r.external_id}" for r in rows]
+                view = await view_of.viewer_view(db, str(scope), vertical, members=members)
                 rendered = view_of.hydrate(case, rows, events[:_HISTORY_PAGE], view)
                 if rendered is None:
                     return f"No case {case_id}."
@@ -196,9 +201,10 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 )
                 from .ctem_signals import case_signal_scope
 
+                # A bounded page of issues, as the case tools (#2092, #2103): a 700-issue case never answers 150k characters.
                 return _dump(
                     {
-                        **rendered,
+                        **_bounded_issues(rendered, issues_offset),
                         "running_versions": running,
                         "opened_by": opened_by(events),
                         "history_total": len(events),
@@ -238,11 +244,12 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     db, org, q=str(query or ""), offset=_int(offset), limit=_int(limit) or 50, filters=filters
                 )
                 facets = await asset_store.asset_facets(db, org, q=str(query or ""), filters=filters)
+                held = await asset_store.held_values(db, org, filters) if not page.total else None
                 await db.commit()
         except Exception:
             logger.warning("CTEM asset inventory read failed", exc_info=True)
             return "Error: the asset inventory could not be read right now. Say so; do not guess it."
-        return _dump(asset_page(vars(page), facets))
+        return _dump(asset_page(vars(page), facets, held=held))
 
     executor = CallableToolExecutor()
     executor.register("list_ctem_signals", signal_exec.handler("list_ctem_signals"))  # type: ignore[arg-type]
@@ -260,6 +267,7 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 "Read one CTEM case: its fix, member issues (source product and id), assets, primary assets, "
                 "latest history, who opened it, and why each empty section is empty."
             ),
+            input_schema=by_name["get_ctem_case"].input_schema,
             source=_SOURCE,
         ),
         ToolDefinition(
@@ -275,7 +283,10 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "subcategory": {"type": "string"},
                     "criticality": {"type": "string"},
                     "internet_facing": {"type": "string"},
-                    "query": {"type": "string"},
+                    "query": {
+                        "type": "string",
+                        "description": "Text in the name, os_family, os_version or owner, or an asset id or id prefix.",
+                    },
                     "offset": {"type": "integer"},
                     "limit": {"type": "integer"},
                 },
@@ -287,8 +298,16 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
     return definitions, executor
 
 
-def asset_page(page: dict[str, Any], facets: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
-    """What ``list_ctem_assets`` answers: the page, then the counts by source and by category of the same filters."""
+def asset_page(
+    page: dict[str, Any],
+    facets: dict[str, list[dict[str, Any]]],
+    *,
+    held: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    """What ``list_ctem_assets`` answers: the page, then the counts by source and by category of the same filters.
+
+    A page with no row and field filters names the values those fields hold (``held``, #2085).
+    """
     from app.services.ctem_signals import provider_name
 
     by_source = {
@@ -299,7 +318,7 @@ def asset_page(page: dict[str, Any], facets: dict[str, list[dict[str, Any]]]) ->
     items = page.get("items", [])
     total = int(page.get("total", 0))
     offset = int(page.get("offset", 0))
-    return {
+    answer: dict[str, Any] = {
         "total": total,
         "offset": offset,
         "limit": int(page.get("limit", 0)),
@@ -308,6 +327,12 @@ def asset_page(page: dict[str, Any], facets: dict[str, list[dict[str, Any]]]) ->
         "by_category": by_category,
         "assets": [{k: v for k, v in item.items() if k != "records"} for item in items],
     }
+    if not total and held:
+        from app.services.organization_context_categories import held_values_line
+
+        answer["held_values"] = held
+        answer["note"] = f"no row. {held_values_line(held)}"
+    return answer
 
 
 def _int(value: Any) -> int:

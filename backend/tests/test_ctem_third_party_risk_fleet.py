@@ -77,8 +77,9 @@ def test_the_event_assignment_provisions_on_tracked_organizations():
 
 def test_the_fleet_entry_seeds_in_xtm_one_only_with_the_shared_agents_connected():
     assert f5.THIRD_PARTY_RISK_FLEET in BUILTIN_FLEETS
-    assert f5.FLEET_SLUG in [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one")]
-    assert f5.FLEET_SLUG not in [f["slug"] for f in fleet_seed.fleets_for_mode("copilot")]
+    # Defined, not seeded until tested (#2105): switched on, it seeds in xtm_one only.
+    assert f5.FLEET_SLUG in [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one", BUILTIN_FLEETS)]
+    assert f5.FLEET_SLUG not in [f["slug"] for f in fleet_seed.fleets_for_mode("copilot", BUILTIN_FLEETS)]
     fleet = f5.THIRD_PARTY_RISK_FLEET
     members = {m["agent"] for m in fleet["members"]}
     connected = {c["agent"] for c in fleet["connected"]}

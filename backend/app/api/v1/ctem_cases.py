@@ -79,8 +79,8 @@ class CaseValidation(BaseModel):
     #: The target asset groups in the order they were tested.
     run_order: list[str] | None = Field(default=None, max_length=20)
     #: #1500: remediation (a version inventory) or validation (a test); a patch or upgrade case resolves
-    #: only on remediation evidence.
-    evidence_type: Literal["remediation", "validation"] | None = None
+    #: only on remediation evidence. #2118: exposure, a passive read confirming the case affected (failed only).
+    evidence_type: Literal["remediation", "validation", "exposure"] | None = None
 
 
 class CaseUpdate(BaseModel):
@@ -160,6 +160,19 @@ async def visible_case(
     return found, rendered
 
 
+async def list_view(db: AsyncSession, user_id: str, vertical: str) -> view_of.ViewerView:
+    """The caller's view for a list read (#2092): an older view while the new one builds, else 503.
+
+    A list never builds the whole view on the request (400 s on ctem.one after a
+    case-opening drain): with no view to answer from after a short wait, the
+    caller gets a 503 with ``Retry-After`` and retries.
+    """
+    try:
+        return await view_of.viewer_view(db, user_id, vertical, stale_ok=True)
+    except view_of.ViewRebuildingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc), headers={"Retry-After": str(exc.retry_after)}) from exc
+
+
 async def require_acts_on(db: AsyncSession, user: User, rows: list[Any], vertical: str) -> None:
     """403 when *user* sees the case only through a CTEM view right (#1748): read, never change."""
     if not await view_of.acts_on_case(db, user, rows, vertical):
@@ -218,7 +231,9 @@ async def list_ctem_cases(
         await refresh.refresh_on_open(db, organization_id=primary.id, user_id=str(user.id), vertical=vertical)
     async with view_of.timed("cases"):
         cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
-    view = await view_of.viewer_view(db, str(user.id), vertical)
+    view = await list_view(db, str(user.id), vertical)
+    # A case deleted between the case read and the view read is gone, never hidden (#2113).
+    cases = await view_of.drop_gone(db, cases, view)
     rows, counts = view_of.list_for_viewer(
         cases,
         view,
@@ -246,8 +261,9 @@ async def list_ctem_cases(
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
         "cases": rows,
-        # The open cases the caller sees none of (a count only): the list is never the org total.
-        "hidden_cases": view_of.hidden_case_count(cases, view),
+        # The open cases the caller is refused (hidden_cases) or the view could not judge now
+        # (unjudged_cases, #2113), by state, with the view's condition: the list is never the org total.
+        **view_of.list_visibility(cases, view),
         "details_unavailable": view.missing,
         # Why each of those products did not answer this viewer's read (#1852): rejected, too_large,
         # timeout, not_connected or unavailable, so the empty state says what failed.
@@ -554,7 +570,7 @@ async def ctem_loop_measures(
     if primary is None:
         return {"vertical": vertical, "measures": measures.summarize([], {}, {})}
     cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
-    view = await view_of.viewer_view(db, str(user.id), vertical)
+    view = await list_view(db, str(user.id), vertical)
     seen = [case for case, rows in cases if view_of.summary(case, rows, view) is not None]
     ids = [case.id for case in seen]
     events = await store.events_of(db, ids)
@@ -582,7 +598,7 @@ async def ctem_cases_overview(
     if primary is None:
         return {"vertical": vertical, **overview.empty()}
     cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
-    view = await view_of.viewer_view(db, str(user.id), vertical)
+    view = await list_view(db, str(user.id), vertical)
     seen = [case.id for case, rows in cases if view_of.visible_members(rows, view)]
     history = await store.events_of(db, seen)
     return {"vertical": vertical, **overview.build(cases, view, history)}

@@ -1474,6 +1474,13 @@ def test_the_awaiting_human_seed_pauses_runs_on_approvals_and_a_question_on_two_
     cases = {r["trigger_context"]["case"]: r for r in rows}
     assert set(cases) == {"two-approvals", "long-question", "company-managed", "decided", "older"}
     assert all(r["status"] == "awaiting_human" and r["completed_at"] is None for r in rows)
+    # Ids set before the flush, so the decisions dual write opens a decision for each paused run
+    # (dev:harness-gaps lab-decisions-backfill-misses-seeded-runs).
+    import uuid
+
+    assert len({uuid.UUID(r["id"]) for r in rows}) == len(rows)
+    source = (LAB.parent / "seed_awaiting_human_runs.py").read_text(encoding="utf-8")
+    assert '"id": uuid.UUID(row["id"])' in source
     two = cases["two-approvals"]["pending_approvals"]
     assert len(two) == 2 and len({p["source"] for p in two}) == 2
     assert all(p["source"].startswith("integration:") for p in two)

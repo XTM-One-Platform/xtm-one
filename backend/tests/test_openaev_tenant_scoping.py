@@ -158,6 +158,10 @@ FAILED = TenantScope("", "HTTP 403")
         (RESOLVED, "/api/platform-roles/search", "/api/platform-roles/search"),
         (RESOLVED, "/api/platform-groups", "/api/platform-groups"),
         (RESOLVED, "/api/schemas/x?y=1", "/api/schemas/x?y=1"),
+        # the engine schema read has no tenant twin either: a prefixed read 404s
+        (RESOLVED, "/api/engine/schemas", "/api/engine/schemas"),
+        (RESOLVED, "/api/engine/schemas?classNames=asset", "/api/engine/schemas?classNames=asset"),
+        (RESOLVED, "/api/engine/other", "/api/tenants/t1/engine/other"),
         # identity endpoints: only GET /api/me has a twin (FR-010)
         (RESOLVED, "/api/me", "/api/me"),
         (RESOLVED, "/api/me/profile", "/api/me/profile"),

@@ -198,6 +198,20 @@ async def test_update_and_delete(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rec.calls[-1][0] == "SecurityCoverageDelete"
 
 
+@pytest.mark.parametrize("flag", [True, False])
+async def test_update_writes_the_auto_enrichment_flag_both_ways(monkeypatch: pytest.MonkeyPatch, flag: bool) -> None:
+    executor, rec = _build(monkeypatch)
+    content = await _run(executor, action="update", coverage_id="sc1", auto_enrichment_disable=flag)
+    assert content == "Updated security coverage sc1: auto_enrichment_disable."
+    assert rec.calls[-1][1]["input"] == [{"key": "auto_enrichment_disable", "value": [flag]}]
+
+
+async def test_update_leaves_the_auto_enrichment_flag_when_not_given(monkeypatch: pytest.MonkeyPatch) -> None:
+    executor, rec = _build(monkeypatch)
+    await _run(executor, action="update", coverage_id="sc1", name="Renamed")
+    assert rec.calls[-1][1]["input"] == [{"key": "name", "value": ["Renamed"]}]
+
+
 async def test_update_without_a_field_writes_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     executor, rec = _build(monkeypatch)
     content = await _run(executor, action="update", coverage_id="sc1")
@@ -262,6 +276,107 @@ def test_the_orchestrators_draft_the_package_and_request_its_coverage(persona: s
     assert "Grouping" in text and TOOL in text
     assert "`ctem.analyst_review`" in text
     assert "analyst review skipped by policy" in text
+
+
+# #2102: a periodicity makes OpenAEV start the coverage scenario two minutes later,
+# so it is refused while the fleet's validation gate waits for a person.
+_VALIDATION_GATE = "ctem.validation.non_readonly"
+_COVERAGE_ANSWERS = {
+    "CoveredType": {"stixDomainObject": {"id": "g1", "entity_type": "Grouping"}},
+    "SecurityCoverageAdd": {"securityCoverageAdd": {"id": "sc1", "name": "n"}},
+}
+
+
+def _build_gated(monkeypatch: pytest.MonkeyPatch, gate: str) -> tuple[CallableToolExecutor, _Recorder]:
+    recorder = _Recorder(_COVERAGE_ANSWERS)
+
+    @contextlib.asynccontextmanager
+    async def _client(*_args: Any, **_kwargs: Any) -> AsyncIterator[None]:
+        yield None
+
+    monkeypatch.setattr(sc_mod, "_client", _client)
+    monkeypatch.setattr(sc_mod, "_graphql", recorder)
+    executor = CallableToolExecutor()
+    build_tools(TOKEN, executor, waiting_validation_gate=gate)
+    return executor, recorder
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"action": "create", "covered_id": "g1", "name": "n", "periodicity": "P1D"},
+        {"action": "update", "coverage_id": "sc1", "periodicity": "P1D"},
+    ],
+)
+async def test_a_periodicity_is_refused_while_the_validation_gate_waits(
+    monkeypatch: pytest.MonkeyPatch, arguments: dict[str, Any]
+) -> None:
+    executor, rec = _build_gated(monkeypatch, _VALIDATION_GATE)
+    content = await _run(executor, **arguments)
+    assert content.startswith("Error: refused: validation gate ctem.validation.non_readonly waits for a person")
+    assert "without periodicity" in content and "schedule_recurrence" in content
+    assert "nothing was written" in content
+    assert rec.calls == []
+
+
+async def test_a_coverage_without_periodicity_is_created_while_the_gate_waits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor, rec = _build_gated(monkeypatch, _VALIDATION_GATE)
+    content = await _run(executor, action="create", covered_id="g1", name="n")
+    assert "Created security coverage" in content
+    _, variables, _ = rec.calls[-1]
+    assert "periodicity" not in variables["input"]
+    assert variables["input"]["auto_enrichment_disable"] is False
+    # Other fields still update.
+    assert await _run(executor, action="update", coverage_id="sc1", name="m") == "Updated security coverage sc1: name."
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"action": "create", "covered_id": "g1", "name": "n", "periodicity": "P1D"},
+        {"action": "update", "coverage_id": "sc1", "periodicity": "P1D"},
+    ],
+)
+async def test_a_periodicity_is_accepted_when_the_validation_gate_runs(
+    monkeypatch: pytest.MonkeyPatch, arguments: dict[str, Any]
+) -> None:
+    executor, rec = _build_gated(monkeypatch, "")
+    content = await _run(executor, **arguments)
+    assert "refused" not in content
+    assert rec.calls and rec.calls[-1][0] in ("SecurityCoverageAdd", "SecurityCoverageFieldPatch")
+
+
+def test_waiting_gate_keys_follow_the_level_and_the_pins() -> None:
+    from app.services.fleet_autonomy import waiting_gate_keys
+
+    gates = BUILTIN_FLEET_STRUCTURED["ctem-vuln-prioritization"]["gates"]
+    assert _VALIDATION_GATE in waiting_gate_keys("full_gates", gates)
+    assert _VALIDATION_GATE not in waiting_gate_keys("autonomous", gates)
+    pinned_run = effective_gates(gates, None, pins={_VALIDATION_GATE: "run"})
+    assert _VALIDATION_GATE not in waiting_gate_keys("full_gates", pinned_run)
+    pinned_wait = effective_gates(gates, None, pins={_VALIDATION_GATE: "wait"})
+    assert _VALIDATION_GATE in waiting_gate_keys("autonomous", pinned_wait)
+
+
+@pytest.mark.parametrize("persona", ["ctem-vuln-prioritization-orchestrator", "ctem-threat-response-orchestrator"])
+def test_the_orchestrators_create_the_coverage_unscheduled_when_validation_waits(persona: str) -> None:
+    """#2102: gated, the coverage has no periodicity and its scenario launches on the validation decision."""
+    text = (SEED_DATA_DIR / "agent_persona" / f"{persona}.md").read_text()
+    assert "without periodicity" in text.lower() or "WITHOUT periodicity" in text
+    assert "Never add a periodicity to an existing coverage afterwards" in text or (
+        "never add a periodicity to an existing coverage afterwards" in text
+    )
+    assert "`manage_openaev_scenario` `launch`" in text
+    assert "`schedule_recurrence`" in text
+    assert "read-only or not" in text and "asset groups" in text
+
+
+def test_the_vulnerability_orchestrator_keeps_p1d_only_when_validation_runs() -> None:
+    text = (SEED_DATA_DIR / "agent_persona" / "ctem-vuln-prioritization-orchestrator.md").read_text()
+    assert "periodicity `P1D` until the fix lands)" not in text
+    assert "when that gate runs at the fleet's level, create it with periodicity `P1D`" in text
 
 
 @pytest.mark.parametrize("slug", _LOOP_FLEETS)

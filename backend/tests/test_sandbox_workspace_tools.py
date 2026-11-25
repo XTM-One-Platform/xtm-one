@@ -2207,6 +2207,13 @@ async def test_create_github_commit_from_checkout_commits_exactly_what_the_sandb
         return [], [], "Error: stop here (fixture)"
 
     monkeypatch.setattr(contents, "_parse_commit_changes", fake_parse)
+
+    async def no_drift(headers, repo, owner, name, branch, directory, record, files, delete_paths):
+        # The fixture record names the short commit 0a1b2c3 with no GitHub behind it: the drift
+        # reconcile (test_github_commit_checkout_short_record_commit.py) is out of this test's scope.
+        return files, delete_paths, "", {}, "", False
+
+    monkeypatch.setattr(contents, "_reconcile_checkout_drift", no_drift)
     github = CallableToolExecutor()
     composite.add_tools(contents.register({"Authorization": "token x"}, github, lambda *a, **k: None), github)
     # Unchanged: nothing to commit, the parser is never reached.

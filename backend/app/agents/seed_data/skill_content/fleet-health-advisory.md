@@ -36,7 +36,7 @@ No finding means healthy: stop there. Send nothing, write nothing.
 | `wait_cycle` | owner | blocked items wait on each other (blocked_on, or a pull request a review item gates) |
 | `blocked_chain_stalled` | owner | a chain of blocked items, all quiet 2 hours, none held by a live run |
 | `oversize_state` | owner | a shared-state entry is over the size limit |
-| `handover_not_allowed` | owner | a handover points at a member the fleet does not expose |
+| `handover_not_allowed` | owner | a handover from an agent outside the fleet points at a member the fleet does not expose; the summary names each source with its home fleet. Recommend re-pointing the handover at the orchestrator; exposing the target opens it to every other fleet |
 | `cost_spike` | owner | a member used over 3 times its daily tokens |
 
 A finding you can explain and that needs nothing (a member disabled on purpose, a schedule paused for a known reason you can cite) is **ignore**: leave it out of the advisory and say why in your run summary. When the owner tells you a finding needs nothing and you hold the tool, dismiss it once with `dismiss_fleet_health_findings(fleet_id, ids, reason)`, using the finding's id or its kind and the owner's reason. A dismissed finding no longer counts and is listed under Dismissed.

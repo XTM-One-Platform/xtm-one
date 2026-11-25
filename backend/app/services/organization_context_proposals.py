@@ -59,9 +59,11 @@ class ProposalError(ValueError):
 
 
 #: Policy settings of the primary profile a proposal may name besides the contract fields:
-#: the CTEM watchlist's "propose to raise the scope" (CTEM-30, #937). An administrator
-#: still accepts it field by field; nothing is applied on proposal.
-PROPOSABLE_POLICY_PATHS: tuple[str, ...] = ("prioritization_policy.scope_min_criticality",)
+#: the CTEM watchlist's "propose to raise the scope" (CTEM-30, #937), and the scalar rules of
+#: the CTEM prioritization policy (#2129): thresholds, the KEV override, the time to fix per
+#: severity. An administrator still accepts a proposal field by field; nothing is applied on
+#: proposal. The lists (exclusions, accepted risks) stay with the settings form.
+PROPOSABLE_POLICY_PATHS: tuple[str, ...] = org_context.POLICY_SETTABLE_PATHS
 #: Outside-lens settings of the primary profile an agent may set or propose (CTEM-26): the
 #: owned domains, the address ranges (CIDR, validated by the profile model) and the attack
 #: surface pass. They stay exposure fields: out of the always-on block and of missing_fields.

@@ -22,7 +22,7 @@
  * worker, so a case only an observer hears reads "off" or "none", never
  * "Worked by".
  */
-import type { CtemCaseRun } from "@/hooks/api/useCtemCasesApi";
+import type { CtemCaseGateRecord, CtemCaseRun, CtemCaseState } from "@/hooks/api/useCtemCasesApi";
 
 /** The fields of an assignment the reader needs. */
 interface CaseAssignment {
@@ -227,8 +227,13 @@ export type CaseWork =
   | { kind: "running"; run: CtemCaseRun; automations: CaseAutomation[] }
   /** The newest run on the case failed and none runs now. */
   | { kind: "failed"; run: CtemCaseRun; automations: CaseAutomation[] }
-  /** At least one automation is on; no run works the case now. `off`: the switched-off ones that could also work it. */
-  | { kind: "on"; automations: CaseAutomation[]; off: CaseAutomation[] };
+  /**
+   * At least one automation is on; no run works the case now. `last`: the newest
+   * run that ended on the case, `null` when none ran yet. The switched-off
+   * automations are never carried here: an enabled worker owns the case, and
+   * switching a second one on would duplicate its work (Sam, 25 Nov 2026).
+   */
+  | { kind: "on"; automations: CaseAutomation[]; last: CtemCaseRun | null };
 
 export function caseWork(input: {
   licensed: boolean;
@@ -247,9 +252,32 @@ export function caseWork(input: {
   const enabled = automations.filter((a) => a.enabled);
   const newest = runs.length > 0 ? runs.reduce((a, b) => (a.created_at >= b.created_at ? a : b)) : null;
   if (newest && newest.outcome === "failed") return { kind: "failed", run: newest, automations: enabled.length > 0 ? enabled : automations };
-  if (automations.length === 0) return newest ? { kind: "on", automations: [], off: [] } : { kind: "none" };
+  if (automations.length === 0) return newest ? { kind: "on", automations: [], last: newest } : { kind: "none" };
   if (enabled.length === 0) return { kind: "off", automations };
-  return { kind: "on", automations: enabled, off: automations.filter((a) => !a.enabled) };
+  return { kind: "on", automations: enabled, last: newest };
+}
+
+/** What the loop waits on for a case it owns while no run works it. */
+export type CaseLoopWait =
+  /** A gate waits for a person: its key and the decision item, when one was filed. */
+  | { kind: "gate"; gate: string; workItemId: string | null }
+  /** No gate is open: the stage the case reached. */
+  | { kind: "stage"; state: CtemCaseState }
+  /** Nothing the page can name. */
+  | { kind: "unknown" };
+
+/**
+ * What the loop waits on (Sam, 25 Nov 2026): the newest gate record still
+ * waiting, else the case state, read from the case itself, never a generic
+ * sentence. A waiting record without a filed decision still names its gate.
+ */
+export function caseLoopWait(input: { state: CtemCaseState | null | undefined; gates: readonly CtemCaseGateRecord[] | undefined }): CaseLoopWait {
+  const waiting = (input.gates ?? []).filter((g) => g.status === "waiting");
+  if (waiting.length > 0) {
+    const gate = waiting.reduce((a, b) => ((a.asked_at ?? "") >= (b.asked_at ?? "") ? a : b));
+    return { kind: "gate", gate: gate.key, workItemId: gate.work_item_id };
+  }
+  return input.state ? { kind: "stage", state: input.state } : { kind: "unknown" };
 }
 
 /** The product a case section is written from. */

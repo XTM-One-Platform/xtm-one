@@ -5426,6 +5426,14 @@ export interface ObservabilityConfig {
   trace_storage_enabled: boolean;
   trace_retention_days: number;
   audit_log_retention_days: number;
+  /** Days the coordination tables keep a row (#2070); 0 keeps forever. */
+  coordination_retention?: {
+    work_item_resolved_days: number;
+    work_item_abandoned_days: number;
+    shared_state_resolved_days: number;
+    shared_state_archive_days: number;
+    workset_resolved_days: number;
+  } | null;
   trace_store_payloads: boolean;
   last_aggregation_at: string | null;
   aggregation_stale: boolean;
@@ -6498,6 +6506,8 @@ export interface WorkItemAskOption {
   key: string;
   label: string;
   effect?: string | null;
+  /** A terminal option (cancel, close): the card asks to confirm it before sending (#2150). */
+  confirm?: boolean;
 }
 
 /** `work_items.ask` (#9437): the question a person answers, as the agent wrote it. */

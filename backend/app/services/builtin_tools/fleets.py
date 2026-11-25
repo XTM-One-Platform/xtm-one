@@ -780,6 +780,11 @@ def build_fleet_tools(
             + (f", {c.paused} paused ({c.fleet_paused} by Pause all)" if c.paused else "")
             + " (members with no assignment count nowhere)"
         ]
+        if c.dashboard_total:
+            lines.append(
+                f"  • Dashboard schedules (not in the badge, they ship on): {c.dashboard_enabled} of "
+                f"{c.dashboard_total} on; Pause all switches them off, Resume back on"
+            )
         for off in state.off:
             lines.append(
                 f"      - off: {off.assignment_name} `{off.assignment_id}` of {off.agent_name} `{off.agent_id}`, "

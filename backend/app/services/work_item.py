@@ -7615,7 +7615,53 @@ async def release_orphaned_legacy_claims(*, limit: int = _RELEASE_BATCH) -> int:
     return released
 
 
-async def reap_work_items() -> dict:
+async def purge_terminal_work_items(*, older_than_days: int, limit: int = 5000) -> int:
+    """Delete up to *limit* TERMINAL (done/cancelled) items last updated over *older_than_days* ago.
+
+    The retention of closed work items (#2070): the window counts from
+    ``updated_at``, the item's last update, and ``<= 0`` keeps them forever.
+    Oldest first; the DELETE re-applies the status and the cutoff (TOCTOU-safe),
+    so an item reopened or touched between the id SELECT and the DELETE is
+    never removed, and a non-terminal item never is. Answers the rows deleted:
+    a result equal to *limit* means more may be left.
+    """
+    from app.core.database import async_session
+
+    if not older_than_days or older_than_days <= 0:
+        return 0
+    cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
+    purged = 0
+    async with async_session() as db:
+        target_ids = (
+            (
+                await db.execute(
+                    select(WorkItem.id)
+                    .where(
+                        WorkItem.status.in_(WORK_ITEM_TERMINAL_STATUSES),
+                        WorkItem.updated_at < cutoff,
+                    )
+                    .order_by(WorkItem.updated_at.asc())
+                    .limit(max(1, limit))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for start in range(0, len(target_ids), 1000):
+            batch = target_ids[start : start + 1000]
+            res = await db.execute(
+                delete(WorkItem).where(
+                    WorkItem.id.in_(batch),
+                    WorkItem.status.in_(WORK_ITEM_TERMINAL_STATUSES),
+                    WorkItem.updated_at < cutoff,
+                )
+            )
+            purged += res.rowcount or 0
+        await db.commit()
+    return purged
+
+
+async def reap_work_items(*, abandon_days: int | None = None, retain_days: int | None = None) -> dict:
     """Autonomous janitor for the work-item queue.
 
     The Work Item twin of ``shared_state.purge_resolved_states`` so the queue
@@ -7638,14 +7684,20 @@ async def reap_work_items() -> dict:
     SELECT) so an item claimed/dispatched or revived between the SELECT and the
     write is never wrongly reaped (TOCTOU-safe, mirroring the bulk-delete and
     shared-state purge guards). Returns ``{"cancelled": N, "purged": M}``.
+
+    *abandon_days* and *retain_days* are the effective windows the scheduler
+    reads from Settings (services/coordination_retention.py); ``None`` falls
+    back to the environment setting.
     """
     from app.core.database import async_session
 
     now = datetime.now(UTC)
     cancelled = 0
     purged = 0
-    abandon_days = getattr(settings, "work_item_abandoned_after_days", 14)
-    retain_days = getattr(settings, "work_item_resolved_retention_days", 30)
+    if abandon_days is None:
+        abandon_days = getattr(settings, "work_item_abandoned_after_days", 14)
+    if retain_days is None:
+        retain_days = getattr(settings, "work_item_resolved_retention_days", 90)
     anchor = func.coalesce(WorkItem.last_activity_at, WorkItem.created_at)
 
     async with async_session() as db:

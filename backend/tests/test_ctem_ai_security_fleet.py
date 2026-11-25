@@ -65,8 +65,9 @@ def test_the_three_assignments_of_the_design():
 
 def test_the_fleet_entry_seeds_in_xtm_one_only_with_the_shared_agents_connected():
     assert f3.AI_SECURITY_FLEET in BUILTIN_FLEETS
-    assert f3.FLEET_SLUG in [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one")]
-    assert f3.FLEET_SLUG not in [f["slug"] for f in fleet_seed.fleets_for_mode("copilot")]
+    # Defined, not seeded until tested (#2105): switched on, it seeds in xtm_one only.
+    assert f3.FLEET_SLUG in [f["slug"] for f in fleet_seed.fleets_for_mode("xtm_one", BUILTIN_FLEETS)]
+    assert f3.FLEET_SLUG not in [f["slug"] for f in fleet_seed.fleets_for_mode("copilot", BUILTIN_FLEETS)]
     fleet = f3.AI_SECURITY_FLEET
     members = {m["agent"] for m in fleet["members"]}
     connected = {c["agent"] for c in fleet["connected"]}
