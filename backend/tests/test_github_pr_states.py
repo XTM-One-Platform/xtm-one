@@ -358,6 +358,41 @@ async def test_a_merge_state_still_unknown_after_the_rereads_says_so(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_a_queued_pull_request_answers_its_queue_position_without_a_reread(monkeypatch):
+    """#2155: a queued PR reads UNKNOWN for as long as the queue holds it; its entry is its state."""
+
+    async def no_sleep(_seconds):
+        raise AssertionError("a queued pull request is never re-read")
+
+    monkeypatch.setattr(pr_states.asyncio, "sleep", no_sleep)
+    handlers, _ = _tools()
+    queued = _unknown(5)
+    queued["isInMergeQueue"] = True
+    queued["mergeQueueEntry"] = {"position": 2, "state": "AWAITING_CHECKS"}
+    fake = SequencedGraphQL({5: [queued]})
+    with patch(_GH_GRAPHQL, new=fake), patch(_SAFE_REQUEST, new=FakeRest()):
+        result = await handlers["list_github_pr_states"](repo="acme/app", numbers=[5])
+
+    line = result.content.splitlines()[1]
+    assert "in merge queue position 2 (awaiting_checks)" in line
+    assert "unknown" not in line
+    assert fake.queries == [[5]]
+    assert result.transient, "a queue position is never kept in the loop's cache"
+
+
+def test_the_query_reads_the_merge_queue_entry():
+    query = pr_states.build_query([1])
+    assert "isInMergeQueue" in query and "mergeQueueEntry { position state }" in query
+
+
+def test_queue_entry_reads_open_pull_requests_only():
+    assert pr_states.queue_entry({"state": "OPEN", "isInMergeQueue": True}) == {}
+    assert pr_states.queue_entry({"state": "OPEN", "mergeQueueEntry": {"position": 1}}) == {"position": 1}
+    assert pr_states.queue_entry({"state": "MERGED", "isInMergeQueue": True}) is None
+    assert pr_states.queue_entry({"state": "OPEN"}) is None
+
+
+@pytest.mark.asyncio
 async def test_known_merge_states_cost_no_reread(monkeypatch):
     async def no_sleep(_seconds):
         raise AssertionError("no pause expected")
