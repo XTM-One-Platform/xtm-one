@@ -83,7 +83,21 @@ SHARED_AGENTS: tuple[str, ...] = (
 #: The verdicts of one expectation, from the strongest control to none.
 VERDICTS: tuple[str, ...] = ("blocked", "detected", "logged", "missed")
 #: The root causes the gap analyst can name.
-ROOT_CAUSES: tuple[str, ...] = ("none", "no_rule", "no_log", "broken_collector", "matching_defect", "unknown")
+#: ``no_platform``: no security platform of the type the expectation is scoped to
+#: is registered, so the control cannot be measured here (#2378): a configuration
+#: gap of the tenant, grouped per platform type, never a per-host remediation.
+ROOT_CAUSES: tuple[str, ...] = (
+    "none",
+    "no_rule",
+    "no_log",
+    "broken_collector",
+    "matching_defect",
+    "no_platform",
+    "unknown",
+)
+#: The key prefix of the one configuration item per tenant and expected platform
+#: type a ``no_platform`` gap raises, followed by the platform type (e.g. SIEM).
+CONFIGURATION_PREFIX = "openaev:detection-desk:gap:no-platform-"
 
 _TARGETS = ["xtm_one", "dev"]
 
@@ -117,11 +131,23 @@ _GAP_SCHEMA: dict[str, Any] = {
         },
         "coverage": {
             "type": "object",
-            "description": "Share of expectations met in this simulation, 0 to 100.",
+            "description": (
+                "Share of expectations met in this simulation, 0 to 100, over the expectations that "
+                "can be measured: no_platform expectations are left out of the denominator and "
+                "counted apart in 'unmeasurable'."
+            ),
             "properties": {
                 "prevention": {"type": "number"},
                 "detection": {"type": "number"},
                 "logging": {"type": "number"},
+                "unmeasurable": {
+                    "type": "object",
+                    "description": (
+                        "no_platform expectations per control (prevention, detection, logging): "
+                        "no registered security platform of the expected type."
+                    ),
+                    "additionalProperties": {"type": "integer"},
+                },
             },
         },
         "silent_collectors": {
@@ -298,7 +324,12 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "Run one analysis of the detection desk loop: delegate the sorting of its results to the "
             "Coverage Gap Analyst, draft a detection rule for each gap whose root cause is a missing "
             f"rule, raise one remediation work item per gap (keyed {REMEDIATION_PREFIX}, owned by you, "
-            "needs_human with an ask card: a person makes the fix). When the "
+            "needs_human with an ask card: a person makes the fix), except a no_platform gap. A "
+            "no_platform gap is a configuration gap, never a per-host remediation: group them into at "
+            "most one configuration item per expected platform type, keyed "
+            f"{CONFIGURATION_PREFIX} followed by the platform type (dedupe on that key, so a later "
+            "simulation adds to it), owned by you, needs_human with an ask card (register a security "
+            "platform of that type, or accept that the control is not measured). When the "
             f"simulation is itself a re-test (a {RETEST_PREFIX} item names it), close each gap it "
             "proves closed. Answer with the run JSON."
         ),
@@ -360,6 +391,8 @@ DETECTION_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             f"record it in shared state {STATE_KEY}; its results come back through Simulation finished. "
             f"A remediation ({REMEDIATION_PREFIX}) answered done: create the re-test work item keyed "
             f"{RETEST_PREFIX} followed by the same ids, owned by you (none when one is already open). "
+            f"A configuration item ({CONFIGURATION_PREFIX}) answered: record the decision in {STATE_KEY}; "
+            "it files no re-test, the next simulation measures the control once the platform is registered. "
             f"Rejected, declined or deferred: record the decision and the reason in {STATE_KEY}. "
             "Answer with the run JSON."
         ),
