@@ -261,10 +261,10 @@ export function criticalityFigure(
 }
 
 /** How many names a list input shows before "+N" (UX r1 B5 on #1995). */
-export const LIST_INPUT_NAMES = 3;
+const LIST_INPUT_NAMES = 3;
 
 /** The criticality found, against the threshold X of the scope gate (#874). */
-export function criticalityAgainstThreshold(scope: CtemDecisionRecord["scope"], t_i18n: Translate): string {
+function criticalityAgainstThreshold(scope: CtemDecisionRecord["scope"], t_i18n: Translate): string {
   if (!scope) return "";
   const threshold = scope.threshold ? String(levelLabel(scope.threshold, t_i18n)) : "";
   if (!scope.criticality) return threshold ? t_i18n("Unknown, threshold {threshold}", { threshold }) : "";
@@ -282,7 +282,7 @@ export function criticalityAgainstThreshold(scope: CtemDecisionRecord["scope"], 
  * (`omit`: the policy checks as the funnel, the primary assets reached as cards).
  */
 /** "2.5K assets: pay-api-01, vpn-gw-01, vpn-gw-lyon, +2.5K": the count compact, the first names, the rest counted. */
-export function listSummary(names: readonly string[], locale: string, t_i18n: Translate): string {
+function listSummary(names: readonly string[], locale: string, t_i18n: Translate): string {
   const shown = names.slice(0, LIST_INPUT_NAMES).join(", ");
   const rest = names.length - LIST_INPUT_NAMES;
   const head = t_i18n("{total} {count, plural, one {asset} other {assets}}: {names}", {
