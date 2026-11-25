@@ -115,6 +115,43 @@ def test_the_threshold_says_where_it_comes_from() -> None:
     assert set_.record["scope"]["threshold_source"] == "policy"
 
 
+def _fleet(count: int) -> pa.PrimaryAssetIndex:
+    """*count* Windows laptops in one group linked to the workstations, one also linked directly."""
+    link = pa.Link(_key(WORKSTATIONS), "rule", ("stores",))
+    reachers = []
+    for n in range(count):
+        reacher = pa.Reacher(name=f"LAPTOP-{n:05d}", keys={f"laptop-{n:05d}"}, products={"windows": "Windows 11"})
+        reacher.links.append((link, "asset_group", "All Windows x86_64"))
+        reachers.append(reacher)
+    reachers[0].links.append((pa.Link(_key(WORKSTATIONS), "manual", ("processes",)), "asset", "LAPTOP-00000"))
+    return pa.PrimaryAssetIndex(loaded=True, reachers=reachers)
+
+
+def test_the_record_counts_every_supporting_asset_behind_the_chains_it_keeps() -> None:
+    """#1979: 10,000 laptops read 10,000 on the primary asset source, never the 5 chains kept."""
+    decision = gate.decide(_profile(), _cve(), primary_assets=_fleet(10_000), today=TODAY)
+    jewel = next(s for s in decision.record["scope"]["sources"] if s["from"] == "primary_asset")
+    assert len(jewel["chain"]) <= gate.CHAINS_KEPT
+    assert jewel["assets_total"] == 10_000
+    assert jewel["chain_total"] == len(
+        [h for h in decision.record["reconcile"]["primary_assets"] if h["primary_asset_key"] == _key(WORKSTATIONS)]
+    )
+    totals = decision.record["reconcile"]["primary_asset_totals"][_key(WORKSTATIONS)]
+    assert totals == {"assets": 10_000, "direct": 1, "via_group": 9_999}
+    assert decision.record["reconcile"]["inventory_links_truncated"] is False
+
+
+def test_supporting_lists_each_asset_once_best_link_first_sorted_by_name() -> None:
+    rows = _fleet(3).supporting(["Windows"], [], _key(WORKSTATIONS))
+    assert [r["asset"] for r in rows] == ["LAPTOP-00000", "LAPTOP-00001", "LAPTOP-00002"]
+    first = rows[0]
+    assert first["source"] == "manual" and first["through_kind"] == "asset"
+    assert first["roles"] == ["processes", "stores"] and first["software"] == "Windows"
+    assert rows[1]["through_kind"] == "asset_group" and rows[1]["through"] == "All Windows x86_64"
+    assert _fleet(3).supporting(["nginx"], [], _key(WORKSTATIONS)) == []
+    assert _fleet(3).supporting(["Windows"], [], "payroll") == []
+
+
 def test_product_matching_is_by_whole_word_and_reads_a_cpe() -> None:
     assert pa.product_matches("Windows", "Microsoft Windows 11 Enterprise")
     assert pa.product_matches("windows_11", "cpe:2.3:o:microsoft:windows_11:22h2:*:*:*:*:*:*:*")

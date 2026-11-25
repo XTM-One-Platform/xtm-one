@@ -53,7 +53,7 @@ export function LoopTraceSheet({
 }) {
   const { t_i18n } = useFormatter();
   return (
-    <SlideOver open={!!signalId} onClose={onClose} label={t_i18n("Loop trace")} width="w-[min(560px,45vw)]">
+    <SlideOver open={!!signalId} onClose={onClose} label={t_i18n("Loop trace")} width="w-full sm:w-[max(640px,50vw)] @container">
       <div className="flex h-full min-h-0 flex-col" data-testid="ctem-loop-trace">
         <div className="flex items-start justify-between gap-3 border-b border-elevation-subtle p-4">
           <div className="flex min-w-0 flex-col gap-1">
