@@ -125,7 +125,8 @@ export function SyncFilterFields({ section, source, direction, filters, onChange
   const pirs = useOrganizationPirs(active && section === "pirs");
   const platform = IMPORT_SOURCE_NAMES[source ?? ""] ?? source ?? "";
   const sourceEntry = sources.data?.sections.find((entry) => entry.section === section)?.sources.find((entry) => entry.source === source);
-  const unavailable = options.data?.unavailable ?? {};
+  // Outbound values are the profile's own: a cached inbound read of the same platform never disables them.
+  const unavailable = outbound ? {} : (options.data?.unavailable ?? {});
   const noTaxonomy = !outbound && source === "opencti" && TAXONOMY_FILTERS.some((key) => unavailable[key] === "no_system_taxonomy");
   const shownFilters = outbound
     ? outboundFilterKeys(section)

@@ -93,6 +93,21 @@ describe("SyncEditDialog, filters (#1982 S4)", () => {
     expect(onSave).toHaveBeenCalledWith(expect.anything(), true, "outbound", undefined);
   });
 
+  it("keeps the outbound filters usable after the platform's own values could not be read inbound", async () => {
+    get.mockImplementation(async (path: string) => {
+      if (path === "/organization-context/syncs/directions") return [{ section: "assets", source: "opencti", directions: ["inbound", "outbound"], reason: "" }];
+      if (path === "/organization-context/import/sources")
+        return { sections: [{ section: "assets", field: "assets_exposure", sources: [{ source: "opencti", available: true, reason: "", filters: ["labels", "category"] }] }] };
+      if (path.startsWith("/organization-context/import/options")) return { options: {}, unavailable: { labels: "not_connected", category: "not_connected" } };
+      if (path === "/auth/me") return { id: "u-1", email: "me.admin@example.com", full_name: "Me Admin" };
+      return {};
+    });
+    renderWithProviders(<SyncEditDialog sync={sync({ source: "opencti", direction: "inbound" })} open saving={false} onClose={() => {}} onSave={() => {}} />);
+    expect((await screen.findAllByText("OpenCTI is not connected for your account.")).length).toBeGreaterThan(0);
+    fireEvent.click(within(screen.getByTestId("org-sync-edit-direction")).getByRole("radio", { name: /Outbound/ }));
+    await waitFor(() => expect(screen.queryByText("OpenCTI is not connected for your account.")).toBeNull());
+  });
+
   it("draws no filter for Sync all", async () => {
     renderWithProviders(<SyncEditDialog sync={sync({ section: "all", source: "" })} open saving={false} onClose={() => {}} onSave={() => {}} />);
     expect(await screen.findByRole("heading", { name: "Edit the sync" })).toBeTruthy();
