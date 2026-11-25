@@ -1021,8 +1021,8 @@ BUILTIN_AGENTS: list[dict] = [
         # Scenario Creator's background task - so delete / bulk_delete are always
         # off the global library, not just on a consult.
         "tool_deny_list": [
-            # Global writes it must not touch (only the threat arsenal is allowed).
-            "manage_openaev_finding",
+            # Global writes it must not touch (only the threat arsenal is allowed;
+            # manage_openaev_finding is read-only since OpenAEV #9233).
             "manage_openaev_asset",
             "manage_openaev_asset_group",
             "manage_openaev_security_platform",
