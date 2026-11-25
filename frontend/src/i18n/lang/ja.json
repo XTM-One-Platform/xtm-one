@@ -3887,6 +3887,8 @@
   "No agents yet": "エージェントはまだありません",
   "No analytics data available": "利用可能な分析データがありません",
   "No assessment yet - generate one for this vertical.": "評価はまだありません - このバーティカル用に生成してください。",
+  "Sign in to OpenCTI or OpenAEV once, then regenerate: your assessment reads your own account there.": "OpenCTI または OpenAEV に一度サインインしてから再生成してください。評価はそこでのご自身のアカウントを読み取ります。",
+  "Sign in to {modules} once, then regenerate: your assessment reads your own account there.": "{modules} に一度サインインしてから再生成してください。評価はそこでのご自身のアカウントを読み取ります。",
   "No assessment yet for this vertical. Generate one to get an actionable read.": "このバーティカルの評価はまだありません。生成すると実用的な分析が得られます。",
   "No assets yet": "アセットはまだありません",
   "No assignment runs yet.": "アサインメントの実行はまだありません。",
