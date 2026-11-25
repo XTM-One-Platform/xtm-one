@@ -886,6 +886,8 @@ def _visible_clause(
         tiers.append(_owner_agent_clause(actor))
         # An item another person handed to this agent (#858).
         tiers.append(_handed_to_clause(actor))
+        # An item filed in the workspace of a fleet this agent works in (#2381).
+        tiers.append(_fleet_member_read_clause(actor))
     return or_(*tiers)
 
 
@@ -1074,6 +1076,36 @@ def _owner_agent_clause(actor: CompanyManagedWriter | None) -> Any:
             and_(assignee, filed_by_its_creator),
         ),
     )
+
+
+def _fleet_member_read_clause(actor: CompanyManagedWriter | None) -> Any:
+    """Items filed in the workspace of a fleet *actor* works in: a READ tier (#2381).
+
+    A company-managed agent's run acts with no person
+    (``_resolve_run_file_owner_id`` keeps file stamping personless), so a
+    person's workspace tier never applies to it, and an item another member
+    filed in the fleet's own coordination workspace matched no tier: a fleet
+    orchestrator could not read the gates its loop parks.
+
+    This tier admits, to a company-managed agent's own reads only, the items
+    filed in the coordination workspace of a live fleet the agent is a member
+    of (home or connected) or orchestrates. It never widens a write:
+    ``_writable_clause`` does not call it. A person's read, a personal agent
+    (its runs carry its person's workspace tiers) and a writer without an
+    agent get ``false()``. The creators' ``coordination_access`` narrowing
+    still applies on top.
+    """
+    if actor is None or actor.agent_id is None or not actor.may_write:
+        return false()
+    agent_id = actor.agent_id
+    from app.models.fleet import Fleet, FleetMember
+
+    member_of = select(FleetMember.fleet_id).where(FleetMember.agent_id == agent_id)
+    fleet_workspaces = select(Fleet.workspace_id).where(
+        Fleet.is_archived.is_(False),
+        or_(Fleet.id.in_(member_of), Fleet.orchestrator_agent_id == agent_id),
+    )
+    return and_(WorkItem.workspace_id.is_not(None), WorkItem.workspace_id.in_(fleet_workspaces))
 
 
 def _handed_to_clause(actor: CompanyManagedWriter | None) -> Any:
@@ -5813,8 +5845,12 @@ async def list_work_items(
         # predicate, and a disabled staleness window yields no clause rather
         # than an early return.
         readable, _ = await _workspace_tiers(db, user_id)
-        # An agent's listing also reads the items handed to it (#858).
-        query = select(WorkItem).where(or_(_visible_clause(uid, readable), _handed_to_clause(reader)), *clauses)
+        # An agent's listing also reads the items handed to it (#858) and the
+        # items filed in its fleets' workspaces (#2381).
+        query = select(WorkItem).where(
+            or_(_visible_clause(uid, readable), _handed_to_clause(reader), _fleet_member_read_clause(reader)),
+            *clauses,
+        )
 
         if column_order is not None:
             query = query.order_by(*column_order)
