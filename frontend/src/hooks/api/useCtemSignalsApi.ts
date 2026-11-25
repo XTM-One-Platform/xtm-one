@@ -29,6 +29,8 @@ export interface CtemDecisionRecord {
   inputs?: { lens?: string; source_provider?: string; cves?: string[] } & Record<string, unknown>;
   reconcile?: {
     assets?: string[];
+    /** UX r2 B7 on #1995: the profile asset list was cut at its cap, so `assets` is a floor, not the total. */
+    assets_capped?: boolean;
     primary_assets_named?: string[];
     products?: string[];
     lenses?: string[];
@@ -37,8 +39,12 @@ export interface CtemDecisionRecord {
   scope?: {
     criticality?: string | null;
     threshold?: string;
-    /** What gave the criticality: an asset, a primary asset, an owned domain (CTEM-29), a risk scenario. */
-    sources?: { from: string; name: string; criticality?: string }[];
+    /**
+     * What gave the criticality: an asset, a primary asset, an owned domain (CTEM-29), a risk scenario.
+     * A primary asset source carries its first chains (`chain`), how many there are (`chain_total`)
+     * and how many inventory assets reach it (`assets_total`, #1979); older records carry none.
+     */
+    sources?: { from: string; name: string; criticality?: string; chain?: unknown; chain_total?: number; assets_total?: number }[];
     risk_scenarios?: { id: string; name: string }[];
   } | null;
   policy_checks?: { rule: string; value?: unknown; threshold?: unknown; passed: boolean }[];
@@ -269,6 +275,58 @@ export function useRecordCtemSignal() {
   return useMutation<{ created: boolean; signal: CtemSignal }, Error, CtemSignalCreate>({
     mutationFn: (body) => api.post("/ctem-signals", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+  });
+}
+
+/** One inventory asset through which a signal reaches a primary asset (#1979). */
+export interface CtemSupportingAsset {
+  asset: string;
+  software: string;
+  through: string;
+  through_kind: "asset" | "asset_group" | string;
+  source: string;
+  roles: string[];
+}
+
+export interface CtemSupportingAssetPage {
+  primary_asset: string;
+  total: number;
+  offset: number;
+  limit: number;
+  /** The order the server applied before cutting the page. */
+  sort?: "asset" | "through";
+  direction?: "asc" | "desc";
+  /** The inventory read was cut at its bounds: the total is a floor. */
+  truncated: boolean;
+  assets: CtemSupportingAsset[];
+}
+
+/** The columns the supporting-assets endpoint orders by (UX r1 B3 on #1995). */
+export type CtemSupportingAssetSort = "asset" | "through";
+
+/** One page of the supporting assets of one primary asset a signal reaches, searched by name and sorted on the server (#1979). */
+export function useCtemSupportingAssets(
+  signalId: string,
+  primaryAsset: string,
+  page: { search: string; offset: number; limit: number; sort?: CtemSupportingAssetSort; direction?: "asc" | "desc" },
+  enabled = true,
+) {
+  const params = new URLSearchParams({ offset: String(page.offset), limit: String(page.limit) });
+  if (page.search) params.set("q", page.search);
+  const sort = page.sort ?? "asset";
+  const direction = page.direction ?? "asc";
+  if (sort !== "asset" || direction !== "asc") {
+    params.set("sort", sort);
+    params.set("direction", direction);
+  }
+  return useQuery<CtemSupportingAssetPage>({
+    queryKey: ["ctem-signals", "supporting-assets", signalId, primaryAsset, page.search, page.offset, page.limit, sort, direction],
+    queryFn: () =>
+      api.get(`/ctem-signals/${encodeURIComponent(signalId)}/primary-assets/${encodeURIComponent(primaryAsset)}/supporting-assets?${params}`),
+    enabled: enabled && Boolean(signalId && primaryAsset),
+    placeholderData: (previous) => previous,
+    retry: ctemCasesRetry,
+    throwOnError: false,
   });
 }
 
