@@ -2669,6 +2669,8 @@ export interface TriggerConfig {
   fired_at?: string;
   /** platform_event triggers: the subscription's deadline (ISO 8601 with its offset); an event after it starts nothing. */
   expires_at?: string;
+  /** platform_event triggers: "observer" watches the objects of its events without working them (never counted as a CTEM case worker). */
+  role?: "observer" | "worker";
   /** Evaluated before any run or gate; a dropped event is counted (`events_filtered_count`). */
   filter?: {
     channels?: string[];
