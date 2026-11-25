@@ -473,9 +473,23 @@ async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
         return await real(session, signal, **kw)
 
     monkeypatch.setattr(loop, "open_from_signal", open_or_fail)
+    from app.services import ctem_case_asset_retire
+
+    async def none_retired(*_a, **_k) -> int:
+        return 0
+
+    monkeypatch.setattr(ctem_case_asset_retire, "close_retired_asset_cases", none_retired)
     events = loop.PendingEvents()
     counts = await loop.sweep(db, events=events, now=NOW)
-    assert counts == {"opened": 1, "joined": 0, "skipped": 1, "sla_breached": 1, "announced": 0, "stalled": 0}
+    assert counts == {
+        "opened": 1,
+        "joined": 0,
+        "skipped": 1,
+        "sla_breached": 1,
+        "announced": 0,
+        "stalled": 0,
+        "retired": 0,
+    }
     bad.expired = False
     assert bad.state == "confirmed" and good.state == "case_opened"
     assert [name for name, _, _ in events.items] == [loop.CASE_OPENED, loop.CASE_SLA_BREACHED]
