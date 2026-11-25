@@ -211,6 +211,51 @@ async def _refuse_live_before_review(db: AsyncSession, user_id: str, grouping_id
         raise rules.CaseRuleError(LIVE_BEFORE_REVIEW)
 
 
+async def is_case_package_draft(db: AsyncSession, draft_id: str) -> bool:
+    """Whether *draft_id* holds the threat package a CTEM case records now (#2089).
+
+    True when the newest ``threat_package`` event of a case of the primary
+    organization carries that draft's page (``/data/import/draft/<draft_id>``).
+    It bounds what a gated CTEM run may discard with ``delete_opencti_draft``:
+    the draft of a case's own package, never an analyst's or another draft.
+    """
+    did = (draft_id or "").strip().lower()
+    try:
+        uuid.UUID(did)
+    except ValueError:
+        return False
+    from app.services.organizations import get_primary
+
+    primary = await get_primary(db)
+    if primary is None:
+        return False
+    suffix = f"/data/import/draft/{did}"
+    found = await db.execute(
+        select(CtemCaseEvent.case_id)
+        .join(CtemCase, CtemCase.id == CtemCaseEvent.case_id)
+        .where(
+            CtemCase.organization_id == primary.id,
+            CtemCaseEvent.kind == "threat_package",
+            CtemCaseEvent.evidence.ilike(f"%{suffix}%"),
+        )
+        .distinct()
+    )
+    case_ids = found.scalars().all()
+    for case_id in case_ids:
+        newest = (
+            await db.execute(
+                select(CtemCaseEvent.evidence)
+                .where(CtemCaseEvent.case_id == case_id, CtemCaseEvent.kind == "threat_package")
+                .order_by(CtemCaseEvent.at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        page = str(newest or "").strip().lower().rstrip("/")
+        if page.endswith(suffix) or f"{suffix}/" in page:
+            return True
+    return False
+
+
 async def repair_stored_packages(
     db: AsyncSession, organization_id: uuid.UUID, user_id: str, *, dry_run: bool = True, now: datetime | None = None
 ) -> dict[str, Any]:

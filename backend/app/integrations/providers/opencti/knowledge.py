@@ -870,6 +870,7 @@ def register_knowledge(
     persist_file_fn: Callable[[str, bytes, str], Awaitable[Any]] | None = None,
     live_writes: bool = False,
     gated_draft_validation: bool = False,
+    case_draft_fn: Callable[[str], Awaitable[bool]] | None = None,
 ) -> list[ToolDefinition]:
     """Build the OpenCTI STIX knowledge, draft, NLQ-filter and dev tools.
 
@@ -906,6 +907,11 @@ def register_knowledge(
     writes off: the run's fleet declares a gate naming that tool (the CTEM
     loop's ``ctem.analyst_review``), so the validation of a draft the loop
     staged is a person's decision, or the fleet's policy, never the model's.
+
+    ``case_draft_fn`` (#2089) answers whether a draft id holds the threat
+    package a CTEM case records: with ``gated_draft_validation`` and Live
+    writes off, ``delete_opencti_draft`` may discard that draft (a refused
+    review) besides the drafts this build created, and no other.
     """
     _draft_id = draft_id
     _offer_apply = live_writes or gated_draft_validation
@@ -4746,7 +4752,11 @@ def register_knowledge(
         did = (draft_id or "").strip()
         if not did:
             return "Error: `draft_id` is required."
-        if not live_writes and not gated_draft_validation and did not in _created_drafts:
+        if (
+            not live_writes
+            and did not in _created_drafts
+            and not (gated_draft_validation and case_draft_fn is not None and await case_draft_fn(did))
+        ):
             # Setting off: no wording names it or offers to turn it on.
             return (
                 f"Error: draft `{did}` was not created in this run, so it is not "
@@ -5243,7 +5253,8 @@ def register_knowledge(
                 + (
                     "Allowed on any draft. "
                     if live_writes
-                    else "Allowed on the draft a refused review of this fleet discards. "
+                    else "Allowed on a draft created in this run, or the draft holding a case's "
+                    "recorded threat package that a refused review discards. "
                     if gated_draft_validation
                     else "Allowed on a draft created in this run (create_opencti_draft). "
                 )

@@ -8,7 +8,9 @@
   live graph and in no open draft while the review has not approved the
   package (no gate yet, waiting, rejected, re-plan), whatever page is given.
 - A refused review discards the draft: ``delete_opencti_draft`` is allowed on
-  a gated fleet's draft created in another run.
+  a gated fleet for the draft holding a case's recorded threat package
+  (``case_draft_fn``), created in another run, and refused on any other open
+  draft (an analyst's, another product's).
 """
 
 from __future__ import annotations
@@ -111,8 +113,8 @@ def test_live_writes_keep_the_draft_gate_on_a_fleet_that_gates_the_draft_validat
 
 
 @pytest.mark.asyncio
-async def test_gated_fleet_may_delete_a_draft_created_in_another_run(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A refused review discards the draft from the answer run."""
+async def test_gated_fleet_may_delete_only_the_case_package_draft(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A refused review discards the case's package draft from the answer run, and no other draft."""
     from app.integrations.providers.opencti import knowledge
 
     calls: list[str] = []
@@ -128,9 +130,36 @@ async def test_gated_fleet_may_delete_a_draft_created_in_another_run(monkeypatch
     plain, _ = _executor_and_tools()
     refused = await plain._handlers["delete_opencti_draft"](draft_id=OPEN_DRAFT)
     assert "was not created in this run" in refused and calls == []
-    gated, _ = _executor_and_tools(gated_draft_validation=True)
+    # A gated fleet with no case lookup, or a draft no case records: refused, nothing sent.
+    no_lookup, _ = _executor_and_tools(gated_draft_validation=True)
+    assert "was not created in this run" in await no_lookup._handlers["delete_opencti_draft"](draft_id=OPEN_DRAFT)
+    asked: list[str] = []
+
+    async def not_a_case_draft(did: str) -> bool:
+        asked.append(did)
+        return False
+
+    other, _ = _executor_and_tools(gated_draft_validation=True, case_draft_fn=not_a_case_draft)
+    assert "was not created in this run" in await other._handlers["delete_opencti_draft"](draft_id=OPEN_DRAFT)
+    assert asked == [OPEN_DRAFT] and calls == []
+
+    async def case_draft(did: str) -> bool:
+        return did == OPEN_DRAFT
+
+    # The lookup only widens a gated fleet: without the gate it is never consulted.
+    ungated, _ = _executor_and_tools(case_draft_fn=case_draft)
+    assert "was not created in this run" in await ungated._handlers["delete_opencti_draft"](draft_id=OPEN_DRAFT)
+    assert calls == []
+    gated, _ = _executor_and_tools(gated_draft_validation=True, case_draft_fn=case_draft)
     answer = await gated._handlers["delete_opencti_draft"](draft_id=OPEN_DRAFT)
     assert "deleted" in answer and "Error" not in answer
+
+
+@pytest.mark.asyncio
+async def test_case_package_draft_lookup_refuses_a_non_uuid_without_reading() -> None:
+    """A draft id that is not a UUID is never a case's package draft (no query, no LIKE pattern)."""
+    assert await package_live.is_case_package_draft(cast(Any, None), "%") is False
+    assert await package_live.is_case_package_draft(cast(Any, None), "") is False
 
 
 def test_review_gate_says_what_each_answer_does_to_the_package() -> None:
