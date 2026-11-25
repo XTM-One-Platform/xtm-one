@@ -10,7 +10,8 @@ OTEL-batched spans were dropped on SIGTERM / deploys.
 Covers:
 - ``flush_langfuse()`` semantics: flush without reset, no-op when disabled,
   never raises.
-- ``reset_langfuse_client()`` still flushes before shutting the client down.
+- ``reset_langfuse_client()`` / ``areset_langfuse_client()`` flush the old
+  client and never shut it down.
 - Source-inspection pins: the app lifespan shutdown (``app/main.py``) and the
   worker shutdown hook (``app/worker.py``) both call ``flush_langfuse``.
 """
@@ -69,10 +70,12 @@ def test_flush_langfuse_never_raises_on_flush_failure(monkeypatch):
     fake_client.flush.assert_called_once()
 
 
-def test_reset_langfuse_client_still_flushes_then_shuts_down(monkeypatch):
-    """``reset_langfuse_client`` delegates the flush to ``flush_langfuse``
-    and then shuts the client down — the config-change path must keep
-    draining buffered events before discarding the client."""
+def test_reset_langfuse_client_flushes_without_shutting_down(monkeypatch):
+    """``reset_langfuse_client`` drains buffered events through
+    ``flush_langfuse`` and clears the cache, but never shuts the client down:
+    its resource manager is the SDK's process-wide one for the key, which the
+    next ``Langfuse(...)`` with that key gets back (a shut-down one would have
+    no consumers, and its later flushes wait forever)."""
     fake_client = MagicMock()
     monkeypatch.setattr(lft, "_langfuse_client", fake_client)
     monkeypatch.setattr(lft, "_langfuse_enabled", True)
@@ -80,27 +83,28 @@ def test_reset_langfuse_client_still_flushes_then_shuts_down(monkeypatch):
     lft.reset_langfuse_client()
 
     fake_client.flush.assert_called_once()
-    fake_client.shutdown.assert_called_once()
+    fake_client.shutdown.assert_not_called()
     assert lft._langfuse_client is None
     assert lft._langfuse_enabled is None
 
 
-def test_reset_langfuse_client_never_raises_on_shutdown_failure(monkeypatch):
-    """A failing ``client.shutdown()`` (exporter already closed, background
-    thread error) must not propagate out of ``reset_langfuse_client`` — the
-    config-change path still clears the cache so the next call re-initializes."""
+async def test_areset_langfuse_client_flushes_on_the_langfuse_pool(monkeypatch):
+    """The async reset flushes the detached client on the Langfuse pool, never
+    the default executor, and never shuts it down."""
+    import threading
+
+    flushed_on: list[str] = []
     fake_client = MagicMock()
-    fake_client.shutdown.side_effect = RuntimeError("exporter already closed")
+    fake_client.flush.side_effect = lambda: flushed_on.append(threading.current_thread().name)
     monkeypatch.setattr(lft, "_langfuse_client", fake_client)
     monkeypatch.setattr(lft, "_langfuse_enabled", True)
+    monkeypatch.setattr(lft, "_langfuse_init_lock", None)
 
-    # Must not raise.
-    lft.reset_langfuse_client()
+    await lft.areset_langfuse_client()
 
-    fake_client.flush.assert_called_once()
-    fake_client.shutdown.assert_called_once()
+    assert len(flushed_on) == 1 and flushed_on[0].startswith("xtmone-langfuse")
+    fake_client.shutdown.assert_not_called()
     assert lft._langfuse_client is None
-    assert lft._langfuse_enabled is None
 
 
 # ---------------------------------------------------------------------------

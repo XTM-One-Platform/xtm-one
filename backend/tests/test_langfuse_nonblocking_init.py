@@ -137,6 +137,23 @@ async def test_concurrent_callers_initialize_at_most_once(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_init_runs_on_the_langfuse_pool_not_the_default_executor(monkeypatch):
+    """The default executor also serves the DNS lookups of every new database
+    and HTTP connection: a Langfuse host that never answers must not hold any
+    of its threads."""
+    ran_on: list[str] = []
+
+    def _record(_pk, _sk, _host):
+        ran_on.append(threading.current_thread().name)
+        raise RuntimeError("auth failed")
+
+    monkeypatch.setattr(lt, "_blocking_init_and_auth", _record)
+
+    assert await lt.get_langfuse_client(_FakeDB(_enabled_config())) is None
+    assert len(ran_on) == 1 and ran_on[0].startswith("xtmone-langfuse")
+
+
+@pytest.mark.asyncio
 async def test_reset_wins_against_in_flight_init(monkeypatch):
     # A config save / disable (areset_langfuse_client) must win against a
     # concurrent slow init: the in-flight get_langfuse_client must not
