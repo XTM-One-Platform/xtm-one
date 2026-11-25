@@ -6827,13 +6827,22 @@ async def _build_integration_tools_inner(
                     # review, #1480) offers it with Live writes off: the gate,
                     # not the setting, decides the validation. Never on a
                     # read-only binding.
-                    from app.services.fleet_autonomy import FLEET_GATED_TOOLS_CONTEXT_KEY
+                    from app.agents.builtin_fleet_docs import CTEM_VALIDATION_GATE
+                    from app.services.fleet_autonomy import (
+                        FLEET_GATED_TOOLS_CONTEXT_KEY,
+                        FLEET_WAITING_GATES_CONTEXT_KEY,
+                    )
 
                     if "apply_opencti_draft" in (
                         context.get(FLEET_GATED_TOOLS_CONTEXT_KEY) or ()
                     ) and not is_read_only_binding(integration_id, _read_only_ids):
                         _builder_kwargs["gated_draft_validation"] = True
                         _builder_kwargs["case_draft_fn"] = _make_case_draft_fn()
+                    # The CTEM validation gate waits: a security coverage
+                    # carrying a periodicity would start its OpenAEV scenario
+                    # before the decision, so the tool refuses it (#2102).
+                    if CTEM_VALIDATION_GATE in (context.get(FLEET_WAITING_GATES_CONTEXT_KEY) or ()):
+                        _builder_kwargs["waiting_validation_gate"] = CTEM_VALIDATION_GATE
                 # When HITL is on, give OpenCTI a way to VERIFY a human approved
                 # an irreversible action (entity merge) rather than trusting the
                 # model's word for it. The run's ``human_input_history`` is the

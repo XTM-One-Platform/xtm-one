@@ -18,6 +18,15 @@ validates it, and its coverage belongs in the same draft (a live coverage would
 point at an object the live graph does not hold). With no draft active, or with
 the integration's Live writes on, the coverage is written live and reaches
 OpenAEV at once.
+
+A coverage that carries a periodicity makes OpenAEV schedule the scenario it
+builds two minutes later, then at that periodicity; without one the scenario
+is built and nothing is scheduled. When the run's fleet validation gate
+(``ctem.validation.non_readonly``) waits for a person, ``create`` and
+``update`` refuse a periodicity by naming the gate (#2102): the coverage is
+created without it, and the repeat is set on the OpenAEV scenario after the
+approval (``manage_openaev_scenario`` ``schedule_recurrence``), never through
+the coverage.
 """
 
 from __future__ import annotations
@@ -148,7 +157,25 @@ def _format_covered_entities(label: str, block: Any, *, with_mitre: bool = False
     return lines
 
 
-def register(base_url: str, headers: dict[str, str], executor: CallableToolExecutor) -> list[ToolDefinition]:
+def periodicity_refusal(gate: str, action: str) -> str:
+    """The answer to a periodicity given while the validation *gate* waits (#2102). Pure."""
+    return (
+        f"Error: refused: validation gate {gate} waits for a person; a periodicity on a security coverage "
+        "makes OpenAEV start its scenario two minutes later, before the decision. "
+        f"{'Create' if action == 'create' else 'Update'} the coverage without periodicity and set the repeat "
+        "on the OpenAEV scenario after approval (manage_openaev_scenario schedule_recurrence); nothing was written."
+    )
+
+
+def register(
+    base_url: str,
+    headers: dict[str, str],
+    executor: CallableToolExecutor,
+    *,
+    waiting_validation_gate: str = "",
+) -> list[ToolDefinition]:
+    """The security coverage tool; *waiting_validation_gate* names the run's validation gate when it waits."""
+
     async def _gql(query: str, variables: dict[str, Any] | None = None) -> tuple[dict[str, Any], str | None]:
         async with _client(headers, timeout=30) as client:
             return await _graphql(client, base_url, headers, query, variables)
@@ -189,6 +216,8 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
         )
         if refused:
             return refused
+        if waiting_validation_gate and periodicity and action in ("create", "update"):
+            return periodicity_refusal(waiting_validation_gate, action)
 
         if action == "list":
             filters = None
@@ -345,7 +374,13 @@ def register(base_url: str, headers: dict[str, str], executor: CallableToolExecu
                     },
                     "name": {"type": "string"},
                     "description": {"type": "string"},
-                    "periodicity": {"type": "string", "description": "How often to re-test, ISO-8601 (e.g. P1D)."},
+                    "periodicity": {
+                        "type": "string",
+                        "description": (
+                            "How often to re-test, ISO-8601 (e.g. P1D). OpenAEV starts the scenario two minutes "
+                            "after a coverage with a periodicity; refused while the fleet's validation gate waits."
+                        ),
+                    },
                     "duration": {"type": "string", "description": "How long the coverage runs, ISO-8601 (e.g. P30D)."},
                     "type_affinity": {"type": "string", "description": "The kind of test, e.g. ENDPOINT or CLOUD."},
                     "platforms_affinity": {
