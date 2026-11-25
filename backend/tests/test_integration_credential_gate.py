@@ -290,6 +290,10 @@ PRIVATE_RESOLVERS: dict[str, set[str]] = {
         # token only creates, checks or deletes the assignment's own endpoint and
         # reads its event log for catch-up.
         "services/wordsmith_webhooks.py",
+        # Notion native webhooks (#2185): the Notion integration the delivery came
+        # through, for the assignment's run-as user (provisioning_user_id); the token
+        # only reads the delivered comment and the bot's own user (mentions_bot).
+        "services/notion_webhooks.py",
     },
     "_refresh_by_id": set(),
     "_try_inline_refresh": set(),
