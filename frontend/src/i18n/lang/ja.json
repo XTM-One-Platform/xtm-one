@@ -21821,5 +21821,8 @@
   "Waits for the remediation to be applied": "修復の適用待ち",
   "Waits for the validation to finish": "検証の完了待ち",
   "Watches whether the exposure comes back": "露出の再発を監視中",
-  "Last run by {agent}, {when}": "{agent} による最終実行、{when}"
+  "Last run by {agent}, {when}": "{agent} による最終実行、{when}",
+  "Partners read this agent's fleet": "パートナーがこのエージェントのフリートを読み取る",
+  "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "パートナーのタスクは、このエージェントのホームフリート、その健全性、作業項目、稼働中のビルドも読み取ります。他のフリートは読み取らず、書き込みも行いません。",
+  "Could not change the partner fleet reads": "パートナーのフリート読み取りを変更できませんでした"
 }
