@@ -34,6 +34,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from app.services import ctem_fixed_version as fixed_versions
+from app.services.ctem_dependency_matches import purl_parts
 
 #: Language package ecosystems (purl type) and the CPE ``target_sw`` words that name them.
 ECOSYSTEM_TARGETS: dict[str, frozenset[str]] = {
@@ -87,15 +88,16 @@ def cpe_fields(cpe: str | None) -> dict[str, str] | None:
 
 
 def purl_fields(purl: str | None) -> tuple[str, str] | None:
-    """``(type, namespace/name)`` of a Package URL, lower-cased, without version or qualifiers; else ``None``."""
-    value = (purl or "").strip().lower()
-    if not value.startswith("pkg:"):
+    """``(type, namespace/name)`` of a Package URL, lower-cased and percent-decoded, without version or qualifiers.
+
+    Read through :func:`ctem_dependency_matches.purl_parts`, so ``pkg:npm/%40babel/core`` and
+    ``pkg:npm/@babel/core`` (an unencoded scope, with or without a version) give the same path; else ``None``.
+    """
+    base, _version = purl_parts(purl)
+    if not base:
         return None
-    head = value[4:].split("?", 1)[0].split("#", 1)[0]
-    kind, _, path = head.partition("/")
-    base, at, _version = path.rpartition("@")
-    path = base if at else path
-    return (kind, path.strip("/")) if kind and path else None
+    kind, _, path = base[4:].partition("/")
+    return (kind, path.strip("/")) if kind and path.strip("/") else None
 
 
 def ecosystem(purl: str | None) -> str | None:

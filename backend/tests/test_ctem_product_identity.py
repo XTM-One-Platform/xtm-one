@@ -102,6 +102,16 @@ def test_cpe_and_purl_fields() -> None:
     assert identity.platform_of("cpe:2.3:a:minio:minio:*:*:*:*:*:*:*:*") is None
 
 
+@pytest.mark.parametrize(
+    "node_purl",
+    ["pkg:npm/%40babel/core@7.24.0", "pkg:npm/@babel/core", "pkg:npm/@babel/core@7.24.0", "pkg:NPM/%40Babel/Core"],
+)
+def test_an_encoded_and_an_unencoded_scope_are_the_same_package(node_purl: str) -> None:
+    assert identity.purl_fields(node_purl) == ("npm", "@babel/core")
+    entry = {"vendor": None, "cpe": None, "purl": "pkg:npm/@babel/core@7.23.0"}
+    assert identity.conflict(entry, {"vendor": None, "cpe": None, "x_opencti_purl": node_purl}) is None
+
+
 def test_an_os_case_reads_no_package_row_and_no_asset_of_another_os() -> None:
     """The windows case: a repository's ``windows`` crate and a macOS laptop never run Windows."""
     soft, asset = OrganizationAssetSoftware, OrganizationAsset
