@@ -2728,6 +2728,55 @@ BUILTIN_ASSIGNMENTS.extend(DETECTION_DESK_ASSIGNMENTS)
 BUILTIN_ASSIGNMENTS.extend(RISK_BUDGET_DESK_ASSIGNMENTS)
 BUILTIN_ASSIGNMENTS.extend(CTEM_POSTURE_ASSIGNMENTS)
 
+# ── One writer per counter of the CTEM loop states (#2250) ──
+# ctem:f1:state and ctem:f2:state hold the counters the monthly posture report reads.
+# Each counter has exactly one seeded writer, so concurrent runs neither skip nor
+# double count it: the case listener (up to CTEM_CASE_LISTENER_CONCURRENCY runs at
+# once) never writes them.
+CTEM_F1_STATE_KEY = "ctem:f1:state"
+CTEM_F2_STATE_KEY = "ctem:f2:state"
+#: Counter name -> the seeded assignment that alone writes it.
+CTEM_F1_COUNTER_WRITERS: dict[str, str] = {
+    "threats_reviewed": "Weekly threat sweep",
+    "threats_relevant": "Weekly threat sweep",
+    "last_refresh": "Weekly threat sweep",
+    "cases_resolved": "Re-test due",
+    "loss_avoided": "Re-test due",
+}
+CTEM_F2_COUNTER_WRITERS: dict[str, str] = {
+    "cve_triaged": "Daily backlog pass",
+    "cve_validated": "Daily backlog pass",
+    "last_pass": "Daily backlog pass",
+    "ticket_closed_retested": "Re-test due",
+}
+CTEM_CASE_NEVER_WRITES_COUNTERS = (
+    f"Never write {CTEM_F1_STATE_KEY} or {CTEM_F2_STATE_KEY}: the sweep, the daily pass and the "
+    "re-test keep their counters."
+)
+CTEM_F1_SWEEP_COUNTERS_RULE = (
+    f"Then, as the only writer of threats_reviewed, threats_relevant and last_refresh in "
+    f"{CTEM_F1_STATE_KEY}: read it, add this week's reviewed and relevant counts to the running "
+    "totals, set last_refresh to now (ISO 8601 UTC) in one set_shared_state call with a note naming "
+    "the week; when a note already names this week, a resumed run adds nothing."
+)
+CTEM_F1_RETEST_COUNTERS_RULE = (
+    f"when the re-test resolves the case, as the only writer of cases_resolved and loss_avoided in "
+    f"{CTEM_F1_STATE_KEY}: add 1 to cases_resolved and the case's loss avoided to loss_avoided in one "
+    "set_shared_state call whose note names the case id, once per case: when a note already names "
+    "this case id, add nothing"
+)
+CTEM_F2_RETEST_COUNTERS_RULE = (
+    f"when the re-test resolves the case, as the only writer of ticket_closed_retested in "
+    f"{CTEM_F2_STATE_KEY}: add 1 to it in one set_shared_state call whose note names the case id, "
+    "once per case: when a note already names this case id, add nothing"
+)
+CTEM_F2_PASS_COUNTERS_RULE = (
+    f"As the only writer of cve_triaged, cve_validated and last_pass in {CTEM_F2_STATE_KEY}: set "
+    "cve_triaged to the number of cases of this fleet list_ctem_cases returns, cve_validated to those "
+    "with a validation recorded, and last_pass to now (ISO 8601 UTC), in one set_shared_state call; "
+    "they are counted from the cases, never added to, so a second pass changes nothing."
+)
+
 # ── CTEM fleet F2 assignments (dev-docs/ctem-fleets.md s.4.2, #9120) ──
 _CTEM_F2_FLEET = "Vulnerability prioritization"
 _CTEM_F2_COMMON: dict = {
@@ -2748,7 +2797,7 @@ _CTEM_F2_TRIAGE_PROMPT = (
     "is affected, else record it with record_ctem_signal (trigger_path "
     "new_vulnerability, the CVE and the matched assets as subject, the OpenCTI "
     "id as source). The scope gate opens or joins its case, and the case "
-    "event runs the loop: do not start it here. {priority}"
+    "event runs the loop: do not start it here. " + CTEM_CASE_NEVER_WRITES_COUNTERS + " {priority}"
 )
 CTEM_F2_ASSIGNMENTS: list[dict] = [
     {
@@ -2857,8 +2906,9 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "Daily backlog pass. List the open CTEM cases with list_ctem_cases and "
             "read the organization context, re-read EPSS, KEV and sightings of their "
             "CVEs in OpenCTI, re-rank them, note on each case its next step "
-            "(validation, quantification, ticket, re-test) and move it there. Answer "
-            "with the ranked list: which cases to fix first."
+            "(validation, quantification, ticket, re-test) and move it there. "
+            + CTEM_F2_PASS_COUNTERS_RULE
+            + " Answer with the ranked list: which cases to fix first."
         ),
     },
     {
@@ -2878,8 +2928,9 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "the case loop, which writes it with record_ctem_case_validation (kind retest): a negative "
             "validation is inconclusive unless it proves the fixed version (conclusive true), so "
             "the case stays open; failed reopens it. Never wait for the result in this run. When the "
-            "result is written, record the OpenCRQ expected-loss delta in a case note and complete "
-            "the re-test item."
+            "result is written, record the OpenCRQ expected-loss delta in a case note, "
+            + CTEM_F2_RETEST_COUNTERS_RULE
+            + " and complete the re-test item."
         ),
     },
 ]
@@ -3015,7 +3066,8 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "case id, with an ask card addressed to a named person or team and a deadline; an armed "
             "`ctem-loop-reminder:` timer for the case id (arm_timer); or a terminal case state. A next "
             "step written only as prose leaves the case waiting on nobody. Never keep an "
-            "open item only in shared state. End with the case id, its state and the next step."
+            "open item only in shared state. " + CTEM_CASE_NEVER_WRITES_COUNTERS + " "
+            "End with the case id, its state and the next step."
         ),
     }
 
@@ -3314,7 +3366,7 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "(list_ctem_cases) or an open ctem:f1 work item already covers. "
             "Ask the Threat Relevance Analyst to score the rest in one batch (" + CTEM_RELEVANCE_RULE + "), "
             "and record the relevant ones in one record_ctem_signals call "
-            "(trigger_path relevant_threat, one row each). End with a short "
+            "(trigger_path relevant_threat, one row each). " + CTEM_F1_SWEEP_COUNTERS_RULE + " End with a short "
             "summary: threats reviewed, relevant, signals recorded."
         ),
     },
@@ -3339,7 +3391,7 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "record_ctem_case_validation (kind retest; conclusive false when the result does not prove "
             "the exposure gone, as you read it), failed reopens it. Never wait for the result in this run. "
             "When the result is written, ask the Risk Quantifier for the loss after, note the delta on the "
-            "case, bump the counters in ctem:f1:state and complete the re-test item."
+            "case, " + CTEM_F1_RETEST_COUNTERS_RULE + " and complete the re-test item."
         ),
     },
 ]
