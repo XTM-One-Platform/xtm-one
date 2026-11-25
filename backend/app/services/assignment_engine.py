@@ -163,7 +163,7 @@ from app.services.orchestration_engine import (
     notify_orchestration_wake,
     queued_deadline,
 )
-from app.services.tool_surface_refresh import IntegrationSurfaceRefresher
+from app.services.tool_surface_refresh import IntegrationSurfaceRefresher, rebuild_bound_builtin_groups
 from app.tools.base import FileContext, HumanInputRequestedError, ScopedToolExecutor
 from app.tools.wait_policy import WaitPolicy
 
@@ -8516,6 +8516,18 @@ async def execute_assignment_run(
                         _narrow_tool_surface,
                         # update_agent on this run's own agent refreshes it too (#2205).
                         agent_id=str(agent.id),
+                        # A built-in group granted in the run loads from the next step,
+                        # through its own gate for the person the run acts as (#2205).
+                        rebuild_builtins=(
+                            partial(
+                                rebuild_bound_builtin_groups,
+                                str(agent.id),
+                                str(effective_user_id),
+                                run_id=str(run.id),
+                            )
+                            if effective_user_id
+                            else None
+                        ),
                     )
                 # Tool groups the assignment declares are on the wire from the
                 # first request, so the cached prompt prefix holds all run.

@@ -135,3 +135,60 @@ async def test_refresh_adds_a_builtin_group_granted_in_the_run() -> None:
     result = await scoped.execute_tool(ToolCall(id="c4", name="load_skill", arguments={}))
     assert result.content == "builtin ran load_skill"
     assert not scoped.allows("delete_user")
+
+
+class _Row:
+    def __init__(self, **fields: object) -> None:
+        self.__dict__.update(fields)
+
+
+class _Session:
+    """A session that answers one agent row and one person by primary key."""
+
+    def __init__(self, agent: _Row, person: _Row) -> None:
+        self._rows = {"Agent": agent, "User": person}
+
+    async def __aenter__(self) -> _Session:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    async def get(self, model: type, _key: object) -> object:
+        return self._rows.get(model.__name__)
+
+
+def _granted_agent() -> _Row:
+    return _Row(
+        id="agent-a",
+        name="Admin desk",
+        slug="admin-desk",
+        is_builtin=False,
+        builtin_tool_ids=["user_admin"],
+        builtin_allowed_tools=None,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("is_admin", "loads"), [(True, True), (False, False)])
+async def test_a_bound_group_is_rebuilt_from_the_agent_row_through_its_gate(
+    monkeypatch: pytest.MonkeyPatch, is_admin: bool, loads: bool
+) -> None:
+    """user_admin granted in the run loads for an administrator, never for anyone else (#2205)."""
+    import app.core.database as database
+    from app.services.tool_surface_refresh import rebuild_bound_builtin_groups
+
+    person = _Row(id="user-1", is_admin=is_admin)
+    monkeypatch.setattr(database, "async_session", lambda: _Session(_granted_agent(), person))
+
+    groups = await rebuild_bound_builtin_groups("agent-a", "user-1", run_id="run-1")
+
+    names = {t.name for defs, _executor in groups for t in defs}
+    assert bool(names) is loads
+
+
+@pytest.mark.asyncio
+async def test_no_person_rebuilds_no_group() -> None:
+    from app.services.tool_surface_refresh import rebuild_bound_builtin_groups
+
+    assert await rebuild_bound_builtin_groups("agent-a", None) == []

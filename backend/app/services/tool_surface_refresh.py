@@ -47,6 +47,64 @@ NarrowSurface = Callable[[list[ToolDefinition]], list[ToolDefinition]]
 RebuildBuiltins = Callable[[], Awaitable[list[tuple[list[ToolDefinition], ToolExecutor]]]]
 
 
+async def rebuild_bound_builtin_groups(
+    agent_id: str,
+    user_id: str | None,
+    *,
+    run_id: str | None = None,
+    conversation_id: str | None = None,
+) -> list[tuple[list[ToolDefinition], ToolExecutor]]:
+    """The bound built-in groups a fresh turn of *agent_id* for *user_id* would wire now (#2205).
+
+    The agent row and the acting person are read again in a session of their
+    own (the loop holds none), and each group goes through its own gate
+    (``offers_*`` / ``*_tools_for``), so a group granted by ``update_agent`` in
+    the run loads from the next step and a group the person may not run never
+    does. The groups covered are the ones bound by a write of the agent's
+    ``builtin_tool_ids``: the administrator groups (organization profile
+    write, user administration) and the CTEM groups.
+    """
+    if not agent_id or not user_id:
+        return []
+    from app.core.database import async_session
+    from app.models.agent import Agent
+    from app.models.user import User
+    from app.services.builtin_tool_aliases import runtime_builtin_tool_ids
+    from app.services.builtin_tools import (
+        build_organization_context_write_tools,
+        build_user_admin_tools,
+        ctem_read_tools_for,
+        ctem_repair_tools_for,
+        ctem_tools_for,
+        offers_organization_context_write,
+        offers_user_admin,
+    )
+
+    async with async_session() as db:
+        agent = await db.get(Agent, agent_id)
+        person = await db.get(User, user_id)
+    if agent is None:
+        return []
+    is_admin = bool(getattr(person, "is_admin", False))
+    ids = runtime_builtin_tool_ids(list(agent.builtin_tool_ids or []), getattr(agent, "builtin_allowed_tools", None))
+    groups: list[tuple[list[ToolDefinition], ToolExecutor]] = []
+    if offers_organization_context_write(ids, acting_user_id=user_id, acting_is_admin=is_admin):
+        groups.append(
+            build_organization_context_write_tools(
+                user_id=user_id, caller_is_admin=is_admin, agent_name=agent.name, conversation_id=conversation_id
+            )
+        )
+    if offers_user_admin(ids, acting_user_id=user_id, acting_is_admin=is_admin):
+        groups.append(
+            build_user_admin_tools(user_id=user_id, caller_is_admin=is_admin, agent_name=agent.name, run_id=run_id)
+        )
+    for build in (ctem_read_tools_for, ctem_tools_for, ctem_repair_tools_for):
+        built = build(agent, ids, user_id=user_id)
+        if built is not None:
+            groups.append(built)
+    return groups
+
+
 def integration_tool_names(tools: list[ToolDefinition]) -> set[str]:
     """The names of the integration tools in *tools* (source ``integration:<provider>``)."""
     return {t.name for t in tools if (t.source or "").startswith(INTEGRATION_SOURCE_PREFIX)}
