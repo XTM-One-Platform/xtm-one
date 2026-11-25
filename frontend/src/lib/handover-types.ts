@@ -45,6 +45,10 @@ type HandoverTypeMap = Readonly<Record<string, string>>;
 /** The picker value of a target in the legacy mode, which runs every type. */
 export const ALL_HANDOVER_TYPES = "__all__";
 
+/** The stored entry of a target that runs every type in a map that holds a
+ *  type (`app/services/handover_types.py` ALL_TYPES). */
+export const STORED_ALL_HANDOVER_TYPES = "all";
+
 function holdsAType(types: HandoverTypeMap | null | undefined): types is HandoverTypeMap {
   return !!types && Object.keys(types).length > 0;
 }
@@ -62,9 +66,14 @@ export function shownHandoverType(
 ): string {
   if (!holdsAType(types)) return ALL_HANDOVER_TYPES;
   const type = types[agentId];
-  // A merged map (a fleet node of the map) marks a target that runs every type.
-  if (type === ALL_HANDOVER_TYPES) return ALL_HANDOVER_TYPES;
-  return type !== undefined && runnableTypes.includes(type) ? type : "delegate";
+  // A merged map (a fleet node of the map) marks a target that runs every type,
+  // and so does a stored "all" (update_agent's merge, #2207).
+  if (type === ALL_HANDOVER_TYPES || type === STORED_ALL_HANDOVER_TYPES) return ALL_HANDOVER_TYPES;
+  if (type !== undefined && runnableTypes.includes(type)) return type;
+  // An entry of several types ("consult|delegate") is shown by the first one
+  // it runs, in the backend's order (consult, delegate, transfer).
+  const parts = (type ?? "").split("|");
+  return ["consult", "delegate", "transfer"].find((t) => parts.includes(t) && runnableTypes.includes(t)) ?? "delegate";
 }
 
 export function runnableHandoverTypes(

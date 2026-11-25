@@ -81,6 +81,13 @@ test("a target of an explicit map is shown as it runs", () => {
   assert.equal(shownHandoverType(types, "untyped", RUNNABLE), "delegate");
 });
 
+test("a stored all runs every type, an entry of several types is shown by the first it runs (#2207)", () => {
+  const types = { a: "all", b: "delegate|consult", c: "transfer" };
+  assert.equal(shownHandoverType(types, "a", RUNNABLE), ALL_HANDOVER_TYPES);
+  assert.equal(shownHandoverType(types, "b", RUNNABLE), "consult");
+  assert.equal(shownHandoverType(types, "c", RUNNABLE), "transfer");
+});
+
 test("the first type picked in an empty map types every target and names the ones it narrows", () => {
   assert.deepEqual(withHandoverType(["a", "b", "c"], {}, "b", "consult"), {
     types: { a: "delegate", b: "consult", c: "delegate" },
