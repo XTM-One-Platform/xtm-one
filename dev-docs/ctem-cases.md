@@ -221,7 +221,8 @@ The platform enforces the line where the card is written, not in a prompt:
 keyed `ctem:remediation:`, `ctem:f1:case-mobilize:` or `ctem:f2:mobilize:`
 and a case id, when the case is an upgrade and the ask has no `Version match:`
 line: the line goes first in the context, then, when blind, "Proposed without
-version matching: ..." and "Verify the running version, then upgrade". A case
+version matching: ..." and "Verify the running version before acting" (never
+"then upgrade": the recommended option may be another treatment, #2174). A case
 that cannot be read leaves the ask as given; the version is never guessed.
 
 ### 4.2ter Running versions from the asset inventory (#1252)
@@ -1086,6 +1087,8 @@ Product spelling (#2037): an upgrade key of the same version whose product match
 ### 9ter. Remediation decision (CTEM-17)
 
 No decision structure is stored on the case: the decision is the gate `ctem.remediation.decision` of the fleet catalog (CTEM-34), its outcome a `gate` event plus one `note` event listing every option. Rule, no model call: a level or pin of the agent's home fleet that makes the gate wait always wins (no home fleet, or a fleet that does not declare the gate: it waits); otherwise, only when `risk_appetite.approval_threshold` is set, an expected loss above it (or unknown to the deciding user) waits unless the recommended option is a pre-approved runbook; with no threshold the recommendation is applied and recorded "decided by policy". A wait opens one `needs_human` work item keyed `ctem:remediation:<case id>` whose `ask` is the unified decision (`services/decision_ask.py`): question, options with their effect, recommendation; the answer is recorded with `answered_option`. Option figures come from OpenCRQ read with the acting user's identity; a user with no OpenCRQ access (`organization_context_opencrq._opencrq_connection` refuses) gets the options without cost or expected loss in the ask. The case trail (the `gate` event reason and the `note`) never carries a figure, whoever decides: every viewer of the case reads its history whatever their own OpenCRQ access, so the figures stay in the ask and the tool answer (`Decision.case_reason`, `outcome_note`). Tests: `tests/test_ctem_remediation_decision.py`, `tests/test_ctem_case_tools.py`.
+
+The card the decision opens (#2174): an option's label (120 characters), residual risk (160), time to apply (60), runbook (120) and `not_priced_reason` (120) are refused when longer, naming the field, its length and its room, never cut. An option with no figure reads `not priced: <not_priced_reason>` (`no risk figures given` when the agent gave none) instead of `cost unknown`. The context opens with the case severity and the case's `sla_due_at` is the ask's `deadline`. The `work_item.needs_human` payload names `waits_for_user_id` and `waits_for_group_ids`, so a listener reads who the decision waits for.
 
 ### 9quater. Treatment plan in OpenCRQ (CTEM-18)
 
