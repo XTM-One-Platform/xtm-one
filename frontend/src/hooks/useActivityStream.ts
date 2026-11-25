@@ -8,6 +8,7 @@ import { checkSession } from "@/hooks/api/useAuthApi";
 import { clickerKey } from "@/hooks/api/usePresentationClicker";
 import { API_BASE, endSession, getToken } from "@/lib/api";
 import { streamRetry } from "@/lib/activity-stream-retry";
+import { createCaseRefreshCoalescer } from "@/lib/case-refresh-coalescer";
 import { globalToast } from "@/lib/global-toast";
 import { useFormatter } from "@/i18n";
 import { SESSION_EXPIRED_CODE, streamSessionEndReason } from "@/lib/session";
@@ -31,6 +32,16 @@ export function useActivityStream() {
     let disposed = false;
     let opened = false;
     let retrying = false;
+
+    // A case-opening drain sends one frame per case: the Cases list and the
+    // open case pages re-read at most once per window (dev-docs/ctem-cases.md).
+    const caseRefresh = createCaseRefreshCoalescer((caseIds) => {
+      qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
+      for (const caseId of caseIds) {
+        qc.invalidateQueries({ queryKey: ["ctem-cases", "case", caseId] });
+        qc.invalidateQueries({ queryKey: ["ctem-signals", "case", caseId] });
+      }
+    });
 
     const es = new EventSource(`${API_BASE}/activity/stream?token=${token}`);
     eventSourceRef.current = es;
@@ -116,13 +127,10 @@ export function useActivityStream() {
         return;
       }
       // A case opened, joined, validated or past its SLA (CTEM-03-UI, #892):
-      // the board, Act now and the case page re-read through the API.
+      // the board, Act now and the case page re-read through the API, coalesced
+      // so a drain's burst of frames costs one list read per window.
       if (parsed?.type === "ctem_case_update") {
-        qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
-        if (parsed.case_id) {
-          qc.invalidateQueries({ queryKey: ["ctem-cases", "case", parsed.case_id] });
-          qc.invalidateQueries({ queryKey: ["ctem-signals", "case", parsed.case_id] });
-        }
+        caseRefresh.push(parsed.case_id);
         return;
       }
 
@@ -205,6 +213,7 @@ export function useActivityStream() {
     return () => {
       disposed = true;
       if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      caseRefresh.dispose();
       es.close();
       eventSourceRef.current = null;
     };

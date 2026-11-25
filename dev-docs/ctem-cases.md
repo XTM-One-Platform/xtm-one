@@ -443,7 +443,11 @@ explained. A single-platform answer draws the card as before.
     failing never stops the others;
   - the page open: `GET /ctem-cases` starts a background recompute for a viewer
     whose last one is older than the interval (the same one-per-minute slot);
-    the list re-reads on the `ctem_case_update` frame, in place, no toast;
+    the list re-reads on the `ctem_case_update` frame, in place, no toast; a
+    burst of frames (a case-opening drain) is coalesced: the first frame after
+    a quiet window re-reads at once, the rest of the window ends with one
+    re-read of the list and of the open case pages it named, so a tab reads
+    the list at most once per 5 s window (`frontend/src/lib/case-refresh-coalescer.ts`, #2092);
   - events: an OpenAEV or OpenCTI delivery that already moves a case (s.9bis,
     `ctem_openaev_events`) keeps doing so between passes.
   Every recompute records its freshness (`freshness` on the list answer:
