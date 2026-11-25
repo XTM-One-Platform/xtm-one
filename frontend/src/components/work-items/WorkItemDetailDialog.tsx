@@ -56,6 +56,7 @@ import { Tip } from "@/components/ui/tooltip";
 import { DisclosureSummary } from "@/components/ui/disclosure";
 import { BlockedStatusBadge } from "@/components/work-items/BlockedStatusBadge";
 import { WorkItemAskAgent, offersAskTheAgent } from "@/components/work-items/WorkItemAskAgent";
+import { WorkItemCaseLink } from "@/components/work-items/WorkItemCaseLink";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import { WorkItemFiles } from "@/components/work-items/WorkItemFiles";
 import { CLOSE_EFFECTS, REQUEUE_EFFECT, staleBadgeText, staleReasonText } from "@/lib/work-item-effects";
@@ -508,6 +509,8 @@ function Body({ item, actions, onClose }: { item: WorkItem; actions: WorkItemAct
 
       <div className="max-h-[62vh] space-y-5 overflow-y-auto pr-1" data-testid="work-item-detail">
         {deciding && <WorkItemDecisionCard item={item} canAnswer={!!actions.answer} onAnswered={onClose} />}
+        {/* An item on a CTEM case, answered or not, opens its case first (#2370); the card above carries it when deciding. */}
+        {!deciding && <WorkItemCaseLink item={item} />}
         {!deciding && !scheduled && offersAskTheAgent(item) && (
           <section className="rounded-sm border border-elevation-subtle p-3" data-testid="work-item-ask-agent-section">
             <WorkItemAskAgent item={item} bordered={false} onDone={onClose} />

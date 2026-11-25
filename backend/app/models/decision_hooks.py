@@ -345,6 +345,13 @@ def work_item_opening(item: Any) -> Opening:
 
     # The pull requests and issues the item tracks, as link buttons, when its ask names no source (#1177).
     ask = with_reference_links(ask, getattr(item, "blocked_on_refs", None), getattr(item, "payload", None)) or ask
+    from app.core.config import settings
+    from app.services.work_item_ctem_case import with_case_link
+
+    # The CTEM case a gate is about, as the first link button of every card surface (#2370).
+    ask = with_case_link(
+        ask, getattr(item, "correlation_key", None), getattr(item, "payload", None), settings.frontend_url or ""
+    )
     groups = [str(g) for g in (getattr(item, "waits_for_group_ids", None) or []) if g]
     if groups:
         # Addressed to groups (#1748): the row names the first, the ask carries them all

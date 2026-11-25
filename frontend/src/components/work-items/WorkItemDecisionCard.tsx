@@ -51,6 +51,7 @@ import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
 import { DecisionCard, type DecisionAnswer, type DecisionOption, type DecisionView } from "@/components/decisions/DecisionCard";
 import { useToast } from "@/components/ui/toast";
 import { WorkItemAskAgent } from "@/components/work-items/WorkItemAskAgent";
+import { WorkItemCaseLink, linksWithoutCase } from "@/components/work-items/WorkItemCaseLink";
 import { useAnswerWorkItem } from "@/hooks/api/useWorkItemApi";
 import { useFormatter } from "@/i18n";
 import type { WorkItem, WorkItemAskOption } from "@/types";
@@ -86,7 +87,9 @@ export function workItemDecisionView(item: WorkItem, t_i18n: Translate): Decisio
     options: askOptions(ask?.options ?? [], t_i18n),
     recommendation: ask?.recommendation ?? null,
     deadline: ask?.deadline ?? null,
-    links: ask?.links?.length ? ask.links : (fallback?.links ?? []),
+    // The case the item is about leads the card (#2370); an agent link to the same case is not shown twice.
+    links: linksWithoutCase(ask?.links?.length ? ask.links : (fallback?.links ?? []), item.ctem_case),
+    lead: item.ctem_case ? <WorkItemCaseLink item={item} /> : undefined,
     asker: asker?.accessible && asker.name ? asker.name : null,
     technical: technical ? <p className="whitespace-pre-wrap break-words">{technical}</p> : undefined,
     notice: fallback ? (
