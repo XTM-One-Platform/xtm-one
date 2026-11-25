@@ -50,7 +50,7 @@ async function draftFromPlatforms() {
 }
 /** The cards CTEM > Inventory mounts in place of the three tabs that left Settings (#1178, #1690). */
 const INVENTORY_CARDS = {
-  business: ["crown_jewels", "shipped_products", "tracked_organizations"],
+  business: ["primary_assets", "shipped_products", "tracked_organizations"],
   technology: ["software"],
   exposure: ["prioritization_policy", "outside_lens", "evidence_health"],
 } as const;
@@ -85,7 +85,7 @@ const CONTEXT: OrganizationContextResponse = {
     sub_sector: "",
     regions: ["FR"],
     size: "",
-    crown_jewels: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
+    primary_assets: [{ name: "Payments", business_service: "Cards", owner: "CISO", criticality: "critical", opencrq_asset_id: "" }],
     software: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },
@@ -416,7 +416,7 @@ describe("OrganizationSection", () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) =>
       path === "/organization-context"
-        ? { ...CONTEXT, profile: { ...CONTEXT.profile, crown_jewels: [{ name: long, business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "" }] } }
+        ? { ...CONTEXT, profile: { ...CONTEXT.profile, primary_assets: [{ name: long, business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "" }] } }
         : base(path),
     );
     renderPage("business");
@@ -843,6 +843,58 @@ describe("OrganizationSection", () => {
     expect(screen.getByText("Retail threats (bbbb2222)")).toBeTruthy();
   });
 
+  it("draws no PIR details card on the profile: the details open from each PIR of the policy card (#1974)", async () => {
+    withPirs({ pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null }, { pir_ids: ["pir-1"] });
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
+    expect(screen.queryByTestId("settings.organization.pir-details")).toBeNull();
+    expect(screen.queryByText("PIR details")).toBeNull();
+  });
+
+  it("shows each PIR's completeness and saves its details from the dialog, the others kept (#1974)", async () => {
+    withPirs(
+      { pirs: [{ id: "pir-1", name: "Ransomware on energy" }, { id: "pir-2", name: "Retail threats" }], unavailable: null },
+      {
+        pir_ids: ["pir-1", "pir-2"],
+        pir_details: {
+          "pir-1": { question: "Who targets us?", owner: "CTI", review_cadence: "", primary_assets: [] },
+          "pir-2": { question: "Which retail groups?", owner: "", review_cadence: "monthly", primary_assets: ["Payments"] },
+        },
+      },
+    );
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
+    renderPolicy();
+    const open = await screen.findByRole("button", { name: "Details of Ransomware on energy, 2 of 4 set" });
+    expect(screen.getByRole("button", { name: "Details of Retail threats, 3 of 4 set" })).toBeTruthy();
+    fireEvent.click(open);
+    const dialog = await screen.findByTestId("settings.organization.pir-details-dialog");
+    expect(within(dialog).getByText("PIR details: Ransomware on energy")).toBeTruthy();
+    const question = within(dialog).getByLabelText("Question") as HTMLInputElement;
+    expect(question.value).toBe("Who targets us?");
+    fireEvent.change(within(dialog).getByLabelText("Owner"), { target: { value: "SOC" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    const [, body] = patch.mock.calls[0] as [string, { fields: { pir_details: Record<string, { owner: string }> } }];
+    expect(body.fields.pir_details["pir-1"].owner).toBe("SOC");
+    expect(body.fields.pir_details["pir-2"]).toEqual({ question: "Which retail groups?", owner: "", review_cadence: "monthly", primary_assets: ["Payments"] });
+    expect(Object.keys(body.fields)).toEqual(["pir_details"]);
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("opens the same details read-only for a reader, with no Save (#1974)", async () => {
+    // A reader never reads the administrators-only PIR list: the name saved with the PIR names it.
+    withPirs({ pirs: [], unavailable: null }, { pir_ids: ["pir-1"], pir_names: { "pir-1": "Ransomware on energy" } });
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/ctem/inventory/exposure"]}>
+        <OrganizationSection embed={{ cards: ["prioritization_policy"], readOnly: true }} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Details of Ransomware on energy, 0 of 4 set" }));
+    const dialog = await screen.findByTestId("settings.organization.pir-details-dialog");
+    expect(within(dialog).getByTestId("settings.organization.pir-details-read")).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
   it("shows eight PIRs, then +N more in place (#9615)", async () => {
     const ids = Array.from({ length: 11 }, (_, i) => `pir-${i}`);
     withPirs({ pirs: ids.map((id) => ({ id, name: `Name ${id}` })), unavailable: null, opencti_url: "" }, { pir_ids: ids });
@@ -898,7 +950,7 @@ describe("OrganizationSection", () => {
   });
 
   it("names no source on the primary assets card, even with an OpenCRQ primary-asset sync saved (#1883)", async () => {
-    const opencrqSync = { id: "s-crq", section: "crown_jewels", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: new Date().toISOString(), last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
+    const opencrqSync = { id: "s-crq", section: "primary_assets", source: "opencrq", filters: {}, batch_type: "", remove_gone: false, frequency: "daily", hour: 6, minute: 0, weekday: 0, timezone: "UTC", enabled: true, paused_reason: "", owner_email: "admin@example.com", next_run_at: null, last_run_at: new Date().toISOString(), last_result: { added: 1, updated: 0, removed: 0, version: 4, error: null } };
     const base = get.getMockImplementation();
     get.mockImplementation(async (path: string) => (path.startsWith("/organization-context/syncs") ? [opencrqSync] : base?.(path)));
     renderPage("business");
@@ -974,7 +1026,7 @@ describe("OrganizationSection", () => {
         ? []
         : {
             ...CONTEXT,
-            profile: { ...CONTEXT.profile, crown_jewels: [{ ...CONTEXT.profile.crown_jewels[0], opencrq_asset_id: "a-1" }] },
+            profile: { ...CONTEXT.profile, primary_assets: [{ ...CONTEXT.profile.primary_assets[0], opencrq_asset_id: "a-1" }] },
           },
     );
     renderPage("business");
@@ -984,11 +1036,11 @@ describe("OrganizationSection", () => {
   it("restores the primary assets of a past version alone, from the version it starts from (#1558)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) => {
-      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
+      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, primary_assets: [] } };
       if (path.startsWith("/organization-context/versions?"))
         return [
-          { version: 46, source: "form", created_at: "2026-11-23T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 0 },
-          { version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 2 },
+          { version: 46, source: "form", created_at: "2026-11-23T10:00:00Z", author_user_id: null, missing_fields: [], primary_assets: 0 },
+          { version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], primary_assets: 2 },
         ];
       if (path === "/organization-context/versions/28")
         return {
@@ -996,7 +1048,7 @@ describe("OrganizationSection", () => {
           version: 28,
           profile: {
             ...CONTEXT.profile,
-            crown_jewels: [
+            primary_assets: [
               { name: "Payments", business_service: "", owner: "", criticality: "critical", opencrq_asset_id: "" },
               { name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" },
             ],
@@ -1004,7 +1056,7 @@ describe("OrganizationSection", () => {
         };
       return base(path);
     });
-    post.mockResolvedValue({ ...CONTEXT, version: 47, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Payments" }, { name: "Ledger" }] } });
+    post.mockResolvedValue({ ...CONTEXT, version: 47, profile: { ...CONTEXT.profile, primary_assets: [{ name: "Payments" }, { name: "Ledger" }] } });
     renderPage("business");
     fireEvent.click(await screen.findByRole("button", { name: /Restore from a past version/ }));
     const dialog = await screen.findByTestId("settings.organization.restore-dialog");
@@ -1016,18 +1068,18 @@ describe("OrganizationSection", () => {
     expect(within(dialog).getByText("Critical (criticality)")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Restore version 28" }));
     await waitFor(() =>
-      expect(post).toHaveBeenCalledWith("/organization-context/versions/28/restore", { fields: ["crown_jewels"], based_on_version: 46 }),
+      expect(post).toHaveBeenCalledWith("/organization-context/versions/28/restore", { fields: ["primary_assets"], based_on_version: 46 }),
     );
   });
 
   it("shows a refused restore inline in the dialog and offers a reload of the versions on a 409 (#1567 UX B2)", async () => {
     const base = get.getMockImplementation()!;
     get.mockImplementation(async (path: string) => {
-      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, crown_jewels: [] } };
+      if (path === "/organization-context") return { ...CONTEXT, version: 46, profile: { ...CONTEXT.profile, primary_assets: [] } };
       if (path.startsWith("/organization-context/versions?"))
-        return [{ version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], crown_jewels: 1 }];
+        return [{ version: 28, source: "form", created_at: "2026-11-20T10:00:00Z", author_user_id: null, missing_fields: [], primary_assets: 1 }];
       if (path === "/organization-context/versions/28")
-        return { ...CONTEXT, version: 28, profile: { ...CONTEXT.profile, crown_jewels: [{ name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" }] } };
+        return { ...CONTEXT, version: 28, profile: { ...CONTEXT.profile, primary_assets: [{ name: "Ledger", business_service: "", owner: "", criticality: "high", opencrq_asset_id: "" }] } };
       return base(path);
     });
     post.mockRejectedValue(Object.assign(new Error("The profile changed since version 46 (now version 47)."), { status: 409 }));
@@ -1124,11 +1176,11 @@ describe("OrganizationSection", () => {
 
   it("a link to one card (?card=) focuses the card on CTEM > Inventory > Business (CTEM calls to action, #1690)", async () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/ctem/inventory/business?card=crown_jewels"]}>
+      <MemoryRouter initialEntries={["/ctem/inventory/business?card=primary_assets"]}>
         <OrganizationSection embed={{ cards: INVENTORY_CARDS.business }} />
       </MemoryRouter>,
     );
-    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-crown_jewels$/));
+    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.id ?? "").toMatch(/-primary_assets$/));
   });
 
   it("lands ?card=tracked_organizations on the card root, never on a wrapper (UX r1 B2 on #108)", async () => {

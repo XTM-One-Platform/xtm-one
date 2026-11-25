@@ -20,10 +20,10 @@ describe("organization row provenance (#1134)", () => {
   });
 
   it("locks a platform row but for its local enrichment fields", () => {
-    expect(columnEditable("manual", "name", LOCAL_FIELDS.crown_jewels)).toBe(true);
-    expect(columnEditable("opencrq", "name", LOCAL_FIELDS.crown_jewels)).toBe(false);
-    expect(columnEditable("opencrq", "criticality", LOCAL_FIELDS.crown_jewels)).toBe(false);
-    expect(columnEditable("opencrq", "business_service", LOCAL_FIELDS.crown_jewels)).toBe(true);
+    expect(columnEditable("manual", "name", LOCAL_FIELDS.primary_assets)).toBe(true);
+    expect(columnEditable("opencrq", "name", LOCAL_FIELDS.primary_assets)).toBe(false);
+    expect(columnEditable("opencrq", "criticality", LOCAL_FIELDS.primary_assets)).toBe(false);
+    expect(columnEditable("opencrq", "business_service", LOCAL_FIELDS.primary_assets)).toBe(true);
     expect(columnEditable("openaev", "owner", LOCAL_FIELDS.assets_exposure)).toBe(true);
   });
 

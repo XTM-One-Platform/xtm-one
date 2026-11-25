@@ -27,8 +27,10 @@ source products decide what the viewer sees.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -186,6 +188,11 @@ query CtemCaseVulnsById($filters: FilterGroup, $first: Int) {
 
 #: Most closed-member lookups by id one OpenAEV read makes (the rest wait for the next read).
 AEV_LOOKUP_CAP = 200
+#: OpenAEV lookups by id in flight at once (#1986): one finding per call, so they go in parallel, bounded.
+AEV_LOOKUP_CONCURRENCY = 8
+
+#: The product names of the log lines.
+_PRODUCT_LABELS = {"opencti": "OpenCTI", "openaev": "OpenAEV"}
 
 _AEV_CVE_FINDINGS_FILTER = {
     "mode": "and",
@@ -510,7 +517,11 @@ async def _read_opencti(
     fixes: list[dict[str, Any]] = []
     for start in range(0, len(vuln_ids), _PAGE):
         batch = {"to": vuln_ids[start : start + _PAGE], "first": _PAGE * 2}
-        data, err = await _graphql(client, base_url, headers, _OCTI_REMEDIATIONS, batch)
+        # The courses of action and the remediating Software of a batch are independent reads (#1986).
+        (data, err), (fix_data, fix_err) = await asyncio.gather(
+            _graphql(client, base_url, headers, _OCTI_REMEDIATIONS, batch),
+            _graphql(client, base_url, headers, _OCTI_SOFTWARE_REMEDIATES, batch),
+        )
         if err:  # no course of action is a known state: R2 still answers
             logger.info("CTEM cases: OpenCTI courses of action unavailable: %s", err)
         else:
@@ -518,13 +529,12 @@ async def _read_opencti(
                 (e or {}).get("node") or {}
                 for e in ((data or {}).get("stixCoreRelationships") or {}).get("edges") or []
             )
-        data, err = await _graphql(client, base_url, headers, _OCTI_SOFTWARE_REMEDIATES, batch)
-        if err:  # no remediating Software is a known state: the fixed version stays unknown
-            logger.info("CTEM cases: OpenCTI remediating software unavailable: %s", err)
+        if fix_err:  # no remediating Software is a known state: the fixed version stays unknown
+            logger.info("CTEM cases: OpenCTI remediating software unavailable: %s", fix_err)
         else:
             fixes.extend(
                 (e or {}).get("node") or {}
-                for e in ((data or {}).get("stixCoreRelationships") or {}).get("edges") or []
+                for e in ((fix_data or {}).get("stixCoreRelationships") or {}).get("edges") or []
             )
     issues = opencti_issues(software, stack, relations, remediations, fixes)
     return OpenCtiRead(issues, complete and len(issues) < OCTI_ISSUE_CAP)
@@ -607,12 +617,20 @@ async def _read_opencti_by_id(
 async def _read_openaev_by_id(
     client: httpx.AsyncClient, base_url: str, headers: dict[str, str], ids: list[str]
 ) -> list[rules.SourceIssue] | None:
-    """The findings among *ids* the reader can read; a 403 or 404 is not visible, not an outage."""
+    """The findings among *ids* the reader can read; a 403 or 404 is not visible, not an outage.
+
+    One call per finding, at most :data:`AEV_LOOKUP_CONCURRENCY` in flight (#1986).
+    """
+    gate = asyncio.Semaphore(AEV_LOOKUP_CONCURRENCY)
+
+    async def lookup(fid: str) -> tuple[Any, str | None]:
+        async with gate:
+            return await _api(
+                base_url, headers, "get", f"/api/findings/{fid}", "get finding", client=client, retry_transient=True
+            )
+
     found: list[dict[str, Any]] = []
-    for fid in ids[:AEV_LOOKUP_CAP]:
-        resp, err = await _api(
-            base_url, headers, "get", f"/api/findings/{fid}", "get finding", client=client, retry_transient=True
-        )
+    for resp, err in await asyncio.gather(*(lookup(fid) for fid in ids[:AEV_LOOKUP_CAP])):
         if resp is not None and resp.status_code == 200:
             body = resp.json()
             if isinstance(body, dict):
@@ -622,6 +640,30 @@ async def _read_openaev_by_id(
             logger.info("CTEM cases: OpenAEV lookup by id unavailable: %s", err)
             return None
     return openaev_issues(found)
+
+
+async def _read_product(
+    user_id: str, provider: str, read: Callable[[httpx.AsyncClient], Awaitable[Any]]
+) -> tuple[Any, str | BaseException | None]:
+    """One product's read with its own client: ``(found, error)``, *found* ``None`` on a failure.
+
+    Run as a task of its own (#1986), so the read context it binds and the read
+    error a reader sets stay in that task.
+    """
+    _bind_read_context(user_id, provider)
+    _read_error.set(None)
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            found = await read(client)
+        return found, _read_error.get()
+    except Exception as exc:
+        logger.warning(
+            "CTEM cases: %s read failed as user %s: %s",
+            _PRODUCT_LABELS.get(provider, provider),
+            user_id,
+            format_exception_message(exc),
+        )
+        return None, exc
 
 
 async def read_open_issues(
@@ -656,17 +698,25 @@ async def read_open_issues(
                 )
                 creds[provider] = None
         octi = creds.get("opencti")
-        _bind_read_context(user_id, "opencti")
+        aev = creds.get("openaev")
+        # The two products are read at once (#1986), each in its own task: the read context
+        # and the read error of one never reach the other.
+        reads: dict[str, Awaitable[tuple[Any, str | BaseException | None]]] = {}
         if octi and stack:
-            base_url, headers = octi
-            _read_error.set(None)
-            try:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    found = await _read_opencti(client, base_url, attach_probe(headers, base_url), stack)
-                error: str | BaseException | None = _read_error.get()
-            except Exception as exc:
-                logger.warning("CTEM cases: OpenCTI read failed as user %s: %s", user_id, format_exception_message(exc))
-                found, error = None, exc
+            octi_url, octi_headers = octi
+            reads["opencti"] = _read_product(
+                user_id,
+                "opencti",
+                lambda client: _read_opencti(client, octi_url, attach_probe(octi_headers, octi_url), stack),
+            )
+        if aev:
+            aev_url, aev_headers = aev
+            reads["openaev"] = _read_product(
+                user_id, "openaev", lambda client: _read_openaev(client, aev_url, aev_headers, now)
+            )
+        answers = dict(zip(reads, await asyncio.gather(*reads.values()), strict=True))
+        if "opencti" in answers:
+            found, error = answers["opencti"]
             if found is None:
                 out.fail("opencti", failure_reason(error))
                 logger.info("CTEM cases: OpenCTI missing for user %s: %s", user_id, out.reasons["opencti"])
@@ -676,18 +726,8 @@ async def read_open_issues(
         elif not octi:
             out.fail("opencti", REASON_NOT_CONNECTED)
             logger.info("CTEM cases: OpenCTI missing for user %s: %s", user_id, REASON_NOT_CONNECTED)
-        aev = creds.get("openaev")
-        _bind_read_context(user_id, "openaev")
-        if aev:
-            base_url, headers = aev
-            _read_error.set(None)
-            try:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    found_aev = await _read_openaev(client, base_url, headers, now)
-                error = _read_error.get()
-            except Exception as exc:
-                logger.warning("CTEM cases: OpenAEV read failed as user %s: %s", user_id, format_exception_message(exc))
-                found_aev, error = None, exc
+        if "openaev" in answers:
+            found_aev, error = answers["openaev"]
             if found_aev is None:
                 out.fail("openaev", failure_reason(error))
                 logger.info("CTEM cases: OpenAEV missing for user %s: %s", user_id, out.reasons["openaev"])
@@ -715,20 +755,24 @@ async def _read_closed_members(
         if member_id not in open_ids and source not in out.missing and creds.get(source):
             wanted.setdefault(source, []).append(external_id)
     readers = {"opencti": _read_opencti_by_id, "openaev": _read_openaev_by_id}
-    for source, ids in wanted.items():
-        reader = readers.get(source)
-        cred = creds.get(source)
-        if reader is None or cred is None:
-            continue
+
+    async def lookup(source: str, cred: tuple[str, dict[str, str]], ids: list[str]) -> list[rules.SourceIssue] | None:
+        reader = readers[source]
         base_url, headers = cred
         if source == "opencti":
             headers = attach_probe(headers, base_url)
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                found = await reader(client, base_url, headers, sorted(ids))
+                return await reader(client, base_url, headers, sorted(ids))
         except Exception as exc:
             logger.warning("CTEM cases: %s lookup by id failed: %s", source, format_exception_message(exc))
-            found = None
+            return None
+
+    # The products are looked up at once (#1986).
+    lookups = {s: cred for s in wanted if s in readers and (cred := creds.get(s)) is not None}
+    answers = await asyncio.gather(*(lookup(s, cred, wanted[s]) for s, cred in lookups.items()))
+    for source, found in zip(lookups, answers, strict=True):
+        ids = wanted[source]
         if found is None:
             out.complete = False
             continue
@@ -822,10 +866,10 @@ async def _signal_members(db: AsyncSession, *, organization_id: uuid.UUID, user_
             external_id=str(s.id),
             name=(s.subject_label or s.subject_ref or s.trigger_path)[:300],
             assets=(s.subject_ref,) if s.subject_kind == "asset" else (),
-            crown_jewels=tuple(
+            primary_assets=tuple(
                 str(j.get("name"))
                 for j in ((s.decision or {}).get("scope") or {}).get("sources") or []
-                if isinstance(j, dict) and j.get("from") == "crown_jewel" and j.get("name")
+                if isinstance(j, dict) and j.get("from") == "primary_asset" and j.get("name")
             ),
             first_seen_at=s.first_seen_at,
         )

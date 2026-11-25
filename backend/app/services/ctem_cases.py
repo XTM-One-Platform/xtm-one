@@ -78,7 +78,7 @@ class SourceIssue:
     epss: float | None = None
     kev: bool = False
     assets: tuple[str, ...] = ()
-    crown_jewels: tuple[str, ...] = ()
+    primary_assets: tuple[str, ...] = ()
     first_seen_at: datetime | None = None
     #: The version the organization profile declares for the matched product (CTEM-11).
     installed_version: str | None = None
@@ -559,14 +559,14 @@ def aggregates(members: Iterable[SourceIssue]) -> dict[str, object]:
     """The counts and maxima a case carries for its list row."""
     members = list(members)
     assets = {a for m in members for a in m.assets}
-    jewels = {j for m in members for j in m.crown_jewels}
+    jewels = {j for m in members for j in m.primary_assets}
     cvss = [m.cvss for m in members if m.cvss is not None]
     epss = [m.epss for m in members if m.epss is not None]
     seen = [m.first_seen_at for m in members if m.first_seen_at is not None]
     return {
         "issue_count": len(members),
         "asset_count": len(assets),
-        "crown_jewel_count": len(jewels),
+        "primary_asset_count": len(jewels),
         "kev_count": sum(1 for m in members if m.kev),
         "max_cvss": max(cvss) if cvss else None,
         "max_epss": max(epss) if epss else None,

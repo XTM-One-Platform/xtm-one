@@ -18,17 +18,22 @@ that viewer is what they see.
   member issues is visible to them (absent from lists and counts, 404 on
   read); otherwise every visible issue in full, every other member as a
   ``{"restricted": true}`` row (the OpenCTI "Restricted" pattern), the
-  priority, scores, assets and crown jewels computed on the visible issues
+  priority, scores, assets and primary assets computed on the visible issues
   only, the member count total with the restricted count, and the history
   with "Restricted" in place of an issue the viewer cannot see.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
+import time
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
@@ -124,7 +129,7 @@ class ViewerView:
 def _issue_json(issue: rules.SourceIssue) -> dict[str, Any]:
     out = asdict(issue)
     out["assets"] = list(issue.assets)
-    out["crown_jewels"] = list(issue.crown_jewels)
+    out["primary_assets"] = list(issue.primary_assets)
     out["first_seen_at"] = issue.first_seen_at.isoformat() if issue.first_seen_at else None
     return out
 
@@ -132,7 +137,7 @@ def _issue_json(issue: rules.SourceIssue) -> dict[str, Any]:
 def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     data = dict(data)
     data["assets"] = tuple(data.get("assets") or ())
-    data["crown_jewels"] = tuple(data.get("crown_jewels") or ())
+    data["primary_assets"] = tuple(data.get("primary_assets") or ())
     seen = data.get("first_seen_at")
     data["first_seen_at"] = datetime.fromisoformat(seen) if seen else None
     data["version_outcomes"] = tuple(tuple(pair) for pair in data.get("version_outcomes") or ())
@@ -203,6 +208,41 @@ async def signal_members(db: Any, user_id: str) -> set[str]:
     return {f"{SIGNAL_SOURCE}:{i}" for i in ids}
 
 
+#: The phases a request timed (#1986): name -> milliseconds, set by :func:`start_timing`.
+_timings: ContextVar[dict[str, float] | None] = ContextVar("ctem_cases_timings", default=None)
+
+
+def start_timing() -> dict[str, float]:
+    """Start timing the phases of this request; the dict fills as :func:`timed` phases end."""
+    phases: dict[str, float] = {}
+    _timings.set(phases)
+    return phases
+
+
+@asynccontextmanager
+async def timed(phase: str) -> AsyncIterator[None]:
+    """Add the duration of the block to *phase* of the request's timings, when they are started."""
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        phases = _timings.get()
+        if phases is not None:
+            phases[phase] = phases.get(phase, 0.0) + (time.perf_counter() - start) * 1000
+
+
+def mark(phase: str, value: str) -> None:
+    """Record a fact of the request (``cache=hit``) beside its timings, as a zero-length phase."""
+    phases = _timings.get()
+    if phases is not None:
+        phases[f"{phase}-{value}"] = 0.0
+
+
+def server_timing(phases: dict[str, float]) -> str:
+    """The ``Server-Timing`` header of *phases* (``name;dur=12.3``), in the order they ended."""
+    return ", ".join(f"{re.sub(r'[^A-Za-z0-9_-]', '_', name)};dur={ms:.1f}" for name, ms in phases.items())
+
+
 async def viewer_view(db: Any, user_id: str, vertical: str, *, fresh: bool = False) -> ViewerView:
     """The viewer's own view of the source, from the per-user cache unless *fresh*.
 
@@ -210,10 +250,13 @@ async def viewer_view(db: Any, user_id: str, vertical: str, *, fresh: bool = Fal
     ids of the shared cases so the closed members the viewer can still read
     are found by id. The signal members are read fresh on every call.
     """
-    view = await _product_view(db, user_id, vertical, fresh=fresh)
+    async with timed("view"):
+        view = await _product_view(db, user_id, vertical, fresh=fresh)
     seen = set(view.issues) | set(view.unavailable)
-    signals = await signal_members(db, user_id) | await source_signal_members(db, seen)
-    return replace(view, signals=signals, signal_details=await signal_details(db, signals))
+    async with timed("signals"):
+        signals = await signal_members(db, user_id) | await source_signal_members(db, seen)
+        details = await signal_details(db, signals)
+    return replace(view, signals=signals, signal_details=details)
 
 
 def signal_detail(signal: CtemSignal) -> dict[str, Any]:
@@ -280,19 +323,75 @@ async def source_signal_members(db: Any, seen: set[str]) -> set[str]:
     }
 
 
-async def _product_view(db: Any, user_id: str, vertical: str, *, fresh: bool) -> ViewerView:
-    from app.services import ctem_cases_source as source
+#: One build of a viewer's view at a time per (user, vertical, generation) on this worker (#1986):
+#: the case page reads the case and the list together, both wait for the one source read.
+_build_locks: dict[str, asyncio.Lock] = {}
+_build_lock_refs: dict[str, int] = {}
 
+
+@asynccontextmanager
+async def _singleflight(key: str) -> AsyncIterator[None]:
+    """Hold the build lock of *key*, dropped once no request waits on it (no growth on a long worker)."""
+    lock = _build_locks.setdefault(key, asyncio.Lock())
+    _build_lock_refs[key] = _build_lock_refs.get(key, 0) + 1
+    try:
+        async with lock:
+            yield
+    finally:
+        remaining = _build_lock_refs.get(key, 1) - 1
+        if remaining > 0:
+            _build_lock_refs[key] = remaining
+        else:
+            _build_lock_refs.pop(key, None)
+            _build_locks.pop(key, None)
+
+
+async def _cached_view(client: Any, user_id: str, vertical: str, generation: str) -> ViewerView | None:
+    try:
+        cached = await client.get(_view_key(user_id, vertical, generation))
+        if cached:
+            return ViewerView.from_json(cached)
+    except Exception:
+        logger.info("CTEM cases: view cache unreadable for %s", user_id, exc_info=True)
+    return None
+
+
+async def _product_view(db: Any, user_id: str, vertical: str, *, fresh: bool) -> ViewerView:
     client = await _redis()
     generation = await _generation(client, vertical) if client is not None else "0"
     if client is not None and not fresh:
-        try:
-            cached = await client.get(_view_key(user_id, vertical, generation))
-            if cached:
-                return ViewerView.from_json(cached)
-        except Exception:
-            logger.info("CTEM cases: view cache unreadable for %s", user_id, exc_info=True)
-    view = await source.read_view(db, user_id, vertical)
+        cached = await _cached_view(client, user_id, vertical, generation)
+        if cached is not None:
+            mark("cache", "hit")
+            return cached
+    if client is None:
+        return await _build_view(db, client, user_id, vertical, generation)
+    async with _singleflight(_view_key(user_id, vertical, generation)):
+        # A request that waited on the lock finds the view the first one built.
+        if not fresh:
+            cached = await _cached_view(client, user_id, vertical, generation)
+            if cached is not None:
+                mark("cache", "shared")
+                return cached
+        mark("cache", "miss")
+        return await _build_view(db, client, user_id, vertical, generation)
+
+
+async def _build_view(db: Any, client: Any, user_id: str, vertical: str, generation: str) -> ViewerView:
+    from app.services import ctem_cases_source as source
+
+    started = time.perf_counter()
+    async with timed("source"):
+        view = await source.read_view(db, user_id, vertical)
+    logger.info(
+        "CTEM cases: view of %s built in %.0f ms (vertical %s, generation %s, %d issues, missing %s)",
+        user_id,
+        (time.perf_counter() - started) * 1000,
+        vertical,
+        generation,
+        len(view.issues),
+        view.missing,
+    )
     if view.missing and client is not None:
         # Ids the viewer was shown from a product that does not answer now:
         # still theirs to see, with the details marked unavailable.
@@ -360,7 +459,7 @@ def _visible_issue(
         "epss": issue.epss,
         "kev": issue.kev,
         "assets": list(issue.assets),
-        "crown_jewels": list(issue.crown_jewels),
+        "primary_assets": list(issue.primary_assets),
         "first_seen_at": issue.first_seen_at.isoformat() if issue.first_seen_at else None,
         "open": row.open,
         # The version knowledge of this viewer's own OpenCTI read (CTEM-11, #946; shown by #928).
@@ -400,7 +499,7 @@ def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCas
 SEVERITY_PRIORITY: dict[str, str] = {"P1": "critical", "P2": "high", "P3": "medium"}
 
 #: The aggregates computed from member details: null for a viewer missing the details of an open member.
-DETAIL_AGGREGATES: tuple[str, ...] = ("asset_count", "crown_jewel_count", "kev_count", "max_cvss", "max_epss")
+DETAIL_AGGREGATES: tuple[str, ...] = ("asset_count", "primary_asset_count", "kev_count", "max_cvss", "max_epss")
 #: Why they are null: the reader repeats it instead of reading "none".
 AGGREGATES_RESTRICTED_REASON = (
     "unknown for this reader: some open issues of the case are not readable with their details "
@@ -459,7 +558,7 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "aggregates_restricted": bool(without_details),
         "aggregates_reason": AGGREGATES_RESTRICTED_REASON if without_details else None,
         "asset_count": agg["asset_count"],
-        "crown_jewel_count": agg["crown_jewel_count"],
+        "primary_asset_count": agg["primary_asset_count"],
         "kev_count": agg["kev_count"],
         "max_cvss": agg["max_cvss"],
         "max_epss": agg["max_epss"],

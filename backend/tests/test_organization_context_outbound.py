@@ -19,7 +19,7 @@ OK: dict[str, Any] = {"frequency": "daily", "hour": 6, "minute": 0, "weekday": 0
 
 
 def _profile(*jewels: dict) -> oc.OrganizationProfile:
-    return oc.parse_profile({"name": "Acme", "crown_jewels": list(jewels)})
+    return oc.parse_profile({"name": "Acme", "primary_assets": list(jewels)})
 
 
 def test_every_import_pairing_names_its_directions_and_inbound_is_always_offered():
@@ -29,36 +29,36 @@ def test_every_import_pairing_names_its_directions_and_inbound_is_always_offered
             assert outbound.INBOUND in supported
             assert (outbound.OUTBOUND in supported) == (reason == ""), (section, source)
     # #1591: OpenCRQ primary assets are read only; the old push wrote them as supporting assets.
-    assert not outbound.supports("crown_jewels", "opencrq", outbound.OUTBOUND)
-    assert "primary assets" in outbound.directions("crown_jewels", "opencrq")[1]
+    assert not outbound.supports("primary_assets", "opencrq", outbound.OUTBOUND)
+    assert "primary assets" in outbound.directions("primary_assets", "opencrq")[1]
 
 
 def test_validate_refuses_outbound_where_the_platform_cannot_be_written():
-    osync.validate(section="crown_jewels", source="opencrq", direction="inbound", **OK)
+    osync.validate(section="primary_assets", source="opencrq", direction="inbound", **OK)
     with pytest.raises(osync.SyncRefusedError, match="cannot be outbound"):
-        osync.validate(section="crown_jewels", source="opencrq", direction="outbound", **OK)
+        osync.validate(section="primary_assets", source="opencrq", direction="outbound", **OK)
     with pytest.raises(osync.SyncRefusedError, match="cannot be outbound"):
         osync.validate(section="assets", source="opencti", direction="outbound", **OK)
     with pytest.raises(osync.SyncRefusedError, match="cannot be outbound"):
         osync.validate(section="all", source="", direction="outbound", **OK)
     with pytest.raises(osync.SyncRefusedError, match="inbound or outbound"):
-        osync.validate(section="crown_jewels", source="opencrq", direction="both", **OK)
+        osync.validate(section="primary_assets", source="opencrq", direction="both", **OK)
 
 
 def test_define_keeps_the_stored_direction_when_omitted_and_a_new_direction_forgets_the_created_rows():
     inbound = SimpleNamespace(direction="inbound", outbound_ids={})
     # A save that omits the direction (a PUT from an older client) keeps the stored one.
-    osync.define(inbound, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq")
+    osync.define(inbound, owner_id=uuid.uuid4(), section="primary_assets", source="opencrq")
     assert inbound.direction == "inbound" and inbound.outbound_ids == {}
     # #1591: a stored outbound OpenCRQ sync is refused until saved inbound, which forgets the created rows.
     sync = SimpleNamespace(direction="outbound", outbound_ids={"crm": "a1"})
     with pytest.raises(osync.SyncRefusedError, match="cannot be outbound"):
-        osync.define(sync, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq")
+        osync.define(sync, owner_id=uuid.uuid4(), section="primary_assets", source="opencrq")
     assert sync.outbound_ids == {"crm": "a1"}
-    osync.define(sync, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq", direction="inbound")
+    osync.define(sync, owner_id=uuid.uuid4(), section="primary_assets", source="opencrq", direction="inbound")
     assert sync.direction == "inbound" and sync.outbound_ids == {}
     new = SimpleNamespace()
-    osync.define(new, owner_id=uuid.uuid4(), section="crown_jewels", source="opencrq")
+    osync.define(new, owner_id=uuid.uuid4(), section="primary_assets", source="opencrq")
     assert new.direction == "inbound" and new.outbound_ids == {}
 
 
@@ -131,7 +131,7 @@ async def test_an_outbound_run_records_the_created_rows_and_audits(monkeypatch):
 
     sync = SimpleNamespace(
         id=uuid.uuid4(),
-        section="crown_jewels",
+        section="primary_assets",
         source="opencrq",
         direction="outbound",
         outbound_ids={},
@@ -144,7 +144,7 @@ async def test_an_outbound_run_records_the_created_rows_and_audits(monkeypatch):
     result = await osync.run_sync(_Db(), sync, trigger="schedule")
     assert (result["direction"], result["added"], result["error"]) == ("outbound", 1, None)
     assert sync.outbound_ids == {"crm": "new-id"}
-    assert calls["audit"][0]["summary"].startswith("Outbound organization sync of crown_jewels to opencrq")
+    assert calls["audit"][0]["summary"].startswith("Outbound organization sync of primary_assets to opencrq")
 
 
 def _ai_profile(*rows: dict) -> oc.OrganizationProfile:
@@ -237,7 +237,10 @@ async def test_an_ai_target_outbound_run_writes_openaev_and_records_ids(monkeypa
         return _Resp(), None
 
     async def current_version(_db):
-        return SimpleNamespace(profile={"name": "Acme", "assets_exposure": [{"name": "Bot", "category": "ai_target"}]})
+        return SimpleNamespace(
+            organization_id=None,
+            profile={"name": "Acme", "assets_exposure": [{"name": "Bot", "category": "ai_target"}]},
+        )
 
     monkeypatch.setattr(cmc, "_user_creds", creds)
     monkeypatch.setattr(imp, "_openaev_search", search)
@@ -248,3 +251,166 @@ async def test_an_ai_target_outbound_run_writes_openaev_and_records_ids(monkeypa
     assert plan.error == ""
     assert calls == [("post", "/api/ai_targets"), ("delete", "/api/ai_targets/gone-id")]
     assert ids == {"bot": "new-id"}
+
+
+# ── #1982 S1: asset groups to OpenAEV, outbound filters ──────────────────────
+
+
+def _group_profile() -> oc.OrganizationProfile:
+    return oc.parse_profile(
+        {
+            "name": "Acme",
+            "assets_exposure": [
+                {"name": "web-1", "category": "host", "source": "openaev", "external_id": "oa-web-1", "group": "DMZ"},
+                # A typed row of the same name as an OpenAEV record resolves to that record.
+                {"name": "db-1", "category": "host", "group": "DMZ"},
+                {"name": "db-1", "category": "host", "source": "openaev", "external_id": "oa-db-1"},
+                # No OpenAEV counterpart: reported, never created as an endpoint.
+                {"name": "laptop-9", "category": "host", "group": "DMZ"},
+                {"name": "api-1", "category": "web_application", "source": "openaev", "external_id": "oa-api-1"},
+            ],
+            "asset_groups": [
+                {"name": "DMZ", "description": "Exposed hosts", "tags": ["prod"]},
+                {
+                    "name": "Apps",
+                    "tags": ["dev"],
+                    "membership_rule": {"categories": ["web_application"]},
+                },
+                {"name": "Theirs", "source": "openaev", "external_id": "oa-g9"},
+            ],
+        }
+    )
+
+
+def test_asset_groups_can_sync_outbound_to_openaev():
+    osync.validate(section="asset_groups", source="openaev", direction="outbound", **OK)
+    supported, reason = outbound.directions("asset_groups", "openaev")
+    assert outbound.OUTBOUND in supported and reason == ""
+
+
+def test_asset_group_plan_creates_resolves_members_and_skips_openaev_groups():
+    plan = outbound.plan_asset_group_outbound(_group_profile(), {}, {})
+    assert [name for name, _ in plan.create] == ["DMZ", "Apps"]
+    assert plan.members["DMZ"] == ["oa-db-1", "oa-web-1"]
+    assert plan.members["Apps"] == ["oa-api-1"]  # joined by the membership rule
+    assert plan.unlinked == ["DMZ: laptop-9"]
+    assert plan.skipped == ["Theirs"]
+    assert plan.bodies["DMZ"] == {
+        "asset_group_tags": [],
+        "asset_group_name": "DMZ",
+        "asset_group_description": "Exposed hosts",
+    }
+    assert plan.summary()["unlinked_members"] == ["DMZ: laptop-9"]
+
+
+def test_asset_group_plan_updates_with_openaev_fields_kept_and_is_idempotent():
+    dmz = {
+        "asset_group_id": "g1",
+        "asset_group_name": "DMZ",
+        "asset_group_description": "old text",
+        "asset_group_tags": ["tag-1"],
+        "asset_group_dynamic_filter": {"mode": "and", "filters": []},
+        "asset_group_assets": ["oa-web-1"],
+    }
+    apps = {"asset_group_id": "g2", "asset_group_name": "Apps", "asset_group_assets": ["oa-api-1"]}
+    plan = outbound.plan_asset_group_outbound(_group_profile(), {"g1": dmz, "g2": apps}, {"dmz": "g1", "apps": "g2"})
+    assert plan.create == []
+    assert [(gid, name) for gid, name, _ in plan.update] == [("g1", "DMZ")]  # Apps is in step
+    body = plan.bodies["DMZ"]
+    # OpenAEV's PUT replaces every field: its tags and dynamic filter go back as read (#1702).
+    assert body["asset_group_tags"] == ["tag-1"]
+    assert body["asset_group_dynamic_filter"] == {"mode": "and", "filters": []}
+    assert plan.members["DMZ"] == ["oa-db-1", "oa-web-1"]
+    in_step = {**dmz, "asset_group_description": "Exposed hosts", "asset_group_assets": ["oa-web-1", "oa-db-1"]}
+    again = outbound.plan_asset_group_outbound(
+        _group_profile(), {"g1": in_step, "g2": apps}, {"dmz": "g1", "apps": "g2"}
+    )
+    assert again.create == [] and again.update == [] and again.delete == []
+
+
+def test_a_group_leaving_the_filter_is_deleted_only_when_this_sync_created_it():
+    apps = {"asset_group_id": "g2", "asset_group_name": "Apps", "asset_group_assets": ["oa-api-1"]}
+    plan = outbound.plan_asset_group_outbound(_group_profile(), {"g2": apps}, {"apps": "g2"}, {"tags": ["prod"]})
+    assert [name for name, _ in plan.create] == ["DMZ"]
+    assert plan.delete == [("apps", "g2")]
+    # A group the sync did not create is never deleted, filter or not.
+    other = outbound.plan_asset_group_outbound(_group_profile(), {}, {}, {"tags": ["nothing"]})
+    assert other.create == [] and other.delete == []
+
+
+def test_outbound_row_matches_reads_the_import_filter_keys_on_the_row():
+    row = oc.AssetEntry(name="Web-1", category="host", criticality="high", environment="production", tags=["Prod"])
+    assert outbound.outbound_row_matches(row, {})
+    assert outbound.outbound_row_matches(row, {"tags": ["prod"], "criticality": ["HIGH", "very_high"]})
+    assert not outbound.outbound_row_matches(row, {"category": ["web_application"]})
+    assert not outbound.outbound_row_matches(row, {"environment": "staging"})
+    assert outbound.outbound_row_matches(row, {"search": "web"})
+    assert not outbound.outbound_row_matches(row, {"search": "db"})
+    # A key the row's kind does not carry selects every row: a group has no category.
+    group = oc.AssetGroupEntry(name="DMZ")
+    assert outbound.outbound_row_matches(group, {"category": ["host"]})
+
+
+def test_ai_target_plan_honours_the_outbound_filter():
+    profile = _ai_profile({"name": "Copilot", "tags": ["prod"]}, {"name": "Lab bot", "tags": ["lab"]})
+    plan = outbound.plan_ai_target_outbound(
+        profile, [{"asset_id": "made-lab", "asset_name": "Lab bot"}], {"lab bot": "made-lab"}, {"tags": ["prod"]}
+    )
+    assert [name for name, _ in plan.create] == ["Copilot"]
+    assert plan.delete == [("lab bot", "made-lab")]
+
+
+@pytest.mark.asyncio
+async def test_an_asset_group_outbound_run_reads_before_writing_and_records_ids(monkeypatch):
+    from app.integrations.providers.openaev import _common as oaev
+    from app.services import ctem_metrics_collector as cmc
+
+    calls: list[tuple[str, str, Any]] = []
+
+    async def creds(_db, _user, _provider):
+        return "https://oaev", {}
+
+    class _Resp:
+        def __init__(self, status: int, body: Any):
+            self.status_code, self._body = status, body
+
+        def json(self):
+            return self._body
+
+    async def api(_base, _headers, method, path, _action, **kw):
+        calls.append((method, path, kw.get("json")))
+        if method == "get" and path.endswith("/gone"):
+            return None, "OpenAEV read asset group failed: HTTP 404 Not Found"
+        if method == "get":
+            return _Resp(200, {"asset_group_id": "old", "asset_group_name": "Old"}), None
+        return _Resp(200, {"asset_group_id": "new-g"}), None
+
+    async def current_version(_db):
+        return SimpleNamespace(
+            organization_id=None,
+            profile={
+                "name": "Acme",
+                "assets_exposure": [
+                    {"name": "web-1", "category": "host", "source": "openaev", "external_id": "oa-1", "group": "DMZ"}
+                ],
+                "asset_groups": [{"name": "DMZ"}],
+            },
+        )
+
+    monkeypatch.setattr(cmc, "_user_creds", creds)
+    monkeypatch.setattr(oaev, "_api", api)
+    monkeypatch.setattr(oc, "current_version", current_version)
+    sync = SimpleNamespace(
+        section="asset_groups", source="openaev", outbound_ids={"old": "old", "vanished": "gone"}, filters={}
+    )
+    plan, ids = await outbound.run_outbound(None, sync, user_id=uuid.uuid4(), apply=True)
+    assert plan.error == ""
+    assert [(m, p) for m, p, _ in calls] == [
+        ("get", "/api/asset_groups/old"),
+        ("get", "/api/asset_groups/gone"),
+        ("post", "/api/asset_groups"),
+        ("put", "/api/asset_groups/new-g/assets"),
+        ("delete", "/api/asset_groups/old"),
+    ]
+    assert calls[3][2] == {"asset_group_assets": ["oa-1"]}
+    assert ids == {"dmz": "new-g"}

@@ -40,7 +40,7 @@ const PROFILE = {
     sub_sector: "",
     regions: ["FR"],
     size: "",
-    crown_jewels: [],
+    primary_assets: [],
     software: [],
     pir_ids: [],
     risk_appetite: { annual_loss_threshold: null, approval_threshold: null },

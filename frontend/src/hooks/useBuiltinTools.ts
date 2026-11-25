@@ -56,9 +56,9 @@ export interface BuiltinToolOption {
    *  an agent's grid shows it locked, and keeps it removable where the agent
    *  already carries it (`toggledInAgentConfig`). */
   bindLocked?: boolean;
-  /** A Platform Health specialist's suite, carried by the Platform Health fleet's own
-   *  agents: a chat's session picker never offers it. */
-  healthOnly: boolean;
+  /** Internal to Platform Health (#1943): carried by its fleet's own agents
+   *  alone, so no picker, Tools page or chat offers it. */
+  internal: boolean;
   /** False for an id this build's registry does not list. */
   known: boolean;
   /** Function names the suite grants on this deployment. */
@@ -72,7 +72,7 @@ export interface BuiltinToolCatalog {
   offered: (surface: BuiltinToolSurface) => BuiltinToolOption[];
   /** The suites a chat's session picker offers: the General Assistant's own,
    *  or in an agent chat `offeredInAgentChat` (`lib/builtin-tool-offers.ts`);
-   *  never a Platform Health specialist's suite (`healthOnly`). */
+   *  never an internal suite (`internal`). */
   offeredInChat: (agentChat: boolean, agent?: ChatAgentTools) => BuiltinToolOption[];
   /** The suites an agent's configuration grid lists: the ones it offers, plus
    *  a switched-off one the agent carries, saved or in the draft, so it can be
@@ -139,7 +139,7 @@ export function useBuiltinTools(): BuiltinToolCatalog {
       agentOnly: group.agent_keyed,
       assistantAdminOnly: group.admin_only,
       bindLocked: !!group.bind_admin_only && !isAdmin,
-      healthOnly: group.health_only,
+      internal: group.internal,
       known: true,
       functions: group.functions,
     });
@@ -150,6 +150,7 @@ export function useBuiltinTools(): BuiltinToolCatalog {
       options.filter(
         (option) =>
           option.available &&
+          !option.internal &&
           (surface === "agent" || (!option.agentOnly && (isAdmin || !option.assistantAdminOnly))),
       );
     return {
@@ -158,7 +159,7 @@ export function useBuiltinTools(): BuiltinToolCatalog {
         (agentChat
           ? offeredInAgentChat(offered("agent"), agent, { userId, isAdmin })
           : offered("general_assistant")
-        ).filter((option) => !option.healthOnly),
+        ),
       listedInAgentConfig: (saved, draft) => listedInAgentConfig(options, saved, draft),
       carries: (ids, suiteId) => carriesSuite(ids, suiteId, aliases),
       canonicalIds: (ids) => canonicalSuiteIds(ids ?? [], aliases),
@@ -175,7 +176,7 @@ export function useBuiltinTools(): BuiltinToolCatalog {
           available: true,
           agentOnly: false,
           assistantAdminOnly: false,
-          healthOnly: false,
+          internal: false,
           known: false,
           functions: [],
         },

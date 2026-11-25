@@ -24,7 +24,7 @@ const BASE: ProfileForm = {
   sub_sector: "",
   regions: [],
   size: "",
-  crown_jewels: [],
+  primary_assets: [],
   software: [],
   pir_ids: [],
   annual_loss_threshold: "",
@@ -190,7 +190,7 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
 
   it("counts a customized PIR threshold as a set policy, a default one not (#1000 review)", () => {
     mockApi();
-    const empty = { cvss_min: null, epss_min: null, kev_always_in: true, internet_exposure_required: false, min_crown_jewel_criticality: "", exclusions: [], accepted_risks: [] };
+    const empty = { cvss_min: null, epss_min: null, kev_always_in: true, internet_exposure_required: false, min_primary_asset_criticality: "", exclusions: [], accepted_risks: [] };
     const atDefault: ProfileForm = { ...BASE, prioritization_policy: { ...empty, pir_min_score_vulnerability: 70, pir_min_score_threat: 75 } };
     const { unmount } = renderWithProviders(<Harness initial={atDefault} editing={false} />);
     expect(within(screen.getByTestId("settings.organization.prioritization-policy")).getByText(/No policy yet/)).toBeTruthy();
@@ -202,7 +202,7 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
 
   it("ignores the policy keys the backend adds with their defaults (scope, SLA) when telling a set policy", () => {
     mockApi();
-    const empty = { cvss_min: null, epss_min: null, kev_always_in: true, internet_exposure_required: false, min_crown_jewel_criticality: "", exclusions: [], accepted_risks: [] };
+    const empty = { cvss_min: null, epss_min: null, kev_always_in: true, internet_exposure_required: false, min_primary_asset_criticality: "", exclusions: [], accepted_risks: [] };
     const stored = { ...empty, scope_min_criticality: "high", require_risk_scenario: false, sla_hours: { p1: 24, p2: 72, p3: 720 }, pir_min_score_vulnerability: 70, pir_min_score_threat: 75 };
     const form = { ...BASE, prioritization_policy: stored } as ProfileForm;
     renderWithProviders(<Harness initial={form} editing={false} />);

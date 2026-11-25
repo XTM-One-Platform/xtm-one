@@ -103,7 +103,7 @@ from app.api.v1.versioning_helpers import to_version_detail, to_version_item
 from app.core.database import get_db
 from app.core.utils import build_content_disposition, fit_copy_name, text_column_error
 from app.models.agent import Agent
-from app.models.agent_skill import AgentSkill
+from app.models.agent_skill import AgentSkill, is_internal_skill
 from app.models.agent_skill_package_origin import AgentSkillPackageOrigin
 from app.models.agent_skill_resource import AgentSkillResource
 from app.models.custom_tool import CustomTool
@@ -1358,7 +1358,9 @@ async def list_skills(
 ):
     """List skills visible to the current user (own + group-shared + company-managed).
 
-    ``scope=all`` lists every skill for an admin (what a detail page links to).
+    ``scope=all`` lists every skill for an admin (what a detail page links to). The
+    default scope is the catalogue and the pickers: an internal built-in skill (bound to
+    a fleet's own agents only, #1943) is left out of it.
     """
     user_group_ids = await get_user_group_ids(db, user.id)
     result = await db.execute(
@@ -1367,6 +1369,8 @@ async def list_skills(
         )
     )
     skills = result.scalars().all()
+    if scope == "visible":
+        skills = [s for s in skills if not is_internal_skill(s.tags)]
     names = await resolve_owner_names(db, skills)
     return [
         _to_response(

@@ -33,7 +33,7 @@ const SOURCES = {
         { source: "defender", available: false, reason: "no token for the Microsoft Defender integration: authorize it again", reason_code: "no_token", filters: [] },
       ],
     },
-    { section: "crown_jewels", field: "crown_jewels", sources: [{ source: "opencrq", available: true, reason: "", filters: ["min_criticality", "tenant_id"] }] },
+    { section: "primary_assets", field: "primary_assets", sources: [{ source: "opencrq", available: true, reason: "", filters: ["min_criticality", "tenant_id"] }] },
   ],
 };
 

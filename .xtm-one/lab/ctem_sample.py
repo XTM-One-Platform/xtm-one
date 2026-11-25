@@ -394,7 +394,7 @@ SCREENS_ISSUES: tuple[dict, ...] = (
     _cti(8, "CVE-2017-0145", "Windows Server", "Microsoft", None, 8.8, 0.95, coa=_SMB),
     {
         "source": "openaev", "external_id": "finding-lab-0001", "name": "CVE-2024-21762", "cve": "CVE-2024-21762",
-        "cvss": 9.8, "assets": ("fw-paris-01", "fw-lyon-02"), "crown_jewels": ("Customer SaaS hosting",),
+        "cvss": 9.8, "assets": ("fw-paris-01", "fw-lyon-02"), "primary_assets": ("Customer SaaS hosting",),
         "days_ago": 2,
     },
     {"source": "openaev", "external_id": "finding-lab-0002", "name": "Weak TLS cipher on the VPN gateway",

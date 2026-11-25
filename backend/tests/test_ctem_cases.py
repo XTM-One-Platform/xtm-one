@@ -331,16 +331,16 @@ def test_default_priority(issue, priority):
     assert cc.default_priority([issue]) == priority
 
 
-def test_aggregates_count_distinct_assets_and_crown_jewels():
+def test_aggregates_count_distinct_assets_and_primary_assets():
     members = [
-        _cti("v1", "CVE-1", cvss=9.8, epss=0.9, kev=True, assets=("web-1", "web-2"), crown_jewels=("billing",)),
+        _cti("v1", "CVE-1", cvss=9.8, epss=0.9, kev=True, assets=("web-1", "web-2"), primary_assets=("billing",)),
         _cti("v2", "CVE-2", cvss=6.5, assets=("web-2",), first_seen_at=NOW - timedelta(days=3)),
     ]
     agg = cc.aggregates(members)
     assert agg == {
         "issue_count": 2,
         "asset_count": 2,
-        "crown_jewel_count": 1,
+        "primary_asset_count": 1,
         "kev_count": 1,
         "max_cvss": 9.8,
         "max_epss": 0.9,
