@@ -1837,8 +1837,13 @@ async def cancel_sub_agent_task(
     requester_id: str,
     *,
     is_admin: bool = False,
+    spawned_by: str | None = None,
 ) -> dict | None:
     """Cancel a single background sub-agent task (owner or admin).
+
+    ``spawned_by`` (an agent id) narrows the gate to the tasks that agent
+    spawned: the agent-facing ``cancel_background_task`` tool passes its own
+    id, so an agent stops only its own tasks of the acting user (#2217).
 
     Best-effort, durable cancellation:
       * The ``sub_agent`` orchestration execution is transitioned to the FSM
@@ -1893,6 +1898,8 @@ async def cancel_sub_agent_task(
         # Hide existence from non-owners (owner-or-admin gate).
         is_owner = task.user_id == requester_uuid
         if not (is_owner or is_admin):
+            return None
+        if spawned_by is not None and str(task.parent_agent_id) != str(spawned_by):
             return None
 
         if task.status in ("completed", "failed", "cancelled", "incomplete"):

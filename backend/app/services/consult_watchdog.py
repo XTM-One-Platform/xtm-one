@@ -72,6 +72,7 @@ import hashlib
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.utils import format_exception_message
@@ -377,6 +378,92 @@ def durable_consult_key(target_id: str, question: str) -> str:
     return f"consult:{str(target_id)[:8]}-{digest}"
 
 
+#: How far back an open durable ask of the same caller to the same target is
+#: reused instead of filing a twin (#2218): a caller that re-relays a question
+#: in new words after a cut lands on the ask already open.
+TWIN_ASK_WINDOW = timedelta(minutes=30)
+
+
+async def open_twin_ask(
+    *, user_id: str | None, caller_agent_id: str, target_id: str
+) -> tuple[str, str] | None:
+    """The newest open durable ask of *caller_agent_id* to *target_id* (#2218).
+
+    ``(id, correlation_key)`` of a ``consult:<target8>-*`` item (never its
+    ``-answer`` follow-up) the same caller filed for the same person in the
+    last :data:`TWIN_ASK_WINDOW`, still open; ``None`` otherwise or when the
+    read fails. Never raises.
+    """
+    try:
+        import uuid
+
+        from sqlalchemy import select
+
+        from app.core.database import async_session
+        from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
+
+        since = datetime.now(UTC) - TWIN_ASK_WINDOW
+        query = (
+            select(WorkItem.id, WorkItem.correlation_key)
+            .where(
+                WorkItem.owner_agent_id == uuid.UUID(str(target_id)),
+                WorkItem.created_by_agent_id == uuid.UUID(str(caller_agent_id)),
+                WorkItem.correlation_key.like(f"consult:{str(target_id)[:8]}-%"),
+                WorkItem.correlation_key.not_like("%-answer"),
+                WorkItem.status.not_in(WORK_ITEM_TERMINAL_STATUSES),
+                WorkItem.created_at >= since,
+            )
+            .order_by(WorkItem.created_at.desc())
+            .limit(1)
+        )
+        query = query.where(
+            WorkItem.user_id.is_(None) if user_id is None else WorkItem.user_id == uuid.UUID(str(user_id))
+        )
+        async with async_session() as db:
+            row = (await db.execute(query)).first()
+    except Exception as exc:
+        logger.debug("Open twin ask of %s not read: %s", caller_agent_id, format_exception_message(exc))
+        return None
+    return (str(row[0]), str(row[1])) if row else None
+
+
+async def _create_ask(
+    create_work_item: Callable[..., Awaitable[dict[str, Any]]],
+    *,
+    user_id: str | None,
+    caller_name: str,
+    caller_agent_id: str,
+    caller_is_company_managed: bool,
+    target_id: str,
+    headline: str,
+    question: str,
+    cuts: int,
+    key: str,
+    trail: str,
+    writer: Any,
+) -> dict[str, Any]:
+    """Create (dedupe on *key*) the durable ask owned by the consulted agent."""
+    return await create_work_item(
+        user_id=user_id,
+        title=f"Consult from {caller_name}: {headline}",
+        description=(
+            f"{caller_name} (agent {caller_agent_id}) asked you this question with "
+            f"consult_agent; the consult was cut by a rollout {cuts} time(s), so it is "
+            "asked here instead, where a rollout cannot lose it.\n\n"
+            "Answer it and complete this item with the WHOLE answer as its result: "
+            "the caller reads the result, nothing else."
+            f"{trail}\n\n## Question\n\n{(question or '')[:20000]}"
+        ),
+        owner_agent_id=target_id,
+        created_by_agent_id=caller_agent_id,
+        priority=DURABLE_CONSULT_PRIORITY,
+        correlation_key=key,
+        is_company_managed=caller_is_company_managed,
+        dedupe=True,
+        writer=writer,
+    )
+
+
 async def durable_consult_after_cut(
     *,
     user_id: str | None,
@@ -423,25 +510,40 @@ async def durable_consult_after_cut(
         headline = " ".join((question or "").split())[:80]
         source = f"\n- Caller's work item: {source_work_item_id}" if source_work_item_id else ""
         run = f"\n- Caller's run: {parent_run_id}" if parent_run_id else ""
-        ask = await create_work_item(
-            user_id=user_id,
-            title=f"Consult from {caller_name}: {headline}",
-            description=(
-                f"{caller_name} (agent {caller_agent_id}) asked you this question with "
-                f"consult_agent; the consult was cut by a rollout {cuts} time(s), so it is "
-                "asked here instead, where a rollout cannot lose it.\n\n"
-                "Answer it and complete this item with the WHOLE answer as its result: "
-                "the caller reads the result, nothing else."
-                f"{source}{run}\n\n## Question\n\n{(question or '')[:20000]}"
-            ),
-            owner_agent_id=target_id,
-            created_by_agent_id=caller_agent_id,
-            priority=DURABLE_CONSULT_PRIORITY,
-            correlation_key=key,
-            is_company_managed=caller_is_company_managed,
-            dedupe=True,
-            writer=writer,
-        )
+        twin = await open_twin_ask(user_id=user_id, caller_agent_id=caller_agent_id, target_id=target_id)
+        if twin is not None and twin[1] != key:
+            # The caller asked again in other words: one open ask, the new
+            # wording as a note on it, never a second run on one question.
+            from app.services.work_item import update_work_item
+
+            key = twin[1]
+            await update_work_item(
+                twin[0],
+                user_id=user_id,
+                note=(
+                    f"{caller_name} asked again after another cut (rollout {cuts} time(s)), "
+                    f"in these words; answer both in one result.{source}{run}\n\n"
+                    f"{(question or '')[:20000]}"
+                ),
+                writer=writer,
+                stamp_note=True,
+            )
+            ask: dict[str, Any] = {"id": twin[0]}
+        else:
+            ask = await _create_ask(
+                create_work_item,
+                user_id=user_id,
+                caller_name=caller_name,
+                caller_agent_id=caller_agent_id,
+                caller_is_company_managed=caller_is_company_managed,
+                target_id=target_id,
+                headline=headline,
+                question=question,
+                cuts=cuts,
+                key=key,
+                trail=f"{source}{run}",
+                writer=writer,
+            )
         ask_id = str(ask["id"])
         follow_id: str | None = None
         if source_work_item_id:

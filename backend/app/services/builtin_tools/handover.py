@@ -675,6 +675,38 @@ def build_sub_agent_tools(
             return "No background tasks found, and nothing running at a partner."
         return "\n".join(parts)
 
+    async def _cancel_background_task(task_ids: str) -> str:
+        """Cancel background tasks this agent spawned for the acting user (#2217).
+
+        The same durable cancel as the UI's stop button (lease released, a
+        running worker bails on its next step, delivery suppressed), scoped to
+        the acting user's tasks spawned by this agent: another agent's task or
+        another user's reads as not found, never as refused.
+        """
+        from app.services.sub_agent import cancel_sub_agent_task
+
+        if not isinstance(task_ids, str):
+            return _invalid_task_id_message(task_ids)
+        ids = [tid.strip() for tid in task_ids.split(",") if tid.strip()]
+        if not ids:
+            return "No task IDs provided."
+        lines: list[str] = []
+        for tid in ids:
+            if not _is_uuid_like(tid):
+                lines.append(_invalid_task_id_message(tid))
+                continue
+            result = await cancel_sub_agent_task(
+                tid, user_id, spawned_by=str(parent_agent_id)
+            )
+            if result is None:
+                lines.append(f"{tid}: not found among your background tasks")
+            elif result.get("already_terminal"):
+                lines.append(f"{tid}: already {result['status']}, unchanged")
+            else:
+                was = "running" if result.get("was_running") else "pending"
+                lines.append(f"{tid}: cancelled (was {was})")
+        return "\n".join(lines)
+
     async def _collect_task_results(
         task_ids: str,
         output_key: str = "items",
@@ -822,6 +854,7 @@ def build_sub_agent_tools(
     executor.register("get_task_result", _get_task_result)
     executor.register("get_full_task_result", _get_full_task_result)
     executor.register("list_background_tasks", _list_background_tasks)
+    executor.register("cancel_background_task", _cancel_background_task)
     executor.register("collect_task_results", _collect_task_results)
     executor.register("clear_collected", _clear_collected)
 
@@ -980,6 +1013,27 @@ def build_sub_agent_tools(
                     },
                 },
                 "required": [],
+            },
+            source="builtin:sub_agent",
+        )
+    )
+    definitions.append(
+        ToolDefinition(
+            name="cancel_background_task",
+            description=(
+                "Stop background tasks you spawned that are no longer needed: a "
+                "running one stops at its next step and its result is never "
+                "delivered. One line per task: cancelled, already finished, or not found."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "task_ids": {
+                        "type": "string",
+                        "description": "One or more task IDs, comma-separated",
+                    },
+                },
+                "required": ["task_ids"],
             },
             source="builtin:sub_agent",
         )
