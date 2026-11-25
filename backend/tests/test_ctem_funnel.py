@@ -209,6 +209,25 @@ def test_business_scope_without_software_inventory_says_why():
     assert business["reason"] == SCOPE_NO_SOFTWARE
 
 
+def test_scope_emptied_over_a_software_inventory_is_a_live_zero():
+    from app.services.ctem_funnel import funnel_scope
+
+    # The supporting asset runs nothing of the stack; the floor removes every primary asset.
+    index = _index(_reacher("wiki-1", ["Confluence"], ("wiki", "asset", "wiki-1")))
+    scope = funnel_scope(
+        profile=_profile(min_primary_asset_criticality="high"), index=index, stack=_STACK, today=_TODAY
+    )
+    business, policy = scope["business"], scope["policy"]
+    assert business["empty"] is True and "reason" not in business and business["labels"] is None
+    assert policy["empty"] is True and "reason" not in policy and policy["labels"] is None
+    funnel = build_funnel(known=100, exploitable_known=9, business_scope=business, policy_scope=policy)
+    for key in ("business_impact", "policy"):
+        layer = _layer(funnel, key)
+        assert layer["state"] == LIVE and layer["count"] == 0 and "empty" not in layer
+    assert _layer(funnel, "business_impact")["drop"] == 9
+    assert funnel["needs_action"] == 0
+
+
 def test_policy_scope_applies_exclusions_criticality_and_scores():
     from app.services.ctem_funnel import funnel_scope
 

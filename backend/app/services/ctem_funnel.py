@@ -136,7 +136,9 @@ def funnel_scope(
     relevant layer matches (``_organization_software``). Answers
     ``{"business": {...}, "policy": {...}}``; each holds ``configured``,
     ``labels`` (the stack labels whose vulnerabilities it counts, ``None``
-    when it narrows no software), ``reason`` when configured without labels,
+    when it narrows no software), ``reason`` (``no_software``) when configured
+    without a software inventory, ``empty`` when the inventory is there and
+    the scope keeps none of it (the layer then reads a live 0),
     and its facts (primary assets and supporting assets reached; the rules and
     the OpenCTI ``filter_groups`` of the policy).
     """
@@ -167,8 +169,7 @@ def funnel_scope(
         }
         labels = labels_run_by(reachers) if stack else []
         business["labels"] = labels or None
-        if not labels:
-            business["reason"] = SCOPE_NO_SOFTWARE
+        _mark_empty(business, labels, stack)
         business["basis"] = "exploitable"
 
     out_policy: dict[str, Any] = {"configured": bool(rules)}
@@ -230,9 +231,18 @@ def funnel_scope(
         "accepted_filtered": min(len(accepted), MAX_ACCEPTED_FILTER),
         "accepted_unfiltered": max(len(accepted) - MAX_ACCEPTED_FILTER, 0),
     }
-    if not labels:
-        out_policy["reason"] = SCOPE_NO_SOFTWARE
+    _mark_empty(out_policy, labels, stack)
     return {"business": business, "policy": out_policy}
+
+
+def _mark_empty(part: dict[str, Any], labels: list[str], stack: list[dict[str, Any]]) -> None:
+    """A scope that keeps no software: ``no_software`` without an inventory, else ``empty`` (a live 0)."""
+    if labels:
+        return
+    if stack:
+        part["empty"] = True
+    else:
+        part["reason"] = SCOPE_NO_SOFTWARE
 
 
 def _count(value: Any) -> int | None:
@@ -337,10 +347,15 @@ def build_funnel(
     for key, count, scope in (("business_impact", business, business_scope), ("policy", policy, policy_scope)):
         scope = scope or {}
         facts = {
-            k: v for k, v in scope.items() if k not in ("configured", "reason", "labels", "filter_groups", "basis")
+            k: v
+            for k, v in scope.items()
+            if k not in ("configured", "reason", "labels", "filter_groups", "basis", "empty")
         }
         if not scope.get("configured"):
             add(key, None, NOT_CONFIGURED)
+        elif scope.get("empty"):
+            # The inventory is there and the scope keeps none of it: a live 0, never "No software inventory".
+            add(key, 0, LIVE, basis=scope.get("basis"), extra=facts)
         elif _count(count) is None:
             add(key, None, NOT_AVAILABLE, extra={"reason": scope.get("reason") or SCOPE_UNREAD, **facts})
         else:
