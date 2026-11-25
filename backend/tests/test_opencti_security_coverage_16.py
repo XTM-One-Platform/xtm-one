@@ -169,7 +169,7 @@ async def test_list_filters_on_the_covered_object(monkeypatch: pytest.MonkeyPatc
     assert filters["filters"][0]["key"] == ["objectCovered"] and filters["filters"][0]["values"] == ["g1"]
 
 
-async def test_create_in_a_draft_says_it_waits_for_the_draft(monkeypatch: pytest.MonkeyPatch) -> None:
+def _build_in_draft(monkeypatch: pytest.MonkeyPatch, draft: str = "d1") -> tuple[CallableToolExecutor, _Recorder]:
     recorder = _Recorder(
         {
             "CoveredType": {"stixDomainObject": {"id": "g1", "entity_type": "Grouping"}},
@@ -184,9 +184,52 @@ async def test_create_in_a_draft_says_it_waits_for_the_draft(monkeypatch: pytest
     monkeypatch.setattr(sc_mod, "_client", _client)
     monkeypatch.setattr(sc_mod, "_graphql", recorder)
     executor = CallableToolExecutor()
-    build_tools(TOKEN, executor, scope_headers={"opencti-draft-id": "d1"})
+    build_tools(TOKEN, executor, scope_headers={"opencti-draft-id": draft} if draft else None)
+    return executor, recorder
+
+
+async def test_create_in_a_draft_leaves_auto_enrichment_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2323: nothing reaches the validation module while the review gate holds the draft."""
+    executor, rec = _build_in_draft(monkeypatch)
     content = await _run(executor, action="create", covered_id="g1", name="n")
-    assert "in OpenCTI draft d1" in content and "when the draft is validated" in content
+    assert rec.calls[-1][0] == "SecurityCoverageAdd"
+    assert rec.calls[-1][1]["input"]["auto_enrichment_disable"] is True
+    assert "in OpenCTI draft d1 with auto enrichment off" in content
+    assert "nothing is sent to the validation module" in content
+    assert "auto_enrichment_disable false" in content
+
+
+async def test_create_in_a_draft_with_an_explicit_false_opts_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    executor, rec = _build_in_draft(monkeypatch)
+    content = await _run(executor, action="create", covered_id="g1", name="n", auto_enrichment_disable=False)
+    assert rec.calls[-1][1]["input"]["auto_enrichment_disable"] is False
+    assert "with auto enrichment on, as asked" in content
+
+
+async def test_create_outside_a_draft_keeps_auto_enrichment_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    executor, rec = _build_in_draft(monkeypatch, draft="")
+    content = await _run(executor, action="create", covered_id="g1", name="n")
+    assert rec.calls[-1][1]["input"]["auto_enrichment_disable"] is False
+    assert "builds its scenario from it" in content and "draft" not in content
+    content = await _run(executor, action="create", covered_id="g1", name="n", auto_enrichment_disable=True)
+    assert rec.calls[-1][1]["input"]["auto_enrichment_disable"] is True
+    assert "with auto enrichment off" in content
+
+
+async def test_after_validation_the_live_coverage_turns_auto_enrichment_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2323: once the draft is validated, the update on the live coverage sends it to the validation module."""
+    executor, rec = _build_in_draft(monkeypatch, draft="")
+    content = await _run(executor, action="update", coverage_id="sc1", auto_enrichment_disable=False)
+    assert content == "Updated security coverage sc1: auto_enrichment_disable."
+    assert rec.calls[-1][1]["input"] == [{"key": "auto_enrichment_disable", "value": [False]}]
+
+
+@pytest.mark.parametrize("persona", ["ctem-vuln-prioritization-orchestrator", "ctem-threat-response-orchestrator"])
+def test_the_orchestrators_turn_enrichment_on_after_the_draft_is_validated(persona: str) -> None:
+    text = (SEED_DATA_DIR / "agent_persona" / f"{persona}.md").read_text()
+    assert "auto enrichment left on" not in text
+    assert "never pass `auto_enrichment_disable` false there" in text
+    assert "`auto_enrichment_disable` false: OpenAEV then builds its scenario" in text
 
 
 async def test_update_and_delete(monkeypatch: pytest.MonkeyPatch) -> None:
