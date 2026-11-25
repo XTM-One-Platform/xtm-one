@@ -123,6 +123,18 @@ def test_a_profile_only_product_reads_as_before() -> None:
     )
 
 
+def test_a_version_the_inventory_does_not_report_keeps_its_own_source() -> None:
+    stack = [dict(_stack()[0], version=VERSIONS[2], versions=[VERSIONS[2]], version_source="software")]
+    stack = source.with_inventory_versions(stack, {LABEL: {VERSIONS[0]: 3}})
+    assert stack[0]["version_source"] == cc.VERSION_SOURCE_SOFTWARE
+    (issue,) = source.opencti_issues(SOFTWARE, stack, RELATIONS, [], FIXES)
+    by_version = {f.version: (f.source, f.asset_count) for f in issue.version_outcomes}
+    assert by_version == {
+        VERSIONS[0]: (cc.VERSION_SOURCE_INVENTORY, 3),
+        VERSIONS[2]: (cc.VERSION_SOURCE_SOFTWARE, None),
+    }
+
+
 def test_a_view_cached_before_the_typed_facts_still_reads() -> None:
     stack = source.with_inventory_versions(_stack(), {LABEL: {VERSIONS[0]: 2, VERSIONS[20]: 1}})
     (issue,) = source.opencti_issues(SOFTWARE, stack, RELATIONS, [], FIXES)

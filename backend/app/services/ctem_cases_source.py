@@ -307,9 +307,12 @@ def with_inventory_versions(
 
     *inventory* is ``ctem_case_versions.inventory_versions``' answer, keyed by the entry's
     ``label``. An entry the inventory reports takes its versions (the entry's own known
-    versions kept after them), their asset counts (``version_counts``) and the source
-    ``inventory``; its single ``version`` is kept only when exactly one version runs, never a
-    guess. An entry the inventory does not report (a profile-only product) is unchanged.
+    versions kept after them) and their asset counts (``version_counts``); its own
+    ``version_source`` is kept, so a version the inventory does not report stays attributed
+    to the Software entity or profile row it came from (``_version_facts`` reads
+    ``inventory`` only for the versions in ``version_counts``). Its single ``version`` is kept
+    only when exactly one version runs, never a guess. An entry the inventory does not report
+    (a profile-only product) is unchanged.
     """
     out: list[dict[str, Any]] = []
     for entry in stack:
@@ -324,7 +327,6 @@ def with_inventory_versions(
                 "versions": versions,
                 "version": versions[0] if len(versions) == 1 else "",
                 "version_counts": counts,
-                "version_source": rules.VERSION_SOURCE_INVENTORY,
             }
         )
     return out
