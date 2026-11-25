@@ -154,6 +154,8 @@ export function useSetA2APartnerFleetReads(agentId: string) {
   return useMutation<A2AExposureStatus, Error, boolean>({
     mutationFn: (enabled) =>
       api.put<A2AExposureStatus>(`/agents/${agentId}/a2a/partner-fleet-reads`, { enabled }),
+    // The switch says what went wrong in its own toast: no second, generic one.
+    meta: { suppressGlobalErrorToast: true },
     onSuccess: (status) => {
       qc.setQueryData(["a2a-exposure", agentId], status);
     },

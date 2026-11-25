@@ -49,4 +49,18 @@ describe("A2APartnerFleetReads", () => {
     );
     await waitFor(() => expect(client.getQueryData(["a2a-exposure", AGENT])).toEqual(answer));
   });
+
+  it("says a failed switch once, in its own toast", async () => {
+    const reason = "500 Internal Server Error: database unavailable";
+    put.mockRejectedValue(new Error(reason));
+    renderWithProviders(<A2APartnerFleetReads agentId={AGENT} exposure={{ exposed: true }} />, {
+      client: testQueryClient({ appMutationCache: true }),
+    });
+
+    fireEvent.click(screen.getByRole("switch", { name: "Partners read this agent's fleet" }));
+
+    expect(await screen.findAllByText("Could not change the partner fleet reads")).toHaveLength(1);
+    expect(screen.getAllByText(reason)).toHaveLength(1);
+    expect(screen.queryByText("Error")).toBeNull();
+  });
 });
