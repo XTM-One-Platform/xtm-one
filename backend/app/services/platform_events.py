@@ -205,7 +205,7 @@ _RUN_KEYS = (
     "stop_reason",
     "partial",
 )
-_TASK_KEYS = ("task_id", "agent_id", "parent_run_id", "outcome_preview")
+_TASK_KEYS = ("task_id", "agent_id", "parent_run_id", "work_item_id", "outcome_preview")
 _A2A_DELEGATION_KEYS = (
     "delegation_id",
     "agent_id",
@@ -970,14 +970,20 @@ def background_task_data(
     parent_agent_id: object = None,
     outcome: str | None = None,
     error: str | None = None,
+    work_item_id: object = None,
 ) -> dict[str, Any]:
-    """The payload of a ``background_task.*`` event."""
+    """The payload of a ``background_task.*`` event.
+
+    *work_item_id* is the work item the spawning run was dispatched for, when
+    it was an inbox run (#2215): a listener filters on it.
+    """
     participants = {_str(agent_id), _str(parent_agent_id)}
     participants.discard(None)
     return {
         "task_id": _str(task_id),
         "agent_id": _str(agent_id),
         "parent_run_id": _str(parent_run_id),
+        "work_item_id": _str(work_item_id),
         "outcome_preview": (outcome or "")[:_PREVIEW_MAX_CHARS] or None,
         "error": (error or "")[:_PREVIEW_MAX_CHARS] or None,
         # The agent that ran the task raised the event (ignore_self_triggered_events).
