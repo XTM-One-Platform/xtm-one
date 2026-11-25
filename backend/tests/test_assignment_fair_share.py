@@ -20,17 +20,36 @@ from app.services.orchestration_adapters import assignment as assignment_adapter
 _BASE = datetime(2026, 11, 23, 8, 0, tzinfo=UTC)
 
 
-def _run(key: str, group: str, agent: str | None = None, *, at: int, child: bool = False) -> ClaimCandidate:
+def _run(
+    key: str,
+    group: str,
+    agent: str | None = None,
+    *,
+    at: int,
+    child: bool = False,
+    interactive: bool = False,
+    assignment: str = "",
+) -> ClaimCandidate:
     return ClaimCandidate(
         key=key,
         group=group,
         agent=agent or f"{group}-agent",
         run_at=_BASE + timedelta(seconds=at),
         child_of_live_parent=child,
+        interactive=interactive,
+        assignment=assignment,
     )
 
 
-def _order(candidates, *, running_group=None, running_agent=None, pool=10, fleet_share=0.5, agent_share=0.5):
+def _order(
+    candidates: list[ClaimCandidate],
+    *,
+    running_group: dict[str, int] | None = None,
+    running_agent: dict[str, int] | None = None,
+    pool: int = 10,
+    fleet_share: float = 0.5,
+    agent_share: float = 0.5,
+) -> list[object]:
     return dispatch.fair_share_order(
         candidates,
         running_by_group=running_group or {},
@@ -124,6 +143,60 @@ def test_a_fleet_holds_at_most_its_cap_while_another_has_due_work():
     assert sum(1 for item in running if item.group == "B") == 5
 
 
+# -- #2234: a burst of event runs never starves a resume, nor another assignment ---------
+
+
+def test_a_gate_answer_resume_goes_before_a_burst_of_bulk_runs_of_its_agent() -> None:
+    """Acceptance: 500 due bulk runs of agent A (one assignment) and one gate-answer resume of agent A created last."""
+    burst = [_run(f"e{i}", "F", "A", at=i, assignment="case-opened") for i in range(500)]
+    resume = _run("gate", "F", "A", at=900, interactive=True, assignment="gate-answered")
+    assert _order([*burst, resume], pool=3)[0] == "gate"
+
+
+def test_an_interactive_run_goes_first_even_when_its_fleet_is_over_its_share() -> None:
+    burst = [_run(f"e{i}", "F", "A", at=i, assignment="bulk") for i in range(20)]
+    resume = _run("item", "F", "A", at=50, interactive=True, assignment="inbox")
+    order = _order([*burst, resume], running_group={"F": 3}, running_agent={"A": 3}, pool=3)
+    assert order[0] == "item"
+
+
+def test_a_second_assignment_of_one_agent_is_claimed_within_one_slot_release() -> None:
+    """Acceptance: 100 due runs of a first assignment and 1 of a second created last."""
+    first = [_run(f"a{i}", "F", "A", at=i, assignment="one") for i in range(100)]
+    second = _run("b0", "F", "A", at=500, assignment="two")
+    assert _order([*first, second], pool=3)[:2] == ["a0", "b0"]
+
+
+def test_a_burst_on_a_three_slot_pool_never_holds_a_gate_answer_back() -> None:
+    """Acceptance: ~500 opened events on a 3-slot pool; a gate answer created mid-burst starts at the next release."""
+    pool = 3
+    queue = [_run(f"e{i}", "F", "A", at=i, assignment="case-opened") for i in range(500)]
+    running: list[ClaimCandidate] = []
+    for key in _order(queue, pool=pool)[:pool]:
+        chosen = next(c for c in queue if c.key == key)
+        queue.remove(chosen)
+        running.append(chosen)
+    queue.append(_run("gate", "F", "A", at=600, interactive=True, assignment="gate-answered"))
+    running.pop(0)  # one slot is released
+    assert _order(queue, running_group={"F": 2}, running_agent={"A": 2}, pool=pool)[0] == "gate"
+
+
+@pytest.mark.parametrize(
+    ("context", "answered", "expected"),
+    [
+        ({"type": "work_item"}, None, True),
+        ({"type": "platform_event", "event": "work_item.status_changed"}, True, True),
+        ({"type": "platform_event", "event": "work_item.released"}, None, True),
+        ({"type": "platform_event", "event": "ctem_case.opened"}, None, False),
+        ({"type": "platform_event", "event": "work_item.status_changed"}, False, False),
+        ({"type": "schedule"}, None, False),
+        (None, None, False),
+    ],
+)
+def test_what_makes_a_run_interactive(context: object, answered: object, expected: bool) -> None:
+    assert assignment_adapter.is_interactive_run(context, answered) is expected
+
+
 class _Result:
     def __init__(self, rows):
         self._rows = rows
@@ -162,7 +235,12 @@ async def test_the_adapter_deals_children_first_then_one_per_fleet(monkeypatch):
     agent_a, agent_b, parent = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     fleet_a, fleet_b = uuid.uuid4(), uuid.uuid4()
     a0, a1, b0, child = (_Execution(uuid.uuid4(), at) for at in (0, 1, 50, 90))
-    runs = [(a0.id, agent_a, None), (a1.id, agent_a, None), (b0.id, agent_b, None), (child.id, agent_a, parent)]
+    runs = [
+        (a0.id, agent_a, None, None, None, None),
+        (a1.id, agent_a, None, None, None, None),
+        (b0.id, agent_b, None, None, None, None),
+        (child.id, agent_a, parent, None, None, None),
+    ]
     session = _Session(
         [
             runs,

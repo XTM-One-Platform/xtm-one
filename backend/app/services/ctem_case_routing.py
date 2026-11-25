@@ -224,11 +224,16 @@ async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime]) -> set
 
     A run of any fleet's "Case opened or reopened" automation about the case,
     queued, running or ended, answers the ask; a run that failed or was
-    cancelled does not (the event got no answer from it).
+    cancelled does not (the event got no answer from it), and neither does a
+    run that expired in the queue before any worker started it (``skipped``,
+    ``expired_not_started``, #2234): its case is asked again by the next pass.
     """
     if not asks:
         return set()
+    from sqlalchemy import or_
+
     from app.models.assignment import Assignment, AssignmentRun
+    from app.services.orchestration_adapters.assignment import EXPIRED_NOT_STARTED_STOP_REASON
 
     object_id = AssignmentRun.trigger_context["object_id"].as_string()
     since = min(asks.values())
@@ -240,6 +245,10 @@ async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime]) -> set
                 Assignment.name == CTEM_CASE_ASSIGNMENT_NAME,
                 AssignmentRun.created_at >= since,
                 AssignmentRun.status.not_in(("failed", "cancelled")),
+                or_(
+                    AssignmentRun.stop_reason.is_(None),
+                    AssignmentRun.stop_reason != EXPIRED_NOT_STARTED_STOP_REASON,
+                ),
                 object_id.in_(sorted(asks)),
             )
         )
