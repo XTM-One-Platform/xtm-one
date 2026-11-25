@@ -1648,6 +1648,84 @@ async def test_instance_get_tells_the_requested_intent_from_the_state(monkeypatc
     assert "configurations" not in result.content
 
 
+async def test_instance_get_shows_the_configuration_with_secrets_hidden(monkeypatch):
+    # Gap oaev-connector-instance-config-not-readable (xtm-one #2284): 'get' reads
+    # GET .../configurations and prints each key, a secret one as set and hidden.
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "started",
+                "connector_instance_requested_status": "starting",
+            },
+            "/api/connector-instances/ci1/configurations": [
+                {
+                    "connector_instance_configuration_key": "GITHUB_ORG",
+                    "connector_instance_configuration_value": "filigran",
+                },
+                {
+                    "connector_instance_configuration_key": "COLLECTOR_PERIOD",
+                    "connector_instance_configuration_value": 3600,
+                },
+                {
+                    "connector_instance_configuration_key": "GITHUB_TOKEN",
+                    "connector_instance_configuration_value": "",
+                    "connector_instance_configuration_is_encrypted": True,
+                },
+            ],
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert not result.is_error, result.content
+    assert "    GITHUB_ORG: filigran" in result.content
+    assert "    COLLECTOR_PERIOD: 3600" in result.content
+    assert "    GITHUB_TOKEN: set (hidden)" in result.content
+
+
+async def test_instance_update_config_says_merge_and_reads_back(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1/configurations": [
+                {
+                    "connector_instance_configuration_key": "GITHUB_ORG",
+                    "connector_instance_configuration_value": "filigran",
+                },
+                {
+                    "connector_instance_configuration_key": "COLLECTOR_PERIOD",
+                    "connector_instance_configuration_value": "600",
+                },
+            ],
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {
+            "action": "update_config",
+            "connector_instance_id": "ci1",
+            "catalog_connector_id": "cat1",
+            "config": '{"COLLECTOR_PERIOD": 600}',
+        },
+    )
+    assert not result.is_error, result.content
+    assert "COLLECTOR_PERIOD written; keys not sent keep their value" in result.content
+    assert "    GITHUB_ORG: filigran" in result.content
+    assert "    COLLECTOR_PERIOD: 600" in result.content
+    assert [c["method"] for c in fake.calls] == ["put", "get"]
+
+
 async def test_instance_get_says_a_request_is_not_reached_yet(monkeypatch):
     from app.integrations.providers.openaev import platform
 
