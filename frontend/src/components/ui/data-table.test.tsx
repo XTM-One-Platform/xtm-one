@@ -636,6 +636,28 @@ describe("DataTable", () => {
     }
   });
 
+  it("keeps a compact toolbar with no page controls on one row even when it ran past its box (worksets at 1024)", () => {
+    const original = globalThis.ResizeObserver;
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(846);
+    const scroll = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === "data-table-toolbar" ? 867 : 0;
+    });
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      renderTable({ filtersInPill: true, exportName: "worksets" });
+      expect(screen.getByRole("combobox", { name: "Rows per page" }).getAttribute("data-compact")).toBe("true");
+      expect(screen.getByTestId("data-table-toolbar").getAttribute("data-wraps")).toBeNull();
+    } finally {
+      scroll.mockRestore();
+      width.mockRestore();
+      globalThis.ResizeObserver = original;
+    }
+  });
+
   it("keeps a compact one-row toolbar on one row when it fits its box", () => {
     const original = globalThis.ResizeObserver;
     const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(846);

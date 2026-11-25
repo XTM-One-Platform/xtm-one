@@ -1272,8 +1272,10 @@ function DataTableView<T>({
   // A compact one-row toolbar that still ran past its box at this lead width or a wider one
   // and this box width or a narrower one wraps too: the page's own controls (the Case opening
   // switch) count in the row, and the Cases list in ja at 1080 ran 21 px past it (UX r3 B1 on #1963).
+  // Only a row carrying a page's own controls wraps: Worksets at 1024 has none and keeps one row.
   const compactCrowds =
     filtersInPill &&
+    Boolean(toolbar) &&
     compactToolbar &&
     boxWidth !== null &&
     compactOverflow !== null &&
