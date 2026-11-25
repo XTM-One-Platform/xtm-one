@@ -2259,6 +2259,15 @@ async def _do_all_startup_work() -> None:
             "without it (the bot stays offline until the next boot retries)"
         )
 
+    # Defender XDR alert events: the consumer of the tenants' Event Hubs
+    # (Streaming API). Optional like the gateway above.
+    try:
+        from app.services.defender_stream import start_defender_stream
+
+        await start_defender_stream()
+    except Exception:
+        logger.exception("Failed to start the Defender stream supervisor, continuing startup without it")
+
     # Prime the platform branding cache and patch the bundled index.html so
     # link-preview crawlers see the configured (DB-managed) title, logo
     # description, etc. without executing JavaScript.
@@ -2593,6 +2602,10 @@ async def lifespan(app: FastAPI):
     from app.channels.discord import stop_discord_gateway
 
     await stop_discord_gateway()
+
+    from app.services.defender_stream import stop_defender_stream
+
+    await stop_defender_stream()
 
     if _scheduler_task is not None:
         _scheduler_task.cancel()
