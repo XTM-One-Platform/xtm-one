@@ -150,6 +150,73 @@ def test_the_gap_sorting_covers_prevention_detection_and_logging_and_root_causes
     assert {"no_rule", "no_log", "broken_collector"} <= set(gap["root_cause"]["enum"])
 
 
+def _not_executed_replay() -> dict:
+    """An analyst answer for one simulation where some targets never ran the payload (#2380)."""
+    return {
+        "simulation": "Weekly APT29 (sim-1)",
+        "gaps": [
+            {
+                "technique": "T1059",
+                "asset": "srv-1",
+                "verdict": "logged",
+                "missing": ["prevention", "detection"],
+                "root_cause": "no_rule",
+                "evidence": "Logging expectation met, detection expectation failed.",
+            }
+        ],
+        "not_executed": [
+            {"technique": "T1059", "asset": f"host-{status.lower()}", "status": status, "evidence": status}
+            for status in ("AGENT_INACTIVE", "TIMEOUT", "ERROR", "ASSET_AGENTLESS")
+        ],
+        "coverage": {"prevention": 0, "detection": 0, "logging": 100},
+        "missing_context": [],
+    }
+
+
+def test_a_payload_that_never_ran_is_listed_apart_never_a_gap():
+    import jsonschema
+
+    schema = m2._GAP_SCHEMA
+    assert "not_executed" in schema["required"]
+    item = schema["properties"]["not_executed"]["items"]
+    assert set(item["required"]) == {"technique", "asset", "status", "evidence"}
+    assert {"AGENT_INACTIVE", "TIMEOUT", "ERROR", "ASSET_AGENTLESS"} <= set(item["properties"]["status"]["enum"])
+    # A gap is a pair that ran: no verdict or root cause stands for an untested pair.
+    gap = schema["properties"]["gaps"]["items"]["properties"]
+    assert "not_executed" not in gap["verdict"]["enum"] and "not_executed" not in gap["root_cause"]["enum"]
+    assert "not_executed" in schema["properties"]["gaps"]["description"]
+    assert "not_executed" in schema["properties"]["coverage"]["description"]
+
+    answer = _not_executed_replay()
+    jsonschema.validate(answer, schema)
+    untested = {p["asset"] for p in answer["not_executed"]}
+    assert not untested & {g["asset"] for g in answer["gaps"]}
+    # An untested pair can no longer pass as a gap row.
+    bad = {**answer["not_executed"][0], "verdict": "not_executed", "missing": [], "root_cause": "not_executed"}
+    try:
+        jsonschema.validate({**answer, "gaps": [bad]}, schema)
+    except jsonschema.ValidationError:
+        pass
+    else:
+        raise AssertionError("an untested pair validated as a gap")
+    # One simulation still counts one analysis, the untested pairs included.
+    assert roi.count_units(BUILTIN_ROI_UNITS[m2.GAP_ANALYST], answer) == 1
+
+
+def test_both_personas_keep_an_untested_pair_out_of_the_gaps_and_the_remediation():
+    analyst = (_PERSONAS / f"{m2.GAP_ANALYST}.md").read_text(encoding="utf-8")
+    for status in ("AGENT_INACTIVE", "TIMEOUT", "ERROR", "ASSET_AGENTLESS"):
+        assert f"`{status}`" in analyst, status
+    assert "`not_executed`" in analyst and "never a gap" in analyst
+    assert "count in no denominator" in analyst
+    orchestrator = (_PERSONAS / f"{m2.ORCHESTRATOR}.md").read_text(encoding="utf-8")
+    sort_step = next(line for line in orchestrator.splitlines() if line.startswith("3. **Sort**"))
+    assert "`not_executed`" in sort_step
+    gap_step = next(line for line in orchestrator.splitlines() if m2.REMEDIATION_PREFIX in line)
+    assert f"A `not_executed` pair gets no `{m2.REMEDIATION_PREFIX}` item" in gap_step
+    assert "at most one per asset group and simulation" in gap_step
+
+
 def test_no_hard_dependency_on_the_new_findings_model():
     for slug in _NEW:
         assert (_PERSONAS / f"{slug}.md").read_text(encoding="utf-8").strip(), slug
