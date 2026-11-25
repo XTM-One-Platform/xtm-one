@@ -200,8 +200,6 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
 
                 # The list's asset-count rule on the single read (#1704): list and case read agree.
                 version_history.with_asset_count(rendered, events)
-                # The detection desk's gaps from the whole history (#2393), as the case tools answer them.
-                rendered["detection_gaps"] = view_of.detection_gaps_of(events)
                 running = await case_versions.for_case(db, case)
                 if running is not None:
                     # Why the versions moved, per device (#1694), as the case tools' read: the drift is explained.
@@ -287,7 +285,8 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ToolDefinition(
             name="list_ctem_assets",
             description=(
-                "The live asset inventory: a page of assets and the counts by source and category for the same filters."
+                "The asset inventory: a page and its counts by source and category. "
+                "Module tools take source_ids.external_id, not id."
             ),
             input_schema={
                 "type": "object",
@@ -310,6 +309,27 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ),
     ]
     return definitions, executor
+
+
+def _source_ids(records: Any) -> list[dict[str, str]]:
+    """Each source's own id of an asset (#2385): the id a module tool takes, never the inventory id."""
+    pairs: list[dict[str, str]] = []
+    for record in records or []:
+        if not isinstance(record, dict):
+            continue
+        source = str(record.get("source") or "").strip()
+        external_id = str(record.get("external_id") or "").strip()
+        pair = {"source": source, "external_id": external_id}
+        if source and external_id and pair not in pairs:
+            pairs.append(pair)
+    return pairs
+
+
+def _compact_asset(item: dict[str, Any]) -> dict[str, Any]:
+    """An inventory row without its source records, with their (source, external_id) pairs kept (#2385)."""
+    compact = {k: v for k, v in item.items() if k != "records"}
+    compact["source_ids"] = _source_ids(item.get("records"))
+    return compact
 
 
 def asset_page(
@@ -339,7 +359,7 @@ def asset_page(
         "next_offset": offset + len(items) if offset + len(items) < total else None,
         "by_source": by_source,
         "by_category": by_category,
-        "assets": [{k: v for k, v in item.items() if k != "records"} for item in items],
+        "assets": [_compact_asset(item) for item in items],
     }
     if not total and held:
         from app.services.organization_context_categories import held_values_line
