@@ -378,13 +378,28 @@ async def _matcher_stack(db: AsyncSession) -> list[dict[str, Any]]:
         row = await org_context.current_version(db)
         if row is None:
             return stack
-        inventory = await case_versions.inventory_versions(
-            db, row.organization_id, [e["label"] for e in stack if e.get("label")]
-        )
+        labels = [e["label"] for e in stack if e.get("label")]
+        inventory = await case_versions.inventory_versions(db, row.organization_id, labels)
+        platforms = await case_versions.inventory_platforms(db, row.organization_id, labels)
     except Exception as exc:  # the inventory never breaks the issues read
         logger.info("CTEM cases: inventory versions unavailable: %s", format_exception_message(exc))
         return stack
-    return with_inventory_versions(stack, inventory)
+    return with_inventory_platforms(with_inventory_versions(stack, inventory), platforms)
+
+
+def with_inventory_platforms(
+    stack: list[dict[str, Any]], platforms: Mapping[str, Iterable[str]]
+) -> list[dict[str, Any]]:
+    """*stack* with the platforms of every asset running each entry, when all are known (pure, #2152).
+
+    *platforms* is ``ctem_case_versions.inventory_platforms``' answer, keyed by the entry's
+    ``label``; an entry it does not name is unchanged (no ``platforms``: nothing is evaluated).
+    """
+    out: list[dict[str, Any]] = []
+    for entry in stack:
+        named = tuple(platforms.get(entry.get("label") or "") or ())
+        out.append({**entry, "platforms": list(named)} if named else entry)
+    return out
 
 
 def _highest(versions: list[str]) -> str | None:
@@ -430,6 +445,8 @@ def opencti_issues(
     """
     entry_by_label = {e["label"]: e for e in stack}
     product_of: dict[str, dict[str, Any]] = {}
+    # The platform each stack Software is built for (CPE target, else its name or version), #2152.
+    platform_of: dict[str, str | None] = {}
     # The OpenCTI Software ids of each installed version, per stack entry.
     version_ids: dict[tuple[str, str], set[str]] = {}
     for node in software:
@@ -438,6 +455,9 @@ def opencti_issues(
             continue
         entry = entry_by_label[label]
         product_of[node["id"]] = entry
+        platform_of[node["id"]] = fixed_versions.platform_of_software(
+            node.get("name"), node.get("version"), node.get("cpe")
+        )
         versions = _installed_versions(entry)
         for version in versions:
             # A CPE match names the version only when one version runs (the CPE carries no version of its own).
@@ -520,6 +540,10 @@ def opencti_issues(
             not_affected = (
                 f"{fixed_versions.NOT_AFFECTED_PREFIX} {', '.join(versions)} has no 'has' relation to {name} in OpenCTI"
             )
+        if not not_affected:
+            not_affected = platform_not_affected(
+                [platform_of.get(sw) for sw in sorted(holders[(vuln_id, label)])], entry.get("platforms")
+            )
         # The fix must cover the highest version still exposed (affected, or unknown to OpenCTI).
         exposed = _highest([v for v, o in outcomes if o != VERSION_NOT_AFFECTED])
         fixed = fixed_versions.smallest_fix_above(fixed_of.get((vuln_id, label), ()), exposed)
@@ -555,6 +579,26 @@ def opencti_issues(
             )
         )
     return out
+
+
+def platform_not_affected(vulnerable: Iterable[str | None], running: Iterable[str] | None) -> str | None:
+    """The not-affected reason when the CVE's Software and the product's assets share no platform (pure, #2152).
+
+    *vulnerable* is the platform of each Software OpenCTI relates to the vulnerability
+    (:func:`ctem_fixed_version.platform_of_software`); *running* the platforms of every asset
+    running the product (``ctem_case_versions.inventory_platforms``). ``None`` (the member is kept)
+    unless every vulnerable Software names a platform, every asset reports one, and none is shared:
+    an unknown on either side is never read as not affected.
+    """
+    built = list(vulnerable)
+    on = [p for p in running or () if str(p or "").strip()]
+    if not built or not on or any(not p for p in built):
+        return None
+    built_keys = {str(p).casefold() for p in built if p}
+    if built_keys & {p.casefold() for p in on}:
+        return None
+    only = ", ".join(sorted({str(p) for p in built if p}))
+    return f"{fixed_versions.NOT_AFFECTED_PLATFORM_PREFIX} {only} only; running on {', '.join(sorted(set(on)))}"
 
 
 def _version_facts(
