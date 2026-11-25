@@ -5058,6 +5058,8 @@ async def run_agent_chat(
                     run_id=parent_run_id,
                     flow_run_id=flow_run_id,
                 ),
+                # An administrator's turn reads past every creator narrowing (#2161).
+                acting_admin=bool(getattr(user_record, "is_admin", False)),
             )
             composite.add_tools(wi_defs, wi_exec)
 
@@ -5074,6 +5076,8 @@ async def run_agent_chat(
                 key_namespace=shared_state_namespace,
                 workspace_id=_workspace_scope_id,
                 run_id=parent_run_id,
+                # An administrator's turn reads past every owner narrowing (#2161).
+                acting_admin=bool(getattr(user_record, "is_admin", False)),
             )
             composite.add_tools(cs_defs, cs_exec)
             from app.services.builtin_tools import build_friction_tools

@@ -538,6 +538,9 @@ async def test_load_skill_truncates_past_the_size_cap(monkeypatch):
     assert "z" * 100 in out
     assert "z" * 101 not in out
     assert "[Truncated: 400 of 500 characters" in out
+    # #2190: the cut names the reads that reach the rest of the body.
+    assert "load_skill(name='huge', outline=true)" in out
+    assert "then `section`" in out
 
 
 @pytest.mark.asyncio

@@ -52,6 +52,7 @@ from ._teams import (
     teams_reaction_type,
 )
 from ._voice_notes import audio_hosted_contents, heard_hosted_lines, heard_lines, listing_note, with_heard
+from .teams_members import CHANNEL_MEMBER_READ_PERMISSION, _permission_hint
 
 logger = logging.getLogger(__name__)
 
@@ -953,7 +954,9 @@ def register(ctx: MicrosoftContext, executor: CallableToolExecutor) -> list[Tool
                 "list channel members",
             )
             if err:
-                return err
+                # A private or shared channel's roster needs its own delegated
+                # permission (#2188): name it on a denial, as the member writes do.
+                return _permission_hint(err, CHANNEL_MEMBER_READ_PERMISSION)
             members = resp.json().get("value", [])
             if not members:
                 return "No members found in this channel."

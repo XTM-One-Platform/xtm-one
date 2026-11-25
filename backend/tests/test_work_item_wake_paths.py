@@ -86,7 +86,10 @@ def test_a_dequeue_that_merged_is_no_event() -> None:
 def test_each_removal_wakes_the_item_once() -> None:
     first = _dequeue("CI_FAILURE")
     payload, out = wipr.apply_pull_request_event(_bound(), first, NOW)
-    assert [(o.conclusion, o.run_name) for o in _wakes(out)] == [("dequeued", "merge queue: removed (ci_failure)")]
+    # A CI failure names where its failing queue run is read (#2155).
+    assert [(o.conclusion, (o.run_name or "").split("; ")[0]) for o in _wakes(out)] == [
+        ("dequeued", "merge queue: removed (ci_failure)")
+    ]
     # The same delivery again: dropped.
     payload, again = wipr.apply_pull_request_event(payload, first, NOW)
     assert again == []

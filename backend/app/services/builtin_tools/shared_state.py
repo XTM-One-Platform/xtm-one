@@ -220,6 +220,9 @@ def build_shared_state_tools(
     # The run the tools run in: what ``hold="take"`` stamps on an
     # entry. Without one, the background task around the turn, if any.
     run_id: str | uuid.UUID | None = None,
+    # The person the turn or run acts for is an administrator: the agent reads
+    # past every owner agent's coordination narrowing (#2161).
+    acting_admin: bool = False,
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """Build the generic cross-run shared-state tools for an agent.
 
@@ -237,7 +240,7 @@ def build_shared_state_tools(
     """
     del db  # operations use their own sessions
     acting_user_id = user_id if user_id and user_id != "anonymous" else None
-    writer = agent_writer(is_company_managed=company_managed_agent, agent_id=agent_id)
+    writer = agent_writer(is_company_managed=company_managed_agent, agent_id=agent_id, acting_admin=acting_admin)
     # One entry per key for a company-managed agent, whatever the context:
     # a run whose assignment hides its runs is born personal
     # (``run.is_company_managed`` false), and creating the entry in that

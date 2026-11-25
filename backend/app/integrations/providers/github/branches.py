@@ -24,6 +24,56 @@ def _looks_like_sha(value: str) -> bool:
     return bool(_SHA_RE.fullmatch(value or ""))
 
 
+#: GitHub's 422 on a ref write a ruleset refused: it never names the ruleset.
+_REF_REFUSED_RE = re.compile(r"reference update failed|repository rule violations", re.IGNORECASE)
+
+
+def rulesets_line(rulesets: Any, target: str) -> str:
+    """The active rulesets of *target* (``branch`` / ``tag``) as one sentence, '' when none. Pure."""
+    if not isinstance(rulesets, list):
+        return ""
+    named = [
+        f"'{r.get('name') or '?'}' (id {r.get('id')}, {str(r.get('source_type') or 'Repository').lower()})"
+        for r in rulesets
+        if isinstance(r, dict)
+        and str(r.get("target") or "").lower() == target
+        and str(r.get("enforcement") or "").lower() == "active"
+    ]
+    if not named:
+        return ""
+    return (
+        f" Active {target} ruleset(s) of the repository: {', '.join(named)}; "
+        "read one with get_github_ruleset to see the rule and its bypass actors."
+    )
+
+
+async def with_ruleset_names(client: Any, headers: dict[str, str], base: str, err: str, target: str) -> str:
+    """*err* naming the rulesets that may have refused a ref write (#2155).
+
+    GitHub answers a ref write a ruleset refuses with a bare 422 "Reference
+    update failed". The active rulesets targeting that kind of ref are read once
+    and named; any other error, or an unreadable list, is answered as it is.
+    """
+    if not _REF_REFUSED_RE.search(err or ""):
+        return err
+    resp, read_err = await _common.safe_request(
+        client,
+        "get",
+        f"{base}/rulesets",
+        _PROVIDER,
+        "list the rulesets behind the refusal",
+        headers=headers,
+        params={"includes_parents": "true", "per_page": 100},
+    )
+    if read_err or resp is None:
+        return f"{err} A ruleset may have refused it; the rulesets could not be read: {read_err}"
+    try:
+        line = rulesets_line(resp.json(), target)
+    except ValueError:
+        line = ""
+    return f"{err}{line}" if line else f"{err} No active {target} ruleset is visible to this token."
+
+
 def register(
     headers: dict[str, str],
     executor: CallableToolExecutor,
@@ -367,7 +417,7 @@ def register(
             json={"sha": target, "force": bool(force)},
         )
         if err:
-            return err
+            return await with_ruleset_names(client, headers, base, err, "branch")
         kind = "forced" if force else "fast-forward"
         return f"Branch '{branch}' of {repo} moved from {tip[:8]} to {target[:8]} ({kind})."
 
@@ -426,7 +476,7 @@ def register(
                     json={"ref": f"refs/tags/{tag}", "sha": target},
                 )
                 if err:
-                    return err
+                    return await with_ruleset_names(client, headers, base, err, "tag")
                 return f"Tag '{tag}' created in {repo} at {target[:8]}."
             if action == "update_branch":
                 return await _update_branch(client, repo, owner, base, branch, sha, force)
@@ -437,7 +487,7 @@ def register(
                     client, "delete", f"{base}/git/refs/heads/{_enc(branch)}", _PROVIDER, f"delete branch {branch}", headers=headers
                 )
                 if err:
-                    return err
+                    return await with_ruleset_names(client, headers, base, err, "branch")
                 return f"Branch '{branch}' deleted from {repo}."
             if action == "delete_tag":
                 if not tag.strip():
@@ -446,7 +496,7 @@ def register(
                     client, "delete", f"{base}/git/refs/tags/{_enc(tag)}", _PROVIDER, f"delete tag {tag}", headers=headers
                 )
                 if err:
-                    return err
+                    return await with_ruleset_names(client, headers, base, err, "tag")
                 return f"Tag '{tag}' deleted from {repo}."
             return "Error: invalid action. Use create_tag, update_branch, delete_branch, or delete_tag."
 

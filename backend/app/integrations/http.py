@@ -236,6 +236,12 @@ def format_http_error(resp: httpx.Response, provider: str, action: str) -> str:
         )
 
     detail = _extract_error_detail(resp)
+    if status in (301, 302, 307, 308):
+        # A redirect not followed: name where it points, so the caller can
+        # read the resource under its new address (a moved repository, #2155).
+        location = resp.headers.get("location") or ""
+        if location:
+            detail = f"{detail + ' ' if detail else ''}Moved to: {location}"
     return (
         f"Error: {provider} returned HTTP {status} while trying to {action}. {detail}"
     )

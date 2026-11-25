@@ -2433,7 +2433,61 @@ async def _report_invalid_config(
         )
 
 
+#: The log fields :func:`_resolve_token` binds about the integration it resolved (#2197).
+INTEGRATION_LOG_FIELDS: tuple[str, ...] = (
+    "integration_name",
+    "integration_owner_user_id",
+    "integration_auth_type",
+    "integration_is_company_managed",
+    "github_installation_ids",
+    "github_account_logins",
+    "github_account_types",
+)
+
+
 async def _get_token(
+    db: AsyncSession,
+    integration_id: str,
+    provider: str = "",
+    *,
+    user_id: str | None = None,
+    source_label: str = "",
+    binding_origin: str = "",
+    integ: Integration | None = None,
+    prefetched_token: str | None = None,
+    refresh_attempted: bool = False,
+    keep_log_context: bool = False,
+) -> str | None:
+    """A *fresh* decrypted access token for an integration (:func:`_resolve_token`).
+
+    The integration's log fields are bound for the resolution only, then the
+    caller's own values are put back (#2197): a token read for one product never
+    labels the later lines of the task (another product's errors, the run's own
+    lines). ``keep_log_context`` keeps them bound for a caller that unbinds them
+    itself once its block ends (the tool build loop, whose provider builders log
+    under the integration they build).
+    """
+    before = {k: v for k, v in structlog.contextvars.get_contextvars().items() if k in INTEGRATION_LOG_FIELDS}
+    try:
+        return await _resolve_token(
+            db,
+            integration_id,
+            provider,
+            user_id=user_id,
+            source_label=source_label,
+            binding_origin=binding_origin,
+            integ=integ,
+            prefetched_token=prefetched_token,
+            refresh_attempted=refresh_attempted,
+        )
+    finally:
+        if not keep_log_context:
+            structlog.contextvars.unbind_contextvars(*INTEGRATION_LOG_FIELDS)
+            if before:
+                structlog.contextvars.bind_contextvars(**before)
+
+
+async def _resolve_token(
     db: AsyncSession,
     integration_id: str,
     provider: str = "",
@@ -6614,6 +6668,9 @@ async def _build_integration_tools_inner(
                     integ=_holders.get(integration_id),
                     prefetched_token=_prefetched_tokens.get(integration_id),
                     refresh_attempted=integration_id in _refresh_attempted,
+                    # The provider builders below log under this integration; the
+                    # finally of this iteration unbinds every field (#2197).
+                    keep_log_context=True,
                 )
             except Exception as exc:
                 logger.warning(
@@ -7154,7 +7211,7 @@ async def _build_integration_tools_inner(
             structlog.contextvars.unbind_contextvars(
                 "integration_provider",
                 "integration_id",
-                "integration_name",
+                *INTEGRATION_LOG_FIELDS,
             )
 
     return definitions, executor

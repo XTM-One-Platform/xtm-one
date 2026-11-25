@@ -74,7 +74,8 @@ GATED_READS: dict[str, str] = {
 #: an integration they cannot see); a non-owner's chat turn still has its
 #: unshared OAuth bindings shadowed first (``shadow_invisible_bindings``).
 BOUND_READS: dict[str, str] = {
-    "services/integration_tools.py:_get_token": (
+    # _get_token scopes the log fields of the resolution (#2197) and delegates the read here.
+    "services/integration_tools.py:_resolve_token": (
         "the tool-token funnel: resolves the bindings it is handed"
     ),
     "services/integration_tools.py:_refresh_inline": (

@@ -3458,6 +3458,10 @@ def _needs_human_event(item: Any, *, previous_status: str | None, writer: Any = 
     data["needs_human"] = bool(getattr(item, "needs_human", None))
     data["ask"] = getattr(item, "ask", None) or None
     data["waiting_since"] = since.isoformat() if isinstance(since, datetime) else None
+    # Who the decision waits for, so a listener never reads it as addressed to nobody (#2174).
+    waits_for = getattr(item, "waits_for_user_id", None)
+    data["waits_for_user_id"] = str(waits_for) if waits_for else None
+    data["waits_for_group_ids"] = list(getattr(item, "waits_for_group_ids", None) or []) or None
     return ("work_item.needs_human", data)
 
 

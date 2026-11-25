@@ -2696,6 +2696,13 @@ async def _activation_check_executor(
     builtin_ids = set(
         runtime_builtin_tool_ids(agent.builtin_tool_ids or [], getattr(agent, "builtin_allowed_tools", None))
     )
+    # The person the run acts for is an administrator: the check reads past
+    # every governor's narrowing, as the run's own tools do (#2161).
+    acting_admin = False
+    if db is not None and effective_user_id and ("work_items" in builtin_ids or "shared_state" in builtin_ids):
+        from app.models.user import User as _CheckActingUser
+
+        acting_admin = bool(getattr(await db.get(_CheckActingUser, effective_user_id), "is_admin", False))
     if "work_items" in builtin_ids:
         from app.services.builtin_tools import build_work_item_tools
 
@@ -2706,6 +2713,7 @@ async def _activation_check_executor(
                 str(agent.id),
                 is_company_managed=run.is_company_managed,
                 company_managed_agent=agent.is_company_managed,
+                acting_admin=acting_admin,
             )
         )
     if "shared_state" in builtin_ids:
@@ -2719,6 +2727,7 @@ async def _activation_check_executor(
                 is_company_managed=run.is_company_managed,
                 company_managed_agent=agent.is_company_managed,
                 run_id=run.id,
+                acting_admin=acting_admin,
             )
         )
     if composite.resolve_canonical_name(tool) is not None:
@@ -6516,6 +6525,18 @@ async def execute_assignment_run(
                 if _skill_tools:
                     composite.add_tools(*_skill_tools)
 
+            # The person the run acts for is an administrator: its coordination
+            # tools read past every governor's narrowing (#2161).
+            _coord_acting_admin = False
+            if effective_user_id and (
+                "work_items" in agent_builtin_tool_ids or "shared_state" in agent_builtin_tool_ids
+            ):
+                from app.models.user import User as _CoordActingUser
+
+                _coord_acting_admin = bool(
+                    getattr(await db.get(_CoordActingUser, effective_user_id), "is_admin", False)
+                )
+
             # --- Work-item queue tools (built-in, opt-in) ---
             if "work_items" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import (
@@ -6536,6 +6557,7 @@ async def execute_assignment_run(
                     company_managed_agent=agent.is_company_managed,
                     peer_agents=wi_peers,
                     origin=WorkItemOrigin(run_id=run.id),
+                    acting_admin=_coord_acting_admin,
                 )
                 composite.add_tools(wi_defs, wi_exec)
 
@@ -6662,6 +6684,7 @@ async def execute_assignment_run(
                     is_company_managed=run.is_company_managed,
                     company_managed_agent=agent.is_company_managed,
                     run_id=run.id,
+                    acting_admin=_coord_acting_admin,
                 )
                 composite.add_tools(cs_defs, cs_exec)
                 from app.services.builtin_tools import build_friction_tools

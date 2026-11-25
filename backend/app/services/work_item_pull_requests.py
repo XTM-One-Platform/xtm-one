@@ -728,11 +728,13 @@ DEQUEUE_HINTS = {
 CONFLICT_CONCLUSION = "conflict"
 
 
-def dequeued_run_name(reason: str | None) -> str:
-    """The ``run_name`` of a merge queue removal wake: its reason, and what it means when misleading. Pure."""
+def dequeued_run_name(reason: str | None, run_hint: str | None = None) -> str:
+    """The ``run_name`` of a merge queue removal wake: its reason, what it means when misleading,
+    and where the failing queue run is read when the provider says (``extra["queue_run_hint"]``). Pure."""
     reason = reason or "unknown"
     hint = DEQUEUE_HINTS.get(reason)
-    return f"merge queue: removed ({reason})" + (f"; {hint}" if hint else "")
+    name = f"merge queue: removed ({reason})" + (f"; {hint}" if hint else "")
+    return name + (f"; {run_hint}" if run_hint else "")
 
 
 def _apply_dequeued(binding: dict[str, Any], event: PullRequestEvent) -> CiCompleted | None:
@@ -761,7 +763,7 @@ def _apply_dequeued(binding: dict[str, Any], event: PullRequestEvent) -> CiCompl
         head_sha=sha,
         conclusion=DEQUEUED_CONCLUSION,
         run_url=event.url or binding.get("url"),
-        run_name=dequeued_run_name(event.conclusion),
+        run_name=dequeued_run_name(event.conclusion, (event.extra or {}).get("queue_run_hint") or None),
         dispatch_key=key,
     )
 

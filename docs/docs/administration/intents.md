@@ -70,12 +70,12 @@ These are the shipped bindings:
 | Intent | Capability | Built-in agent | Vertical |
 | --- | --- | --- | --- |
 | `global.assistant` | General-purpose assistant behind the in-product AI experience | `CTEM Assistant` and `XTM-One Assistant` for all verticals, plus `OpenCTI Assistant`, `OpenAEV Assistant`, `OpenCRQ Assistant`, and `FIMI Analyst` on their own vertical | all, `cti`, `aev`, `crq`, `fimi` |
-| `global.summarize` | Summarize content | `OpenCTI Assistant`, `OpenAEV Assistant`, `OpenCRQ Assistant`, `FIMI Analyst` | `cti`, `aev`, `crq`, `fimi` |
-| `global.explain` | Explain content in simple terms | `OpenCTI Assistant`, `OpenAEV Assistant`, `OpenCRQ Assistant`, `FIMI Analyst` | `cti`, `aev`, `crq`, `fimi` |
-| `global.make_it_shorter` | Shorten content | `OpenCTI Assistant`, `OpenAEV Assistant`, `OpenCRQ Assistant`, `FIMI Analyst` | `cti`, `aev`, `crq`, `fimi` |
-| `global.make_it_longer` | Expand content | `OpenCTI Assistant`, `OpenAEV Assistant`, `OpenCRQ Assistant`, `FIMI Analyst` | `cti`, `aev`, `crq`, `fimi` |
-| `global.fix_spelling` | Fix spelling and grammar | `OpenCTI Assistant`, `OpenAEV Assistant`, `OpenCRQ Assistant`, `FIMI Analyst` | `cti`, `aev`, `crq`, `fimi` |
-| `global.change_tone` | Change the tone of content | `OpenCTI Assistant`, `OpenAEV Assistant`, `OpenCRQ Assistant`, `FIMI Analyst` | `cti`, `aev`, `crq`, `fimi` |
+| `global.summarize` | Summarize content | `OpenCTI Assistant`, `OpenAEV Assistant`, `FIMI Analyst` | `cti`, `aev`, `fimi` |
+| `global.explain` | Explain content in simple terms | `OpenCTI Assistant`, `OpenAEV Assistant`, `FIMI Analyst` | `cti`, `aev`, `fimi` |
+| `global.make_it_shorter` | Shorten content | `OpenCTI Assistant`, `OpenAEV Assistant`, `FIMI Analyst` | `cti`, `aev`, `fimi` |
+| `global.make_it_longer` | Expand content | `OpenCTI Assistant`, `OpenAEV Assistant`, `FIMI Analyst` | `cti`, `aev`, `fimi` |
+| `global.fix_spelling` | Fix spelling and grammar | `OpenCTI Assistant`, `OpenAEV Assistant`, `FIMI Analyst` | `cti`, `aev`, `fimi` |
+| `global.change_tone` | Change the tone of content | `OpenCTI Assistant`, `OpenAEV Assistant`, `FIMI Analyst` | `cti`, `aev`, `fimi` |
 | `cti.nlq_search` | Turn a natural language question into an OpenCTI filter | `OpenCTI NLQ` | `cti` |
 | `cti.container_summary` | Summarize a container — report, grouping, case | `OpenCTI Entity Insights` | `cti` |
 | `cti.container_report` | Write a report from a container — report, grouping, case | `OpenCTI Entity Insights` | `cti` |
@@ -94,9 +94,6 @@ These are the shipped bindings:
 | `aev.phishing_landing_page_html_generator` | Generate phishing landing page HTML and CSS from a user prompt for authorized credential-capture simulations | `AEV Phishing Landing Page Generator` | `aev` |
 | `aev.message_generator` | Generate messages for adversary emulation exercises | `OpenAEV Assistant` | `aev` |
 | `aev.media_article_generator` | Generate media articles for adversary emulation | `OpenAEV Assistant` | `aev` |
-| `crq.control_gap_analysis` | Analyze control capability gaps against a framework | `OpenCRQ Assistant` | `crq` |
-| `crq.risk_scenario_generator` | Draft risk scenarios from business and threat context | `OpenCRQ Assistant` | `crq` |
-| `crq.assessment_summary` | Summarize an assessment and its requirement answers | `OpenCRQ Assistant` | `crq` |
 
 The `Intents` page is always the authoritative view for your own platform: it reflects what the connected products actually declared and what is bound today.
 

@@ -11,11 +11,8 @@ Each request goes through the OpenCRQ backend to XTM One, under your own identit
 | Capability | What it does | Default agent |
 | --- | --- | --- |
 | `global.assistant` | The conversation behind `Ask Ariane` | `CTEM Assistant`, which hands the conversation over to the `OpenCRQ Assistant` |
-| `global.summarize`, `global.explain`, `global.make_it_shorter`, `global.make_it_longer`, `global.fix_spelling`, `global.change_tone` | Writing help on text content | `OpenCRQ Assistant` |
-| `crq.control_gap_analysis` | Analyze control capability gaps against a framework | `OpenCRQ Assistant` |
-| `crq.risk_scenario_generator` | Draft risk scenarios from business and threat context | `OpenCRQ Assistant` |
 
-OpenCRQ declares these capabilities when it registers. Which of them has a button in OpenCRQ depends on your OpenCRQ version, and an administrator can bind a different agent to any of them on the [`Intents`](../../administration/intents.md) page.
+OpenCRQ declares this capability when it registers, and an administrator can bind a different agent to it on the [`Intents`](../../administration/intents.md) page.
 
 ## OpenCRQ tools for your agents
 

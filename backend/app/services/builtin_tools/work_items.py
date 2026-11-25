@@ -897,6 +897,9 @@ def build_work_item_tools(
     # Where the tools run: the conversation, assignment run and flow
     # run every item they create records, so its views link back to them.
     origin: WorkItemOrigin | None = None,
+    # The person the turn or run acts for is an administrator: the agent reads
+    # past every creator's coordination narrowing (#2161).
+    acting_admin: bool = False,
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """Build the work-item + delegate-to-assignment tools for an agent.
 
@@ -918,7 +921,7 @@ def build_work_item_tools(
     """
     del db  # operations use their own sessions
     acting_user_id = user_id if user_id and user_id != "anonymous" else None
-    writer = agent_writer(is_company_managed=company_managed_agent, agent_id=agent_id)
+    writer = agent_writer(is_company_managed=company_managed_agent, agent_id=agent_id, acting_admin=acting_admin)
 
     def _refused(exc: CompanyManagedWriteRefusedError, work_item_id: str = "") -> str:
         from app.services.shared_state import WorkspaceWriteRefusedError

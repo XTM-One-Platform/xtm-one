@@ -54,6 +54,9 @@ from app.services import organization_asset_store as store
 MAX_CLOSURE = 5000
 #: The most rows one batch write or bulk delete takes.
 MAX_BATCH = 10_000
+#: The most values one ``IN`` list carries: a row-value ``IN`` of a whole batch
+#: exceeds PostgreSQL's expression stack depth (#2184).
+IN_CHUNK = 1000
 #: Keys of a row that are columns, not fields.
 _PROVENANCE = ("source", "external_id", "sync_id")
 #: The source of a membership the record's own ``group`` field gives.
@@ -479,14 +482,16 @@ async def _write_memberships(
         ).all()
     )
     pairs = [(groups[r.group_key], r.id) for r in records if r.group_key in groups]
-    taken = set()
-    if pairs:
-        taken = {
+    taken: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    # By IN_CHUNK pairs: a row-value IN of a whole 10,000-row batch exceeds
+    # PostgreSQL's expression stack depth (StatementTooComplex, #2184).
+    for start in range(0, len(pairs), IN_CHUNK):
+        taken |= {
             (g, r)
             for g, r in (
                 await db.execute(
                     select(member.group_id, member.record_id).where(
-                        tuple_(member.group_id, member.record_id).in_(pairs)
+                        tuple_(member.group_id, member.record_id).in_(pairs[start : start + IN_CHUNK])
                     )
                 )
             ).all()
@@ -1383,7 +1388,8 @@ async def identity_closure(db: AsyncSession, organization_id: uuid.UUID, record_
                 ).all()
             }
             named = {ref for group in decision_groups if group & refs for ref in group} - refs
-            if named:
+            named_refs = [(ref.source, ref.external_id) for ref in named]
+            for start in range(0, len(named_refs), IN_CHUNK):
                 new |= {
                     r
                     for (r,) in (
@@ -1391,7 +1397,7 @@ async def identity_closure(db: AsyncSession, organization_id: uuid.UUID, record_
                             select(OrganizationAssetRecord.id).where(
                                 OrganizationAssetRecord.organization_id == organization_id,
                                 tuple_(OrganizationAssetRecord.source, OrganizationAssetRecord.external_id).in_(
-                                    [(ref.source, ref.external_id) for ref in named]
+                                    named_refs[start : start + IN_CHUNK]
                                 ),
                             )
                         )
