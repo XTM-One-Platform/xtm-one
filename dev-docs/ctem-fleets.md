@@ -783,10 +783,9 @@ answers:
 user's quota (`enforce_agentic_quota`, source `organization_ai_draft`), a
 refusal answered before any read. The panel shows the estimate ("about one
 chat turn") before running. No model at page load, no background run, no
-seeded automation. Community Edition or no LLM configured: the "With AI"
-entry stays in the "Draft" menu with a lock icon and opens the single CTA
-of #9173 (trial, license or configure an LLM) in place of the dialog;
-"From the platforms" stays.
+seeded automation. Community Edition or no LLM configured: the one "Draft"
+button still opens the dialog, which drafts from the connected platforms
+alone and says in one line that documents and AI need a model (#1991).
 
 **Tracked organizations.** From a name alone the draft proposes sector,
 regions, website, the OpenCTI organization matched by search (the
@@ -874,17 +873,30 @@ profile is now version 5".
 **The page header (read mode).** Edit stays the one primary action (on
 main it renders `variant="secondary"`, `OrganizationSection.tsx`; S-b makes
 it the filled primary). The
-two drafts become one secondary menu button "Draft" with two entries,
-"From the platforms" (free, no model) and "With AI" (metered, the estimate
-in its help line), so the header is one row at 1024 in en, fr, es and ja.
-The card of a tracked organization (section 9.8) carries the same "Draft"
-menu in its actions, never two buttons. In edit mode the same menu sits in
-the form toolbar.
+drafts are ONE secondary button "Draft" (#1991, Sam 24 Nov 2026; it
+replaced the menu "From the platforms", "With AI", "From a connected
+integration"), so the header is one row at 1024 in en, fr, es and ja. One
+click runs one pass: the connected platforms (`POST
+/organization-context/draft`, free, no model) always, and the AI (`POST
+/organization-context/ai-draft`, metered) when a model is available; the
+platform values come first, the AI completes the fields they left, and both
+land in the one review below. The draft proposes only the fields of the two
+Settings tabs (Organization; Risk and response): the frontend
+`isSettingsDraftField` and the backend `OUT_OF_SCOPE_PATHS`
+(`services/organization_context_ai_draft.py`) drop primary assets, software,
+the inventory rows and the PIRs, which CTEM > Inventory > Sources and the
+Prioritization policy card import. The fill agent of "From a connected
+integration" (#11888) was removed: Inventory > Sources imports assets from
+every platform and asset integration. The card of a tracked organization
+(section 9.8) keeps its own "Draft with AI" button.
 
-**The panel.** "With AI" opens a centred dialog (`components/ui/dialog.tsx`;
+**The panel.** "Draft" opens a centred dialog (`components/ui/dialog.tsx`;
 no drawer anywhere in the app, Sam 7 Nov 2026, #9502): the `DialogTitle`
-"Draft with AI", one line of description ("Proposes values from what you
-give; nothing is saved until you accept."), the inputs in a body that
+"Draft", one line of description ("Draft reads your platforms and documents
+and proposes values to review. Nothing is saved until you click Save."),
+the connected platforms first; without a model, one line "Documents and AI
+need a model: this draft reads the connected platforms only." in place of
+the AI inputs, never a lock; then the inputs in a body that
 scrolls inside the dialog, and a footer with Cancel then Draft (primary).
 The review diff replaces the inputs in the same dialog, footer Cancel then
 Save accepted (n). Draft is disabled while no input is given and no
