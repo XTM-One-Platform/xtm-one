@@ -44,7 +44,7 @@ def _key(value: Any) -> str:
 def product_matches(product: str, ref: str) -> bool:
     """An installed *product* named by a software reference *ref* (a name, or a CPE's product part).
 
-    The same rule as the gate's tech stack match: equal, or *product* as a whole
+    The same rule as the gate's software match: equal, or *product* as a whole
     word of *ref* (``Windows`` in ``windows_10``, never ``win`` in ``windows``).
     """
     p, r = str(product or "").strip().lower(), str(ref or "").strip().lower()
@@ -101,18 +101,8 @@ class PrimaryAssetIndex:
             self._cache[ref] = hit
         return hit
 
-    def _matching(self, software: list[str], keys: list[str] | None) -> list[tuple[Reacher, str]]:
-        """The reachers *software* or subject *keys* name, each with the software reference it runs."""
-        wanted = {k for k in (keys or []) if k}
-        out: list[tuple[Reacher, str]] = []
-        for i, reacher in enumerate(self.reachers):
-            matched = next((ref for ref in software if ref and i in self._running(ref)), "")
-            if matched or wanted & reacher.keys:
-                out.append((reacher, matched))
-        return out
-
     def reach(self, software: list[str], keys: list[str] | None = None) -> list[dict[str, Any]]:
-        """The primary assets *software* (names, CPEs, tech stack products) or subject *keys* reach.
+        """The primary assets *software* (names, CPEs, products) or subject *keys* reach.
 
         One entry per (primary asset key, through, source), best source first:
         ``{primary_asset_key, software, asset, through, through_kind, source, roles, via}``.
@@ -120,7 +110,11 @@ class PrimaryAssetIndex:
         if not self.reachers:
             return []
         found: dict[tuple[str, str, str], dict[str, Any]] = {}
-        for reacher, matched in self._matching(software, keys):
+        wanted = {k for k in (keys or []) if k}
+        for i, reacher in enumerate(self.reachers):
+            matched = next((ref for ref in software if ref and i in self._running(ref)), "")
+            if not matched and not (wanted & reacher.keys):
+                continue
             for link, kind, through in reacher.links:
                 key = (link.jewel_key, through, link.source)
                 if key in found:
@@ -140,57 +134,11 @@ class PrimaryAssetIndex:
             found.values(), key=lambda h: (h["primary_asset_key"], rank.get(h["source"], 9), h["through"], h["asset"])
         )
 
-    def supporting(self, software: list[str], keys: list[str] | None, jewel_key: str) -> list[dict[str, Any]]:
-        """Every inventory asset *software* or *keys* name that reaches *jewel_key*, one entry per asset.
-
-        Unlike :meth:`reach`, which keeps one chain per (through, source), this lists each
-        supporting asset, its best link first: ``{asset, software, through, through_kind,
-        source, roles}``, sorted by asset name. The loop trace pages it (#1979).
-        """
-        rank = {s: n for n, s in enumerate(SOURCE_ORDER)}
-        out: list[dict[str, Any]] = []
-        for reacher, matched in self._matching(software, keys):
-            links = [(link, kind, through) for link, kind, through in reacher.links if link.jewel_key == jewel_key]
-            if not links:
-                continue
-            link, kind, through = min(links, key=lambda e: (rank.get(e[0].source, 9), e[1] != "asset", e[2]))
-            out.append(
-                {
-                    "asset": reacher.name,
-                    "software": matched,
-                    "through": through,
-                    "through_kind": kind,
-                    "source": link.source,
-                    "roles": sorted({r for lk, _, _ in links for r in lk.roles}),
-                }
-            )
-        return sorted(out, key=lambda e: (e["asset"].casefold(), e["asset"]))
-
-    def totals(self, software: list[str], keys: list[str] | None = None) -> dict[str, dict[str, int]]:
-        """Per primary asset key, how many inventory assets reach it: ``{assets, direct, via_group}``.
-
-        The decision record stores these next to the first chains, so a primary asset
-        reached by 10,000 workstations reads 10,000, never the five chains kept (#1979).
-        """
-        out: dict[str, dict[str, int]] = {}
-        for reacher, _ in self._matching(software, keys):
-            kinds: dict[str, set[str]] = {}
-            for link, kind, _through in reacher.links:
-                kinds.setdefault(link.jewel_key, set()).add(kind)
-            for jewel_key, seen in kinds.items():
-                row = out.setdefault(jewel_key, {"assets": 0, "direct": 0, "via_group": 0})
-                row["assets"] += 1
-                if "asset" in seen:
-                    row["direct"] += 1
-                else:
-                    row["via_group"] += 1
-        return out
-
 
 def _record_products(fields: dict[str, Any]) -> dict[str, str]:
     """What a record says it runs: its own software list and the OS family a device reports."""
     out: dict[str, str] = {}
-    for item in fields.get("tech_stack") or []:
+    for item in fields.get("products") or []:
         label = str(item or "").strip()
         if label:
             out.setdefault(_key(label), label)

@@ -46,8 +46,6 @@ from app.services.organization_context import (
 
 #: Version of the decision record; a reader keys on it.
 DECISION_VERSION = 1
-#: The chains a primary asset source keeps as examples; ``chain_total`` and ``assets_total`` count them all (#1979).
-CHAINS_KEPT = 5
 #: Outcomes, and the signal state each one writes.
 OUTCOME_STATE: dict[str, str] = {
     "case": "confirmed",
@@ -230,9 +228,7 @@ class Resolution:
     #: #1591 S3: the primary assets reached through the inventory links, each with its chain
     #: (software -> asset or asset group -> primary asset, role, link source).
     primary_assets: list[dict[str, Any]] = field(default_factory=list)
-    #: #1979: per primary asset key, how many inventory assets reach it ``{assets, direct, via_group}``.
-    primary_asset_totals: dict[str, dict[str, int]] = field(default_factory=dict)
-    #: #1720: the software references the tech stack and shipped products were matched against.
+    #: #1720: the software references the organization's software and shipped products were matched against.
     software_refs: list[str] = field(default_factory=list)
 
     @property
@@ -336,7 +332,7 @@ def shipped_match(entry: ShippedProduct, ref: str) -> str:
 THREAT_SOFTWARE_RELATIONSHIPS: frozenset[str] = frozenset({"targets", "uses", "has"})
 #: #1720: the evidence keys a threat's targeted or used software is listed under.
 THREAT_SOFTWARE_KEYS: tuple[str, ...] = ("targets", "uses", "targeted_software", "targeted_products")
-#: #1720: the scorer's matched field naming the products a threat matched, ``tech_stack (A, B)``.
+#: #1720: the scorer's matched field naming the products a threat matched, ``products (A, B)``.
 _MATCHED_PRODUCTS = re.compile(r"\b(?:tech[ _]stack|software|products?)\s*\(([^()]*)\)", re.IGNORECASE)
 
 
@@ -346,8 +342,8 @@ def threat_software(evidence: dict[str, Any]) -> list[str]:
     Read from the lists of :data:`THREAT_SOFTWARE_KEYS`, from ``relationships``
     (``{relationship_type, target}`` or ``{type, name}`` objects, kept when the
     type is one of :data:`THREAT_SOFTWARE_RELATIONSHIPS`), and from the
-    scorer's ``matched_fields`` (``tech_stack (Microsoft 365, GitHub)``). Each
-    name is then matched to the tech stack like any software reference.
+    scorer's ``matched_fields`` (``products (Microsoft 365, GitHub)``). Each
+    name is then matched to the organization's software like any software reference.
     """
     found = _evidence_list(evidence, *THREAT_SOFTWARE_KEYS)
     relationships = evidence.get("relationships")
@@ -435,11 +431,10 @@ def resolve(
     if primary_assets is not None:
         refs = list(dict.fromkeys([*software, *out.products]))
         out.primary_assets = primary_assets.reach(refs, keys)
-        out.primary_asset_totals = primary_assets.totals(refs, keys)
     if out.products:
         names = {p.lower() for p in out.products}
         for asset in profile.assets_exposure:
-            if asset not in out.assets and names & {t.lower() for t in asset.tech_stack}:
+            if asset not in out.assets and names & {t.lower() for t in asset.products}:
                 out.assets.append(asset)
     return out
 
@@ -631,16 +626,13 @@ def decide(
             "assets": [a.name for a in resolution.assets],
             "asset_groups": resolution.groups,
             "primary_assets_named": resolution.named_primary_assets,
-            "tech_stack": resolution.products,
+            "products": resolution.products,
             "shipped_products": resolution.shipped,
             "repositories": resolution.repositories,
             "software_refs": resolution.software_refs,
             "hosted_under": resolution.hosted_domains,
             "primary_assets": resolution.primary_assets,
             "inventory_links_read": bool(primary_assets is not None and primary_assets.loaded),
-            # #1979: the real counts behind the chains, and whether the inventory read was cut.
-            "primary_asset_totals": resolution.primary_asset_totals,
-            "inventory_links_truncated": bool(primary_assets is not None and primary_assets.truncated),
             "lenses": lenses,
             "confidence": confidence,
             "proven": proven,
@@ -714,13 +706,9 @@ def decide(
         chains.setdefault(str(hit["primary_asset_key"]), []).append(hit)
     for n, c in jewels:
         source: dict[str, Any] = {"from": "primary_asset", "name": n, "criticality": c}
-        key = " ".join(n.split()).casefold()[:200]
-        chain = chains.get(key)
+        chain = chains.get(" ".join(n.split()).casefold()[:200])
         if chain:
-            source["chain"] = chain[:CHAINS_KEPT]
-            # #1979: the record keeps the first chains and says how many there are, never a silent cut.
-            source["chain_total"] = len(chain)
-            source["assets_total"] = resolution.primary_asset_totals.get(key, {}).get("assets", 0)
+            source["chain"] = chain[:5]
         sources.append(source)
     sources += [
         {"from": "owned_domain", "name": d, "criticality": policy.identity_criticality} for d in resolution.domains
