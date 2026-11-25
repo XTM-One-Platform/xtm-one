@@ -2603,6 +2603,24 @@ are cached per member and integration (present 30 min, missing 10 min;
   body, no credential) is `unknown` and the run goes ahead: the preflight never
   blocks a run on a guess.
 
-Still to do (#2042): the mid-run short-circuit of a module after its first
-Forbidden, the auto-classification of the expected 401/403 as a disposed
-friction, and the log-in-once hint on the stage card (frontend).
+### 15.1 Mid-run guard
+
+A member who has an account on one module and is refused by the other during
+the run (the preflight reads the identity, a tool still answers 401 / 403) is
+guarded inside the run. `assignment_engine` binds
+`guarding_module_accounts(True)` around the agent loop of a per-user stage run
+(the agents `STAGE_NEEDS` names); every other run binds it off.
+
+- The first tool error of a module that reads as a missing account (the
+  401 / 403 wording of `integrations.http.format_http_error`, OpenCTI
+  `AUTH_REQUIRED` / "You must be logged in") marks the module refused for the
+  run (`note_tool_refusal`). A capability denial (OpenCTI `FORBIDDEN_ACCESS`)
+  or a 5xx does not.
+- Every later call to a tool of that module in the run is answered without
+  being sent (`not_run = "module_refused"`, `refusal_answer`): no retry across
+  the module's tools.
+- That refusal is an expected outcome: `agent_loop._log_tool_result` records
+  it as `expected_error`, disposed `platform_acceptable` / `accepted` with the
+  reason `no_module_account: <module>`, never as an undisposed `tool_error`.
+
+Still to do (#2042): the log-in-once hint on the stage card (frontend, UX gate).

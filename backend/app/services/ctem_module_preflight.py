@@ -23,10 +23,12 @@ tools would send.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Iterable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Iterator, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -261,6 +263,76 @@ def module_of_tool(tool_name: str, modules: Sequence[str] = ("opencti", "openaev
     return None
 
 
+# ---------------------------------------------------------------------------
+# Mid-run guard (#2042 slices 2 and 3)
+# ---------------------------------------------------------------------------
+
+#: Lower-cased substrings of a module tool's error meaning the member has no
+#: account there: the 401 / 403 wording of ``integrations.http.format_http_error``
+#: and OpenCTI's ``AUTH_REQUIRED`` GraphQL answer. A capability denial
+#: (OpenCTI ``FORBIDDEN_ACCESS``, "not allowed to do this") is not one of them.
+_ACCOUNT_REFUSAL_MARKERS: Final[dict[str, tuple[str, ...]]] = {
+    "opencti": ("opencti authentication failed", "you must be logged in", "auth_required"),
+    "openaev": ("openaev authentication failed", "openaev access denied"),
+}
+
+#: The modules that refused the member during the current per-user CTEM stage
+#: run, ``None`` outside such a run (the guard is off).
+_refused: ContextVar[set[str] | None] = ContextVar("ctem_module_refusals", default=None)
+
+
+@contextlib.contextmanager
+def guarding_module_accounts(active: bool) -> Iterator[None]:
+    """Turn the mid-run account guard on for the block when *active* (a per-user CTEM stage run)."""
+    token = _refused.set(set() if active else None)
+    try:
+        yield
+    finally:
+        _refused.reset(token)
+
+
+def is_account_refusal(module: str, content: str | None) -> bool:
+    """Whether a *module* tool's error *content* says the member has no account there."""
+    text = (content or "").lower()
+    return any(marker in text for marker in _ACCOUNT_REFUSAL_MARKERS.get(module, ()))
+
+
+def note_tool_refusal(tool_name: str, content: str | None) -> str | None:
+    """Remember a module that refused the member; return it, ``None`` when not one or the guard is off.
+
+    The run's later calls to that module's tools are answered without being
+    sent (:func:`refused_module`), and the refusal is an expected outcome, not
+    a friction of the run (the member never signed in to the module).
+    """
+    refused = _refused.get()
+    if refused is None:
+        return None
+    module = module_of_tool(tool_name)
+    if module is None or not is_account_refusal(module, content):
+        return None
+    refused.add(module)
+    return module
+
+
+def refused_module(tool_name: str) -> str | None:
+    """The module of *tool_name* when it already refused the member in this run, else ``None``."""
+    refused = _refused.get()
+    if not refused:
+        return None
+    module = module_of_tool(tool_name)
+    return module if module in refused else None
+
+
+def refusal_answer(module: str) -> str:
+    """The answer a call to a module that already refused the member gets instead of being sent."""
+    name = MODULE_LABELS.get(module, module)
+    return (
+        f"Not sent: {name} already refused this member in this run ({NO_MODULE_ACCOUNT}: "
+        f"no {name} account). Do not call {name} tools again in this run; continue with "
+        f"what the other sources give and say the member must sign in to {name} once."
+    )
+
+
 __all__ = [
     "ANY_CTEM_MODULE",
     "MODULE_LABELS",
@@ -270,11 +342,16 @@ __all__ = [
     "classify_status",
     "decide",
     "forget",
+    "guarding_module_accounts",
+    "is_account_refusal",
     "module_of_tool",
     "needed_modules",
+    "note_tool_refusal",
     "preflight",
     "probe_identity",
     "read_states",
+    "refusal_answer",
+    "refused_module",
     "stage_need",
     "unmet_modules",
 ]

@@ -133,3 +133,71 @@ def test_module_of_tool():
     assert pf.module_of_tool("search_opencti_entities") == "opencti"
     assert pf.module_of_tool("list_openaev_scenarios") == "openaev"
     assert pf.module_of_tool("web_fetch") is None
+
+
+# --- Mid-run guard (#2042 slices 2 and 3) ---------------------------------
+
+_OAEV_403 = (
+    "Error: OpenAEV access denied while trying to list scenarios - insufficient "
+    "permissions or scopes. The user should check the integration permissions."
+)
+_OCTI_401 = "Error: OpenCTI authentication failed - the token may be expired or revoked."
+
+
+def test_forbidden_mid_run_stops_calls_to_that_module_only():
+    with pf.guarding_module_accounts(True):
+        assert pf.refused_module("list_openaev_scenarios") is None
+        assert pf.note_tool_refusal("list_openaev_scenarios", _OAEV_403) == "openaev"
+        assert pf.refused_module("get_openaev_simulation") == "openaev"
+        assert pf.refused_module("search_opencti_entities") is None
+        assert "OpenAEV" in pf.refusal_answer("openaev")
+        assert pf.NO_MODULE_ACCOUNT in pf.refusal_answer("openaev")
+    # The guard is scoped to the run: the next block starts clean.
+    with pf.guarding_module_accounts(True):
+        assert pf.refused_module("get_openaev_simulation") is None
+
+
+def test_guard_is_off_outside_a_ctem_stage_run():
+    assert pf.note_tool_refusal("list_openaev_scenarios", _OAEV_403) is None
+    assert pf.refused_module("list_openaev_scenarios") is None
+    with pf.guarding_module_accounts(False):
+        assert pf.note_tool_refusal("search_opencti_entities", _OCTI_401) is None
+        assert pf.refused_module("search_opencti_entities") is None
+
+
+@pytest.mark.parametrize(
+    ("tool", "content", "expected"),
+    [
+        ("search_opencti_entities", _OCTI_401, "opencti"),
+        ("search_opencti_entities", "GraphQL error: You must be logged in to do this. [AUTH_REQUIRED]", "opencti"),
+        # A capability denial is not a missing account: the module stays callable.
+        ("add_opencti_label", "GraphQL error: You are not allowed to do this. [FORBIDDEN_ACCESS]", None),
+        ("list_openaev_scenarios", "Error: OpenAEV server error (502) while trying to list.", None),
+        ("web_fetch", _OAEV_403, None),
+    ],
+)
+def test_only_an_account_refusal_trips_the_guard(tool, content, expected):
+    with pf.guarding_module_accounts(True):
+        assert pf.note_tool_refusal(tool, content) == expected
+
+
+def test_expected_refusal_is_recorded_disposed_not_as_a_tool_error(monkeypatch):
+    from app.services import frictions
+    from app.tools import agent_loop
+    from app.tools.base import ToolCall, ToolResult
+
+    recorded: list[tuple[str, str]] = []
+    monkeypatch.setattr(frictions, "note_tool_error", lambda tool, content: recorded.append(("tool_error", tool)))
+    monkeypatch.setattr(
+        frictions,
+        "note_expected_error",
+        lambda tool, content, reason: recorded.append(("expected_error", reason)),
+    )
+    tc = ToolCall(id="c1", name="list_openaev_scenarios", arguments={})
+    with pf.guarding_module_accounts(True):
+        agent_loop._log_tool_result(tc, ToolResult(tool_call_id="c1", content=_OAEV_403, is_error=True))
+    assert recorded == [("expected_error", f"{pf.NO_MODULE_ACCOUNT}: openaev")]
+
+    recorded.clear()
+    agent_loop._log_tool_result(tc, ToolResult(tool_call_id="c1", content=_OAEV_403, is_error=True))
+    assert recorded == [("tool_error", "list_openaev_scenarios")]

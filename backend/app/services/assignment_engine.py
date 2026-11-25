@@ -134,6 +134,7 @@ from app.services.builtin_tools import (
     merge_tool_allow_lists,
     offered_handover_types,
 )
+from app.services.ctem_module_preflight import guarding_module_accounts, stage_need
 from app.services.decision_waits import holds_assignment
 from app.services.element_scope import assignment_run_scope
 from app.services.event_bus import (
@@ -8614,6 +8615,15 @@ async def execute_assignment_run(
                                 assignment_id=assignment.id,
                                 work_item_id=(getattr(run, "trigger_payload", None) or {}).get("work_item_id"),
                             )
+                        ),
+                        # A per-user CTEM stage run stops calling a module
+                        # that refused its member (#2042).
+                        guarding_module_accounts(
+                            stage_need(
+                                getattr(agent, "slug", None),
+                                is_builtin=bool(getattr(agent, "is_builtin", False)),
+                            )
+                            is not None
                         ),
                         turn_binding(_turn_session),
                     ):
