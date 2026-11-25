@@ -251,6 +251,31 @@ async def test_an_asset_or_source_in_two_scenarios_is_recorded_once(monkeypatch:
     assert len(recorded) == 2
 
 
+@pytest.mark.asyncio
+async def test_a_pass_checkpoints_every_batch_of_new_signals(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A cut pass keeps what it recorded: every COMMIT_BATCH new signals reach the checkpoint (#2055)."""
+    _patch_record(monkeypatch)
+    total = health.COMMIT_BATCH * 2 + 3
+    reader = _Reader({"s-1": _health(*(_asset(f"a{i}", "expired") for i in range(total)))})
+    checkpoints: list[object] = []
+
+    async def _checkpoint(pending: object) -> None:
+        checkpoints.append(pending)
+
+    result = await health.run_pass(
+        object(),  # type: ignore[arg-type]
+        organization_id=uuid.uuid4(),
+        reader=reader,
+        max_age_days=30,
+        now=NOW,
+        checkpoint=_checkpoint,
+    )
+    assert result["counts"]["new"] == total
+    assert len(checkpoints) == 2
+    # The pending events left after the last batch are the caller's to publish; each batch gets a fresh holder.
+    assert result["pending"] is not checkpoints[-1] and checkpoints[0] is not checkpoints[1]
+
+
 # ── the schedule ────────────────────────────────────────────────────────
 
 
