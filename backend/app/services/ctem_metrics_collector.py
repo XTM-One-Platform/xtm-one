@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import release_db_connection_before_loop
 from app.core.utils import format_exception_message
-from app.integrations.providers.openaev._common import _api, _search_body
+from app.integrations.providers.openaev._common import _api, _search_body, parse_finding
 from app.integrations.providers.opencti._common import _graphql
 from app.integrations.providers.opencti.capabilities import attach_probe
 from app.models.integration import Integration
@@ -1149,8 +1149,9 @@ def _profile_reachability(rows: tuple[list[Any], list[Any]] | None) -> dict[str,
     return reachability_split(*rows) if rows else None
 
 
-#: Most OpenAEV CVE findings the Exposed join reads; past it the join is not made (an asset unread
-#: could keep a vulnerability in, so a partial read never drops one).
+#: Most OpenAEV open CVE findings the Exposed join reads; past it the join is not made (an asset
+#: unread could keep a vulnerability in, so a partial read never drops one). Since OpenAEV #9233 a
+#: finding is one per CVE and asset, so the cap counts (CVE, asset) pairs: 2000 open pairs.
 _EXPOSED_FINDING_CAP = 2000
 _EXPOSED_PAGE = 500
 #: CVE names per OpenCTI count of the Exposed join (one multi-count call carries every chunk).
@@ -1186,7 +1187,11 @@ def _exposed_basis(inputs: dict[str, Any], tailored: dict[str, Any]) -> tuple[in
 async def _aev_cve_assets(
     base_url: str, headers: dict[str, str], client: httpx.AsyncClient
 ) -> dict[str, list[dict[str, str]]] | None:
-    """Every OpenAEV CVE finding as CVE name -> the assets it was found on, ``None`` when unread or past the cap."""
+    """Every open OpenAEV CVE finding as CVE name -> the assets it was found on, ``None`` when unread or past the cap.
+
+    A finding with no asset (a user or unknown location, OpenAEV #9233) never makes a CVE exposed:
+    the Exposed layer counts CVEs found on an asset only (partner gap abb45061).
+    """
     by_cve: dict[str, list[dict[str, str]]] = {}
     read = 0
     page = 0
@@ -1197,7 +1202,7 @@ async def _aev_cve_assets(
             "post",
             "/api/findings/search",
             "search CVE findings",
-            json=_search_body(page=page, size=_EXPOSED_PAGE, filter_group=_AEV_CVE_FILTER),
+            json=_search_body(page=page, size=_EXPOSED_PAGE, filter_group=_AEV_OPEN_CVE_FILTER),
             client=client,
         )
         if err or resp is None:
@@ -1207,20 +1212,18 @@ async def _aev_cve_assets(
         read += len(content)
         if read > _EXPOSED_FINDING_CAP or int(body.get("totalElements") or 0) > _EXPOSED_FINDING_CAP:
             return None
-        for finding in content:
-            cve = str(finding.get("finding_value") or "").strip().upper()
+        for raw in content:
+            finding = parse_finding(raw)
+            if finding is None or not finding.assets:
+                continue
+            cve = finding.value.upper()
             if not cve.startswith("CVE-"):
                 continue
             refs = by_cve.setdefault(cve, [])
-            for asset in finding.get("finding_assets") or []:
-                if isinstance(asset, dict) and (asset.get("asset_id") or asset.get("asset_name")):
-                    refs.append(
-                        {
-                            "source": "openaev",
-                            "external_id": str(asset.get("asset_id") or ""),
-                            "name": str(asset.get("asset_name") or ""),
-                        }
-                    )
+            for asset_id, asset_name in finding.assets:
+                ref = {"source": "openaev", "external_id": asset_id, "name": asset_name}
+                if ref not in refs:
+                    refs.append(ref)
         page += 1
         if not content or page >= int(body.get("totalPages") or 0):
             return by_cve
@@ -1702,6 +1705,14 @@ def _aev_finished_filter(since_iso: str | None = None) -> dict:
 _AEV_CVE_FILTER = {
     "mode": "and",
     "filters": [{"key": "finding_type", "mode": "or", "operator": "eq", "values": ["cve"]}],
+}
+#: The CVE findings still open at source (OpenAEV #9233: ``finding_status`` is filterable).
+_AEV_OPEN_CVE_FILTER = {
+    "mode": "and",
+    "filters": [
+        *_AEV_CVE_FILTER["filters"],
+        {"key": "finding_status", "mode": "or", "operator": "eq", "values": ["OPEN"]},
+    ],
 }
 
 

@@ -42,6 +42,7 @@ from app.tools.base import (
 
 from ._common import (
     _PROVIDER,
+    FINDINGS_KEPT_AS_HISTORY,
     _aev_link,
     _api,
     _ensure_fresh_token,
@@ -51,10 +52,7 @@ from ._common import (
     _simulation_inject_status_lines,
     _simulation_state_lines,
     _with_scope_hint,
-    findings_fate,
     json_answer,
-    keep_findings_params,
-    keep_findings_schema,
     simulation_results_answer,
 )
 from .read_scope import area_scope, count_text, with_scope
@@ -146,7 +144,6 @@ def register(
         player_ids: list[str] | None = None,
         search: str = "",
         limit: int = 20,
-        keep_findings: bool = True,
     ) -> str:
         action = (action or "").strip().lower()
 
@@ -232,11 +229,11 @@ def register(
                 return "exercise_id is required for action 'delete'."
             _, err = await _api(
                 base_url, headers, "delete", f"/api/exercises/{exercise_id}",
-                "delete simulation", params=keep_findings_params(keep_findings),
+                "delete simulation",
             )
             if err:
                 return err
-            return f"Deleted simulation {exercise_id}. " + findings_fate(keep_findings, "simulation")
+            return f"Deleted simulation {exercise_id}. {FINDINGS_KEPT_AS_HISTORY}"
 
         if action == "duplicate":
             if not exercise_id:
@@ -600,8 +597,8 @@ def register(
                 "Manage OpenAEV simulations (exercises - the actual runs). Actions: "
                 "'list' (search), 'get' (exercise_id), 'create' (name + optional "
                 "subtitle/description/category/main_focus/severity/tags/start_date), "
-                "'update' (exercise_id + fields), 'delete' (exercise_id, "
-                "keep_findings), 'duplicate' (exercise_id), 'status' (exercise_id + "
+                "'update' (exercise_id + fields), 'delete' (exercise_id; its "
+                "findings stay as history), 'duplicate' (exercise_id), 'status' (exercise_id + "
                 "status in SCHEDULED/RUNNING/"
                 "PAUSED/FINISHED/CANCELED - RUNNING starts the simulation against live "
                 "assets), 'set_start_date' (exercise_id + start_date ISO 8601), "
@@ -635,7 +632,6 @@ def register(
                     "player_ids": {"type": "array", "items": {"type": "string"}},
                     "search": {"type": "string"},
                     "limit": {"type": "integer", "default": 20},
-                    "keep_findings": keep_findings_schema(),
                 },
                 "required": ["action"],
             },
