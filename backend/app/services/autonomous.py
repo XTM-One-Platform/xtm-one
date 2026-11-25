@@ -2961,7 +2961,7 @@ async def _run_autonomous_tick_inner() -> int:
         logger.error("Platform registration heartbeat error: %s", format_exception_message(e), exc_info=True)
 
     # --- 14d. Keep the running build's last_seen_at current ---
-    # One row upserted at most every 15 minutes per process, on a session of
+    # One row upserted at most every TOUCH_INTERVAL_SECONDS per process, on a session of
     # its own: the release history tells a build still running from a replaced one.
     try:
         from app.services.platform_builds import touch_running_build_if_due
