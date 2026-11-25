@@ -68,6 +68,7 @@ from app.api.v1.helpers import (
 )
 from app.api.v1.schemas.evaluation import (
     EVALUATION_EXECUTION_MODES,
+    EVALUATION_RUN_MODES,
     AddAgentsRequest,
     AgentTagsResponse,
     AlwaysAskToolsResponse,
@@ -885,6 +886,7 @@ def _exported_settings(evaluation: Evaluation) -> dict:
         model_ids=evaluation.model_ids or [],
         disabled_model_ids=evaluation.disabled_model_ids or [],
         execution_mode=_runnable_execution_mode(evaluation.execution_mode),
+        run_mode=_runnable_run_mode(evaluation.run_mode),
         apply_prompt_guards=bool(evaluation.apply_prompt_guards),
         require_tool_approval=bool(evaluation.require_tool_approval),
     )
@@ -3097,16 +3099,15 @@ async def copy_evaluation(
     source = await _get_user_evaluation(db, user.id, evaluation_id, user_group_ids, is_admin=user.is_admin)
 
     settings = evaluation_settings(source)
-    model_ids, disabled_model_ids = _normalize_model_config(
-        source.model_ids, source.disabled_model_ids
-    )
     settings.update(
-        # No trigger (FR-023): a copy starts nothing on its own until it is given one.
-        trigger_config={},
-        model_ids=model_ids,
-        disabled_model_ids=disabled_model_ids,
         execution_mode=_runnable_execution_mode(source.execution_mode),
+        run_mode=_runnable_run_mode(source.run_mode),
     )
+    # Checked as a create: a value stored before its rule existed is refused,
+    # naming the field, never copied.
+    settings = _settings_checked_as_created(settings)
+    # No trigger (FR-023): a copy starts nothing on its own until it is given one.
+    settings["trigger_config"] = {}
     copy = Evaluation(
         user_id=user.id,
         is_company_managed=False,
@@ -3246,6 +3247,15 @@ def _runnable_execution_mode(stored: str | None) -> str:
     return stored if stored in EVALUATION_EXECUTION_MODES else "llm_only"
 
 
+def _runnable_run_mode(stored: str | None) -> str:
+    """The mode a stored ``run_mode`` runs in, as a copy and an export write it.
+
+    Any value but ``sequential`` runs in parallel. Written as such, a copy and
+    an import accept it, since both refuse any other value.
+    """
+    return stored if stored in EVALUATION_RUN_MODES else "parallel"
+
+
 def _imported_execution_mode(evaluation_data: object) -> str:
     """The mode of an imported evaluation: Full Loop when absent, a 422 for any other value."""
     mode = evaluation_data.get("execution_mode") if isinstance(evaluation_data, dict) else None
@@ -3262,9 +3272,9 @@ def _imported_execution_mode(evaluation_data: object) -> str:
 def _validated_settings(body: CreateEvaluationRequest) -> dict:
     """Every setting of *body*, checked and normalised as create stores them.
 
-    Create and import both call it, so a package is refused as a request
-    would be (FR-114). The trigger config is left to the caller: create
-    encrypts the secret it is sent, an import has none.
+    Create, import and copy all call it, so a package or a copied row is
+    refused as a request would be (FR-114). The trigger config is left to the
+    caller: create encrypts the secret it is sent, an import and a copy have none.
     """
     bad_scorers = invalid_keys(body.scorer_selection)
     if bad_scorers:
@@ -3311,9 +3321,20 @@ def _imported_settings(evaluation_data: dict, execution_mode: str) -> dict:
         apply_prompt_guards=evaluation_data.get("apply_prompt_guards") is True,
         require_tool_approval=evaluation_data.get("require_tool_approval") is True,
     )
+    return _settings_checked_as_created(raw)
+
+
+def _settings_checked_as_created(raw: dict) -> dict:
+    """*raw* settings, checked and normalised by create's own schema and checks.
+
+    Import and copy both call it, so neither stores a value a create would
+    refuse: that value is a 422 naming the field. A missing key, or ``null``
+    on a setting that cannot be null, takes create's default.
+    """
+    raw = {field: value for field, value in raw.items() if value is not None or field in CLEARED_BY_NULL}
     try:
-        # The name is checked and made unique by the import itself.
-        body = CreateEvaluationRequest.model_validate({**raw, "name": "Imported Evaluation"})
+        # The name is the caller's: a placeholder only satisfies the schema.
+        body = CreateEvaluationRequest.model_validate({**raw, "name": "Checked Evaluation"})
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=validation_detail(exc, root="evaluation")) from None
     settings = _validated_settings(body)

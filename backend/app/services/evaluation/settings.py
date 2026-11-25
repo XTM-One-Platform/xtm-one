@@ -22,9 +22,40 @@ neither list here.
 from __future__ import annotations
 
 import copy
+import math
 from typing import Any
 
 from app.models.evaluation import Evaluation, EvaluationAgent
+
+#: The judge's criteria and their default weights. The judge's verdict schema is
+#: built from these keys, and ``sub_score_weights`` may weigh only these.
+SUB_SCORE_WEIGHTS: dict[str, float] = {
+    "tool_selection_quality": 0.20,
+    "response_completeness": 0.20,
+    "response_accuracy": 0.20,
+    "instruction_adherence": 0.20,
+    "coherence": 0.20,
+}
+
+#: The highest ``penalty_factor``: the scoring card's slider goes from 0 to this.
+PENALTY_FACTOR_MAX = 1.5
+
+
+def sub_score_weights_error(weights: dict[str, float]) -> str | None:
+    """Why *weights* cannot weigh the judge's score, or None.
+
+    Only known criteria, each weighted from 0 to 1, summing to 1 (the
+    creation page normalises them so): otherwise the judge's score can
+    leave 0-100 or drop a criterion the author never meant to drop.
+    """
+    unknown = sorted(set(weights) - set(SUB_SCORE_WEIGHTS))
+    if unknown:
+        return f"unknown criteria {', '.join(unknown)}; known: {', '.join(SUB_SCORE_WEIGHTS)}"
+    if any(not 0.0 <= value <= 1.0 for value in weights.values()):
+        return "each weight must be between 0 and 1"
+    if not math.isclose(sum(weights.values()), 1.0, abs_tol=1e-6):
+        return "the weights must sum to 1"
+    return None
 
 EVALUATION_SETTINGS: tuple[str, ...] = (
     "description",

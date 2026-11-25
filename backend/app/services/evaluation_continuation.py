@@ -443,7 +443,7 @@ async def _store_resumed_answer(
     """
     from app.models.dataset_version import DatasetVersionEntry
     from app.services.evaluation.scorers.registry import judge_enabled
-    from app.services.evaluation_engine import SUB_SCORE_WEIGHTS
+    from app.services.evaluation.settings import SUB_SCORE_WEIGHTS
 
     result = await db.execute(
         select(EvaluationResult).where(
