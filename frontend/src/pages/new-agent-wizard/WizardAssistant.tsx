@@ -69,7 +69,7 @@ export function AssistFrame({
       )}
     >
       {active && (
-        <span className="pointer-events-none absolute -top-2.5 right-2 z-10 flex items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-negative-primary shadow">
+        <span className="pointer-events-none absolute -top-2.5 right-2 z-10 flex items-center gap-1 rounded-sm border border-transparent bg-accent px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-negative-primary shadow">
           <Sparkles className="h-2.5 w-2.5" /> {t_i18n("AI")}
         </span>
       )}

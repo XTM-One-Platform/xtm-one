@@ -213,7 +213,7 @@ export default function ExposureBriefing() {
                     <span
                       key={p}
                       className={cn(
-                        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 content-caption font-medium ring-1",
+                        "inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 content-caption font-medium ring-1",
                         on ? "bg-accent/10 text-accent ring-accent/20" : "bg-elevation-hover text-default-secondary ring-[var(--border-elevation-subtle)]",
                       )}
                     >
