@@ -12,7 +12,7 @@ import pytest
 from app.api.v1.integration_catalog import PROVIDER_CATALOG
 from app.services import notion_webhooks as nw
 
-TOKEN = "test-verification-token"  # noqa: S105 - a test fixture, not a credential
+TOKEN = "test-verification-token"
 EVENT = {
     "id": "367cba44-b6f3-4c92-81e7-6a2e9659efd4",
     "timestamp": "2024-12-05T23:55:34.285Z",
