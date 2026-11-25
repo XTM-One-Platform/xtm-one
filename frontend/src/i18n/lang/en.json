@@ -21826,5 +21826,15 @@
   "Waits for the remediation to be applied": "Waits for the remediation to be applied",
   "Waits for the validation to finish": "Waits for the validation to finish",
   "Watches whether the exposure comes back": "Watches whether the exposure comes back",
-  "Last run by {agent}, {when}": "Last run by {agent}, {when}"
+  "Last run by {agent}, {when}": "Last run by {agent}, {when}",
+  "Notion comment created": "Notion comment created",
+  "Notion page created": "Notion page created",
+  "Notion page properties updated": "Notion page properties updated",
+  "Notion page content updated": "Notion page content updated",
+  "Notion data source content updated": "Notion data source content updated",
+  "Triggers when a comment is added to a page or a block. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.": "Triggers when a comment is added to a page or a block. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.",
+  "Triggers when a page is created. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.": "Triggers when a page is created. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.",
+  "Triggers when a page's properties change. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.": "Triggers when a page's properties change. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.",
+  "Triggers when a page's content changes. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.": "Triggers when a page's content changes. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.",
+  "Triggers when the rows of a data source (database) change. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form.": "Triggers when the rows of a data source (database) change. Delivered by Notion's webhooks: create a subscription in the connection's Webhooks tab with the webhook URL shown below, then paste the verification token the integration page shows in Notion's Verify form."
 }
