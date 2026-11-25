@@ -16565,6 +16565,7 @@
   "New release deployed": "New release deployed",
   "Timer due": "Timer due",
   "Partner answer arrived": "Partner answer arrived",
+  "Partner ticket status changed": "Partner ticket status changed",
   "It leaves the queue: its owner agent does not run it again, and its completion still reaches the agents it impacts. Say what was done so the trail is complete. If the problem is gone but the agent should check, keep it open and use Ask the agent > It's solved.": "It leaves the queue: its owner agent does not run it again, and its completion still reaches the agents it impacts. Say what was done so the trail is complete. If the problem is gone but the agent should check, keep it open and use Ask the agent > It's solved.",
   "It leaves the queue without being done: its owner agent does not run it again and no completion work follows. Say why it is no longer needed.": "It leaves the queue without being done: its owner agent does not run it again and no completion work follows. Say why it is no longer needed.",
   "It's solved": "It's solved",
