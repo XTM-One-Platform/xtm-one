@@ -641,6 +641,18 @@ async def test_a_merge_rule_refusal_writes_nothing(env: SimpleNamespace, monkeyp
     assert answer.startswith("Refused: the surviving case") and env.db.commits == 0
 
 
+def test_a_case_names_the_simulations_its_derived_items_are_matched_on() -> None:
+    """#2389: the delete cascade reads the case's validation references and attack-path hops."""
+    from app.services import ctem_case_delete as case_delete
+
+    case = _case(
+        validations=[{"provider": "openaev", "ref": "sim-1"}, {"provider": "openaev", "ref": "sim-1"}, {"ref": ""}],
+        attack_path={"hops": [{"simulation": "sim-2"}, {"simulation": None}]},
+    )
+    assert case_delete.case_simulations(case) == ["sim-1", "sim-2"]
+    assert case_delete.case_simulations(_case()) == []
+
+
 def test_delete_points_to_merge_for_duplicates(env: SimpleNamespace) -> None:
     described = {d.name: d.description for d in env.defs}
     assert "reopens at the next reconcile" in described["delete_ctem_cases"]

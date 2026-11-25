@@ -43,6 +43,27 @@ lacks or under-rates becomes one `ctem:remediation:<case id>` decision to record
 it in OpenCRQ, none found keeps the decision to put a control in place, and the
 decision lists every source checked with what it returned.
 
+What measures the control (#2369, `CTEM_CONTROL_MEASUREMENT_RULE`): the loop
+chooses it from the asset type and the tenant's live integrations, read at
+decision time, a permanent control first: (1) a control an integration already
+offers for the asset (a repository with Aikido: enable Aikido scanning; an IP
+or host with a vulnerability scanner such as Tenable, Qualys, Rapid7 or Wiz:
+permanent scanning; an endpoint with an EDR: its policy or coverage); (2) a
+recurring OpenAEV scenario at a period below `evidence_health.max_age_days`,
+with DETECTION or PREVENTION expectations on a covered technique or OpenAEV
+generic vulnerability scanning (CVE output, which OpenCRQ books); (3) a one-off
+only when neither fits, with the reason (its result expires and the pass opens
+the case again). A port-only scan with no expectation and no CVE output reaches
+OpenCRQ as nothing: never the measurement, never reused as evidence. Several
+options may be offered, the recommended one first, each saying permanent or
+one-off and what OpenCRQ will and will not update; nothing applicable at all:
+"no measuring source connected" and the integration to connect, no scan. The
+platform puts a line first on the `ctem:validation:<case id>` card of a
+`control_decay` case stating permanent versus one-off and what OpenCRQ updates,
+the re-run period applying to a recurring option only
+(`ctem_control_measurement.complete_gate_ask`, called from the work item write,
+from the case and the profile's re-test delay).
+
 A caller may name another lens than the default (a `has` relationship is the
 inside lens of path 1). `GET /api/v1/ctem-signals/paths` answers this table.
 

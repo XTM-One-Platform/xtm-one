@@ -928,6 +928,16 @@ _SEMANTIC_COMPACTION_MARKER = "[Compacted earlier work]"
 # label — a single turn can fan out into dozens of tool calls, and an unbounded
 # ", ".join(...) would balloon the summariser prompt for no added signal.
 _SEMANTIC_COMPACTION_MAX_TOOL_NAMES = 5
+# Identifiers of an elided tool result (#2382): the head+tail excerpt drops the
+# middle of a long listing, so the identifier-bearing lines of that middle are
+# passed to the summariser as a compact verbatim table, bounded per result and
+# per compaction. The summary budget grows with the tables it must carry.
+_SEMANTIC_COMPACTION_ID_TABLE_RESULT_CHARS = 4_000
+_SEMANTIC_COMPACTION_ID_TABLE_TOTAL_CHARS = 20_000
+_SEMANTIC_COMPACTION_ID_TABLE_MAX_TOKENS = 6_144
+_SEMANTIC_COMPACTION_ID_ENTRY_CONTEXT_CHARS = 100
+_SEMANTIC_COMPACTION_RERUN_HINTS = 20
+_SEMANTIC_COMPACTION_RERUN_ARGS_CHARS = 300
 # Name and observation kind of the summariser call's generation.
 _COMPACTION_GENERATION = "context_compaction"
 
@@ -8468,7 +8478,10 @@ _IN_LOOP_COMPACTION_SYSTEM_PROMPT = (
     "- The user's original request and any explicit constraints or "
     "corrections.\n"
     "- Concrete results from tool calls: data, IDs, names, file paths, URLs, "
-    "error messages, and counts — keep identifiers VERBATIM.\n"
+    "error messages, and counts — keep identifiers VERBATIM. A tool result "
+    "whose middle was elided comes with an 'Identifiers in the elided part' "
+    "table: carry every row of it verbatim, never write that an id was not "
+    "captured when the table holds it.\n"
     "- Decisions made and conclusions reached so far.\n"
     "- What still remains to be done.\n"
     "Do NOT invent information, do NOT add pleasantries, and do NOT write a "
@@ -8510,18 +8523,98 @@ def _excerpt_for_transcript(text: str, cap: int) -> str:
     )
 
 
-def _build_inloop_transcript(messages: list[ChatMessage]) -> str:
-    """Build a compact, role-labelled transcript of *messages* for summarising.
+# UUIDs, ULIDs, URLs and the value of a JSON ``id`` / ``*_id`` key: the
+# identifiers an agent writes back later (#2382).
+_TRANSCRIPT_IDENTIFIER_RE = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+    r"|\b[0-9A-HJKMNP-TV-Z]{26}\b"
+    r"|https?://[^\s\"'<>()\[\]]+"
+    r"|(?<=\"id\": \")[^\"\s]{1,128}(?=\")"
+    r"|(?<=_id\": \")[^\"\s]{1,128}(?=\")"
+)
 
-    Each message's content is excerpted to a head+tail window of
-    ``_SEMANTIC_COMPACTION_TRANSCRIPT_MSG_CHARS`` chars (via
-    :func:`_excerpt_for_transcript`) so the summariser call stays cheap even
-    when the slice contains very large tool results, while still surfacing the
-    identifiers that tend to live at the tail. Transient in-loop ``system``
-    nudges are skipped — they carry no task content.
+
+def _elided_identifier_table(text: str, cap: int, budget: int) -> tuple[str, int]:
+    """The identifiers of the part of *text* the excerpt elides, as a table.
+
+    Each identifier is kept verbatim with the start of its line before it (up
+    to ``_SEMANTIC_COMPACTION_ID_ENTRY_CONTEXT_CHARS`` chars: the ``name =``
+    of a listing row), once, in order. The table is bounded by
+    ``_SEMANTIC_COMPACTION_ID_TABLE_RESULT_CHARS`` and by *budget*, what is
+    left of the per-compaction cap; what does not fit is counted. Returns the
+    table (``""`` when nothing is elided or no identifier is found) and the
+    characters it uses.
+    """
+    if len(text) <= cap or budget <= 0:
+        return "", 0
+    head_len = cap // 2
+    tail_len = cap - head_len
+    # Overlap the cut by an identifier's length on each side, so an id the
+    # head or tail cut in two is still read whole.
+    middle = text[max(0, head_len - 128) : len(text) - max(0, tail_len - 128)]
+    header = "Identifiers in the elided part (verbatim):\n"
+    # Room for the header and the "+N more" line: the table never passes its caps.
+    limit = min(_SEMANTIC_COMPACTION_ID_TABLE_RESULT_CHARS, budget) - len(header) - 48
+    rows: list[str] = []
+    seen: set[str] = set()
+    used = 0
+    dropped = 0
+    for match in _TRANSCRIPT_IDENTIFIER_RE.finditer(middle):
+        ident = match.group(0)
+        if ident in seen:
+            continue
+        seen.add(ident)
+        line_start = middle.rfind("\n", 0, match.start()) + 1
+        before = middle[
+            max(line_start, match.start() - _SEMANTIC_COMPACTION_ID_ENTRY_CONTEXT_CHARS) : match.start()
+        ].strip()
+        row = f"- {before} {ident}" if before else f"- {ident}"
+        if used + len(row) + 1 > limit:
+            dropped += 1
+            continue
+        rows.append(row)
+        used += len(row) + 1
+    if not rows:
+        return "", 0
+    table = header + "\n".join(rows)
+    if dropped:
+        table += f"\n- +{dropped} more identifier(s) not listed"
+    return table, len(table)
+
+
+def _rerun_hint(tool_call: ToolCall | None, tool_name: str) -> str:
+    """``re-run <tool>(<args>)`` for an elided tool result, arguments bounded."""
+    args = ""
+    if tool_call is not None and tool_call.arguments:
+        try:
+            args = json.dumps(tool_call.arguments, ensure_ascii=False, sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            args = str(tool_call.arguments)
+        if len(args) > _SEMANTIC_COMPACTION_RERUN_ARGS_CHARS:
+            args = args[:_SEMANTIC_COMPACTION_RERUN_ARGS_CHARS] + "…"
+    return f"re-run {tool_name}({args}) to read the rest"
+
+
+def _inloop_transcript_parts(
+    messages: list[ChatMessage],
+) -> tuple[str, list[str], int]:
+    """The summariser transcript of *messages*, its re-run hints and id chars.
+
+    Returns the transcript (see :func:`_build_inloop_transcript`), one
+    ``re-run <tool>(<args>)`` hint per elided tool result (at most
+    ``_SEMANTIC_COMPACTION_RERUN_HINTS``) and the characters of identifier
+    tables the transcript carries, which sizes the summary budget.
     """
     cap = _SEMANTIC_COMPACTION_TRANSCRIPT_MSG_CHARS
+    calls_by_id: dict[str, ToolCall] = {}
+    for m in messages:
+        if m.role == "assistant" and m.tool_calls:
+            for tc in m.tool_calls:
+                calls_by_id[tc.id] = tc
     parts: list[str] = []
+    hints: list[str] = []
+    id_budget = _SEMANTIC_COMPACTION_ID_TABLE_TOTAL_CHARS
+    id_chars = 0
     for m in messages:
         content = (m.content or "").strip()
         if m.role == "assistant":
@@ -8531,13 +8624,54 @@ def _build_inloop_transcript(messages: list[ChatMessage]) -> str:
             body = _excerpt_for_transcript(content, cap)
             parts.append(f"{label}: {body}".rstrip())
         elif m.role == "tool":
-            parts.append(
-                f"Tool ({m.name or 'tool'}): {_excerpt_for_transcript(content, cap)}"
-            )
+            tool_name = m.name or "tool"
+            part = f"Tool ({tool_name}): {_excerpt_for_transcript(content, cap)}"
+            if len(content) > cap:
+                hint = _rerun_hint(calls_by_id.get(m.tool_call_id or ""), tool_name)
+                part += f"\n[Body elided: {hint}]"
+                if len(hints) < _SEMANTIC_COMPACTION_RERUN_HINTS:
+                    hints.append(hint)
+                table, used = _elided_identifier_table(content, cap, id_budget)
+                if table:
+                    part += "\n" + table
+                    id_budget -= used
+                    id_chars += used
+            parts.append(part)
         elif m.role == "user":
             parts.append(f"User: {_excerpt_for_transcript(content, cap)}")
         # ``system`` messages in the middle are transient nudges — skip them.
-    return "\n\n".join(p for p in parts if p.strip())
+    return "\n\n".join(p for p in parts if p.strip()), hints, id_chars
+
+
+def _build_inloop_transcript(messages: list[ChatMessage]) -> str:
+    """Build a compact, role-labelled transcript of *messages* for summarising.
+
+    Each message's content is excerpted to a head+tail window of
+    ``_SEMANTIC_COMPACTION_TRANSCRIPT_MSG_CHARS`` chars (via
+    :func:`_excerpt_for_transcript`) so the summariser call stays cheap even
+    when the slice contains very large tool results, while still surfacing the
+    identifiers that tend to live at the tail. A tool result whose middle is
+    elided also carries the identifiers of that middle as a bounded verbatim
+    table and a ``re-run <tool>(<args>)`` hint (#2382). Transient in-loop
+    ``system`` nudges are skipped — they carry no task content.
+    """
+    return _inloop_transcript_parts(messages)[0]
+
+
+def _with_rerun_hints(summary: str, hints: list[str]) -> str:
+    """*summary* followed by the re-run hints of the elided tool results.
+
+    Added after the summariser answers, so the way back to an elided body
+    never depends on the summariser keeping it (#2382).
+    """
+    if not summary or not hints:
+        return summary
+    lines = "\n".join(f"- {h}" for h in hints)
+    return (
+        f"{summary}\n\nTool results whose body was elided from this summary "
+        f"(re-read them before writing an id they held; never declare such an "
+        f"id wrong from memory):\n{lines}"
+    )
 
 
 class _SummaryRetryUnaffordableError(Exception):
@@ -8594,9 +8728,11 @@ async def _summarize_messages_for_context(
     budget check) is asked first: when it refuses, the cut summary returns
     ``""`` as one still cut does.
     """
-    transcript = _build_inloop_transcript(middle)
+    transcript, rerun_hints, id_chars = _inloop_transcript_parts(middle)
     if not transcript.strip():
         return ""
+    # A summary that must carry identifier tables gets the room for them.
+    summary_max_tokens = _SEMANTIC_COMPACTION_ID_TABLE_MAX_TOKENS if id_chars else _SEMANTIC_COMPACTION_MAX_TOKENS
 
     from app.llm.base import ChatMessage as LLMMessage
 
@@ -8679,7 +8815,7 @@ async def _summarize_messages_for_context(
         resp, cut = await chat_retrying_a_cut(
             llm,
             model,
-            _SEMANTIC_COMPACTION_MAX_TOKENS,
+            summary_max_tokens,
             _summarize,
             label="Semantic compaction summary",
         )
@@ -8711,7 +8847,7 @@ async def _summarize_messages_for_context(
             "back to deterministic prune"
         )
         return ""
-    return (resp.content or "").strip()
+    return _with_rerun_hints((resp.content or "").strip(), rerun_hints)
 
 
 async def _semantic_compact_session_context(
