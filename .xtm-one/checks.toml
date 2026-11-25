@@ -1968,6 +1968,23 @@ image = "toolchain-node"
 report = "lines"
 install_first = false
 
+# A Python dependency bump (a version in backend/pyproject.toml, a new
+# package): python-dev carries no uv on purpose (hardening rule 2) and no
+# network, so backend/uv.lock was written by hand from PyPI's JSON (#1969).
+# This check runs `uv lock` on toolchain-python (uv in the image, the
+# registry mirror, no credential): it resolves and writes backend/uv.lock
+# only, installs nothing. Read the lock with sandbox_checkout_diff and commit
+# it with pyproject.toml; python-dev runs the bump once its image is rebuilt
+# from the merged lock, so the bump PR's CI runs its tests (#2160).
+[check.backend-lock-update]
+description = "regenerate backend/uv.lock after a dependency change in pyproject.toml (uv lock on toolchain-python, registry mirror; installs nothing)"
+argv = ["uv", "lock"]
+cwd = "backend"
+timeout = 600
+image = "toolchain-python"
+report = "lines"
+install_first = false
+
 [check.frontend-bump-install]
 description = "link a bumped frontend/yarn.lock on toolchain-node, the container frontend-lock-update fetched it on (registry allow-list, lifecycle scripts off); frontend-bump-types runs it first by itself"
 argv = ["yarn", "install", "--immutable", "--mode=skip-build"]
