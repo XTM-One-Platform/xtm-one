@@ -38,6 +38,10 @@ class FakeRedis:
         self.data[key] = str(int(self.data.get(key) or 0) + 1)
         return int(self.data[key])
 
+    async def expire(self, key, seconds):
+        self.expired = [*getattr(self, "expired", []), (key, seconds)]
+        return key in self.data
+
 
 @pytest.fixture
 def redis(monkeypatch):
@@ -338,9 +342,25 @@ async def test_the_build_lock_is_taken_once_and_released_after_the_build(redis: 
     assert await view_of._take_build_lock(None, key)
 
 
-def test_the_previous_view_outlives_a_slow_build() -> None:
-    assert view_of.STALE_VIEW_TTL_SECONDS >= 6 * view_of.VIEW_TTL_SECONDS
-    assert view_of.BUILD_LOCK_SECONDS > view_of.VIEW_TTL_SECONDS
+def test_the_previous_view_outlives_a_slow_build_and_a_dead_pod_frees_its_lock_fast() -> None:
+    # ctem.one, 25 Nov 2026: rollouts killed 100-640 s builds; a 1 h previous view expired and the list 503'd.
+    assert view_of.STALE_VIEW_TTL_SECONDS >= 24 * 3600
+    # A lock left by a stopped pod frees within a minute; the live builder refreshes it well before.
+    assert view_of.BUILD_LOCK_SECONDS <= 60
+    assert view_of.BUILD_LOCK_REFRESH_SECONDS * 2 < view_of.BUILD_LOCK_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_the_building_pod_keeps_its_lock_alive_until_the_build_ends(redis: Any, monkeypatch) -> None:
+    key = view_of._build_lock_key("u-1", "cyber", "4")
+    assert await view_of._take_build_lock(redis, key)
+    monkeypatch.setattr(view_of, "BUILD_LOCK_REFRESH_SECONDS", 0)
+    keep = asyncio.create_task(view_of._keep_build_lock(redis, key))
+    for _ in range(5):
+        await asyncio.sleep(0)
+    keep.cancel()
+    assert (key, view_of.BUILD_LOCK_SECONDS) in redis.expired
+    await view_of._keep_build_lock(None, key)  # no Redis: nothing to keep
 
 
 @pytest.mark.asyncio
