@@ -739,7 +739,7 @@ runs). Its posture is the OPPOSITE of Foundry's on both axes that matter:
 
 ## Known limits this phase
 
-- **No API for exposing, revoking, or re-scoping.** Binding an A2A integration is the whole surface, and `GET /api/v1/agents/{id}/a2a` is read-only. A second way to reach the same state would disagree with the binding the moment either was used, and an exposure created without a binding is reachable with nothing to show for it in the UI. The gap this leaves: a run-as user cannot be nominated, so an exposed agent always runs as its owner.
+- **No API for exposing, revoking, or re-scoping.** Binding an A2A integration is the whole surface, and `GET /api/v1/agents/{id}/a2a` is read-only. A second way to reach the same state would disagree with the binding the moment either was used, and an exposure created without a binding is reachable with nothing to show for it in the UI. The gap this leaves: a run-as user cannot be nominated, so an exposed agent always runs as its owner. The one write on that router, `PUT /api/v1/agents/{id}/a2a/partner-fleet-reads` (#2202), exposes nothing: it switches the partner fleet reads opt-in on the LIVE exposure and answers 404 when the agent is not exposed.
 - **No task listing.** Partners hold the ids of tasks they created and read them individually.
 - **Cards are unsigned.** Neither target platform verifies signatures today; the representation stays forward-compatible so adding one later needs no partner re-registration.
 - **The card is version-shaped, including its security requirement** (`security` under v0.3, `securityRequirements` under v1.0). A partner that reports "the agent says it needs no authentication" is reading a card rendered for the wrong version, not a misconfigured exposure.
