@@ -115,18 +115,23 @@ def _dump(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
-def _bounded_issues(rendered: dict[str, Any]) -> dict[str, Any]:
-    """*rendered* with at most :data:`_ISSUE_PAGE` issues, the total and a truncated flag (#2092).
+def _bounded_issues(rendered: dict[str, Any], offset: int = 0) -> dict[str, Any]:
+    """*rendered* with at most :data:`_ISSUE_PAGE` issues from *offset*, the total and a truncated flag (#2092).
 
     The issues come ranked (``ctem_cases_view.hydrate``), Restricted rows last, so
     the page keeps the ones that matter; the counts and scores stay those of the case.
+    ``issues_next_offset`` reads the next page (#2103), ``None`` on the last one.
     """
     issues = list(rendered.get("issues") or [])
+    start = max(0, int(offset or 0))
+    end = start + _ISSUE_PAGE
     return {
         **rendered,
-        "issues": issues[:_ISSUE_PAGE],
+        "issues": issues[start:end],
         "issues_total": len(issues),
-        "issues_truncated": len(issues) > _ISSUE_PAGE,
+        "issues_offset": start,
+        "issues_truncated": start > 0 or len(issues) > end,
+        "issues_next_offset": end if len(issues) > end else None,
     }
 
 
@@ -273,7 +278,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             logger.warning("CTEM case list failed", exc_info=True)
             return "Error: the cases could not be read right now. Say so; do not guess them."
 
-    async def _get(case_id: str = "") -> str:
+    async def _get(case_id: str = "", issues_offset: int = 0) -> str:
         from app.core.database import async_session
 
         if not str(case_id or "").strip():
@@ -314,7 +319,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     if shown[0].remediation_kind == "upgrade"
                     else None
                 )
-                rendered = _bounded_issues(shown[2])
+                rendered = _bounded_issues(shown[2], issues_offset)
                 elapsed = time.perf_counter() - started
                 if elapsed > _SLOW_READ_SECONDS:
                     logger.info(
@@ -1052,7 +1057,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             ),
             input_schema={
                 "type": "object",
-                "properties": {"case_id": {"type": "string", "description": "The id, or its first 8+ characters."}},
+                "properties": {
+                    "case_id": {"type": "string", "description": "The id, or its first 8+ characters."},
+                    "issues_offset": {
+                        "type": "integer",
+                        "description": "First issue of the page (issues_next_offset).",
+                    },
+                },
                 "required": ["case_id"],
             },
             source=_SOURCE,

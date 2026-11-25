@@ -148,14 +148,14 @@ def empty_sections(
 
 def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The three read tools, acting for *user_id*; nothing is written."""
-    from .ctem_cases import _uuid, build_ctem_case_tools, resolve_case_id
+    from .ctem_cases import _bounded_issues, _uuid, build_ctem_case_tools, resolve_case_id
     from .ctem_signals import build_ctem_signal_tools
 
     signal_defs, signal_exec = build_ctem_signal_tools(user_id=user_id)
     case_defs, case_exec = build_ctem_case_tools(user_id=user_id, agent_id=agent_id)
     scope = _uuid(user_id)
 
-    async def _get(case_id: str = "") -> str:
+    async def _get(case_id: str = "", issues_offset: int = 0) -> str:
         from app.core.database import async_session
         from app.models.user import User
         from app.services import ctem_case_versions as case_versions
@@ -201,9 +201,10 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 )
                 from .ctem_signals import case_signal_scope
 
+                # A bounded page of issues, as the case tools (#2092, #2103): a 700-issue case never answers 150k characters.
                 return _dump(
                     {
-                        **rendered,
+                        **_bounded_issues(rendered, issues_offset),
                         "running_versions": running,
                         "opened_by": opened_by(events),
                         "history_total": len(events),
@@ -266,6 +267,7 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 "Read one CTEM case: its fix, member issues (source product and id), assets, primary assets, "
                 "latest history, who opened it, and why each empty section is empty."
             ),
+            input_schema=by_name["get_ctem_case"].input_schema,
             source=_SOURCE,
         ),
         ToolDefinition(

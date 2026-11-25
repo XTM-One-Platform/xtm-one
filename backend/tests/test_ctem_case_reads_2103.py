@@ -66,6 +66,28 @@ async def test_a_short_or_non_hex_id_is_no_case(env: SimpleNamespace) -> None:  
         assert answer.startswith(f"No case {value}.") and "first 8+ characters" in answer
 
 
+def test_the_issues_of_a_large_case_page_on() -> None:
+    from app.services.builtin_tools import ctem_cases as tools_module
+
+    page = tools_module._ISSUE_PAGE
+    rendered = {"id": "c", "issues": [{"n": i} for i in range(page * 2 + 5)]}
+    first = tools_module._bounded_issues(rendered)
+    second = tools_module._bounded_issues(rendered, first["issues_next_offset"])
+    last = tools_module._bounded_issues(rendered, second["issues_next_offset"])
+    assert first["issues_next_offset"] == page and second["issues"][0] == {"n": page}
+    assert last["issues"] == [{"n": i} for i in range(page * 2, page * 2 + 5)]
+    assert last["issues_next_offset"] is None and last["issues_truncated"] is True
+    assert tools_module._bounded_issues({"issues": [{"n": 1}]})["issues_next_offset"] is None
+
+
+def test_the_read_group_takes_the_issues_offset() -> None:
+    from app.services.builtin_tools.ctem_read import build_ctem_read_tools
+
+    defs, _ = build_ctem_read_tools(user_id=str(uuid.uuid4()), agent_id="")
+    get = next(d for d in defs if d.name == "get_ctem_case")
+    assert set(get.input_schema["properties"]) == {"case_id", "issues_offset"}
+
+
 def test_an_id_prefix_is_eight_hex_characters_or_more() -> None:
     assert asset_store.id_prefix("ABCDEF01") == "abcdef01"
     assert asset_store.id_prefix(" 1b2c3d4e-5f ") == "1b2c3d4e-5f"
