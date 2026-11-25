@@ -191,7 +191,11 @@ Common rules:
   ownership change and the hourly case sweep, `catch_up` hands every open
   case its owner never ran (no open `<key>:case:<id>` item of any declared
   key, no `owner_requested` case event for that owner) one
-  `ctem_case.opened`, P1 first, soonest SLA first, 100 per pass.
+  `ctem_case.opened`, P1 first, soonest SLA first, 100 per pass. An ask no
+  case automation answered (no run of the case since it, no open case item)
+  is made again after 15 minutes (`REASK_AFTER_SECONDS`) under a new event
+  id, 3 asks in all (`MAX_ASKS`), so a delivery lost to an exhausted pool
+  never leaves a case unowned (#2101).
   `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active, fleet_id};
   the case page header shows "Owned by <fleet>" linked to the fleet page, or
   "No active fleet owns this case" when it is null or inactive.
