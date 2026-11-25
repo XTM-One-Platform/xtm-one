@@ -189,7 +189,7 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
 
   it("reads an amount with its unit and currency as text", async () => {
     withProfile({ currency: "", risk_appetite: { annual_loss_threshold: 250000, approval_threshold: null } });
-    renderPage("risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     const tile = await screen.findByTestId("settings.organization.read.annual_loss_threshold");
     expect(tile.textContent).toContain("250,000 per year, currency not set");
     expect(screen.getByTestId("settings.organization.read.approval_threshold").textContent).toContain("Not set");
@@ -197,7 +197,7 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
 
   it("says what each saved threshold does, in the profile currency, in read mode only", async () => {
     withProfile({ risk_appetite: { annual_loss_threshold: 250000, approval_threshold: 1000000 } });
-    renderPage("risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     expect(await screen.findByText(/Scenarios above .*250,000.* per year are ranked first/)).toBeTruthy();
     expect(screen.getByText(/Scenarios above .*1,000,000.* per year are flagged for approval/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
@@ -206,31 +206,15 @@ describe("OrganizationSection identity header and threshold previews (#9173 S2)"
 });
 
 describe("OrganizationSection panels (#12329, #1690)", () => {
-  it("draws two tabs in Settings, Organization then Risk and response; the Business cards live on CTEM > Inventory (#1975, #1690)", async () => {
+  it("draws no tab bar in Settings: Identity alone, the Business cards live on CTEM > Inventory (#1690)", async () => {
     renderPage();
-    const panel = await screen.findByTestId("settings.organization.panel-organization");
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Organization", "Risk and response"]);
-    expect(screen.getByTestId("settings.organization.tabs")).toBeTruthy();
-    // Organization: the identity, the enterprise knowledge and the agents' context (#1975: no Knowledge and sources page).
-    expect(within(panel).getByTestId("settings.organization.identity")).toBeTruthy();
-    expect(within(panel).getByTestId("settings.organization.enterprise-knowledge")).toBeTruthy();
-    expect(within(panel).getByTestId("settings.organization.injection")).toBeTruthy();
-    expect(within(panel).queryByTestId(`settings.organization.risk-appetite`)).toBeNull();
-    expect(screen.queryByTestId("settings.organization.knowledge")).toBeNull();
-    expect(screen.queryByRole("button", { name: /Back to Organization Profile/ })).toBeNull();
+    expect(await screen.findByTestId("settings.organization.identity")).toBeTruthy();
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.queryByTestId("settings.organization.tabs")).toBeNull();
     expect(screen.queryByTestId("settings.organization.primary-assets")).toBeNull();
     expect(screen.queryByTestId("settings.organizations")).toBeNull();
-  });
-
-  it("draws the risk appetite, the case sync, the rates and the PIR details on Risk and response (#1975)", async () => {
-    renderPage("risk");
-    const panel = await screen.findByTestId("settings.organization.panel-risk");
-    expect(screen.getByRole("tab", { name: "Risk and response" }).getAttribute("aria-selected")).toBe("true");
-    expect(within(panel).getByRole("heading", { name: /Risk appetite/ })).toBeTruthy();
-    expect(screen.queryByTestId("settings.organization.panel-organization")).toBeNull();
-    expect(screen.queryByTestId("settings.organization.enterprise-knowledge")).toBeNull();
-    // The profile's header, Draft and Edit stay on both tabs.
-    expect(screen.getByTestId("settings.organization.edit")).toBeTruthy();
+    // Knowledge and sources is a button of the header opening its own page (#1367, point 7), never a tab.
+    expect(screen.getByTestId("settings.organization.knowledge").textContent).toContain("Knowledge and sources");
   });
 
   it("mounts only the cards an embedding page names, with no header, tab bar or Sources panel (#1178)", async () => {
@@ -291,7 +275,7 @@ describe("OrganizationSection panels (#12329, #1690)", () => {
   });
 
   it("lists only the missing fields Settings draws, and a refused Save focuses the bad field", async () => {
-    renderPage("risk");
+    renderPage();
     const missing = await screen.findByTestId("settings.organization.missing");
     expect(missing.textContent).toContain("Loaded hourly rate");
     expect(missing.textContent).not.toContain("Primary assets");
@@ -305,31 +289,13 @@ describe("OrganizationSection panels (#12329, #1690)", () => {
 });
 
 describe("OrganizationSection", () => {
-  it("names the fields not filled, as the agents report them, each on its tab (#1975)", async () => {
+  it("names the fields not filled, as the agents report them", async () => {
     renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
     expect((await screen.findByTestId("settings.organization.identity")).textContent).toContain("Acme");
-    // size is an Identity field: its chip is on the Organization tab, the loaded hourly rate's on Risk and response.
-    expect((await screen.findByTestId("settings.organization.missing")).textContent).not.toContain("Loaded hourly rate");
-    cleanup();
-    renderPage("risk");
     const missing = await screen.findByTestId("settings.organization.missing");
     // The PIR list is reported on CTEM > Inventory with the Prioritization policy (#1889), never on Settings.
     expect(missing.textContent).not.toContain("Priority intelligence requirements (PIRs)");
     expect(missing.textContent).toContain("Loaded hourly rate");
-  });
-
-  it("marks each tab with its own missing count and its own unsaved edits (UX r1 B1 on #1984)", async () => {
-    renderPage("risk");
-    await screen.findByTestId("settings.organization.overview");
-    // size on Organization, loaded_hourly_rate on Risk and response: one each, on its own tab.
-    expect(screen.getByTestId("settings.organization.tab-organization-missing").textContent).toContain("1 field not filled");
-    expect(screen.getByTestId("settings.organization.tab-risk-missing").textContent).toContain("1 field not filled");
-    fireEvent.click(screen.getByTestId("settings.organization.edit"));
-    fireEvent.change(await screen.findByRole("textbox", { name: "Loaded hourly rate" }), { target: { value: "120" } });
-    // Only the tab whose field changed reads Unsaved; the count markers leave while the form is open.
-    await waitFor(() => expect(screen.getByTestId("settings.organization.tab-risk-unsaved")).toBeTruthy());
-    expect(screen.queryByTestId("settings.organization.tab-organization-unsaved")).toBeNull();
-    expect(screen.queryByTestId("settings.organization.tab-risk-missing")).toBeNull();
   });
 
   it("shows the primary assets on CTEM > Inventory with no Used by row above them (#1690, #1878)", async () => {
@@ -339,12 +305,10 @@ describe("OrganizationSection", () => {
   });
 
   it("counts the fields not filled Settings draws and opens the form on a missing field (#9173 S1c, #1690)", async () => {
-    renderPage("risk");
+    renderPage();
     const overview = await screen.findByTestId("settings.organization.overview");
-    // loaded_hourly_rate here, size on Organization; pir_ids is reported on CTEM > Inventory with the Prioritization
-    // policy (#1889). The row counts this tab and names the other one (UX r1 B1 on #1984).
-    expect(overview.textContent).toContain("1 field not filled on this tab");
-    expect(screen.getByTestId("settings.organization.overview-organization").textContent).toContain("1 more on Organization.");
+    // size and loaded_hourly_rate; pir_ids is reported on CTEM > Inventory with the Prioritization policy (#1889).
+    expect(overview.textContent).toContain("2 fields not filled");
     expect(screen.queryByTestId("settings.save-bar")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Loaded hourly rate" }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });
@@ -521,12 +485,14 @@ describe("OrganizationSection", () => {
   });
 
   it("drops an exposure card's edit on Cancel, nothing sent (#12256 slice 2)", async () => {
-    renderPage();
+    renderPage("knowledge");
     fireEvent.click(await screen.findByRole("button", { name: /Edit Enterprise knowledge/ }));
     const card = screen.getByTestId("settings.organization.enterprise-knowledge");
     fireEvent.click(within(card).getByRole("button", { name: "Link a knowledge base" }));
     fireEvent.click(within(within(card).getByTestId("settings.save-bar")).getByRole("button", { name: "Cancel" }));
     expect(within(card).queryByTestId("settings.save-bar")).toBeNull();
+    // The Knowledge and sources page has no profile Edit of its own (UX round 1 on #1476, B1).
+    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
     expect(put).not.toHaveBeenCalled();
     // The focus goes back to the card's Edit, never to the page body (#12271 UX r1 B3).
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: /Edit Enterprise knowledge/ })));
@@ -667,8 +633,8 @@ describe("OrganizationSection", () => {
 
   it("saves the edited profile as a form version", async () => {
     put.mockResolvedValue({ ...CONTEXT, version: 4 });
-    renderPage("risk");
-    await screen.findByTestId("settings.organization.panel-risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(screen.getByLabelText("Loaded hourly rate"), { target: { value: "120" } });
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
@@ -682,8 +648,8 @@ describe("OrganizationSection", () => {
   });
 
   it("refuses an amount that is not a number without calling the API", async () => {
-    renderPage("risk");
-    await screen.findByTestId("settings.organization.panel-risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(screen.getByLabelText("Loaded hourly rate"), { target: { value: "abc" } });
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
@@ -695,8 +661,8 @@ describe("OrganizationSection", () => {
   });
 
   it("marks the refused amount invalid and focuses it, until it is edited", async () => {
-    renderPage("risk");
-    await screen.findByTestId("settings.organization.panel-risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     const rate = screen.getByRole("textbox", { name: "Loaded hourly rate" });
     fireEvent.change(rate, { target: { value: "12O" } });
@@ -709,8 +675,8 @@ describe("OrganizationSection", () => {
   });
 
   it("draws the amount's unit inside the field's own box, hidden from assistive tech (UX round 2 B1)", async () => {
-    renderPage("risk");
-    await screen.findByTestId("settings.organization.panel-risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     const rate = await screen.findByRole("textbox", { name: "Loaded hourly rate" });
     // The unit is a decoration beside the input, in the same positioned box: the
@@ -722,8 +688,8 @@ describe("OrganizationSection", () => {
   });
 
   it("labels the currency field with its own key, not the chart number format (UX round 2 B3)", async () => {
-    renderPage("risk");
-    await screen.findByTestId("settings.organization.panel-risk");
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     expect(await screen.findByText("Currency of the amounts", { selector: "label" })).toBeTruthy();
   });
@@ -877,6 +843,58 @@ describe("OrganizationSection", () => {
     expect(screen.getByText("Retail threats (bbbb2222)")).toBeTruthy();
   });
 
+  it("draws no PIR details card on the profile: the details open from each PIR of the policy card (#1974)", async () => {
+    withPirs({ pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null }, { pir_ids: ["pir-1"] });
+    renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
+    expect(screen.queryByTestId("settings.organization.pir-details")).toBeNull();
+    expect(screen.queryByText("PIR details")).toBeNull();
+  });
+
+  it("shows each PIR's completeness and saves its details from the dialog, the others kept (#1974)", async () => {
+    withPirs(
+      { pirs: [{ id: "pir-1", name: "Ransomware on energy" }, { id: "pir-2", name: "Retail threats" }], unavailable: null },
+      {
+        pir_ids: ["pir-1", "pir-2"],
+        pir_details: {
+          "pir-1": { question: "Who targets us?", owner: "CTI", review_cadence: "", primary_assets: [] },
+          "pir-2": { question: "Which retail groups?", owner: "", review_cadence: "monthly", primary_assets: ["Payments"] },
+        },
+      },
+    );
+    patch.mockResolvedValue({ ...CONTEXT, version: 4 });
+    renderPolicy();
+    const open = await screen.findByRole("button", { name: "Details of Ransomware on energy, 2 of 4 set" });
+    expect(screen.getByRole("button", { name: "Details of Retail threats, 3 of 4 set" })).toBeTruthy();
+    fireEvent.click(open);
+    const dialog = await screen.findByTestId("settings.organization.pir-details-dialog");
+    expect(within(dialog).getByText("PIR details: Ransomware on energy")).toBeTruthy();
+    const question = within(dialog).getByLabelText("Question") as HTMLInputElement;
+    expect(question.value).toBe("Who targets us?");
+    fireEvent.change(within(dialog).getByLabelText("Owner"), { target: { value: "SOC" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    const [, body] = patch.mock.calls[0] as [string, { fields: { pir_details: Record<string, { owner: string }> } }];
+    expect(body.fields.pir_details["pir-1"].owner).toBe("SOC");
+    expect(body.fields.pir_details["pir-2"]).toEqual({ question: "Which retail groups?", owner: "", review_cadence: "monthly", primary_assets: ["Payments"] });
+    expect(Object.keys(body.fields)).toEqual(["pir_details"]);
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("opens the same details read-only for a reader, with no Save (#1974)", async () => {
+    // A reader never reads the administrators-only PIR list: the name saved with the PIR names it.
+    withPirs({ pirs: [], unavailable: null }, { pir_ids: ["pir-1"], pir_names: { "pir-1": "Ransomware on energy" } });
+    renderWithProviders(
+      <MemoryRouter initialEntries={["/ctem/inventory/exposure"]}>
+        <OrganizationSection embed={{ cards: ["prioritization_policy"], readOnly: true }} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Details of Ransomware on energy, 0 of 4 set" }));
+    const dialog = await screen.findByTestId("settings.organization.pir-details-dialog");
+    expect(within(dialog).getByTestId("settings.organization.pir-details-read")).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
   it("shows eight PIRs, then +N more in place (#9615)", async () => {
     const ids = Array.from({ length: 11 }, (_, i) => `pir-${i}`);
     withPirs({ pirs: ids.map((id) => ({ id, name: `Name ${id}` })), unavailable: null, opencti_url: "" }, { pir_ids: ids });
@@ -891,8 +909,8 @@ describe("OrganizationSection", () => {
     withPirs({ pirs: [{ id: "pir-1", name: "Ransomware on energy" }], unavailable: null }, { pir_ids: ["pir-1"] });
     put.mockResolvedValue({ ...CONTEXT, version: 4 });
     patch.mockResolvedValue({ ...CONTEXT, version: 4 });
-    const view = renderPage("risk");
-    await screen.findByTestId("settings.organization.panel-risk");
+    const view = renderWithProviders(<MemoryRouter><OrganizationSection /></MemoryRouter>);
+    await screen.findByTestId("settings.organization.identity");
     fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
     fireEvent.change(screen.getByLabelText("Loaded hourly rate"), { target: { value: "120" } });
     fireEvent.click(await screen.findByRole("button", { name: /Save/ }));
@@ -972,28 +990,34 @@ describe("OrganizationSection", () => {
     expect(get).not.toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/(syncs|sources)/));
   });
 
-  it("reads a former Knowledge and sources link as the Organization tab, which holds its cards, with no Sources and syncs (#1975, #1938)", async () => {
-    renderPage("knowledge");
-    const panel = await screen.findByTestId("settings.organization.panel-organization");
-    expect(within(panel).getByTestId("settings.organization.enterprise-knowledge")).toBeTruthy();
-    expect(within(panel).queryByTestId("organization-sources")).toBeNull();
-    expect(screen.queryByTestId("settings.organization.knowledge-header")).toBeNull();
-    expect(screen.getByRole("tab", { name: "Organization" }).getAttribute("aria-selected")).toBe("true");
-  });
-
-  it("opens ?setup on the first tab with a field not filled, with the save bar (#1975)", async () => {
-    get.mockImplementation(async (path: string) =>
-      path === "/organizations" || path === "/integrations" ? [] : { ...CONTEXT, missing_fields: ["risk_appetite.approval_threshold"] },
-    );
+  it("keeps the Knowledge and sources page to its knowledge cards: no Sources and syncs, no setup guide, no save bar (#1938)", async () => {
     renderWithProviders(
-      <MemoryRouter initialEntries={["/settings/organization?setup=1"]}>
+      <MemoryRouter initialEntries={["/settings/organization/profile/knowledge?setup=1"]}>
         <OrganizationSection />
-        <LocationProbe />
       </MemoryRouter>,
     );
-    expect(await screen.findByTestId("settings.organization.panel-risk")).toBeTruthy();
-    expect(screen.getByTestId("settings.organization.setup-guide")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^Save/ })).toBeTruthy();
+    const panel = await screen.findByTestId("settings.organization.panel-knowledge");
+    expect(within(panel).queryByTestId("organization-sources")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.setup-guide")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Save/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it("draws Knowledge and sources as a page of its own (#1367)", async () => {
+    renderPage("knowledge");
+    await screen.findByTestId("settings.organization.panel-knowledge");
+    // Its own page (#1367, point 7): a back link to the profile, no tab bar, no header button to itself.
+    expect(screen.getByRole("button", { name: /Back to Organization Profile/ })).toBeTruthy();
+    expect(screen.queryByTestId("settings.organization.tabs")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.knowledge")).toBeNull();
+    // Its own header (UX round 1 on #1476, B1): the back link first, then its title; the profile's header and
+    // fields banner stay on the profile.
+    const header = screen.getByTestId("settings.organization.knowledge-header");
+    expect(header.firstElementChild?.textContent).toContain("Back to Organization Profile");
+    expect(header.textContent).toContain("Knowledge and sources");
+    expect(screen.queryByText("Organization profile", { selector: "h3" })).toBeNull();
+    expect(screen.queryByTestId("settings.organization.edit")).toBeNull();
+    expect(screen.queryByTestId("settings.organization.overview")).toBeNull();
   });
 
   it("marks a primary asset linked to OpenCRQ with a named icon", async () => {
