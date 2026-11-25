@@ -1282,6 +1282,9 @@ def dequeued_note(removed: list[str], event: PullRequestEvent, now: datetime, *,
     hint = DEQUEUE_HINTS.get(reason)
     if hint:
         reason = f"{reason}; {hint}"
+    run_hint = (event.extra or {}).get("queue_run_hint")
+    if isinstance(run_hint, str) and run_hint:
+        reason = f"{reason}; {run_hint}"
     tail = (
         "it stays blocked until the items it waits for are done"
         if still_blocked
