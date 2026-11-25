@@ -6052,14 +6052,22 @@ async def bulk_delete_work_items(
         # caller who may no longer delete it (closes the TOCTOU window). Sum the
         # real per-batch rowcounts so the reported total reflects what was
         # actually removed, not merely what was targeted.
+        from app.services.work_item_delete_audit import refresh_cancelled_cards, settle_before_delete
+
         deleted = 0
+        cancelled: list[str] = []
         for start in range(0, len(target_ids), 1000):
             batch = target_ids[start : start + 1000]
+            # The core DELETE never fires the decision hook: the open decisions of the
+            # batch are cancelled and each item audited first, under the same gate (#2201).
+            rows = (await db.execute(select(WorkItem).where(WorkItem.id.in_(batch), deletable))).scalars().all()
+            cancelled.extend(await settle_before_delete(db, uid, rows))
             result = await db.execute(
                 delete(WorkItem).where(WorkItem.id.in_(batch), deletable)
             )
             deleted += result.rowcount or 0
         await db.commit()
+    refresh_cancelled_cards(cancelled)
 
     return deleted
 
@@ -6455,8 +6463,13 @@ async def delete_work_item(
             return False
         if item.status in SCHEDULED_LIVE_STATUSES:
             _refuse_scheduled(item, "deleted before it settled")
+        # Its open decision is cancelled and the delete audited before the row goes (#2201).
+        from app.services.work_item_delete_audit import refresh_cancelled_cards, settle_before_delete
+
+        cancelled = await settle_before_delete(db, uid, [item])
         await db.delete(item)
         await db.commit()
+    refresh_cancelled_cards(cancelled)
     return True
 
 
