@@ -2,6 +2,8 @@
 // was skipped for want of a module account is told which module to sign in to,
 // and the page never auto-generates another run that would be skipped again.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 
@@ -34,5 +36,20 @@ describe("StageSignInHint", () => {
   it("never auto-generates a stage skipped for a missing account", () => {
     const resp = { assessment: null, status: "no_module_account", no_module_account: ["opencti"] } as CtemStageAssessmentResponse;
     expect(shouldAutoGenerate(resp)).toBe(false);
+  });
+});
+
+// UX round 1 B1 on #2075: the stage page reads the same endpoint, so it shows
+// the same shared hint and offers no Generate that the preflight skips again.
+describe("the stage page in the no_module_account state", () => {
+  const page = readFileSync(join(process.cwd(), "src/pages/xtm-one/CtemStageDetail.tsx"), "utf8");
+
+  it("renders the shared hint, not a copy", () => {
+    expect(page).toContain('from "./ctem/stage-sign-in-hint"');
+    expect(page).toContain("<StageSignInHint modules={unsignedModules}");
+  });
+
+  it("hides Generate while the member has no module account", () => {
+    expect(page).toContain("!generating && !refresh.isPending && !unsignedModules && (");
   });
 });
