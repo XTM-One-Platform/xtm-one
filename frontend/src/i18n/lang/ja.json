@@ -21718,5 +21718,6 @@
   "{count, plural, one {through an asset group} other {through asset groups}}": "{count, plural, other {件が資産グループ経由}}",
   "≥ {threshold}": "{threshold}以上",
   "< {threshold}": "{threshold}未満",
+  "At least {total} {count, plural, one {asset} other {assets}}: {names}": "少なくとも{total}件の資産: {names}",
   "{total} {count, plural, one {asset} other {assets}}: {names}": "{total}件の資産: {names}"
 }
