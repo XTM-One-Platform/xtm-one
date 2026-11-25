@@ -60,7 +60,7 @@ def _aware(value: datetime | None) -> datetime | None:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
-def _waiting(model: Any, now: datetime) -> list:
+def _waiting(model: Any, now: datetime) -> list[Any]:
     from app.services.orchestration_engine import STARTED_AT_PAYLOAD_KEY
 
     return [
@@ -101,7 +101,8 @@ async def queue_wait_line(db: AsyncSession, run_id: uuid.UUID | str, *, now: dat
         if execution is None:
             return None
         ahead = 0
-        if execution.run_at is not None and _aware(execution.run_at) <= now:
+        due_at = _aware(execution.run_at)
+        if due_at is not None and due_at <= now:
             ahead = int(
                 (
                     await db.execute(
@@ -147,7 +148,7 @@ async def _starvation(db: AsyncSession, now: datetime) -> tuple[int, float, int]
     return int(waiting or 0), wait, int(expired or 0)
 
 
-async def _notify_admins(db: AsyncSession, *, title: str, summary: str, extra: dict) -> int:
+async def _notify_admins(db: AsyncSession, *, title: str, summary: str, extra: dict[str, Any]) -> int:
     from app.models.user import User
     from app.services.notify import notify_web_user
 
