@@ -44,6 +44,15 @@ export function isAppliedChangeKind(value: string | null | undefined): value is 
   return value != null && Object.prototype.hasOwnProperty.call(APPLIED_CHANGE_KIND_LABEL, value);
 }
 
+/**
+ * The words that name an applied-change event's kind in the History Action text and its
+ * CSV (UX round 1 on #2076, B1): rows of several changes are told apart by their kind,
+ * as the sibling rows name their gate or signal. Null for another event or an unknown kind.
+ */
+export function appliedChangeKindLabel(event: Pick<CtemCaseEvent, "kind" | "to">): string | null {
+  return event.kind === "applied_change" && isAppliedChangeKind(event.to) ? APPLIED_CHANGE_KIND_LABEL[event.to] : null;
+}
+
 /** The `{ids, rollback}` evidence of an applied change; a value that is not that JSON reads as empty. */
 function parseEvidence(evidence: string | null): { ids: string[]; rollback: string } {
   if (!evidence) return { ids: [], rollback: "" };

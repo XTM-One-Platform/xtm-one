@@ -14,7 +14,7 @@ import { renderWithProviders } from "@/testing/providers";
 
 import { CaseMobilization } from "./CaseMobilization";
 import { CASE_EVENT_LABEL } from "./case-events";
-import { APPLIED_CHANGE_KIND_LABEL, MOBILIZATION_MODE_LABEL, appliedChanges, mobilizationMode } from "./case-mobilization";
+import { APPLIED_CHANGE_KIND_LABEL, MOBILIZATION_MODE_LABEL, appliedChangeKindLabel, appliedChanges, mobilizationMode } from "./case-mobilization";
 
 function change(overrides: Partial<CtemCaseEvent> = {}): CtemCaseEvent {
   return {
@@ -43,6 +43,13 @@ describe("case Mobilization (#2061)", () => {
   it("reads evidence that is not the JSON object as no ids and no rollback, an unknown kind as none", () => {
     const [read] = appliedChanges([change({ evidence: "not json", to: "teleport" })]);
     expect(read).toMatchObject({ kind: null, ids: [], rollback: "" });
+  });
+
+  it("names the kind of an applied change for the History Action text and its CSV (UX round 1 on #2076, B1)", () => {
+    expect(appliedChangeKindLabel(change())).toBe("Indicators blocked");
+    expect(appliedChangeKindLabel(change({ to: "detection_rule" }))).toBe("Detection rule deployed");
+    expect(appliedChangeKindLabel(change({ to: "teleport" }))).toBeNull();
+    expect(appliedChangeKindLabel({ kind: "note", to: "ioc_prevention" })).toBeNull();
   });
 
   it("names the mode from the tickets and the applied changes", () => {
