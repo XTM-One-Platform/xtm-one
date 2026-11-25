@@ -658,11 +658,14 @@ def listed_integration_bindings(agent: Any, resolved_bindings: Mapping[str, str]
 def _owner_run_handed_on(owner_run: bool, agent: Any, target: Any) -> bool:
     """Whether the turn *agent* consults or transfers to acts as its owner too.
 
-    A turn with no person acts as its agent's owner only for that owner's
-    agents: another owner's agent is checked like any turn with no person.
+    A turn with no person acts as its agent's owner for that owner's agents
+    and for company-managed ones, whose bindings are company-managed only;
+    another owner's agent is checked like any turn with no person.
     """
     if not owner_run:
         return False
+    if getattr(target, "is_company_managed", False):
+        return True
     from app.services.integration_credentials import normalize_acting_user_id
 
     owner = normalize_acting_user_id(getattr(agent, "user_id", None))
