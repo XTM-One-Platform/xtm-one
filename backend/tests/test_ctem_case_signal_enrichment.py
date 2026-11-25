@@ -117,6 +117,35 @@ def test_signal_echoing_an_opencti_issue_is_judged_by_that_issue_and_counted_onc
     assert row["version_unverified"] is False
 
 
+def _octi(cve: str, *, kev: bool) -> rules.SourceIssue:
+    return rules.SourceIssue(source="opencti", external_id=cve, name=cve, cve=cve, kev=kev)
+
+
+def test_multi_cve_signal_keeps_a_kev_status_that_comes_from_its_second_cve() -> None:
+    vulns = [{"id": "v0", "name": "CVE-2023-00001"}, *KEV_VULNS]
+    (signal,) = source.enrich_signal_issues([_signal("s1")], {"signal:s1": ["CVE-2023-00001", "CVE-2023-28434"]}, vulns)
+    assert signal.cve == "CVE-2023-00001" and signal.kev_cves == ("CVE-2023-28434",)
+    # Its first CVE is carried by a non-KEV product member: the KEV of its second CVE still counts.
+    assert _summary([_octi("CVE-2023-00001", kev=False), signal])["kev_count"] == 1
+
+
+def test_multi_cve_signal_does_not_double_count_a_later_cve_a_product_member_carries() -> None:
+    (signal,) = source.enrich_signal_issues(
+        [_signal("s1")], {"signal:s1": ["CVE-2023-28432", "CVE-2023-28434"]}, KEV_VULNS
+    )
+    assert signal.kev_cves == ("CVE-2023-28432", "CVE-2023-28434")
+    # The product member carries the second CVE only: 2 KEV CVEs, each counted once.
+    assert _summary([_octi("CVE-2023-28434", kev=True), signal])["kev_count"] == 2
+    assert _summary([_octi("CVE-2023-28432", kev=True), _octi("CVE-2023-28434", kev=True), signal])["kev_count"] == 2
+
+
+def test_two_signals_naming_the_same_kev_cve_count_it_once() -> None:
+    enriched = source.enrich_signal_issues(
+        [_signal("s1"), _signal("s2")], {"signal:s1": ["CVE-2023-28432"], "signal:s2": ["CVE-2023-28432"]}, KEV_VULNS
+    )
+    assert _summary(enriched)["kev_count"] == 1
+
+
 def test_opencti_issue_path_is_unchanged() -> None:
     octi = rules.SourceIssue(
         source="opencti", external_id="v1", name="CVE-2016-1", cve="CVE-2016-1", version_outcomes=(("17.1", "unknown"),)

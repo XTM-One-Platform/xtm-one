@@ -1200,7 +1200,8 @@ def enrich_signal_issues(
 
     *cves* maps a member id to the CVE ids its signal names; *vulns* are the
     OpenCTI Vulnerability nodes read by name, *remediations* their courses of
-    action. A member takes its first CVE, KEV when any of its CVEs is KEV, the
+    action. A member takes its first CVE, KEV when any of its CVEs is KEV (each
+    KEV CVE kept in ``kev_cves`` for the case's KEV count), the
     highest CVSS and EPSS, and the version a course of action names when it is
     a plain upgrade. A CVE OpenCTI does not know leaves those facts unknown
     (``None``, never 0); the member is kept either way.
@@ -1223,6 +1224,9 @@ def enrich_signal_issues(
             out.append(issue)
             continue
         known = [by_name[c] for c in named if c in by_name]
+        kev_cves = tuple(
+            dict.fromkeys(c.upper() for c in named if c in by_name and by_name[c].get("x_opencti_cisa_kev"))
+        )
         cvss = [v for n in known if (v := _float(n.get("x_opencti_cvss_base_score"))) is not None]
         epss = [v for n in known if (v := _float(n.get("x_opencti_epss_score"))) is not None]
         fixes = [
@@ -1233,6 +1237,7 @@ def enrich_signal_issues(
                 issue,
                 cve=named[0],
                 kev=any(bool(n.get("x_opencti_cisa_kev")) for n in known),
+                kev_cves=kev_cves,
                 cvss=max(cvss) if cvss else None,
                 epss=max(epss) if epss else None,
                 fixed_version=_highest(fixes),
