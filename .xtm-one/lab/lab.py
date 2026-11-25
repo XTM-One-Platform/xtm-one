@@ -5605,7 +5605,7 @@ def seed_fleet_run_estimate(token: str, base: str, fleet: str, opencti: str) -> 
     return {"fleet run estimate": {"id": assignment, "url": f"{base}/fleets/{fleet}/members"}}
 
 
-#: Every opt-in state the default lab's CTEM fleets render (#9689): one missing stops the start.
+#: Every opt-in state the default lab's CTEM fleets render (#9689); one missing is logged skipped (#2261).
 CTEM_FLEET_OPTIN_REQUIRED = ("on", "partial", "paused", "stale", "failing", "not_set_up")
 #: The name of the fork that reads Not set up when every built-in CTEM fleet has another state.
 CTEM_NOT_SET_UP_FORK = "CTEM fleet not set up"
@@ -5619,7 +5619,7 @@ def _ctem_not_set_up_fork(token: str, source: str) -> str:
     return str(found["id"]) if found else _fork(token, source, CTEM_NOT_SET_UP_FORK)
 
 
-def seed_ctem_fleet_optin(token: str, base: str) -> dict[str, dict[str, str]]:
+def seed_ctem_fleet_optin(token: str, base: str) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
     """``LAB_CTEM_FLEET_OPTIN=mixed``: the Fleet activity card of ``/`` renders On, Partially on, Paused, Stale, Failing, Not set up.
 
     Every seeded fleet automation ships disabled and no API opts a built-in fleet in for a lab:
@@ -5629,8 +5629,9 @@ def seed_ctem_fleet_optin(token: str, base: str) -> dict[str, dict[str, str]]:
     item, one on with a failed run, #9670). With the five built-in CTEM fleets none is left not set
     up, so one is forked (:func:`_ctem_not_set_up_fork`, every copied automation switched off, #9689).
     The ON fleet's run estimate is read back above 0 and the stale and failing fleets' ``/health``
-    status; a state of :data:`CTEM_FLEET_OPTIN_REQUIRED` missing raises. Logged ``seeded CTEM fleet
-    opt-in states: <url>``. May raise: the caller stops the start (#9689).
+    status. A state of :data:`CTEM_FLEET_OPTIN_REQUIRED` no fleet can carry (one seeded CTEM loop,
+    #2105) is answered skipped, never a stop (#2261). Logged ``seeded CTEM fleet opt-in states:
+    <url>``. Answers (seeded, skipped). May raise: the caller logs it skipped and keeps serving.
     """
     admin = _created(api("GET", "/auth/me", token))
     out = ROOT / "ctem_fleet_optin.json"
@@ -5648,8 +5649,11 @@ def seed_ctem_fleet_optin(token: str, base: str) -> dict[str, dict[str, str]]:
     # A health state carried by another fleet (``also``: four built-in CTEM fleets, #1048) counts too.
     seen = {row["state"] for row in states.values()} | {s for row in states.values() for s in row.get("also") or []}
     missing = [s for s in CTEM_FLEET_OPTIN_REQUIRED if s not in seen]
+    skipped = {}
     if missing:
-        raise RuntimeError(f"CTEM fleet opt-in states missing: {', '.join(missing)} ({str(states)[:300]})")
+        skipped["CTEM fleet opt-in states missing"] = (
+            f"{', '.join(missing)}: {len(states)} CTEM fleet(s) to carry them ({str(states)[:300]})"
+        )
     on = next((row for row in states.values() if row["state"] == "on"), None)
     if on is None:
         raise RuntimeError(f"no fleet seeded on: {str(states)[:300]}")
@@ -5665,7 +5669,7 @@ def seed_ctem_fleet_optin(token: str, base: str) -> dict[str, dict[str, str]]:
             if status != health_state:
                 raise RuntimeError(f"the fleet seeded {health_state} reads health {status!r}")
     ids = ",".join(f"{slug}={row['state']}" for slug, row in sorted(states.items()))
-    return {"CTEM fleet opt-in states": {"id": ids, "url": f"{base}/"}}
+    return {"CTEM fleet opt-in states": {"id": ids, "url": f"{base}/"}}, skipped
 
 
 def seed_ctem_fleet_roi(token: str, base: str) -> dict[str, dict[str, str]]:
@@ -8060,9 +8064,11 @@ def seed_entities() -> None:
             skipped["CTEM fleet opt-in states"] = "no tracked organizations or no registered OpenCTI integration"
         else:
             try:
-                seeded.update(seed_ctem_fleet_optin(token, base))
-            except Exception as exc:  # noqa: BLE001 - every opt-in state is required (#9689)
-                raise SystemExit(f"lab: CTEM fleet opt-in states not seeded: {str(exc)[:600]}") from None
+                optin_seeded, optin_skipped = seed_ctem_fleet_optin(token, base)
+                seeded.update(optin_seeded)
+                skipped.update(optin_skipped)
+            except Exception as exc:  # noqa: BLE001 - optional: logged, the lab keeps serving (#2261)
+                skipped["CTEM fleet opt-in states"] = f"CTEM fleet opt-in states not seeded: {str(exc)[:600]}"
             try:
                 seeded.update(seed_ctem_fleet_roi(token, base))
             except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
