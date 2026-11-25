@@ -69,6 +69,8 @@ def test_a_poetry_project_without_extras_keeps_the_plain_install() -> None:
 
 def test_backend_lock_update_regenerates_uv_lock_on_toolchain_python() -> None:
     spec = checks.load_checks(CHECKS_TOML.read_text())["backend-lock-update"]
-    assert spec.argv == ("uv", "lock")
+    assert spec.argv[:2] == ("sh", "-c")
+    # uv lock, then the mirror URLs mapped back to PyPI with the revision kept (#2360).
+    assert "uv lock &&" in spec.argv[2] and "scripts/lock_upstream_urls.py uv.lock" in spec.argv[2]
     assert spec.cwd == "backend" and spec.image == "toolchain-python"
     assert not spec.install_first
