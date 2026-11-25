@@ -106,7 +106,7 @@ import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import { OrganizationEvidenceHealthCard } from "./OrganizationEvidenceHealthCard";
 import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
 import { OrganizationFxRatesCard } from "./OrganizationFxRatesCard";
-import { OrganizationPirDetailsCard } from "./OrganizationPirDetailsCard";
+import { OrganizationPirDetailsDialog } from "./OrganizationPirDetailsDialog";
 import {
   PROFILE_CARD_PARAM,
   PROFILE_CARD_TAB,
@@ -332,6 +332,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // A saved PIR without a name while OpenCTI's list is on its way: a skeleton, never placeholder text (#11589).
   const pirsLoading = savedPirs.some((pir) => pir.state === "loading");
   const savedPirIds = current?.pir_ids;
+  // The PIR whose details dialog is open (#1974), from its row on the Prioritization policy card.
+  const [pirDetails, setPirDetails] = useState<{ id: string; name: string } | null>(null);
   const missingPirs = useMemo(
     () => savedPirs.filter((pir) => pir.state === "missing" && savedPirIds?.includes(pir.id)),
     [savedPirs, savedPirIds],
@@ -1358,6 +1360,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             retrying={pirs.isFetching}
             onRetry={() => void pirs.refetch()}
             onRemove={removePir}
+            details={data?.profile.pir_details}
+            onDetails={(id, name) => setPirDetails({ id, name })}
           />
         }
       />
@@ -1877,9 +1881,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               />
             </div>
           </SettingsCard>
-          {/* The reference rates and the PIR details (#1773): their own cards, saved through PATCH alone. */}
+          {/* The reference rates (#1773): their own card, saved through PATCH alone. The PIR details open from each PIR of the Prioritization policy card (#1974). */}
           {!editing && <OrganizationFxRatesCard id={`${fieldId}-fx_rates`} />}
-          {!editing && <OrganizationPirDetailsCard id={`${fieldId}-pir_details`} />}
           </>
           )}
           </div>
@@ -2156,6 +2159,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         />
       )}
       {pirImportOpen && <OrganizationImportDialog open={pirImportOpen} onOpenChange={setPirImportOpen} sections={PROFILE_IMPORT_SECTIONS} />}
+      <OrganizationPirDetailsDialog
+        pirId={pirDetails?.id ?? null}
+        pirName={pirDetails?.name ?? ""}
+        canEdit={!reader}
+        onOpenChange={(open) => !open && setPirDetails(null)}
+      />
       <AgenticGateDialogControlled open={aiGateOpen} onOpenChange={setAiGateOpen} feature={t_i18n("Draft with AI")} />
     </div>
   );

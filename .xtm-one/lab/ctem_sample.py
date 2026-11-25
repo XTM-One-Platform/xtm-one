@@ -403,6 +403,14 @@ SCREENS_ISSUES: tuple[dict, ...] = (
 #: The cases a recompute of :data:`SCREENS_ISSUES` creates (one per remediation key).
 SCREENS_CASES = 4
 
+#: The issues each viewer's Cases source read leaves out, by the viewer's email: the lab's non-admin peer
+#: (``lab.PEER_EMAIL``) reads the Ivanti case without CVE-2023-46805, so for that viewer the case is
+#: ``aggregates_restricted`` (an open member read without its details, #1931) while the administrator
+#: reads it whole. A UX round of the restricted state signs in as the peer; no ``window.fetch`` override.
+SCREENS_RESTRICTED: dict[str, tuple[str, ...]] = {
+    "lab-peer@filigran.io": ("opencti:vulnerability--lab-0005",),
+}
+
 #: The scope the screens lab declares before its recompute: since #1529 a case opens only through the scope
 #: gate, which resolves a vulnerability to the profile's tech stack and the assets running it. Each product of
 #: :data:`SCREENS_ISSUES` with a fix is in the stack and runs on a ``very_high`` asset (``critical`` on the scope

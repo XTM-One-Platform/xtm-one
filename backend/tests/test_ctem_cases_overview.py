@@ -153,7 +153,7 @@ def client(monkeypatch):
     async def _list(_db, *, organization_id, vertical):
         return [(case, rows)]
 
-    async def _viewer(_db, user_id, vertical, *, fresh=False):
+    async def _viewer(_db, user_id, vertical, *, fresh=False, members=None):
         return _view(_issue("v1"))
 
     async def _events_of(_db, case_ids):
