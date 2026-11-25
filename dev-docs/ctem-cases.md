@@ -168,6 +168,15 @@ With it:
   existing gate card wording (`BLIND_ACTION`, "Verify the running version,
   then upgrade") and the existing validation record; nothing is discarded or
   derived from versions;
+- platform applicability (#2152): a vulnerability whose every vulnerable
+  Software (its `has` holders) is built for one operating system
+  (`ctem_fixed_version.platform_of_software`: CPE `target_sw` / `target_hw`,
+  else the one OS its name or version names) is "not affected: platform
+  <OS> only; running on <platforms>" when every asset running the product
+  reports a platform (`os_family`, `ctem_case_versions.inventory_platforms`)
+  and none is shared; it is treated as any not-affected member above. A
+  vulnerable Software naming no platform, or one asset with no platform,
+  keeps the member as before: an unknown is never read as not affected;
 - a signal member that names CVE ids (#2041; subject, label or evidence
   `cve` / `cves`, `ctem_scope_gate.signal_cve_ids`) is enriched from OpenCTI
   with the viewer's own read, like an OpenCTI issue: its first CVE, KEV, the
