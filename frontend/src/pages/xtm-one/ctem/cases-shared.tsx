@@ -6,9 +6,8 @@
  * ToneBadge, the hot hues of Work items and Tasks, #1267), owners as the DS Avatar,
  * "Unassigned" in secondary text, never a warning colour.
  */
-import { Avatar, Icon } from "@filigran/design-system";
-import { useTriggerTabIndex } from "@/components/ui/row-target-context";
 import { Avatar, Icon, type IconName } from "@filigran/design-system";
+import { useTriggerTabIndex } from "@/components/ui/row-target-context";
 import { type HotTone, ToneBadge } from "@/components/ui/tone-badge";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
