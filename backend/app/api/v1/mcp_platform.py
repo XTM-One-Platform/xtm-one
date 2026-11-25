@@ -146,6 +146,7 @@ OPENCTI_MCP_TOOLS: frozenset[str] = frozenset(
         "get_opencti_top_related",
         "get_opencti_entity_history",
         "validate_nlq_filter",
+        "get_opencti_schema_attributes",
         # Create
         "create_opencti_entity",
         "create_opencti_relationship",

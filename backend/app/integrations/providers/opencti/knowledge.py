@@ -340,6 +340,138 @@ _STIX_METADATA_PROPS: dict[str, Any] = {
     },
 }
 
+
+# ── Instance-defined fields (schemaAttributes) ──
+# A create tool's own parameters are a fixed list, while an OpenCTI instance
+# makes more fields mandatory and adds its custom fields. The agent reads them
+# with ``get_opencti_schema_attributes`` and passes them in ``attributes``,
+# keyed by the name that tool returns.
+
+#: OpenCTI's prefix of a custom field name (``CUSTOM_FIELD_PREFIX``): such a
+#: field is no input field of the type, its value goes in ``customFieldValues``.
+_CUSTOM_FIELD_PREFIX = "x_opencti_cf_"
+
+#: JSON-schema fragment of the ``attributes`` argument of the create tools.
+_SCHEMA_ATTRIBUTES_PROPS: dict[str, Any] = {
+    "attributes": {
+        "type": "object",
+        "additionalProperties": True,
+        "description": (
+            "Other fields of the object, keyed by the field name "
+            "get_opencti_schema_attributes returns for the type: a field made "
+            "mandatory on this instance, a custom field (x_opencti_cf_...), or "
+            "any input field this tool has no parameter for. A ref field takes "
+            "IDs; a multiple field takes a list. A field this tool already "
+            "sets through its own parameters is refused here."
+        ),
+    },
+}
+
+
+def _apply_schema_attributes(input_data: dict[str, Any], attributes: Any) -> str | None:
+    """Add the agent's free ``attributes`` to a mutation ``input`` dict.
+
+    A custom field goes in ``customFieldValues`` as ``{field_name, value}``
+    (its value always a list), any other field is set as is. Returns an error
+    string, and sets nothing, when ``attributes`` is no object or names a field
+    the tool already set from its own parameters: a field is given once.
+    """
+    if not attributes:
+        return None
+    if not isinstance(attributes, dict):
+        return "Error: 'attributes' must be an object of field name to value."
+    blank = [k for k in attributes if not isinstance(k, str) or not k.strip()]
+    if blank:
+        return "Error: every key of 'attributes' must be a field name."
+    clashes = sorted(k for k in attributes if k in input_data)
+    if clashes:
+        return (
+            f"Error: {', '.join(clashes)} already set by this tool's own "
+            "parameters; give each field once, outside 'attributes'."
+        )
+    custom: list[dict[str, Any]] = []
+    for key, value in attributes.items():
+        if key.startswith(_CUSTOM_FIELD_PREFIX):
+            if value is None or value == "" or value == []:
+                continue
+            custom.append({"field_name": key, "value": value if isinstance(value, list) else [value]})
+        else:
+            input_data[key] = value
+    if custom:
+        input_data["customFieldValues"] = [*(input_data.get("customFieldValues") or []), *custom]
+    return None
+
+
+def _schema_attribute(raw: dict[str, Any]) -> dict[str, Any]:
+    """One ``TypeAttribute`` of ``schemaAttributes``, in the shape the tool answers."""
+    name = str(raw.get("name") or "")
+    return {
+        "name": name,
+        "type": raw.get("type") or "",
+        "label": raw.get("label") or "",
+        "description": raw.get("description") or "",
+        "mandatory": bool(raw.get("mandatory")),
+        "multiple": bool(raw.get("multiple")),
+        "default_values": [
+            {"id": d.get("id"), "name": d.get("name")}
+            for d in raw.get("defaultValues") or []
+            if isinstance(d, dict)
+        ],
+        "custom_field": name.startswith(_CUSTOM_FIELD_PREFIX),
+    }
+
+
+def _schema_attribute_line(attribute: dict[str, Any]) -> str:
+    kind = [k for k in (attribute["type"], "multiple" if attribute["multiple"] else "") if k]
+    if attribute["custom_field"]:
+        kind.append("custom field")
+    line = f"- {attribute['name']}" + (f" ({', '.join(kind)})" if kind else "")
+    label = attribute["label"]
+    if label and label != attribute["name"]:
+        line += f" — {label}"
+    if attribute["description"]:
+        line += f": {attribute['description']}"
+    defaults = [
+        d["name"] if not d["id"] or d["id"] == d["name"] else f"{d['name']} (id {d['id']})"
+        for d in attribute["default_values"]
+    ]
+    if defaults:
+        line += f" Default: {', '.join(str(d) for d in defaults)}."
+    return line
+
+
+def _schema_attributes_answer(
+    entity_type: str,
+    attributes: list[dict[str, Any]],
+    *,
+    mandatory_only: bool,
+    note: str = "",
+) -> ToolResult:
+    """The answer of ``get_opencti_schema_attributes``: mandatory fields first."""
+    mandatory = [a for a in attributes if a["mandatory"]]
+    optional = [] if mandatory_only else [a for a in attributes if not a["mandatory"]]
+    lines = [
+        f"Fields of {entity_type} on this OpenCTI: {len(attributes)}, "
+        f"{len(mandatory)} mandatory at creation."
+    ]
+    if note:
+        lines.append(note)
+    lines.append("Mandatory:" if mandatory else "Mandatory: none.")
+    lines.extend(_schema_attribute_line(a) for a in mandatory)
+    if optional:
+        lines.append("Optional:")
+        lines.extend(_schema_attribute_line(a) for a in optional)
+    lines.append(
+        "A field the create tool has no parameter for (a custom field included) goes in "
+        "its 'attributes' argument, keyed by the name above; a ref field takes IDs."
+    )
+    shown = mandatory + optional
+    return ToolResult(
+        tool_call_id="",
+        content="\n".join(lines),
+        structured={"entity_type": entity_type, "attributes": shown},
+    )
+
 # STIX 2.1 ``standard_id`` pattern — ``<type>--<uuid>`` (e.g.
 # ``intrusion-set--7e3b...``). Widget ``id`` / ``layout.i`` are bare UUIDs
 # (no ``type--`` prefix), so they never match — only genuine entity references
@@ -1839,6 +1971,7 @@ def register_knowledge(
         object_label: list[str] | None = None,
         external_references: list[str] | None = None,
         kill_chain_phases: list[str] | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> str:
         """Create a STIX core relationship between two entities."""
         # Note: from/to return StixObjectOrStixRelationshipOrCreator union.
@@ -1931,6 +2064,8 @@ def register_knowledge(
             object_label=object_label,
             external_references=external_references,
         )
+        if refused := _apply_schema_attributes(input_data, attributes):
+            return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -2052,6 +2187,7 @@ def register_knowledge(
         object_marking: list[str] | None = None,
         object_label: list[str] | None = None,
         external_references: list[str] | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> str:
         """Create an analyst note attached to one or more entities."""
         query = """
@@ -2077,6 +2213,8 @@ def register_knowledge(
             object_label=object_label,
             external_references=external_references,
         )
+        if refused := _apply_schema_attributes(input_data, attributes):
+            return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -3032,6 +3170,7 @@ def register_knowledge(
         external_references: list[str] | None = None,
         based_on: list[str] | None = None,
         create_observables: bool = False,
+        attributes: dict[str, Any] | None = None,
     ) -> str:
         """Create a STIX indicator in OpenCTI.
 
@@ -3162,6 +3301,8 @@ def register_knowledge(
             object_organization=object_organization,
             external_references=external_references,
         )
+        if refused := _apply_schema_attributes(input_data, attributes):
+            return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -3214,6 +3355,7 @@ def register_knowledge(
         object_label: list[str] | None = None,
         external_references: list[str] | None = None,
         case_types: list[str] | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> str | ToolResult:
         """Create a container (Report, Case-Incident, etc.) in OpenCTI.
 
@@ -3277,6 +3419,8 @@ def register_knowledge(
             object_label=object_label,
             external_references=external_references,
         )
+        if refused := _apply_schema_attributes(input_data, attributes):
+            return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -3348,6 +3492,7 @@ def register_knowledge(
         object_marking: list[str] | None = None,
         object_label: list[str] | None = None,
         external_references: list[str] | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> str:
         """Create a generic STIX domain object in OpenCTI."""
         mutation_info = _SDO_MUTATIONS.get(type)
@@ -3405,6 +3550,8 @@ def register_knowledge(
             object_label=object_label,
             external_references=external_references,
         )
+        if refused := _apply_schema_attributes(input_data, attributes):
+            return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -3433,6 +3580,82 @@ def register_knowledge(
         if result.get("is_family") is not None:
             lines.append(f"  Is family: {result['is_family']}")
         return "\n".join(lines)
+
+    # ── 21b. Fields of a type on this instance (schemaAttributes) ────
+
+    async def get_opencti_schema_attributes(
+        entity_type: str,
+        mandatory_only: bool = False,
+    ) -> str | ToolResult:
+        """List the fields of one entity type as this OpenCTI instance defines them.
+
+        ``schemaAttributes(entityType)`` (OpenCTI 7.261124.0) answers each field
+        with its description, whether this instance makes it mandatory, and its
+        default values, custom fields included. An older OpenCTI has no
+        ``entityType`` argument: its entity setting still names the mandatory
+        fields and their default values, which is what a creation needs.
+        """
+        entity_type = (entity_type or "").strip()
+        if not entity_type:
+            return "Error: entity_type is required (e.g. Report, Malware, Case-Incident)."
+        query = (
+            "query SchemaAttributes($t: String!) {"
+            "  schemaAttributes(entityType: $t) { type attributes {"
+            "    name type label description mandatory multiple"
+            "    defaultValues { id name } } } }"
+        )
+        async with _client(headers, timeout=30) as client:
+            data, err = await _graphql(client, base_url, headers, query, {"t": entity_type})
+            if err and "Unknown argument" in err and "entityType" in err:
+                return await _legacy_schema_attributes(client, entity_type, mandatory_only)
+        if err:
+            return err
+        maps = data.get("schemaAttributes") or []
+        if not maps:
+            return f"Error: OpenCTI returned no fields for type '{entity_type}'."
+        found = maps[0]
+        attributes = [_schema_attribute(a) for a in found.get("attributes") or []]
+        return _schema_attributes_answer(
+            found.get("type") or entity_type, attributes, mandatory_only=mandatory_only
+        )
+
+    async def _legacy_schema_attributes(
+        client: Any, entity_type: str, mandatory_only: bool
+    ) -> str | ToolResult:
+        """The mandatory fields and default values of a type on an OpenCTI before 7.261124.0."""
+        query = (
+            "query EntitySettingFields($t: String!) {"
+            "  entitySettingByType(targetType: $t) { target_type mandatoryAttributes"
+            "    defaultValuesAttributes { name defaultValues { id name } } } }"
+        )
+        data, err = await _graphql(client, base_url, headers, query, {"t": entity_type})
+        if err:
+            return err
+        setting = data.get("entitySettingByType")
+        if not setting:
+            return f"Error: OpenCTI has no entity type '{entity_type}'."
+        defaults = {
+            d.get("name"): d.get("defaultValues") or []
+            for d in setting.get("defaultValuesAttributes") or []
+        }
+        names = list(dict.fromkeys([*(setting.get("mandatoryAttributes") or []), *defaults]))
+        mandatory = set(setting.get("mandatoryAttributes") or [])
+        attributes = [
+            _schema_attribute(
+                {"name": name, "mandatory": name in mandatory, "defaultValues": defaults.get(name)}
+            )
+            for name in names
+        ]
+        return _schema_attributes_answer(
+            setting.get("target_type") or entity_type,
+            attributes,
+            mandatory_only=mandatory_only,
+            note=(
+                "This OpenCTI predates the field list of schemaAttributes (7.261124.0): "
+                "only the fields it makes mandatory or gives a default value are listed, "
+                "without description."
+            ),
+        )
 
     # ── 22. Add entity/relationship to container ─────────────────────
 
@@ -4492,6 +4715,7 @@ def register_knowledge(
     executor.register("create_opencti_indicator", create_opencti_indicator)
     executor.register("create_opencti_container", create_opencti_container)
     executor.register("create_opencti_entity", create_opencti_entity)
+    executor.register("get_opencti_schema_attributes", get_opencti_schema_attributes)
     executor.register("add_opencti_to_container", add_opencti_to_container)
     executor.register(
         "remove_opencti_from_container",
@@ -5679,6 +5903,7 @@ def register_knowledge(
                         "description": "Kill chain phase IDs to attach (optional).",
                     },
                     **_STIX_METADATA_PROPS,
+                    **_SCHEMA_ATTRIBUTES_PROPS,
                 },
                 "required": ["from_id", "to_id", "relationship_type"],
             },
@@ -5762,6 +5987,7 @@ def register_knowledge(
                         "description": "Confidence level 0-100 (optional)",
                     },
                     **_STIX_METADATA_PROPS,
+                    **_SCHEMA_ATTRIBUTES_PROPS,
                 },
                 "required": ["content", "object_ids"],
             },
@@ -6200,6 +6426,7 @@ def register_knowledge(
                         "description": "Organization IDs to restrict/share the indicator with.",
                     },
                     **_STIX_METADATA_PROPS,
+                    **_SCHEMA_ATTRIBUTES_PROPS,
                     "create_observables": {
                         "type": "boolean",
                         "description": "Also create corresponding STIX observable(s) from the pattern (default: false)",
@@ -6286,6 +6513,7 @@ def register_knowledge(
                         ),
                     },
                     **_STIX_METADATA_PROPS,
+                    **_SCHEMA_ATTRIBUTES_PROPS,
                 },
                 "required": ["container_type", "name"],
             },
@@ -6369,8 +6597,42 @@ def register_knowledge(
                         "description": "Infrastructure types (for Infrastructure): botnet, command-and-control, hosting-malware, etc.",
                     },
                     **_STIX_METADATA_PROPS,
+                    **_SCHEMA_ATTRIBUTES_PROPS,
                 },
                 "required": ["type", "name"],
+            },
+            source="integration:opencti",
+            priority=1,
+        ),
+        # 21b. Fields of a type on this instance
+        ToolDefinition(
+            name="get_opencti_schema_attributes",
+            description=(
+                "List the fields of one OpenCTI entity or relationship type as this "
+                "instance defines them: each field's description (what to put, its "
+                "format, an example), whether this instance makes it mandatory at "
+                "creation, its default values, and the instance's custom fields "
+                "(x_opencti_cf_...). Read it before creating an object of a type "
+                "whose mandatory or custom fields you do not know, then pass the "
+                "fields the create tool has no parameter for in its 'attributes'."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "entity_type": {
+                        "type": "string",
+                        "description": (
+                            "The type, e.g. Report, Malware, Case-Incident, Indicator, "
+                            "Note, or a relationship type such as uses"
+                        ),
+                    },
+                    "mandatory_only": {
+                        "type": "boolean",
+                        "description": "List only the fields mandatory at creation (default: false)",
+                        "default": False,
+                    },
+                },
+                "required": ["entity_type"],
             },
             source="integration:opencti",
             priority=1,
