@@ -21828,5 +21828,10 @@
   "Waits for the remediation to be applied": "Espera la aplicación de la remediación",
   "Waits for the validation to finish": "Espera el final de la validación",
   "Watches whether the exposure comes back": "Vigila si la exposición vuelve",
-  "Last run by {agent}, {when}": "Última ejecución por {agent}, {when}"
+  "Last run by {agent}, {when}": "Última ejecución por {agent}, {when}",
+  "Defender XDR alert raised": "Alerta de Defender XDR generada",
+  "Defender XDR alert evidence": "Evidencia de alerta de Defender XDR",
+  "Carries alert_id, title, severity, category, service_source, detection_source and the attack techniques. Real time through the Defender XDR Streaming API to your Azure Event Hub. Each alert runs once.": "Incluye alert_id, title, severity, category, service_source, detection_source y las técnicas de ataque. En tiempo real mediante la Streaming API de Defender XDR hacia su Azure Event Hub. Cada alerta se ejecuta una sola vez.",
+  "Carries alert_id, the entity type, its evidence role and the entity fields (device, file, IP, URL, account). Real time through the Defender XDR Streaming API to your Azure Event Hub. Each row runs once.": "Incluye alert_id, el tipo de entidad, su rol de evidencia y los campos de la entidad (dispositivo, archivo, IP, URL, cuenta). En tiempo real mediante la Streaming API de Defender XDR hacia su Azure Event Hub. Cada fila se ejecuta una sola vez.",
+  "Read in real time from an event stream the platform consumes.": "Leído en tiempo real desde un flujo de eventos que consume la plataforma."
 }
