@@ -49,6 +49,8 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+from app.core.security import timing_safe_str_eq
+
 logger = logging.getLogger(__name__)
 
 PROVIDER = "notion"
@@ -90,7 +92,9 @@ def verify_signature(body: bytes, header: str | None, token: str | None) -> bool
     """*header* is the signature of *body* with *token* (constant-time); no token refuses."""
     if not token or not header:
         return False
-    return hmac.compare_digest(signature(token, body), header.strip())
+    # The header is request-derived (latin-1 decoded, may be non-ASCII):
+    # timing_safe_str_eq compares bytes, so crafted input is a mismatch, not a 500.
+    return timing_safe_str_eq(header.strip(), signature(token, body))
 
 
 def handshake_token(payload: Any) -> str | None:

@@ -35,7 +35,7 @@ def test_the_signature_is_hmac_sha256_of_the_raw_body_with_the_token():
     assert nw.verify_signature(BODY, expected, TOKEN)
 
 
-@pytest.mark.parametrize("header", [None, "", "sha256=00", "sha256=" + "a" * 64])
+@pytest.mark.parametrize("header", [None, "", "sha256=00", "sha256=" + "a" * 64, "sha256=\u00e9\u00ff"])
 def test_a_missing_or_wrong_signature_is_refused(header):
     assert not nw.verify_signature(BODY, header, TOKEN)
 
