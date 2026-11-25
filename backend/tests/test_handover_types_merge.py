@@ -40,6 +40,12 @@ def test_a_write_naming_one_target_leaves_the_other_stored_entries_unchanged() -
     assert merged_handover_types(["a", "b"], stored, {"a": "delegate"}) == {"a": "delegate", "b": "transfer"}
 
 
+def test_a_type_for_an_agent_that_is_not_a_target_leaves_the_map_as_it_was() -> None:
+    assert merged_handover_types(["a"], {}, {"c": "consult"}) == {}
+    assert merged_handover_types(["a"], {"a": "transfer"}, {"c": "consult"}) == {"a": "transfer"}
+    assert merged_handover_types(["a", "b"], {}, {"a": "consult", "c": "consult"}) == {"a": "consult", "b": "all"}
+
+
 def test_several_types_for_one_target_register_each_tool() -> None:
     types = {"a": "consult|delegate", "b": "consult"}
     assert peer_tool_types(types, "a") == frozenset({"consult", "delegate"})

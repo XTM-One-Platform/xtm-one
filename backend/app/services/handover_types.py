@@ -91,14 +91,15 @@ def merged_handover_types(
 
     On an explicit map the targets not named keep their entry. On a legacy
     (empty) map they each ran every type, so they are written ``all``: typing
-    one target never narrows the others to ``delegate``.
+    one target never narrows the others to ``delegate``. An entry for an agent
+    that is not a target is dropped, so a write that types no target leaves the
+    map as it was (a legacy map stays legacy).
     """
+    targets = [str(agent_id) for agent_id in target_ids]
+    written = {aid: entry for aid, entry in written.items() if str(aid) in targets}
     if not written:
         return dict(stored or {})
-    if is_legacy_handover_map(stored):
-        base = {str(agent_id): ALL_TYPES for agent_id in target_ids}
-    else:
-        base = dict(stored or {})
+    base = dict.fromkeys(targets, ALL_TYPES) if is_legacy_handover_map(stored) else dict(stored or {})
     return {**base, **written}
 
 
