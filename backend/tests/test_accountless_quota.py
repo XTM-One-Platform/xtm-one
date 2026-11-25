@@ -863,7 +863,11 @@ def _accountless_run():
         trigger_payload=None,
     )
     assignment = SimpleNamespace(
-        enabled=True, name="Legacy company assignment", is_company_managed=True, user_id=None
+        enabled=True,
+        name="Legacy company assignment",
+        is_company_managed=True,
+        user_id=None,
+        trigger_config={},
     )
     agent = SimpleNamespace(id=run.agent_id, enabled=True, user_id=None, is_builtin=False)
     return run, assignment, agent

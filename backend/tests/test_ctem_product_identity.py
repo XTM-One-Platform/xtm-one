@@ -82,10 +82,24 @@ def test_a_name_only_software_still_matches_by_name() -> None:
 
 
 def test_a_field_known_on_one_side_only_never_rejects() -> None:
-    package = _entry("minio", purl="pkg:pypi/minio")
-    assert collector._stack_matches({"name": "minio"}, [package]) == "minio"
     on_macos = _entry("Orion", os_families=["macOS"])
     assert collector._stack_matches({"name": "orion", "vendor": "solarwinds"}, [on_macos]) == "Orion"
+
+
+@pytest.mark.parametrize("purl", ["pkg:pypi/minio", "pkg:maven/io.minio/minio"])
+def test_a_package_never_matches_a_name_only_software_2375(purl: str) -> None:
+    """#2375: the MinIO SDK of a repository never opens a MinIO server case on the bare name."""
+    package = _entry("minio", purl=purl, versions=["7.2.20"])
+    node = {"name": "minio", "cpe": "", "x_opencti_purl": ""}
+    assert identity.conflict(package, node) == "ecosystem"
+    assert collector._stack_matches(node, [package]) is None
+    assert collector._stack_matches({"name": "minio"}, [package]) is None
+    # An entry with no identity of its own keeps the bare-name fallback.
+    assert collector._stack_matches(node, [_entry("minio", versions=["7.2.20"])]) == "minio"
+    # A distribution package is no language ecosystem and keeps it too.
+    assert (
+        collector._stack_matches({"name": "openssl"}, [_entry("openssl", purl="pkg:deb/debian/openssl")]) == "openssl"
+    )
 
 
 def test_os_families_is_empty_when_one_asset_reports_none() -> None:

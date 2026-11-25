@@ -2970,6 +2970,9 @@ CTEM_CASE_ORDERING_KEY = "case_id"
 #: A burst of ``ctem_case.opened`` (a reconcile opening 500 cases) is batched (#2286): the
 #: events of this window join one run, at most ``CTEM_CASE_BATCH_MAX_EVENTS`` cases each, so
 #: the burst starts a bounded number of Loop runs. Every other case event runs alone, at once.
+#: The batch is a dispatch bound only (#2379, ``batch_split``): each case of a batch is
+#: worked in a run and a context of its own, one after the other, never in one conversation
+#: that re-sends every earlier case's tool results.
 CTEM_CASE_BATCH_WINDOW_SECONDS = 60
 CTEM_CASE_BATCH_MAX_EVENTS = 5
 CTEM_CASE_BATCHED_EVENTS: tuple[str, ...] = ("ctem_case.opened",)
@@ -3093,13 +3096,13 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "batch_window_seconds": CTEM_CASE_BATCH_WINDOW_SECONDS,
             "batch_events": list(CTEM_CASE_BATCHED_EVENTS),
             "batch_max_events": CTEM_CASE_BATCH_MAX_EVENTS,
+            "batch_split": True,
         },
         "prompt": (
             "A CTEM case event is in the trigger below (event name, case_id, trigger_path, "
-            "state, owner_fleet: the fleet the platform routed this case to, yours). Opened cases "
-            "arrive batched: when the trigger is a batch (batch true, an events list), work each "
-            "event of the list in order, one case at a time, exactly as below, each case under its "
-            "own work item and its own gates; never merge two cases' loops into one item. The case "
+            "state, owner_fleet: the fleet the platform routed this case to, yours). Each run works "
+            "one case: work it exactly as below, under its own work item and its own gates; never "
+            "merge two cases' loops into one item. The case "
             "is the record of this loop: read it first with "
             "get_ctem_case. On ctem_case.opened or ctem_case.reopened: own the case's loop "
             f"under the work item keyed `{fleet_key}:case:` followed by the case_id (create "
