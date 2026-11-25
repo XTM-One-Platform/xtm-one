@@ -32,6 +32,7 @@ from app.core.redis import redis_client
 from app.models.ctem_case import CASE_STATES
 from app.models.user import User
 from app.services import ctem_access
+from app.services import ctem_case_assets as case_assets
 from app.services import ctem_case_audit_view as case_audit_view
 from app.services import ctem_case_gate_records_view as case_gates_view
 from app.services import ctem_case_loop as case_loop
@@ -723,7 +724,11 @@ async def _inventory_of(case: Any, rendered: dict[str, Any], events: list[Any]) 
             # The versions the case's product runs on the assets (#1252), never a typed software version.
             "running_versions": _with_history(running, events),
             # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
-            "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
+            # The hosts a validation ran on, with their provenance, after the issues' own (#2395).
+            "affected_assets": case_assets.with_attached(
+                await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
+                case_assets.attached_assets(case.validations),
+            ),
         }
 
 
