@@ -48,6 +48,13 @@ Rules:
   (:func:`unheard_warning`), and a timer that fires while none of the three
   takes it ends ``fired_unheard`` with a warning log line (the event is still
   raised, its payload unchanged).
+* **Whose timer.** A timer of a personal agent is a personal object of the
+  person its run acted for: only that person's assignments hear it. A timer of
+  a company-managed agent is shared, like that agent's work items: its
+  ``timer.due`` carries no ``personal_owner_id``, so the agent's own listeners
+  (or its fleet's, ``scope: fleet``) hear it whatever person the arming run
+  acted for (#2235). The flag is read at arm and at fire time, so a timer
+  armed before #2235 fires under this rule too.
 """
 
 from __future__ import annotations
@@ -349,6 +356,26 @@ async def unless_reason(timer: PlatformTimer) -> str | None:
     return None
 
 
+async def agent_is_company_managed(agent_id: str) -> bool:
+    """Whether *agent_id* is company-managed: its timers are shared, not personal (#2235).
+
+    ``False`` when it cannot be read: the timer then stays personal, the rule before #2235.
+    """
+    aid = safe_uuid(agent_id)
+    if aid is None:
+        return False
+    from app.core.database import async_session
+    from app.models.agent import Agent
+
+    try:
+        async with async_session() as db:
+            value = (await db.execute(select(Agent.is_company_managed).where(Agent.id == aid))).scalar_one_or_none()
+    except Exception as exc:
+        logger.warning("Timer agent %s: company-managed flag unreadable: %s", agent_id, format_exception_message(exc))
+        return False
+    return bool(value)
+
+
 def _due_data(
     *,
     timer_id: str,
@@ -358,6 +385,7 @@ def _due_data(
     run_id: str | None,
     agent_id: str,
     user_id: str,
+    shared: bool = False,
 ) -> dict[str, Any]:
     return {
         "timer_id": timer_id,
@@ -370,14 +398,16 @@ def _due_data(
         "object_type": "timer",
         "object_id": timer_id,
         "user_id": user_id,
-        # A timer is a personal object of the person it runs for.
-        "personal_owner_id": user_id,
+        # A personal agent's timer is a personal object of the person it runs for; a
+        # company-managed agent's timer is shared, as its work items are (#2235).
+        "personal_owner_id": None if shared else user_id,
     }
 
 
-def timer_due_data(timer: PlatformTimer) -> dict[str, Any]:
-    """The payload of the ``timer.due`` event raised by *timer*."""
+def timer_due_data(timer: PlatformTimer, *, shared: bool = False) -> dict[str, Any]:
+    """The payload of the ``timer.due`` event raised by *timer*; *shared*: its agent is company-managed."""
     return _due_data(
+        shared=shared,
         timer_id=str(timer.id),
         correlation_key=timer.correlation_key,
         due_at=timer.due_at.isoformat(),
@@ -464,6 +494,45 @@ def _names_text(names: list[str]) -> str:
     return f"{shown}{more}"
 
 
+async def user_emails(user_ids: list[str]) -> list[str]:
+    """The emails of *user_ids*, in order; an id stays as is when its email cannot be read."""
+    if not user_ids:
+        return []
+    from app.core.database import async_session
+    from app.models.user import User
+
+    wanted = [u for u in (safe_uuid(x) for x in user_ids) if u is not None]
+    try:
+        async with async_session() as db:
+            rows = (await db.execute(select(User.id, User.email).where(User.id.in_(wanted)))).all()
+    except Exception as exc:
+        logger.warning("Timer listeners: owner emails unreadable: %s", format_exception_message(exc))
+        return list(user_ids)
+    emails = {str(row[0]): row[1] for row in rows}
+    return [emails.get(u) or u for u in user_ids]
+
+
+async def _other_owners(data: Mapping[str, Any]) -> list[str]:
+    """The owners of the arming agent's ``timer.due`` assignments that take the key but belong to another person.
+
+    Read for the warning only: the scope test again with the personal owner
+    dropped, so the arming agent learns that its listener exists and why it is
+    not heard, instead of reading that it has none (#2235).
+    """
+    owner = str(data.get("personal_owner_id") or "")
+    if not owner:
+        return []
+    agent_id = str(data.get("agent_id") or "")
+    _in_scope, taking = await timer_listeners({**dict(data), "personal_owner_id": None})
+    return list(
+        dict.fromkeys(
+            str(sub.user_id)
+            for sub in taking
+            if str(sub.agent_id) == agent_id and sub.user_id is not None and str(sub.user_id) != owner
+        )
+    )
+
+
 def _filter_text(flt: Mapping[str, Any]) -> str:
     if not flt:
         return "every key (no filter)"
@@ -485,15 +554,26 @@ async def unheard_warning(timer: Mapping[str, Any], *, user_id: str) -> str | No
         run_id=timer.get("run_id"),
         agent_id=str(timer.get("agent_id") or ""),
         user_id=str(user_id),
+        shared=await agent_is_company_managed(str(timer.get("agent_id") or "")),
     )
     try:
         in_scope, taken, foreign = await _taken(data)
+        other_owners = [] if (taken or foreign) else await _other_owners(data)
     except Exception as exc:
         logger.warning("Timer listeners of %s unreadable: %s", data["correlation_key"], format_exception_message(exc))
         return None
     if taken:
         return None
     key = data["correlation_key"]
+    if other_owners:
+        acting, owners = await user_emails([str(user_id)]), await user_emails(other_owners)
+        return (
+            f"Warning: the {TIMER_DUE_EVENT} assignment of this agent that takes `{key}` belongs to "
+            f"{_names_text(owners)}, but this timer runs for {acting[0]}: a personal agent's timer reaches only "
+            f"the assignments of the person its run acts for, so nothing runs at due time and the timer ends "
+            f"{TIMER_FIRED_UNHEARD}. Arm it from a run acting for the assignment's owner, or give that person "
+            f"a {TIMER_DUE_EVENT} assignment of their own."
+        )
     if foreign:
         names = _names_text(await agent_names(foreign))
         return (
@@ -572,7 +652,7 @@ async def fire_due_timers(*, now: datetime | None = None, limit: int = 200) -> i
                     timer.outcome = reason
                     await db.commit()
                     continue
-                data = timer_due_data(timer)
+                data = timer_due_data(timer, shared=await agent_is_company_managed(str(timer.agent_id)))
                 heard, foreign = await _heard(timer, data)
                 timer.event_id = str(timer.id)
                 if heard:

@@ -269,6 +269,7 @@ def build_funnel(
     filters: dict[str, dict[str, Any] | None] | None = None,
     reachability: dict[str, int] | None = None,
     exposed: Any = None,
+    observed: Any = None,
     business: Any = None,
     business_scope: dict[str, Any] | None = None,
     policy: Any = None,
@@ -290,8 +291,10 @@ def build_funnel(
     ``reachability`` is the split of the profile assets
     (:func:`~app.services.asset_reachability.reachability_split`), ``None`` or
     a total of 0 when the profile holds no asset; ``exposed`` is the count of
-    the last live layer's vulnerabilities left on an exposed asset, ``None``
-    when they could not be joined to the profile assets.
+    the last live layer's vulnerabilities found on an asset not proven
+    unreachable, ``None`` when they could not be joined to the profile assets;
+    ``observed`` the count of them found on any asset (a vulnerability found on
+    no asset is never exposed, #2268), shown as ``observed`` on the layer.
 
     ``business_scope`` and ``policy_scope`` are the ``business`` and ``policy``
     parts of :func:`funnel_scope` (``None``: not configured); ``business`` and
@@ -351,7 +354,7 @@ def build_funnel(
     elif exposed_n is None:
         add("exposed", None, NOT_AVAILABLE, extra={"reason": EXPOSED_NOT_LINKED, "reachability": dict(split)})
     else:
-        add("exposed", exposed_n, LIVE, extra={"reachability": dict(split)})
+        add("exposed", exposed_n, LIVE, extra={"reachability": dict(split), "observed": _count(observed)})
     for key, count, scope in (("business_impact", business, business_scope), ("policy", policy, policy_scope)):
         scope = scope or {}
         facts = {

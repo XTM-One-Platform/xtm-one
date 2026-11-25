@@ -428,13 +428,13 @@ async def test_bulk_delete_reapplies_deletable_scope_in_delete(monkeypatch):
     # The real per-batch rowcount is returned (not merely len(target_ids)).
     assert deleted == 2
     assert session.committed is True
-    # statements[0] = SELECT id (scope), statements[1] = the DELETE. The DELETE
-    # itself must carry the non-admin deletable scope (own private rows only),
-    # so the permission gate lives in the delete - company-managed rows are
-    # excluded, whoever they record as their user.
-    delete_sql = str(
-        session.statements[1].compile(dialect=postgresql.dialect())
-    ).lower()
+    # statements[0] = SELECT id (scope), then per batch the SELECT of the rows the
+    # delete audits (#2201) and the DELETE. The DELETE itself must carry the
+    # non-admin deletable scope (own private rows only), so the permission gate
+    # lives in the delete - company-managed rows are excluded, whoever they
+    # record as their user.
+    compiled = [str(s.compile(dialect=postgresql.dialect())).lower() for s in session.statements]
+    delete_sql = next(sql for sql in compiled if sql.startswith("delete"))
     assert delete_sql.startswith("delete")
     assert "user_id =" in delete_sql
     assert "is_company_managed is not true" in delete_sql

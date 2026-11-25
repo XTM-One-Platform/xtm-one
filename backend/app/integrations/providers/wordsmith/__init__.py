@@ -49,6 +49,7 @@ from app.integrations.http import (
     safe_request,
 )
 from app.integrations.providers.wordsmith.operations import (
+    BODY_FIELDS,
     DEDICATED,
     GROUPS,
     IDEMPOTENT_STARTS,
@@ -351,6 +352,24 @@ async def _repository_read(
     return _render_data(resp.status_code, result, op.operation, note)
 
 
+_TASK_PRIORITIES = ("no_priority", "urgent", "high", "medium", "low")
+
+
+def _body_refusal(operation: str, body: Any) -> str | None:
+    """An ``Error:`` naming the accepted body fields, before a call Wordsmith would refuse (#2183)."""
+    fields = BODY_FIELDS.get(operation)
+    if not fields or not isinstance(body, dict):
+        return None
+    accepted = "; ".join(f"{name} ({hint})" for name, hint in fields.items())
+    unknown = sorted(key for key in body if key not in fields)
+    if unknown:
+        return f"Error: {operation} does not accept {', '.join(unknown)}. Body fields: {accepted}."
+    priority = body.get("priority")
+    if operation == "create_task" and priority is not None and priority not in _TASK_PRIORITIES:
+        return f"Error: create_task priority '{priority}' is not one of {', '.join(_TASK_PRIORITIES)}."
+    return None
+
+
 def _fill_path(op: Operation, values: dict[str, Any]) -> tuple[str | None, str | None]:
     path = op.path
     for name in op.path_params:
@@ -385,6 +404,9 @@ def _group_tool(group: Group, client: WordsmithClient, executor: CallableToolExe
         if op is None:
             return f"Error: unknown operation '{operation}'. One of: {', '.join(ops)}."
         path, error = _fill_path(op, ids)
+        if error:
+            return error
+        error = _body_refusal(op.operation, body)
         if error:
             return error
         if op.operation in _LOCAL_OPTION_OPS:

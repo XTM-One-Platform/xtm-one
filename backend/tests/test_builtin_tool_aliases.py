@@ -57,6 +57,7 @@ _FLOWS = list(alias_scoped_functions("flow_builder"))
          {"coordination": ["create_work_item", "update_work_item", "list_work_items", "get_work_item",
                            "claim_work_item", "complete_work_item", "delegate_to_assignment",
                            "list_programs", "get_program_status", "send_decision_card",
+                           "list_my_notifications",
                            "get_shared_state", "set_shared_state", "list_shared_state",
                            "resolve_shared_state", "delete_shared_state",
                            "record_friction", "list_frictions", "dispose_friction",

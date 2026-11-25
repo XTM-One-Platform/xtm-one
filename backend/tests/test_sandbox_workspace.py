@@ -124,6 +124,15 @@ def test_a_change_past_the_quota_or_the_file_limit_is_refused_whole():
         plan_commit({}, [_entry(f"f{i}", 1) for i in range(11)], [], Limits(1000, 10))
 
 
+def test_a_rewrite_that_does_not_grow_the_count_passes_a_workspace_over_the_file_limit() -> None:
+    """#2186: a rebase rewriting files of a workspace already past the limit is not refused."""
+    current = {f"f{i}": _entry(f"f{i}", 1) for i in range(12)}
+    plan = plan_commit(current, [_entry("f0", 2), _entry("g", 1)], ["f1"], Limits(1000, 10))
+    assert plan.file_count == 12 and plan.diff.added == ["g"]
+    with pytest.raises(QuotaExceededError, match="file limit exceeded"):
+        plan_commit(current, [_entry("g", 1)], [], Limits(1000, 10))
+
+
 def test_the_manifest_listing_is_bounded_and_counts_the_rest():
     entries = {f"f{i}.txt": _entry(f"f{i}.txt", 100, mtime=1000.0 + i) for i in range(12)}
     entries[".venv/site-packages/pkg/__init__.py"] = _entry(".venv/site-packages/pkg/__init__.py", 50)

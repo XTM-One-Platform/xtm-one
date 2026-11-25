@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from contextvars import ContextVar
@@ -48,6 +49,7 @@ from app.integrations.providers.opencti.capabilities import attach_probe
 from app.services import ctem_cases as rules
 from app.services import ctem_cases_store as store
 from app.services import ctem_fixed_version as fixed_versions
+from app.services import ctem_product_identity as product_identity
 from app.services.ctem_cases import VERSION_AFFECTED, VERSION_NOT_AFFECTED, VERSION_UNKNOWN
 from app.services.ctem_metrics_collector import (
     _AEV_VALIDATION_WINDOW_DAYS,
@@ -445,6 +447,8 @@ def opencti_issues(
     """
     entry_by_label = {e["label"]: e for e in stack}
     product_of: dict[str, dict[str, Any]] = {}
+    # The language ecosystem each stack Software is a package of, else ``None`` (#2223).
+    ecosystem_of: dict[str, str | None] = {}
     # The platform each stack Software is built for (CPE target, else its name or version), #2152.
     platform_of: dict[str, str | None] = {}
     # The OpenCTI Software ids of each installed version, per stack entry.
@@ -455,6 +459,8 @@ def opencti_issues(
             continue
         entry = entry_by_label[label]
         product_of[node["id"]] = entry
+        # A language package (pkg:pypi minio) is not the server product of the same name (#2223).
+        ecosystem_of[node["id"]] = product_identity.software_ecosystem(node)
         platform_of[node["id"]] = fixed_versions.platform_of_software(
             node.get("name"), node.get("version"), node.get("cpe")
         )
@@ -576,6 +582,8 @@ def opencti_issues(
                 fixed_versions=tuple(sorted(per_platform.items())) if fixed and fixed_by else (),
                 declared_version_known=any(o != VERSION_UNKNOWN for _v, o in outcomes) if outcomes else None,
                 version_outcomes=facts,
+                # Every Software the vulnerability names is a language package: the repository rows count.
+                language_package=all(ecosystem_of.get(sw) for sw in holders[(vuln_id, label)]),
             )
         )
     return out
@@ -678,7 +686,9 @@ async def _read_opencti(
 
     The stack lookup and the ``fromId`` list go in batches under OpenCTI's
     clause limit (#1811); a cap reached marks the read incomplete, never failed.
+    The time of each phase is logged (#2232), so a slow view build names its slow phase.
     """
+    started = time.perf_counter()
     software, complete, err = await _read_stack_software(
         client, base_url, headers, _OCTI_STACK_SOFTWARE, stack, graphql=_graphql
     )
@@ -709,8 +719,22 @@ async def _read_opencti(
             complete = False
             break
     relations = relations[:OCTI_ISSUE_CAP]
+    read_at = time.perf_counter()
     remediations, fixes = await _remediations_of(client, base_url, headers, _vulnerability_ids(relations))
-    issues = opencti_issues(software, stack, relations, remediations, fixes)
+    built_at = time.perf_counter()
+    # Pure CPU work over every relation (#2232): off the event loop, so the web worker keeps answering.
+    issues = await asyncio.to_thread(opencti_issues, software, stack, relations, remediations, fixes)
+    logger.info(
+        "CTEM cases: OpenCTI read of %d software, %d relations, %d fixes: stack+relations %.0f ms, "
+        "remediations %.0f ms, issues %.0f ms (%d issues)",
+        len(software),
+        len(relations),
+        len(fixes),
+        (read_at - started) * 1000,
+        (built_at - read_at) * 1000,
+        (time.perf_counter() - built_at) * 1000,
+        len(issues),
+    )
     return OpenCtiRead(issues, complete and len(issues) < OCTI_ISSUE_CAP)
 
 
@@ -788,7 +812,8 @@ async def _read_opencti_scoped(
             if not info.get("hasNextPage") or not after:
                 break
     remediations, fixes = await _remediations_of(client, base_url, headers, _vulnerability_ids(relations))
-    return OpenCtiRead(opencti_issues(software, stack, relations, remediations, fixes), complete)
+    issues = await asyncio.to_thread(opencti_issues, software, stack, relations, remediations, fixes)
+    return OpenCtiRead(issues, complete)
 
 
 async def _read_openaev(
@@ -924,6 +949,21 @@ async def _lookup_by_id(source: str, cred: tuple[str, dict[str, str]], ids: list
         return None
 
 
+async def release_before_network(db: Any) -> None:
+    """Hand *db*'s connection back to the pool before a product read (#2232).
+
+    A source read waits on OpenCTI and OpenAEV for seconds to minutes; the session
+    that read the credentials and the stack would keep its pool connection checked
+    out through it (the case tools of an agent run held one for 340-498 s during a
+    drain). The session re-acquires a connection on its next statement.
+    """
+    if db is None or not callable(getattr(db, "in_transaction", None)):
+        return
+    from app.core.database import release_db_connection_before_loop
+
+    await release_db_connection_before_loop(db)
+
+
 async def _read_product(
     user_id: str, provider: str, read: Callable[[httpx.AsyncClient], Awaitable[Any]]
 ) -> tuple[Any, str | BaseException | None]:
@@ -999,6 +1039,7 @@ async def read_open_issues(
             reads["openaev"] = _read_product(
                 user_id, "openaev", lambda client: _read_openaev(client, aev_url, aev_headers, now)
             )
+        await release_before_network(db)
         answers = dict(zip(reads, await asyncio.gather(*reads.values()), strict=True))
         if "opencti" in answers:
             found, error = answers["opencti"]
@@ -1242,6 +1283,7 @@ async def _read_case_members(db: AsyncSession, user_id: str, out: SourceRead, wa
                 out.fail(provider, REASON_NOT_CONNECTED)
         octi = creds.get("opencti")
         stack = await _matcher_stack(db) if octi else []
+        await release_before_network(db)
         if octi and stack:
             octi_url, octi_headers = octi
             vuln_ids = sorted(set(wanted["opencti"]))

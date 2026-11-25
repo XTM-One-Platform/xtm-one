@@ -549,30 +549,52 @@ async def test_exposed_layer_is_live_when_the_findings_join_the_profile_assets(m
     sent = _wire_join(monkeypatch, findings, named_total=1)
     facts, _ = await collector.build_posture_for_user(None, "u1", "cyber")
     exposed = _layer(facts["prioritization"]["funnel"], "exposed")
-    assert exposed["state"] == LIVE and exposed["count"] == 299
+    # The fake answers 1 per count: CVE-2 and CVE-3 are exposed, all three observed.
+    assert exposed["state"] == LIVE and exposed["count"] == 1
     assert exposed["reachability"] == _SPLIT
-    # One count of the dropped names under the exploitable layer's filter.
+    # One count of the exposed names, one of the observed names, under the exploitable layer's filter.
     assert sent == [
-        {"mode": "and", "filters": [{"key": ["name"], "values": ["CVE-1"]}], "filterGroups": [collector._F_EXPLOITABLE]}
+        {"mode": "and", "filters": [{"key": ["name"], "values": names}], "filterGroups": [collector._F_EXPLOITABLE]}
+        for names in (["CVE-2", "CVE-3"], ["CVE-1", "CVE-2", "CVE-3"])
     ]
 
 
-async def test_exposed_layer_keeps_everything_when_no_finding_is_proven_unreachable(monkeypatch):
+async def test_exposed_layer_counts_only_vulnerabilities_found_on_an_asset(monkeypatch):
+    # #2268 (partner gap abb45061): a vulnerability of the layer found on no asset is never exposed.
     sent = _wire_join(monkeypatch, [_finding("CVE-2", "ws")])
     facts, _ = await collector.build_posture_for_user(None, "u1", "cyber")
     exposed = _layer(facts["prioritization"]["funnel"], "exposed")
-    assert exposed["state"] == LIVE and exposed["count"] == 300
+    assert exposed["state"] == LIVE and exposed["count"] == 1 and exposed["observed"] == 1
+    assert exposed["drop"] == 299
+    named = {"key": ["name"], "values": ["CVE-2"]}
+    assert sent == [{"mode": "and", "filters": [named], "filterGroups": [collector._F_EXPLOITABLE]}] * 2
+
+
+async def test_exposed_layer_tells_observed_apart_from_exposed(monkeypatch):
+    # CVE-1 only on the unreachable server: observed, not exposed. CVE-2 on the workstation: both.
+    sent = _wire_join(monkeypatch, [_finding("CVE-1", "srv"), _finding("CVE-2", "ws")], named_total=1)
+    facts, _ = await collector.build_posture_for_user(None, "u1", "cyber")
+    exposed = _layer(facts["prioritization"]["funnel"], "exposed")
+    assert exposed["count"] == 1
+    assert [f["filters"][0]["values"] for f in sent] == [["CVE-2"], ["CVE-1", "CVE-2"]]
+
+
+async def test_exposed_layer_is_zero_when_no_vulnerability_is_found_on_an_asset(monkeypatch):
+    sent = _wire_join(monkeypatch, [_finding("CVE-9")])
+    facts, _ = await collector.build_posture_for_user(None, "u1", "cyber")
+    exposed = _layer(facts["prioritization"]["funnel"], "exposed")
+    assert exposed["state"] == LIVE and exposed["count"] == 0 and exposed["observed"] == 0
     assert sent == []
 
 
 async def test_an_unknown_location_finding_never_counts_in_the_exposed_layer(monkeypatch):
     # OpenAEV #9233: a CVE found on no asset (a user or unknown location) is no exposure (gap abb45061).
-    # CVE-1 on the unreachable server drops; the same CVE with no asset does not keep it in.
+    # CVE-1 on the unreachable server is observed, not exposed; the same CVE with no asset does not keep it in.
     findings = [_finding("CVE-1", "srv"), _finding("CVE-1"), _finding("CVE-9")]
     sent = _wire_join(monkeypatch, findings, named_total=1)
     facts, _ = await collector.build_posture_for_user(None, "u1", "cyber")
     exposed = _layer(facts["prioritization"]["funnel"], "exposed")
-    assert exposed["state"] == LIVE and exposed["count"] == 299
+    assert exposed["state"] == LIVE and exposed["count"] == 0 and exposed["observed"] == 1
     assert sent == [
         {"mode": "and", "filters": [{"key": ["name"], "values": ["CVE-1"]}], "filterGroups": [collector._F_EXPLOITABLE]}
     ]

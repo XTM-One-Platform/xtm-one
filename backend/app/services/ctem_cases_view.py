@@ -60,6 +60,11 @@ RESTRICTED = "Restricted"
 LIST_BUILD_WAIT_SECONDS = 2.0
 #: The retry delay a list read names when the view is still building after that wait.
 LIST_RETRY_AFTER_SECONDS = 30
+#: How long a viewer's previous view answers a list read, marked stale, while the new one builds (#2232):
+#: a build after a case-opening drain outlived :data:`VIEW_TTL_SECONDS` on ctem.one, leaving only a 503.
+STALE_VIEW_TTL_SECONDS = 3600
+#: How long one pod holds the build of one view (#2232): the other pods serve the previous view meanwhile.
+BUILD_LOCK_SECONDS = 900
 #: The reasons a product gives about one identity (``ctem_cases_source.IDENTITY_REASONS``): the
 #: viewer has no access there, so what it did not return is refused, not unjudged (#2113).
 _IDENTITY_REASONS = frozenset({"rejected", "not_connected"})
@@ -240,6 +245,16 @@ def _seen_key(user_id: str, vertical: str) -> str:
 def _latest_key(user_id: str, vertical: str) -> str:
     """The generation of the viewer's newest cached view (#1986): the stale copy a case read may serve."""
     return f"ctem:cases:view-latest:{user_id}:{vertical}"
+
+
+def _previous_key(user_id: str, vertical: str) -> str:
+    """The viewer's newest built view, whatever its generation (#2232), kept :data:`STALE_VIEW_TTL_SECONDS`."""
+    return f"ctem:cases:view-previous:{user_id}:{vertical}"
+
+
+def _build_lock_key(user_id: str, vertical: str, generation: str) -> str:
+    """The cross-pod lock of one background build (#2232)."""
+    return f"ctem:cases:view-build:{user_id}:{vertical}:{generation}"
 
 
 async def _redis() -> Any | None:
@@ -472,7 +487,7 @@ async def _stale_view(
     view, so nothing is shown that the view of today would not show.
     """
     view = await _older_view(client, user_id, vertical, generation)
-    if view is None:
+    if view is None or _age_seconds(view) > VIEW_TTL_SECONDS:
         return None
     product = [m for m in members if not m.startswith(f"{SIGNAL_SOURCE}:")]
     if not all(m in view.issues or m in view.unavailable for m in product):
@@ -480,8 +495,20 @@ async def _stale_view(
     return view
 
 
+def _age_seconds(view: ViewerView) -> float:
+    """How old *view* is; a view with no ``built_at`` (cached before #2113) counts as fresh."""
+    if view.built_at is None:
+        return 0.0
+    return max(0.0, (datetime.now(UTC) - view.built_at).total_seconds())
+
+
 async def _older_view(client: Any, user_id: str, vertical: str, generation: str) -> ViewerView | None:
-    """The viewer's own newest view of a generation older than *generation*, while it is in its TTL."""
+    """The viewer's own newest view of a generation older than *generation*.
+
+    Kept :data:`STALE_VIEW_TTL_SECONDS` (#2232) under its own key, so a build longer than
+    :data:`VIEW_TTL_SECONDS` still leaves the list a view to answer from; a case read takes it
+    only within :data:`VIEW_TTL_SECONDS` of its build (:func:`_stale_view`).
+    """
     try:
         latest = await client.get(_latest_key(user_id, vertical))
     except Exception:
@@ -490,6 +517,17 @@ async def _older_view(client: Any, user_id: str, vertical: str, generation: str)
         latest = latest.decode()
     if not latest or str(latest) == generation:
         return None
+    try:
+        previous = await client.get(_previous_key(user_id, vertical))
+    except Exception:
+        logger.info("CTEM cases: previous view unreadable for %s", user_id, exc_info=True)
+        previous = None
+    if previous:
+        try:
+            return ViewerView.from_json(previous)
+        except Exception:
+            logger.info("CTEM cases: previous view unreadable for %s", user_id, exc_info=True)
+    # A pointer written before #2232: its view sits under the generation's own key.
     return await _cached_view(client, user_id, vertical, str(latest))
 
 
@@ -528,6 +566,12 @@ def _revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[No
 
     async def build() -> None:
         _timings.set(None)  # the request that started it has answered: its timings are closed
+        client = await _redis()
+        lock = _build_lock_key(user_id, vertical, generation)
+        if not await _take_build_lock(client, lock):
+            # Another pod builds this view (#2232): the list answers the previous one meanwhile.
+            logger.info("CTEM cases: view of %s (generation %s) built by another pod", user_id, generation)
+            return
         try:
             from app.core.database import async_session
 
@@ -535,11 +579,33 @@ def _revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[No
                 await _product_view(db, user_id, vertical, fresh=False)
         except Exception:
             logger.info("CTEM cases: background view build failed for %s", user_id, exc_info=True)
+        finally:
+            await _release_build_lock(client, lock)
 
     task = asyncio.create_task(build())
     _revalidations[key] = task
     task.add_done_callback(lambda _t: _revalidations.pop(key, None))
     return task
+
+
+async def _take_build_lock(client: Any, key: str) -> bool:
+    """Whether this pod builds the view of *key* (#2232); no Redis, or Redis failing, builds here."""
+    if client is None:
+        return True
+    try:
+        return bool(await client.set(key, "1", ex=BUILD_LOCK_SECONDS, nx=True))
+    except Exception:
+        logger.info("CTEM cases: view build lock unreadable for %s", key, exc_info=True)
+        return True
+
+
+async def _release_build_lock(client: Any, key: str) -> None:
+    if client is None:
+        return
+    try:
+        await client.delete(key)
+    except Exception:
+        logger.info("CTEM cases: view build lock not released for %s", key, exc_info=True)
 
 
 async def _product_view(
@@ -605,8 +671,11 @@ async def _build_view(db: Any, client: Any, user_id: str, vertical: str, generat
     await _seen_while_missing(client, user_id, vertical, view)
     if client is not None:
         try:
-            await client.set(_view_key(user_id, vertical, generation), view.to_json(), ex=VIEW_TTL_SECONDS)
-            await client.set(_latest_key(user_id, vertical), generation, ex=VIEW_TTL_SECONDS)
+            raw = view.to_json()
+            await client.set(_view_key(user_id, vertical, generation), raw, ex=VIEW_TTL_SECONDS)
+            # The previous view the list answers from while the next generation builds (#2232).
+            await client.set(_previous_key(user_id, vertical), raw, ex=STALE_VIEW_TTL_SECONDS)
+            await client.set(_latest_key(user_id, vertical), generation, ex=STALE_VIEW_TTL_SECONDS)
             visible = sorted(set(view.issues) | view.unavailable)
             await client.set(_seen_key(user_id, vertical), json.dumps(visible), ex=LAST_SEEN_TTL_SECONDS)
         except Exception:

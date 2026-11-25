@@ -753,9 +753,21 @@ def own_pull_request(correlation_key: object, title: object) -> dict | None:
     return None
 
 
-def _foreign_pull_request_refs(refs: object, own: dict) -> list[dict]:
-    """The open references of *refs* naming another pull request of *own*'s repository. Pure."""
-    out: list[dict] = []
+def _bound_pull_requests(payload: object) -> set[tuple[str, int]]:
+    """``(repo, number)`` of every pull request *payload* binds (``payload.pull_requests``). Pure."""
+    from app.services.work_item_pull_requests import pull_request_bindings
+
+    return {(str(b.get("repo") or "").lower(), int(b["number"])) for b in pull_request_bindings(payload)}
+
+
+def _foreign_pull_request_refs(refs: object, own: dict[str, Any], payload: object = None) -> list[dict[str, Any]]:
+    """The open references of *refs* naming another pull request of *own*'s repository. Pure.
+
+    A pull request the item's own payload binds is never foreign: the payload is
+    where the item says which pull request carries its change (#2242).
+    """
+    bound = _bound_pull_requests(payload)
+    out: list[dict[str, Any]] = []
     for ref in refs if isinstance(refs, list) else []:
         if not isinstance(ref, dict) or _satisfied(ref):
             continue
@@ -767,13 +779,18 @@ def _foreign_pull_request_refs(refs: object, own: dict) -> list[dict]:
             if own.get("repo")
             else (own.get("name") is not None and repo.split("/")[-1] == own["name"])
         )
-        if same_repo and ref["number"] != own["number"]:
+        if same_repo and ref["number"] != own["number"] and (repo, int(ref["number"])) not in bound:
             out.append(ref)
     return out
 
 
 def refuse_foreign_pull_request_ref(
-    status: str | None, *, correlation_key: object, title: object, blocked_on_refs: object
+    status: str | None,
+    *,
+    correlation_key: object,
+    title: object,
+    blocked_on_refs: object,
+    payload: object = None,
 ) -> None:
     """Raise ``ValueError`` when an item about pull request N waits on another pull request of its repository.
 
@@ -787,7 +804,7 @@ def refuse_foreign_pull_request_ref(
     own = own_pull_request(correlation_key, title)
     if own is None:
         return
-    foreign = _foreign_pull_request_refs(blocked_on_refs, own)
+    foreign = _foreign_pull_request_refs(blocked_on_refs, own, payload)
     if not foreign:
         return
     repo = own.get("repo") or str(foreign[0].get("repo") or "").lower()
@@ -1282,6 +1299,9 @@ def dequeued_note(removed: list[str], event: PullRequestEvent, now: datetime, *,
     hint = DEQUEUE_HINTS.get(reason)
     if hint:
         reason = f"{reason}; {hint}"
+    run_hint = (event.extra or {}).get("queue_run_hint")
+    if isinstance(run_hint, str) and run_hint:
+        reason = f"{reason}; {run_hint}"
     tail = (
         "it stays blocked until the items it waits for are done"
         if still_blocked

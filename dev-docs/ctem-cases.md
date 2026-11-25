@@ -89,7 +89,7 @@ in one line (section 7.3).
 
 | Source | What counts as an open issue | Read |
 |---|---|---|
-| OpenCTI | A Vulnerability related by `has` to a Software observable matching the organization tech stack (the match already used by the tailored KEV, `ctem_metrics_collector._stack_matches`: CPE equal, else the product name when nothing known on both sides contradicts it (`ctem_product_identity.conflict`: vendors, a side's vendor being its `vendor` or else the vendor its CPE names, #1693; two CPEs naming another vendor:product; a stack entry with a language-package purl against an OpenCTI Software that is another package, an OS or hardware CPE, or an application CPE not of that ecosystem; an OS-only product against software whose assets all report another OS family; a field unknown on either side never rejects, so a name-only entry still matches by name, #2036); a CVE OpenCTI links to several stack products is one issue, so one case, per product), and passing the prioritization policy of #11543 when one is set | GraphQL, per-user credentials (as the posture) |
+| OpenCTI | A Vulnerability related by `has` to a Software observable matching the organization tech stack (the match already used by the tailored KEV, `ctem_metrics_collector._stack_matches`: CPE equal, else the product name when nothing known on both sides contradicts it (`ctem_product_identity.conflict`: vendors, a side's vendor being its `vendor` or else the vendor its CPE names, #1693; two CPEs naming another vendor:product; a stack entry with a language-package purl against an OpenCTI Software that is another package, an OS or hardware CPE, or an application CPE not of that ecosystem; an OS-only product against software whose assets all report another OS family; a field unknown on either side never rejects, so a name-only entry still matches by name, #2036; the case's running versions leave out a language package row (`pkg:maven`, `pkg:pypi`, ...) of a repository unless the vulnerable OpenCTI Software is itself a language package, signal `evidence.case_fix.language_package`, #2223); a CVE OpenCTI links to several stack products is one issue, so one case, per product), and passing the prioritization policy of #11543 when one is set | GraphQL, per-user credentials (as the posture) |
 | OpenAEV | A finding of type `cve` on an asset or asset group, not older than the validation window | `/api/findings/search`, per-user credentials |
 
 Without a tech stack in the profile, OpenCTI contributes nothing (no case from
@@ -895,10 +895,18 @@ the Settings form carries it whole.
 List reads after a case-opening drain (#2092): the list, the overview and the
 loop measures read the caller's view with `stale_ok`. A generation bump (a case
 opened) retires every cached view; the caller's own newest view of the previous
-generation, still in its TTL, answers while the new one builds in the background
+generation answers while the new one builds in the background
 (`Server-Timing` `cache-stale`); the cases opened since it was built are
 answered as `unjudged_cases` with `view.stale` true, never as hidden (#2113).
-With none, the read waits
+That previous view is kept `STALE_VIEW_TTL_SECONDS` (1 h, #2232) under
+`ctem:cases:view-previous:<user>:<vertical>`, so a build longer than the view TTL
+(8-9 min after a 500-case drain on ctem.one) never leaves the list a 503; a case
+read takes it only within `VIEW_TTL_SECONDS` of its build. One pod builds a view
+of a generation: the build takes `ctem:cases:view-build:<user>:<vertical>:<generation>`
+(Redis `SET NX`, `BUILD_LOCK_SECONDS`, 15 min) and another pod that finds it held
+stands down. The OpenCTI issue construction runs in a worker thread, off the event
+loop, and the read logs the time of each phase (stack and relations, remediations,
+issues). With none, the read waits
 `LIST_BUILD_WAIT_SECONDS` (2 s, #2139: a 503 held 10 s was no fail-fast answer) for that build, then answers 503 with
 `Retry-After` (`LIST_RETRY_AFTER_SECONDS`, 30 s): never a whole view build on
 the request (400 s on a large tenant). Event visibility (`user_sees_case`)

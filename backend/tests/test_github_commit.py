@@ -1141,6 +1141,40 @@ async def test_a_signed_commit_without_a_clear_answer_is_not_committed_again(fak
     assert fake.urls("patch") == []
 
 
+@pytest.mark.asyncio
+async def test_a_499_on_the_signed_commit_is_answered_unknown_not_unchanged():
+    """A proxy 499 closes the request before GitHub answers: the commit may have landed (gap commit-batch-http-499)."""
+    commit, _ = _commit_tool()
+    fake = FakeGitHub(graphql_status=499)
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await commit(repo="acme/app", message="x", files=[{"path": "a.txt", "content": "x"}], branch="main")
+
+    assert result.startswith("Error:")
+    assert "Whether branch 'main' of acme/app now carries this change is not known." in result
+    assert "unchanged" not in result
+    # Tried once more on the same expectedHeadOid, never through the unsigned path.
+    assert fake.urls("post").count(GRAPHQL) == 2
+    assert f"{API}/git/commits" not in fake.urls("post")
+    assert fake.urls("patch") == []
+
+
+@pytest.mark.asyncio
+async def test_a_forbidden_answer_on_a_moved_branch_says_the_branch_moved_not_access_denied():
+    """GitHub answers FORBIDDEN for a stale expectedHeadOid too (gap commit-stale-head-says-access-denied)."""
+    commit, _ = _commit_tool()
+    fake = FakeGitHub(
+        graphql_errors=[{"type": "FORBIDDEN", "message": "Resource not accessible by integration"}],
+        moved_tip="b" * 40,
+    )
+    with patch(_SAFE_REQUEST, new=fake):
+        result = await commit(repo="acme/app", message="x", files=[{"path": "a.txt", "content": "x"}], branch="main")
+
+    assert result.startswith("Error: branch 'main' of acme/app changed while the commit was being built"), result
+    assert "access denied" not in result
+    assert "unchanged" in result
+    assert fake.urls("patch") == []
+
+
 # --- Both paths say what GitHub says: its signature verdict and its refusals ---
 
 

@@ -9,6 +9,7 @@ page at once instead of after ``VIEW_TTL_SECONDS``.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -284,6 +285,62 @@ async def test_a_list_read_with_no_view_answers_the_build_that_finished_in_the_w
     phases = view_of.start_timing()
     view = await view_of.viewer_view(None, "u-1", "cyber", stale_ok=True)
     assert judged == ["u-1"] and view.sees("opencti:a") and "cache-built" in phases
+
+
+@pytest.mark.asyncio
+async def test_a_list_read_answers_the_previous_view_after_its_generation_key_expired(
+    redis: Any, judged: list[str], revalidations: list[Any]
+) -> None:
+    """#2232: a build longer than VIEW_TTL_SECONDS still leaves the list the previous view, never a 503."""
+    await view_of.viewer_view(None, "u-1", "cyber")
+    redis.data.pop(view_of._view_key("u-1", "cyber", "0"))  # the generation's own copy expired
+    await view_of.forget_all_views("cyber")
+    phases = view_of.start_timing()
+    view = await view_of.viewer_view(None, "u-1", "cyber", stale_ok=True)
+    assert judged == ["u-1"] and view.sees("opencti:a") and view.stale
+    assert "cache-stale" in phases and revalidations == [("u-1", "cyber", "1")]
+
+
+@pytest.mark.asyncio
+async def test_a_case_read_never_takes_a_previous_view_older_than_the_view_ttl(
+    redis: Any, judged: list[str], revalidations: list[Any]
+) -> None:
+    await view_of.viewer_view(None, "u-1", "cyber")
+    key = view_of._previous_key("u-1", "cyber")
+    old = view_of.ViewerView.from_json(redis.data[key])
+    old.built_at = datetime.now(UTC) - timedelta(seconds=view_of.VIEW_TTL_SECONDS + 60)
+    redis.data[key] = old.to_json()
+    await view_of.forget_all_views("cyber")
+    phases = view_of.start_timing()
+    await view_of.viewer_view(None, "u-1", "cyber", members=["opencti:a"])
+    # The case is read for its own members, never answered from a view past its TTL.
+    assert judged == ["u-1", "case:u-1"] and "cache-scoped" in phases
+
+
+@pytest.mark.asyncio
+async def test_one_pod_builds_a_view_while_another_pod_holds_its_build_lock(redis: Any, judged: list[str]) -> None:
+    """#2232: both pods rebuilt the same view after the drain; the second one now stands down."""
+    redis.data[view_of._build_lock_key("u-1", "cyber", "0")] = "1"  # another pod builds it
+    task = view_of._revalidate("u-1", "cyber", "0")
+    assert task is not None
+    await task
+    assert judged == []
+
+
+@pytest.mark.asyncio
+async def test_the_build_lock_is_taken_once_and_released_after_the_build(redis: Any) -> None:
+    key = view_of._build_lock_key("u-1", "cyber", "3")
+    assert await view_of._take_build_lock(redis, key)
+    assert not await view_of._take_build_lock(redis, key)
+    await view_of._release_build_lock(redis, key)
+    assert await view_of._take_build_lock(redis, key)
+    # No Redis: the pod builds by itself, as before.
+    assert await view_of._take_build_lock(None, key)
+
+
+def test_the_previous_view_outlives_a_slow_build() -> None:
+    assert view_of.STALE_VIEW_TTL_SECONDS >= 6 * view_of.VIEW_TTL_SECONDS
+    assert view_of.BUILD_LOCK_SECONDS > view_of.VIEW_TTL_SECONDS
 
 
 @pytest.mark.asyncio

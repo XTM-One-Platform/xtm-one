@@ -14,6 +14,7 @@ from app.services.skill_edits import (
     SkillEditError,
     format_outline,
     new_skill_content,
+    partial_text_update,
     resolve_section,
 )
 from tests.test_agent_builder_crud_tools import _call, _session_factory, _stub_manageable_gate
@@ -27,6 +28,25 @@ SKILL = (
     "```md\n## not a heading\n```\n"
 )
 LONG = SKILL + ("Filler line for a long skill body.\n" * 80)
+
+
+@pytest.mark.parametrize("mode", ["insert_after", "replace_section"])
+def test_section_mode_on_a_headingless_prompt_names_the_field_and_the_modes_that_apply(mode: str) -> None:
+    """#2193: a headingless assignment prompt refuses a section mode up front,
+    naming the field (never 'skill') and the modes that work: edit, append."""
+    prompt = "Read the queue.\n\nTriage each item.\n\nReport the result.\n"
+    with pytest.raises(SkillEditError) as excinfo:
+        partial_text_update(mode, prompt, field="prompt", content="## New\n\nMore.", section="Triage each item.")
+    message = str(excinfo.value)
+    assert "this prompt has no Markdown heading" in message
+    assert "'edit'" in message and "'append'" in message
+    assert "skill" not in message
+
+
+def test_heading_first_refusal_names_the_field_edited() -> None:
+    with pytest.raises(SkillEditError) as excinfo:
+        partial_text_update("insert_after", SKILL, field="persona", content="no heading", section="#2")
+    assert "so the persona keeps its structure" in str(excinfo.value)
 
 
 def test_outline_lists_every_heading_with_offsets():

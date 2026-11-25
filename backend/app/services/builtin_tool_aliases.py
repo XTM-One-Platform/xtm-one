@@ -86,6 +86,8 @@ BUILTIN_GROUP_ALIASES: dict[str, tuple[str, tuple[str, ...]]] = {
             "get_program_status",
             # An agent DMs a waiting item's decision card (#1156).
             "send_decision_card",
+            # The person's notification bell, read (#2198).
+            "list_my_notifications",
         ),
     ),
     "shared_state": (

@@ -72,6 +72,7 @@ from app.services.assignment_pause import (
     FLEET_PAUSE_REASON,
     clear_pause_provenance,
     is_emergency_stopped,
+    is_paused_by_person,
     mark_schedule_resumed,
     pause_assignment,
 )
@@ -907,6 +908,16 @@ async def seed_builtin_assignments(
                     data["name"],
                     agent_slug,
                 )
+            elif desired_enabled and is_paused_by_person(existing):  # type: ignore[arg-type]
+                # A person (or an agent acting as one) switched this one
+                # automation off (#2192): their decision, which a boot must not
+                # revert. They switch it back on.
+                logger.info(
+                    "Built-in assignment '%s' (agent '%s') stays paused: switched off by %s.",
+                    data["name"],
+                    agent_slug,
+                    getattr(existing, "paused_by_label", None) or "a person",
+                )
             elif desired_enabled and emergency_stopped:
                 # An emergency stop outlives a restart: the stop's resume
                 # re-enables this assignment, a boot never does. The stamp
@@ -924,8 +935,9 @@ async def seed_builtin_assignments(
                 # was paused by the quarantine three boots ago.
                 #
                 # The seed is the source of truth for built-in assignments:
-                # anything that disabled one at runtime (manual toggle, legacy
-                # auto-quarantine) is reverted on every boot.
+                # anything else that disabled one at runtime (legacy
+                # auto-quarantine, a pause with no person on it) is reverted on
+                # every boot; a person's switch-off is kept above (#2192).
                 #
                 # Seeding has no acting user, so there is no ``resume`` audit
                 # row to pair with the ``pause`` one this clears. Left silent,

@@ -178,7 +178,72 @@ async def read_successful_workflow_run(
         data = resp.json()
     except ValueError:
         return None
-    return first_successful_run(data, after, title_contains)
+    found = first_successful_run(data, after, title_contains)
+    # A workflow with no run at all may be a reusable one: it never runs on its own,
+    # so the reference would wait forever (#2211). A read failure, told on the item.
+    if (
+        found is None
+        and _no_runs(data)
+        and _WORKFLOW_FILE_RE.match(workflow)
+        and await _call_only_workflow(owner, name, workflow, branch, token)
+    ):
+        raise LookupError(
+            f"workflow {workflow} in {repo} only runs on workflow_call: it never has a run of its own; "
+            "name the workflow that calls it instead"
+        )
+    return found
+
+
+_WORKFLOW_FILE_RE = re.compile(r"^[A-Za-z0-9_.-]+\.ya?ml$")
+
+
+def _no_runs(data: Any) -> bool:
+    """Whether GitHub's runs answer *data* lists no run at all. Pure."""
+    runs = data.get("workflow_runs") if isinstance(data, dict) else None
+    return isinstance(runs, list) and not runs
+
+
+def workflow_call_only(text: str) -> bool:
+    """Whether the workflow file *text* is triggered by ``workflow_call`` alone (#2211). Pure.
+
+    ``on`` reads as a string, a list or a mapping; YAML 1.1 loads the bare key
+    ``on`` as ``True``, read too. Unparseable text answers ``False``.
+    """
+    import yaml
+
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return False
+    if not isinstance(data, dict):
+        return False
+    on = data.get("on", data.get(True))
+    if isinstance(on, str):
+        events = {on}
+    elif isinstance(on, list | dict):
+        events = {str(e) for e in on}
+    else:
+        return False
+    return events == {"workflow_call"}
+
+
+async def _call_only_workflow(owner: str, name: str, workflow: str, branch: str | None, token: str) -> bool:
+    """Whether ``.github/workflows/<workflow>`` of *owner/name* only runs on ``workflow_call``; ``False`` when unreadable."""
+    params = {"ref": branch} if branch else None
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/contents/.github/workflows/{workflow}",
+            "GitHub",
+            f"read the triggers of {workflow} in {owner}/{name}",
+            headers={**_headers(token), "Accept": "application/vnd.github.raw+json"},
+            params=params,
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+    if err or resp is None:
+        return False
+    return workflow_call_only(getattr(resp, "text", "") or "")
 
 
 #: Check run conclusions that do not fail a head (the webhook path's rule).
@@ -548,9 +613,10 @@ async def read_pull_request_ci(repo: str, number: int, token: str) -> dict | Non
     listed = checks.get("check_runs") if isinstance(checks, dict) else None
     full_ci = None
     merge_queue = False
+    review_decision = None
     if conclusion == "success" and draft is False and base_ref and _BRANCH_RE.match(base_ref):
         full_ci = await _full_ci_state(owner, name, base_ref, sha, token)
-        merge_queue = await _in_merge_queue(owner, name, number, token)
+        merge_queue, review_decision = await _merge_gates(owner, name, number, token)
     return {
         "head_sha": sha,
         "head_branch": _text(head.get("ref")),
@@ -567,17 +633,22 @@ async def read_pull_request_ci(repo: str, number: int, token: str) -> dict | Non
         **({"full_ci": full_ci} if full_ci else {}),
         # In the base's merge queue: its merge (or its removal) is a wake still to come (#404).
         **({"merge_queue": True} if merge_queue else {}),
+        # Waiting on a review: the review event, not a green hand-off, is its next wake (#2213).
+        **({"review_decision": review_decision} if review_decision else {}),
     }
 
 
 _IN_MERGE_QUEUE_QUERY = (
     "query($owner: String!, $name: String!, $number: Int!) {"
-    " repository(owner: $owner, name: $name) { pullRequest(number: $number) { isInMergeQueue } } }"
+    " repository(owner: $owner, name: $name) { pullRequest(number: $number) { isInMergeQueue reviewDecision } } }"
 )
 
 
-async def _in_merge_queue(owner: str, name: str, number: int, token: str) -> bool:
-    """Whether pull request *number* waits in its base's merge queue (#404); ``False`` when unreadable."""
+async def _merge_gates(owner: str, name: str, number: int, token: str) -> tuple[bool, str | None]:
+    """Whether pull request *number* is in its base's merge queue (#404), and its review decision (#2213).
+
+    ``(False, None)`` when unreadable.
+    """
     async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
         data, err = await _common.gh_graphql(
             client,
@@ -587,10 +658,13 @@ async def _in_merge_queue(owner: str, name: str, number: int, token: str) -> boo
             action=f"read whether {owner}/{name}#{number} is in the merge queue",
         )
     if err or not isinstance(data, dict):
-        return False
-    repo = data.get("repository") if isinstance(data.get("repository"), dict) else {}
-    pull = repo.get("pullRequest") if isinstance(repo.get("pullRequest"), dict) else {}
-    return pull.get("isInMergeQueue") is True
+        return False, None
+    repo_raw = data.get("repository")
+    repo: dict[str, Any] = repo_raw if isinstance(repo_raw, dict) else {}
+    pull_raw = repo.get("pullRequest")
+    pull: dict[str, Any] = pull_raw if isinstance(pull_raw, dict) else {}
+    decision = pull.get("reviewDecision")
+    return pull.get("isInMergeQueue") is True, decision if isinstance(decision, str) and decision else None
 
 
 async def _full_ci_state(owner: str, name: str, base_ref: str, sha: str, token: str) -> str | None:
@@ -725,6 +799,9 @@ def dequeued_from_timeline(repo: str, number: int, data: Any) -> PullRequestEven
     if not when:
         return None
     reason = (_text(removal.get("reason")) or "unknown").lower()
+    from .pr_events import queue_run_hint
+
+    hint = queue_run_hint(repo.lower(), reason, when)
     return PullRequestEvent(
         kind="dequeued",
         repo=repo.lower(),
@@ -734,6 +811,7 @@ def dequeued_from_timeline(repo: str, number: int, data: Any) -> PullRequestEven
         conclusion=reason,
         url=_text(pull.get("url")),
         closed_at=when,
+        extra={"queue_run_hint": hint} if hint else {},
     )
 
 

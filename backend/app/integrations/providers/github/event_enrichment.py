@@ -139,11 +139,19 @@ parent), ``new_failed_names`` (the others) and ``unchanged_red`` (at least one
 counted red and none new). A green head, no parent or an unreadable parent reads
 ``unchanged_red`` false, so ``{"enriched.head.parent.unchanged_red": {"ne":
 true}}`` never drops a wake blind (xtm-one #752).
+
+A red ``check_run`` completion that reads ``first_failure`` true has the head's
+workflow runs read once more: when the delivered check's workflow run (its URL
+or check suite) is queued or running again (a re-run of failed jobs), the red
+belongs to a superseded attempt, ``first_failure`` reads false and
+``superseded_attempt`` names the run (``run_id``, ``attempt``, ``status``)
+(xtm-one #2210).
 """
 
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -936,6 +944,47 @@ def _delivered_check_run_id(event_key: str, payload: dict) -> int | None:
     return run_id if isinstance(run_id, int) else None
 
 
+_RUN_ID_IN_URL = re.compile(r"/actions/runs/(\d+)(?:/|$)")
+
+
+def superseded_attempt(delivered: Any, running: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The workflow run, not completed, that re-runs the attempt a delivered red check belongs to. Pure.
+
+    *delivered* is the ``check_run`` of the payload; its workflow run is read from its
+    ``html_url`` or ``details_url`` (``/actions/runs/<id>/job/<id>``) or its
+    ``check_suite.id``. A red of an earlier attempt whose run is queued or running
+    again (a re-run of failed jobs: ``run_attempt`` above 1 and the check started
+    before the run's latest attempt, ``run_started_at``) is no first failure
+    (xtm-one #2210): ``None`` otherwise, a red of the running attempt included.
+    """
+    if not isinstance(delivered, dict) or not running:
+        return None
+    check_started = _parse_time(delivered.get("started_at"))
+    run_ids: set[int] = set()
+    for field in ("html_url", "details_url"):
+        found = _RUN_ID_IN_URL.search(str(delivered.get(field) or ""))
+        if found:
+            run_ids.add(int(found.group(1)))
+    suite = delivered.get("check_suite")
+    suite_id = suite.get("id") if isinstance(suite, dict) else None
+    for run in running:
+        if run.get("status") == "completed":
+            continue
+        if run.get("id") in run_ids or (isinstance(suite_id, int) and run.get("check_suite_id") == suite_id):
+            attempt = run.get("run_attempt")
+            attempt_started = _parse_time(run.get("run_started_at"))
+            if not isinstance(attempt, int) or attempt < 2:
+                continue
+            if check_started is not None and attempt_started is not None and check_started >= attempt_started:
+                continue
+            return {
+                "run_id": run.get("id"),
+                "attempt": attempt if isinstance(attempt, int) else None,
+                "status": run.get("status"),
+            }
+    return None
+
+
 def _delivered_completion_time(event_key: str, payload: dict) -> str | None:
     """When a completion event finished (its payload's own time), ``None`` on any other event."""
     if not is_completion(event_key, payload):
@@ -982,6 +1031,16 @@ async def fetch(event_key: str, payload: dict, token: str, *, facets: frozenset[
                 _delivered_completion_time(event_key, payload),
                 contexts or None,
             )
+            if checks["first_failure"]:
+                # A red of an attempt its re-run supersedes is no first failure (#2210):
+                # the head's workflow runs are read, on such a delivery only.
+                try:
+                    running, _events, _suites = await _running_workflow_runs(client, repo_base, sha, token)
+                except EnrichmentError:
+                    running = []  # unreadable: the red still wakes, never dropped blind
+                superseded = superseded_attempt(payload.get("check_run"), running)
+                if superseded is not None:
+                    checks = {**checks, "first_failure": False, "superseded_attempt": superseded}
             if branch is not None and held_by_stale_only(check_runs, checks):
                 # Nothing failed and only long-pending checks are left: when the base's
                 # required checks all passed, a check it does not require no longer
