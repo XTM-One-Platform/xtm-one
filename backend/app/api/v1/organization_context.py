@@ -2600,43 +2600,6 @@ async def preview_organization_sync_change(
     return SyncChangePreviewResponse(**change)
 
 
-class OutboundPreviewRequest(BaseModel):
-    """A new outbound sync as the Add a sync dialog would save it (#1982 S4)."""
-
-    section: Literal["assets", "asset_groups", "software", "primary_assets", "pirs"]
-    source: Literal["openaev", "opencti", "opencrq"]
-    filters: dict[str, Any] = {}
-
-
-@router.post("/syncs/outbound-preview", response_model=SyncChangePreviewResponse)
-async def preview_new_outbound_sync(
-    body: OutboundPreviewRequest,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
-) -> SyncChangePreviewResponse:
-    """What the first run of a new outbound sync would write, before it is saved (#1982 S4).
-
-    The same plan as the preview of an existing sync, with no platform row created yet; read with
-    this administrator's token. Nothing is written to the platform or saved. No model call.
-    """
-    from types import SimpleNamespace
-
-    from app.services import organization_context_outbound as outbound
-    from app.services import organization_context_sync as osync
-
-    if not outbound.supports(body.section, body.source, "outbound"):
-        raise HTTPException(status_code=422, detail=outbound.directions(body.section, body.source)[1])
-    # A sync not saved yet: the planner reads only these attributes of a stored one.
-    proposed: Any = SimpleNamespace(
-        id=None, section=body.section, source=body.source, direction="outbound", filters={}, outbound_ids={}
-    )
-    change = await osync.preview_change(
-        db, proposed, user_id=admin.id, filters=body.filters, batch_type="", remove_gone=True, excluded_ids=None
-    )
-    await db.commit()
-    return SyncChangePreviewResponse(**change)
-
-
 @router.delete("/syncs/{sync_id}", status_code=204)
 async def delete_organization_sync(
     sync_id: uuid.UUID,
@@ -2871,73 +2834,6 @@ async def run_organization_sync(
             status_code=409, detail="Another version was saved at the same time. Run it again."
         ) from None
     return await _sync_response(db, row)
-
-
-class FillAgentRequest(BaseModel):
-    integration_id: str
-    #: True: also create the scheduled assignment that keeps the assets in sync.
-    schedule: bool = False
-    cron: str = "0 6 * * *"
-    timezone: str | None = None
-
-
-class FillAgentResponse(BaseModel):
-    agent_id: str
-    agent_name: str
-    created: bool
-    assignment_id: str | None = None
-    #: The preview instruction the chat starts with.
-    prompt: str
-
-
-@router.post("/fill-agent", response_model=FillAgentResponse)
-async def create_organization_fill_agent(
-    body: FillAgentRequest,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
-    # It creates an agent (and a scheduled assignment): refused when AI is off or unlicensed.
-    _gate: None = Depends(require_agentic_ai),
-) -> FillAgentResponse:
-    """An agent that fills the assets from one connected integration, and its optional sync (#11888).
-
-    Bound to the integration read-only and to the ``organization_context``
-    group, reused when the administrator already has one for that integration.
-    No model call here: the chat or the scheduled run does the reading.
-    """
-    from sqlalchemy import select
-
-    from app.api.v1.helpers import get_user_group_ids, parse_uuid, user_visible_filter
-    from app.core.utils import validate_cron_expression
-    from app.models.integration import Integration
-    from app.services import organization_context_fill_agent as fill
-
-    integration_id = parse_uuid(body.integration_id, label="integration_id")
-    groups = await get_user_group_ids(db, admin.id)
-    integration = (
-        await db.execute(
-            select(Integration).where(
-                Integration.id == integration_id,
-                user_visible_filter(Integration, admin.id, groups, is_admin=True),
-            )
-        )
-    ).scalar_one_or_none()
-    if integration is None:
-        raise HTTPException(status_code=404, detail="Integration not found.")
-    try:
-        cron = validate_cron_expression(body.cron)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from None
-    made = await fill.ensure_fill_agent(
-        db, admin_id=admin.id, integration=integration, schedule=body.schedule, cron=cron, timezone=body.timezone
-    )
-    await db.commit()
-    return FillAgentResponse(
-        agent_id=str(made.agent.id),
-        agent_name=made.agent.name,
-        created=made.created,
-        assignment_id=str(made.assignment.id) if made.assignment else None,
-        prompt=made.prompt,
-    )
 
 
 class SetupPromptResponse(BaseModel):
