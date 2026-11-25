@@ -290,6 +290,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         gate: dict[str, Any] | None = None,
         treatment_plan: dict[str, Any] | None = None,
         threat_package: dict[str, Any] | None = None,
+        applied_change: dict[str, Any] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -373,6 +374,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         option=str(gate.get("option") or ""),
                         actor=agent_id,
                     )
+                if applied_change is not None:
+                    case_loop.record_applied_change(db, case, applied_change, actor=agent_id)
                 if treatment_plan is not None:
                     history = (await store.events_of(db, [case.id])).get(case.id, [])
                     case_loop.record_treatment_plan(
@@ -940,7 +943,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             description=(
                 "Change a CTEM case: owner, due date, a note, the state with its reason, or the exploitation "
                 "reading or attack path of the triage step, a loop gate passed or waited, or the risk treatment plan of "
-                "the decision, or the threat package of the review step. Those writes move the status; "
+                "the decision, or the threat package of the review step, or a change applied through an integration "
+                "(with the gate ctem.production_change). Those writes move the status; "
                 "resolved needs evidence "
                 "(a ticket, a change or a validation run); reopening needs a reason; accepted_risk is refused to "
                 "an agent (a person accepts risk)."
@@ -1032,6 +1036,25 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                             "coverage_id": {"type": "string"},
                         },
                         "required": ["grouping_id"],
+                    },
+                    "applied_change": {
+                        "type": "object",
+                        "description": (
+                            "A fix applied through a bound integration, read back: what was pushed (indicators "
+                            "with their prevention action, scope, expiry; a rule; a setting), the ids returned "
+                            "and how to revert it."
+                        ),
+                        "properties": {
+                            "integration": {"type": "string"},
+                            "kind": {
+                                "type": "string",
+                                "enum": ["ioc_prevention", "detection_rule", "configuration", "control_restored"],
+                            },
+                            "pushed": {"type": "string"},
+                            "ids": {"type": "array", "items": {"type": "string"}},
+                            "rollback": {"type": "string"},
+                        },
+                        "required": ["integration", "kind", "pushed", "rollback"],
                     },
                 },
                 "required": ["case_id"],

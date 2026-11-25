@@ -1019,6 +1019,64 @@ def record_gate(
     return case
 
 
+#: How an applied change was carried out (#2061): the ``kind`` of an ``applied_change`` event.
+APPLIED_CHANGE_KINDS: tuple[str, ...] = ("ioc_prevention", "detection_rule", "configuration", "control_restored")
+
+
+def record_applied_change(
+    db: AsyncSession,
+    case: CtemCase,
+    change: dict[str, Any],
+    *,
+    actor: str = rules.SYSTEM_ACTOR,
+    now: datetime | None = None,
+) -> CtemCase:
+    """Write a change applied through a bound integration under ``ctem.production_change`` (#2061).
+
+    *change* is ``{integration, kind, pushed, ids, rollback}``: the integration that
+    carried it, one of :data:`APPLIED_CHANGE_KINDS`, what was pushed (the indicators
+    with their prevention action, scope and expiry; the rule; the setting), the ids
+    the integration returned and how to revert it. One ``applied_change`` event:
+    ``from`` the integration, ``to`` the kind, ``reason`` what was pushed,
+    ``evidence`` ``{ids, rollback}`` as JSON. The rollback is required: a change
+    nobody can revert is refused. An open case moves to ``remediating``. The
+    gate itself is written by :func:`record_gate`. The caller commits.
+    """
+    import json
+
+    if not isinstance(change, dict):
+        raise rules.CaseRuleError("applied_change must be an object with integration, kind, pushed and rollback")
+    integration = str(change.get("integration") or "").strip()[:300]
+    kind = str(change.get("kind") or "").strip()
+    pushed = str(change.get("pushed") or "").strip()[:4000]
+    rollback = str(change.get("rollback") or "").strip()[:2000]
+    if kind not in APPLIED_CHANGE_KINDS:
+        raise rules.CaseRuleError(f"applied_change.kind must be one of {', '.join(APPLIED_CHANGE_KINDS)}")
+    if not integration or not pushed or not rollback:
+        raise rules.CaseRuleError("applied_change needs the integration, what was pushed and the rollback")
+    raw_ids = change.get("ids") or []
+    if not isinstance(raw_ids, list):
+        raise rules.CaseRuleError("applied_change.ids must be the list of ids the integration returned")
+    ids = [str(i).strip()[:200] for i in raw_ids if str(i).strip()][:200]
+    at = now or datetime.now(UTC)
+    db.add(
+        _event(
+            case.id,
+            actor,
+            "applied_change",
+            at,
+            from_value=integration,
+            to_value=kind,
+            reason=pushed,
+            evidence=json.dumps({"ids": ids, "rollback": rollback}),
+        )
+    )
+    moved = case_status.after_applied_change(case, at, actor=actor, evidence=f"{kind} via {integration}")
+    if moved is not None:
+        db.add(moved)
+    return case
+
+
 #: An OpenCRQ treatment plan page: ``https://host/<tenant>/treatment-plans/<uuid>`` (CTEM-18-UI, #1068).
 _PLAN_URL = re.compile(r"^https?://[^\s/?#]+(?:/[A-Za-z0-9._-]+)*/treatment-plans/([0-9a-fA-F-]{36})$")
 

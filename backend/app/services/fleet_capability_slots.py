@@ -82,7 +82,9 @@ CAPABILITIES: dict[str, dict[str, Any]] = {
 
 #: Role label (as the fleet seeds it on a member) -> the capabilities it can use, in order.
 ROLE_SLOTS: dict[str, tuple[str, ...]] = {
-    "Mobilization": ("ticketing", "notification"),
+    # Mobilize files a ticket or applies the fix through a bound integration (#2061): an IOC
+    # pushed to the EDR in prevention mode, a rule deployed, under ctem.production_change.
+    "Mobilization": ("ticketing", "notification", "edr_xdr", "siem"),
     "Validation": ("edr_xdr", "scanner", "easm", "application_security"),
     "Triage": ("vulnerability_intelligence", "asset_inventory", "application_security", "source_code"),
     "Relevance": ("vulnerability_intelligence", "asset_inventory", "application_security", "source_code"),

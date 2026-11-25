@@ -2033,9 +2033,21 @@ risk) declare one gate per loop stage, from
 | `ctem.analyst_review` | Review of the threat package before its security coverage is requested | low |
 | `ctem.remediation.decision` | Decide the remediation option and record it as an OpenCRQ treatment plan | high |
 | `ctem.mobilize` | Tickets, owners notified, prepared change handed over: one decision per case | destructive |
-| `ctem.production_change` | A change applied on production through an integration | high |
+| `ctem.production_change` | A change applied on production through an integration: indicators blocked in the EDR in prevention mode, a rule deployed, a configuration changed (#2061) | high |
 | `ctem.accept_risk` | Residual risk accepted beyond the policy cap | high |
 | `ctem.close_without_retest` | A case closed with no passing re-test | high |
+
+Mobilize is not only a ticket (#2061, Sam, 25 Nov 2026): each action of the
+Remediation Coordinator declares its `mode`, `ticket`, `applied_change` or
+`both`. An applied change runs through an integration bound to the Mobilization
+slots (EDR/XDR, SIEM, beside ticketing and notification), under
+`ctem.production_change`, and is written on the case with `update_ctem_case`
+`applied_change` {integration, kind (`ioc_prevention`, `detection_rule`,
+`configuration`, `control_restored`), pushed, ids, rollback}: one
+`applied_change` event in the remediation phase that moves an open case to
+`remediating`. Sigma stays detection (converted and deployed as a rule); only
+indicators and the EDR custom rules that support it go to prevention mode. The
+re-test still closes the case.
 
 No seeded gate names a tool or a grant (#1675, Sam, 24 Nov 2026): every tool
 is offered and runs when called; a gate that waits is one decision item the
