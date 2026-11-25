@@ -18,7 +18,7 @@
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { landOnCard } from "@/lib/land-on-card";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Bot, Building2, Coins, Import, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles } from "lucide-react";
+import { Building2, Coins, Link2, Lock, MessageSquare, Package, Pencil, Plus, RefreshCw, Server, Shield, Sparkles } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 
 import { Badge } from "@/components/ui/badge";
@@ -48,22 +48,17 @@ import { ISO_3166_NUMERIC } from "@/components/presentation/blocks/chart-map-cou
 import { useIntegrationElements, useIntegrations } from "@/hooks/api/useIntegrationApi";
 import { useToast } from "@/components/ui/toast";
 import { AgenticGateDialogControlled } from "@/components/ui/license-gate-dialog";
-import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { useAgenticAIEnabled, useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { OrganizationAiDraftDialog } from "./OrganizationAiDraftDialog";
 import { OrganizationAssetsImportDialog } from "./OrganizationAssetsImportDialog";
-import { OrganizationFillAgentDialog } from "./OrganizationFillAgentDialog";
 import { OrganizationImportDialog, PROFILE_IMPORT_SECTIONS } from "./OrganizationImportDialog";
 import { EXPOSURE_SECTIONS, type ExposureCard, type ExposureIssue, OrganizationExposureCards, exposureIssueFromRefusal, exposureIssues } from "./OrganizationExposureCards";
 import { primeOrganizationOnboarding } from "@/lib/organization-onboarding";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import {
-  type OrganizationDraftResponse,
   type OrganizationProfile,
-  type ProfileSource,
-  useDraftOrganizationContext,
   useOrganizationContext,
   useOrganizationPirs,
   usePatchOrganizationContext,
@@ -87,7 +82,6 @@ import {
   isSupportedRecordType,
   fromForm,
   toForm,
-  unreadablePlatform,
 } from "@/lib/organization-profile";
 import { distinctName, OrganizationPirsView, pirLabels, PirsUnreadable, usePirText } from "./OrganizationPirs";
 import { OrganizationTicketingSync } from "./OrganizationTicketingSync";
@@ -118,14 +112,13 @@ import {
   changedTabs,
   isInventoryTab,
   profileFieldHref,
-  groupByTab,
   parseProfileCard,
   profileTabOfPath,
   profileTabPath,
   tabOfField,
   tabsOfFields,
 } from "@/lib/organization-profile-tabs";
-import { Icon, Spinner } from "@filigran/design-system";
+import { Icon } from "@filigran/design-system";
 import { DetailTabs } from "@/components/ui/detail-tabs";
 
 const NO_SIZE = "none";
@@ -218,11 +211,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const linkAssets = useCanonicalAssets({ offset: 0, limit: 200 });
   // Primary assets are an Inventory source (#1754): their sources are configured and run in CTEM > Inventory > Sources
   // like every other source, nothing is pre-provisioned and the card names none of them (Sam, 24 Nov 2026, #1883).
-  const drafting = useDraftOrganizationContext();
   const [form, setForm] = useState<ProfileForm | null>(null);
-  // The draft the form was opened from: the save is then recorded with source "draft".
-  const [draft, setDraft] = useState<OrganizationDraftResponse | null>(null);
-  const [draftFailed, setDraftFailed] = useState(false);
   // "Restore from a past version" on the primary-asset card (#1558).
   const [restoreOpen, setRestoreOpen] = useState(false);
   // The amount field the last Save refused: marked aria-invalid (the Input adapter draws the error border) until edited.
@@ -372,7 +361,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       : pirs.data?.unavailable
         ? t_i18n("The PIRs could not be listed: OpenCTI did not answer.")
         : t_i18n("No PIR in OpenCTI");
-  const dirty = editing && (draft !== null || JSON.stringify(withLists(form)) !== JSON.stringify(saved));
+  const dirty = editing && JSON.stringify(withLists(form)) !== JSON.stringify(saved);
   // The open form as a profile, for "With AI" from the form: its proposals are reviewed against what is typed.
   const formProfile = useMemo(() => {
     if (!form) return null;
@@ -542,7 +531,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     setForm(null);
     setListEdits({});
     setExposureEdit(null);
-    setDraft(null);
     setInvalidField(null);
     setCheckExposure(false);
     setRefusedIssue(null);
@@ -633,35 +621,15 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     if (!editing) startEdit();
     setFocusTarget(`${fieldId}-${MISSING_TARGET[path] ?? path}`);
   };
-  // Opens the form on the profile proposed by the platforms; nothing is saved until Save.
-  const startDraft = () =>
-    drafting.mutate(undefined, {
-      onSuccess: (result) => {
-        setInvalidField(null);
-        setDraft(result);
-        setListEdits({});
-        setForm(toForm(result.profile));
-        // The form opens on the first Settings tab the platforms filled.
-        goToTab(tabsOfFields(result.filled.map((row) => row.field))[0] ?? null);
-      },
-      // Inline with Retry (section 6.1), a catalogued sentence, never the backend's text.
-      onError: () => setDraftFailed(true),
-      onSettled: (_result, error) => !error && setDraftFailed(false),
-    });
-
-  // "With AI" (#9484): one metered model call on the administrator's click, never at page load.
+  // "Draft" (#1991): one dialog, the platforms always and the AI when a model is available, never at page load.
   const agenticEnabled = useAgenticAIEnabled();
   const aiActionDisabled = useAiActionDisabled();
   const aiAvailable = agenticEnabled && !aiActionDisabled;
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [aiGateOpen, setAiGateOpen] = useState(false);
   const [assetsImportOpen, setAssetsImportOpen] = useState(false);
-  // "From the platforms" (#11780): the import stepper; its "Quick setup" runs today's one-click draft.
-  const [platformImportOpen, setPlatformImportOpen] = useState(false);
-  // The OpenCTI PIR import of the Prioritization policy card (#1938): the PIRs section alone, no Quick setup.
+  // The OpenCTI PIR import of the Prioritization policy card (#1938): the PIRs section alone.
   const [pirImportOpen, setPirImportOpen] = useState(false);
-  // "From a connected integration" (#11888): an agent reads it and previews the assets in a chat.
-  const [fillAgentOpen, setFillAgentOpen] = useState(false);
   // The chat onboarding (#11224): a new chat with the default assistant interviews for the fields left.
   const startOnboarding = () => {
     if (!aiAvailable) {
@@ -672,21 +640,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     navigate("/chat");
   };
   const connectedPlatforms = [...new Set(integrations.map((integration) => integration.provider).filter((provider) => provider in PLATFORM_NAMES))];
-  const draftMenuItems: OverflowMenuItem[] = [
-    { id: "draft-platforms", label: t_i18n("From the platforms"), icon: Import, onSelect: () => setPlatformImportOpen(true) },
-    {
-      id: "draft-ai",
-      label: t_i18n("With AI"),
-      icon: aiAvailable ? Sparkles : Lock,
-      onSelect: () => (aiAvailable ? setAiDraftOpen(true) : setAiGateOpen(true)),
-    },
-    {
-      id: "draft-integration",
-      label: t_i18n("From a connected integration"),
-      icon: aiAvailable ? Bot : Lock,
-      onSelect: () => (aiAvailable ? setFillAgentOpen(true) : setAiGateOpen(true)),
-    },
-  ];
 
   const submit = () => {
     if (!form) return;
@@ -717,8 +670,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       goToTab("exposure");
       return;
     }
-    const source: ProfileSource = draft ? "draft" : "form";
-    save.mutate({ profile: parsed.profile as OrganizationProfile, source }, {
+    save.mutate({ profile: parsed.profile as OrganizationProfile, source: "form" }, {
       onSuccess: () => {
         stopEditing();
         toast({ title: t_i18n("Organization profile saved"), variant: "success" });
@@ -1270,7 +1222,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         <Button
           variant="secondary"
           className="gap-1.5"
-          disabled={!data || cardOpen !== null || drafting.isPending}
+          disabled={!data || cardOpen !== null}
           onClick={() => startListEdit(key)}
           aria-label={t_i18n("Edit {name}", { name: t_i18n(LIST_TITLES[key]) })}
           data-testid={`settings.organization.edit-${key}`}
@@ -1286,7 +1238,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         <Button
           variant="secondary"
           className="gap-1.5"
-          disabled={!data || cardOpen !== null || drafting.isPending}
+          disabled={!data || cardOpen !== null}
           onClick={() => startExposureEdit(card)}
           aria-label={t_i18n("Edit {name}", { name: t_i18n(EXPOSURE_TITLES[card]) })}
           data-testid={`settings.organization.edit-${card}`}
@@ -1354,8 +1306,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
 
   // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
   // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
-  // The Settings tabs a pending draft fills (#1975): its banner is drawn on them only.
-  const draftTabs = draft ? tabsOfFields(draft.filled.map((row) => row.field)).filter((key) => settingsTabs.includes(key)) : [];
   const missing = xtmOne ? (data?.missing_fields ?? []).filter((path) => { const owner = tabOfField(path); return owner !== null && !isInventoryTab(owner); }) : [];
   /**
    * The PIR list on the Prioritization policy card (#1889): it filters the PIR playbooks beside the two PIR
@@ -1509,7 +1459,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         <p>{t_i18n("Fields not filled, reported by every agent that needs them:")}</p>
         <div className="flex flex-wrap gap-2">
           {paths.map((path) => (
-            <Button key={path} variant="secondary" className="gap-1.5" disabled={drafting.isPending || cardOpen !== null} onClick={() => jumpTo(path)}>
+            <Button key={path} variant="secondary" className="gap-1.5" disabled={cardOpen !== null} onClick={() => jumpTo(path)}>
               <Icon name="plus" size={16} aria-hidden />
               {t_i18n((FIELD_LABELS as Record<string, string>)[path] ?? path)}
             </Button>
@@ -1520,8 +1470,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   };
 
   // Completeness and unsaved edits per tab, on the tab bar (UX r1 B1 on #1984, the #12329 contract): the missing
-  // count of each tab, and which tab holds the fields an open edit or a pending draft changed.
-  const unsavedTabs = new Set<ProfileTab>(draftTabs);
+  // count of each tab, and which tab holds the fields an open edit changed.
+  const unsavedTabs = new Set<ProfileTab>();
   if (editing && form && saved) changedTabs(saved, withLists(form)).forEach((key) => unsavedTabs.add(key));
   const missingOf = (key: ProfileTab) => missing.filter((path) => tabOfField(path) === key).length;
   const tabTrailing = (key: ProfileTab) => {
@@ -1590,25 +1540,23 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         </div>
         {(!editing || setupGuide) && (
           <div className="flex shrink-0 items-center gap-2">
-            {/* One "Draft" menu (section 6.1): the free deterministic draft and the metered AI draft. */}
-            <OverflowMenu
-              label={t_i18n("Draft")}
-              size="md"
-              busy={isLoading || !data || drafting.isPending || cardOpen !== null}
-              trigger={
-                <>
-                  {drafting.isPending && <Spinner size="sm" tone="inherit" />}{!drafting.isPending && <Import className="h-3.5 w-3.5" />}
-                  {t_i18n("Draft")}
-                </>
-              }
-              items={draftMenuItems}
-            />
-            {/* Disabled while a draft is pending: its result opens the form and would replace what was typed meanwhile. */}
+            {/* One "Draft" button (#1991): the platforms and the AI in one pass, one review, nothing saved before Save. */}
             {/* A card in edit keeps the page's Edit, Draft and jumps disabled: each opens the whole form
                 and would drop the card's rows without a word (UX r1 B1 on #12261). */}
+            <Tip content={cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
+              <Button
+                variant="secondary"
+                className="gap-1.5"
+                onClick={() => setAiDraftOpen(true)}
+                disabled={isLoading || !data || cardOpen !== null}
+                data-testid="settings.organization.draft-open"
+              >
+                <Sparkles className="h-3.5 w-3.5" /> {t_i18n("Draft")}
+              </Button>
+            </Tip>
             {!editing && (
               <Tip content={cardOpen ? t_i18n("Save or cancel the edit first.") : ""} wrap="auto">
-                <Button className="gap-1.5" onClick={startEdit} disabled={isLoading || !data || drafting.isPending || cardOpen !== null} data-testid="settings.organization.edit">
+                <Button className="gap-1.5" onClick={startEdit} disabled={isLoading || !data || cardOpen !== null} data-testid="settings.organization.edit">
                   <Pencil className="h-3.5 w-3.5" /> {t_i18n("Edit")}
                 </Button>
               </Tip>
@@ -1637,7 +1585,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
 
       {setupGuide && editing && (
         <p data-testid="settings.organization.setup-guide" className="rounded-sm border border-elevation-subtle p-3 content-base">
-          {t_i18n("Start from a draft: Draft > From the platforms reads OpenCTI, OpenAEV and OpenCRQ, Draft > With AI proposes values to review. Nothing is saved until you click Save.")}
+          {t_i18n("Draft reads your platforms and documents and proposes values to review. Nothing is saved until you click Save.")}
         </p>
       )}
 
@@ -1658,72 +1606,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               </span>
             ))}
           </p>
-          <Button data-testid="settings.organization.continue-onboarding" variant="secondary" className="gap-1.5" disabled={drafting.isPending} onClick={startOnboarding}>
+          <Button data-testid="settings.organization.continue-onboarding" variant="secondary" className="gap-1.5" onClick={startOnboarding}>
             {aiAvailable ? <MessageSquare className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
             {t_i18n("Continue onboarding in chat")}
           </Button>
-        </div>
-      )}
-
-      {full && draftFailed && !editing && (
-        <div role="alert" data-testid="settings.organization.draft-error" className="flex items-center justify-between gap-3 rounded-sm border border-alert-error bg-alert-error p-3 content-base">
-          <p className="space-x-1">
-            <span className="font-medium">{t_i18n("The draft could not be made")}</span>
-            <span>{t_i18n("Try again in a moment.")}</span>
-          </p>
-          <Button variant="secondary" onClick={startDraft} disabled={drafting.isPending}>
-            {t_i18n("Retry")}
-          </Button>
-        </div>
-      )}
-
-      {/* The draft banner sits on the tab whose fields the draft fills (#1975); a draft that filled nothing on a
-          Settings tab (nothing at all, or CTEM > Inventory fields only) says so on either tab. */}
-      {draft && (draftTabs.length === 0 || draftTabs.includes(tab)) && (
-        <div data-testid="settings.organization.draft" className="space-y-1.5 rounded-sm border border-elevation-subtle p-3 content-base">
-          <p className="font-medium">{t_i18n("Drafted from the platforms, not saved yet. Review the fields, then save.")}</p>
-          {draft.filled.length === 0 ? (
-            <p className="text-default-secondary">{t_i18n("The platforms had nothing to add to the empty fields.")}</p>
-          ) : (
-            // Grouped by the tab that holds each field (#12329), with the number filled per tab.
-            <div className="space-y-1.5">
-              {groupByTab(draft.filled, (row) => row.field).map((group) => (
-                <div key={group.tab ?? "other"} data-testid={`settings.organization.draft-group-${group.tab ?? "other"}`}>
-                  <p className="font-medium">
-                    {group.tab ? t_i18n(PROFILE_TAB_LABELS[group.tab]) : t_i18n("Other")}{" "}
-                    <span className="font-normal text-default-secondary">{t_i18n("{count, plural, one {# field} other {# fields}}", { count: group.items.length })}</span>
-                  </p>
-                  <ul className="list-disc space-y-0.5 pl-5">
-                    {group.items.map((row) => (
-                      <li key={row.field}>
-                        {t_i18n("{field} from {platform}", {
-                          field: t_i18n((FIELD_LABELS as Record<string, string>)[row.field] ?? row.field),
-                          platform: PLATFORM_NAMES[row.source] ?? row.source,
-                        })}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
-          {/* A platform that could not be read links where to fix it (staging defect b); its own sentence, never the backend's text (#9102 A1). */}
-          {(draft.unavailable ?? []).map((line) => {
-            const platform = unreadablePlatform(line);
-            return (
-              <p key={line} className="text-default-secondary">
-                {platform === "OpenCTI PIRs"
-                  ? t_i18n("OpenCTI PIRs could not be read")
-                  : platform
-                    ? t_i18n("{platform} could not be read", { platform })
-                    : t_i18n("A platform could not be read")}
-                {" "}
-                <a className="text-accent underline" href="/settings/integrations">
-                  {t_i18n("Settings > Integrations")}
-                </a>
-              </p>
-            );
-          })}
         </div>
       )}
 
@@ -2175,6 +2061,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           onOpenChange={setAiDraftOpen}
           profile={formProfile ?? data.profile}
           platforms={connectedPlatforms}
+          aiAvailable={aiAvailable}
           // From the open form (the setup path): "Apply accepted (n)" fills the form, its own Save writes it.
           onApply={
             editing
@@ -2196,20 +2083,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       {assetsImportOpen && <OrganizationAssetsImportDialog open={assetsImportOpen} onOpenChange={setAssetsImportOpen} />}
       {pasteFor && listOpen(pasteFor) && pasteDialog(pasteFor)}
       {synced.element}
-      {fillAgentOpen && <OrganizationFillAgentDialog open={fillAgentOpen} onOpenChange={setFillAgentOpen} />}
-      {platformImportOpen && (
-        <OrganizationImportDialog
-          open={platformImportOpen}
-          onOpenChange={setPlatformImportOpen}
-          // The inventory sections are imported from CTEM > Inventory > Sources only (#1367, point 5).
-          sections={PROFILE_IMPORT_SECTIONS}
-          quickSetupPending={drafting.isPending}
-          onQuickSetup={() => {
-            setPlatformImportOpen(false);
-            startDraft();
-          }}
-        />
-      )}
       {pirImportOpen && <OrganizationImportDialog open={pirImportOpen} onOpenChange={setPirImportOpen} sections={PROFILE_IMPORT_SECTIONS} />}
       <OrganizationPirDetailsDialog
         pirId={pirDetails?.id ?? null}
