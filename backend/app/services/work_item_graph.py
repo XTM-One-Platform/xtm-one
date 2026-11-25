@@ -52,8 +52,8 @@ def _ref_id(ref: dict[str, Any]) -> str:
     repo = str(ref.get("repo") or "").lower()
     if kind == "workflow_run":
         return f"ref:{kind}:{repo}:{ref.get('workflow') or ''}"
-    if kind == "a2a_task":
-        return f"ref:{kind}:{ref.get('task') or ''}"
+    if kind == "tag":
+        return f"ref:{kind}:{repo}:{ref.get('pattern') or ''}@{str(ref.get('carries_sha') or '')[:12]}"
     tail = ref.get("number") if ref.get("number") is not None else str(ref.get("sha") or "")[:12]
     return f"ref:{kind}:{repo}#{tail}"
 
@@ -62,8 +62,8 @@ def _ref_label(ref: dict[str, Any]) -> str:
     repo = str(ref.get("repo") or "")
     if ref.get("kind") == "workflow_run":
         return f"{repo}: {ref.get('workflow') or ''}"
-    if ref.get("kind") == "a2a_task":
-        return f"A2A task {ref.get('task') or ''}"
+    if ref.get("kind") == "tag":
+        return f"{repo}: tag {ref.get('pattern') or '*'}"
     if ref.get("number") is not None:
         return f"{repo}#{ref['number']}"
     if ref.get("sha"):
@@ -78,8 +78,8 @@ def _ref_satisfied(ref: dict[str, Any]) -> bool:
         return state == "deployed"
     if ref.get("kind") == "workflow_run":
         return state == "succeeded"
-    if ref.get("kind") == "a2a_task":
-        return state in {"completed", "ended"}
+    if ref.get("kind") == "tag":
+        return state == "created"
     return state in {"merged", "closed"}
 
 

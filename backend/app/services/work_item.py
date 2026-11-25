@@ -81,11 +81,11 @@ from app.services.company_managed_writes import (
     restricted_governors,
 )
 from app.services.ownership_scope import ownership_clause
-from app.services.work_item_a2a_refs import names_a2a_task, refuse_unknown_a2a_tasks
 from app.services.work_item_blocked_refs import all_satisfied as all_refs_satisfied
 from app.services.work_item_blocked_refs import (
     blocked_why,
     names_reference_state,
+    names_tag,
     normalize_blocked_on_refs,
     normalize_blocked_reason,
     own_pull_request,
@@ -2293,9 +2293,6 @@ async def create_work_item(
     async with async_session() as db:
         # A target outside the fleet of its owner or creator is refused.
         await check_targets(db, impact, owner_agent_id=owner_uuid, created_by_agent_id=creator_uuid)
-        if names_a2a_task(refs):
-            # A task id no delegation of this user answered would never release it (#2265).
-            await refuse_unknown_a2a_tasks(db, user_uuid, refs)
         structured_ask = await _complete_case_ask(db, key, structured_ask)
         named_workspace = workspace_id
         if workspace_id is None:
@@ -2436,7 +2433,7 @@ async def create_work_item(
         deployment = item.status == "blocked" and _names_deployment(refs)
         workflow_runs = item.status == "blocked" and _names_workflow_run(refs)
         reference_states = item.status == "blocked" and names_reference_state(refs)
-        a2a_tasks = item.status == "blocked" and names_a2a_task(refs)
+        tags = item.status == "blocked" and names_tag(refs)
         from types import SimpleNamespace
 
         events = created_events(item, writer=SimpleNamespace(agent_id=creator_uuid, run_id=None))
@@ -2467,11 +2464,11 @@ async def create_work_item(
         from app.services.work_item_blocked_refs import schedule_reference_state_check
 
         schedule_reference_state_check(item_id)
-    if a2a_tasks:
-        # Once at creation: the A2A task it waits for may have ended already (#2265).
-        from app.services.work_item_a2a_refs import schedule_a2a_task_check
+    if tags:
+        # Once at creation: the tag may be cut already (#2209).
+        from app.services.work_item_blocked_refs import schedule_tag_check
 
-        schedule_a2a_task_check(item_id)
+        schedule_tag_check(item_id)
     created = await _read_back(item_id, user_id=user_id, writer=writer) or {"id": item_id}
     if gate_warning:
         created = {**created, "warnings": [gate_warning]}
@@ -2677,9 +2674,6 @@ async def update_work_item(
                 await _check_blockers(db, user_id, blockers, writer)
         refs = None if blocked_on_refs is None else normalize_blocked_on_refs(blocked_on_refs)
         refuse_unobserved_deployment_refs(refs)
-        if names_a2a_task(refs):
-            # A task id no delegation of the item's user answered would never release it (#2265).
-            await refuse_unknown_a2a_tasks(db, item.user_id, refs)
         stored_reason = getattr(item, "blocked_reason", None)
         reason = stored_reason if blocked_reason is None else normalize_blocked_reason(blocked_reason)
         stored_human = getattr(item, "needs_human", None)
@@ -2753,8 +2747,6 @@ async def update_work_item(
             )
         if writer_run_ids is not None:
             _refuse_work_on_finished_item(item, status)
-            # A note the run has not seen yet holds its terminal write (#2266).
-            await _refuse_terminal_over_unseen_notes(item.id, status, writer_run_ids)
         # The stored card stands only for the decision it was written for: a
         # new park for a person brings its own (#762, never a stale question).
         landing_ask = (
@@ -2865,6 +2857,11 @@ async def update_work_item(
             if status == "open" and item.status != "open":
                 # Back to the queue: nobody holds an open item, so the claim
                 # goes with it and the inbox dispatches it like a new one.
+                if not_before is None and _released_by_its_holder(item, writer_run_ids):
+                    # Its own holder let it go (a person drives it from chat, the
+                    # run had nothing to do): not handed straight back to the same
+                    # inbox (#2212). Any other writer's release dispatches at once.
+                    _hold_own_release(item, now)
                 item.claimed_by_agent_id = None
                 item.claimed_by_run_id = None
                 item.claimed_at = None
@@ -3000,7 +2997,7 @@ async def update_work_item(
         deployment = bool(refs) and item.status == "blocked" and _names_deployment(refs)
         workflow_runs = bool(refs) and item.status == "blocked" and _names_workflow_run(refs)
         reference_states = bool(refs) and item.status == "blocked" and names_reference_state(refs)
-        a2a_tasks = bool(refs) and item.status == "blocked" and names_a2a_task(refs)
+        tags = bool(refs) and item.status == "blocked" and names_tag(refs)
         # A note on an item another live run holds is relayed to that run.
         relay_holder = getattr(item, "claimed_by_run_id", None) if note else None
         relay_title = item.title
@@ -3048,11 +3045,11 @@ async def update_work_item(
         from app.services.work_item_blocked_refs import schedule_reference_state_check
 
         schedule_reference_state_check(item_id)
-    if a2a_tasks:
-        # Once at the write: the A2A task it waits for may have ended already (#2265).
-        from app.services.work_item_a2a_refs import schedule_a2a_task_check
+    if tags:
+        # Once at the write: the tag may be cut already (#2209).
+        from app.services.work_item_blocked_refs import schedule_tag_check
 
-        schedule_a2a_task_check(item_id)
+        schedule_tag_check(item_id)
     updated = await _read_back(item_id, user_id=user_id, writer=writer)
     if gate_warning and updated is not None:
         updated = {**updated, "warnings": [gate_warning]}
@@ -3258,6 +3255,40 @@ async def _finished_under_live_holder(
     return note
 
 
+#: How long an item its own holder run released to open waits before the inbox takes it again (#2212).
+OWN_RELEASE_HOLD = timedelta(minutes=10)
+
+
+def _released_by_its_holder(item: WorkItem, writer_run_ids: Sequence[str | uuid.UUID] | None) -> bool:
+    """Whether the run that holds *item* is among *writer_run_ids*. Pure."""
+    holder = getattr(item, "claimed_by_run_id", None)
+    if holder is None or not writer_run_ids:
+        return False
+    return str(holder) in {str(r) for r in writer_run_ids if r}
+
+
+def _hold_own_release(item: WorkItem, now: datetime) -> None:
+    """Hold back *item*, released to open by its holder run, for :data:`OWN_RELEASE_HOLD` (#2212)."""
+    run = str(item.claimed_by_run_id)
+    payload = dict(item.payload or {})
+    runs = [str(r) for r in (payload.get("_released_by_runs") or []) if r]
+    if run not in runs:
+        runs.append(run)
+    payload["_released_by_runs"] = runs[-_RELEASED_BY_RUNS_KEPT:]
+    item.payload = payload
+    item.not_before = now + OWN_RELEASE_HOLD
+    item.claim_notes = [
+        *(item.claim_notes or []),
+        {
+            "at": now.isoformat(),
+            "text": (
+                f"Released to open by its holder run {run}: not dispatched again before "
+                f"{item.not_before.strftime('%Y-%m-%dT%H:%M:%SZ')} (a not_before in the same write overrides it)"
+            ),
+        },
+    ]
+
+
 def claim_reset_by(status: str | None, current: str, *, blockers: object = None, refs: object = None) -> str | None:
     """The state a write leaves an item in when it drops its holder's claim, ``None`` when it keeps it. Pure.
 
@@ -3318,33 +3349,6 @@ async def _signal_finished_to_holder(item_id: str, holder_run_id: object, note: 
     text = finished_under_holder_text({"claim_notes": [note]})
     if text:
         await work_item_note_steering.offer(item_id, holder_run_id, text, title=title, writer_run_ids=(), any_item=True)
-
-
-async def _refuse_terminal_over_unseen_notes(
-    item_id: str | uuid.UUID, status: str | None, writer_run_ids: Sequence[str | uuid.UUID] | None
-) -> None:
-    """Refuse a terminal write by a run that has not seen a note written on the item after its read.
-
-    The note was relayed to the run (``work_item_note_steering.offer``) and is
-    still pending: neither injected by its loop nor read with ``get_work_item``.
-    Before #2266 the run finalised the item over it (a "do not close" landed a
-    second before the completion, the completion notice already sent). A fresh
-    ``get_work_item`` clears it; *take_over* is not an acknowledgement.
-    """
-    if status not in WORK_ITEM_TERMINAL_STATUSES or not writer_run_ids:
-        return
-    from app.services import work_item_note_steering
-
-    unseen = await work_item_note_steering.unseen_notes(writer_run_ids, item_id)
-    if unseen:
-        newest = unseen[-1]
-        shown = newest if len(newest) <= 300 else newest[:300].rstrip() + "..."
-        raise ValueError(
-            f"a note was written on this item after this run read it and the run has not seen it: "
-            f'"{shown}"'
-            + (f" (and {len(unseen) - 1} more)" if len(unseen) > 1 else "")
-            + f". Read the item again with get_work_item, then decide; nothing was {status}"
-        )
 
 
 def _refuse_write_by_former_holder(item: WorkItem, writer_run_ids: Sequence[str | uuid.UUID] | None) -> None:
@@ -3875,8 +3879,6 @@ async def complete_work_item(
     uid = safe_uuid(user_id) if user_id else None
     status = status if status in WORK_ITEM_TERMINAL_STATUSES else "done"
     now = datetime.now(UTC)
-    # A note the run has not seen yet holds its completion (#2266).
-    await _refuse_terminal_over_unseen_notes(wid, status, writer_run_ids)
 
     async with async_session() as db:
         _readable, writable = await _workspace_tiers(db, user_id)
@@ -4240,6 +4242,7 @@ def _refresh_from_live(
         and _ci_green(b)
         and not _full_ci_running(reads.get((b["repo"], b["number"])))
         and not _merge_queued(reads.get((b["repo"], b["number"])))
+        and not _awaiting_review(reads.get((b["repo"], b["number"])))
     ]
     return green, unannounced
 
@@ -4263,6 +4266,28 @@ def _merge_queued(read: Any) -> bool:
     merge, never put back in the queue for a run with nothing to do (#404).
     """
     return isinstance(read, dict) and read.get("merge_queue") is True
+
+
+#: Review decisions under which a green pull request cannot merge until a review comes (#2213).
+AWAITING_REVIEW_DECISIONS = frozenset({"REVIEW_REQUIRED", "CHANGES_REQUESTED"})
+
+
+def _awaiting_review(read: Any) -> bool:
+    """Whether the live *read* of a pull request says it waits on a review. Pure.
+
+    Its next wake is the review event (or the merge), never a green hand-off: the
+    item is parked on the merge, not put back in the queue for a run that could
+    only read the missing review and stand down (#2213).
+
+    A base protected by a merge queue, or an account GitHub lets bypass the
+    base's requirements, is never read as waiting on the review: GitHub accepts
+    such a pull request into the queue (or merges it), so the green hand-off
+    goes to a run that enqueues it with ``merge_github_pr``; the item is parked
+    only once GitHub refused or ejected it (#2324).
+    """
+    if not isinstance(read, dict) or read.get("review_decision") not in AWAITING_REVIEW_DECISIONS:
+        return False
+    return not (read.get("queue_base") is True or read.get("can_bypass") is True)
 
 
 def _ci_green(binding: dict[str, Any]) -> bool:
@@ -7513,6 +7538,64 @@ async def release_ended_run_claims(
         except Exception as exc:  # best-effort: the release already landed
             logger.warning("Release platform events not published: %s", format_exception_message(exc))
     return released
+
+
+async def wake_on_background_task(work_item_id: object, *, task_id: object, outcome: str) -> str | None:
+    """Note a finished background task on the work item its spawning run was dispatched for; never raises.
+
+    The item gets the note ``background task <id> <outcome>`` in its claim
+    notes. When nothing else will run it again, it goes back to ``open`` for
+    its owner's inbox, which resumes it with the task's result to read
+    (#2215): an item still claimed or in progress by a holder that ended, or
+    blocked with no blocker, no reference and no person to wait for. An item
+    held by a live run (the spawning run still working), finished, waiting
+    on a person or on blockers, or a scheduled one-off keeps its status.
+    Returns ``"reopened"``, ``"noted"`` or ``None`` (no such item).
+    """
+    from app.core.database import async_session
+
+    item_uuid = safe_uuid(str(work_item_id or ""))
+    if item_uuid is None:
+        return None
+    now = datetime.now(UTC)
+    note = {"at": now.isoformat(), "text": f"background task {task_id} {outcome}"}
+    try:
+        async with async_session() as db:
+            item = (
+                await db.execute(select(WorkItem).where(WorkItem.id == item_uuid).with_for_update())
+            ).scalar_one_or_none()
+            if item is None:
+                return None
+            reopen = False
+            previous_status = item.status
+            if item.action_mode is None and not item.needs_human:
+                if item.status in CLAIM_HELD_STATUSES:
+                    holder = item.claimed_by_run_id
+                    alive = _holder_alive_clause(holder)  # type: ignore[no-untyped-call]
+                    reopen = holder is None or not (await db.execute(select(alive))).scalar()
+                elif item.status == "blocked":
+                    reopen = not item.blocked_on and not item.blocked_on_refs
+            item.claim_notes = _with_note(item.claim_notes, note)
+            item.last_activity_at = now
+            if reopen:
+                item.status = "open"
+                item.claimed_by_agent_id = None
+                item.claimed_by_run_id = None
+                item.claimed_at = None
+                if previous_status == "blocked":
+                    # Leaving blocked clears the why fields, as the sibling reopens do.
+                    item.blocked_reason = None
+                    item.ask = None
+            await db.commit()
+        if reopen:
+            # Raises work_item.status_changed and nudges the dispatcher, as the other reopens do.
+            await publish_transition(item_uuid, previous_status=previous_status, note=note["text"])
+        return "reopened" if reopen else "noted"
+    except Exception as exc:  # best-effort: the event itself is published
+        logger.warning(
+            "Work item %s not woken by background task %s: %s", work_item_id, task_id, format_exception_message(exc)
+        )
+        return None
 
 
 # A holder that ended this way finished its turn: the claims it left are

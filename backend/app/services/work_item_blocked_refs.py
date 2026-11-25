@@ -108,6 +108,19 @@ blocked.
   (:func:`_poll_workflow_run`); the release note names the run. A run that succeeded
   before the item was blocked sends no delivery any more: the write that blocks it
   reads its references once (:func:`schedule_workflow_run_check`), as for a deployment.
+
+**Tags** - a reference of kind ``tag`` (#2209)::
+
+      {"repo": "owner/name", "kind": "tag", "pattern": "*.*.*", "carries": "<sha>",
+       "release_on": "created"}
+
+  waits for the first tag of ``repo`` whose name matches the glob ``pattern``
+  (``*`` when omitted) and whose commit is ``carries`` or a descendant of it: a
+  release cut from a merge, which a ``workflow_run`` on a workflow that also runs
+  on the main push cannot tell from that push. Read through the provider's
+  :data:`~app.integrations.reference_state.TagReader` by the polling fallback
+  (:func:`_poll_tag`), at the write that blocks it (:func:`schedule_tag_check`)
+  and on a tag creation delivery (:func:`schedule_tag_release`).
 """
 
 from __future__ import annotations
@@ -128,14 +141,12 @@ from app.models.work_item import WorkItem
 
 logger = logging.getLogger(__name__)
 
-REF_KINDS = ("pull_request", "issue", "deployment", "workflow_run", "a2a_task")
-#: How an ``a2a_task`` reference is released (#2265): the task completed, or ended whatever its outcome.
-A2A_RELEASE_ON = ("completed", "terminal")
-RELEASE_ON = ("merged", "closed", "merged_or_closed", "deployed", "succeeded", *A2A_RELEASE_ON)
-#: The longest task id an ``a2a_task`` reference may name.
-MAX_A2A_TASK_CHARS = 200
-#: The states the platform records on an ``a2a_task`` reference whose task ended.
-A2A_ENDED_STATES = ("completed", "ended")
+REF_KINDS = ("pull_request", "issue", "deployment", "workflow_run", "tag")
+RELEASE_ON = ("merged", "closed", "merged_or_closed", "deployed", "succeeded", "created")
+#: A tag name glob a ``tag`` reference may give (#2209).
+_TAG_PATTERN_RE = re.compile(r"^[A-Za-z0-9._*?/-]{1,200}$")
+#: What the tag stage remembers of a reference (with ``state`` and ``at``).
+_TAG_KEPT = ("tag", "tag_commit")
 #: A workflow a ``workflow_run`` reference may name: its file name or its id.
 _WORKFLOW_RE = re.compile(r"^[A-Za-z0-9._-]{1,200}$")
 _BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
@@ -191,7 +202,8 @@ WHY_FIELDS_MESSAGE = (
     '{"repo": "owner/name", "kind": "deployment", "number": N | "sha": "1a2b3c4", '
     '"release_on": "deployed"}, or the first successful run of a workflow after a time: '
     '{"repo": "owner/name", "kind": "workflow_run", "workflow": "release.yml", '
-    '"after": "2026-11-06T00:40:00Z", "branch": "main"}), '
+    '"after": "2026-11-06T00:40:00Z", "branch": "main"}, or the first tag carrying a commit: '
+    '{"repo": "owner/name", "kind": "tag", "pattern": "*.*.*", "carries": "1a2b3c4"}), '
     "or a person's decision: needs_human: true with an ask {question, options: [{key, label}], "
     "recommendation: an option key}. blocked_reason is context, never the blocker; a deferral is an "
     "open item with not_before"
@@ -217,9 +229,6 @@ class BlockedRefError(ValueError):
 def _normalize_ref(entry: object) -> dict:
     if not isinstance(entry, dict):
         raise BlockedRefError("each blocked_on_refs entry must be an object {repo, kind, number, release_on}")
-    if entry.get("kind") == "a2a_task":
-        # Not a code-host reference: no repository (#2265).
-        return _normalize_a2a_task_ref(entry)
     repo = entry.get("repo")
     if not isinstance(repo, str) or repo.strip().count("/") != 1 or " " in repo.strip():
         raise BlockedRefError(f"blocked_on_refs: repo must read owner/name, got {repo!r}")
@@ -230,6 +239,8 @@ def _normalize_ref(entry: object) -> dict:
         return _normalize_deployment_ref(entry, repo.strip().lower())
     if kind == "workflow_run":
         return _normalize_workflow_run_ref(entry, repo.strip().lower())
+    if kind == "tag":
+        return _normalize_tag_ref(entry, repo.strip().lower())
     number = _number(entry.get("number"))
     default = "merged_or_closed" if kind == "pull_request" else "closed"
     release_on = entry.get("release_on") or default
@@ -241,8 +252,8 @@ def _normalize_ref(entry: object) -> dict:
         raise BlockedRefError('blocked_on_refs: release_on deployed needs kind "deployment"')
     if release_on == "succeeded":
         raise BlockedRefError('blocked_on_refs: release_on succeeded needs kind "workflow_run"')
-    if release_on in A2A_RELEASE_ON:
-        raise BlockedRefError(f'blocked_on_refs: release_on {release_on} needs kind "a2a_task"')
+    if release_on == "created":
+        raise BlockedRefError('blocked_on_refs: release_on created needs kind "tag"')
     if kind == "issue" and release_on == "merged":
         raise BlockedRefError("blocked_on_refs: an issue is never merged; use release_on closed")
     out: dict[str, Any] = {
@@ -304,32 +315,6 @@ def _normalize_deployment_ref(entry: dict, repo: str) -> dict:
     return out
 
 
-def _normalize_a2a_task_ref(entry: dict[str, Any]) -> dict[str, Any]:
-    """An ``a2a_task`` reference: ``{kind, task, release_on}`` (#2265).
-
-    *task* is the ``collect_task_id`` an outbound delegation answered (the partner's
-    task id); whether the item's owner has such a delegation is checked at the write
-    (``work_item_a2a_refs.refuse_unknown_a2a_tasks``), never here. Pure.
-    """
-    task = entry.get("task")
-    text = task.strip() if isinstance(task, str) else ""
-    if not text or len(text) > MAX_A2A_TASK_CHARS or any(c.isspace() for c in text):
-        raise BlockedRefError(
-            f"blocked_on_refs: an a2a_task names its task (the collect_task_id the delegation answered), got {task!r}"
-        )
-    release_on = entry.get("release_on") or "terminal"
-    if release_on not in A2A_RELEASE_ON:
-        raise BlockedRefError(
-            f"blocked_on_refs: an a2a_task is released on {' or '.join(A2A_RELEASE_ON)}, got {release_on!r}"
-        )
-    out: dict[str, Any] = {"kind": "a2a_task", "task": text, "release_on": release_on}
-    # The end the platform recorded, kept on a rewrite of the same reference.
-    for key in ("state", "at", "outcome"):
-        if isinstance(entry.get(key), str):
-            out[key] = entry[key]
-    return out
-
-
 def _normalize_workflow_run_ref(entry: dict, repo: str) -> dict:
     release_on = entry.get("release_on") or "succeeded"
     if release_on != "succeeded":
@@ -377,6 +362,37 @@ def _normalize_workflow_run_ref(entry: dict, repo: str) -> dict:
     return out
 
 
+def _normalize_tag_ref(entry: dict[str, Any], repo: str) -> dict[str, Any]:
+    """A ``tag`` reference: the first tag matching ``pattern`` that carries ``carries`` (#2209)."""
+    release_on = entry.get("release_on") or "created"
+    if release_on != "created":
+        raise BlockedRefError(f"blocked_on_refs: a tag is released on created only, got {release_on!r}")
+    pattern = entry.get("pattern")
+    if pattern is None or pattern == "":
+        pattern = "*"
+    if not isinstance(pattern, str) or not _TAG_PATTERN_RE.match(pattern.strip()):
+        raise BlockedRefError(f"blocked_on_refs: a tag pattern is a tag name glob such as *.*.*, got {pattern!r}")
+    carried = _carries(entry, repo)
+    if not carried.get("carries_sha"):
+        raise BlockedRefError(
+            "blocked_on_refs: a tag reference names the commit the tag must carry (carries, 7 to 40 "
+            "hexadecimal characters)"
+        )
+    if carried.get("carries_repo"):
+        raise BlockedRefError("blocked_on_refs: a tag carries a commit of its own repository")
+    out: dict[str, Any] = {
+        "repo": repo,
+        "kind": "tag",
+        "pattern": pattern.strip(),
+        "carries_sha": carried["carries_sha"],
+        "release_on": "created",
+    }
+    for key in ("state", "at", *_TAG_KEPT):
+        if isinstance(entry.get(key), str):
+            out[key] = entry[key]
+    return out
+
+
 def _carries(entry: dict[str, Any], repo: str) -> dict[str, str]:
     """``carries_sha`` and ``carries_repo`` of a workflow_run reference's ``carries`` (#1634).
 
@@ -413,8 +429,8 @@ def _ref_key(ref: dict) -> tuple:
             ref.get("title_contains"),
             ref.get("carries_sha"),
         )
-    if ref.get("kind") == "a2a_task":
-        return (None, "a2a_task", ref.get("task"))
+    if ref.get("kind") == "tag":
+        return (ref.get("repo"), "tag", ref.get("pattern"), ref.get("carries_sha"))
     return (ref.get("repo"), ref.get("kind"), ref.get("number") or ref.get("sha"))
 
 
@@ -519,8 +535,6 @@ def ref_label(ref: dict) -> str:
     """``owner/name#12`` (a pull request) or ``owner/name issue #12``."""
     if ref.get("kind") == "issue":
         return f"{ref['repo']} issue #{ref['number']}"
-    if ref.get("kind") == "a2a_task":
-        return f"A2A task {ref.get('task')}"
     if ref.get("kind") == "workflow_run":
         on = f" on {ref['branch']}" if ref.get("branch") else ""
         titled = f" titled '*{ref['title_contains']}*'" if ref.get("title_contains") else ""
@@ -528,6 +542,8 @@ def ref_label(ref: dict) -> str:
         if ref.get("carries_sha"):
             carrying = f" carrying {ref.get('carries_repo') or ref['repo']}@{str(ref['carries_sha'])[:7]}"
         return f"a successful {ref['repo']} {ref.get('workflow')} run{on}{titled}{carrying} after {ref.get('after')}"
+    if ref.get("kind") == "tag":
+        return f"a {ref['repo']} tag matching {ref.get('pattern')} carrying {str(ref.get('carries_sha') or '')[:7]}"
     if ref.get("kind") == "deployment":
         if ref.get("number"):
             return f"deployment of {ref['repo']}#{ref['number']}"
@@ -542,8 +558,8 @@ def _satisfied(ref: dict) -> bool:
         return ref.get("state") == "deployed"
     if ref.get("kind") == "workflow_run":
         return ref.get("state") == "succeeded"
-    if ref.get("kind") == "a2a_task":
-        return ref.get("state") in A2A_ENDED_STATES
+    if ref.get("kind") == "tag":
+        return ref.get("state") == "created"
     return ref.get("state") in ("merged", "closed")
 
 
@@ -555,7 +571,7 @@ def _running_version() -> str:
 
 def waiting_label(ref: dict) -> str:
     """What the Waits for line says of one open reference. Pure but for the running version."""
-    if ref.get("kind") == "workflow_run":
+    if ref.get("kind") in ("workflow_run", "tag"):
         return ref_label(ref)
     if ref.get("kind") != "deployment":
         return f"{ref_label(ref)} ({ref.get('release_on')})"
@@ -1564,9 +1580,9 @@ def read_kind(ref: dict) -> str | None:
     """
     if ref.get("kind") == "deployment":
         return "pull_request" if ref.get("number") and not ref.get("merge_sha") else None
-    if ref.get("kind") in ("workflow_run", "a2a_task"):
-        # A workflow run has its own reader (:func:`_poll_workflow_run`), an A2A task
-        # its own pass (``work_item_a2a_refs``): never read as a pull request.
+    if ref.get("kind") in ("workflow_run", "tag"):
+        # Read by the workflow run reader (:func:`_poll_workflow_run`) or the tag reader
+        # (:func:`_poll_tag`), never as a pull request.
         return None
     return ref.get("kind")
 
@@ -2387,6 +2403,242 @@ def schedule_workflow_run_check(item_id: uuid.UUID | str) -> None:
     _spawn(check_item_workflow_runs(item_id))
 
 
+# -- The tag references (#2209) ------------------------------------------------------
+
+
+def tag_note(ref: dict[str, Any], tag: dict[str, Any], now: datetime) -> str:
+    """The note of an item a tag carrying its commit released. Pure."""
+    commit = str(tag.get("commit") or "")[:12]
+    return f"released: {ref_label(ref)}: tag {tag.get('tag')} at {commit}; released at {_stamp(now)}"
+
+
+def names_tag(refs: object) -> bool:
+    """Whether *refs* (normalised ``blocked_on_refs``) waits for a tag. Pure."""
+    items = refs if isinstance(refs, list) else []
+    return any(isinstance(r, dict) and r.get("kind") == "tag" for r in items)
+
+
+async def _apply_tag(item_id: uuid.UUID, key: tuple[Any, ...], tag: dict[str, Any], now: datetime) -> str | None:
+    """Mark the ``tag`` reference *key* of one item created by *tag*. ``released`` / ``noted`` / ``None``."""
+    from app.core.database import async_session
+
+    async with async_session() as db:
+        item = (await db.execute(select(WorkItem).where(WorkItem.id == item_id).with_for_update())).scalar_one_or_none()
+        if item is None or item.status != "blocked" or not item.blocked_on_refs:
+            return None
+        refs: list[dict[str, Any]] = []
+        matched: list[dict[str, Any]] = []
+        for ref in item.blocked_on_refs:
+            ref = dict(ref)
+            if ref.get("kind") == "tag" and _ref_key(ref) == key and not _satisfied(ref):
+                ref["state"] = "created"
+                ref["at"] = now.isoformat()
+                ref["tag"] = str(tag.get("tag") or "")
+                ref["tag_commit"] = str(tag.get("commit") or "")
+                matched.append(ref)
+            refs.append(ref)
+        if not matched:
+            return None
+        item.blocked_on_refs = refs
+        notes = list(item.claim_notes or [])
+        texts = [tag_note(r, tag, now) for r in matched]
+        outcome = "noted"
+        note: str | None = None
+        if all_satisfied(refs) and not item.blocked_on:
+            note = "\n".join(texts) + due_deferral(item.not_before, now)
+            previous = item.description or ""
+            item.description = f"{note}\n\n{previous}" if previous else note
+            notes.append({"at": now.isoformat(), "text": note})
+            item.status = "open"
+            item.claimed_by_agent_id = None
+            item.claimed_by_run_id = None
+            item.claimed_at = None
+            item.blocked_on_refs = None
+            item.blocked_reason = None
+            item.needs_human = None
+            item.last_activity_at = now
+            outcome = "released"
+        else:
+            notes.extend({"at": now.isoformat(), "text": f"{t}; still waiting"} for t in texts)
+        item.claim_notes = notes
+        await db.commit()
+    if outcome == "released":
+        await _publish_tag(item_id, note or "", tag, matched)
+    return outcome
+
+
+async def _publish_tag(item_id: uuid.UUID, note: str, tag: dict[str, Any], matched: list[dict[str, Any]]) -> None:
+    from app.core.database import async_session
+    from app.services.platform_events import publish, work_item_data
+    from app.services.work_item import publish_transition
+
+    await publish_transition(item_id, previous_status="blocked", note=note)
+    try:
+        async with async_session() as db:
+            item = await db.get(WorkItem, item_id)
+        if item is None:
+            return
+        data = work_item_data(item, previous_status="blocked", note=note)
+        data["released_by"] = {
+            "kind": "tag",
+            "tag": tag.get("tag"),
+            "commit": tag.get("commit"),
+            "references": [ref_label(r) for r in matched],
+        }
+        await publish("work_item.released", data)
+    except Exception as exc:  # best-effort: the release already landed
+        logger.warning("work_item.released for %s not published: %s", item_id, format_exception_message(exc))
+
+
+async def _poll_tag(
+    item_id: uuid.UUID,
+    user_id: Any,
+    ref: dict[str, Any],
+    readers: dict[str, Any],
+    tokens: dict[tuple[str, str], str | None],
+    seen: dict[tuple[Any, ...], dict[str, Any] | None],
+    counts: dict[str, Any],
+    max_reads: int = POLL_MAX_READS,
+) -> bool:
+    """Read one ``tag`` reference through the providers' tag readers and apply a carrying tag.
+
+    False when the read budget left the reference unread, so the item is not stamped polled.
+    """
+    key = _ref_key(ref)
+    for provider, reader in readers.items():
+        token = tokens.get((provider, str(user_id)))
+        if not token:
+            continue
+        read_key = (provider, str(user_id), *key)
+        if read_key not in seen:
+            if counts["read"] >= max_reads:
+                return False
+            counts["read"] += 1
+            try:
+                seen[read_key] = await reader(str(ref["repo"]), str(ref["pattern"]), str(ref["carries_sha"]), token)
+            except Exception as exc:
+                _note_read_failure(counts, ref, exc, item_id)
+                seen[read_key] = None
+        tag = seen[read_key]
+        if not tag:
+            continue
+        try:
+            outcome = await _apply_tag(item_id, key, tag, datetime.now(UTC))
+        except Exception as exc:
+            logger.warning(
+                "Polled reference %s could not move work item %s: %s",
+                ref_label(ref),
+                item_id,
+                format_exception_message(exc),
+            )
+            return True
+        if outcome:
+            counts[outcome] = counts.get(outcome, 0) + 1
+        return True
+    return True
+
+
+async def check_item_tags(item_id: uuid.UUID | str) -> dict[str, Any]:
+    """Read the open ``tag`` references of one item once, at the write that blocks it.
+
+    The tag may exist already: without this read the item waits for the polling
+    pass. ``{"read": r, "released": n, "noted": m}``. Never raises.
+    """
+    from app.core.database import async_session
+    from app.integrations.reference_state import tag_readers
+
+    counts: dict[str, Any] = {"read": 0, "released": 0, "noted": 0}
+    readers = tag_readers()
+    if not readers:
+        return counts
+    try:
+        item_uuid = uuid.UUID(str(item_id))
+        async with async_session() as db:
+            row = (
+                await db.execute(
+                    select(WorkItem.user_id, WorkItem.status, WorkItem.blocked_on_refs).where(WorkItem.id == item_uuid)
+                )
+            ).one_or_none()
+            if row is None or row[0] is None or row[1] != "blocked":
+                return counts
+            waiting = [r for r in open_refs(row[2]) if r.get("kind") == "tag"]
+            tokens: dict[tuple[str, str], str | None] = {}
+            for provider in readers if waiting else ():
+                tokens[(provider, str(row[0]))] = await reference_token(db, provider, row[0])
+        seen: dict[tuple[Any, ...], dict[str, Any] | None] = {}
+        for ref in waiting[:POLL_MAX_ITEMS]:
+            await _poll_tag(item_uuid, row[0], ref, readers, tokens, seen, counts, HINT_MAX_READS)
+    except Exception as exc:
+        logger.warning("Tag check of work item %s failed: %s", item_id, format_exception_message(exc))
+    unread: dict[uuid.UUID, list[str]] = counts.pop("_unread", {})
+    if unread:
+        await note_unread_references(unread, datetime.now(UTC), quiet=False)
+    return counts
+
+
+def schedule_tag_check(item_id: uuid.UUID | str) -> None:
+    """Run :func:`check_item_tags` in the background (a write must not wait on the code host)."""
+    _spawn(check_item_tags(item_id))
+
+
+def named_by_tag(refs: list[Any], event: PullRequestEvent) -> list[dict[str, Any]]:
+    """The open ``tag`` references of *refs* a tag creation *event* may satisfy. Pure.
+
+    Same repository and a tag name matching the reference's pattern; whether the
+    tag carries the commit is the reader's answer, read back before anything applies.
+    """
+    import fnmatch
+
+    name = (event.extra or {}).get("tag")
+    if event.kind != "tag_created" or not isinstance(name, str) or not name:
+        return []
+    return [
+        r
+        for r in open_refs(refs)
+        if r.get("kind") == "tag"
+        and r.get("repo") == event.repo
+        and fnmatch.fnmatchcase(name, str(r.get("pattern") or "*"))
+    ]
+
+
+async def release_from_tag_delivery(event: PullRequestEvent) -> dict[str, Any]:
+    """Release the items waiting on a tag a tag creation delivery reports, after a read back.
+
+    ``{"read": r, "released": n, "noted": m}``. Never raises.
+    """
+    from app.core.database import async_session
+    from app.integrations.reference_state import tag_readers
+
+    counts: dict[str, Any] = {"read": 0, "released": 0, "noted": 0}
+    readers = tag_readers()
+    if event.kind != "tag_created" or not readers:
+        return counts
+    try:
+        async with async_session() as db:
+            candidates = [c for c in await _hint_candidates(db, event, named_by_tag) if named_by_tag(c[2], event)]
+            tokens: dict[tuple[str, str], str | None] = {}
+            for _, user_id, _ in candidates:
+                for provider in readers:
+                    key = (provider, str(user_id))
+                    if key not in tokens:
+                        tokens[key] = await reference_token(db, provider, user_id)
+    except Exception as exc:
+        logger.warning("Tag delivery on %s not read back: %s", event.repo, format_exception_message(exc))
+        return counts
+    seen: dict[tuple[Any, ...], dict[str, Any] | None] = {}
+    for item_id, user_id, refs in candidates:
+        for ref in named_by_tag(refs, event):
+            await _poll_tag(item_id, user_id, ref, readers, tokens, seen, counts, HINT_MAX_READS)
+    counts.pop("_unread", None)
+    return counts
+
+
+def schedule_tag_release(event: PullRequestEvent) -> None:
+    """Run :func:`release_from_tag_delivery` in the background (a webhook must not wait on the code host)."""
+    if event.kind == "tag_created":
+        _spawn(release_from_tag_delivery(event))
+
+
 #: The reference kinds :func:`check_item_reference_states` reads at the write.
 WRITE_CHECKED_KINDS = ("pull_request", "issue")
 
@@ -2611,16 +2863,18 @@ async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
     from app.integrations.reference_state import (
         branch_closings_readers,
         reference_state_readers,
+        tag_readers,
         workflow_run_readers,
     )
 
     counts: dict[str, Any] = {"read": 0, "released": 0, "noted": 0}
     readers = reference_state_readers()
     run_readers = workflow_run_readers()
+    tag_reader_map = tag_readers()
     branch_readers = branch_closings_readers()
-    if not readers and not run_readers:
+    if not readers and not run_readers and not tag_reader_map:
         return counts
-    providers = list(dict.fromkeys([*readers, *run_readers]))
+    providers = list(dict.fromkeys([*readers, *run_readers, *tag_reader_map]))
     now = now or datetime.now(UTC)
     now_mono = time.monotonic()
     try:
@@ -2641,12 +2895,17 @@ async def poll_blocked_on_refs(now: datetime | None = None) -> dict:
         return counts
     seen: dict[tuple, PullRequestEvent | None] = {}
     runs_seen: dict[tuple, dict | None] = {}
+    tags_seen: dict[tuple[Any, ...], dict[str, Any] | None] = {}
     branches_seen: dict[tuple, list[PullRequestEvent]] = {}
     for item_id, user_id, refs in candidates:
         complete = True
         for ref in open_refs(refs):
             if ref.get("kind") == "workflow_run":
                 if not await _poll_workflow_run(item_id, user_id, ref, run_readers, tokens, runs_seen, counts):
+                    complete = False
+                continue
+            if ref.get("kind") == "tag":
+                if not await _poll_tag(item_id, user_id, ref, tag_reader_map, tokens, tags_seen, counts):
                     complete = False
                 continue
             kind = read_kind(ref)
