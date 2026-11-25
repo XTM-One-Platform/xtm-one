@@ -4769,6 +4769,29 @@ def _make_hitl_approval_fn(run_id: str) -> Callable[[str], Awaitable[bool]]:
     return _approved
 
 
+def _make_case_draft_fn() -> Callable[[str], Awaitable[bool]]:
+    """A callback answering whether a draft holds a CTEM case's recorded threat package (#2089).
+
+    Bounds ``delete_opencti_draft`` on a fleet gating the draft validation:
+    the draft of a refused review's package may be discarded, never any other
+    open draft. Runs on its own ``async_session`` (integration tools execute
+    concurrently) and fails closed (False) on any lookup error.
+    """
+
+    async def _holds_case_package(draft_id: str) -> bool:
+        try:
+            from app.core.database import async_session
+            from app.services.ctem_threat_package_live import is_case_package_draft
+
+            async with async_session() as own_db:
+                return await is_case_package_draft(own_db, draft_id)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("CTEM case draft lookup failed: %s", format_exception_message(exc))
+            return False
+
+    return _holds_case_package
+
+
 def _make_persist_file_fn(
     context: dict[str, Any],
     executor: Any | None = None,
@@ -6804,21 +6827,13 @@ async def _build_integration_tools_inner(
                     # review, #1480) offers it with Live writes off: the gate,
                     # not the setting, decides the validation. Never on a
                     # read-only binding.
-                    from app.agents.builtin_fleet_docs import CTEM_VALIDATION_GATE
-                    from app.services.fleet_autonomy import (
-                        FLEET_GATED_TOOLS_CONTEXT_KEY,
-                        FLEET_WAITING_GATES_CONTEXT_KEY,
-                    )
+                    from app.services.fleet_autonomy import FLEET_GATED_TOOLS_CONTEXT_KEY
 
                     if "apply_opencti_draft" in (
                         context.get(FLEET_GATED_TOOLS_CONTEXT_KEY) or ()
                     ) and not is_read_only_binding(integration_id, _read_only_ids):
                         _builder_kwargs["gated_draft_validation"] = True
-                    # The CTEM validation gate waits: a security coverage
-                    # carrying a periodicity would start its OpenAEV scenario
-                    # before the decision, so the tool refuses it (#2102).
-                    if CTEM_VALIDATION_GATE in (context.get(FLEET_WAITING_GATES_CONTEXT_KEY) or ()):
-                        _builder_kwargs["waiting_validation_gate"] = CTEM_VALIDATION_GATE
+                        _builder_kwargs["case_draft_fn"] = _make_case_draft_fn()
                 # When HITL is on, give OpenCTI a way to VERIFY a human approved
                 # an irreversible action (entity merge) rather than trusting the
                 # model's word for it. The run's ``human_input_history`` is the
