@@ -59,6 +59,7 @@ import {
   CasePriorityChip,
   CaseOwner,
   CaseStateChip,
+  CaseToValidateChip,
   useCasesEmptyLabel,
 } from "./ctem/cases-shared";
 import { CTEM_STAGE_CONFIG, CTEM_STAGE_KEYS } from "@/lib/constants";
@@ -155,7 +156,13 @@ export default function CtemCases() {
       // The default sort (#1503): priority, critical first; the attention score and its band are gone.
       key: "priority",
       header: "Priority",
-      cell: (c) => <CasePriorityChip priority={c.priority} />,
+      // A version-blind case keeps its priority and says the version is to validate (#2004).
+      cell: (c) => (
+        <span className="inline-flex items-center gap-1">
+          <CasePriorityChip priority={c.priority} />
+          <CaseToValidateChip unverified={c.version_unverified} />
+        </span>
+      ),
       sortValue: (c) => CASE_PRIORITY_RANK[c.priority],
       csv: (c) => c.priority,
       firstSort: "desc",

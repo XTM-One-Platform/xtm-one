@@ -21681,5 +21681,7 @@
   "The primary assets of the inventory this PIR protects.": "The primary assets of the inventory this PIR protects.",
   "Example: Payment platform, picked from the primary assets of the inventory. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.": "Example: Payment platform, picked from the primary assets of the inventory. Agents read them with the PIR in the organization context. Left empty, the PIR names no primary asset.",
   "{set} of {total} set": "{set} of {total} set",
-  "Details of {name}, {count}": "Details of {name}, {count}"
+  "Details of {name}, {count}": "Details of {name}, {count}",
+  "To validate": "To validate",
+  "Running version not verified: validate it before acting on the case.": "Running version not verified: validate it before acting on the case."
 }

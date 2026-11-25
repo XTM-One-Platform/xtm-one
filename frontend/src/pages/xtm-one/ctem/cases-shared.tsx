@@ -85,6 +85,21 @@ export function CasePriorityChip({ priority }: { priority: CtemCasePriority }) {
 }
 
 /**
+ * The "to validate" marker of a case whose running version OpenCTI cannot
+ * place (#2004): the case keeps its members, priority and SLA; the version is
+ * validated first. Neutral, so it never reads as a priority or a state.
+ */
+export function CaseToValidateChip({ unverified }: { unverified?: boolean }) {
+  const { t_i18n } = useFormatter();
+  if (!unverified) return null;
+  return (
+    <ToneBadge tone="neutral" title={t_i18n("Running version not verified: validate it before acting on the case.")} data-testid="ctem-case-to-validate">
+      {t_i18n("To validate")}
+    </ToneBadge>
+  );
+}
+
+/**
  * What one product's failed read means, in plain words (#1852), by the reason
  * the API sends in `details_unavailable_reasons`. Never says the reader lacks
  * access: a rejected token or a missing connection is the platform's to fix.
