@@ -368,6 +368,48 @@ async def plan_catch_up_asks(
     return [p for p in picked if str(p[0].id) not in taken][:limit]
 
 
+async def catch_up_places(
+    db: AsyncSession, case_ids: Iterable[object], *, now: datetime | None = None
+) -> dict[str, dict[str, Any]]:
+    """Where each of *case_ids* stands in the catch-up backlog, for the cases still waiting for an ask (#2345).
+
+    A pass asks at most :data:`CATCH_UP_BATCH` cases, most urgent first, so a
+    case further down the backlog is not asked yet and nothing else says when
+    it will be. The answer, per waiting case id: ``position`` (1: asked by the
+    next pass), ``backlog`` (cases waiting in all), ``batch_size``,
+    ``passes_ahead`` (full passes before the one that asks it), ``sweep_seconds``
+    (the scheduled pass cadence) and ``asked_before`` (asks already made with
+    no run, 0 for a case never asked). A case that is not waiting (closed,
+    owned by no active fleet, already run, asked recently or asked
+    :data:`MAX_ASKS` times) is absent. Never raises: an unreadable backlog
+    answers ``{}``, so a case read never fails on it.
+    """
+    wanted = {str(cid) for cid in case_ids}
+    if not wanted:
+        return {}
+    try:
+        backlog = await plan_catch_up_asks(db, limit=SCAN_MAX, now=now)
+    except Exception:
+        logger.warning("CTEM case catch-up backlog unreadable; the case read answers without it", exc_info=True)
+        return {}
+    from app.services.ctem_case_loop import sweep_seconds
+
+    every = sweep_seconds()
+    places: dict[str, dict[str, Any]] = {}
+    for index, (case, _owner, attempt) in enumerate(backlog):
+        cid = str(case.id)
+        if cid in wanted:
+            places[cid] = {
+                "position": index + 1,
+                "backlog": len(backlog),
+                "batch_size": CATCH_UP_BATCH,
+                "passes_ahead": index // CATCH_UP_BATCH,
+                "sweep_seconds": every,
+                "asked_before": attempt,
+            }
+    return places
+
+
 async def catch_up(*, only: set[str] | None = None, now: datetime | None = None) -> int:
     """Hand every open case its owner never ran to that owner: one ``ctem_case.opened`` each. Never raises.
 

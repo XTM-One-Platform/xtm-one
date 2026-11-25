@@ -293,6 +293,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 # #2113), each a count only with the view's condition, so a page is never the org total.
                 scope_block = await case_signal_scope(db, scope, view.signals)
                 scope_block.update(view_of.list_visibility(cases, view))
+                from app.services import ctem_case_routing as routing
+
+                # A case the catch-up has not asked yet names its place in the backlog (#2345).
+                places = await routing.catch_up_places(db, [row["id"] for row in rows])
+                for row in rows:
+                    if row["id"] in places:
+                        row["catch_up"] = places[row["id"]]
                 return _dump(
                     {
                         "vertical": vertical,
@@ -350,6 +357,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     else None
                 )
                 rendered = _bounded_issues(shown[2], issues_offset)
+                from app.services import ctem_case_routing as routing
+
+                # A case the catch-up has not asked yet names its place in the backlog (#2345).
+                place = (await routing.catch_up_places(db, [shown[0].id])).get(str(shown[0].id))
+                if place is not None:
+                    rendered = {**rendered, "catch_up": place}
                 elapsed = time.perf_counter() - started
                 if elapsed > _SLOW_READ_SECONDS:
                     logger.info(
