@@ -26,7 +26,9 @@ def test_profile_key_is_renamed_rows_kept() -> None:
     # The per-asset product list is not the profile field.
     assert out["assets_exposure"] == [{"name": "web-1", "tech_stack": ["nginx"]}]
     assert out["onboarding_skipped"] == ["software", "pir_ids"]
-    assert oc.parse_profile(out).software[0].product == "nginx"
+    # s1495products01 renames the per-asset list later; the model reads it as ``products``.
+    parsed = {**out, "assets_exposure": [{"name": "web-1", "products": ["nginx"]}]}
+    assert oc.parse_profile(parsed).software[0].product == "nginx"
     assert mig.rename_profile(out) is None  # re-run: no-op
 
 
