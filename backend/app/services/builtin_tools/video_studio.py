@@ -1219,7 +1219,7 @@ def build_video_studio_tools(
             + "Next: sign_in_browser_profile to open and save a session."
         )
 
-    async def _sign_in(profile_id: str = "") -> ToolResult:
+    async def _sign_in(profile_id: str = "", restart: bool = False) -> ToolResult:
         from app.services.audit import log_audit
         from app.services.browser_profiles import signin
         from app.services.browser_profiles.profiles import load_usable_profile
@@ -1245,7 +1245,9 @@ def build_video_studio_tools(
                 details={"via": "agent"},
             )
             await session.commit()
-        outcome = await signin.start_sign_in(profile, user_id=user.id, wait_seconds=min(80.0, _wait_budget(90.0)))
+        outcome = await signin.start_sign_in(
+            profile, user_id=user.id, wait_seconds=min(80.0, _wait_budget(90.0)), restart=bool(restart)
+        )
         return await _sign_in_result(outcome)
 
     async def _submit_code(challenge_id: str = "", code: str = "") -> ToolResult:
@@ -5588,20 +5590,20 @@ def _definitions(qualities: list[str]) -> list[ToolDefinition]:
                 "Sign a browser profile in, in the platform's own browser, and save its session. It drives a "
                 "first-party form or a hosted identity provider (SAML / OIDC redirect) alike, and is done only "
                 "when the browser is back on the application and start_url (or the profile's signed_in_selector / "
-                "signed_in_url_pattern) renders signed in: the whole redirect chain is followed, then the cookies "
-                "of every site visited and the application's storage are saved and probed again. With a TOTP "
-                "secret the MFA code is computed (a refused one is retried once on the next period). Without one, "
-                "an MFA prompt returns status 'mfa_required' with a challenge_id, a kind and a screenshot: kind "
-                "'code' -> ask the user for the code and call submit_browser_mfa_code; kind 'push_number' / 'push' "
-                "-> tell the user to approve in the authenticator app (enter the number shown) - the sign-in goes on "
-                "by itself. The browser keeps the prompt open for the profile's MFA window (default 5 min). The "
-                "user signing in in their own browser tab never signs the profile in. A failure names its stage "
-                "(idp_form, mfa, redirect_chain, app_load, session_save) and the last URL. Calling it again while a "
-                "challenge waits returns that challenge."
+                "signed_in_url_pattern) renders signed in; then the cookies of every site visited and the "
+                "application's storage are saved and probed again. With a TOTP secret the MFA code is computed (a "
+                "refused one retried once). Without one, an MFA prompt returns status 'mfa_required' with a "
+                "challenge_id, a kind and a screenshot: kind 'code' -> ask the user for the code and call "
+                "submit_browser_mfa_code; kind 'push_number' / 'push' -> tell the user to approve in the "
+                "authenticator app (enter the number shown) - the sign-in goes on by itself. The prompt stays open "
+                "for the profile's MFA window (default 5 min). The user signing in in their own tab never signs the "
+                "profile in. A failure names its stage (idp_form, mfa, redirect_chain, app_load, "
+                "session_save) and the last URL. Called again while a challenge waits, it returns that challenge; "
+                "restart=true (or a login setting changed since) closes it and starts again."
             ),
             input_schema={
                 "type": "object",
-                "properties": {"profile_id": {"type": "string"}},
+                "properties": {"profile_id": {"type": "string"}, "restart": {"type": "boolean"}},
                 "required": ["profile_id"],
             },
             source=_SOURCE,
