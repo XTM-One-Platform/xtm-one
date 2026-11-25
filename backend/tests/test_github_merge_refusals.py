@@ -137,6 +137,51 @@ async def test_a_base_protected_by_a_merge_queue_gets_the_pr_enqueued_pinned_to_
     assert len(github.puts) == 1
 
 
+def _with_timeline(facts: dict[str, Any], nodes: list[dict[str, Any]]) -> dict[str, Any]:
+    facts["data"]["repository"]["pullRequest"]["timelineItems"] = {"nodes": nodes}
+    return facts
+
+
+_EJECTED = {"__typename": "RemovedFromMergeQueueEvent", "createdAt": "2026-11-24T19:03:14Z", "reason": "failed_checks"}
+
+
+@pytest.mark.asyncio
+async def test_a_head_ejected_for_failing_checks_is_not_enqueued_again() -> None:
+    facts = _with_timeline(_facts(queue=True), [{"__typename": "PullRequestCommit"}, _EJECTED])
+    github = _GitHub(_RULES, facts=facts, enqueue={"data": {"enqueuePullRequest": {"mergeQueueEntry": {}}}})
+
+    result = await _run(github)
+
+    assert result.startswith("Error: PR #12 in acme/app is NOT merged and was NOT added to the merge queue")
+    assert "2026-11-24T19:03:14Z" in result
+    assert _HEAD[:12] in result
+    assert "merge_group" in result
+    assert not any("enqueuePullRequest" in g["query"] for g in github.graphql)
+
+
+@pytest.mark.asyncio
+async def test_a_commit_after_the_ejection_lets_the_head_be_enqueued() -> None:
+    facts = _with_timeline(_facts(queue=True), [_EJECTED, {"__typename": "PullRequestCommit"}])
+    enqueue = {"data": {"enqueuePullRequest": {"mergeQueueEntry": {"position": 1, "state": "QUEUED"}}}}
+    github = _GitHub(_RULES, facts=facts, enqueue=enqueue)
+
+    result = await _run(github)
+
+    assert result.startswith("PR #12 in acme/app queued")
+
+
+@pytest.mark.asyncio
+async def test_an_ejection_for_a_conflict_does_not_hold_the_enqueue() -> None:
+    conflict = dict(_EJECTED, reason="merge_conflict")
+    facts = _with_timeline(_facts(queue=True), [conflict])
+    enqueue = {"data": {"enqueuePullRequest": {"mergeQueueEntry": {"position": 1, "state": "QUEUED"}}}}
+    github = _GitHub(_RULES, facts=facts, enqueue=enqueue)
+
+    result = await _run(github)
+
+    assert result.startswith("PR #12 in acme/app queued")
+
+
 @pytest.mark.asyncio
 async def test_a_refused_enqueue_says_the_queue_and_the_reason():
     github = _GitHub(_RULES, facts=_facts(queue=True))

@@ -165,6 +165,22 @@ query CtemCaseStackVulns($from: [String], $first: Int, $after: ID) {
 }
 """
 
+# The ``has`` relations of the stack to the vulnerabilities of one case (#1986): the case read's scope.
+_OCTI_CASE_VULNS = """
+query CtemCaseScopedVulns($from: [String], $to: [String], $first: Int, $after: ID) {
+  stixCoreRelationships(fromId: $from, toId: $to, relationship_type: ["has"], toTypes: ["Vulnerability"], first: $first, after: $after) {
+    pageInfo { hasNextPage endCursor }
+    edges { node {
+      from { ... on StixCyberObservable { id } }
+      to { ... on Vulnerability {
+        id standard_id name created_at
+        x_opencti_cvss_base_score x_opencti_epss_score x_opencti_cisa_kev
+      } }
+    } }
+  }
+}
+"""
+
 _OCTI_REMEDIATIONS = """
 query CtemCaseRemediations($to: [String], $first: Int) {
   stixCoreRelationships(toId: $to, relationship_type: ["remediates", "mitigates"], fromTypes: ["Course-Of-Action"], first: $first) {
@@ -521,7 +537,19 @@ async def _read_opencti(
             complete = False
             break
     relations = relations[:OCTI_ISSUE_CAP]
-    vuln_ids = sorted({(r.get("to") or {}).get("id") for r in relations if (r.get("to") or {}).get("id")})
+    remediations, fixes = await _remediations_of(client, base_url, headers, _vulnerability_ids(relations))
+    issues = opencti_issues(software, stack, relations, remediations, fixes)
+    return OpenCtiRead(issues, complete and len(issues) < OCTI_ISSUE_CAP)
+
+
+def _vulnerability_ids(relations: list[dict[str, Any]]) -> list[str]:
+    return sorted({str(vid) for r in relations if (vid := (r.get("to") or {}).get("id"))})
+
+
+async def _remediations_of(
+    client: httpx.AsyncClient, base_url: str, headers: dict[str, str], vuln_ids: list[str]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The courses of action and the remediating Software of *vuln_ids*; a failed read is a known empty state."""
     remediations: list[dict[str, Any]] = []
     fixes: list[dict[str, Any]] = []
     for start in range(0, len(vuln_ids), _PAGE):
@@ -545,8 +573,50 @@ async def _read_opencti(
                 (e or {}).get("node") or {}
                 for e in ((fix_data or {}).get("stixCoreRelationships") or {}).get("edges") or []
             )
-    issues = opencti_issues(software, stack, relations, remediations, fixes)
-    return OpenCtiRead(issues, complete and len(issues) < OCTI_ISSUE_CAP)
+    return remediations, fixes
+
+
+async def _read_opencti_scoped(
+    client: httpx.AsyncClient,
+    base_url: str,
+    headers: dict[str, str],
+    stack: list[dict[str, Any]],
+    vuln_ids: list[str],
+) -> OpenCtiRead | None:
+    """The open OpenCTI issues of *stack* among *vuln_ids* only (#1986): the case read's slice of :func:`_read_opencti`.
+
+    The same stack lookup, ``has`` relations, courses of action and remediating
+    Software, restricted to the case's vulnerabilities (``toId``), so each issue
+    carries the version knowledge the full read gives it.
+    """
+    software, complete, err = await _read_stack_software(
+        client, base_url, headers, _OCTI_STACK_SOFTWARE, stack, graphql=_graphql
+    )
+    if err:
+        logger.info("CTEM cases: OpenCTI stack software unavailable: %s", err)
+        _failed(err)
+        return None
+    ids = [n["id"] for n in software if n.get("id") and _stack_matches(n, stack)]
+    if not ids or not vuln_ids:
+        return OpenCtiRead([], complete)
+    relations: list[dict[str, Any]] = []
+    for start in range(0, len(ids), _STACK_IDS_CHUNK):
+        after: str | None = None
+        while True:
+            variables = {"from": ids[start : start + _STACK_IDS_CHUNK], "to": vuln_ids, "first": _PAGE, "after": after}
+            data, err = await _graphql(client, base_url, headers, _OCTI_CASE_VULNS, variables)
+            if err:
+                logger.info("CTEM cases: OpenCTI case vulnerabilities unavailable: %s", err)
+                _failed(err)
+                return None
+            conn = (data or {}).get("stixCoreRelationships") or {}
+            relations.extend((e or {}).get("node") or {} for e in conn.get("edges") or [])
+            info = conn.get("pageInfo") or {}
+            after = info.get("endCursor")
+            if not info.get("hasNextPage") or not after:
+                break
+    remediations, fixes = await _remediations_of(client, base_url, headers, _vulnerability_ids(relations))
+    return OpenCtiRead(opencti_issues(software, stack, relations, remediations, fixes), complete)
 
 
 async def _read_openaev(
@@ -936,6 +1006,90 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
     return view
 
 
+async def read_case_view(db: AsyncSession, user_id: str, vertical: str, members: list[str]) -> Any:
+    """One viewer's view of ONE case's *members* (``source:external_id``), from their own read (#1986).
+
+    The case read's path when no view of the viewer is cached: the same
+    credentials and the same rules as :func:`read_view`, scoped to the case.
+    OpenCTI reads the stack's ``has`` relations to the case's vulnerabilities
+    only; what is not open is looked up by id (closed); OpenAEV findings are
+    looked up by id, bounded. A member the viewer cannot read stays out of the
+    view (Restricted), a product that fails is ``missing``. The view is never
+    cached: it judges only these members.
+    """
+    from app.services.ctem_cases_view import ViewerView
+    from app.services.organizations import get_primary
+
+    vertical = normalize_vertical(vertical)
+    out = SourceRead()
+    wanted: dict[str, list[str]] = {}
+    for member_id in members:
+        member_source, _, external_id = member_id.partition(":")
+        if external_id:
+            wanted.setdefault(member_source, []).append(external_id)
+    view = ViewerView()
+    if vertical == VERTICAL_CYBER and (wanted.get("opencti") or wanted.get("openaev")):
+        await _read_case_members(db, user_id, out, wanted)
+    view.missing, view.reasons, view.complete = list(out.missing), dict(out.reasons), out.complete
+    # One session: the two credential checks run one after the other, never concurrently.
+    view.opencrq = await _reads_opencrq(db, user_id)
+    view.opencti = await _reads_opencti(db, user_id)
+    for issue in out.closed:
+        view.issues[issue.member_id] = issue
+    for issue in out.issues:
+        view.issues[issue.member_id] = issue
+        view.open_ids.add(issue.member_id)
+    signal_ids = wanted.get("signal") or []
+    primary = await get_primary(db) if signal_ids else None
+    if primary is not None:
+        for issue in await _signal_members(db, organization_id=primary.id, user_id=user_id, ids=signal_ids):
+            view.issues[issue.member_id] = issue
+            view.open_ids.add(issue.member_id)
+    return view
+
+
+async def _read_case_members(db: AsyncSession, user_id: str, out: SourceRead, wanted: dict[str, list[str]]) -> None:
+    """Fill *out* with the product members of one case the viewer reads (open and closed)."""
+    creds: dict[str, tuple[str, dict[str, str]] | None] = {}
+    try:
+        for provider in ("opencti", "openaev"):
+            if not wanted.get(provider):
+                continue
+            _bind_read_context(user_id, provider)
+            try:
+                creds[provider] = await _user_creds(db, user_id, provider)
+            except Exception as exc:  # one product failing never blocks the other
+                logger.warning(
+                    "CTEM cases: creds error for %s as user %s: %s", provider, user_id, format_exception_message(exc)
+                )
+                creds[provider] = None
+            if creds[provider] is None:
+                out.fail(provider, REASON_NOT_CONNECTED)
+        octi = creds.get("opencti")
+        stack = await _organization_software(db) if octi else []
+        if octi and stack:
+            octi_url, octi_headers = octi
+            vuln_ids = sorted(set(wanted["opencti"]))
+            found, error = await _read_product(
+                user_id,
+                "opencti",
+                lambda client: _read_opencti_scoped(
+                    client, octi_url, attach_probe(octi_headers, octi_url), stack, vuln_ids
+                ),
+            )
+            if found is None:
+                out.fail("opencti", failure_reason(error))
+            else:
+                out.issues.extend(found.issues)
+                out.complete = out.complete and found.complete
+        # The members not open (every OpenAEV member, the OpenCTI ones off the stack) are looked up by id.
+        await _read_closed_members(
+            out, creds, [f"{s}:{i}" for s in ("opencti", "openaev") for i in wanted.get(s) or []]
+        )
+    finally:
+        _clear_read_context()
+
+
 async def _reads_opencrq(db: AsyncSession, user_id: str) -> bool:
     """Whether *user_id* reads OpenCRQ with their own credentials (#936): the gate on the
     OpenCRQ asset names and scenario ids of a case's exploitation reading."""
@@ -956,7 +1110,9 @@ async def _reads_opencti(db: AsyncSession, user_id: str) -> bool:
         return False
 
 
-async def _signal_members(db: AsyncSession, *, organization_id: uuid.UUID, user_id: str) -> list[rules.SourceIssue]:
+async def _signal_members(
+    db: AsyncSession, *, organization_id: uuid.UUID, user_id: str, ids: list[str] | None = None
+) -> list[rules.SourceIssue]:
     """The signals attached to cases that *user_id* may read (#857), as case members.
 
     The signal API's own rule: an administrator or a CTEM view or decide right
@@ -990,6 +1146,8 @@ async def _signal_members(db: AsyncSession, *, organization_id: uuid.UUID, user_
     )
     if not whole:
         statement = statement.where(CtemSignal.recorded_by == str(user_id))
+    if ids is not None:  # one case's signals (#1986)
+        statement = statement.where(cast(CtemSignal.id, String).in_(ids))
     rows = (await db.execute(statement)).scalars().all()
     return [
         rules.SourceIssue(

@@ -120,7 +120,7 @@ export function SpanNode({ node, depth, compact = false, selectedSpanId, onSelec
           <span className={`${compact ? "text-[9px]" : "content-compact"} text-default-secondary uppercase shrink-0`}>{node.type}</span>
           {isErrorIteration ? (
             <Tip content={node.status_message?.trim() || "Iteration linked to trace error"}>
-              <span className="inline-flex items-center gap-1 rounded-full border border-feedback-error-primary/40 bg-feedback-error-primary/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-feedback-error-primary shrink-0">
+              <span className="inline-flex items-center gap-1 rounded-sm border border-feedback-error-primary/40 bg-feedback-error-primary/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-feedback-error-primary shrink-0">
                 <AlertTriangle className="h-3 w-3" />
                 Error Iteration
               </span>

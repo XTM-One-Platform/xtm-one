@@ -509,7 +509,7 @@ function MachineChip({ record, t }: { record: RunnerActivity; t: Translator }) {
       <span
         data-runner-machine-chip
         data-fit="fixed"
-        className="hidden max-w-[40%] shrink-0 items-center gap-1 rounded-full bg-elevation-hover px-1.5 py-0.5 content-caption text-default-secondary sm:inline-flex"
+        className="hidden max-w-[40%] shrink-0 items-center gap-1 rounded-sm border border-transparent bg-elevation-hover px-2 py-0.5 content-caption text-default-secondary sm:inline-flex"
       >
         {platform && record.platform ? (
           <ProviderLogo provider={record.platform} logo={platform.logo} className="h-3 w-3 shrink-0" />

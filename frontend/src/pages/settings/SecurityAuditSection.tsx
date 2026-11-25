@@ -743,7 +743,7 @@ function SeverityPills({ counts }: { counts: Tally }) {
           return (
             <span
               key={severity}
-              className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 content-caption font-medium tabular-nums", tone.soft, tone.text)}
+              className={cn("inline-flex items-center gap-1 rounded-sm border border-transparent px-2 py-0.5 content-caption font-medium tabular-nums", tone.soft, tone.text)}
             >
               <Icon className="h-3 w-3" />
               {count}

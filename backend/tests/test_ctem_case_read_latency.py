@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from app.services import ctem_cases as rules
 from app.services import ctem_cases_source as source
 from app.services import ctem_cases_view as view_of
 
@@ -203,3 +204,110 @@ async def test_an_openaev_outage_during_the_lookups_answers_none(monkeypatch: py
 
     monkeypatch.setattr(source, "_api", api)
     assert await source._read_openaev_by_id(NO_CLIENT, "https://openaev", {}, ["f1", "f2"]) is None
+
+
+def _octi_issue(vid: str) -> Any:
+    return rules.SourceIssue(source="opencti", external_id=vid, name=vid)
+
+
+@pytest.fixture
+def case_source(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """The source of a case read: OpenCTI holds open v1, closed v2 readable; OpenAEV reads f1 only."""
+    asked: dict[str, Any] = {"scoped": [], "by_id": {}, "full": 0}
+
+    async def stack(db: Any) -> list[dict[str, str]]:
+        return STACK
+
+    async def creds(db: Any, user_id: str, provider: str) -> tuple[str, dict[str, str]] | None:
+        return (f"https://{provider}", {}) if provider in ("opencti", "openaev") else None
+
+    async def scoped(client: Any, base_url: str, headers: Any, stack: Any, vuln_ids: list[str]) -> Any:
+        asked["scoped"].append(vuln_ids)
+        return source.OpenCtiRead([_octi_issue(v) for v in vuln_ids if v == "v1"])
+
+    async def full(*a: Any, **kw: Any) -> Any:
+        asked["full"] += 1
+        raise AssertionError("a case read never reads the whole stack")
+
+    async def lookup(src: str, cred: Any, ids: list[str]) -> list[Any]:
+        asked["by_id"][src] = sorted(ids)
+        if src == "opencti":
+            return [_octi_issue(i) for i in ids if i == "v2"]
+        return [rules.SourceIssue(source="openaev", external_id=i, name=i) for i in ids if i == "f1"]
+
+    async def no_access(db: Any, user_id: str) -> bool:
+        return False
+
+    monkeypatch.setattr(source, "_organization_software", stack)
+    monkeypatch.setattr(source, "_user_creds", creds)
+    monkeypatch.setattr(source, "_read_opencti_scoped", scoped)
+    monkeypatch.setattr(source, "_read_opencti", full)
+    monkeypatch.setattr(source, "_read_openaev", full)
+    monkeypatch.setattr(source, "_lookup_by_id", lookup)
+    monkeypatch.setattr(source, "_reads_opencrq", no_access)
+    monkeypatch.setattr(source, "attach_probe", lambda headers, base_url: headers)
+    return asked
+
+
+@pytest.mark.asyncio
+async def test_a_case_view_reads_only_the_cases_members(case_source: dict[str, Any]) -> None:
+    members = ["opencti:v1", "opencti:v2", "opencti:v3", "openaev:f1", "openaev:f9"]
+    view = await source.read_case_view(NO_DB, "u-1", "cyber", members)
+    assert case_source["full"] == 0 and case_source["scoped"] == [["v1", "v2", "v3"]]
+    # What is not open is looked up by id: v2 closed and readable, v3 not readable, f9 not readable.
+    assert case_source["by_id"] == {"opencti": ["v2", "v3"], "openaev": ["f1", "f9"]}
+    assert view.open_ids == {"opencti:v1"}
+    assert set(view.issues) == {"opencti:v1", "opencti:v2", "openaev:f1"}
+    assert not view.sees("opencti:v3") and not view.sees("openaev:f9") and view.missing == []
+
+
+@pytest.mark.asyncio
+async def test_a_case_view_names_a_product_that_fails(
+    case_source: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def down(client: Any, base_url: str, headers: Any, stack: Any, vuln_ids: list[str]) -> Any:
+        source._failed("ReadTimeout: timed out")
+        return None
+
+    monkeypatch.setattr(source, "_read_opencti_scoped", down)
+    view = await source.read_case_view(NO_DB, "u-1", "cyber", ["opencti:v1", "openaev:f1"])
+    assert view.missing == ["opencti"] and view.reasons == {"opencti": "timeout"}
+    assert set(view.issues) == {"openaev:f1"}  # the other product still answers
+
+
+@pytest.mark.asyncio
+async def test_a_case_view_of_another_vertical_reads_no_product(case_source: dict[str, Any]) -> None:
+    view = await source.read_case_view(NO_DB, "u-1", "fimi", ["opencti:v1"])
+    assert case_source["scoped"] == [] and case_source["by_id"] == {} and view.issues == {}
+
+
+@pytest.mark.asyncio
+async def test_the_scoped_opencti_read_filters_the_relations_by_the_cases_vulnerabilities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[tuple[str, dict[str, Any]]] = []
+
+    async def graphql(client: Any, base_url: str, headers: Any, query: str, variables: dict[str, Any]) -> Any:
+        sent.append((query, variables))
+        if "CtemCaseStackSoftware" in query:
+            node = {"id": "sw1", "name": "Tomcat", "vendor": "Apache", "version": None, "cpe": None}
+            return {"stixCyberObservables": {"edges": [{"node": node}], "pageInfo": {}}}, None
+        if "CtemCaseScopedVulns" in query:
+            rel = {"from": {"id": "sw1"}, "to": {"id": "v1", "name": "CVE-2026-1"}}
+            return {"stixCoreRelationships": {"edges": [{"node": rel}], "pageInfo": {}}}, None
+        return {"stixCoreRelationships": {"edges": []}}, None
+
+    async def software(client: Any, base_url: str, headers: Any, query: str, stack: Any, **kw: Any) -> Any:
+        return [{"id": "sw1", "name": "Tomcat", "vendor": "Apache"}], True, None
+
+    monkeypatch.setattr(source, "_graphql", graphql)
+    monkeypatch.setattr(source, "_read_stack_software", software)
+    monkeypatch.setattr(source, "_stack_matches", lambda node, stack: "Tomcat")
+    monkeypatch.setattr(
+        source, "opencti_issues", lambda sw, st, rels, rem, fix: [_octi_issue(r["to"]["id"]) for r in rels]
+    )
+    found = await source._read_opencti_scoped(NO_CLIENT, "https://opencti", {}, STACK, ["v1", "v2"])
+    assert found is not None and [i.external_id for i in found.issues] == ["v1"]
+    scoped = [v for q, v in sent if "CtemCaseScopedVulns" in q]
+    assert scoped and scoped[0]["to"] == ["v1", "v2"] and scoped[0]["from"] == ["sw1"]
+    assert not any("CtemCaseStackVulns" in q for q, _ in sent)  # never the whole stack's vulnerabilities

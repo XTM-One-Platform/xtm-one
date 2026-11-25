@@ -302,7 +302,7 @@ function ProductPill({
       <Tip content={soon}>
         <span
           aria-label={soon}
-          className="inline-flex items-center rounded-full border border-dashed border-elevation-subtle-soft px-1.5 py-1 text-default-secondary"
+          className="inline-flex items-center rounded-sm border border-dashed border-elevation-subtle-soft px-2 py-1 text-default-secondary"
         >
           {info?.logo ? <img src={info.logo} alt="" className="h-3.5 w-3.5 opacity-60" /> : <Scale className="h-3 w-3" />}
         </span>
@@ -311,7 +311,7 @@ function ProductPill({
   }
   if (comingSoon) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-elevation-subtle-soft px-2.5 py-1 text-[11px] text-default-secondary">
+      <span className="inline-flex items-center gap-1.5 rounded-sm border border-dashed border-elevation-subtle-soft px-2 py-1 text-[11px] text-default-secondary">
         {info?.logo ? <img src={info.logo} alt="" className="h-3.5 w-3.5 opacity-60" /> : <Scale className="h-3 w-3" />}
         {info?.name ?? product}
         <Badge variant="outline" className="text-[9px] ml-0.5">{t_i18n("Soon")}</Badge>
@@ -328,7 +328,7 @@ function ProductPill({
         <button
           onClick={onConnect}
           aria-label={connect}
-          className="inline-flex items-center gap-1 rounded-full border border-dashed border-accent/30 px-1.5 py-1 text-accent/80 hover:bg-accent/10 transition-colors"
+          className="inline-flex items-center gap-1 rounded-sm border border-dashed border-accent/30 px-2 py-1 text-accent/80 hover:bg-accent/10 transition-colors"
         >
           <Plus className="h-3 w-3" />
           {logoSrc ? <img src={logoSrc} alt="" className="h-3.5 w-3.5 opacity-70" /> : <Link2 className="h-3 w-3" />}
@@ -340,7 +340,7 @@ function ProductPill({
     return (
       <button
         onClick={onConnect}
-        className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-accent/30 px-2.5 py-1 text-[11px] text-accent/80 hover:bg-accent/10 transition-colors"
+        className="inline-flex items-center gap-1.5 rounded-sm border border-dashed border-accent/30 px-2 py-1 text-[11px] text-accent/80 hover:bg-accent/10 transition-colors"
       >
         <Plus className="h-3 w-3" /> {t_i18n("Connect {name}", { name })}
       </button>
@@ -351,8 +351,7 @@ function ProductPill({
   // like a broken link that opens a blank tab.
   const href = safeExternalUrl(url);
   const base = cn(
-    "inline-flex items-center gap-1.5 rounded-full border border-elevation-subtle-soft py-1 text-[11px] text-default-primary no-underline",
-    compact ? "px-1.5" : "px-2.5",
+    "inline-flex items-center gap-1.5 rounded-sm border border-elevation-subtle-soft px-2 py-1 text-[11px] text-default-primary no-underline",
   );
   // What the compact pill no longer writes out.
   const tone = productPillTone(healthy, health);

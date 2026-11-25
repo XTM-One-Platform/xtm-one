@@ -195,9 +195,12 @@ def test_an_unconfirmed_red_no_longer_reads_red_on_the_item():
 def test_a_live_green_is_recorded_and_a_live_red_left_as_it_stands():
     out, what = wipr.record_unconfirmed_failure(_payload(), _failure(), {"head_sha": SHA, "conclusion": "success"})
     assert what and wipr._ci_conclusion(out["pull_requests"][0]["ci"]) == "success"
-    for state in ({"head_sha": SHA, "conclusion": "failure"}, {"head_sha": "d" * 40, "conclusion": "success"}, None):
+    for state in ({"head_sha": SHA, "conclusion": "failure"}, None):
         out, what = wipr.record_unconfirmed_failure(_payload(), _failure(), state)
         assert what is None and wipr.red_pull_requests(out)
+    # A head the pull request moved past: its red is spent, the live head starts clean (#2014).
+    out, what = wipr.record_unconfirmed_failure(_payload(), _failure(), {"head_sha": "d" * 40, "conclusion": "success"})
+    assert what and "moved from" in what and wipr.red_pull_requests(out) == []
 
 
 def test_a_new_red_run_after_a_marked_one_reads_red_again():

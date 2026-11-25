@@ -394,7 +394,7 @@ export function PreviewStage({
         <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-wrap items-start gap-2" data-testid="video.editor.stageChips">
           <ApproximateInsertsBadge plan={loaded} playhead={playhead} />
           {previewing && (
-            <span className="ml-auto inline-flex animate-appear-late items-center gap-1.5 rounded-full bg-elevation-default px-2 py-1 content-caption text-default-secondary backdrop-blur">
+            <span className="ml-auto inline-flex animate-appear-late items-center gap-1.5 rounded-sm bg-elevation-default px-2 py-1 content-caption text-default-secondary backdrop-blur">
               <Spinner size="sm" tone="inherit" /> {t_i18n("Updating the preview")}
             </span>
           )}

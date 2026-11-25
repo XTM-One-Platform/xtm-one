@@ -445,6 +445,14 @@ async def _product_view(
                 mark("cache", "stale")
                 _revalidate(user_id, vertical, generation)
                 return stale
+            key = _view_key(user_id, vertical, generation)
+            if _build_locks.get(key) is None or key in _revalidations:
+                # No view to answer from and no request building one: read only this case's members and
+                # build the whole view in the background (#1986), never the whole world on the request.
+                mark("cache", "scoped")
+                scoped = await _case_view(db, client, user_id, vertical, members)
+                _revalidate(user_id, vertical, generation)
+                return scoped
     if client is None:
         return await _build_view(db, client, user_id, vertical, generation)
     async with _singleflight(_view_key(user_id, vertical, generation)):
@@ -463,7 +471,7 @@ async def _build_view(db: Any, client: Any, user_id: str, vertical: str, generat
 
     started = time.perf_counter()
     async with timed("source"):
-        view = await source.read_view(db, user_id, vertical)
+        view: ViewerView = await source.read_view(db, user_id, vertical)
     logger.info(
         "CTEM cases: view of %s built in %.0f ms (vertical %s, generation %s, %d issues, missing %s)",
         user_id,
@@ -473,16 +481,7 @@ async def _build_view(db: Any, client: Any, user_id: str, vertical: str, generat
         len(view.issues),
         view.missing,
     )
-    if view.missing and client is not None:
-        # Ids the viewer was shown from a product that does not answer now:
-        # still theirs to see, with the details marked unavailable.
-        try:
-            seen = await client.get(_seen_key(user_id, vertical))
-            for member_id in json.loads(seen) if seen else []:
-                if member_id.split(":", 1)[0] in view.missing and member_id not in view.issues:
-                    view.unavailable.add(member_id)
-        except Exception:
-            logger.info("CTEM cases: last-seen ids unreadable for %s", user_id, exc_info=True)
+    await _seen_while_missing(client, user_id, vertical, view)
     if client is not None:
         try:
             await client.set(_view_key(user_id, vertical, generation), view.to_json(), ex=VIEW_TTL_SECONDS)
@@ -491,6 +490,34 @@ async def _build_view(db: Any, client: Any, user_id: str, vertical: str, generat
             await client.set(_seen_key(user_id, vertical), json.dumps(visible), ex=LAST_SEEN_TTL_SECONDS)
         except Exception:
             logger.info("CTEM cases: view cache not written for %s", user_id, exc_info=True)
+    return view
+
+
+async def _seen_while_missing(client: Any, user_id: str, vertical: str, view: ViewerView) -> None:
+    """Ids the viewer was shown from a product that does not answer now: still theirs to see, marked unavailable."""
+    if not view.missing or client is None:
+        return
+    try:
+        seen = await client.get(_seen_key(user_id, vertical))
+        for member_id in json.loads(seen) if seen else []:
+            if member_id.split(":", 1)[0] in view.missing and member_id not in view.issues:
+                view.unavailable.add(member_id)
+    except Exception:
+        logger.info("CTEM cases: last-seen ids unreadable for %s", user_id, exc_info=True)
+
+
+async def _case_view(db: Any, client: Any, user_id: str, vertical: str, members: list[str]) -> ViewerView:
+    """The viewer's own view of one case's *members* (``ctem_cases_source.read_case_view``), never cached.
+
+    Same rules as a whole view: what the viewer cannot read stays out (Restricted),
+    an id seen before from a product that does not answer now is marked unavailable.
+    """
+    from app.services import ctem_cases_source as source
+
+    async with timed("source"):
+        view: ViewerView = await source.read_case_view(db, user_id, vertical, members)
+    await _seen_while_missing(client, user_id, vertical, view)
+    view.unavailable &= set(members)
     return view
 
 
