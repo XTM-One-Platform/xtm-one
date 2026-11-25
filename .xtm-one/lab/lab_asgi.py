@@ -541,12 +541,16 @@ def screens_ctem_cases(environ: dict) -> bool:
     and merges into the same ones after a restart (the keys are stable). A viewer named in
     ``ctem_sample.SCREENS_RESTRICTED`` reads without its listed issues, so the real view marks the case
     ``aggregates_restricted`` for that viewer only (merge-only recompute: a narrower read never closes them).
+
+    The stub takes every keyword argument of the real read (the recompute passes ``remap=True``): a missing one
+    made the recompute answer 500 and the lab start with no case (#2081). The sample has no OpenAEV member
+    gone at source, so *remap* reads the same issues.
     """
     if environ.get("LAB_CTEM_SCREENS", "").strip().lower() != "on":
         return False
     from app.services import ctem_cases_source
 
-    async def read_open_issues(db, user_id, vertical, *, now=None, members=None):
+    async def read_open_issues(db, user_id, vertical, *, now=None, members=None, remap=False):  # noqa: ARG001
         out = ctem_cases_source.SourceRead()
         if ctem_cases_source.normalize_vertical(vertical) != ctem_sample.VERTICAL:
             return out
