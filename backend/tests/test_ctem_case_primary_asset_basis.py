@@ -127,11 +127,15 @@ def test_a_recorded_basis_wins_over_the_kept_chain() -> None:
 def test_a_primary_asset_one_member_proves_is_proven_for_the_case() -> None:
     inferred = _signal(
         "s-1",
-        _decision({"from": "primary_asset", "name": "Payments Platform", "criticality": "high", "chain": [_hop("rule")]}),
+        _decision(
+            {"from": "primary_asset", "name": "Payments Platform", "criticality": "high", "chain": [_hop("rule")]}
+        ),
     )
     proven = _signal(
         "s-2",
-        _decision({"from": "primary_asset", "name": "Payments Platform", "criticality": "high", "chain": [_hop("manual")]}),
+        _decision(
+            {"from": "primary_asset", "name": "Payments Platform", "criticality": "high", "chain": [_hop("manual")]}
+        ),
     )
     rendered = _read(inferred, proven)
     assert rendered["primary_asset_count"] == 1 and rendered["inferred_primary_asset_count"] == 0
@@ -143,7 +147,12 @@ def test_the_rows_explain_the_case_counts() -> None:
         _signal(
             "s-1",
             _decision(
-                {"from": "primary_asset", "name": "Payments Platform", "criticality": "critical", "chain": [_hop("rule")]},
+                {
+                    "from": "primary_asset",
+                    "name": "Payments Platform",
+                    "criticality": "critical",
+                    "chain": [_hop("rule")],
+                },
                 {"from": "primary_asset", "name": "HR records", "criticality": "high", "chain": [_hop("opencrq")]},
             ),
         ),
@@ -170,7 +179,9 @@ def test_a_view_cached_before_2396_reads_every_primary_asset_as_proven() -> None
 def test_the_by_primary_asset_filter_keeps_inferred_links() -> None:
     issue = _signal(
         "s-1",
-        _decision({"from": "primary_asset", "name": "Payments Platform", "criticality": "high", "chain": [_hop("rule")]}),
+        _decision(
+            {"from": "primary_asset", "name": "Payments Platform", "criticality": "high", "chain": [_hop("rule")]}
+        ),
     )
     case = _case()
     rows = [CtemCaseIssue(case_id=case.id, source="signal", external_id="s-1", open=True)]
