@@ -500,15 +500,37 @@ def screens_ctem_posture(environ: dict) -> bool:
 screens_ctem_posture(dict(os.environ))
 
 
-def screens_source_issues(now: datetime) -> list:
-    """``ctem_sample.SCREENS_ISSUES`` as ``ctem_cases.SourceIssue`` rows, first seen ``days_ago`` before *now*."""
+def screens_source_issues(now: datetime, hidden: tuple[str, ...] = ()) -> list:
+    """``ctem_sample.SCREENS_ISSUES`` as ``ctem_cases.SourceIssue`` rows, first seen ``days_ago`` before *now*.
+
+    *hidden* (``source:external_id``) are left out: the viewer's own read does not return them.
+    """
     from app.services.ctem_cases import SourceIssue
 
     rows = []
     for raw in ctem_sample.SCREENS_ISSUES:
         fields = {k: v for k, v in raw.items() if k != "days_ago"}
-        rows.append(SourceIssue(**fields, first_seen_at=now - timedelta(days=raw["days_ago"])))
+        issue = SourceIssue(**fields, first_seen_at=now - timedelta(days=raw["days_ago"]))
+        if issue.member_id not in hidden:
+            rows.append(issue)
     return rows
+
+
+async def screens_viewer_email(db, user_id) -> str | None:
+    """The email of *user_id*, or ``None`` when it cannot be read (the viewer then reads every issue)."""
+    if db is None:
+        return None
+    try:
+        import uuid
+
+        from sqlalchemy import select
+
+        from app.models.user import User
+
+        viewer = uuid.UUID(str(user_id))
+        return (await db.execute(select(User.email).where(User.id == viewer))).scalar_one_or_none()
+    except Exception:  # noqa: BLE001 - lab only: an unreadable viewer reads the whole sample
+        return None
 
 
 def screens_ctem_cases(environ: dict) -> bool:
@@ -516,7 +538,9 @@ def screens_ctem_cases(environ: dict) -> bool:
 
     ``read_open_issues`` is called by its module attribute (recompute and every viewer's view), so replacing it
     feeds the real grouping, store and view: ``lab.py`` runs the real recompute, which creates the cases once
-    and merges into the same ones after a restart (the keys are stable).
+    and merges into the same ones after a restart (the keys are stable). A viewer named in
+    ``ctem_sample.SCREENS_RESTRICTED`` reads without its listed issues, so the real view marks the case
+    ``aggregates_restricted`` for that viewer only (merge-only recompute: a narrower read never closes them).
     """
     if environ.get("LAB_CTEM_SCREENS", "").strip().lower() != "on":
         return False
@@ -526,7 +550,9 @@ def screens_ctem_cases(environ: dict) -> bool:
         out = ctem_cases_source.SourceRead()
         if ctem_cases_source.normalize_vertical(vertical) != ctem_sample.VERTICAL:
             return out
-        out.issues = screens_source_issues(now or datetime.now(UTC))
+        email = await screens_viewer_email(db, user_id)
+        hidden = ctem_sample.SCREENS_RESTRICTED.get((email or "").lower(), ())
+        out.issues = screens_source_issues(now or datetime.now(UTC), hidden)
         return out
 
     ctem_cases_source.read_open_issues = read_open_issues
