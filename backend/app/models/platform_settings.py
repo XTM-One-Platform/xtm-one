@@ -354,6 +354,9 @@ class PlatformSettings(Base):
     ctem_briefing_agent_ids: Mapped[dict | None] = mapped_column(
         JSON, nullable=True, default=None
     )
+    # CTEM case opening per vertical (#1951): ``{vertical: false}`` pauses it
+    # (services/ctem_case_opening.py). NULL or a missing vertical = on.
+    ctem_case_opening: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
     # --- Quota configuration ──────────────────────────────────────────────
     quota_config: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)

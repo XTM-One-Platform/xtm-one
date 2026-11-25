@@ -518,6 +518,14 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _CTEM_CASE_KEYS,
     },
+    "ctem_case.opening_changed": {
+        "description": (
+            "An administrator turned CTEM case opening on or off (#1951, services/ctem_case_opening.py). "
+            "Off: no confirmed signal opens a case, they wait; on: the waiting signals open their cases "
+            "at once. Payload: vertical, on, changed_by (user id), waiting (confirmed signals with no case)."
+        ),
+        "filter_keys": ("vertical", "on", "changed_by"),
+    },
     "ctem_signal.recorded": {
         "description": (
             "A CTEM signal was seen for the first time (services/ctem_signals.py), after the scope gate gave it "
@@ -557,6 +565,7 @@ PLATFORM_WIDE_EVENTS: frozenset[str] = frozenset(
         "platform.release.deployed",
         "platform.default_model_route.changed",
         "integration.version.changed",
+        "ctem_case.opening_changed",
     }
 )
 

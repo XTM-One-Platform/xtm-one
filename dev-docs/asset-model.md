@@ -373,6 +373,10 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
   group page `/ctem/inventory/asset-groups/:id` reads its members through that filter, paged on the server.
 - `PUT /api/v1/organization-context/primary-assets/{name}/links` `{names}`: the records and groups a primary asset
   covers; 404 for an unknown primary asset, 422 naming what matches nothing.
+- `GET /api/v1/organization-context/primary-assets/link-counts`: per primary asset key, the stored links counted
+  `{total, manual, opencrq, rule}` (removals left out, one grouped query, #1978 S2). The Assets column of the primary
+  assets table reads it: a synced link shows as a count, never as a list, the profile's `asset_names` holding only
+  the names a person typed.
 - The profile API never writes a row once the records are imported (#1752): `PUT /api/v1/organization-context`
   and `POST .../versions/{v}/restore` ignore `assets_exposure`, `asset_groups` and `ai_systems` (the stored
   version's lists are kept, so `save_version` applies no row write and the synced-row lock never judges a
