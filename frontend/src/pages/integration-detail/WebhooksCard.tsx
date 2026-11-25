@@ -30,7 +30,6 @@ import {
 } from "@/hooks/api/useIntegrationApi";
 import { useFormatter } from "@/i18n";
 import type { Integration, ProviderCatalogItem, IntegrationElement } from "@/types";
-import { CopyIconButton } from "@/components/ui/copy-icon-button";
 import { CopyableUrl } from "./CopyableUrl";
 import { showsAnyWebhooksBlock, webhooksCardBlocks } from "./webhooks-card-blocks";
 import { formatTimeAgo } from "@/lib/relative-time";
@@ -188,12 +187,7 @@ function NotionWebhookSetupBlock({ integration, baseUrl }: { integration: Integr
       ) : isError ? (
         <p className="content-caption text-default-secondary">{t_i18n("The verification token could not be read. Reload the page to try again.")}</p>
       ) : token ? (
-        <div className="flex items-center gap-2">
-          <code className="flex-1 rounded-sm bg-elevation-hover px-2.5 py-1.5 content-compact text-accent font-mono-plex break-all select-all">
-            {token}
-          </code>
-          <CopyIconButton value={token} label={t_i18n("Copy the verification token")} className="shrink-0" />
-        </div>
+        <CopyableUrl url={token} copyLabel={t_i18n("Copy the verification token")} />
       ) : (
         <p className="content-caption text-default-secondary">
           {t_i18n("No verification token received yet. Create the subscription in Notion first; the token appears here once Notion sends it.")}
