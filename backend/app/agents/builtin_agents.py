@@ -305,6 +305,14 @@ _STAGE_ASSESSMENT_SCHEMA: dict = {
             "type": "string",
             "description": "The single most important next action for this stage.",
         },
+        "caveats": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Optional: each metric read as suspect (for example a 0% detection "
+                "a collector may not have matched) and why, in one short line."
+            ),
+        },
         "coverage": {
             "type": "object",
             "properties": {
@@ -356,7 +364,7 @@ _STAGE_DEFS: list[dict] = [
         "name": "CTEM Validation Analyst",
         "icon": "ShieldCheck",
         "focus": "whether prioritized exposures are proven, not assumed",
-        "cyber": "OpenAEV BAS efficacy - prevention vs detection success, per-technique ATT&CK results, and the DEPTH of the detection stack (security platforms / active collectors) that actually caught the attacks; name techniques exercised but not detected. OpenCTI detection-rule coverage is the fallback proxy",
+        "cyber": "OpenAEV BAS efficacy - prevention vs detection success, per-technique ATT&CK results, and the DEPTH of the detection stack (security platforms / active collectors) that actually caught the attacks; name techniques exercised but not detected. A detection result depends on the collector having matched the security platform's alerts: a uniform 0% detection with a live EDR / SIEM collector is suspect until its traces are read (rule 6). OpenCTI detection-rule coverage is the fallback proxy",
         "fimi": "corroboration - the share of channels with mapped infrastructure (publishing to domains/URLs) evidencing real operations",
         "fraud": "confirmation - validated-malicious share of fraud indicators, proven by OpenAEV phishing simulations (human response) when connected",
     },
@@ -371,6 +379,37 @@ _STAGE_DEFS: list[dict] = [
         "fraud": "phishing / brand-abuse takedown closure (Case-RFT) and open takedowns",
     },
 ]
+
+
+# A uniform 0% detection read while a collector is alive is far more often a
+# collector that did not match the security platform's alerts than a total
+# detection failure (#2402): the validation analyst reads the collector traces
+# before scoring it, and never recommends new detections on that zero.
+_SUSPECT_ZERO_RULE = (
+    "6. A suspect zero is not a finding. A detection rate of 0% (or every "
+    "DETECTION expectation Not Detected) while at least one EDR / SIEM "
+    "collector is registered and alive is SUSPECT: the collector may not have "
+    "matched the security platform's alerts. Before scoring it, read the "
+    "collector traces of one or two of those expectations with "
+    "manage_openaev_expectation action=traces (at most two traces calls per "
+    "assessment). If the traces show alerts the collector did not match to the "
+    "expectation, or the collector wrote no trace for them, write: detection "
+    "result not assessable, the collector did not match the security "
+    "platform's alerts; set score_read to unknown (never critical on that "
+    "zero), add the reason to `caveats`, and make the recommended_action: "
+    "check the collector's matching against the security platform's own "
+    "alerts, not new detections. If the traces show the collector searched "
+    "and the platform raised no alert, the miss is real: report those "
+    "techniques as not detected.\n"
+)
+_SUSPECT_ZERO_PROMPT = (
+    " A 0% detection read while an EDR / SIEM collector is alive is suspect, "
+    "not a finding: read the traces of one or two of those expectations "
+    "(manage_openaev_expectation action=traces, at most two calls) before "
+    "scoring it; when the collector did not match the platform's alerts, say "
+    "the detection result is not assessable, set score_read to unknown, record "
+    "it in `caveats` and recommend checking the collector's matching."
+)
 
 
 def _stage_persona(d: dict) -> str:
@@ -397,7 +436,11 @@ def _stage_persona(d: dict) -> str:
         "that does not see everything: a zero there is not assessable (coverage "
         "unknown), never no activity. Set score_read to unknown for the OpenAEV "
         "part, coverage.openaev to false, and write: OpenAEV not readable with "
-        "full scope for this user.\n\n"
+        "full scope for this user.\n"
+        "5. Every count you write in the headline or the assessment equals the "
+        "number of items you list (six techniques written, six named).\n"
+        + (_SUSPECT_ZERO_RULE if d["key"] == "validation" else "")
+        + "\n"
         "Lead with what the organization HAS: the headline and the start of the "
         "assessment must surface the strongest finding from the CONNECTED "
         "product's data. A product that is not connected is a coverage gap, not "
@@ -431,7 +474,10 @@ def _stage_prompt(d: dict) -> str:
         "score_read, the 1-3 key_metrics that matter (with real values), and ONE "
         "specific, prioritized recommended_action a team can act on this week "
         "(name the asset / CVE / actor / narrative where possible). Set "
-        "`coverage` to which products returned data. Output only the JSON object."
+        "`coverage` to which products returned data. Every count written in "
+        "the headline or the assessment equals the number of items listed."
+        + (_SUSPECT_ZERO_PROMPT if d["key"] == "validation" else "")
+        + " Output only the JSON object."
     )
 
 
