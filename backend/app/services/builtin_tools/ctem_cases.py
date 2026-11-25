@@ -102,7 +102,31 @@ async def resolve_case_id(db: AsyncSession, case_id: str, organization_id: uuid.
         return found[0], ""
     if found:
         return None, f"case_id {case_id!r} matches several cases: {', '.join(str(f) for f in found)}. Pass the full id."
+    # A merged-away case's prefix names its old id (#2289): the read then answers the survivor.
+    merged = await store.merged_with_prefix(db, str(case_id or ""), organization_id=organization_id, limit=5)
+    if len(merged) == 1:
+        return merged[0].case_id, ""
+    if merged:
+        ids = ", ".join(str(m.case_id) for m in merged)
+        return None, f"case_id {case_id!r} matches several merged cases: {ids}. Pass the full id."
     return None, f"No case {case_id}. case_id is the id list_ctem_cases answers, or its first 8+ characters."
+
+
+async def missing_case_answer(
+    db: AsyncSession, case_id: object, wanted: uuid.UUID | None, organization_id: uuid.UUID | None
+) -> str:
+    """What a case tool answers when *wanted* names no case the caller sees (#2289).
+
+    A case merged into another answers the survivor, when and by whom, so the caller
+    follows it; an id never created (or deleted) keeps ``No case <id>.``.
+    """
+    from app.services import ctem_cases_store as store
+
+    if wanted is not None and organization_id is not None:
+        merged = await store.merged_into(db, wanted, organization_id=organization_id)
+        if merged is not None:
+            return merged.answer()
+    return f"No case {case_id}."
 
 
 def _when(value: object) -> datetime | None:
@@ -297,10 +321,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     return why
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
-                    from app.services.ctem_case_delete import deleted_case_answer
-
-                    # A deleted case says so, from its audit row (#2328): never a bare miss.
-                    return await deleted_case_answer(db, wanted) or f"No case {case_id}."
+                    return await missing_case_answer(db, case_id, wanted, org_id)
                 from app.services import ctem_case_versions as case_versions
                 from app.services import ctem_version_match as matching
 
@@ -419,7 +440,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 org_id, vertical = await _context(db)
                 shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
                 if shown is None:
-                    return f"No case {case_id}."
+                    return await missing_case_answer(db, case_id, wanted, org_id if scope else None)
                 case, rows, _ = shown
                 refused = await _view_only(db, rows, vertical)
                 if refused:
@@ -588,7 +609,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     return f"No case {case_id}."
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
-                    return f"No case {case_id}."
+                    return await missing_case_answer(db, case_id, wanted, org_id)
                 refused = await _view_only(db, shown[1], vertical)
                 if refused:
                     return refused
@@ -648,7 +669,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     return f"No case {case_id}."
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
-                    return f"No case {case_id}."
+                    return await missing_case_answer(db, case_id, wanted, org_id)
                 refused = await _view_only(db, shown[1], vertical)
                 if refused:
                     return refused
@@ -689,7 +710,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 org_id, vertical = await _context(db)
                 shown = await _shown(db, wanted, org_id, vertical) if org_id and scope else None
                 if shown is None:
-                    return f"No case {case_id}."
+                    return await missing_case_answer(db, case_id, wanted, org_id if scope else None)
                 refused = await _view_only(db, shown[1], vertical)
                 if refused:
                     return refused
@@ -907,7 +928,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     return f"No case {case_id}."
                 shown = await _shown(db, wanted, org_id, vertical)
                 if shown is None:
-                    return f"No case {case_id}."
+                    return await missing_case_answer(db, case_id, wanted, org_id)
                 refused = await _view_only(db, shown[1], vertical)
                 if refused:
                     return refused
@@ -966,7 +987,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 for one in [target, *sources]:
                     shown = await _shown(db, one, org_id, vertical)
                     if shown is None:
-                        return f"No case {one}."
+                        return await missing_case_answer(db, one, one, org_id)
                     refused = await _view_only(db, shown[1], vertical)
                     if refused:
                         return refused

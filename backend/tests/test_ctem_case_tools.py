@@ -110,18 +110,23 @@ def env(monkeypatch):
     monkeypatch.setattr(store, "get_case", _get)
     monkeypatch.setattr(store, "create_manual_case", _create)
 
+    # No case of these tests was merged away (#2289): the merge lookups answer none.
+    async def _merged_into(_db: object, case_id: object, *, organization_id: object) -> object:
+        return seen.merged.get(case_id)
+
+    async def _merged_with_prefix(_db: object, prefix: str, *, organization_id: object, limit: int = 2) -> list[object]:
+        return [m for m in seen.merged.values() if str(m.case_id).startswith(prefix)][:limit]
+
+    seen.merged = {}
+    monkeypatch.setattr(store, "merged_into", _merged_into)
+    monkeypatch.setattr(store, "merged_with_prefix", _merged_with_prefix)
+
     async def _events(_db: object, case_ids: list[object]) -> dict[object, list[object]]:
         return {cid: [] for cid in case_ids}
 
     # The list's asset count and the read's version history read the case events (#1694).
     monkeypatch.setattr(store, "events_of", _events)
     monkeypatch.setattr(view_of, "viewer_view", _viewer)
-
-    async def _never_deleted(_db: object, _case_id: object) -> None:
-        return None
-
-    # No delete audit row in this fake session (#2328): a miss stays "No case".
-    monkeypatch.setattr("app.services.ctem_case_delete.deleted_case_answer", _never_deleted)
 
     def _tools(user_id: str):
         defs, executor = build_ctem_case_tools(user_id=user_id, agent_id=AGENT)
