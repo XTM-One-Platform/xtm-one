@@ -1493,8 +1493,8 @@ export interface BuiltinToolGroup {
   /** Only an administrator adds it to an agent: a picker shows it locked to anyone else. */
   bind_admin_only?: boolean;
   agent_keyed: boolean;
-  /** A Platform Health specialist's suite, carried by the Platform Health fleet's own agents: no session picker offers it. */
-  health_only: boolean;
+  /** Internal to Platform Health (#1943): carried by its fleet's own agents alone; no picker, Tools page or chat offers it. */
+  internal: boolean;
   named_after_platform: boolean;
   aliases: string[];
   /** False while this deployment withholds the suite (a flag off): its functions are then empty. */
@@ -2669,6 +2669,8 @@ export interface TriggerConfig {
   fired_at?: string;
   /** platform_event triggers: the subscription's deadline (ISO 8601 with its offset); an event after it starts nothing. */
   expires_at?: string;
+  /** platform_event triggers: "observer" watches the objects of its events without working them (never counted as a CTEM case worker). */
+  role?: "observer" | "worker";
   /** Evaluated before any run or gate; a dropped event is counted (`events_filtered_count`). */
   filter?: {
     channels?: string[];
@@ -5807,6 +5809,13 @@ export interface CtemFunnelLayer {
   reason?: string | null;
   /** The reachability split of the profile assets, on the Exposed layer (`services/asset_reachability.py`). */
   reachability?: CtemFunnelReachability | null;
+  /** Business impact (#1980): the primary assets reached and the inventory assets supporting them. */
+  primary_assets?: number;
+  supporting_assets?: number;
+  /** Business impact: the linked group members were read in part (a very large group). */
+  truncated?: boolean;
+  /** After policy (#1980): the rules of the saved prioritization policy the layer applies. */
+  rules?: string[];
 }
 
 /** How many organization profile assets are reachable, proven unreachable or of unknown exposure. */
@@ -5911,7 +5920,8 @@ interface CtemStageAssessment {
 /** Status of a per-user CTEM AI artifact (briefing, stage assessment). The
  *  locked ones (ee_locked, ai_disabled, no_model) never start a run. */
 type CtemAiArtifactStatus =
-  | "ready" | "generating" | "pending" | "ee_locked" | "ai_disabled" | "no_model" | "unavailable";
+  | "ready" | "generating" | "pending" | "ee_locked" | "ai_disabled" | "no_model" | "unavailable"
+  | "not_assessable" | "no_module_account";
 
 export interface CtemStageAssessmentResponse {
   assessment: CtemStageAssessment | null;
@@ -5933,6 +5943,10 @@ export interface CtemStageAssessmentResponse {
    *  page regenerates it on visit and marks it stale meanwhile. */
   stale?: boolean;
   fresh_days?: number;
+  /** The newest run was skipped before any model call because the member has
+   *  no account on these modules (status no_module_account, #2042): the card
+   *  tells the member to sign in to them once. */
+  no_module_account?: string[] | null;
 }
 
 export interface CtemStage {
@@ -7667,6 +7681,9 @@ export interface Group {
   ctem_access?: GroupCtemAccess | null;
   /** With `decide`: the members get a notification for each case gate. */
   ctem_notify?: boolean;
+  /** People who sign in through single sign-on join the group at every
+   *  sign-in (`services/group_auto_join.py`); admin routes only. */
+  auto_join?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -9290,6 +9307,10 @@ interface RunSearchResultItem {
   anomaly_count?: number;
   // Entries the platform could not run, left out of every headline.
   platform_error_count?: number;
+  // A placebo comparison's run: its arm and comparison; `real` and null elsewhere.
+  arm?: EvaluationArm;
+  placebo_target?: PlaceboTarget | null;
+  placebo_comparison_id?: string | null;
 }
 
 export interface RunSearchResponse {

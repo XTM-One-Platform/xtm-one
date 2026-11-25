@@ -50,7 +50,7 @@ function CaseRow({ row, from, now }: { row: CtemCasesOverviewCase; from: { backT
           {[
             row.created_at ? t_i18n("Opened {timeAgo}", { timeAgo: formatTimeAgo(intl, row.created_at, now) }) : null,
             row.updated_at ? t_i18n("changed {timeAgo}", { timeAgo: formatTimeAgo(intl, row.updated_at, now) }) : null,
-            row.crown_jewel ? t_i18n("touches {asset}", { asset: row.crown_jewel }) : null,
+            row.primary_asset ? t_i18n("touches {asset}", { asset: row.primary_asset }) : null,
           ]
             .filter(Boolean)
             .join(" · ")}

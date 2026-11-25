@@ -78,6 +78,7 @@ export function CaseRemediationDecision({
         ) : !gate ? (
           <CaseSectionReason
             own={t_i18n("The remediation options with their cost and the one approved, once the case is validated.")}
+            icon={CASE_SECTION_ICON.remediation_decision}
             testId="ctem-case-remediation-empty"
           />
         ) : (
@@ -107,7 +108,12 @@ export function CaseRemediationDecision({
               onAnswered={() => items.refetch()}
             />
         )}
-        {waiting && !item && !items.isLoading && (
+        {waiting && !item && !items.isLoading && record?.decision_filed === false && (
+          <p className="text-default-secondary" data-testid="ctem-case-remediation-not-filed">
+            {t_i18n("No remediation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.")}
+          </p>
+        )}
+        {waiting && !item && !items.isLoading && record?.decision_filed !== false && (
           <p className="text-default-secondary" data-testid="ctem-case-remediation-elsewhere">
             {t_i18n("A person decides it: the decision is in their Waiting for you list.")}
           </p>

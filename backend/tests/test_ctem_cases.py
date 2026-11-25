@@ -101,6 +101,46 @@ def test_a_new_key_becomes_a_new_case():
     assert plans[0].add == ["opencti:v1"]
 
 
+@pytest.mark.parametrize(
+    ("left", "right", "same"),
+    [
+        ("upgrade:minio/minio@latest", "upgrade:-/minio@latest", True),
+        ("upgrade:-/windows@latest", "upgrade:microsoft/windows@latest", True),
+        ("upgrade:-/microsoft windows@latest", "upgrade:microsoft/windows@latest", True),
+        ("upgrade:-/MinIO@latest", "upgrade:minio/minio@latest", True),
+        ("upgrade:minio/minio@latest", "upgrade:-/minio@2024.1.1", False),
+        ("upgrade:apache/tomcat@latest", "upgrade:oracle/tomcat@latest", False),
+        ("upgrade:-/windows@latest", "upgrade:-/microsoft windows@latest", False),
+        ("upgrade:-/minio@latest", "upgrade:-/minio-py@latest", False),
+        ("coa:course-of-action--a", "coa:course-of-action--b", False),
+    ],
+)
+def test_one_fix_of_one_product_under_two_spellings_is_one_key(left, right, same):
+    """#2037: vendor present or absent and label case never split a fix; another vendor or version does."""
+    assert cc.same_product_key(left, right) is same
+    assert cc.same_product_key(right, left) is same
+
+
+def test_an_alias_key_joins_the_open_case_of_its_product():
+    """#2037: MinIO under minio/minio while the -/minio case is open: no second case."""
+    case = cc.CaseSnapshot(id="m1", keys=["upgrade:-/minio@latest"], state="new", members={"opencti:v1": True})
+    issue = _cti("v2", "CVE-2023-28432", product="MinIO", vendor="MinIO", fixed=None)
+    (plan,) = cc.plan_recompute([case], [issue])
+    assert plan.case_id == "m1" and plan.add == ["opencti:v2"]
+    assert plan.add_keys == ["upgrade:minio/minio@latest"] and plan.remediation is None
+
+
+def test_an_alias_never_joins_a_closed_case_or_another_vendor():
+    closed = cc.CaseSnapshot(id="m1", keys=["upgrade:-/minio@latest"], state="resolved")
+    other = cc.CaseSnapshot(id="t1", keys=["upgrade:oracle/tomcat@latest"], state="new")
+    issues = [_cti("v2", "CVE-1", product="MinIO", vendor="MinIO", fixed=None), _cti("v3", "CVE-2", fixed=None)]
+    plans = cc.plan_recompute([closed, other], issues)
+    assert sorted(p.remediation.key for p in plans if p.case_id is None) == [
+        "upgrade:apache/tomcat@latest",
+        "upgrade:minio/minio@latest",
+    ]
+
+
 def _case(state="remediating", members=None, **kw) -> cc.CaseSnapshot:
     return cc.CaseSnapshot(
         id="c1", keys=["upgrade:apache/tomcat@9.0.98"], state=state, members=dict(members or {}), **kw
@@ -122,6 +162,7 @@ def test_recompute_adds_members_and_never_sets_owner_or_state():
         "reason",
         "evidence",
         "add_keys",
+        "settled",
     }
 
 
@@ -331,16 +372,16 @@ def test_default_priority(issue, priority):
     assert cc.default_priority([issue]) == priority
 
 
-def test_aggregates_count_distinct_assets_and_crown_jewels():
+def test_aggregates_count_distinct_assets_and_primary_assets():
     members = [
-        _cti("v1", "CVE-1", cvss=9.8, epss=0.9, kev=True, assets=("web-1", "web-2"), crown_jewels=("billing",)),
+        _cti("v1", "CVE-1", cvss=9.8, epss=0.9, kev=True, assets=("web-1", "web-2"), primary_assets=("billing",)),
         _cti("v2", "CVE-2", cvss=6.5, assets=("web-2",), first_seen_at=NOW - timedelta(days=3)),
     ]
     agg = cc.aggregates(members)
     assert agg == {
         "issue_count": 2,
         "asset_count": 2,
-        "crown_jewel_count": 1,
+        "primary_asset_count": 1,
         "kev_count": 1,
         "max_cvss": 9.8,
         "max_epss": 0.9,

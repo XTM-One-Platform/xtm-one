@@ -12,7 +12,8 @@
  * (or why there is none) and the state. Row actions: Run now, Edit, Pause or Resume, View
  * history, Delete with the choice of what becomes of the rows it wrote (keep them owned by the
  * source, make them editable by hand, or purge them, with the dry-run counts); a source with no
- * sync offers Make editable and Purge for an agent, a partner or a CSV import, nothing by hand.
+ * sync offers Make editable and Purge for every kind but rows entered by hand (the backend's rule,
+ * #1940), and a platform whose rows outlived their sync also offers Set up a sync.
  */
 import { useState } from "react";
 import { Alert, Chip, Icon, Radio, RadioGroup, Spinner } from "@filigran/design-system";
@@ -40,6 +41,8 @@ import {
   useRunOrganizationSyncs,
   useUpdateOrganizationSync,
   type OrganizationSource,
+  type ImportSectionKey,
+  type ImportSourceKey,
   type OrganizationSync,
   type OrganizationSyncScope,
   type RowsPlan,
@@ -88,8 +91,8 @@ const SOURCE_SCHEDULE_LABELS = {
 
 /** The rows a plan touches, per section, as ICU plurals (UX r1 B6). @i18n-keys */
 const SECTION_COUNT_LABELS = {
-  crown_jewels: "{count, plural, one {# primary asset} other {# primary assets}}",
-  tech_stack: "{count, plural, one {# software entry} other {# software entries}}",
+  primary_assets: "{count, plural, one {# primary asset} other {# primary assets}}",
+  software: "{count, plural, one {# software entry} other {# software entries}}",
   assets_exposure: "{count, plural, one {# asset} other {# assets}}",
   asset_groups: "{count, plural, one {# asset group} other {# asset groups}}",
 } as const satisfies Record<SourcedSection, string>;
@@ -128,8 +131,8 @@ const ROW_STATE_LABELS = {
 const SECTION_FIELD: Partial<Record<OrganizationSync["section"], SourcedSection>> = {
   assets: "assets_exposure",
   asset_groups: "asset_groups",
-  software: "tech_stack",
-  crown_jewels: "crown_jewels",
+  software: "software",
+  primary_assets: "primary_assets",
 };
 
 const isSourcedField = (field: string): field is SourcedSection => field in SOURCED_SECTION_LABELS;
@@ -143,8 +146,25 @@ const rowStateOf = (row: Row): RowState => {
   return stateOf(row.sync);
 };
 
-/** Agent, partner or CSV rows can be purged or handed over; hand, API and platform rows go through their own path. */
-const canPurgeSource = (source: OrganizationSource) => source.kind === "agent" || source.kind === "csv";
+/** The section of the import a profile field is fed by (the reverse of SECTION_FIELD). */
+const FIELD_IMPORT_SECTION: Record<SourcedSection, ImportSectionKey> = {
+  assets_exposure: "assets",
+  asset_groups: "asset_groups",
+  software: "software",
+  primary_assets: "primary_assets",
+};
+
+/**
+ * Every source but rows entered by hand can be purged or handed over (#1940): the backend's plan_rows refuses only
+ * the hand source, and stays the one authority. A source with no row has nothing to change.
+ */
+const canPurgeSource = (source: OrganizationSource) => source.kind !== "manual" && source.total > 0;
+
+/** What "Set up a sync" preselects in the import: the platform and the section its rows feed. */
+export interface SyncPreset {
+  section: ImportSectionKey;
+  source: ImportSourceKey;
+}
 
 interface Props {
   /**
@@ -154,13 +174,39 @@ interface Props {
   scope?: OrganizationSyncScope;
   /** Opens the step-by-step import (platform, section, filters with a live preview, schedule, review). */
   onAddSource?: () => void;
+  /**
+   * Opens the same import preselected on a platform and a section (#1940): offered as "Set up a sync" on a platform
+   * source with no sync. Without it the action is not drawn.
+   */
+  onSetUpSync?: (preset: SyncPreset) => void;
   /** The link of a section chip, the source's key and display label given; `null` renders the chip as plain text. */
   sectionHref?: (field: SourcedSection, source: ChipSource) => string | null;
-  /** Actions are off while the page is in edit. */
+  /** Actions are off while the host saves (the Prioritization policy card being saved). */
   disabled?: boolean;
+  /** Why the actions are off, said in a tooltip on Add a source. */
+  disabledReason?: string;
+  /**
+   * "card": its own Settings card with the shared-context notice (CTEM > Inventory > Sources). "section": a block inside
+   * a host card, titled by the host (the OpenCTI PIR sources on the Prioritization policy card); the import and
+   * sync dialogs carry the shared-context notice.
+   */
+  variant?: "card" | "section";
+  /** The section variant's heading and its one line. */
+  title?: string;
+  description?: string;
 }
 
-export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref = sourceSectionHref, disabled = false }: Props) {
+export function OrganizationSourcesSyncs({
+  scope = "",
+  onAddSource,
+  onSetUpSync,
+  sectionHref = sourceSectionHref,
+  disabled = false,
+  disabledReason,
+  variant = "card",
+  title,
+  description,
+}: Props) {
   const { t_i18n, locale, intl } = useFormatter();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -201,6 +247,10 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
   };
 
   const kindOf = (row: Row): OrganizationSource["kind"] => (row.sync ? "platform" : row.source.kind);
+
+  /** The schedule words of a source with no sync: a platform with rows kept those of a deleted sync (#1940). */
+  const sourceScheduleText = (source: OrganizationSource): string =>
+    source.kind === "platform" && source.total > 0 ? t_i18n("Rows from an earlier sync, none scheduled") : t_i18n(SOURCE_SCHEDULE_LABELS[source.kind]);
 
   /** The sections a row feeds, with their row counts (a sync: its own section). */
   const fieldsOf = (row: Row): { field: SourcedSection; count: number }[] => {
@@ -275,6 +325,13 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
   const setEnabled = (sync: OrganizationSync, enabled: boolean) =>
     update.mutate({ id: sync.id, body: bodyOf(sync, { enabled }) }, { onError: reportFailure(t_i18n("The sync could not be saved")) });
 
+  /** The import a platform source with no sync is set up from: its platform and the first section its rows feed. */
+  const presetOf = (row: Row): SyncPreset | null => {
+    if (row.sync || row.source.kind !== "platform" || !(row.source.key in IMPORT_SOURCE_NAMES)) return null;
+    const [first] = fieldsOf(row);
+    return first ? { section: FIELD_IMPORT_SECTION[first.field], source: row.source.key as ImportSourceKey } : null;
+  };
+
   const menuOf = (row: Row): OverflowMenuItem[] => {
     const name = nameOf(row);
     if (row.sync) {
@@ -289,8 +346,21 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         { id: "delete", label: t_i18n("Delete {name}", { name }), icon: TrashIcon, onSelect: () => setDeleting(row), destructive: true, separatorBefore: true, disabled },
       ];
     }
-    if (!canPurgeSource(row.source)) return [];
-    return [{ id: "rows", label: t_i18n("Remove or hand over the rows of {name}", { name }), icon: TrashIcon, onSelect: () => setDeleting(row), destructive: true, disabled }];
+    const items: OverflowMenuItem[] = [];
+    const preset = presetOf(row);
+    if (preset && onSetUpSync) items.push({ id: "set-up-sync", label: t_i18n("Set up a sync"), icon: PlusIcon, onSelect: () => onSetUpSync(preset), disabled });
+    if (canPurgeSource(row.source)) {
+      items.push({
+        id: "rows",
+        label: t_i18n("Remove or hand over the rows"),
+        icon: TrashIcon,
+        onSelect: () => setDeleting(row),
+        destructive: true,
+        separatorBefore: items.length > 0,
+        disabled,
+      });
+    }
+    return items;
   };
 
   const columns: DataTableColumn<Row>[] = [
@@ -400,10 +470,10 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
         row.sync ? (
           <TruncatedText text={scheduleLabel(row.sync)} lines={2} className="w-max max-w-[12rem]" />
         ) : (
-          <span className="text-default-secondary">{t_i18n(SOURCE_SCHEDULE_LABELS[row.source.kind])}</span>
+          <span className="text-default-secondary">{sourceScheduleText(row.source)}</span>
         ),
       sortValue: (row) => row.sync?.frequency ?? "",
-      csv: (row) => (row.sync ? scheduleLabel(row.sync) : ""),
+      csv: (row) => (row.sync ? scheduleLabel(row.sync) : sourceScheduleText(row.source)),
     },
     {
       key: "last_run",
@@ -501,84 +571,75 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
   ].join(", ");
 
   const addSource = onAddSource && (
-    <Button className="gap-1.5" onClick={onAddSource} disabled={disabled} data-testid="organization-sources.add">
-      <Icon name="plus" size={16} aria-hidden /> {t_i18n("Add a source")}
-    </Button>
+    <Tip content={disabled && disabledReason ? disabledReason : ""} wrap="auto">
+      <Button
+        variant={variant === "section" ? "secondary" : undefined}
+        className="gap-1.5"
+        onClick={onAddSource}
+        disabled={disabled}
+        data-testid="organization-sources.add"
+      >
+        <Icon name="plus" size={16} aria-hidden /> {t_i18n("Add a sync")}
+      </Button>
+    </Tip>
   );
 
-  return (
-    <>
-      <SettingsCard
-        data-testid="organization-sources"
-        title={t_i18n("Sources and syncs")}
-        description={t_i18n(
-          "Who feeds these sections: the platforms each sync reads or writes on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand.",
-        )}
-        action={
-          <span className="flex flex-wrap items-center gap-2">
-            {isAdmin && runnable.length > 0 && (
-              <Button
-                variant="secondary"
-                className="gap-1.5"
-                onClick={runAllNow}
-                disabled={disabled || runAll.isPending || run.isPending}
-                aria-busy={runAll.isPending || undefined}
-                data-testid="organization-sources.run-all"
-              >
-                {runAll.isPending ? <Spinner size="sm" tone="inherit" label={t_i18n("Running...")} /> : <Icon name="refresh-cw" size={16} aria-hidden />} {t_i18n("Run all syncs")}
-              </Button>
-            )}
-            {rows.length > 0 && addSource}
-          </span>
-        }
-      >
-        <OrganizationSharedContextNotice className="mb-4" />
-        {rows.length > 0 && (
-          <p className="mb-3 flex flex-wrap items-center gap-x-2 text-default-secondary" data-testid="organization-sources.summary">
-            <span>{summary}</span>
-            {failed.length > 0 && (
-              <Button variant="link" className="h-auto p-0 text-feedback-error-primary" onClick={() => failed[0].sync && setHistory(failed[0].sync)}>
-                {t_i18n("{count, plural, one {# failed} other {# failed}}", { count: failed.length })}
-              </Button>
-            )}
-          </p>
-        )}
-        {!syncsQuery.isLoading && !sourcesQuery.isLoading && !syncsQuery.isError && !sourcesQuery.isError && rows.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-elevation-subtle px-6 py-10 text-center" data-testid="organization-sources.empty">
-            <Icon name="refresh-cw" size={24} aria-hidden className="text-default-secondary" />
-            <p className="title-sm">{t_i18n("No source feeds these sections yet")}</p>
-            <p className="max-w-prose text-default-secondary">
-              {t_i18n("Add a source: pick a platform, the section it fills and its filters, preview the rows, then keep them in sync on a schedule.")}
-            </p>
-            {addSource}
-          </div>
-        ) : (
-          <DataTable
-            rows={rows}
-            columns={columns}
-            layout="auto"
-            rowKey={(row) => row.id}
-            pinFirst={(row) => row.sync?.section === "all"}
-            searchFields={(row) => [nameOf(row), t_i18n(SOURCE_KIND_NAMES[kindOf(row)]), row.sync ? filtersLine(row.sync) : ""]}
-            searchPlaceholder={t_i18n("Search...")}
-            filters={filters}
-            exportName="organization-sources"
-            urlKey={scope ? `osy_${scope}_` : "osy_"}
-            storageKey={scope ? `organization-sources-${scope}` : "organization-sources"}
-            isLoading={syncsQuery.isLoading || sourcesQuery.isLoading}
-            isError={syncsQuery.isError || sourcesQuery.isError}
-            onRetry={() => {
-              void syncsQuery.refetch();
-              void sourcesQuery.refetch();
-            }}
-            emptyLabel={t_i18n("No source feeds these sections yet")}
-            rowTestId="organization-sources.row"
-            rowActions={rowActions}
-            rowActionsWidth={88}
-          />
-        )}
-      </SettingsCard>
+  const actions = (
+    <span className="flex flex-wrap items-center gap-2">
+      {isAdmin && runnable.length > 0 && (
+        <Button
+          variant="secondary"
+          className="gap-1.5"
+          onClick={runAllNow}
+          disabled={disabled || runAll.isPending || run.isPending}
+          aria-busy={runAll.isPending || undefined}
+          data-testid="organization-sources.run-all"
+        >
+          {runAll.isPending ? <Spinner size="sm" tone="inherit" label={t_i18n("Running...")} /> : <Icon name="refresh-cw" size={16} aria-hidden />} {t_i18n("Run all syncs")}
+        </Button>
+      )}
+      {(rows.length > 0 || variant === "section") && addSource}
+    </span>
+  );
 
+  const summaryLine = rows.length > 0 && (
+    <p className="mb-3 flex flex-wrap items-center gap-x-2 text-default-secondary" data-testid="organization-sources.summary">
+      <span>{summary}</span>
+      {failed.length > 0 && (
+        <Button variant="link" className="h-auto p-0 text-feedback-error-primary" onClick={() => failed[0].sync && setHistory(failed[0].sync)}>
+          {t_i18n("{count, plural, one {# failed} other {# failed}}", { count: failed.length })}
+        </Button>
+      )}
+    </p>
+  );
+  const loaded = !syncsQuery.isLoading && !sourcesQuery.isLoading && !syncsQuery.isError && !sourcesQuery.isError;
+  const table = (
+    <DataTable
+      rows={rows}
+      columns={columns}
+      layout="auto"
+      rowKey={(row) => row.id}
+      pinFirst={(row) => row.sync?.section === "all"}
+      searchFields={(row) => [nameOf(row), t_i18n(SOURCE_KIND_NAMES[kindOf(row)]), row.sync ? filtersLine(row.sync) : ""]}
+      searchPlaceholder={t_i18n("Search...")}
+      filters={filters}
+      exportName="organization-sources"
+      urlKey={scope ? `osy_${scope}_` : "osy_"}
+      storageKey={scope ? `organization-sources-${scope}` : "organization-sources"}
+      isLoading={syncsQuery.isLoading || sourcesQuery.isLoading}
+      isError={syncsQuery.isError || sourcesQuery.isError}
+      onRetry={() => {
+        void syncsQuery.refetch();
+        void sourcesQuery.refetch();
+      }}
+      emptyLabel={t_i18n("No source feeds these sections yet")}
+      rowTestId="organization-sources.row"
+      rowActions={rowActions}
+      rowActionsWidth={88}
+    />
+  );
+  const dialogs = (
+    <>
       <SyncEditDialog
         sync={editing}
         open={editing !== null}
@@ -593,6 +654,63 @@ export function OrganizationSourcesSyncs({ scope = "", onAddSource, sectionHref 
       <SyncHistoryPanel sync={history} name={history ? nameOf({ id: "", sync: history, source: sourceOf(history.source) }) : ""} onClose={() => setHistory(null)} />
     </>
   );
+
+  // A block of its host card: a sub-heading with its actions, the summary and the table; a short line when empty.
+  if (variant === "section") {
+    return (
+      <>
+        <section className="space-y-2" data-testid="organization-sources" aria-label={title}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0 space-y-0.5">
+              {title && <h4 className="content-base font-semibold text-default-primary">{title}</h4>}
+              {description && <p className="content-compact text-default-secondary">{description}</p>}
+            </div>
+            {actions}
+          </div>
+          {loaded && rows.length === 0 ? (
+            <p className="text-default-secondary" data-testid="organization-sources.empty">
+              {t_i18n("No source feeds these sections yet")}
+            </p>
+          ) : (
+            <>
+              {summaryLine}
+              {table}
+            </>
+          )}
+        </section>
+        {dialogs}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <SettingsCard
+        data-testid="organization-sources"
+        title={t_i18n("Sources and syncs")}
+        description={t_i18n(
+          "Who feeds these sections: the platforms each sync reads or writes on a schedule, the agents and partners writing through the API, CSV imports and rows entered by hand.",
+        )}
+        action={actions}
+      >
+        <OrganizationSharedContextNotice className="mb-4" />
+        {summaryLine}
+        {loaded && rows.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-elevation-subtle px-6 py-10 text-center" data-testid="organization-sources.empty">
+            <Icon name="refresh-cw" size={24} aria-hidden className="text-default-secondary" />
+            <p className="title-sm">{t_i18n("No source feeds these sections yet")}</p>
+            <p className="max-w-prose text-default-secondary">
+              {t_i18n("Add a source: pick a platform, the section it fills and its filters, preview the rows, then keep them in sync on a schedule.")}
+            </p>
+            {addSource}
+          </div>
+        ) : (
+          table
+        )}
+      </SettingsCard>
+      {dialogs}
+    </>
+  );
 }
 
 const PlayIcon = () => <Icon name="play" size={16} aria-hidden />;
@@ -600,6 +718,7 @@ const PencilIcon = () => <Icon name="pencil" size={16} aria-hidden />;
 const PauseIcon = () => <Icon name="circle-stop" size={16} aria-hidden />;
 const HistoryIcon = () => <Icon name="history" size={16} aria-hidden />;
 const TrashIcon = () => <Icon name="trash-2" size={16} aria-hidden />;
+const PlusIcon = () => <Icon name="plus" size={16} aria-hidden />;
 
 /** The rows a plan touches, per section, in one line: "1,186 assets, 2 asset groups". */
 function usePlanLine() {

@@ -65,8 +65,8 @@ def _card_row(row: dict[str, Any], jewel: str | None) -> dict[str, Any]:
         "updated_at": row.get("updated_at"),
         "state_since": row.get("state_since"),
         "waiting_on": row.get("waiting_on"),
-        # The crown jewel the case touches, among its issues the viewer sees; None when it touches none.
-        "crown_jewel": jewel,
+        # The primary asset the case touches, among its issues the viewer sees; None when it touches none.
+        "primary_asset": jewel,
     }
 
 
@@ -116,7 +116,7 @@ def build(
                 j
                 for member in visible
                 if member.open
-                for j in getattr(view.issues.get(f"{member.source}:{member.external_id}"), "crown_jewels", ())
+                for j in getattr(view.issues.get(f"{member.source}:{member.external_id}"), "primary_assets", ())
             }
         )
         jewel = jewels[0] if jewels else None

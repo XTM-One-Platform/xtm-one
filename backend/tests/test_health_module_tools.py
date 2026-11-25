@@ -28,7 +28,7 @@ def test_the_group_offers_one_read_and_two_writes() -> None:
         "record_finding_recommendation",
         "record_module_check_report",
     ]
-    assert all(d.source == "builtin:health_modules" for d in definitions)
+    assert all(d.source == "builtin:health_specialists" for d in definitions)
     read_only, read_executor = tools.build_health_module_tools("", read_only=True)
     assert {d.name for d in read_only} == tools.MODULES_READ_TOOLS == {"list_module_findings"}
     assert "record_finding_recommendation" not in read_executor._handlers
@@ -89,9 +89,11 @@ def test_each_module_checker_carries_the_group() -> None:
     checkers = [a for a in FLEET_AGENTS if a.role in CHECKER_ROLE_BY_PROVIDER.values()]
     assert sorted(a.role for a in checkers) == sorted(CHECKER_ROLE_BY_PROVIDER.values())
     for checker in checkers:
-        assert "health_modules" in checker.builtin_tool_ids
+        assert "health_specialists" in checker.builtin_tool_ids
         assert checker.disable_chat
-    assert [a.slug for a in FLEET_AGENTS if "health_modules" in a.builtin_tool_ids] == [a.slug for a in checkers]
+    # The module functions are scoped to the checkers alone (#1943: one internal group).
+    writes = {"record_finding_recommendation", "record_module_check_report"}
+    assert [a.slug for a in FLEET_AGENTS if writes & set(a.specialist_functions)] == [a.slug for a in checkers]
 
 
 def test_the_group_is_wired_in_xtm_one_mode_only(monkeypatch):

@@ -1153,8 +1153,8 @@ LAB_ORG_TECH_STACK = (
 LAB_ORG_COMPLETE_PROFILE = {
     **LAB_ORG_PROFILE,
     "regions": ["FR", "US"],
-    "crown_jewels": [{"name": "Payments platform", "business_service": "Card payments", "criticality": "critical"}],
-    "tech_stack": [dict(entry) for entry in LAB_ORG_TECH_STACK],
+    "primary_assets": [{"name": "Payments platform", "business_service": "Card payments", "criticality": "critical"}],
+    "software": [dict(entry) for entry in LAB_ORG_TECH_STACK],
     "pir_ids": ["5b1e0c3a-7d2f-4e61-9a10-000000000001"],
     "risk_appetite": {"approval_threshold": 50000},
     "ticketing": {"integration": "jira", "project": "SEC"},
@@ -1260,8 +1260,7 @@ def org_ai_draft_answer(request: dict) -> str | None:
         {"field": "size", "value": "251-1000", "confidence": "medium", "basis": "'about 400 people'"},
         {"field": "loaded_hourly_rate", "value": 95, "confidence": "medium", "check": True,
          "basis": "inferred from the sector and the regions, not read in a source"},
-        {"field": "tech_stack", "value": [{"vendor": "Microsoft", "product": "Exchange Online", "cpe": ""}],
-         "confidence": "low", "basis": "'our mail runs in the cloud'"},
+        {"field": "currency", "value": "EUR", "confidence": "low", "basis": "'offices in Paris and Berlin'"},
     ]
     return json.dumps({
         "proposals": [{**p, "source": source, "check": p.get("check", False)} for p in proposals],
@@ -1707,11 +1706,41 @@ LAB_ORG_CONTEXT_STATES = ("default", "missing", "partial", "complete")
 #: ``LAB_ORG_SYNCED`` values (#1345): ``on`` saves the profile with rows a platform sync wrote next to typed rows
 #: (``seed_org_synced``), so the Source column, locked rows, bulk Set and the synced-removal dialog render natively.
 LAB_ORG_SYNCED_STATES = ("off", "on")
+#: The asset groups every XTM One lab writes through ``POST /organization-context/asset-groups`` (#1947), so CTEM >
+#: Inventory renders groups with members, an empty group and a long name on the real row APIs.
+LAB_INVENTORY_GROUPS = (
+    {"name": "Lab sample production servers", "description": "Hosts serving customer traffic", "criticality": "high",
+     "environment": "production"},
+    {"name": "Lab sample network edge", "description": "Firewalls and VPN gateways", "criticality": "very_high",
+     "internet_facing": "yes"},
+    {"name": "Lab sample decommissioned workloads awaiting the final data retention review of the archive team",
+     "description": "An empty group with a long name"},
+)
+#: The asset records every XTM One lab writes through ``POST /organization-context/assets/records/batch``
+#: (``source`` ``lab``, stable external ids, so a restart writes nothing): every criticality, several categories,
+#: members of two groups, one asset in no group and one with a long name.
+LAB_INVENTORY_ASSETS = (
+    {"name": "lab-web-01", "category": "host", "criticality": "high", "environment": "production",
+     "internet_facing": "yes", "group": "Lab sample production servers", "hostname": "lab-web-01",
+     "os_family": "Linux", "tags": ["web"], "source": "lab", "external_id": "lab-inventory-web-01"},
+    {"name": "lab-db-01", "category": "host", "criticality": "very_high", "environment": "production",
+     "internet_facing": "no", "group": "Lab sample production servers", "hostname": "lab-db-01",
+     "os_family": "Linux", "tags": ["database"], "source": "lab", "external_id": "lab-inventory-db-01"},
+    {"name": "lab-edge-fw-01", "category": "network_device", "criticality": "very_high", "internet_facing": "yes",
+     "group": "Lab sample network edge", "source": "lab", "external_id": "lab-inventory-edge-fw-01"},
+    {"name": "lab-edge-vpn-01", "category": "network_device", "criticality": "medium", "internet_facing": "yes",
+     "group": "Lab sample network edge", "source": "lab", "external_id": "lab-inventory-edge-vpn-01"},
+    {"name": "lab-hr-portal", "category": "saas_application", "criticality": "low", "environment": "production",
+     "owner": "People team", "source": "lab", "external_id": "lab-inventory-hr-portal"},
+    {"name": "lab-analytics-batch-worker-for-the-quarterly-regulatory-reporting-pipeline-eu-west-01",
+     "category": "container_workload", "criticality": "unknown", "environment": "staging",
+     "source": "lab", "external_id": "lab-inventory-analytics-worker"},
+)
 #: The rows ``LAB_ORG_SYNCED=on`` saves, per section: the platform whose disabled sync writes them (a source of
 #: ``organization_context_import.SECTION_SOURCES``) and the rows, synced ones carrying an ``external_id``; a row
 #: without one is typed. Each synced row gets the ``sync_id`` of its section's sync at seed time.
 LAB_ORG_SYNCED_ROWS = {
-    "crown_jewels": ("opencrq", (
+    "primary_assets": ("opencrq", (
         {"name": "Payments platform", "business_service": "Card payments", "criticality": "critical",
          "external_id": "lab-opencrq-asset-1"},
         {"name": "Customer data lake", "criticality": "high", "external_id": "lab-opencrq-asset-2"},
@@ -4257,6 +4286,63 @@ def seed_open_decision(token: str, base: str) -> dict[str, dict[str, str]]:
     return {"open decision": {"id": f"work_item:{item}", "url": f"{base}/tasks/work-items/{item}"}}
 
 
+def seed_waiting_items(token: str, base: str, fleet: str | None) -> dict[str, dict[str, str]]:
+    """Items waiting for the administrator outside Mine: the "Waiting for me" chip on every scope (#2044).
+
+    ``seed_open_decision`` makes one personal item; the chip of the work items list (#1506) counts the
+    scope of the page, so the Company segment and a fleet's Work Items tab need their own waiting rows.
+    Writes through the API, ``needs_human`` with a complete ask and no owner agent (no inbox claims it):
+    ``company`` is company-managed; ``fleet``, given *fleet* (the locked fleet), is filed in its
+    workspace. Each is read back from ``GET /work-items?waiting_for_me=true`` (``&fleet=`` for the
+    fleet one); a row missing raises. Logged ``seeded waiting items: <url>``. May raise: the caller
+    logs and skips.
+    """
+    ask = {
+        "question": "Keep the seeded scope row?",
+        "context": "Seeded by the lab so the Waiting for me chip counts on this scope.\nAnswering it changes nothing.",
+        "options": [
+            {"key": "A", "label": "Keep it", "effect": "The item reopens with this answer."},
+            {"key": "B", "label": "Drop it", "effect": "The item reopens with this answer."},
+        ],
+        "recommendation": "A",
+    }
+    common = {"needs_human": True, "ask": ask, "dedupe": True, "dedupe_by": "key"}
+    slots: dict[str, tuple[str, str]] = {}
+    company = _created(api("POST", "/work-items", token, {
+        **common,
+        "title": f"{SEED_NAME} company item waiting for you",
+        "description": "Seeded by the lab: a company-managed item parked for a person's decision.",
+        "correlation_key": "lab-waiting-company",
+        "is_company_managed": True,
+    }))
+    slots["company"] = (company, "/work-items?waiting_for_me=true&vis=all&limit=200")
+    if fleet:
+        fleet_row = api("GET", f"/fleets/{fleet}", token)
+        workspace = fleet_row.get("workspace_id") if isinstance(fleet_row, dict) else None
+        if not workspace:
+            raise RuntimeError(f"fleet {fleet} answered no workspace: {str(fleet_row)[:120]}")
+        in_fleet = _created(api("POST", "/work-items", token, {
+            **common,
+            "title": f"{SEED_NAME} fleet item waiting for you",
+            "description": "Seeded by the lab: an item filed in the fleet's workspace, parked for a person's decision.",
+            "correlation_key": "lab-waiting-fleet",
+            "workspace_id": workspace,
+        }))
+        slots["fleet"] = (in_fleet, f"/work-items?waiting_for_me=true&vis=all&limit=200&fleet={fleet}")
+    missing = []
+    for slot, (item, path) in slots.items():
+        listed = api("GET", path, token)
+        ids = {str(row.get("id")) for row in listed or [] if isinstance(row, dict)}
+        if item not in ids:
+            missing.append(f"{slot} {item}")
+    if missing:
+        raise RuntimeError(f"waiting items not read back from waiting_for_me: {', '.join(missing)}")
+    seeded = {"waiting company item": {"id": company, "url": f"{base}/tasks/work-items?vis=all"}}
+    if "fleet" in slots:
+        seeded["waiting fleet item"] = {"id": slots["fleet"][0], "url": f"{base}/fleets/{fleet}"}
+    return seeded
+
+
 def seed_no_reason_blocked(token: str, base: str, fleet: str | None) -> dict[str, dict[str, str]]:
     """Blocked work items with no reason, so the work items list renders its "No reason" chip (#10422).
 
@@ -6083,10 +6169,11 @@ def seed_ctem_screens(token: str, base: str) -> dict[str, dict[str, str]]:
     Since #1529 the recompute opens a case only through the scope gate, so the scope comes first
     (:func:`seed_ctem_screens_scope`): without it every issue is a watchlisted signal and the list is empty.
 
-    A 429 means the per-user slot (one recompute per minute) is taken, often by a background refresh a list
-    read started before the scope existed, which wrote no case: the seed waits the window out and recomputes
-    again (:func:`_ctem_screens_recompute`), so a twin lab never starts with 0 cases (gap
-    lab-ctem-screens-cases-seed-flaky).
+    A 429 means the per-user slot (one recompute per minute) is taken, and a 409 that another recompute of
+    the organization's cases runs (#1953), often the background refresh a list read started before the scope
+    existed, which wrote no case: the seed waits the window out and recomputes again
+    (:func:`_ctem_screens_recompute`), so a twin lab never starts with 0 cases (gap
+    lab-ctem-screens-cases-seed-flaky, #2030).
     """
     seed_ctem_screens_scope(token)
     listed = _ctem_screens_recompute(token)
@@ -6106,14 +6193,18 @@ def seed_ctem_screens(token: str, base: str) -> dict[str, dict[str, str]]:
 
 #: Seconds the seed waits for the recompute slot to free (the API's window is 60 s), and its attempts.
 CTEM_SCREENS_RECOMPUTE_WAIT = 62
-CTEM_SCREENS_RECOMPUTE_ATTEMPTS = 3
+CTEM_SCREENS_RECOMPUTE_ATTEMPTS = 4
+#: The recompute's answers that mean "try again shortly": the per-user slot taken (429) or another
+#: recompute of the organization's cases running (409, #1953).
+CTEM_SCREENS_RECOMPUTE_BUSY = (": 429 ", ": 409 ")
 
 
 def _ctem_screens_recompute(token: str, sleep=time.sleep) -> dict | list:
     """Recompute the cases and read the list until it holds 3 cases or the attempts run out.
 
-    A 429 (slot taken) or a list under 3 cases waits :data:`CTEM_SCREENS_RECOMPUTE_WAIT` seconds and recomputes
-    again; a recompute answering ``applied`` false raises at once (a product did not answer). Answers the last list.
+    A 429 (slot taken), a 409 (another recompute running) or a list under 3 cases waits
+    :data:`CTEM_SCREENS_RECOMPUTE_WAIT` seconds and recomputes again; a recompute answering ``applied`` false
+    raises at once (a product did not answer). Answers the last list.
     """
     listed: dict | list = {}
     for attempt in range(CTEM_SCREENS_RECOMPUTE_ATTEMPTS):
@@ -6122,9 +6213,9 @@ def _ctem_screens_recompute(token: str, sleep=time.sleep) -> dict | list:
         try:
             answer = api("POST", "/ctem-cases/recompute?vertical=cyber", token)
         except RuntimeError as exc:
-            if ": 429 " not in str(exc):
+            if not any(busy in str(exc) for busy in CTEM_SCREENS_RECOMPUTE_BUSY):
                 raise
-            log(f"CTEM cases recompute slot taken (attempt {attempt + 1}): waiting {CTEM_SCREENS_RECOMPUTE_WAIT}s")
+            log(f"CTEM cases recompute busy (attempt {attempt + 1}): waiting {CTEM_SCREENS_RECOMPUTE_WAIT}s")
             continue
         if not isinstance(answer, dict) or not answer.get("applied"):
             raise RuntimeError(f"the CTEM cases recompute answered {str(answer)[:300]}")
@@ -6164,7 +6255,14 @@ def seed_ctem_gates(token: str, base: str) -> dict[str, dict[str, str]]:
     wanted = {"answered", "waiting", "passed_automatically"}
     if not wanted <= set(statuses.values()):
         raise RuntimeError(f"the CTEM case gates read back {statuses}")
-    return {f"CTEM case gates ({len(statuses)})": {"id": case_id, "url": f"{base}/ctem/cases/{case_id}"}}
+    package = case.get("threat_package") if isinstance(case, dict) else None
+    if not isinstance(package, dict) or package.get("state") != "drafted":
+        raise RuntimeError(f"the CTEM case threat package read back {str(package)[:300]}")
+    url = f"{base}/ctem/cases/{case_id}"
+    return {
+        f"CTEM case gates ({len(statuses)})": {"id": case_id, "url": url},
+        "CTEM case threat package drafted": {"id": case_id, "url": url},
+    }
 
 
 def seed_ctem_screens_scope(token: str) -> None:
@@ -6182,11 +6280,11 @@ def seed_ctem_screens_scope(token: str) -> None:
 
     current = api("GET", "/organization-context", token)
     profile = dict(current.get("profile") or {}) if isinstance(current, dict) else {}
-    stack = list(profile.get("tech_stack") or [])
+    stack = list(profile.get("software") or [])
     have = {str(entry.get("product", "")).lower() for entry in stack}
     missing = [dict(entry) for entry in ctem_sample.SCREENS_TECH_STACK if entry["product"].lower() not in have]
     if missing or not profile.get("name"):
-        profile = {**LAB_ORG_PROFILE, **profile, "tech_stack": stack + missing}
+        profile = {**LAB_ORG_PROFILE, **profile, "software": stack + missing}
         body = {"profile": profile, "source": "form"}
         if isinstance(current, dict) and current.get("version") is not None:
             body["based_on_version"] = current["version"]
@@ -7783,6 +7881,10 @@ def seed_entities() -> None:
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["no-reason blocked work items"] = str(exc)[:600]
     try:
+        seeded.update(seed_waiting_items(token, base, seeded.get("locked fleet", {}).get("id")))
+    except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+        skipped["waiting items"] = str(exc)[:600]
+    try:
         seeded.update(seed_scheduled_one_offs(token, base))
     except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
         skipped["scheduled one-off"] = str(exc)[:600]
@@ -7961,6 +8063,17 @@ def seed_entities() -> None:
             seeded.update(seed_ctem_gates(token, base))
         except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
             skipped["CTEM case gates"] = str(exc)[:600]
+    if mode == "xtm_one":
+        # After seed_org_ai_draft_stub (the asset rows need a saved profile, #1947).
+        if "missing" == lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES) or "on" == lab_switch(
+            "LAB_ORG_SETUP_PROMPT", LAB_ORG_SETUP_PROMPT_STATES
+        ):
+            skipped["inventory"] = "no organization profile is saved in this lab"
+        else:
+            try:
+                seeded["inventory"] = seed_inventory(token, base)
+            except Exception as exc:  # noqa: BLE001 - a refused row is skipped, not fatal
+                skipped["inventory"] = str(exc)[:600]
     if mode == "xtm_one" and lab_switch("LAB_ORG_CONTEXT", LAB_ORG_CONTEXT_STATES) != "default":
         # After seed_org_ai_draft_stub (the lab profile, or none under missing).
         try:
@@ -8217,7 +8330,7 @@ def seed_org_ai_draft_stub(token: str, base: str) -> dict[str, str]:
             lab_switch("LAB_CTEM_KEV_TAILORED", LAB_CTEM_KEV_TAILORED_STATES),
             lab_switch("LAB_CTEM_OPENCTI", LAB_CTEM_OPENCTI_STATES),
         ):
-            profile["tech_stack"] = [dict(entry) for entry in LAB_ORG_TECH_STACK]
+            profile["software"] = [dict(entry) for entry in LAB_ORG_TECH_STACK]
         saved = api("PUT", "/organization-context", token, {"profile": profile, "source": "form"})
         version = saved.get("version") if isinstance(saved, dict) else None
     return {"id": f"profile version {version}", "url": f"{base}/settings/organization"}
@@ -8279,6 +8392,36 @@ def seed_stale_build_notice(token: str, base: str) -> dict[str, str]:
     return {"id": f"page {page_build}, server {server_build}", "url": f"{base}/"}
 
 
+def seed_inventory(token: str, base: str) -> dict[str, str]:
+    """An XTM One lab's CTEM inventory on the real row APIs (#1947): groups first, then the asset records.
+
+    Writes each :data:`LAB_INVENTORY_GROUPS` entry missing from ``GET /organization-context/asset-groups``
+    (``POST /asset-groups``), then every :data:`LAB_INVENTORY_ASSETS` row in one
+    ``POST /organization-context/assets/records/batch`` (``source`` ``lab``, stable external ids: a restart
+    writes nothing). Read back: each group's ``member_count`` equals the assets naming it. Logged ``seeded
+    inventory: <n> assets, <m> groups: <base>/ctem/inventory``. May raise: the caller logs it as not seeded.
+    """
+    listed = api("GET", "/organization-context/asset-groups", token)
+    items = listed.get("items") if isinstance(listed, dict) else None
+    have = {str(g.get("name", "")).casefold() for g in (items or []) if isinstance(g, dict)}
+    for group in LAB_INVENTORY_GROUPS:
+        if group["name"].casefold() not in have:
+            api("POST", "/organization-context/asset-groups", token, {**group, "source": "lab"})
+    api("POST", "/organization-context/assets/records/batch", token, {
+        "rows": [dict(row) for row in LAB_INVENTORY_ASSETS],
+    })
+    listed = api("GET", "/organization-context/asset-groups", token)
+    items = listed.get("items") if isinstance(listed, dict) else None
+    counts = {str(g.get("name", "")): g.get("member_count") for g in (items or []) if isinstance(g, dict)}
+    for group in LAB_INVENTORY_GROUPS:
+        wanted = sum(1 for row in LAB_INVENTORY_ASSETS if row.get("group") == group["name"])
+        if counts.get(group["name"]) != wanted:
+            raise RuntimeError(f"asset group {group['name'][:40]!r} reads back {counts.get(group['name'])} members")
+    url = f"{base}/ctem/inventory"
+    log(f"seeded inventory: {len(LAB_INVENTORY_ASSETS)} assets, {len(LAB_INVENTORY_GROUPS)} groups: {url}")
+    return {"id": f"{len(LAB_INVENTORY_ASSETS)} assets, {len(LAB_INVENTORY_GROUPS)} groups", "url": url}
+
+
 def seed_org_synced(token: str, base: str) -> dict[str, str]:
     """``LAB_ORG_SYNCED=on``: profile rows a platform sync wrote, next to typed rows, on the real API (#1345).
 
@@ -8297,8 +8440,8 @@ def seed_org_synced(token: str, base: str) -> dict[str, str]:
     current = api("GET", "/organization-context", token)
     profile = dict((current.get("profile") if isinstance(current, dict) else None) or LAB_ORG_PROFILE)
     expected: dict[str, set[tuple[str, str]]] = {}
-    # The sync section ``software`` (#1495) still fills the profile list ``tech_stack``.
-    fields = {"software": "tech_stack"}
+    # The sync section ``software`` (#1495) still fills the profile list ``software``.
+    fields = {"software": "software"}
     for section, (source, rows) in LAB_ORG_SYNCED_ROWS.items():
         sync = syncs.get((section, source)) or _created(api("POST", "/organization-context/syncs", token, {
             "section": section, "source": source, "frequency": "daily", "hour": 6, "minute": 0,

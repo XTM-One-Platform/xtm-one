@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -81,6 +82,42 @@ async def test_a_standing_row_is_locked_and_never_marked():
     db = _Db(row)
     assert await pe._lock_current(db, uuid.uuid4(), "run.failed", {"event_id": "e7"}) == (row, False)
     assert row.trigger_config == {"event": "run.failed"} and not db.rolled_back
+
+
+class _RecordingDb:
+    """A session that records, per read, whether it locked the row (``FOR UPDATE``)."""
+
+    def __init__(self, row: Any) -> None:
+        self.row = row
+        self.rolled_back = False
+        self.locked: list[bool] = []
+
+    async def execute(self, stmt: Any) -> Any:
+        self.locked.append(stmt._for_update_arg is not None)
+        return SimpleNamespace(scalar_one_or_none=lambda: self.row)
+
+    async def rollback(self) -> None:
+        self.rolled_back = True
+
+
+@pytest.mark.asyncio
+async def test_a_standing_subscription_is_read_without_a_row_lock() -> None:
+    # A burst of one event (ctem_case.opened per case of a drain) never queues on one assignments row.
+    row = SimpleNamespace(enabled=True, trigger_type="platform_event", trigger_config={"event": "run.failed"})
+    db = _RecordingDb(row)
+    assert await pe._lock_current(db, uuid.uuid4(), "run.failed", {"event_id": "e7"}, lock=False) == (row, False)
+    assert db.locked == [False]
+
+
+@pytest.mark.asyncio
+async def test_a_row_that_became_a_watch_is_read_again_locked() -> None:
+    row = SimpleNamespace(
+        enabled=True, trigger_type="platform_event", trigger_config={"event": "run.failed", "once": True}
+    )
+    db = _RecordingDb(row)
+    assert await pe._lock_current(db, uuid.uuid4(), "run.failed", {"event_id": "e7"}, lock=False) == (row, True)
+    assert db.locked == [False, True]
+    assert row.trigger_config["fired_event_id"] == "e7"
 
 
 @pytest.mark.asyncio

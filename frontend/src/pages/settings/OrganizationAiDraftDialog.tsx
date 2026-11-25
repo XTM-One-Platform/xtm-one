@@ -14,15 +14,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * "Draft with AI" on the organization profile (#9484, dev-docs/ctem-fleets.md
+ * "Draft" on the organization profile (#9484, #1991, dev-docs/ctem-fleets.md
  * section 6.1): a centred dialog, the inputs first, then the review diff in the
- * same dialog. One model call on the Draft click; nothing is saved before an
- * explicit accept. Opened from read mode, "Save accepted (n)" writes one version
+ * same dialog. One pass on the Draft click: the connected platforms (free, always)
+ * and, when a model is available, one metered model call on the description, the
+ * documents and the website. The platform values come first, the AI completes the
+ * fields they left; only the fields of the two Settings tabs are proposed. Nothing
+ * is saved before an explicit accept. Opened from read mode, "Save accepted (n)" writes one version
  * with source "ai_draft" and the accepted rows' provenance; opened from the
  * form, "Apply accepted (n)" fills the form and the form's own Save writes it.
  */
 import { useState } from "react";
-import { Checkbox, Textarea, Spinner } from "@filigran/design-system";
+import { Textarea, Spinner } from "@filigran/design-system";
 
 import { Badge, BadgeFocusTrigger } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +40,7 @@ import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
 import {
   useAiDraftOrganizationContext,
+  useDraftOrganizationContext,
   useSaveOrganizationContext,
   type AiDraftProposal,
   type AiDraftResponse,
@@ -52,7 +56,10 @@ import {
   formatProposalAmount,
   formatProposalValue,
   isScalarProposal,
+  isSettingsDraftField,
+  mergeDraftProposals,
   parseProposalAmount,
+  platformProposals,
   sameValue,
 } from "@/lib/organization-ai-draft";
 import { CURRENCIES, FIELD_LABELS, PLATFORM_NAMES, SIZE_BANDS, unreadablePlatform } from "@/lib/organization-profile";
@@ -80,8 +87,10 @@ interface OrganizationAiDraftDialogProps {
   onOpenChange: (open: boolean) => void;
   /** The values the proposals are reviewed against: the saved profile, or the open form's. */
   profile: OrganizationProfile;
-  /** The connected platforms the draft may read (opencti, openaev, opencrq). */
+  /** The connected platforms the draft reads (opencti, openaev, opencrq). */
   platforms: readonly string[];
+  /** A model is available: the description, the documents and the website are read too; else the platforms alone. */
+  aiAvailable: boolean;
   /** Set when a form is open: the accepted values fill it and nothing is saved here. */
   onApply?: (profile: OrganizationProfile) => void;
   /** After a save from read mode: the chat onboarding takes over for the fields left (#11224). */
@@ -101,17 +110,18 @@ function editorId(field: string): string {
   return `ai-draft-edit-${field.replace(/\./g, "-")}`;
 }
 
-export function OrganizationAiDraftDialog({ open, onOpenChange, profile, platforms, onApply, onSaved }: OrganizationAiDraftDialogProps) {
+export function OrganizationAiDraftDialog({ open, onOpenChange, profile, platforms, aiAvailable, onApply, onSaved }: OrganizationAiDraftDialogProps) {
   const { t_i18n, locale } = useFormatter();
   const { toast } = useToast();
   const { user } = useAuth();
-  const drafting = useAiDraftOrganizationContext();
+  const aiDrafting = useAiDraftOrganizationContext();
+  const platformDrafting = useDraftOrganizationContext();
   const save = useSaveOrganizationContext();
+  const pending = aiDrafting.isPending || platformDrafting.isPending;
 
   const [description, setDescription] = useState("");
   const [documents, setDocuments] = useState<File[]>([]);
   const [website, setWebsite] = useState("");
-  const [usePlatforms, setUsePlatforms] = useState<Record<string, boolean>>({});
   const [failure, setFailure] = useState<Failure | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [result, setResult] = useState<AiDraftResponse | null>(null);
@@ -125,11 +135,11 @@ export function OrganizationAiDraftDialog({ open, onOpenChange, profile, platfor
 
   const fieldLabel = (path: string) =>
     t_i18n((FIELD_LABELS as Record<string, string>)[path] ?? (AMOUNT_LABELS as Record<string, string>)[path] ?? path);
-  const platformOn = (platform: string) => usePlatforms[platform] ?? true;
-  const anyPlatform = platforms.some(platformOn);
-  const websiteInvalid = website.trim() !== "" && !/^https?:\/\/[^\s/]+\.[^\s]+$/i.test(website.trim());
-  const hasInput = description.trim() !== "" || documents.length > 0 || website.trim() !== "" || anyPlatform;
-  const canDraft = hasInput && !websiteInvalid && !drafting.isPending && failure?.kind !== "quota";
+  const anyPlatform = platforms.length > 0;
+  const websiteInvalid = aiAvailable && website.trim() !== "" && !/^https?:\/\/[^\s/]+\.[^\s]+$/i.test(website.trim());
+  const hasAiInput = aiAvailable && (description.trim() !== "" || documents.length > 0 || website.trim() !== "");
+  const hasInput = hasAiInput || anyPlatform;
+  const canDraft = hasInput && !websiteInvalid && !pending && failure?.kind !== "quota";
 
   const reset = () => {
     setResult(null);
@@ -144,24 +154,42 @@ export function OrganizationAiDraftDialog({ open, onOpenChange, profile, platfor
     if (!next) {
       reset();
       setFailure(null);
-      drafting.reset();
+      aiDrafting.reset();
+      platformDrafting.reset();
     }
     onOpenChange(next);
   };
 
-  const runDraft = () => {
+  /** One pass (#1991): the platforms and, with a model, the AI run together; one review of both. */
+  const runDraft = async () => {
     setFailure(null);
     reset();
-    drafting.mutate(
-      { description: description.trim(), documents, website: website.trim(), usePlatforms: anyPlatform },
-      {
-        onSuccess: (response) => setResult(response),
-        onError: (err) => {
-          const status = (err as { status?: number }).status;
-          setFailure(status === 429 ? { kind: "quota", message: err.message } : { kind: "model", message: err.message });
-        },
-      },
-    );
+    const [fromPlatforms, fromAi] = await Promise.allSettled([
+      anyPlatform ? platformDrafting.mutateAsync() : Promise.resolve(null),
+      aiAvailable && hasInput
+        ? aiDrafting.mutateAsync({ description: description.trim(), documents, website: website.trim(), usePlatforms: anyPlatform })
+        : Promise.resolve(null),
+    ]);
+    if (fromAi.status === "rejected") {
+      const err = fromAi.reason as Error & { status?: number };
+      setFailure(err.status === 429 ? { kind: "quota", message: err.message } : { kind: "model", message: err.message });
+      return;
+    }
+    if (fromPlatforms.status === "rejected" && !fromAi.value) {
+      setFailure({ kind: "model", message: t_i18n("Try again in a moment.") });
+      return;
+    }
+    const det = fromPlatforms.status === "fulfilled" ? fromPlatforms.value : null;
+    const ai = fromAi.value;
+    setResult({
+      based_on_version: ai?.based_on_version ?? det?.based_on_version ?? null,
+      proposals: mergeDraftProposals(det ? platformProposals(det, profile) : [], ai?.proposals ?? []),
+      not_supported: (ai?.not_supported ?? []).filter(isSettingsDraftField),
+      suggested_pirs: [],
+      unavailable: [...new Set([...(det?.unavailable ?? []), ...(ai?.unavailable ?? [])])],
+      notes: ai?.notes ?? [],
+      usage: ai?.usage ?? {},
+    });
   };
 
   const rows = (result?.proposals ?? []).filter((proposal) => !sameValue(proposal.value, proposal.current));
@@ -208,14 +236,44 @@ export function OrganizationAiDraftDialog({ open, onOpenChange, profile, platfor
   };
 
   const sources = [
-    ...(description.trim() ? [t_i18n("Description")] : []),
-    ...documents.map((file) => file.name),
-    ...(website.trim() ? [website.trim()] : []),
-    ...platforms.filter(platformOn).map((platform) => PLATFORM_NAMES[platform] ?? platform),
+    ...platforms.map((platform) => PLATFORM_NAMES[platform] ?? platform),
+    ...(aiAvailable && description.trim() ? [t_i18n("Description")] : []),
+    ...(aiAvailable ? documents.map((file) => file.name) : []),
+    ...(aiAvailable && website.trim() ? [website.trim()] : []),
   ];
+
+  const platformsField = (
+    <SettingsField
+      id="ai-draft-platforms"
+      label={t_i18n("Platform facts")}
+      helper={t_i18n("What the connected platforms already know, read on every draft.")}
+      info={t_i18n("None connected: connect OpenCTI, OpenAEV or OpenCRQ in Settings > Integrations.")}
+    >
+      {platforms.length === 0 ? (
+        <p id="ai-draft-platforms" className="content-compact text-default-secondary">
+          {t_i18n("No platform is connected.")}{" "}
+          <a className="text-accent underline" href="/settings/integrations">
+            {t_i18n("Settings > Integrations")}
+          </a>
+        </p>
+      ) : (
+        <p id="ai-draft-platforms" className="content-compact">
+          {platforms.map((platform) => PLATFORM_NAMES[platform] ?? platform).join(", ")}
+        </p>
+      )}
+    </SettingsField>
+  );
 
   const inputs = (
     <div className="space-y-4">
+      {platformsField}
+      {!aiAvailable && (
+        <p data-testid="ai-draft.no-model" className="content-compact text-default-secondary">
+          {t_i18n("Documents and AI need a model: this draft reads the connected platforms only.")}
+        </p>
+      )}
+      {aiAvailable && (
+      <>
       <SettingsField
         id="ai-draft-description"
         label={t_i18n("Description")}
@@ -273,37 +331,11 @@ export function OrganizationAiDraftDialog({ open, onOpenChange, profile, platfor
         />
       </SettingsField>
 
-      <SettingsField
-        id="ai-draft-platforms"
-        label={t_i18n("Platform facts")}
-        helper={t_i18n("What the connected platforms already know.")}
-        info={t_i18n("The facts \"From the platforms\" reads. None connected: connect OpenCTI, OpenAEV or OpenCRQ in Settings > Integrations.")}
-      >
-        {platforms.length === 0 ? (
-          <p id="ai-draft-platforms" className="content-compact text-default-secondary">
-            {t_i18n("No platform is connected.")}{" "}
-            <a className="text-accent underline" href="/settings/integrations">
-              {t_i18n("Settings > Integrations")}
-            </a>
-          </p>
-        ) : (
-          <div id="ai-draft-platforms" className="flex flex-wrap gap-4">
-            {platforms.map((platform) => (
-              <Checkbox
-                key={platform}
-                id={`ai-draft-platform-${platform}`}
-                label={PLATFORM_NAMES[platform] ?? platform}
-                checked={platformOn(platform)}
-                onCheckedChange={(checked) => setUsePlatforms((prev) => ({ ...prev, [platform]: checked === true }))}
-              />
-            ))}
-          </div>
-        )}
-      </SettingsField>
-
       <p className="content-compact text-default-secondary">{t_i18n("About one chat turn of your quota")}</p>
+      </>
+      )}
 
-      {drafting.isPending && (
+      {pending && (
         <ul aria-live="polite" data-testid="ai-draft.progress" className="space-y-1 content-compact">
           {sources.map((name) => (
             <li key={name} className="flex items-center gap-2">
@@ -325,7 +357,7 @@ export function OrganizationAiDraftDialog({ open, onOpenChange, profile, platfor
       {failure?.kind === "model" && (
         <div role="alert" className="flex items-start justify-between gap-3 rounded-sm border border-alert-error bg-alert-error p-3 content-compact">
           <p>{t_i18n("The draft could not be made: {reason}", { reason: failure.message })}</p>
-          <Button variant="secondary" size="sm" onClick={runDraft}>
+          <Button variant="secondary" size="sm" onClick={() => void runDraft()}>
             {t_i18n("Retry")}
           </Button>
         </div>
@@ -578,13 +610,15 @@ export function OrganizationAiDraftDialog({ open, onOpenChange, profile, platfor
     <Dialog open={open} onOpenChange={close}>
       <DialogContent size="md">
         <DialogHeader>
-          <DialogTitle>{t_i18n("Draft with AI")}</DialogTitle>
-          <DialogDescription>{t_i18n("Proposes values from what you give; nothing is saved until you accept.")}</DialogDescription>
+          <DialogTitle>{t_i18n("Draft")}</DialogTitle>
+          <DialogDescription>{t_i18n("Draft reads your platforms and documents and proposes values to review. Nothing is saved until you click Save.")}</DialogDescription>
         </DialogHeader>
         <DialogBody className="-m-1 space-y-4 p-1">{result ? review : inputs}</DialogBody>
         <DialogFooter>
           {!result && !hasInput && (
-            <p className="mr-auto content-compact text-default-secondary">{t_i18n("Add a description, a document or a website, or connect a platform")}</p>
+            <p className="mr-auto content-compact text-default-secondary">
+              {aiAvailable ? t_i18n("Add a description, a document or a website, or connect a platform") : t_i18n("Connect a platform to draft without a model")}
+            </p>
           )}
           <Button variant="secondary" onClick={() => close(false)}>
             {t_i18n("Cancel")}
@@ -598,8 +632,8 @@ export function OrganizationAiDraftDialog({ open, onOpenChange, profile, platfor
               </Button>
             )
           ) : (
-            <Button onClick={runDraft} disabled={!canDraft} aria-busy={drafting.isPending || undefined}>
-              {drafting.isPending && <Spinner size="sm" tone="inherit" />}
+            <Button onClick={() => void runDraft()} disabled={!canDraft} aria-busy={pending || undefined}>
+              {pending && <Spinner size="sm" tone="inherit" />}
               {t_i18n("Draft")}
             </Button>
           )}

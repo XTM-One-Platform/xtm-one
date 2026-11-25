@@ -1274,9 +1274,14 @@ def removal_after(removed_at: str | None, last_activity_at: datetime | None) -> 
 
 def dequeued_note(removed: list[str], event: PullRequestEvent, now: datetime, *, still_blocked: bool) -> str:
     """The note of an item whose pull request the merge queue dropped. Pure."""
+    from app.services.work_item_pull_requests import DEQUEUE_HINTS
+
     when = _host_stamp(event.closed_at)
     at = f" at {when}" if when else ""
     reason = event.conclusion or "unknown"
+    hint = DEQUEUE_HINTS.get(reason)
+    if hint:
+        reason = f"{reason}; {hint}"
     tail = (
         "it stays blocked until the items it waits for are done"
         if still_blocked

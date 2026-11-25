@@ -64,10 +64,11 @@ def test_the_stub_answers_every_review_state_the_parser_keeps():
     assert [p.field for p in proposals if p.value == p.current] == ["sector"]
     assert by_field["name"].conflict and by_field["name"].current == "Lab sample organization"
     assert by_field["loaded_hourly_rate"].check
-    assert by_field["tech_stack"].confidence == "low"
+    assert by_field["currency"].confidence == "low"
     assert by_field["regions"].value == ["FR", "DE"] and not by_field["regions"].conflict
     assert {p.source for p in proposals} == {"description"}
-    assert "crown_jewels" in not_supported and "loaded_hourly_rate" not in not_supported
+    # The draft of Settings > Organization never names an inventory field or the PIRs (#1991).
+    assert "primary_assets" not in not_supported and "loaded_hourly_rate" not in not_supported
     assert suggested
 
 

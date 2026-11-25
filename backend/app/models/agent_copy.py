@@ -1165,6 +1165,10 @@ TRIGGER_CONFIG_PORTABLE_KEYS: tuple[str, ...] = (
     # CTEM-08: hold a PIR playbook delivery to the policy's PIR score thresholds,
     # read against each instance's own profile and OpenCTI.
     "pir_min_score",
+    # A platform_event trigger's declared role, "observer" or "worker": an
+    # observer of case events is never counted as the case worker
+    # (``services/platform_events.py``); a word, no row of this instance.
+    "role",
 )
 
 

@@ -137,7 +137,9 @@ This is an accepted trust delegation: registering a platform trusts it to say
 who its user is, so whoever controls the email of a platform user (that
 platform's administrators, its signing key) controls the XTM One account
 holding that email, and these tokens skip XTM One's two-factor and session
-limits. Register only platforms trusted at that level. Routes that rely on it
+limits. Register only platforms trusted at that level, and only while they do
+not let their users set their own email without proving it: one that does lets
+any of its users act as any XTM One user, administrators included. Routes that rely on it
 for administrators include the invitation an access notice makes
 (`platform_access_notices.may_invite`).
 

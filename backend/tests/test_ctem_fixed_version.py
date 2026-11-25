@@ -16,7 +16,7 @@ import pytest
 from app.services import ctem_cases as cc
 from app.services import ctem_cases_source as source
 from app.services import ctem_fixed_version as fv
-from app.services.organization_context import TechStackEntry
+from app.services.organization_context import SoftwareEntry
 
 # ---------------------------------------------------------------------------
 # Versions
@@ -295,11 +295,11 @@ def test_every_installed_version_gets_its_own_outcome_from_opencti() -> None:
     # #1783: several versions run; each is checked against OpenCTI's Software of that version.
     issues = source.opencti_issues(SOFTWARE, _multi("9.0.80", "9.0.90", "10.1.0"), RELATIONS, [], FIXES)
     by_id = {i.external_id: i for i in issues}
-    assert by_id["v1"].version_outcomes == (
+    assert [(f.version, f.outcome) for f in by_id["v1"].version_outcomes] == [
         ("9.0.80", cc.VERSION_NOT_AFFECTED),
         ("9.0.90", cc.VERSION_AFFECTED),
         ("10.1.0", cc.VERSION_UNKNOWN),
-    )
+    ]
     assert by_id["v1"].installed_version is None and by_id["v1"].not_affected is None
     assert by_id["v1"].version_note == "version not known to OpenCTI: 10.1.0; fixed version unknown"
     assert by_id["v1"].declared_version_known is True
@@ -310,7 +310,10 @@ def test_an_issue_no_installed_version_holds_is_not_affected() -> None:
     by_id = {i.external_id: i for i in issues}
     # v3 is held by 9.0.80 only: affected; v1 and v2 by 9.0.90 only: affected too.
     assert all(i.not_affected is None for i in issues)
-    assert dict(by_id["v3"].version_outcomes) == {"9.0.80": "affected", "9.0.90": "not_affected"}
+    assert {f.version: f.outcome for f in by_id["v3"].version_outcomes} == {
+        "9.0.80": "affected",
+        "9.0.90": "not_affected",
+    }
     only_80 = source.opencti_issues(SOFTWARE, _multi("9.0.80"), RELATIONS, [], FIXES)
     assert {i.external_id for i in only_80 if i.not_affected} == {"v1", "v2"}
 
@@ -337,9 +340,9 @@ def test_the_case_view_lists_each_version_outcome_and_reads_it_back() -> None:
     assert view_mod._issue_from_json(view_mod._issue_json(issue)) == issue
     row = SimpleNamespace(source="opencti", external_id="v1", open=True)
     shown = view_mod._visible_issue(row, issue)  # type: ignore[arg-type]
-    assert shown["version_outcomes"] == [
-        {"version": "9.0.80", "outcome": "not_affected"},
-        {"version": "9.0.90", "outcome": "affected"},
+    assert [(r["version"], r["outcome"], r["source"]) for r in shown["version_outcomes"]] == [
+        ("9.0.80", "not_affected", None),
+        ("9.0.90", "affected", None),
     ]
     affected = matching.affected_from_outcomes([shown])
     assert affected == "9.0.90 per OpenCTI; not affected: 9.0.80"
@@ -369,8 +372,8 @@ def test_without_a_declared_version_every_has_counts_and_latest_stays():
 
 
 def test_the_tech_stack_entry_takes_an_optional_version():
-    assert TechStackEntry(product="nginx").version == ""
-    assert TechStackEntry(product="nginx", version="1.27.1").version == "1.27.1"
+    assert SoftwareEntry(product="nginx").version == ""
+    assert SoftwareEntry(product="nginx", version="1.27.1").version == "1.27.1"
 
 
 class _FakeOpenCti:

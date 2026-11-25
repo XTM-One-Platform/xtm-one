@@ -3,7 +3,7 @@
 """Import one section of the organization profile from one connected platform (#11780).
 
 The no-model path of Settings > Organization: the administrator picks a
-section (assets, asset groups, software, crown jewels, PIRs),
+section (assets, asset groups, software, primary assets, PIRs),
 a source platform able to feed it (OpenAEV, OpenCTI, OpenCRQ), the filters
 that source supports, and gets a preview before anything is written: the
 source's own count of matching entities, then what the profile would gain
@@ -16,7 +16,7 @@ Rules:
 - a platform not connected or not readable is reported with the reason,
   never guessed, and never assumed installed;
 - rows a person typed (``source`` ``manual``, ``csv`` or ``api`` on an asset,
-  no platform id on an AI system or a crown jewel) are never overwritten: an
+  no platform id on an AI system or a primary asset) are never overwritten: an
   imported row with the same name is skipped and counted;
 - an imported row carries ``source=<platform>`` and ``external_id``; a re-run
   with the same source updates its own rows only (matched by both);
@@ -49,15 +49,15 @@ from app.services.organization_context import (
     LEGACY_ASSET_TYPES,
     AssetEntry,
     AssetGroupEntry,
-    CrownJewel,
     OrganizationProfile,
-    TechStackEntry,
+    PrimaryAsset,
+    SoftwareEntry,
 )
 from app.services.organization_context_microsoft import os_family
 
 logger = logging.getLogger(__name__)
 
-Section = Literal["assets", "asset_groups", "software", "crown_jewels", "pirs"]
+Section = Literal["assets", "asset_groups", "software", "primary_assets", "pirs"]
 Source = Literal[
     "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
 ]
@@ -68,15 +68,15 @@ SECTION_SOURCES: dict[str, tuple[str, ...]] = {
     # #1556: Intune (Entra device groups), Tanium computer groups, Falcon host groups, ServiceNow services.
     "asset_groups": ("openaev", "intune", "tanium", "crowdstrike", "servicenow"),
     "software": ("openaev",),
-    "crown_jewels": ("opencrq",),
+    "primary_assets": ("opencrq",),
     "pirs": ("opencti",),
 }
 #: section -> the profile field it writes.
 SECTION_FIELD: dict[str, str] = {
     "assets": "assets_exposure",
     "asset_groups": "asset_groups",
-    "software": "tech_stack",
-    "crown_jewels": "crown_jewels",
+    "software": "software",
+    "primary_assets": "primary_assets",
     "pirs": "pir_ids",
 }
 #: (section, source) -> the filters that source supports for that section, in the order the dialog shows them.
@@ -114,7 +114,7 @@ SOURCE_FILTERS: dict[tuple[str, str], tuple[str, ...]] = {
     ("software", "openaev"): ("type",),
     # link_supporting_assets (#1591, on unless "false") is read by the link import, not by the preview;
     # listed so the add and edit dialogs of the Inventory source show its switch (#1754).
-    ("crown_jewels", "opencrq"): ("min_criticality", "tenant_id", "link_supporting_assets"),
+    ("primary_assets", "opencrq"): ("min_criticality", "tenant_id", "link_supporting_assets"),
     ("pirs", "opencti"): ("pir_ids",),
 }
 #: The OpenCTI System attributes of OpenCTI-Platform/opencti#19943 (the OpenAEV asset taxonomy on a System):
@@ -155,7 +155,7 @@ MAX_ROWS = 1000
 SAMPLE_SIZE = 20
 #: OpenCRQ criticality, lowest first; a threshold keeps it and everything above.
 OPENCRQ_LEVELS: tuple[str, ...] = ("low", "medium", "high", "very_high")
-#: OpenCRQ criticality -> crown jewel criticality.
+#: OpenCRQ criticality -> primary asset criticality.
 FROM_OPENCRQ: dict[str, str] = {"very_high": "critical", "high": "high", "medium": "medium", "low": "low"}
 #: OpenAEV asset criticality -> profile criticality.
 FROM_OPENAEV_CRITICALITY: dict[str, str] = {
@@ -203,7 +203,7 @@ class ReadResult:
     #: Name and identity key per repository id (#1331, slice 4): the asset a dependency match lands on.
     repositories: dict[str, dict[str, str]] = field(default_factory=dict)
     #: Ids of this source whose stored rows belong to another layer (#1591: OpenCRQ supporting assets an older
-    #: build imported as crown jewels): removed by the import whoever wrote them, never kept as gone.
+    #: build imported as primary assets): removed by the import whoever wrote them, never kept as gone.
     superseded: set[str] = field(default_factory=set)
     #: An asset group source (#1556): member asset ids per group ``external_id``, each group read whole.
     members: dict[str, list[str]] = field(default_factory=dict)
@@ -233,7 +233,7 @@ class ImportPlan:
     excluded: list[str] = field(default_factory=list)
     #: Stored rows of an excluded id, removed by this plan whatever ``remove_gone`` says.
     excluded_removed: list[str] = field(default_factory=list)
-    #: Stored rows of a superseded layer (#1591: crown jewels an older build imported from OpenCRQ supporting
+    #: Stored rows of a superseded layer (#1591: primary assets an older build imported from OpenCRQ supporting
     #: assets), removed by this plan whatever ``remove_gone`` says.
     superseded: list[str] = field(default_factory=list)
     #: The sync writing the plan, stamped as ``sync_id`` on its rows (empty: a one-off import).
@@ -609,7 +609,7 @@ def primary_asset_level(asset: dict[str, Any]) -> str:
     return OPENCRQ_LEVELS[max(levels)] if levels else ""
 
 
-def opencrq_primary_asset(asset: dict[str, Any], min_level: str = "") -> CrownJewel | None:
+def opencrq_primary_asset(asset: dict[str, Any], min_level: str = "") -> PrimaryAsset | None:
     """An OpenCRQ PRIMARY asset (a business asset) as a profile primary asset row (#1591).
 
     The criticality is the highest of its four security needs (``very_high`` ->
@@ -629,7 +629,7 @@ def opencrq_primary_asset(asset: dict[str, Any], min_level: str = "") -> CrownJe
     if level and min_level in OPENCRQ_LEVELS and OPENCRQ_LEVELS.index(level) < OPENCRQ_LEVELS.index(min_level):
         return None
     owner = asset.get("owner") if isinstance(asset.get("owner"), dict) else {}
-    return CrownJewel(
+    return PrimaryAsset(
         name=name[:200],
         business_service=str(asset.get("businessFunction") or "").strip()[:200],
         owner=str((owner or {}).get("name") or "").strip()[:200],
@@ -639,7 +639,7 @@ def opencrq_primary_asset(asset: dict[str, Any], min_level: str = "") -> CrownJe
     )
 
 
-def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
+def opencrq_jewel(asset: dict[str, Any], min_level: str) -> PrimaryAsset | None:
     """Alias of :func:`opencrq_primary_asset` kept for one release (#1591): it reads PRIMARY assets now."""
     return opencrq_primary_asset(asset, min_level)
 
@@ -650,10 +650,10 @@ def opencrq_jewel(asset: dict[str, Any], min_level: str) -> CrownJewel | None:
 #: section -> (profile field, the row's name attribute, most rows the field holds, the fields a person may
 #: set on a synced row that the source does not send: kept across runs as local enrichment, #1134).
 SOURCED_FIELDS: dict[str, tuple[str, str, int, tuple[str, ...]]] = {
-    "assets": ("assets_exposure", "name", 5000, ("environment", "owner", "tech_stack", "group")),
-    "asset_groups": ("asset_groups", "name", 500, ("environment", "owner", "tech_stack", "description")),
-    "crown_jewels": ("crown_jewels", "name", 200, ("owner", "business_service", "asset_names")),
-    "software": ("tech_stack", "product", 500, ("vendor", "cpe", "version")),
+    "assets": ("assets_exposure", "name", 5000, ("environment", "owner", "products", "group")),
+    "asset_groups": ("asset_groups", "name", 500, ("environment", "owner", "products", "description")),
+    "primary_assets": ("primary_assets", "name", 200, ("owner", "business_service", "asset_names")),
+    "software": ("software", "product", 500, ("vendor", "cpe", "version")),
 }
 #: Sections where a row of another source with the same name is a second record of the same thing:
 #: added beside it, never skipped; the canonical asset store merges the records (#1178, S3).
@@ -1227,14 +1227,14 @@ async def _read_openaev(
     if section == "software":
         read = await _openaev_search(base_url, headers, "/api/security_platforms/search", openaev_filter_group(filters))
         seen: set[str] = set()
-        rows: list[TechStackEntry] = []
+        rows: list[SoftwareEntry] = []
         for item in read.rows:
             product = str(item.get("asset_name") or item.get("security_platform_name") or "").strip()
             if product and product.casefold() not in seen:
                 seen.add(product.casefold())
                 # A product is keyed on its name: several security platforms may run one product.
                 rows.append(
-                    TechStackEntry(product=product[:200], source="openaev", external_id=product.casefold()[:200])
+                    SoftwareEntry(product=product[:200], source="openaev", external_id=product.casefold()[:200])
                 )
         read.rows = rows
         return read

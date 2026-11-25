@@ -49,7 +49,7 @@ def _row(profile: dict, version: int = 2):
 
 def test_a_tracked_profile_is_normalized_and_its_missing_fields_named():
     profile = orgs.parse_tracked_profile(
-        {"sector": "cloud", "regions": ["fr", "FR", "de"], "services": [{"name": "Hosting", "crown_jewels": ["ERP"]}]}
+        {"sector": "cloud", "regions": ["fr", "FR", "de"], "services": [{"name": "Hosting", "primary_assets": ["ERP"]}]}
     )
     assert profile.regions == ["FR", "DE"]
     assert profile.services[0].direction == "supplies"
@@ -63,7 +63,7 @@ def test_a_tracked_profile_is_normalized_and_its_missing_fields_named():
     ("raw", "where"),
     [
         ({"regions": ["France"]}, "regions"),
-        ({"crown_jewels": [{"name": "x"}]}, "crown_jewels"),
+        ({"primary_assets": [{"name": "x"}]}, "primary_assets"),
         ({"services": [{"name": "x", "direction": "both"}]}, "services"),
     ],
 )
@@ -181,7 +181,7 @@ _STACK = [{"product": f"Product {i}", "vendor": "Microsoft" if i % 10 == 0 else 
 @pytest.fixture
 def with_stack(monkeypatch):
     async def _current(_db, organization_id=None):
-        return _row({"name": "Us", "tech_stack": _STACK, "crown_jewels": [{"name": "ERP", "criticality": "high"}]})
+        return _row({"name": "Us", "software": _STACK, "primary_assets": [{"name": "ERP", "criticality": "high"}]})
 
     async def _list(_db, **_kw):
         return [_org("primary", "Us"), _org()]
@@ -222,7 +222,7 @@ async def test_a_query_narrows_a_category_and_the_limit_is_bounded(with_stack, t
 
 async def test_the_retired_tech_stack_category_is_unknown(with_stack: None, tool: Any) -> None:
     page = await tool(category="tech_stack", query="microsoft", limit=10)
-    assert not page.startswith("Category software ("), "#1495: no tech_stack alias (Sam, 24 Nov 2026)"
+    assert not page.startswith("Category tech_stack ("), "#1495: no tech_stack alias (Sam, 24 Nov 2026)"
 
 
 async def test_an_unknown_category_names_the_accepted_ones(with_stack, tool):

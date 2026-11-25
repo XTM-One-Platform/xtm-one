@@ -205,7 +205,7 @@ function SubjectTypeChips({
             disabled={disabled}
             onClick={() => onChange(on ? value.filter((t) => t !== type) : [...value, type])}
             className={cn(
-              "rounded-full border px-2.5 py-0.5 content-compact transition-colors",
+              "rounded-sm border px-2 py-0.5 content-compact transition-colors",
               on ? "border-accent/60 bg-accent/10 text-accent" : "border-elevation-subtle text-default-secondary hover:bg-elevation-hover",
             )}
           >

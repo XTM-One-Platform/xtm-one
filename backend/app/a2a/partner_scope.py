@@ -25,7 +25,9 @@ anonymous caller. ``agent_chat._turn_trace_tool_ids`` and
 The A2A executor opens the scope around its run, so every in-process hop of
 the task (a consult, a transfer) inherits it with the asyncio context. A
 background delegation crosses to the worker, so its execution payload carries
-``PARTNER_TASK_PAYLOAD_KEY`` and the sub-agent adapter reopens the scope.
+``PARTNER_TASK_PAYLOAD_KEY`` and the sub-agent adapter reopens the scope. An
+assignment run the task starts records the same keys on its ``trigger_payload``
+(``partner_task_payload``) and the assignment adapter reopens the scope.
 
 The scope also carries the partner principal that sent the task (its exposure
 and OAuth client), so the one read the anonymous builder lends a partner task,
@@ -106,6 +108,18 @@ def partner_principal_payload() -> dict[str, str] | None:
     """The current partner as a delegation payload value, ``None`` when there is none."""
     partner = current_partner()
     return partner.as_payload() if partner is not None else None
+
+
+def partner_task_payload() -> dict[str, Any]:
+    """The keys a queued run carries to reopen the current partner-task scope, empty outside one.
+
+    An assignment run started while answering a partner's task (``delegate_to_assignment``,
+    then whatever that run chains) records them on its ``trigger_payload``, and the
+    assignment worker reopens the scope from them (``queued_partner_task``,
+    ``queued_partner_principal``). Recorded on any other run they only narrow it."""
+    if not in_partner_task():
+        return {}
+    return {PARTNER_TASK_PAYLOAD_KEY: True, PARTNER_PRINCIPAL_PAYLOAD_KEY: partner_principal_payload()}
 
 
 def queued_partner_principal(payload: Any) -> PartnerPrincipal | None:

@@ -112,6 +112,11 @@ export function softwarePath(id: string): string {
   return `${INVENTORY_PATH}/software/${id}`;
 }
 
+/** A primary asset's page (#1980 S2), keyed by its name: names, never ids, in the address. */
+export function primaryAssetPath(name: string): string {
+  return `${INVENTORY_PATH}/primary-assets/${encodeURIComponent(name)}`;
+}
+
 /** An asset group's page (#1556). */
 export function assetGroupPath(id: string): string {
   return `${INVENTORY_PATH}/asset-groups/${id}`;

@@ -48,9 +48,10 @@ from app.services.platform_builds import (
     ROLLOUT_DRAINING,
     ROLLOUT_IN_PROGRESS,
     ROLLOUT_ROLLED_BACK,
+    ROLLOUT_SUPERSEDED,
     is_build,
+    read_rollout,
     release_windows,
-    rollout,
     running_build,
 )
 from app.services.platform_insights.scope import InsightScope
@@ -185,7 +186,7 @@ async def get_platform_overview(db: AsyncSession, scope: InsightScope, args: dic
         last_aggregation = last_aggregation.replace(tzinfo=UTC)
     version, git_sha = running_build()
     windows = await release_windows(db)
-    deployment = rollout(windows, (version, git_sha), now=now)
+    deployment = await read_rollout(db, windows, (version, git_sha), user_id=scope.user.id, now=now)
 
     result: dict[str, Any] = {
         **scope.header(),
@@ -254,7 +255,7 @@ async def get_platform_overview(db: AsyncSession, scope: InsightScope, args: dic
             "The daily analytics aggregation has not run for more than 48 hours: say the analytics figures "
             "for older days may still move."
         )
-    if deployment.state in (ROLLOUT_IN_PROGRESS, ROLLOUT_DRAINING, ROLLOUT_ROLLED_BACK):
+    if deployment.state in (ROLLOUT_IN_PROGRESS, ROLLOUT_DRAINING, ROLLOUT_ROLLED_BACK, ROLLOUT_SUPERSEDED):
         caveats.append(deployment.words())
     if caveats:
         result["caveats"] = caveats

@@ -114,9 +114,9 @@ with no hostname takes its name as hostname, so an OpenAEV endpoint named `lapt-
 | --- | --- | --- | --- |
 | UNKNOWN, LOW, MEDIUM, HIGH, VERY_HIGH | `unknown`, `low`, `medium`, `high`, `very_high` (declared, or derived by a rule: `reported_criticality_rule`) | none | `unknown`, `low`, `medium`, `high`, `very_high` |
 
-The crown jewels of the profile keep their own four-level scale (`low` .. `critical`), the business view;
+The primary assets of the profile keep their own four-level scale (`low` .. `critical`), the business view;
 an asset's criticality is the technical one and maps to OpenAEV as is. When an asset is pushed to a
-crown-jewel-driven tool, `critical` reads as `very_high`.
+primary-asset-driven tool, `critical` reads as `very_high`.
 
 ## 4. Owner
 
@@ -141,6 +141,28 @@ each such row moves to `asset_groups` with every field it had; a nested `group` 
 kept as the tag `group:<name>`. Dynamic groups are not modelled in XTM One: a sync from OpenAEV reads their members
 as resolved at sync time.
 
+**Outbound to OpenAEV (#1982 S1).** An outbound `asset_groups` sync to `openaev` makes OpenAEV follow the groups
+XTM One owns (typed, CSV, API, agent rows; a group an OpenAEV sync wrote is skipped):
+
+| XTM One `asset_groups` | OpenAEV `AssetGroupInput` |
+| --- | --- |
+| `name` | `asset_group_name` |
+| `description` | `asset_group_description` |
+| members (`group` field and `membership_rule`) | `asset_group_assets` (`PUT /api/asset_groups/{id}/assets`): the OpenAEV asset id of each member, the member's own `external_id` when an OpenAEV sync wrote it, else the OpenAEV record of the same name; a member with no OpenAEV counterpart is reported (`unlinked_members`), never created as an endpoint |
+| (not mastered) | `asset_group_tags`, `asset_group_dynamic_filter`: read before the write and sent back as OpenAEV holds them, since its PUT replaces the whole object (#1702) |
+
+Only the groups the sync created (`outbound_ids`, keyed on the group name) are updated or deleted; a group leaving
+the sync's filters (the import step's keys read on the XTM One row: `tags`, `search`, `source`, and on assets
+`category`, `subcategory`, `criticality`, `internet_facing`, `environment`, `platform`) is deleted from OpenAEV only
+when this sync created it. The same filters select the AI target assets an outbound `assets` sync pushes (section 7).
+
+**Changing a sync's filters (#1982 S2).** `POST /api/v1/organization-context/syncs/{sync_id}/preview` takes the
+settings the Edit dialog would save (`filters`, `batch_type`, `remove_gone`, `excluded_external_ids`) and answers
+what the next run would do with them, nothing written: inbound, the rows that enter, are updated, leave (rows this
+sync wrote, removed only with `remove_gone`, plus excluded ids) and are kept (another writer wrote them); outbound,
+the platform rows the run would create, update and delete (only rows in `outbound_ids`). It reads with the calling
+administrator's token, the one saving then makes the runs read with.
+
 ## 6. Tags, environment, external id, platform
 
 | Concept | OpenAEV | OpenCRQ | OpenCTI | XTM One |
@@ -148,7 +170,7 @@ as resolved at sync time.
 | Tags | `asset_tags` (tag entities) | `supporting_asset_tags` with their origin (`tag_sources`: a person, OpenAEV, XTM One) | `objectLabel` | `tags` (names) |
 | Environment | none (a tag by convention) | none | none | `environment` (production, staging, development, test, other); pushed to OpenAEV as the tag `env:<value>` |
 | External id | `asset_external_reference` | `external_reference`, and per source `source_asset_id` | `externalReferences` | `external_id`, with `source` naming the origin |
-| Tech stack | none on the asset (Endpoint: `endpoint_platform`, `endpoint_arch`, `endpoint_is_eol`) | endpoint facts: `operating_system`, `os_version`, `platform`, `arch`, `is_eol` | none | `tech_stack` (product names of the profile's tech stack) |
+| Tech stack | none on the asset (Endpoint: `endpoint_platform`, `endpoint_arch`, `endpoint_is_eol`) | endpoint facts: `operating_system`, `os_version`, `platform`, `arch`, `is_eol` | none | `products` (product names of the organization's software) |
 | Network | `asset_hostname`, `asset_ips`, `asset_mac_addresses`, `asset_seen_ip`, `asset_url` | endpoint facts: `hostname`, `ip_addresses`, `mac_addresses`, `seen_ip`; `url` | none | none (the profile names assets, it is not an inventory) |
 | Cloud | `asset_cloud_provider`, `asset_cloud_native_type`, `asset_cloud_region` | `cloud_provider`, `cloud_native_type`, `cloud_region` | none | none |
 
@@ -203,6 +225,28 @@ Re-import is keyed on source and `external_id`: a row this source wrote is updat
 (`manual`, `csv`, `api`) is never overwritten, and a row this source wrote that the read no longer returns
 is reported as gone, kept unless the administrator removes it. A truncated or failed read removes nothing.
 
+### Outbound to OpenCTI (#1982 S3)
+
+An outbound `assets` sync to `opencti` (`backend/app/services/organization_context_opencti_outbound.py`)
+writes the STIX model OpenCTI's own rule `vulnerability_software_to_system` reads, so a vulnerability OpenCTI
+knows on a software reaches the systems that run it:
+
+| XTM One | OpenCTI | Written |
+|---|---|---|
+| asset | `System` (Identity) | `name`; with the #19943 taxonomy: category, subcategory, criticality, internet facing, environment, owner, platform (`os_family`); `unknown` and empty values never written |
+| software installed (asset store, else the row's `products`) | `Software` observable (STIX 2.1 SCO) | `name` (product), `vendor`, `version`, `cpe`; one per vendor, product and version |
+| installation | `uses` relationship, System to Software | |
+| asset group | not written | OpenCTI has no group of Systems yet |
+
+Only what the sync created is touched (`outbound_ids`: `system:<name>`, `software:<vendor>|<product>|<version>`,
+`uses:<name>|<software>`); a System OpenCTI's connectors wrote is never updated or deleted, an asset whose
+source is `opencti` is never pushed back. The outbound filters select the assets; an asset leaving them has its
+System deleted (its relationships with it). A Software observable is never deleted, OpenCTI deduplicating
+observables on their STIX id: a software no asset runs any more loses its `uses` relationships and leaves the
+keys. An object deleted in OpenCTI is forgotten and created again on the next run. When the assets the filters
+select hold more than 5,000 installations, the run writes nothing and says so (only the selected
+assets' installations are counted, so narrowing the filters lowers the count).
+
 ## 9. One thing across sources (#1178)
 
 `backend/app/services/organization_asset_identity.py` is the pure rule (no I/O, no model call) that turns the
@@ -243,7 +287,7 @@ records several sources hold on one thing into one canonical thing; the store of
   from an administrator's override (kept across syncs), else a source that reported it, else a dictionary
   lookup with its confidence, else `unresolved`: never guessed.
 - Sections: asset groups (external reference, then name) and the name-keyed sections (tech stack on CPE then
-  vendor and product, crown jewels, PIRs, tracked organizations) use the same matching.
+  vendor and product, primary assets, PIRs, tracked organizations) use the same matching.
 - Settings: the profile part `asset_identity` (`AssetIdentity`, an `EXPOSURE_FIELDS` part, never dumped into the
   always-on block) holds the organization's `key_order` (strong keys, most reliable first; a key left out never
   merges; empty: `DEFAULT_KEY_ORDER`) and `precedence` (field to sources or source classes in order, `*` any
@@ -322,7 +366,7 @@ Read API (any signed-in user, primary organization, every list paginated, `limit
 
 `organization_asset_records` (one row per record per source, unique `(organization, source, external_id)`),
 `organization_asset_identifiers`, `organization_asset_groups`, `organization_asset_group_members`,
-`organization_crown_jewel_assets` and `organization_asset_changes` (migration `r1543assetrecords01`) hold
+`organization_primary_asset_assets` and `organization_asset_changes` (migration `r1543assetrecords01`) hold
 the assets and groups; `services/organization_asset_records.py` is their only writer. A write re-matches the
 identity cluster of the rows it touches (`identity_closure`, `refresh_clusters`), never the whole store, and
 appends one row per changed record to the change log. `save_version` turns an old client's `assets_exposure`
@@ -349,13 +393,28 @@ and `asset_groups` into row writes (`apply_profile_lists`). Row API, administrat
   records is a member of one of the groups (a value that is not an id keeps none); `GET .../assets/facets`
   answers `group` as `{value: id, label: name, count}`; `GET .../assets/{id}` lists the asset's `groups`. The
   group page `/ctem/inventory/asset-groups/:id` reads its members through that filter, paged on the server.
-- `PUT /api/v1/organization-context/crown-jewels/{name}/links` `{names}`: the records and groups a crown jewel
-  covers; 404 for an unknown crown jewel, 422 naming what matches nothing.
+- `PUT /api/v1/organization-context/primary-assets/{name}/links` `{names}`: the records and groups a primary asset
+  covers; 404 for an unknown primary asset, 422 naming what matches nothing.
+- `GET /api/v1/organization-context/primary-assets/link-counts`: per primary asset key, the stored links counted
+  `{total, manual, opencrq, rule}` (removals left out, one grouped query, #1978 S2). The Assets column of the primary
+  assets table reads it: a synced link shows as a count, never as a list, the profile's `asset_names` holding only
+  the names a person typed.
+- `GET /api/v1/organization-context/primary-assets/{name}?q=&offset=&limit=&through=&source=&sort=&direction=` (#1980 S2): the primary asset's page.
+  `primary_asset` is its profile entry (404 for an unknown name); `supporters` is one page (at most 200) of the
+  records that support it, linked directly (`through_kind` `asset`) or as members of a linked group (`asset_group`,
+  `through` the group's name), each with the link's `source`, `roles`, `inherited_needs` and `via`, searched on the
+  record or group name, filtered on `through` (`asset`, `asset_group`) and `source` (values with a comma between them),
+  sorted on `name` or `criticality` (`direction` `desc` reads very high first; any other sort answers 422), with
+  `total` and the whole primary asset's `counts` by path and by source (removals left out), which the page's Reaches it
+  and Link source filters offer as their values.
+  The page `/ctem/inventory/primary-assets/:name` reads it, opened from a row of the Business tab's primary assets
+  table, from an asset page's "Primary assets it supports" and from a case's "Primary assets reached"; its open cases
+  come from `GET /ctem-cases?primary_asset=<name>` (the cases one of whose visible issues reaches it).
 - The profile API never writes a row once the records are imported (#1752): `PUT /api/v1/organization-context`
   and `POST .../versions/{v}/restore` ignore `assets_exposure`, `asset_groups` and `ai_systems` (the stored
   version's lists are kept, so `save_version` applies no row write and the synced-row lock never judges a
   profile save), and name what they ignored in `ignored_row_fields`; a restore naming only row fields is a 422
-  (the rows keep their own history, restored from `/changes/restore`). Links of crown jewels and asset groups
+  (the rows keep their own history, restored from `/changes/restore`). Links of primary assets and asset groups
   are judged against the records. `GET`, `PATCH`, `PUT` and the restore answer profile fields only, never the
   `assets_exposure` or `asset_groups` list: `row_counts` (`{assets_exposure, asset_groups}`) names how many
   there are, and a `PUT` that leaves a row list out keeps the stored one (before the import too). The payload
@@ -424,7 +483,9 @@ assets running a product.
   import and sync section and the outbound pairing are all `software`. `s1495swprofile01` turned each profile
   tech stack row into a hand-typed Software (a hand CPE kept as the override) and renamed stored category
   selections; `s1495swsection01` renames the saved syncs' section and any selection still naming it.
-  The profile list the rows are stored under keeps its key `tech_stack` until the profile field is dropped.
+  `s1495swfield01` renamed the profile field itself to `software`; `s1495products01` renames the product list
+  each asset and asset group carries (`assets_exposure[].products`, `asset_groups[].products`, the inventory
+  store's `fields.products`, the CSV column `products`) and the scope gate's `reconcile.products`.
 - `upsert_organization_rows(section="software")` writes Software entities, not profile rows:
   a row whose vendor and product a software already carries is reported `unchanged` and never overwritten;
   a new one becomes a hand-typed Software (`create_software`, its typed version stored as a version). Rows are
@@ -530,27 +591,31 @@ to a tenant member (section 4). The OpenCRQ tools of XTM One (`create_opencrq_su
 ### Primary assets and supporting assets
 
 OpenCRQ holds two layers. A **primary asset** is a business asset (a service, a process, a dataset) rated on four
-security needs (availability, integrity, confidentiality, traceability); the profile lists them as `crown_jewels`
+security needs (availability, integrity, confidentiality, traceability); the profile lists them as `primary_assets`
 (the name before primary assets). A **supporting asset** is the IT underneath (a server, an application, a
 repository): an inventory asset, never a primary asset.
 
-- Import (`organization_context_import._read_opencrq`): the crown-jewel section reads OpenCRQ primary assets
+- Import (`organization_context_import._read_opencrq`): the primary-asset section reads OpenCRQ primary assets
   (`primaryAssets.getPrimaryAssets` per organization), criticality = the highest rated need, `min_criticality`
   empty by default (every primary asset). Rows an older build imported from supporting assets are superseded at
   the next sync (`ReadResult.superseded`); a row a person typed is kept.
-- Outbound: XTM One no longer pushes crown jewels to OpenCRQ supporting assets; OpenCRQ is the source.
+- Outbound: XTM One no longer pushes primary assets to OpenCRQ supporting assets; OpenCRQ is the source.
 - Links (`organization_context_opencrq_links`): the OpenCRQ primary-asset sync, option `link_supporting_assets`
   in its filters (on unless `"false"`), imports the OpenCRQ `support_to_primary` links onto
-  `organization_crown_jewel_links`: `source` (`manual`, `opencrq`, `rule`), `external_id` (the OpenCRQ link id),
+  `organization_primary_asset_links`: `source` (`manual`, `opencrq`, `rule`), `external_id` (the OpenCRQ link id),
   `roles` (OpenCRQ `link-roles.ts`: stores, processes, reads, transmits, administers, monitors,
   supports_availability, performs, unknown), `inherited_needs` (need to `full` / `lower` / `none`, the strongest of
   the roles; `unknown` inherits everything), `via` (the supporting asset a `depends_on` chain goes through, written
   by the signals slice), `removed`. The supporting asset is the inventory record of source `opencrq` with the same
-  id, else the single record of the same name; none or several are reported (`not_in_inventory`, `ambiguous`),
-  never created. A manual link is never touched; a synced link a person removes through
-  `PUT /crown-jewels/{name}/links` becomes a tombstone the sync never adds back; a link OpenCRQ dropped is deleted
+  id, else the single ASSET whose record name, hostname, FQDN or URL host is the name (candidates count per merged
+  asset, so a device Intune and OpenAEV both report is one match, linked through its smallest record id), else the
+  single asset of the same loose name (apostrophes dropped, hyphen, underscore, dot and space one separator,
+  #1978); none or several assets are reported (`not_in_inventory`, `ambiguous`, the first 50 listed and the totals
+  in `not_in_inventory_count` and `ambiguous_count`), never created. A link already held by another record of the
+  same asset is kept as it is. A manual link is never touched; a synced link a person removes through
+  `PUT /primary-assets/{name}/links` becomes a tombstone the sync never adds back; a link OpenCRQ dropped is deleted
   at the next sync. The sync's run result carries the link summary under `links`. Migration `v1591pallinks01`.
-- Inventory source (Sam, 24 Nov 2026): the `crown_jewels` section is in the `inventory` scope of
+- Inventory source (Sam, 24 Nov 2026): the `primary_assets` section is in the `inventory` scope of
   `organization_context_sync.SECTION_SCOPES` (and `organization_context_sources.FIELD_SCOPES`), so
   `GET /organization-context/syncs?scope=inventory` and `/sources?scope=inventory` list the OpenCRQ primary-asset
   sync next to the asset sources, on the same scheduler (no second one). Nothing is pre-provisioned (Sam,
@@ -559,3 +624,10 @@ repository): an inventory asset, never a primary asset.
   older builds saved by themselves (create audit `details.default`) when no person had edited it since; the rows
   it had imported stayed, as an administrator's delete in its default `leave` mode keeps them. Manual rows and
   manual links still win over every run.
+  Rows a deleted sync left (`leave`, the migration above included) keep their platform source and are listed in
+  Sources and syncs as that platform with no sync (#1940): its schedule cell reads "Rows from an earlier sync,
+  none scheduled" and its menu offers "Set up a sync" (the import preselected on that platform and the section the
+  rows feed; the new sync takes the rows back, since `plan_rows` and the import count an unstamped row of the same
+  source as the sync's) and "Remove or hand over the rows" (`POST /organization-context/sources/{source}/rows`).
+  The table offers that purge or release for every source but rows entered by hand; `plan_rows` refusing the
+  hand source stays the one authority.

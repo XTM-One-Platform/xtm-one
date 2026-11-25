@@ -235,6 +235,132 @@ async def _primary_assets(db: AsyncSession, organization_id: uuid.UUID) -> Any:
         return ctem_primary_assets.PrimaryAssetIndex()
 
 
+#: Supporting assets one page of the loop trace lists at most (#1979).
+SUPPORTING_PAGE_MAX = 200
+#: Seconds a signal's supporting asset list is kept for the next page, search or sort (UX r1 B4 on #1995).
+SUPPORTING_CACHE_SECONDS = 300.0
+#: Lists kept at most (one per signal version and primary asset); the oldest goes first.
+SUPPORTING_CACHE_MAX = 64
+#: The columns the supporting asset table sorts on the server (UX r1 B3 on #1995).
+SUPPORTING_SORTS: tuple[str, ...] = ("asset", "through")
+
+#: (organization, signal, signal version, primary asset key) -> (read at, rows sorted by asset, truncated).
+_supporting_cache: dict[tuple[str, str, str, str], tuple[float, list[dict[str, Any]], bool]] = {}
+
+
+def _supporting_cached(cache_key: tuple[str, str, str, str]) -> tuple[list[dict[str, Any]], bool] | None:
+    hit = _supporting_cache.get(cache_key)
+    if hit is None or time.monotonic() - hit[0] > SUPPORTING_CACHE_SECONDS:
+        _supporting_cache.pop(cache_key, None)
+        return None
+    return hit[1], hit[2]
+
+
+def _supporting_keep(cache_key: tuple[str, str, str, str], rows: list[dict[str, Any]], truncated: bool) -> None:
+    while len(_supporting_cache) >= SUPPORTING_CACHE_MAX:
+        _supporting_cache.pop(min(_supporting_cache, key=lambda k: _supporting_cache[k][0]))
+    _supporting_cache[cache_key] = (time.monotonic(), rows, truncated)
+
+
+async def _supporting_index(db: AsyncSession, organization_id: uuid.UUID, key: str, refs: list[str]) -> Any:
+    """The link index narrowed to primary asset *key* and the products *refs* name (UX r2 B4 on #1995)."""
+    from app.services import ctem_primary_assets
+
+    try:
+        async with db.begin_nested():
+            return await ctem_primary_assets.load_index(db, organization_id, primary_asset_key=key, software=refs)
+    except Exception:
+        logger.warning("CTEM loop trace: supporting assets not read for %s", organization_id, exc_info=True)
+        return ctem_primary_assets.PrimaryAssetIndex()
+
+
+async def _reach_inputs(db: AsyncSession, row: CtemSignal) -> tuple[list[str], list[str]]:
+    """The software references and subject keys the gate followed for *row*.
+
+    Read from its decision record (UX r2 B4 on #1995: no profile read on the trace's
+    path); a record without them (older than #1591 S3) resolves them again.
+    """
+    decision = getattr(row, "decision", None)
+    reconcile = decision.get("reconcile") if isinstance(decision, dict) else None
+    if (
+        isinstance(reconcile, dict)
+        and isinstance(reconcile.get("software_refs"), list)
+        and isinstance(reconcile.get("keys"), list)
+    ):
+        products = reconcile.get("products") if isinstance(reconcile.get("products"), list) else []
+        refs = [str(r) for r in dict.fromkeys([*reconcile["software_refs"], *products]) if r]
+        return refs, [str(k) for k in reconcile["keys"] if k]
+    profile = await _profile(db, row.organization_id)
+    resolution = gate.resolve(profile, facts_of(row), None)
+    return list(dict.fromkeys([*resolution.software_refs, *resolution.products])), list(resolution.keys)
+
+
+async def _supporting_rows(db: AsyncSession, row: CtemSignal, key: str) -> tuple[list[dict[str, Any]], bool]:
+    """Every supporting asset of *row* for primary asset *key*, read once per signal version (UX r1 B4 on #1995).
+
+    The first read takes the signal's references from its decision record and reads
+    the link index of that primary asset alone, with only the installed software rows
+    of the products the signal names (UX r2 B4); the page, the search and the sort then
+    work on the list kept here for a few minutes, keyed on the signal's ``updated_at``
+    so a re-decided signal reads again.
+    """
+    version = str(getattr(row, "updated_at", "") or "")
+    cache_key = (str(row.organization_id), str(row.id), version, key)
+    hit = _supporting_cached(cache_key)
+    if hit is not None:
+        return hit
+    refs, keys = await _reach_inputs(db, row)
+    index = await _supporting_index(db, row.organization_id, key, refs)
+    rows = index.supporting(refs, keys, key)
+    truncated = bool(index.truncated)
+    _supporting_keep(cache_key, rows, truncated)
+    return rows, truncated
+
+
+async def supporting_assets(
+    db: AsyncSession,
+    row: CtemSignal,
+    primary_asset: str,
+    *,
+    query: str = "",
+    offset: int = 0,
+    limit: int = 50,
+    sort: str = "asset",
+    direction: str = "asc",
+) -> dict[str, Any]:
+    """The inventory assets through which *row* reaches *primary_asset*, paged (#1979).
+
+    Read live from the link index with the signal's own software and keys (the
+    same reach the gate ran), so a primary asset 10,000 workstations support
+    lists all of them, not the chains the decision record keeps. *query* filters
+    by asset or group name, case-insensitive; *sort* (``asset`` or ``through``) and
+    *direction* (``asc`` or ``desc``) order the whole list before the page is cut.
+    Answers ``{primary_asset, total, offset, limit, sort, direction, truncated,
+    assets}``; ``truncated`` says the index read itself was cut at its bounds.
+    """
+    key = " ".join(str(primary_asset).split()).casefold()[:200]
+    rows, truncated = await _supporting_rows(db, row, key)
+    needle = query.strip().casefold()
+    if needle:
+        rows = [r for r in rows if needle in r["asset"].casefold() or needle in str(r["through"]).casefold()]
+    sort = sort if sort in SUPPORTING_SORTS else "asset"
+    descending = direction == "desc"
+    if sort != "asset" or descending:
+        rows = sorted(rows, key=lambda r: (str(r[sort]).casefold(), r["asset"].casefold()), reverse=descending)
+    limit = max(1, min(int(limit), SUPPORTING_PAGE_MAX))
+    offset = max(0, int(offset))
+    return {
+        "primary_asset": key,
+        "total": len(rows),
+        "offset": offset,
+        "limit": limit,
+        "sort": sort,
+        "direction": "desc" if descending else "asc",
+        "truncated": truncated,
+        "assets": rows[offset : offset + limit],
+    }
+
+
 async def default_scenario_reader(db: AsyncSession) -> uuid.UUID | None:
     """#1591 S3: whose OpenCRQ read decides a ``system`` signal no administrator evaluates (the listener path).
 
@@ -248,7 +374,7 @@ async def default_scenario_reader(db: AsyncSession) -> uuid.UUID | None:
         await db.execute(
             select(sync.owner_user_id)
             .where(
-                sync.section == "crown_jewels",
+                sync.section == "primary_assets",
                 sync.source == "opencrq",
                 sync.enabled.is_(True),
                 sync.owner_user_id.is_not(None),
@@ -293,6 +419,23 @@ async def _scenarios_for(db: AsyncSession, row: Any) -> gate.ScenarioIndex:
         return gate.ScenarioIndex(note="OpenCRQ not read: no OpenCRQ connection to read with")
 
 
+async def prepare_system_reads(db: AsyncSession, organization_id: uuid.UUID) -> None:
+    """Take the gate's reads of a ``system`` signal now, before any signal row is written (#1953).
+
+    The OpenCRQ risk scenarios (a remote read), the fallback reader and the
+    inventory link index land in the session cache, so a recompute that gates
+    the signals it records reads nothing remote while it holds their row
+    locks. Never raises: an unread value is read again by :func:`evaluate`.
+    """
+    try:
+        async with db.begin_nested():
+            fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
+        await _session_cached(db, ("scenarios", fallback), lambda: read_scenarios(db, user_id=fallback))
+        await _session_cached(db, ("links", organization_id), lambda: _primary_assets(db, organization_id))
+    except Exception:
+        logger.warning("CTEM scope gate: reads not prepared for %s", organization_id, exc_info=True)
+
+
 def dismissed(row: CtemSignal) -> bool:
     """A signal a person dismissed (#1505): no pass of the gate moves it back, only a restore."""
     return row.state == "discarded" and (row.decision or {}).get("reason_code") == DISMISSED_CODE
@@ -320,7 +463,11 @@ async def evaluate(
         return None
     before = signals.verdict_of(row.state)
     at = now or datetime.now(UTC)
-    profile = profile if profile is not None else await _profile(db, row.organization_id)
+    if profile is None:
+        # Per-signal callers (a pass recording many signals) build the software profile once per
+        # session and organization: rebuilt per signal it held the web loop for seconds on a large store.
+        org = row.organization_id
+        profile = await _session_cached(db, ("profile", org), lambda: _profile(db, org))
     if primary_assets is None:
         # Per-signal callers (listeners) share one index per session and organization (#1591 S3 review).
         org_id = row.organization_id
@@ -390,8 +537,12 @@ async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: b
         return pending
     verdict = signals.verdict_of(row.state)
     try:
-        async with db.begin_nested():
-            await ctem_case_loop.open_from_signal(db, row, events=pending)
+        # #1951: nothing opens while an administrator paused case opening; the signal waits confirmed.
+        from app.services import ctem_case_opening
+
+        if await ctem_case_opening.is_on(db, "cyber"):
+            async with db.begin_nested():
+                await ctem_case_loop.open_from_signal(db, row, events=pending)
     except Exception:
         pending.items.clear()
         logger.warning("CTEM case not opened for signal %s; the sweep retries", getattr(row, "id", "?"), exc_info=True)
@@ -464,7 +615,7 @@ async def recheck_parked(
 ) -> dict[str, int]:
     """#1505: the unmatched signals decided before the organization's newest profile version, decided again.
 
-    A change to assets, groups, crown jewels, owned domains, software or
+    A change to assets, groups, primary assets, owned domains, software or
     shipped products writes a new profile version; every ``to_validate``
     signal last decided before it is decided again, *batch* per call, oldest
     first. Each is read with its recorder's OpenCRQ read. A signal the gate
@@ -523,7 +674,7 @@ async def _decide_again(db: AsyncSession, rows: list[CtemSignal], *, now: dateti
 
 
 #: The watchlist reasons an inventory link or a software change can lift (#1591 S3).
-HELD_BY_SCOPE: tuple[str, ...] = ("crown_jewel_below_policy", "criticality_unknown", "below_scope_threshold")
+HELD_BY_SCOPE: tuple[str, ...] = ("primary_asset_below_policy", "criticality_unknown", "below_scope_threshold")
 
 
 async def recheck_held(
@@ -537,7 +688,7 @@ async def recheck_held(
     """#1591 S3: the watchlist signals held for scope, decided before *since*, decided again.
 
     Run after a primary-asset link sync or an endpoint software change completes:
-    a signal held by ``crown_jewel_below_policy``, ``criticality_unknown`` or
+    a signal held by ``primary_asset_below_policy``, ``criticality_unknown`` or
     ``below_scope_threshold`` whose decision predates the change is decided
     again, *batch* per call, oldest first. Idempotent: a decided signal's
     ``updated_at`` moves past *since*, so the next call skips it. A signal the
@@ -577,7 +728,7 @@ def inventory_additions(profile: Any, rows: list[Any]) -> dict[str, list[Any]]:
     signals count.
     """
     have_assets = {gate.stable_key(a.name) for a in profile.assets_exposure}
-    have_products = {e.product.strip().lower() for e in profile.tech_stack}
+    have_products = {e.product.strip().lower() for e in profile.software}
     have_domains = {d.lower() for d in profile.owned_domains}
     assets: list[str] = []
     products: list[str] = []
@@ -630,7 +781,7 @@ async def add_to_inventory(
             }
             for name in added["assets"]
         ]
-        data["tech_stack"] = list(data.get("tech_stack") or []) + [
+        data["software"] = list(data.get("software") or []) + [
             {"product": name, "source": INVENTORY_SOURCE} for name in added["products"]
         ]
         data["owned_domains"] = list(data.get("owned_domains") or []) + added["domains"]
@@ -638,7 +789,7 @@ async def add_to_inventory(
         basis = f"added from the CTEM Signals page by {actor}"[:500]
         touched = [
             f
-            for f, key in (("assets_exposure", "assets"), ("tech_stack", "products"), ("owned_domains", "domains"))
+            for f, key in (("assets_exposure", "assets"), ("software", "products"), ("owned_domains", "domains"))
             if added[key]
         ]
         saved = await org_context.save_version(

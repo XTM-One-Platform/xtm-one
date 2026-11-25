@@ -2018,6 +2018,32 @@ async def test_a_sub_path_inside_a_declared_check_directory_is_widened_to_it(sto
     assert record.sub_paths == ("backend",), "the record keeps what was written, so commits and rebases cover it"
 
 
+async def test_exact_files_keeps_a_file_sub_path_as_that_file(store):
+    """#2056: a file inside a declared check directory was written with the whole directory (145 MB on xtm-one)."""
+    from app.services.sandbox_workspace.checkout import RECORD_NAME, CheckoutRecord
+
+    conversation, user = uuid.uuid4(), uuid.uuid4()
+    composite, _executor = _composite(conversation, user)
+    composite.add_tools(*_archive_tool([], _declared_archive))
+    arguments = {
+        "provider": "github",
+        "repository": "acme/repo",
+        "sub_paths": ["backend/app/services/y.py"],
+        "path": "repo",
+        "exact_files": True,
+    }
+    with offering_tools(composite.all_tools):
+        result = await composite.execute_tool(ToolCall(id="m1", name="materialize_repository", arguments=arguments))
+    assert not result.is_error, result.content
+    assert "widened" not in result.content
+    (workspace,) = store.records.values()
+    written = sorted(store.files[workspace.id])
+    assert "repo/backend/app/services/y.py" in written
+    assert "repo/backend/app/core/x.py" not in written, "the check's directory is not written whole"
+    record = CheckoutRecord.from_json(await _workspace_bytes(store, conversation, f"repo/{RECORD_NAME}"), path="repo")
+    assert record.sub_paths == ("backend/app/services/y.py",)
+
+
 async def test_add_paths_grows_a_checkout_at_its_commit_and_keeps_its_edits(store):
     """A narrow checkout grows by a path; the edits stay, the new files are tracked from their base."""
     from app.services.sandbox_workspace.checkout import RECORD_NAME, CheckoutRecord

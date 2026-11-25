@@ -59,7 +59,7 @@ def test_without_a_tech_stack_relevant_is_not_configured_and_never_zero():
     relevant = _layer(funnel, "relevant")
     assert relevant["state"] == NOT_CONFIGURED
     assert relevant["count"] is None and relevant["drop"] is None
-    assert relevant["category"] == "tech_stack"
+    assert relevant["category"] == "software"
     # Not counted as filtered: exploitable reads the known layer.
     exploitable = _layer(funnel, "exploitable")
     assert exploitable["basis"] == "known"
@@ -83,7 +83,7 @@ def test_exploitable_without_its_count_is_not_available():
 
 
 @pytest.mark.parametrize(
-    "key,category", [("exposed", "assets"), ("business_impact", "crown_jewels"), ("policy", "prioritization_policy")]
+    "key,category", [("exposed", "assets"), ("business_impact", "primary_assets"), ("policy", "prioritization_policy")]
 )
 def test_organization_layers_are_not_configured_until_their_fields_exist(key, category):
     layer = _layer(build_funnel(known=100, relevant=50, exploitable_known=9, exploitable_relevant=5), key)
@@ -138,6 +138,220 @@ def test_exposed_never_increases_the_funnel():
     assert _layer(funnel, "exposed")["count"] == 9 and funnel["capped"] is True
 
 
+# ── Business impact and policy on the live configuration (#1980) ───────────
+
+
+def _reacher(name, products, *links):
+    from app.services.ctem_primary_assets import Link, Reacher
+
+    return Reacher(
+        name=name,
+        products={p.lower(): p for p in products},
+        links=[(Link(primary, "opencrq"), kind, through) for primary, kind, through in links],
+    )
+
+
+def _index(*reachers, truncated=False):
+    from app.services.ctem_primary_assets import PrimaryAssetIndex
+
+    return PrimaryAssetIndex(loaded=True, reachers=list(reachers), truncated=truncated)
+
+
+_STACK = [
+    {"product": "chrome", "label": "Google Chrome", "cpe": "", "vendor": "google"},
+    {"product": "openssl", "label": "OpenSSL", "cpe": "", "vendor": "openssl"},
+    {"product": "nginx", "label": "nginx", "cpe": "", "vendor": "f5"},
+]
+_TODAY = __import__("datetime").date(2026, 11, 24)
+
+
+def _profile(**policy):
+    from app.services.organization_context import OrganizationProfile
+
+    return OrganizationProfile.model_validate(
+        {
+            "primary_assets": [
+                {"name": "Payments", "criticality": "critical"},
+                {"name": "Wiki", "criticality": "low"},
+            ],
+            "prioritization_policy": policy,
+        }
+    )
+
+
+def test_scope_without_links_or_policy_is_not_configured():
+    from app.services.ctem_funnel import funnel_scope
+
+    scope = funnel_scope(profile=_profile(), index=_index(), stack=_STACK, today=_TODAY)
+    assert scope == {"business": {"configured": False}, "policy": {"configured": False}}
+
+
+def test_business_scope_keeps_the_software_run_by_supporting_assets():
+    from app.services.ctem_funnel import funnel_scope
+
+    index = _index(
+        _reacher("laptop-1", ["Chrome"], ("payments", "asset_group", "Laptops")),
+        _reacher("db-1", ["OpenSSL"], ("payments", "asset", "db-1"), ("wiki", "asset", "db-1")),
+    )
+    business = funnel_scope(profile=_profile(), index=index, stack=_STACK, today=_TODAY)["business"]
+    assert business["configured"] is True
+    assert business["labels"] == ["Google Chrome", "OpenSSL"]
+    assert business["primary_assets"] == 2 and business["supporting_assets"] == 2
+    assert "reason" not in business
+
+
+def test_business_scope_without_software_inventory_says_why():
+    from app.services.ctem_funnel import SCOPE_NO_SOFTWARE, funnel_scope
+
+    index = _index(_reacher("laptop-1", ["Chrome"], ("payments", "asset", "laptop-1")))
+    business = funnel_scope(profile=_profile(), index=index, stack=[], today=_TODAY)["business"]
+    assert business["configured"] is True and business["labels"] is None
+    assert business["reason"] == SCOPE_NO_SOFTWARE
+
+
+def test_scope_emptied_over_a_software_inventory_is_a_live_zero():
+    from app.services.ctem_funnel import funnel_scope
+
+    # The supporting asset runs nothing of the stack; the floor removes every primary asset.
+    index = _index(_reacher("wiki-1", ["Confluence"], ("wiki", "asset", "wiki-1")))
+    scope = funnel_scope(
+        profile=_profile(min_primary_asset_criticality="high"), index=index, stack=_STACK, today=_TODAY
+    )
+    business, policy = scope["business"], scope["policy"]
+    assert business["empty"] is True and "reason" not in business and business["labels"] is None
+    assert policy["empty"] is True and "reason" not in policy and policy["labels"] is None
+    funnel = build_funnel(known=100, exploitable_known=9, business_scope=business, policy_scope=policy)
+    for key in ("business_impact", "policy"):
+        layer = _layer(funnel, key)
+        assert layer["state"] == LIVE and layer["count"] == 0 and "empty" not in layer
+    assert _layer(funnel, "business_impact")["drop"] == 9
+    assert funnel["needs_action"] == 0
+
+
+def test_policy_scope_applies_exclusions_criticality_and_scores():
+    from app.services.ctem_funnel import funnel_scope
+
+    index = _index(
+        _reacher("laptop-1", ["Chrome"], ("payments", "asset_group", "Laptops")),
+        _reacher("db-1", ["OpenSSL"], ("payments", "asset", "db-1")),
+        _reacher("wiki-1", ["nginx"], ("wiki", "asset", "wiki-1")),
+    )
+    profile = _profile(
+        cvss_min=7.0,
+        min_primary_asset_criticality="high",
+        exclusions=[{"kind": "asset_group", "value": "laptops"}],
+        accepted_risks=[
+            {"subject": "CVE-2024-3094", "owner": "CISO", "expires_on": "2027-01-01"},
+            {"subject": "CVE-2020-0001", "owner": "CISO", "expires_on": "2020-01-01"},
+            {"subject": "CVE-2023-1111", "scope": "db-1", "owner": "CISO", "expires_on": "2027-01-01"},
+        ],
+    )
+    policy = funnel_scope(profile=profile, index=index, stack=_STACK, today=_TODAY)["policy"]
+    assert policy["configured"] is True and policy["basis"] == "business_impact"
+    # Laptops excluded, the Wiki (low) under the floor: only OpenSSL on db-1 stays.
+    assert policy["labels"] == ["OpenSSL"]
+    assert policy["rules"] == ["cvss_min", "asset_group_exclusions", "accepted_risks", "min_primary_asset_criticality"]
+    cvss, accepted = policy["filter_groups"]
+    assert cvss["mode"] == "or" and {"key": ["x_opencti_cisa_kev"], "values": ["true"]} in cvss["filters"]
+    assert {"key": ["x_opencti_cvss_base_score"], "values": [], "operator": "nil"} in cvss["filters"]
+    # Only the unscoped, unexpired CVE is left out by name.
+    assert accepted["filters"][0] == {"key": ["name"], "values": ["CVE-2024-3094"], "operator": "not_eq"}
+
+
+def test_policy_without_primary_assets_narrows_the_exploitable_layer():
+    from app.services.ctem_funnel import funnel_scope
+
+    profile = _profile(exclusions=[{"kind": "product", "value": "nginx"}])
+    policy = funnel_scope(profile=profile, index=_index(), stack=_STACK, today=_TODAY)["policy"]
+    assert policy["basis"] == "exploitable" and policy["labels"] == ["Google Chrome", "OpenSSL"]
+    assert policy["filter_groups"] == []
+
+
+def test_live_scope_layers_count_and_never_contradict_the_layer_above():
+    business_scope = {
+        "configured": True,
+        "labels": ["OpenSSL"],
+        "primary_assets": 2,
+        "supporting_assets": 263,
+        "basis": "exploitable",
+    }
+    policy_scope = {
+        "configured": True,
+        "labels": ["OpenSSL"],
+        "rules": ["cvss_min"],
+        "basis": "business_impact",
+        "filter_groups": [],
+    }
+    funnel = build_funnel(
+        known=4214,
+        relevant=512,
+        exploitable_known=300,
+        exploitable_relevant=21,
+        business=12,
+        business_scope=business_scope,
+        policy=30,
+        policy_scope=policy_scope,
+    )
+    business, policy = _layer(funnel, "business_impact"), _layer(funnel, "policy")
+    assert business == {
+        **business,
+        "state": LIVE,
+        "count": 12,
+        "drop": 9,
+        "primary_assets": 2,
+        "supporting_assets": 263,
+    }
+    assert "labels" not in business and "filter_groups" not in policy
+    # A larger policy count than the layer above is capped, never increasing.
+    assert policy["count"] == 12 and funnel["capped"] is True and policy["rules"] == ["cvss_min"]
+    assert funnel["needs_action"] == 12
+
+
+def test_configured_scope_without_a_count_is_not_available_never_zero():
+    from app.services.ctem_funnel import SCOPE_NO_SOFTWARE, SCOPE_UNREAD
+
+    funnel = build_funnel(
+        known=100,
+        exploitable_known=9,
+        business_scope={"configured": True, "labels": None, "reason": SCOPE_NO_SOFTWARE, "primary_assets": 1},
+        policy_scope={"configured": True, "labels": ["x"], "rules": ["epss_min"]},
+    )
+    business, policy = _layer(funnel, "business_impact"), _layer(funnel, "policy")
+    assert business["state"] == NOT_AVAILABLE and business["count"] is None and business["reason"] == SCOPE_NO_SOFTWARE
+    assert business["primary_assets"] == 1 and business["category"] is None
+    assert policy["state"] == NOT_AVAILABLE and policy["reason"] == SCOPE_UNREAD
+    assert funnel["needs_action"] == 9
+
+
+async def test_scope_counts_send_one_call_with_the_policy_filters(monkeypatch):
+    from app.services.ctem_funnel import funnel_scope
+
+    index = _index(_reacher("db-1", ["OpenSSL"], ("payments", "asset", "db-1")))
+    scope = funnel_scope(profile=_profile(cvss_min=7.0), index=index, stack=_STACK, today=_TODAY)
+
+    async def fake_read(client, base_url, headers, query, stack, **kw):
+        return [{"id": "sw-1", "name": "openssl", "vendor": "openssl", "cpe": ""}], True, None
+
+    sent = []
+
+    async def fake_counts(client, base_url, headers, spec, user_id):
+        sent.extend(spec)
+        return {name: n for (name, _t, _f), n in zip(spec, (14, 6), strict=False)}
+
+    monkeypatch.setattr(collector, "_read_stack_software", fake_read)
+    monkeypatch.setattr(collector, "_octi_multi_counts", fake_counts)
+    counts = await collector._octi_scope_counts(None, "http://x", {}, _STACK, scope, "u1")
+    assert counts == {"business": 14, "policy": 6}
+    business_filter, policy_filter = sent[0][2], sent[1][2]
+    assert business_filter["filters"][0]["values"][1] == {"key": "id", "values": ["sw-1"]}
+    assert len(business_filter["filterGroups"]) == 1 and len(policy_filter["filterGroups"]) == 2
+
+
+async def test_scope_counts_skip_layers_without_software(monkeypatch):
+    scope = {"business": {"configured": True, "labels": None}, "policy": {"configured": False}}
+    assert await collector._octi_scope_counts(None, "http://x", {}, _STACK, scope, "u1") == {}
+
+
 def test_open_issues_wait_for_ctem_cases():
     layer = _layer(build_funnel(known=100), "open_issues")
     assert layer["state"] == NOT_AVAILABLE and layer["count"] is None and layer["category"] is None
@@ -172,7 +386,7 @@ def test_drops_add_up_to_the_volume_removed():
 # ── Collector wiring ─────────────────────────────────────────────────────────
 
 
-def _wire(monkeypatch, *, stack, tailored, openaev, reachability=None, rows=None):
+def _wire(monkeypatch, *, stack, tailored, openaev, reachability=None, rows=None, scope=None, scope_counts=None):
     async def fake_stack(db):
         return stack
 
@@ -210,6 +424,15 @@ def _wire(monkeypatch, *, stack, tailored, openaev, reachability=None, rows=None
     monkeypatch.setattr(collector, "_octi_kev_tailored", fake_tailored)
     monkeypatch.setattr(collector, "_VERTICAL_COLLECTORS", {"cyber": collectors})
 
+    async def fake_scope(db, stack_):
+        return scope
+
+    async def fake_scope_counts(client, base_url, headers, stack_, scope_, user_id):
+        return scope_counts or {}
+
+    monkeypatch.setattr(collector, "_funnel_scope", fake_scope)
+    monkeypatch.setattr(collector, "_octi_scope_counts", fake_scope_counts)
+
 
 @pytest.mark.parametrize("openaev", [False, True])
 async def test_build_posture_attaches_the_funnel_with_openaev_absent_or_present(monkeypatch, openaev):
@@ -231,6 +454,31 @@ async def test_build_posture_reads_the_profile_assets_into_the_exposed_layer(mon
     assert exposed["reason"] == EXPOSED_NOT_LINKED
 
 
+async def test_build_posture_feeds_the_business_and_policy_layers(monkeypatch):
+    scope = {
+        "business": {"configured": True, "labels": ["OpenSSL"], "primary_assets": 3, "supporting_assets": 263},
+        "policy": {"configured": True, "labels": ["OpenSSL"], "rules": ["cvss_min"], "filter_groups": []},
+    }
+    _wire(
+        monkeypatch,
+        stack=_STACK,
+        tailored=None,
+        openaev=False,
+        scope=scope,
+        scope_counts={"business": 40, "policy": 11},
+    )
+    funnel = (await collector.build_posture_for_user(None, "u1", "cyber"))[0]["prioritization"]["funnel"]
+    assert (
+        _layer(funnel, "business_impact")["count"] == 40
+        and _layer(funnel, "business_impact")["supporting_assets"] == 263
+    )
+    assert _layer(funnel, "policy")["count"] == 11 and funnel["needs_action"] == 11
+
+
+async def test_funnel_scope_is_none_without_a_session():
+    assert await collector._funnel_scope(None, _STACK) is None
+
+
 async def test_profile_reachability_is_none_without_a_session():
     assert await collector._profile_asset_rows(None) is None
     assert collector._profile_reachability(None) is None
@@ -249,6 +497,8 @@ class _Resp:
 
 def _finding(cve, *asset_ids):
     return {
+        "finding_id": f"{cve}@{'+'.join(asset_ids) or 'unknown'}",
+        "finding_type": "cve",
         "finding_value": cve,
         "finding_assets": [{"asset_id": a, "asset_name": f"host-{a}"} for a in asset_ids],
     }
@@ -313,6 +563,32 @@ async def test_exposed_layer_keeps_everything_when_no_finding_is_proven_unreacha
     exposed = _layer(facts["prioritization"]["funnel"], "exposed")
     assert exposed["state"] == LIVE and exposed["count"] == 300
     assert sent == []
+
+
+async def test_an_unknown_location_finding_never_counts_in_the_exposed_layer(monkeypatch):
+    # OpenAEV #9233: a CVE found on no asset (a user or unknown location) is no exposure (gap abb45061).
+    # CVE-1 on the unreachable server drops; the same CVE with no asset does not keep it in.
+    findings = [_finding("CVE-1", "srv"), _finding("CVE-1"), _finding("CVE-9")]
+    sent = _wire_join(monkeypatch, findings, named_total=1)
+    facts, _ = await collector.build_posture_for_user(None, "u1", "cyber")
+    exposed = _layer(facts["prioritization"]["funnel"], "exposed")
+    assert exposed["state"] == LIVE and exposed["count"] == 299
+    assert sent == [
+        {"mode": "and", "filters": [{"key": ["name"], "values": ["CVE-1"]}], "filterGroups": [collector._F_EXPLOITABLE]}
+    ]
+
+
+async def test_the_exposed_join_reads_open_cve_findings_only(monkeypatch):
+    bodies: list[dict] = []
+
+    async def fake_api(base_url, headers, method, path, action, *, json=None, **kw):
+        bodies.append(json or {})
+        return _Resp({"content": [], "totalElements": 0, "totalPages": 0}), None
+
+    monkeypatch.setattr(collector, "_api", fake_api)
+    assert await collector._aev_cve_assets("https://aev", {}, None) == {}
+    keys = {f["key"]: f["values"] for f in bodies[0]["filterGroup"]["filters"]}
+    assert keys == {"finding_type": ["cve"], "finding_status": ["OPEN"]}
 
 
 async def test_exposed_layer_stays_not_available_past_the_finding_cap(monkeypatch):

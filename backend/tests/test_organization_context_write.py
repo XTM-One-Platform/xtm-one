@@ -97,14 +97,14 @@ async def test_a_non_admin_call_is_refused_and_writes_nothing(monkeypatch):
 
     monkeypatch.setattr(proposals, "apply_changes", _must_not_run)
     _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=False)
-    answer = await executor.handler(ORGANIZATION_UPDATE_TOOL)(changes=[{"field": "tech_stack", "value": []}])
+    answer = await executor.handler(ORGANIZATION_UPDATE_TOOL)(changes=[{"field": "software", "value": []}])
     assert answer == module.REFUSAL
 
 
 @pytest.mark.asyncio
 async def test_an_unknown_identity_is_refused(monkeypatch):
     _, executor = build_organization_context_write_tools(user_id=None, caller_is_admin=True)
-    answer = await executor.handler(ORGANIZATION_UPDATE_TOOL)(changes=[{"field": "tech_stack", "value": []}])
+    answer = await executor.handler(ORGANIZATION_UPDATE_TOOL)(changes=[{"field": "software", "value": []}])
     assert answer == module.REFUSAL
 
 
@@ -130,7 +130,7 @@ async def test_a_role_taken_away_since_the_turn_began_is_refused_at_the_call(mon
     monkeypatch.setattr(database, "async_session", lambda: _Session())
     monkeypatch.setattr(proposals, "apply_changes", _must_not_run)
     _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=True)
-    answer = await executor.handler(ORGANIZATION_UPDATE_TOOL)(changes=[{"field": "tech_stack", "value": []}])
+    answer = await executor.handler(ORGANIZATION_UPDATE_TOOL)(changes=[{"field": "software", "value": []}])
     assert answer == module.REFUSAL
 
 
@@ -159,7 +159,7 @@ async def test_an_administrator_call_saves_a_version_and_an_audit_entry(monkeypa
 
     async def _apply(db, **kwargs):
         calls["apply"] = kwargs
-        return {"organization_id": str(uuid.uuid4()), "organization": "Acme", "version": 4, "fields": ["tech_stack"]}
+        return {"organization_id": str(uuid.uuid4()), "organization": "Acme", "version": 4, "fields": ["software"]}
 
     async def _log_audit(db, **kwargs):
         calls["audit"] = kwargs
@@ -168,9 +168,9 @@ async def test_an_administrator_call_saves_a_version_and_an_audit_entry(monkeypa
     monkeypatch.setattr(proposals, "apply_changes", _apply)
     monkeypatch.setattr(audit, "log_audit", _log_audit)
     _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=True, agent_name="Ops agent")
-    changes = [{"field": "tech_stack", "value": [{"name": "Postgres"}], "basis": "the admin said so"}]
+    changes = [{"field": "software", "value": [{"name": "Postgres"}], "basis": "the admin said so"}]
     answer = await executor.handler(ORGANIZATION_UPDATE_TOOL)(changes=changes)
-    assert answer.startswith("Saved version 4 of the profile of Acme: tech_stack.")
+    assert answer.startswith("Saved version 4 of the profile of Acme: software.")
     assert calls["apply"]["author_user_id"] == uuid.UUID(_ADMIN_ID)
     assert calls["apply"]["agent_name"] == "Ops agent"
     assert calls["apply"]["changes"] == changes
@@ -198,13 +198,13 @@ async def test_a_validation_error_is_returned_and_nothing_is_saved(monkeypatch):
             raise AssertionError("committed after a refusal")
 
     async def _apply(db, **kwargs):
-        raise proposals.ProposalError("tech_stack: not a field of this organization's profile.")
+        raise proposals.ProposalError("software: not a field of this organization's profile.")
 
     monkeypatch.setattr(database, "async_session", lambda: _Session())
     monkeypatch.setattr(proposals, "apply_changes", _apply)
     _, executor = build_organization_context_write_tools(user_id=_ADMIN_ID, caller_is_admin=True)
     answer = await executor.handler(ORGANIZATION_UPDATE_TOOL)(changes=[{"field": "nope", "value": 1}])
-    assert answer.startswith("Not saved: tech_stack")
+    assert answer.startswith("Not saved: software")
 
 
 class _SyncSession:
@@ -390,7 +390,7 @@ def _proposal_row(**overrides):
         kind="fields",
         organization_id=uuid.uuid4(),
         status="pending",
-        proposals=[{"field": "tech_stack", "value": [{"product": "Postgres"}], "basis": "chat"}],
+        proposals=[{"field": "software", "value": [{"product": "Postgres"}], "basis": "chat"}],
         based_on_version=13,
         author_user_id=None,
         created_at="2026-11-17T08:00:00Z",
@@ -449,7 +449,7 @@ async def test_list_proposals_answers_the_stored_proposals(monkeypatch):  # #475
     answer = json.loads(await executor.handler(module.ORGANIZATION_LIST_PROPOSALS_TOOL)(status="pending", limit=5))
     assert asked == [("pending", 5)]
     assert answer["proposals"][0]["id"] == str(row.id)
-    assert answer["proposals"][0]["entries"][0]["field"] == "tech_stack"
+    assert answer["proposals"][0]["entries"][0]["field"] == "software"
     assert answer["proposals"][0]["based_on_version"] == 13
     bad = await executor.handler(module.ORGANIZATION_LIST_PROPOSALS_TOOL)(status="stale")
     assert bad.startswith("Not read: status is one of pending")

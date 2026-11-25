@@ -279,7 +279,7 @@ function EntryRow({ entry, index, runs, bundleReview = false }: EntryRowProps) {
             {entry.files && entry.files.length > 0 && (
               <div className="flex items-center gap-1 shrink-0">
                 {entry.files.map((f) => (
-                  <span key={f.id} className="inline-flex items-center gap-1 rounded-full bg-elevation-hover px-2 py-0.5 text-[11px] text-default-secondary">
+                  <span key={f.id} className="inline-flex items-center gap-1 rounded-sm border border-transparent bg-elevation-hover px-2 py-0.5 text-[11px] text-default-secondary">
                     <Paperclip className="h-2.5 w-2.5" />
                     <span className="max-w-[100px] truncate">{f.filename}</span>
                   </span>

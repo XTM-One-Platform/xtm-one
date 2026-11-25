@@ -755,7 +755,7 @@ The scheduler does not start a fire while a run of the assignment is active
 (`has_active_run`). A run resumed across many rollouts stayed active for
 hours: its `started_at` was reset at every resume, each attempt got the whole
 `timeout_seconds`, and every fire in between was dropped with a DEBUG log.
-Three rules, in `services/schedule_overlap.py`:
+Four rules, in `services/schedule_overlap.py`:
 
 1. **A dropped fire is a `skipped` run.** `autonomous._record_skipped_fire`
    records it with the shape of a schedule run, `trigger_context.skipped_behind_run`
@@ -774,6 +774,34 @@ Three rules, in `services/schedule_overlap.py`:
    `MAX_GRACEFUL_STREAK` (3), passed to `resume_refused`: the run ends at its
    second graceful take-back with no tool call completed, not its third. A run
    that progresses between take-backs is never ended by it.
+4. **A fire that never started is superseded, not waited for (#2040).** When
+   every active run of the assignment is a `schedule` fire still `pending` or
+   `delayed` with no `started_at`, the next fire supersedes it
+   (`autonomous._supersede_stale_fires`, `schedule_overlap.supersede_never_started`):
+   its execution, still `pending` with no `started_at` in its payload, is locked
+   `FOR UPDATE SKIP LOCKED` and cancelled, the run ends `skipped` with
+   `stop_reason` `superseded`, and the new fire is created. A run that started,
+   a run a worker claimed meanwhile, or an event or manual run keeps its place
+   and the new fire is recorded skipped as in rule 1. A saturated queue costs a
+   monitor one pass, never two.
+
+Waiting runs and starvation (#2040, `services/run_queue_starvation.py`): a
+`pending` or `delayed` assignment run shows in `list_runs` and `get_run` a
+`Waiting:` line, its reason (not due yet, or no free worker for N s) and its
+position among the due assignment executions not started. On every scheduler
+tick `check_queue_starvation` notifies every active administrator in the bell
+(`notification_source = assignment_queue_starvation`) when the oldest due run
+has waited over `STARVATION_ALERT_SECONDS` (900 s) or a run expired
+`expired_not_started` in the last 5 minutes: ONCE per episode, the Redis key
+`assignment_queue:starvation_episode` held while it lasts and dropped when the
+queue drains. Redis unreadable sends nothing.
+
+Outgoing workers (#2040): a worker that reads itself outgoing
+(`worker_presence.outgoing`, #12386) leaves due resumable work to the incoming
+release for `OUTGOING_LEAVE_SECONDS` (120 s, through `ripe_seconds`), then
+claims it. It used to claim none for as long as a worker of a newer-started
+release stayed present, so a pod of another build left up held the assignment
+queue for hours.
 
 Tests: `backend/tests/test_schedule_overlap.py`.
 

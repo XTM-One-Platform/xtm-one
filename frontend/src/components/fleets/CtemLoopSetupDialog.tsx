@@ -208,9 +208,9 @@ export function CtemLoopSetupDialog({ open, onOpenChange }: { open: boolean; onO
             {step === "organization" && (
               <div className="space-y-2 content-compact" data-testid="ctem-loop-setup-organization">
                 <p>
-                  {t_i18n("{count, plural, =0 {No primary asset yet} one {# primary asset} other {# primary assets}}", { count: countFact(facts, "crown_jewels") })}
+                  {t_i18n("{count, plural, =0 {No primary asset yet} one {# primary asset} other {# primary assets}}", { count: countFact(facts, "primary_assets") })}
                   {" · "}
-                  {t_i18n("{count, plural, =0 {no software entry yet} one {# software entry} other {# software entries}}", { count: countFact(facts, "tech_stack") })}
+                  {t_i18n("{count, plural, =0 {no software entry yet} one {# software entry} other {# software entries}}", { count: countFact(facts, "software") })}
                   {" · "}
                   {facts?.facts.ticketing_target ? t_i18n("ticketing target set") : t_i18n("no ticketing target")}
                 </p>

@@ -43,14 +43,14 @@ logger = logging.getLogger(__name__)
 #: The global schedule's section: it runs every other enabled sync in order.
 ALL_SECTIONS = "all"
 #: The sections a sync may keep up to date: the import's, never a typed field.
-SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "software", "crown_jewels", "pirs")
+SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "software", "primary_assets", "pirs")
 #: Where each section's syncs are configured (#1134 S2, Sam 22 Nov 2026): the business profile
 #: in Settings > Organization, the inventory in CTEM > Inventory. The global ``all`` schedule is in both.
-#: Primary assets (``crown_jewels``) are an Inventory source since they moved to Inventory > Business
+#: Primary assets (``primary_assets``) are an Inventory source since they moved to Inventory > Business
 #: (#1690): their OpenCRQ sync is listed next to the asset sources (Sam, 24 Nov 2026).
 SECTION_SCOPES: dict[str, tuple[str, ...]] = {
     "profile": ("pirs",),
-    "inventory": ("assets", "asset_groups", "software", "crown_jewels"),
+    "inventory": ("assets", "asset_groups", "software", "primary_assets"),
 }
 #: How long a run may hold its lock before another run may take it.
 LOCK_SECONDS = 900
@@ -320,7 +320,7 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
             sync_id=str(sync.id),
         )
         result["added"], result["updated"] = len(plan.new), len(plan.updated)
-        # Superseded rows (#1591: an older build's supporting-asset crown jewels) count as removed, so a run
+        # Superseded rows (#1591: an older build's supporting-asset primary assets) count as removed, so a run
         # that only drops them still saves the cleaned profile.
         result["removed"] = (
             (len(plan.gone) - len(plan.gone_kept) if plan.remove_gone else 0)
@@ -343,12 +343,17 @@ async def run_sync(db: AsyncSession, sync: OrganizationContextSync, *, trigger: 
                 db, plan.profile, source="draft", author_user_id=owner.id, sources=sync_provenance(plan, sync, owner)
             )
             result["version"] = saved.version
-        if not plan.error and sync.section == "crown_jewels" and sync.source == "opencrq" and plan.profile is not None:
+        if (
+            not plan.error
+            and sync.section == "primary_assets"
+            and sync.source == "opencrq"
+            and plan.profile is not None
+        ):
             # Supporting asset -> primary asset links (#1591), on unless the sync's filter says "false".
             from app.services import organization_context_opencrq_links as opencrq_links
 
             links = await opencrq_links.sync_links_for(
-                db, user_id=owner.id, filters=sync.filters or {}, jewels=list(plan.profile.crown_jewels)
+                db, user_id=owner.id, filters=sync.filters or {}, jewels=list(plan.profile.primary_assets)
             )
             if links is not None:
                 result["links"] = links
@@ -438,6 +443,75 @@ async def _run_outbound(
             )[:500],
             details={**result, "trigger": trigger, "plan": plan.summary()},
         )
+
+
+def _change_counts(enter: list[str], update: list[str], leave: list[str], kept: list[str]) -> dict[str, Any]:
+    from app.services.organization_context_import import SAMPLE_SIZE
+
+    return {
+        "counts": {"enter": len(enter), "update": len(update), "leave": len(leave), "kept": len(kept)},
+        "enter": enter[:SAMPLE_SIZE],
+        "update": update[:SAMPLE_SIZE],
+        "leave": leave[:SAMPLE_SIZE],
+        "kept": kept[:SAMPLE_SIZE],
+    }
+
+
+async def preview_change(
+    db: AsyncSession,
+    sync: OrganizationContextSync,
+    *,
+    user_id: uuid.UUID,
+    filters: dict[str, Any],
+    batch_type: str,
+    remove_gone: bool,
+    excluded_ids: list[str] | None,
+) -> dict[str, Any]:
+    """What the next run of *sync* would do with these settings, before they are saved (#1982 S2).
+
+    Read with *user_id*'s token (saving makes it the one the runs read with). Inbound: the rows the
+    platform would add (``enter``), update, and the rows this sync wrote that would be removed
+    (``leave``, only with ``remove_gone``) or kept because another writer wrote them (``kept``).
+    Outbound: the platform rows the run would create (``enter``), update and delete (``leave``,
+    only rows this sync created). Nothing is written to the platform, the profile or the sync.
+    """
+    from types import SimpleNamespace
+
+    from app.services import organization_context_import as imp
+    from app.services import organization_context_outbound as outbound
+
+    direction = getattr(sync, "direction", None) or "inbound"
+    if direction == "outbound":
+        proposed = SimpleNamespace(
+            section=sync.section,
+            source=sync.source,
+            filters=filters,
+            outbound_ids=dict(getattr(sync, "outbound_ids", None) or {}),
+        )
+        pushed, _ids = await outbound.run_outbound(db, proposed, user_id=user_id, apply=False)
+        enter = [name for name, _ in pushed.create]
+        update = [name for _, name, _ in pushed.update]
+        leave = [key for key, _ in pushed.delete]
+        return {"direction": direction, **_change_counts(enter, update, leave, []), "error": pushed.error or None}
+    plan, _version = await imp.preview_import(
+        db,
+        user_id=user_id,
+        section=sync.section,
+        source=sync.source,
+        filters=filters,
+        batch_type=batch_type,
+        remove_gone=remove_gone,
+        excluded_ids=clean_exclusions(list(excluded_ids or [])),
+        sync_id=str(sync.id),
+    )
+    kept = list(plan.gone_kept)
+    leave = [name for name in plan.gone if name not in set(kept)] if remove_gone else []
+    leave += list(plan.excluded_removed)
+    return {
+        "direction": direction,
+        **_change_counts(list(plan.new), list(plan.updated), leave, kept),
+        "error": plan.error or None,
+    }
 
 
 async def section_syncs(db: AsyncSession) -> list[OrganizationContextSync]:

@@ -82,7 +82,7 @@ def build_organization_proposal_tool(
         name=ORGANIZATION_PROPOSAL_TOOL,
         description=(
             "Propose a change of the organization profile for an administrator to review: field changes "
-            "(e.g. add a product to tech_stack) or new organizations to track. Nothing is saved until it is "
+            "(e.g. add a product to software) or new organizations to track. Nothing is saved until it is "
             "accepted in Settings > Organization. Read get_organization_context first and send the whole new "
             "value of each field, with the basis from the conversation." + SHARED_CONTEXT_CLAUSE
         ),
@@ -95,7 +95,7 @@ def build_organization_proposal_tool(
                 },
                 "changes": {
                     "type": "array",
-                    "description": "Field changes: {field (contract path, e.g. tech_stack), value, basis}.",
+                    "description": "Field changes: {field (contract path, e.g. software), value, basis}.",
                     "items": {"type": "object"},
                 },
                 "new_tracked": {

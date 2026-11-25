@@ -55,16 +55,17 @@ describe("form action buttons at 36 px, Cancel then primary", () => {
     ["General Assistant", ["pages", "settings", "GeneralAssistantSection.tsx"], "{!gaEditing ? (", ")}\n"],
   ])("%s section header buttons at default size", (_name, path, start, end) => {
     const header = slice(read(...path), start, end);
-    // The Draft overflow menu keeps its own trigger; only the header buttons are checked.
     const buttons = header.match(/<Button\b[^>]*>/g) ?? [];
     expect(buttons.length).toBeGreaterThan(0);
     for (const button of buttons) expect(button).not.toContain('size="sm"');
   });
 
-  it("Organization profile Draft menu trigger matches the 36 px Edit beside it (UX r1 B1 on #10088)", () => {
-    const header = slice(read("pages", "settings", "OrganizationSection.tsx"), "<OverflowMenu", "items={draftMenuItems}");
-    expect(header).toContain('size="md"');
-    expect(header).not.toContain('size="sm"');
+  it("Organization profile Draft button matches the 36 px Edit beside it (UX r1 B1 on #10088, one Draft button since #1991)", () => {
+    const src = read("pages", "settings", "OrganizationSection.tsx");
+    expect(src).not.toContain("<OverflowMenu");
+    const draft = slice(src, "<Button", 'data-testid="settings.organization.draft-open"');
+    const button = draft.slice(draft.lastIndexOf("<Button"));
+    expect(button).not.toMatch(/size="sm"|h-7/);
   });
 
   it("General Assistant edit labels at body size, help lines at 12 px (UX r1 B2 on #10088)", () => {

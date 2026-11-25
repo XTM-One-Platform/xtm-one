@@ -130,13 +130,50 @@ def test_the_screens_cases_source_read_answers_the_fixture_only_when_asked(monke
     assert asyncio.run(ctem_cases_source.read_open_issues(None, "u", "fimi")).issues == []
 
 
+def test_the_peer_reads_the_ivanti_case_without_one_member_so_its_aggregates_are_restricted(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.services import ctem_cases_source, ctem_cases_view
+
+    module = _lab_asgi(monkeypatch)
+    peer = next(
+        node.value.value
+        for node in ast.parse(LAB.read_text(encoding="utf-8")).body
+        if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "PEER_EMAIL"
+    )
+    hidden = module.ctem_sample.SCREENS_RESTRICTED[peer]
+    monkeypatch.setattr(ctem_cases_source, "read_open_issues", ctem_cases_source.read_open_issues)
+    assert module.screens_ctem_cases({"LAB_CTEM_SCREENS": "on"}) is True
+    emails = {"admin": "lab@filigran.io", "peer": peer}
+    original_email = module.screens_viewer_email
+
+    async def email(db, user_id):
+        return emails[user_id]
+
+    monkeypatch.setattr(module, "screens_viewer_email", email)
+    admin = asyncio.run(ctem_cases_source.read_open_issues(object(), "admin", "cyber"))
+    peer_read = asyncio.run(ctem_cases_source.read_open_issues(object(), "peer", "cyber"))
+    assert len(admin.issues) == len(module.ctem_sample.SCREENS_ISSUES)
+    assert {i.member_id for i in admin.issues} - {i.member_id for i in peer_read.issues} == set(hidden)
+    # The real list row: the peer sees the case through its other member, its detail aggregates are null.
+    ivanti = [i for i in admin.issues if i.vendor == "Ivanti"]
+    rows = [SimpleNamespace(source=i.source, external_id=i.external_id, open=True) for i in ivanti]
+    for reader, restricted in ((admin, False), (peer_read, True)):
+        view = ctem_cases_view.ViewerView(issues={i.member_id: i for i in reader.issues})
+        visible = ctem_cases_view.visible_members(rows, view)
+        without = sum(1 for r in rows if ctem_cases_view._member_id(r) not in view.issues)
+        assert bool(visible) and bool(without) is restricted
+    # Unreadable viewer (no session): the whole sample.
+    assert asyncio.run(original_email(None, "x")) is None
+
+
 def test_the_lab_recomputes_the_screens_cases_and_reads_them_back():
     functions = _functions()
     helper = ast.unparse(functions["seed_ctem_screens"]) + ast.unparse(functions["_ctem_screens_recompute"])
     for part in (
         "'POST', '/ctem-cases/recompute?vertical=cyber'",
         "/ctem-cases?vertical=cyber",
-        ": 429 ",
+        "CTEM_SCREENS_RECOMPUTE_BUSY",
         "len(cases) < 3",
         "/ctem-metrics/posture?vertical=cyber",
         "len(scored) != 5",
@@ -171,7 +208,12 @@ def _recompute_helper(answers: list) -> tuple:
 
     namespace = {"api": api, "log": lambda message: None, "time": types.SimpleNamespace(sleep=waits.append)}
     tree = ast.parse(LAB.read_text(encoding="utf-8"))
-    wanted = {"CTEM_SCREENS_RECOMPUTE_WAIT", "CTEM_SCREENS_RECOMPUTE_ATTEMPTS", "_ctem_screens_recompute"}
+    wanted = {
+        "CTEM_SCREENS_RECOMPUTE_WAIT",
+        "CTEM_SCREENS_RECOMPUTE_ATTEMPTS",
+        "CTEM_SCREENS_RECOMPUTE_BUSY",
+        "_ctem_screens_recompute",
+    }
     nodes = [
         node
         for node in tree.body
@@ -204,10 +246,32 @@ def test_the_screens_recompute_waits_out_a_taken_slot_and_recomputes_again():
     with pytest.raises(RuntimeError, match="recompute answered"):
         recompute("t")
 
-    recompute, calls, waits = _recompute_helper([RuntimeError("x: 429 ")] * 3 + [{"cases": []}])
+    recompute, calls, waits = _recompute_helper([RuntimeError("x: 429 ")] * 4 + [{"cases": []}])
     assert recompute("t") == {"cases": []}
-    assert waits == [62, 62]
+    assert waits == [62, 62, 62]
     assert calls[-1] == ("GET", "/ctem-cases?vertical=cyber&limit=50")
+
+    # Any other error is not waited out.
+    recompute, _, waits = _recompute_helper([RuntimeError("POST /ctem-cases/recompute: 500 boom")])
+    with pytest.raises(RuntimeError, match=": 500 "):
+        recompute("t")
+    assert waits == []
+
+
+def test_the_screens_recompute_waits_out_another_running_recompute():
+    """#2030: since #1953 a recompute already running answers 409; the seed waits it out like a 429."""
+    three = {"cases": [{"id": "a"}, {"id": "b"}, {"id": "c"}]}
+    recompute, calls, waits = _recompute_helper(
+        [
+            RuntimeError("POST /ctem-cases/recompute: 409 A recompute of the cases is already running"),
+            RuntimeError("POST /ctem-cases/recompute: 429 One recompute per minute"),
+            {"applied": True},
+            three,
+        ]
+    )
+    assert recompute("t") == three
+    assert [m for m, _ in calls] == ["POST", "POST", "POST", "GET"]
+    assert waits == [62, 62]
 
 
 def test_the_screens_scope_puts_every_fixable_issue_on_a_critical_asset(monkeypatch):
@@ -225,7 +289,7 @@ def test_the_screens_scope_puts_every_fixable_issue_on_a_critical_asset(monkeypa
     products = {i.product for members in grouping.groups.values() for i in members if i.product}
     assert products and products <= stack
     for product in products:
-        running = [a for a in assets if product in a.tech_stack]
+        running = [a for a in assets if product in a.products]
         assert running, product
         assert max(CRITICALITY_ORDER.index(ASSET_TO_SCOPE[a.criticality]) for a in running) >= threshold
     assert len({a.external_id for a in assets}) == len(assets)

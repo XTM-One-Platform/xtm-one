@@ -33,7 +33,7 @@ const SOURCES = {
         { source: "defender", available: false, reason: "no token for the Microsoft Defender integration: authorize it again", reason_code: "no_token", filters: [] },
       ],
     },
-    { section: "crown_jewels", field: "crown_jewels", sources: [{ source: "opencrq", available: true, reason: "", filters: ["min_criticality", "tenant_id"] }] },
+    { section: "primary_assets", field: "primary_assets", sources: [{ source: "opencrq", available: true, reason: "", filters: ["min_criticality", "tenant_id"] }] },
   ],
 };
 
@@ -82,7 +82,7 @@ const plan = ({ gone = 0, ...counts }: Counts, total: number | null = 3) => ({
 });
 
 function open() {
-  renderWithProviders(<OrganizationImportDialog open onOpenChange={() => {}} onQuickSetup={() => {}} />);
+  renderWithProviders(<OrganizationImportDialog open onOpenChange={() => {}} />);
 }
 
 /** A choice card of the stepper (the shared OptionCard, a radio). */

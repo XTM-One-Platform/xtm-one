@@ -19,7 +19,7 @@ write touches the rows it names:
   others.
 - ``organization_asset_groups`` and ``organization_asset_group_members``: the
   groups and which records join them.
-- ``organization_crown_jewel_links``: a crown jewel (a profile row, a short
+- ``organization_primary_asset_links``: a primary asset (a profile row, a short
   list) linked to an asset record or a group.
 - ``organization_asset_changes``: one row per write (create, update, delete,
   restore, import), who, when, from where, and the row before and after: the
@@ -199,8 +199,8 @@ class OrganizationAssetGroupMember(Base):
 LINK_SOURCES: tuple[str, ...] = ("manual", "opencrq", "rule")
 
 
-class OrganizationCrownJewelLink(Base):
-    """A primary asset (crown jewel, by its name, lower-cased) a record or a group supports.
+class OrganizationPrimaryAssetLink(Base):
+    """A primary asset (primary asset, by its name, lower-cased) a record or a group supports.
 
     Since #1591 a link carries where it comes from (``source``: ``manual``,
     ``opencrq`` or ``rule``), the OpenCRQ link it mirrors (``external_id``),
@@ -211,16 +211,16 @@ class OrganizationCrownJewelLink(Base):
     removal wins over the sync).
     """
 
-    __tablename__ = "organization_crown_jewel_links"
+    __tablename__ = "organization_primary_asset_links"
     __table_args__ = (
-        Index("ix_organization_crown_jewel_links_jewel", "organization_id", "crown_jewel_key"),
-        Index("ix_organization_crown_jewel_links_record", "record_id"),
-        Index("ix_organization_crown_jewel_links_group", "group_id"),
+        Index("ix_organization_primary_asset_links_jewel", "organization_id", "primary_asset_key"),
+        Index("ix_organization_primary_asset_links_record", "record_id"),
+        Index("ix_organization_primary_asset_links_group", "group_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), _org_fk(), nullable=False)
-    crown_jewel_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    primary_asset_key: Mapped[str] = mapped_column(String(200), nullable=False)
     record_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organization_asset_records.id", ondelete="CASCADE"), nullable=True
     )
@@ -297,7 +297,7 @@ RECORD_MODELS: tuple[type[Base], ...] = (
     OrganizationAssetIdentifier,
     OrganizationAssetGroup,
     OrganizationAssetGroupMember,
-    OrganizationCrownJewelLink,
+    OrganizationPrimaryAssetLink,
     OrganizationAssetImport,
     OrganizationAssetChange,
 )

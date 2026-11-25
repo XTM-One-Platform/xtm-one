@@ -34,19 +34,30 @@ import {
 } from "@/lib/asset-identity";
 import { PLATFORM_NAMES, fromForm, toForm } from "@/lib/organization-profile";
 import { INVENTORY_IMPORT_SECTIONS, OrganizationImportDialog } from "@/pages/settings/OrganizationImportDialog";
-import { OrganizationSourcesSyncs } from "@/pages/settings/OrganizationSourcesSyncs";
+import { OrganizationSourcesSyncs, type SyncPreset } from "@/pages/settings/OrganizationSourcesSyncs";
 
 /**
  * The Sources page: the inventory's syncs, nothing below them. Administrators add a source (platform, section, filters,
  * preview, then a schedule) limited to the inventory sections (#1367, point 4: the ability was lost with the move).
+ * "Set up a sync" on a platform whose rows outlived their sync opens the same import on that platform and section (#1940).
  */
 export function InventorySourcesCard() {
   const { isAdmin } = useAuth();
-  const [adding, setAdding] = useState(false);
+  // false: closed; true: a blank import; a preset: the import of one platform and section.
+  const [adding, setAdding] = useState<boolean | SyncPreset>(false);
+  const preset = typeof adding === "object" ? adding : undefined;
   return (
     <div data-testid="ctem-inventory.sources">
-      <OrganizationSourcesSyncs scope="inventory" onAddSource={isAdmin ? () => setAdding(true) : undefined} />
-      {adding && <OrganizationImportDialog open={adding} onOpenChange={setAdding} sections={INVENTORY_IMPORT_SECTIONS} />}
+      <OrganizationSourcesSyncs scope="inventory" onAddSource={isAdmin ? () => setAdding(true) : undefined} onSetUpSync={isAdmin ? setAdding : undefined} />
+      {adding !== false && (
+        <OrganizationImportDialog
+          open
+          onOpenChange={(next) => !next && setAdding(false)}
+          sections={INVENTORY_IMPORT_SECTIONS}
+          initialSection={preset?.section}
+          initialSource={preset?.source}
+        />
+      )}
     </div>
   );
 }

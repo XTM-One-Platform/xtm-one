@@ -1589,6 +1589,19 @@ async def test_jobs_list_sends_kinds_and_statuses_and_reads_the_envelope():
     assert "41, showing 1" in out and "crq-simulation: dlq" in out and "boom" in out
 
 
+async def test_jobs_list_filters_on_the_partial_status_opencrq_writes():
+    """OpenCRQ's terminal ``partial`` (a bounded run handed to a continuation) is a status filter."""
+    page = {"items": [{"id": "j-2", "kind": "nist-sync", "status": "partial"}], "total": 1}
+    with _recorded_trpc(opencrq_ops, {"jobs.listAllRuns": page}) as calls:
+        out = await _run("list_opencrq_jobs", statuses=["partial"])
+    assert calls[0]["input"]["statuses"] == ["partial"]
+    assert "nist-sync: partial" in out
+    schema = next(
+        d for d in opencrq_ops.register("https://crq", {}, CallableToolExecutor()) if d.name == "list_opencrq_jobs"
+    ).input_schema
+    assert "partial" in schema["properties"]["statuses"]["items"]["enum"]
+
+
 async def test_crq_settings_update_sends_every_setting_opencrq_accepts():
     with _recorded_trpc(opencrq_crq) as calls:
         await _run(

@@ -17,6 +17,7 @@ confirmed closed, so a narrower view never closes or shrinks a case.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
@@ -92,6 +93,24 @@ def _rank(case: CtemCase, members: list[rules.SourceIssue], now: datetime) -> bo
     sla = rules.as_utc(case.sla_due_at)
     if sla is None or sla > due:
         case.sla_due_at = due
+    return True
+
+
+def _rerank(case: CtemCase, members: list[rules.SourceIssue], now: datetime) -> bool:
+    """Recompute an open reader case's severity from *members* alone, after issues left it (#2047).
+
+    Unlike :func:`_rank`, it may relax: the issues that drove the old severity are fixed below every
+    running version. A severity the loop set from a decision record (no source member left) is kept.
+    """
+    if not members or case.state not in OPEN_STATES:
+        return False
+    severity = PRIORITY_SEVERITY[rules.default_priority(members)]
+    if case.severity == severity:
+        return False
+    from app.services import ctem_case_loop as loop
+
+    case.severity = severity
+    case.sla_due_at = now + timedelta(hours=loop.DEFAULT_SLA_HOURS[severity])
     return True
 
 
@@ -172,8 +191,11 @@ async def apply_recompute(
     # One inventory read per upgrade case: it decides #1252 and records the per-device history (#1694).
     history = await events_of(db, [c.id for c in cases])
     fixed_in_inventory: set[uuid.UUID] = set()
+    # #2047: every version each upgrade case's product runs, so an issue fixed below all of them leaves the case.
+    running_of: dict[uuid.UUID, tuple[str, ...] | None] = {}
     for c in cases:
         running = await ctem_case_versions.for_case(db, c, with_devices=True)
+        running_of[c.id] = ctem_case_versions.every_running_version(running)
         await version_history.record(db, c, running, history.get(c.id, []), at=now)
         if (
             c.state in (*OPEN_STATES, "resolved")
@@ -195,6 +217,7 @@ async def apply_recompute(
             validation_plan=bool(getattr(c, "validation_plan", False)),
             fixed_in_inventory=c.id in fixed_in_inventory,
             decided_closure=decided.get(c.id),
+            running_versions=running_of.get(c.id),
         )
         for c in cases
     ]
@@ -213,6 +236,8 @@ async def apply_recompute(
                 if issue is None:
                     continue
                 signal, created = await _source_signal(db, organization_id, issue, remediation, now)
+                # Hand the loop back between signals: a read of hundreds of new issues never holds it in one go.
+                await asyncio.sleep(0)
                 if signal is None:
                     continue
                 counts["signals"] += int(created)
@@ -269,9 +294,12 @@ async def apply_recompute(
         for member_id in plan.reopen:
             rows[member_id].open = True
             db.add(_event(case.id, actor, "issue_reopened", issue=member_id, at=now))
+        settled = set(plan.settled)
         for member_id in plan.resolve:
             rows[member_id].open = False
-            evidence = not_affected.get(member_id) or rules.CLOSED_AT_SOURCE
+            evidence = not_affected.get(member_id) or (
+                rules.FIXED_BELOW_RUNNING if member_id in settled else rules.CLOSED_AT_SOURCE
+            )
             db.add(_event(case.id, actor, "issue_closed", issue=member_id, evidence=evidence, at=now))
         if plan.add or plan.reopen or plan.resolve or plan.add_keys:
             counts["updated"] += 1
@@ -289,7 +317,7 @@ async def apply_recompute(
                 )
             )
             counts["resolved" if plan.new_state == "resolved" else "reopened"] += 1
-            if plan.evidence == rules.FIXED_IN_INVENTORY:
+            if plan.evidence in (rules.FIXED_IN_INVENTORY, rules.ALL_FIXED_BELOW_RUNNING):
                 case.resolution_kind = "fixed"
             case.state = plan.new_state
             case.state_since = now
@@ -299,10 +327,102 @@ async def apply_recompute(
         still_open = [
             seen[m] for m, row in rows.items() if m in seen and (row.open or m in plan.reopen) and m not in plan.resolve
         ]
-        _rank(case, [*still_open, *(seen[m] for m in plan.add if m in seen)], now)
+        still_open = [*still_open, *(seen[m] for m in plan.add if m in seen)]
+        if settled:
+            # #2047: the CVEs that left the case no longer drive it; its priority is the one of those left.
+            _rerank(case, still_open, now)
+        else:
+            _rank(case, still_open, now)
     grouping = rules.group_issues(issues)
     counts["no_known_fix"] = len(grouping.no_known_fix)
     counts["not_affected"] = len(grouping.not_affected)
+    return counts
+
+
+async def remap_members(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    vertical: str,
+    remap: dict[str, str | None],
+    retired_line: str,
+    actor: str = rules.SYSTEM_ACTOR,
+    events: PendingEvents | None = None,
+    now: datetime | None = None,
+) -> dict[str, int]:
+    """Move the members a source re-keyed onto their new id, in place; answers the counts.
+
+    *remap* maps ``source:old`` to ``source:new``, or to ``None`` to retire the member. A moved
+    member keeps its row (so the case keeps its history, owner, tickets, SLA and validations);
+    when the case already holds the new id (a duplicate joined since), the two rows merge into
+    one, open when either was. A retired member leaves the case with *retired_line* in its
+    history and counts neither open nor closed. Pinned issues follow their member. An open case
+    whose members were all retired resolves with *retired_line* as its evidence: no member is
+    left for a recompute to resolve it, so it would stay open with nothing to act on.
+    """
+    now = now or datetime.now(UTC)
+    counts = {"remapped": 0, "merged": 0, "retired": 0, "resolved": 0}
+    if not remap:
+        return counts
+    cases = await _scope_cases(db, organization_id, vertical)
+    members = await _members(db, [c.id for c in cases])
+    for case in cases:
+        rows = {f"{r.source}:{r.external_id}": r for r in members.get(case.id, [])}
+        had_members = bool(rows)
+        pinned = list(case.pinned_issues or [])
+        for old, new in remap.items():
+            row = rows.get(old)
+            if row is None:
+                continue
+            if new is None:
+                await db.delete(row)
+                rows.pop(old)
+                pinned = [p for p in pinned if p != old]
+                db.add(_event(case.id, actor, "note", issue=old, reason=retired_line, at=now))
+                counts["retired"] += 1
+                continue
+            kept = rows.get(new)
+            if kept is not None:
+                kept.open = kept.open or row.open
+                await db.delete(row)
+                counts["merged"] += 1
+            else:
+                row.source, row.external_id = _split_member(new)
+                rows[new] = row
+                counts["remapped"] += 1
+            rows.pop(old)
+            pinned = list(dict.fromkeys(new if p == old else p for p in pinned))
+            db.add(
+                _event(
+                    case.id,
+                    actor,
+                    "note",
+                    issue=new,
+                    from_value=old,
+                    to_value=new,
+                    reason=f"{retired_line}: {old} is now {new}",
+                    at=now,
+                )
+            )
+        if pinned != list(case.pinned_issues or []):
+            case.pinned_issues = pinned
+        if had_members and not rows and case.state in OPEN_STATES:
+            db.add(
+                _event(
+                    case.id,
+                    rules.SYSTEM_ACTOR,
+                    "state",
+                    from_value=case.state,
+                    to_value="resolved",
+                    evidence=retired_line,
+                    at=now,
+                )
+            )
+            case.state = "resolved"
+            case.state_since = now
+            _state_event(case, events, now)
+            counts["resolved"] += 1
+    await db.flush()
     return counts
 
 
@@ -355,6 +475,11 @@ async def _case_of_signal(
 
     if signal.case_id is not None:
         return await db.get(CtemCase, signal.case_id)
+    from app.services import ctem_case_opening
+
+    # #1951: while case opening is paused the signal waits, confirmed with no case.
+    if not await ctem_case_opening.is_on(db, vertical):
+        return None
     async with db.begin_nested():
         return await loop.open_from_signal(db, signal, vertical=vertical, events=events, now=now)
 
