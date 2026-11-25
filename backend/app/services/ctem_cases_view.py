@@ -1057,7 +1057,7 @@ def review_outcome(events: list[CtemCaseEvent]) -> str | None:
     option = (newest.evidence or "").strip()
     if _APPROVE_OPTION.fullmatch(option) or (not option and _MARK_ANSWER.search(newest.reason or "")):
         return REVIEW_APPROVED
-    if _REJECT_OPTION.fullmatch(option):
+    if _REJECT_OPTION.fullmatch(option) or rules.closes_case(option):
         return REVIEW_REJECTED
     return REVIEW_REPLAN if option else REVIEW_UNREAD
 
