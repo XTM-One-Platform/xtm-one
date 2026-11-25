@@ -672,7 +672,15 @@ The #11543 categories ride the same registry: `assets_exposure` and
 `enterprise_knowledge` are list fields (generated), `prioritization_policy`
 is the one object field declared in `_OBJECT_CATEGORIES` and read as one
 row per rule set away from its default, per exclusion and per accepted risk
-(`policy_rows`, the count `exposure_counts` gives). `enterprise_knowledge`
+(`policy_rows`, the count `exposure_counts` gives). An agent writes a rule
+the way it reads it, one dotted path per rule: `update_organization_context`
+(administrator) and `propose_organization_context_change` take every scalar
+rule of `POLICY_SETTABLE_PATHS` (`organization_context.py`: the scope
+threshold, `cvss_min`, `epss_min`, `kev_always_in`,
+`internet_exposure_required`, `min_primary_asset_criticality`,
+`require_risk_scenario`, `sla_hours`, the PIR minimum scores and
+`identity_criticality`; #2129); the exclusions and accepted risks stay with
+Settings > Organization. `enterprise_knowledge`
 is never paged as rows: without `query` the tool names each linked knowledge
 base and whether the caller can search it; with `query` it answers passages
 from the linked knowledge bases the person the turn acts for can read
