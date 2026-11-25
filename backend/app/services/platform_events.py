@@ -1012,7 +1012,9 @@ async def publish(name: str, data: Mapping[str, Any], *, event_id: str | None = 
         **dict(data),
         "event": name,
         "event_id": event_id,
-        "occurred_at": datetime.now(UTC).isoformat(),
+        # A publisher that raises an event after its commit may name when the fact happened (a case's
+        # creation, ctem_case_loop.case_data): that time wins over the time it is raised.
+        "occurred_at": str(data.get("occurred_at") or datetime.now(UTC).isoformat()),
     }
     try:
         await event_bus.emit(name, payload)

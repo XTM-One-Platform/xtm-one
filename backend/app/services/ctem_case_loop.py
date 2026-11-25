@@ -323,6 +323,20 @@ def case_data(case: CtemCase) -> dict[str, Any]:
     }
 
 
+def opened_data(case: CtemCase) -> dict[str, Any]:
+    """The payload of ``ctem_case.opened``: :func:`case_data` dated at the case's creation.
+
+    The event is raised after the writer's commit, which can come long after the case was
+    written (a long source read, the scheduled backfill): ``occurred_at`` stays the creation time
+    (ctem-case-opened-event-backfill-delay), the dispatch time is the run's own ``triggered_at``.
+    """
+    created = rules.as_utc(getattr(case, "created_at", None)) or rules.as_utc(getattr(case, "state_since", None))
+    data = case_data(case)
+    if created is not None:
+        data["occurred_at"] = created.isoformat()
+    return data
+
+
 def _event_id(name: str, case: CtemCase, marker: str) -> str:
     digest = hashlib.sha256(f"{name}\n{case.id}\n{marker}".encode()).hexdigest()[:32]
     return f"ctem-case-{digest}"
@@ -408,6 +422,7 @@ async def open_from_signal(
             fixed_version=fix.fixed_version,
             fixed_versions=dict(fix.fixed_versions),
             product_label=_product_label(signal),
+            created_at=now,
         )
         db.add(case)
         await db.flush()
@@ -433,7 +448,7 @@ async def open_from_signal(
     if created and await _resolved_on_inventory(db, case, events=events, now=now):
         return case
     if created and events is not None:
-        events.add(CASE_OPENED, case_data(case), _event_id(CASE_OPENED, case, "open"))
+        events.add(CASE_OPENED, opened_data(case), _event_id(CASE_OPENED, case, "open"))
     return case
 
 
