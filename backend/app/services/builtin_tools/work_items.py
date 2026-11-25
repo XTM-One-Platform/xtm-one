@@ -1782,6 +1782,10 @@ def build_work_item_tools(
         if outside:
             return f"Work item `{work_item_id}` is {outside}."
         item = await _with_recipient_line(item)
+        # This run has now read every note on the item: none holds its completion (#2266).
+        from app.services import work_item_note_steering
+
+        await work_item_note_steering.mark_seen(_own_run_ids(), item_id=item.get("id") or work_item_id)
         refs, gone = await work_item_file_refs(item)
         registered = register_work_item_files(file_context, refs)
         return ToolResult(
