@@ -2847,6 +2847,11 @@ async def update_work_item(
             if status == "open" and item.status != "open":
                 # Back to the queue: nobody holds an open item, so the claim
                 # goes with it and the inbox dispatches it like a new one.
+                if not_before is None and _released_by_its_holder(item, writer_run_ids):
+                    # Its own holder let it go (a person drives it from chat, the
+                    # run had nothing to do): not handed straight back to the same
+                    # inbox (#2212). Any other writer's release dispatches at once.
+                    _hold_own_release(item, now)
                 item.claimed_by_agent_id = None
                 item.claimed_by_run_id = None
                 item.claimed_at = None
@@ -3232,6 +3237,40 @@ async def _finished_under_live_holder(
     note = finished_under_holder_note(status, writer, live[0], now)
     item.claim_notes = _with_note(getattr(item, "claim_notes", None), note)
     return note
+
+
+#: How long an item its own holder run released to open waits before the inbox takes it again (#2212).
+OWN_RELEASE_HOLD = timedelta(minutes=10)
+
+
+def _released_by_its_holder(item: WorkItem, writer_run_ids: Sequence[str | uuid.UUID] | None) -> bool:
+    """Whether the run that holds *item* is among *writer_run_ids*. Pure."""
+    holder = getattr(item, "claimed_by_run_id", None)
+    if holder is None or not writer_run_ids:
+        return False
+    return str(holder) in {str(r) for r in writer_run_ids if r}
+
+
+def _hold_own_release(item: WorkItem, now: datetime) -> None:
+    """Hold back *item*, released to open by its holder run, for :data:`OWN_RELEASE_HOLD` (#2212)."""
+    run = str(item.claimed_by_run_id)
+    payload = dict(item.payload or {})
+    runs = [str(r) for r in (payload.get("_released_by_runs") or []) if r]
+    if run not in runs:
+        runs.append(run)
+    payload["_released_by_runs"] = runs[-_RELEASED_BY_RUNS_KEPT:]
+    item.payload = payload
+    item.not_before = now + OWN_RELEASE_HOLD
+    item.claim_notes = [
+        *(item.claim_notes or []),
+        {
+            "at": now.isoformat(),
+            "text": (
+                f"Released to open by its holder run {run}: not dispatched again before "
+                f"{item.not_before.strftime('%Y-%m-%dT%H:%M:%SZ')} (a not_before in the same write overrides it)"
+            ),
+        },
+    ]
 
 
 def claim_reset_by(status: str | None, current: str, *, blockers: object = None, refs: object = None) -> str | None:
@@ -4183,6 +4222,7 @@ def _refresh_from_live(
         and _ci_green(b)
         and not _full_ci_running(reads.get((b["repo"], b["number"])))
         and not _merge_queued(reads.get((b["repo"], b["number"])))
+        and not _awaiting_review(reads.get((b["repo"], b["number"])))
     ]
     return green, unannounced
 
@@ -4206,6 +4246,20 @@ def _merge_queued(read: Any) -> bool:
     merge, never put back in the queue for a run with nothing to do (#404).
     """
     return isinstance(read, dict) and read.get("merge_queue") is True
+
+
+#: Review decisions under which a green pull request cannot merge until a review comes (#2213).
+AWAITING_REVIEW_DECISIONS = frozenset({"REVIEW_REQUIRED", "CHANGES_REQUESTED"})
+
+
+def _awaiting_review(read: Any) -> bool:
+    """Whether the live *read* of a pull request says it waits on a review. Pure.
+
+    Its next wake is the review event (or the merge), never a green hand-off: the
+    item is parked on the merge, not put back in the queue for a run that could
+    only read the missing review and stand down (#2213).
+    """
+    return isinstance(read, dict) and read.get("review_decision") in AWAITING_REVIEW_DECISIONS
 
 
 def _ci_green(binding: dict[str, Any]) -> bool:
