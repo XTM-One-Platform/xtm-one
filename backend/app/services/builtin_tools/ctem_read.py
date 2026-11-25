@@ -194,6 +194,9 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 # The list's asset-count rule on the single read (#1704): list and case read agree.
                 version_history.with_asset_count(rendered, events)
                 running = await case_versions.for_case(db, case)
+                if running is not None:
+                    # Why the versions moved, per device (#1694), as the case tools' read: the drift is explained.
+                    running = {**running, "history": version_history.history_of(events)}
                 sources = (
                     await case_versions.inventory_sources(db, primary.id)
                     if running is None and rendered.get("remediation_kind") == "upgrade"
