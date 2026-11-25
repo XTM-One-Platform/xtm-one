@@ -62,6 +62,7 @@ from typing import Any
 
 from app.core.utils import format_exception_message
 from app.services.sandbox_workspace import audit, detect, jobs, metrics
+from app.services.sandbox_workspace.checkout import CheckoutRecord, CheckoutRecordError, read_record_bytes
 from app.services.sandbox_workspace.checks import (
     CHECKS_FILE,
     DEFAULT_TIMEOUT,
@@ -232,6 +233,12 @@ class ResolvedCommand:
     fallback_configured: bool = False
     fallback_when: str = ""
     fallback_reason: str = ""
+    #: Repository paths the declared check reads, relative to the checkout root: the directory it runs from
+    #: (never the root) and its declared ``needs``. :func:`missing_requirements` names those a narrow checkout
+    #: does not hold, and ``sandbox_run_command`` grows the checkout by them before the run (#2156).
+    requires: tuple[str, ...] = ()
+    #: The checkout's directory in the workspace (normalized) the check was resolved in; ``""`` for an argv.
+    cwd_root: str = ""
 
     @property
     def label(self) -> str:
@@ -920,6 +927,43 @@ async def resolve(
     )
 
 
+def check_requirements(spec: CheckSpec) -> tuple[str, ...]:
+    """The repository paths *spec* reads: its ``cwd`` (none for a check run from the root) then its ``needs``.
+
+    A check imports what lies in the directory it runs from (``pytest`` from ``backend/`` loads its
+    ``conftest.py`` and the whole ``app`` package; ``vitest`` from ``frontend/`` loads its config and setup
+    files) and reads what it declares outside it (the editions gate reads ``LICENSE`` and ``licensing/``).
+    """
+    out: list[str] = []
+    for path in (spec.cwd, *spec.needs):
+        clean = str(path or "").strip().strip("/")
+        if clean and clean != "." and clean not in out:
+            out.append(clean)
+    return tuple(p for p in out if not any(p != o and is_under(p, o) for o in out))
+
+
+async def missing_requirements(session: WorkspaceSession, root: str, command: ResolvedCommand) -> tuple[str, list[str]]:
+    """The checkout's repository and the paths of ``command.requires`` the checkout at *root* does not hold.
+
+    Read from the checkout record; ``("", [])`` when nothing is missing.
+
+    A narrow checkout (``sub_paths``, ``exact_files``, a grow by ``add_paths``) holds a path when its
+    ``sub_paths`` cover it or its record lists it as a file. A checkout of the whole tree, a tree without a
+    record (written by the agent) and an argv hold everything: nothing is named.
+    """
+    if not command.requires:
+        return "", []
+    try:
+        _entry, data = await read_record_bytes(session, root)
+        record = CheckoutRecord.from_json(data, path=root)
+    except (FileNotFoundError, CheckoutRecordError):
+        return "", []
+    if not record.sub_paths:
+        return "", []
+    missing = [need for need in command.requires if not (record.covers(need) or need in record.files)]
+    return (record.repository, missing) if missing else ("", [])
+
+
 #: Variables a call's ``env`` may not set: the container's own, and the CI runner's.
 _OWNED_ENV = frozenset(
     {"PATH", "HOME", "SHELL", "USER", "PWD", "TMPDIR", "WORKSPACE_DIR", "LD_PRELOAD", "LD_LIBRARY_PATH"}
@@ -1051,6 +1095,8 @@ async def _resolve(
         narrow_args=narrow,
         affected_whole_repository=spec.affected_whole_repository,
         install=install,
+        requires=check_requirements(spec),
+        cwd_root=root,
     )
     install_spec = spec if is_install_name(check) else (found.specs.get(install.check) if install else None)
     return bind_fallback(resolved, install_spec, known_images=known_images)
