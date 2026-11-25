@@ -126,8 +126,13 @@ function lensLabel(value: unknown, t_i18n: Translate): string {
   return LENS_LABELS[lens] ? t_i18n(LENS_LABELS[lens]) : lens;
 }
 
+/** A policy rule in words; a rule this version does not know keeps its name. */
+export function policyRuleLabel(rule: string, t_i18n: Translate): string {
+  return POLICY_RULE_LABELS[rule] ? t_i18n(POLICY_RULE_LABELS[rule]) : rule;
+}
+
 function policyCheckLabel(rule: string, passed: boolean, t_i18n: Translate): string {
-  const label = POLICY_RULE_LABELS[rule] ? t_i18n(POLICY_RULE_LABELS[rule]) : rule;
+  const label = policyRuleLabel(rule, t_i18n);
   return passed ? t_i18n("{rule}: passed", { rule: label }) : t_i18n("{rule}: failed", { rule: label });
 }
 
@@ -183,10 +188,10 @@ export function nextStepSentence(
 }
 
 /** One input of the trace: a value on one line, or several lines drawn whole (the primary asset chains). */
-type DecisionInput = { label: string; value: string; lines?: string[] };
+export type DecisionInput = { key: string; label: string; value: string; lines?: string[] };
 
 /** The inputs the gate read, labelled, in the order the rule reads them; empty values are left out. */
-function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n: Translate): DecisionInput[] {
+export function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n: Translate): DecisionInput[] {
   if (!decision) return [];
   const level = (value: unknown) => String(levelLabel(value, t_i18n));
   const list = (value: unknown) => (Array.isArray(value) ? value.filter(Boolean).map(String).join(", ") : "");
@@ -206,28 +211,29 @@ function decisionInputs(decision: CtemDecisionRecord | null | undefined, t_i18n:
   const matched = list(reconcile.assets) || (decision.reconcile && !domains ? t_i18n("None matched") : "");
   const reached = primaryAssetsRow(decision, t_i18n);
   const rows: DecisionInput[] = [
-    { label: t_i18n("Lenses"), value: lenses },
-    { label: t_i18n("Confidence"), value: level(reconcile.confidence) },
-    { label: t_i18n("Matched assets"), value: matched },
+    { key: "lenses", label: t_i18n("Lenses"), value: lenses },
+    { key: "confidence", label: t_i18n("Confidence"), value: level(reconcile.confidence) },
+    { key: "matched_assets", label: t_i18n("Matched assets"), value: matched },
     // UX r1 B3 on #1796: the names the record matched, next to the primary assets reached below.
-    { label: t_i18n("Primary assets named"), value: list(reconcile.crown_jewels_named) },
-    { label: t_i18n("Software"), value: list(reconcile.tech_stack) },
-    { label: t_i18n("Owned domain"), value: domains },
-    { label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
+    { key: "primary_assets_named", label: t_i18n("Primary assets named"), value: list(reconcile.crown_jewels_named) },
+    { key: "software", label: t_i18n("Software"), value: list(reconcile.tech_stack) },
+    { key: "owned_domain", label: t_i18n("Owned domain"), value: domains },
+    { key: "criticality", label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
     // #1591 S3: the primary assets reached and their chains, then the one threshold and where it comes from.
-    { label: t_i18n("Primary assets reached"), value: reached.join("\n"), lines: reached },
+    { key: "primary_assets_reached", label: t_i18n("Primary assets reached"), value: reached.join("\n"), lines: reached },
     {
+      key: "scope_threshold",
       label: t_i18n("Scope threshold"),
       value: thresholdWithSource(scope?.threshold ? level(scope.threshold) : "", thresholdSource(decision), t_i18n),
     },
-    { label: t_i18n("Risk scenarios"), value: list((scope?.risk_scenarios ?? []).map((s) => s.name)) },
-    { label: t_i18n("Policy checks"), value: checks },
+    { key: "risk_scenarios", label: t_i18n("Risk scenarios"), value: list((scope?.risk_scenarios ?? []).map((s) => s.name)) },
+    { key: "policy_checks", label: t_i18n("Policy checks"), value: checks },
   ];
   return rows.filter((row) => row.value);
 }
 
 /** The criticality found, against the threshold X of the scope gate (#874). */
-function criticalityAgainstThreshold(scope: CtemDecisionRecord["scope"], t_i18n: Translate): string {
+export function criticalityAgainstThreshold(scope: CtemDecisionRecord["scope"], t_i18n: Translate): string {
   if (!scope) return "";
   const threshold = scope.threshold ? String(levelLabel(scope.threshold, t_i18n)) : "";
   if (!scope.criticality) return threshold ? t_i18n("Unknown, threshold {threshold}", { threshold }) : "";
@@ -239,20 +245,56 @@ function criticalityAgainstThreshold(scope: CtemDecisionRecord["scope"], t_i18n:
     : t_i18n("{criticality}, below {threshold}", { criticality: found, threshold });
 }
 
+/**
+ * The inputs the gate read as a labelled list (`ctem-decision-inputs`). The loop trace v2
+ * (#1979) draws it in its scope section and leaves out the rows it draws elsewhere
+ * (`omit`: the policy checks as the funnel, the primary assets reached as cards).
+ */
+export function DecisionInputs({ decision, omit = [] }: { decision: CtemDecisionRecord | null | undefined; omit?: readonly string[] }) {
+  const { t_i18n } = useFormatter();
+  const inputs = decisionInputs(decision, t_i18n).filter((input) => !omit.includes(input.key));
+  if (inputs.length === 0) return null;
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 content-caption" data-testid="ctem-decision-inputs">
+      {inputs.map((input) => (
+        <div key={input.key} className="contents">
+          <dt className="text-default-secondary">{input.label}</dt>
+          {input.lines ? (
+            // UX r1 B1 on #1796: every chain on its own line, wrapped, never cut.
+            <dd className="min-w-0 break-words">
+              <ul className="flex flex-col" data-testid="ctem-decision-input-lines">
+                {input.lines.map((line, index) => (
+                  <li key={`${index}-${line}`}>{line}</li>
+                ))}
+              </ul>
+            </dd>
+          ) : (
+            <dd className="min-w-0 truncate" title={input.value}>
+              {input.value}
+            </dd>
+          )}
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export function DecisionReason({
   state,
   decision,
   showInputs = false,
+  showNextStep = showInputs,
 }: {
   state: CtemSignalState;
   decision: CtemDecisionRecord | null | undefined;
   /** The loop trace lists the inputs; a row keeps the chip and the sentence. */
   showInputs?: boolean;
+  /** The next step under the sentence (with the inputs by default; the trace v2 hero alone, #1979). */
+  showNextStep?: boolean;
 }) {
   const { t_i18n, intl } = useFormatter();
   const formatDay = (iso: string) => formatDayIntl(intl, iso);
-  const inputs = showInputs ? decisionInputs(decision, t_i18n) : [];
-  const next = showInputs ? nextStepSentence(decision, t_i18n, formatDay) : null;
+  const next = showNextStep ? nextStepSentence(decision, t_i18n, formatDay) : null;
   return (
     <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-decision-reason">
       <div className="flex min-w-0 items-center gap-2">
@@ -265,29 +307,7 @@ export function DecisionReason({
           {next}
         </p>
       )}
-      {inputs.length > 0 && (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 content-caption" data-testid="ctem-decision-inputs">
-          {inputs.map((input) => (
-            <div key={input.label} className="contents">
-              <dt className="text-default-secondary">{input.label}</dt>
-              {input.lines ? (
-                // UX r1 B1 on #1796: every chain on its own line, wrapped, never cut.
-                <dd className="min-w-0 break-words">
-                  <ul className="flex flex-col" data-testid="ctem-decision-input-lines">
-                    {input.lines.map((line, index) => (
-                      <li key={`${index}-${line}`}>{line}</li>
-                    ))}
-                  </ul>
-                </dd>
-              ) : (
-                <dd className="min-w-0 truncate" title={input.value}>
-                  {input.value}
-                </dd>
-              )}
-            </div>
-          ))}
-        </dl>
-      )}
+      {showInputs && <DecisionInputs decision={decision} />}
     </div>
   );
 }
