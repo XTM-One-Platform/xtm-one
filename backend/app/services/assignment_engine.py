@@ -2699,7 +2699,7 @@ async def _activation_check_executor(
     # The person the run acts for is an administrator: the check reads past
     # every governor's narrowing, as the run's own tools do (#2161).
     acting_admin = False
-    if effective_user_id and ("work_items" in builtin_ids or "shared_state" in builtin_ids):
+    if db is not None and effective_user_id and ("work_items" in builtin_ids or "shared_state" in builtin_ids):
         from app.models.user import User as _CheckActingUser
 
         acting_admin = bool(getattr(await db.get(_CheckActingUser, effective_user_id), "is_admin", False))
