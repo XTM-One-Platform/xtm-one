@@ -34,6 +34,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
+#: Tag of a built-in skill that belongs to a fleet's own agents (Platform Health's
+#: specialists, #1943): still bound to them and injected at run time, but absent from the
+#: Skills catalogue and the skill pickers (``GET /skills`` with the default scope).
+INTERNAL_SKILL_TAG = "internal"
+
+
+def is_internal_skill(tags: object) -> bool:
+    """Whether a skill's *tags* mark it internal (:data:`INTERNAL_SKILL_TAG`)."""
+    return isinstance(tags, list) and INTERNAL_SKILL_TAG in tags
+
 
 class AgentSkill(Base):
     """A reusable skill definition available as a shared entity.

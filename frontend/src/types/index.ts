@@ -1493,8 +1493,8 @@ export interface BuiltinToolGroup {
   /** Only an administrator adds it to an agent: a picker shows it locked to anyone else. */
   bind_admin_only?: boolean;
   agent_keyed: boolean;
-  /** A Platform Health specialist's suite, carried by the Platform Health fleet's own agents: no session picker offers it. */
-  health_only: boolean;
+  /** Internal to Platform Health (#1943): carried by its fleet's own agents alone; no picker, Tools page or chat offers it. */
+  internal: boolean;
   named_after_platform: boolean;
   aliases: string[];
   /** False while this deployment withholds the suite (a flag off): its functions are then empty. */

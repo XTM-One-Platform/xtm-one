@@ -152,9 +152,9 @@ def build_platform_insights_tools(
     async def _release_history(db, scope, args):
         from app.services.platform_builds import (
             history_note,
+            read_rollout,
             release_window_slice,
             release_windows,
-            rollout,
             running_build,
         )
         from app.services.platform_insights.scope import InsightRefusedError, parse_instant
@@ -165,7 +165,7 @@ def build_platform_insights_tools(
         since = parse_instant(args.get("since"), label="since")
         windows = await release_windows(db)
         version, git_sha = running_build()
-        deployment = rollout(windows, (version, git_sha))
+        deployment = await read_rollout(db, windows, (version, git_sha), user_id=scope.user.id)
         running = {"version": version, "git_sha": git_sha or None}
         if args.get("running_only"):
             # The running build alone: its first boot and the build before it, read off the recorded windows.

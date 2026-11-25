@@ -53,6 +53,7 @@ from app.models.agent import Agent
 from app.models.assignment import Assignment
 from app.models.fleet import Fleet, FleetMember
 from app.services.assignment_pause import clear_pause_provenance, is_emergency_stopped
+from app.services.builtin_tool_groups import HEALTH_ORCHESTRATOR_GROUP, HEALTH_SPECIALISTS_GROUP
 from app.services.health.availability import health_enabled
 
 logger = logging.getLogger(__name__)
@@ -63,9 +64,31 @@ AssignmentKey = Literal[
     "memory", "quality", "flows", "investigation", "digest", "opencti_checks", "openaev_checks", "opencrq_checks"
 ]
 
-#: Tool groups shipped by levels 3 and 8 (ids registered in ``builtin_tool_groups``).
-IMPROVEMENTS_GROUP: Final = "improvement_proposals"
-ORCHESTRATOR_GROUP: Final = "health_orchestrator"
+#: Platform Health's two groups (#1943): the one a person sees, and the internal
+#: one every specialist carries, scoped to the functions it uses.
+ORCHESTRATOR_GROUP: Final = HEALTH_ORCHESTRATOR_GROUP
+SPECIALISTS_GROUP: Final = HEALTH_SPECIALISTS_GROUP
+
+#: The internal group's functions, by the work they serve.
+_PROPOSALS: Final = ("list_improvements", "propose_improvement")
+_MEMORY: Final = ("list_memory_lanes", "consolidate_memory_lane", "list_memory_consolidations")
+_DIAGNOSIS: Final = ("get_quality_signals", "list_findings", "record_finding", "draft_variant")
+_EXPERIMENTS: Final = ("list_experiments", "get_experiment", "run_experiment", "propose_from_experiment")
+_SANDBOX: Final = ("create_sandbox_copy", "run_sandbox", "get_sandbox_run")
+_FLOW_LAB: Final = (
+    "get_flow_diagnosis",
+    "get_assignment_path",
+    "find_flow_candidates",
+    "get_flow_shadow",
+    "get_flow_run_comparison",
+    "get_flow_node_catalog",
+    "create_sandbox_flow",
+    "update_sandbox_flow",
+    "record_flow_finding",
+    "draft_flow_variant",
+    "run_flow_shadow",
+)
+_MODULES: Final = ("list_module_findings", "record_finding_recommendation", "record_module_check_report")
 #: Read traces and platform figures as the acting user, with no consent check:
 #: never on a fleet agent (``health_diagnosis`` is the consent-aware read).
 NON_CONSENT_TOOL_GROUPS: Final = frozenset(
@@ -83,6 +106,9 @@ class FleetAgentSpec:
     description: str
     icon: str
     builtin_tool_ids: tuple[str, ...]
+    #: The functions of the internal group it uses (``builtin_allowed_tools``):
+    #: empty when it does not carry the group.
+    specialist_functions: tuple[str, ...] = ()
     #: Seeded skills (``BUILTIN_SKILLS`` slugs of levels 5-7) the agent carries.
     skill_slugs: tuple[str, ...] = ()
     disable_chat: bool = True
@@ -96,6 +122,13 @@ class FleetAgentSpec:
     def slugs(self) -> tuple[str, ...]:
         """The current slug first, then every former one."""
         return (self.slug, *self.former_slugs)
+
+    @property
+    def allowed_tools(self) -> dict[str, list[str]] | None:
+        """The ``builtin_allowed_tools`` the seed writes: the internal group scoped to its functions."""
+        if SPECIALISTS_GROUP not in self.builtin_tool_ids:
+            return None
+        return {SPECIALISTS_GROUP: list(self.specialist_functions)}
 
 
 @dataclass(frozen=True)
@@ -135,7 +168,8 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
             "its specialists, reports every cycle, and answers administrators about agent health."
         ),
         icon="Compass",
-        builtin_tool_ids=(ORCHESTRATOR_GROUP, IMPROVEMENTS_GROUP),
+        builtin_tool_ids=(ORCHESTRATOR_GROUP, SPECIALISTS_GROUP),
+        specialist_functions=_PROPOSALS,
         disable_chat=False,
         handovers=(
             ("health-memory-steward", "delegate"),
@@ -156,7 +190,8 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         name="Memory Steward",
         description="Consolidates agents' memory lanes, reversibly, within the managers' opt-in and users' opt-out.",
         icon="Brain",
-        builtin_tool_ids=("memory_steward",),
+        builtin_tool_ids=(SPECIALISTS_GROUP,),
+        specialist_functions=_MEMORY,
         skill_slugs=("memory-steward",),
     ),
     FleetAgentSpec(
@@ -166,7 +201,8 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         name="Quality Analyst",
         description="Diagnoses agents from traces, ratings and analytics, and drafts the variants worth measuring.",
         icon="Stethoscope",
-        builtin_tool_ids=("health_diagnosis", IMPROVEMENTS_GROUP),
+        builtin_tool_ids=(SPECIALISTS_GROUP,),
+        specialist_functions=(*_DIAGNOSIS, *_PROPOSALS),
         skill_slugs=("health-quality-analyst",),
         handovers=(("health-experimenter", "delegate"),),
     ),
@@ -177,7 +213,8 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         name="Flow Lab",
         description="Diagnoses flows and authors repairs, optimizations and new flows on sandbox copies.",
         icon="FlaskConical",
-        builtin_tool_ids=("flow_lab", IMPROVEMENTS_GROUP),
+        builtin_tool_ids=(SPECIALISTS_GROUP,),
+        specialist_functions=(*_FLOW_LAB, *_PROPOSALS),
         skill_slugs=("health-flow-lab",),
         handovers=(("health-experimenter", "delegate"),),
     ),
@@ -188,7 +225,8 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         name="Experimenter",
         description="Measures variants on sandbox copies with evaluations and files the improvement proposals.",
         icon="Scale",
-        builtin_tool_ids=("health_experiments", "health_sandbox", "flow_lab", IMPROVEMENTS_GROUP),
+        builtin_tool_ids=(SPECIALISTS_GROUP,),
+        specialist_functions=(*_EXPERIMENTS, *_SANDBOX, *_FLOW_LAB, *_PROPOSALS),
         skill_slugs=("health-experimenter",),
     ),
     # One health checker per module (#101 S15, dev-docs/platform-health.md section 13.1).
@@ -201,8 +239,9 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         name="OpenCTI Health Checker",
         description="Runs the OpenCTI health checks read-only, with evidence, and recommends on the module's findings.",
         icon="Radar",
-        builtin_tool_ids=("health_modules", IMPROVEMENTS_GROUP),
-        skill_slugs=("health-opencti-checks",),
+        builtin_tool_ids=(SPECIALISTS_GROUP,),
+        specialist_functions=(*_MODULES, *_PROPOSALS),
+        skill_slugs=("health-module-checks",),
     ),
     FleetAgentSpec(
         slug="health-openaev-checker",
@@ -210,8 +249,9 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         name="OpenAEV Health Checker",
         description="Runs the OpenAEV health checks read-only, with evidence, and recommends on the module's findings.",
         icon="Radar",
-        builtin_tool_ids=("health_modules", IMPROVEMENTS_GROUP),
-        skill_slugs=("health-openaev-checks",),
+        builtin_tool_ids=(SPECIALISTS_GROUP,),
+        specialist_functions=(*_MODULES, *_PROPOSALS),
+        skill_slugs=("health-module-checks",),
     ),
     FleetAgentSpec(
         slug="health-opencrq-checker",
@@ -219,8 +259,9 @@ FLEET_AGENTS: Final[tuple[FleetAgentSpec, ...]] = (
         name="OpenCRQ Health Checker",
         description="Runs the OpenCRQ health checks read-only, with evidence, and recommends on the module's findings.",
         icon="Radar",
-        builtin_tool_ids=("health_modules", IMPROVEMENTS_GROUP),
-        skill_slugs=("health-opencrq-checks",),
+        builtin_tool_ids=(SPECIALISTS_GROUP,),
+        specialist_functions=(*_MODULES, *_PROPOSALS),
+        skill_slugs=("health-module-checks",),
     ),
 )
 
@@ -385,6 +426,7 @@ async def _create_agent(db: AsyncSession, spec: FleetAgentSpec, owner_id: uuid.U
         output_format="markdown",
         disable_chat=spec.disable_chat,
         builtin_tool_ids=list(spec.builtin_tool_ids),
+        builtin_allowed_tools=spec.allowed_tools,
         available_channel_types=["web"],
         tags=[FLEET_AGENT_TAG],
     )
@@ -416,9 +458,10 @@ async def _sync_agent(db: AsyncSession, agent: Agent, spec: FleetAgentSpec, name
     agent.output_format = "markdown"
     agent.disable_chat = spec.disable_chat
     agent.builtin_tool_ids = list(spec.builtin_tool_ids)
+    agent.builtin_allowed_tools = spec.allowed_tools
     agent.available_channel_types = ["web"]
     agent.tags = [FLEET_AGENT_TAG]
-    for attr in ("builtin_tool_ids", "available_channel_types", "tags"):
+    for attr in ("builtin_tool_ids", "builtin_allowed_tools", "available_channel_types", "tags"):
         flag_modified(agent, attr)
     await record_agent_version_changes(
         db, agent=agent, before=before, author_id=None, commit_message="Platform Health seed"
