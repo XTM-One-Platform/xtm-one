@@ -53,8 +53,10 @@ from ._common import (
     _resolve_output_types,
     _search_body,
     _simulation_state_lines,
+    _validate_filter_group,
     asset_group_member_ids_lines,
     count_scenario_injects,
+    describe_filter_group,
     fmt_asset_group_members,
     inject_targets_line,
     mirror_content_targets,
@@ -240,8 +242,31 @@ def register_core(
 
     # ── 1. Search assets ──────────────────────────────────────────────
 
-    async def search_openaev_assets(search: str, limit: int = 20) -> str:
-        """Search for assets (endpoints) by name, hostname, or IP."""
+    async def search_openaev_assets(search: str = "", limit: int = 20, filter_group: str = "") -> str:
+        """Search for assets (endpoints) by name, hostname, or IP, or by a FilterGroup.
+
+        ``filter_group`` is a FilterGroup JSON on the Asset model keys (``asset_status``
+        is a query-time formula the analytics engine does not index, #2406). With it,
+        ``search`` becomes the platform text search; without it, the name / hostname /
+        IP contains filter as before. The answer always carries the total, so a count
+        needs ``limit=1``.
+        """
+        parsed_group: dict | None = None
+        if filter_group:
+            try:
+                parsed_group = json.loads(filter_group)
+            except ValueError as exc:
+                return f"filter_group must be valid JSON: {exc}"
+            filter_err = _validate_filter_group(parsed_group)
+            if filter_err:
+                return f"filter_group is invalid. {filter_err}"
+        if parsed_group:
+            body = _search_body(size=max(1, min(limit, 50)), filter_group=parsed_group, text_search=search)
+        else:
+            body = _search_body(
+                size=max(1, min(limit, 50)),
+                filter_group=_multi_contains_filter(["asset_name", "asset_hostname", "asset_ips"], search),
+            )
         # Route through _api (not a raw httpx client) so a long autonomous run gets
         # the WS2 AutoRefreshClient JWT auto-refresh: this read otherwise 401s ~10 min
         # in when the platform-managed token expires and stays broken. Idempotent, so
@@ -252,12 +277,7 @@ def register_core(
             "post",
             "/api/endpoints/search",
             "search assets",
-            json=_search_body(
-                size=min(limit, 50),
-                filter_group=_multi_contains_filter(
-                    ["asset_name", "asset_hostname", "asset_ips"], search
-                ),
-            ),
+            json=body,
             retry_transient=True,
         )
         if err:
@@ -265,12 +285,15 @@ def register_core(
         resp = _require_response(resp)
         data = resp.json()
         items = data.get("content", [])
+        criteria = describe_filter_group(parsed_group) if parsed_group else ""
+        if search:
+            criteria = f"{criteria} AND text '{search}'" if criteria else f"'{search}'"
         return format_entity_list(
             items,
             partial(_fmt_asset, base_url=base_url),
             noun="asset",
             total=data.get("totalElements"),
-            empty_msg=f"No assets found for '{search}'.",
+            empty_msg=f"No assets found for {criteria or 'this search'} (total 0).",
         )
 
     # ── 2. Get asset ──────────────────────────────────────────────────
@@ -1494,8 +1517,9 @@ def register_core(
             name="search_openaev_assets",
             priority=0,
             description=(
-                "Search for assets (endpoints) in OpenAEV by name, hostname, or IP address. "
-                "Assets represent machines, servers, workstations, or devices in the environment."
+                "Search for assets (endpoints) in OpenAEV by name, hostname, or IP address, "
+                "or count them by model keys (asset_status, asset_category...) with filter_group. "
+                "The answer always carries the total."
             ),
             input_schema={
                 "type": "object",
@@ -1506,11 +1530,18 @@ def register_core(
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Max results (default 20)",
+                        "description": "Max results (default 20); 1 to count",
                         "default": 20,
                     },
+                    "filter_group": {
+                        "type": "string",
+                        "description": (
+                            'FilterGroup JSON on Asset model keys, e.g. {"mode":"and","filters":'
+                            '[{"key":"asset_status","operator":"eq","values":["ACTIVE"]}]}'
+                        ),
+                    },
                 },
-                "required": ["search"],
+                "required": [],
             },
             source="integration:openaev",
         ),

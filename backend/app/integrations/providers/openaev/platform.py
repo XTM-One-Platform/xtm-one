@@ -44,7 +44,7 @@ async def _engine_keys_lines(base_url: str, headers: dict[str, str], class_name:
         return [f"Engine keys of '{entity}' for query_openaev_analytics: unavailable ({err or 'none reported'})."]
     lines = [
         f"Engine keys of '{entity}' ({len(keys)}) - the ONLY keys query_openaev_analytics "
-        "accepts (the model keys above are for search tools):"
+        "accepts (the model keys above are for search tools, e.g. search_openaev_assets filter_group):"
     ]
     for name in sorted(keys):
         entry = keys[name]
@@ -859,6 +859,12 @@ def register(
                 "instead of returning an error, so always take keys from this list "
                 "rather than guessing."
             )
+            if class_name.strip().lower() in ("asset", "endpoint"):
+                lines.append(
+                    "Pass these keys to search_openaev_assets filter_group (FilterGroup JSON; "
+                    "limit=1 for a count). asset_status (ACTIVE, INACTIVE, AGENTLESS, STALE) is "
+                    "computed at query time and only filterable there, never in query_openaev_analytics."
+                )
             lines.extend(await _engine_keys_lines(base_url, headers, class_name))
             return "\n".join(lines)
 
