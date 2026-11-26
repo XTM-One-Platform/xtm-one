@@ -38,10 +38,6 @@ import {
 } from "@/lib/constants";
 import type { Assignment, Agent, KnowledgeBase, OrganizationContextMode } from "@/types";
 import { OrganizationContextModeSelect, useOrganizationContextEffectiveLabel } from "@/components/organization-context-mode-select";
-import {
-  OrganizationContextCategoriesSelect,
-  useOrganizationContextCategoriesLabel,
-} from "@/components/organization-context-categories-select";
 import { useFormatter } from "@/i18n";
 import { FIELD_FOCUS_RING } from "@/lib/field-focus-ring";
 import { PromptGenerator } from "@/components/ui/prompt-generator";
@@ -159,13 +155,6 @@ export function ParametersCard({
     assignment.organization_context_mode ?? "inherit",
     agent?.organization_context_mode ?? "inherit",
   );
-  // Categories preloaded in the run's prompt (#11533): null inherits the agent's, then the platform's.
-  const [organizationContextCategories, setOrganizationContextCategories] = useState<string[] | null>(null);
-  const organizationCategoriesInEffect = useOrganizationContextCategoriesLabel(
-    "assignment",
-    assignment.organization_context_categories ?? null,
-    agent?.organization_context_categories ?? null,
-  );
 
   const startEditing = () => {
     setAiLabel(assignment.ai_label ?? false);
@@ -205,7 +194,6 @@ export function ParametersCard({
     setDryRun(assignment.dry_run ?? false);
     setMaxIterations(assignment.max_iterations != null ? clampMaxIterations(assignment.max_iterations) : null);
     setOrganizationContextMode(assignment.organization_context_mode ?? "inherit");
-    setOrganizationContextCategories(assignment.organization_context_categories ?? null);
     setEditing(true);
   };
 
@@ -242,7 +230,6 @@ export function ParametersCard({
         // null = inherit (agent override -> platform default); a value overrides the agent.
         max_iterations: maxIterations,
         organization_context_mode: organizationContextMode,
-        organization_context_categories: organizationContextCategories,
       },
       {
         onSuccess: () => {
@@ -611,15 +598,8 @@ export function ParametersCard({
               value={organizationContextMode}
               agentMode={agent?.organization_context_mode ?? "inherit"}
               onChange={setOrganizationContextMode}
+              fullWidth={false}
             />
-            {organizationContextMode !== "off" && (
-              <OrganizationContextCategoriesSelect
-                scope="assignment"
-                value={organizationContextCategories}
-                agentValue={agent?.organization_context_categories ?? null}
-                onChange={setOrganizationContextCategories}
-              />
-            )}
 
             <div className="border-t border-elevation-subtle-soft" />
 
@@ -846,12 +826,6 @@ export function ParametersCard({
                   iconColor="text-accent"
                   label={t_i18n("Organization context")}
                   value={`${t_i18n(ORGANIZATION_CONTEXT_MODE_LABELS[assignment.organization_context_mode ?? "inherit"])} (${organizationContextInEffect})`}
-                />
-                <ConfigCard
-                  icon={Building2}
-                  iconColor="text-accent"
-                  label={t_i18n("Preloaded organization categories")}
-                  value={organizationCategoriesInEffect}
                 />
                 <ConfigCard icon={Hourglass} iconColor="text-feedback-error-primary" label={t_i18n("Timeout")} value={assignment.timeout_seconds ? `${assignment.timeout_seconds}s` : t_i18n("No limit")} />
                 <ConfigCard icon={RefreshCw} iconColor="text-accent" label={t_i18n("Retry on failure")} value={assignment.retry_on_failure ? t_i18n("On (max {count})", { count: assignment.max_retries }) : t_i18n("Off")} isBoolean active={assignment.retry_on_failure} />

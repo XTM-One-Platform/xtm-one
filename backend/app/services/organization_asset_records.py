@@ -54,6 +54,9 @@ from app.services import organization_asset_store as store
 MAX_CLOSURE = 5000
 #: The most rows one batch write or bulk delete takes.
 MAX_BATCH = 10_000
+#: The most values one ``IN`` list carries: a row-value ``IN`` of a whole batch
+#: exceeds PostgreSQL's expression stack depth (#2184).
+IN_CHUNK = 1000
 #: Keys of a row that are columns, not fields.
 _PROVENANCE = ("source", "external_id", "sync_id")
 #: The source of a membership the record's own ``group`` field gives.
@@ -479,14 +482,16 @@ async def _write_memberships(
         ).all()
     )
     pairs = [(groups[r.group_key], r.id) for r in records if r.group_key in groups]
-    taken = set()
-    if pairs:
-        taken = {
+    taken: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    # By IN_CHUNK pairs: a row-value IN of a whole 10,000-row batch exceeds
+    # PostgreSQL's expression stack depth (StatementTooComplex, #2184).
+    for start in range(0, len(pairs), IN_CHUNK):
+        taken |= {
             (g, r)
             for g, r in (
                 await db.execute(
                     select(member.group_id, member.record_id).where(
-                        tuple_(member.group_id, member.record_id).in_(pairs)
+                        tuple_(member.group_id, member.record_id).in_(pairs[start : start + IN_CHUNK])
                     )
                 )
             ).all()
@@ -659,12 +664,14 @@ async def record_groups(
     return list(out.values())
 
 
-async def _link_primary_assets(db: AsyncSession, organization_id: uuid.UUID, jewels: Iterable[Any]) -> None:
+async def _link_primary_assets(db: AsyncSession, organization_id: uuid.UUID, pa_rows: Iterable[Any]) -> None:
     """The primary assets' ``asset_names`` as links to the records and groups of those names."""
-    for jewel in jewels:
-        if not isinstance(jewel, Mapping):
+    for pa_row in pa_rows:
+        if not isinstance(pa_row, Mapping):
             continue
-        await set_primary_asset_links(db, organization_id, str(jewel.get("name") or ""), jewel.get("asset_names") or [])
+        await set_primary_asset_links(
+            db, organization_id, str(pa_row.get("name") or ""), pa_row.get("asset_names") or []
+        )
 
 
 async def set_primary_asset_links(
@@ -677,13 +684,13 @@ async def set_primary_asset_links(
     ``removed``, so the sync never adds it back, and one *names* keeps is kept
     (restored if it was removed). Manual wins over the sync either way.
     """
-    jewel_key = _key(primary_asset)[:200]
-    if not jewel_key:
+    primary_asset_key = _key(primary_asset)[:200]
+    if not primary_asset_key:
         return []
     await db.execute(
         delete(OrganizationPrimaryAssetLink).where(
             OrganizationPrimaryAssetLink.organization_id == organization_id,
-            OrganizationPrimaryAssetLink.primary_asset_key == jewel_key,
+            OrganizationPrimaryAssetLink.primary_asset_key == primary_asset_key,
             OrganizationPrimaryAssetLink.source == "manual",
         )
     )
@@ -693,7 +700,7 @@ async def set_primary_asset_links(
             await db.execute(
                 select(OrganizationPrimaryAssetLink).where(
                     OrganizationPrimaryAssetLink.organization_id == organization_id,
-                    OrganizationPrimaryAssetLink.primary_asset_key == jewel_key,
+                    OrganizationPrimaryAssetLink.primary_asset_key == primary_asset_key,
                     OrganizationPrimaryAssetLink.source != "manual",
                 )
             )
@@ -727,7 +734,7 @@ async def set_primary_asset_links(
         found.add(name_key)
         db.add(
             OrganizationPrimaryAssetLink(
-                organization_id=organization_id, primary_asset_key=jewel_key, group_id=group_id
+                organization_id=organization_id, primary_asset_key=primary_asset_key, group_id=group_id
             )
         )
     for name_key, record_id in records:
@@ -736,7 +743,7 @@ async def set_primary_asset_links(
             continue  # the synced link stands for it, kept above
         db.add(
             OrganizationPrimaryAssetLink(
-                organization_id=organization_id, primary_asset_key=jewel_key, record_id=record_id
+                organization_id=organization_id, primary_asset_key=primary_asset_key, record_id=record_id
             )
         )
     await db.flush()
@@ -760,8 +767,8 @@ async def primary_asset_link_counts(db: AsyncSession, organization_id: uuid.UUID
         )
     ).all()
     out: dict[str, dict[str, int]] = {}
-    for jewel_key, source, count in rows:
-        by_source = out.setdefault(str(jewel_key), {})
+    for primary_asset_key, source, count in rows:
+        by_source = out.setdefault(str(primary_asset_key), {})
         by_source[str(source or "manual")] = by_source.get(str(source or "manual"), 0) + int(count)
     return out
 
@@ -1383,7 +1390,8 @@ async def identity_closure(db: AsyncSession, organization_id: uuid.UUID, record_
                 ).all()
             }
             named = {ref for group in decision_groups if group & refs for ref in group} - refs
-            if named:
+            named_refs = [(ref.source, ref.external_id) for ref in named]
+            for start in range(0, len(named_refs), IN_CHUNK):
                 new |= {
                     r
                     for (r,) in (
@@ -1391,7 +1399,7 @@ async def identity_closure(db: AsyncSession, organization_id: uuid.UUID, record_
                             select(OrganizationAssetRecord.id).where(
                                 OrganizationAssetRecord.organization_id == organization_id,
                                 tuple_(OrganizationAssetRecord.source, OrganizationAssetRecord.external_id).in_(
-                                    [(ref.source, ref.external_id) for ref in named]
+                                    named_refs[start : start + IN_CHUNK]
                                 ),
                             )
                         )

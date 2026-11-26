@@ -89,7 +89,10 @@ def test_blocking_init_bounds_auth_check_with_short_per_request_timeout(monkeypa
     }
 
 
-def test_blocking_init_shuts_down_client_when_no_project(monkeypatch):
+def test_blocking_init_leaves_client_running_when_no_project(monkeypatch):
+    """A failed check never shuts the client down: its resource manager is the
+    SDK's process-wide one for the key, which the next attempt reuses
+    (``test_langfuse_failed_init_threads``)."""
     captured: dict = {}
     monkeypatch.setattr(
         "langfuse.Langfuse", _make_fake_langfuse(captured, project_data=[])
@@ -98,7 +101,7 @@ def test_blocking_init_shuts_down_client_when_no_project(monkeypatch):
     with pytest.raises(lt._LangfuseAuthError):
         lt._blocking_init_and_auth("pk", "sk", "https://langfuse.example")
 
-    assert captured.get("shutdown") is True
+    assert "shutdown" not in captured
 
 
 class _Result:
@@ -152,3 +155,5 @@ async def test_admin_test_connection_uses_same_constructor_timeout(monkeypatch):
     # tolerant constructor timeout.
     assert captured["request_options"] == {"timeout_in_seconds": 10}
     assert captured.get("reset") is True
+    # Never shut down: the resource manager is the process-wide one for the key.
+    assert "shutdown" not in captured

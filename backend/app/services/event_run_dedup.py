@@ -28,8 +28,9 @@ of the delivery path, the *dedup key*:
   Message-ID, the same in every mailbox); without one, the conversation, the
   received instant and the sender;
 - ``microsoft`` / ``calendar_event_changed``: the ``iCalUId`` of the event and
-  its ``lastModifiedDateTime`` (one key per distinct modification); without an
-  ``iCalUId``, the event id and the same instant;
+  the digest of its time, cancellation, subject, location and attendees (one key
+  per change an agent acts on, #2216; without a digest, its
+  ``lastModifiedDateTime``); without an ``iCalUId``, the event id;
 - any other integration event: none (its per-assignment seen set stands, two
   assignments of one agent on one Teams channel or Slack channel each run);
 - a delegated or work-item run: the Message-ID named in its task text or the
@@ -155,16 +156,20 @@ def mail_dedup_key(payload: Mapping[str, Any] | None) -> str | None:
 
 
 def calendar_dedup_key(payload: Mapping[str, Any] | None) -> str | None:
-    """The dedup key of a ``calendar_event_changed`` payload: one per modification.
+    """The dedup key of a ``calendar_event_changed`` payload: one per change of what an agent reads.
 
     The ``iCalUId`` names the event across mailboxes (an attendee's copy and the
-    organizer's share it); without one the mailbox's event id stands in. Two
-    notifications of one modification carry the same ``lastModifiedDateTime``.
+    organizer's share it); without one the mailbox's event id stands in. The
+    payload's ``content_digest`` (time, cancellation, subject, location,
+    attendees) names the change: a save that changes none of them (a body or
+    category edit, a client re-save) carries the same digest and is a duplicate
+    within the window (#2216). A payload without a digest keys on its
+    ``lastModifiedDateTime``, as before.
     """
     if not isinstance(payload, Mapping):
         return None
     uid = _text(payload.get("ical_uid")) or _text(payload.get("event_id"))
-    modified = _text(payload.get("last_modified_at"))
+    modified = _text(payload.get("content_digest")) or _text(payload.get("last_modified_at"))
     if not uid or not modified:
         return None
     return _bounded(f"calendar:{uid}@{modified}")

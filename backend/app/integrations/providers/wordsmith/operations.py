@@ -962,6 +962,40 @@ LEGACY_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
     ("GET", "/templates"): ("GET", "/blueprints"),
 }
 
+#: The JSON body fields a write operation accepts, as its Wordsmith docs page
+#: defines them (read 25 Nov 2026), with the accepted values of an enum: the
+#: tool names them and refuses any other key before the call, since Wordsmith
+#: answers 400 "Extra inputs are not permitted" one key at a time (#2183).
+BODY_FIELDS: dict[str, dict[str, str]] = {
+    "create_draft": {
+        "instructions": "what to draft; required without blueprint_id",
+        "blueprint_id": "the published blueprint to draft from",
+        "values": "blueprint placeholder values keyed by placeholder key (get_blueprint)",
+        "context": "free text",
+        "file_ids": "up to 10 source file ids",
+        "session_id": "a past session as context",
+        "output_format": "docx or pdf",
+        "file_name": "name of the new file, no extension",
+        "wait": "seconds to wait, 0 to 20",
+        "callback_url": "HTTPS URL posted the finished operation",
+    },
+    "create_task": {
+        "title": "required",
+        "description": "the instruction",
+        "parent_task_id": "#123 or a task id",
+        "assigned_to": "user id, email, name or me",
+        "assigned_agent": "agent id, name or shortcut",
+        "assigned_team_id": "team id or name",
+        "matter_id": "matter to file it under",
+        "status": "initial status",
+        "priority": "no_priority, urgent, high, medium or low",
+        "complete_by": "ISO 8601 due date",
+        "tags": "labels",
+        "linked_items": "items of {type, id, role?, context?}",
+        "draft": "true to create a draft task",
+    },
+}
+
 #: Starts of long work: the request carries an ``Idempotency-Key`` so a retry
 #: (ours after a 5xx, or the agent's) never starts the work twice.
 IDEMPOTENT_STARTS: frozenset[tuple[str, str]] = frozenset(

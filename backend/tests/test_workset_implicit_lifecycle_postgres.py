@@ -132,7 +132,10 @@ async def test_an_idle_expiry_of_zero_keeps_an_implicit_workset(monkeypatch):
 # ── rolling budget, answered at write time ───────────────────────────────────
 
 
-async def test_a_spent_implicit_budget_refuses_the_next_item_at_write_time():
+async def test_a_spent_implicit_budget_stores_the_next_item_with_a_warning():
+    # #2206: a to_workset diversion cannot retry or pass a summary, so a refusal
+    # dropped a tool result the caller never saw. The item is stored, the
+    # warning says the budget is spent, when it comes back and how to finish it.
     async with _temp_database() as factory, factory() as session:
         user = await _seed_user(session)
         ws = await resolve_workset(session, user, key="assignment-3", scope="global", implicit=True, max_auto_calls=1)
@@ -141,13 +144,15 @@ async def test_a_spent_implicit_budget_refuses_the_next_item_at_write_time():
         await session.commit()
 
         outcome = await add_item(session, ws, user, title="New", content="A" * 300, external_ref="n-1")
-        assert not outcome.ok
-        assert outcome.action == "refused"
-        assert "Not stored" in outcome.error
-        assert "replenishes at" in outcome.error
+        assert outcome.ok
+        assert outcome.action != "refused"
+        assert outcome.warning is not None
+        assert "budget is spent" in outcome.warning
+        assert "replenishes at" in outcome.warning
+        assert "workset_set_summary" in outcome.warning
         await session.commit()
         stored = (await session.execute(select(WorksetItem).where(WorksetItem.workset_id == ws.id))).scalars().all()
-        assert stored == [], "a refused item must not be stored to fail later"
+        assert [item.external_ref for item in stored] == ["n-1"], "the content is kept, never dropped"
 
         # One that needs no automatic call is still accepted.
         own = await add_item(

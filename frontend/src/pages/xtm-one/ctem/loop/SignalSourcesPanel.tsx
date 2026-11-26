@@ -26,7 +26,13 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { useTriggerTabIndex } from "@/components/ui/row-target-context";
 import { Tip } from "@/components/ui/tooltip";
-import { useCtemSignalPaths, type CtemSignalPath, type CtemSignalPathSource } from "@/hooks/api/useCtemSignalsApi";
+import {
+  type CtemPlatformSource,
+  type CtemSignalPath,
+  type CtemSignalPathSource,
+  useCtemPlatformSources,
+  useCtemSignalPaths,
+} from "@/hooks/api/useCtemSignalsApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
@@ -34,7 +40,9 @@ import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
+import { PlatformSourceEnableDialog } from "./PlatformSourceControls";
 import { SignalPathSourcesSheet } from "./SignalPathSourcesSheet";
+import { isProvisioned } from "./platform-sources";
 import { signalsHref } from "./signals-route";
 import {
   connectHref,
@@ -43,18 +51,27 @@ import {
   LENS_ICON,
   PATH_ICON,
   PATH_STATUS_LABEL,
+  PATH_STATUS_ORDER,
   PATH_STATUS_TONE,
   pathStatus,
+  pathStatusLabel,
   SOURCE_KIND_LABEL,
   connectedProviders,
+  sourceKindText,
   sourceState,
+  sourceStateIcon,
   splitSources,
 } from "./signal-sources";
 
 const LENSES = ["inside", "outside", "world"] as const;
 
-/** The status order of the sort and the filter: connected first, agents-only last. */
-const STATUS_ORDER = ["connected", "off", "not_connected", "agents_api"] as const;
+/** The state word after a source in the folded line; bound and not connected say none. @i18n-keys */
+const COMPACT_STATE_WORD = {
+  error: "Error",
+  off: "Off",
+  not_set_up: "Not set up",
+  excluded: "Not used here",
+} as const satisfies Partial<Record<ReturnType<typeof sourceState>, string>>;
 
 /** The lens headings and what each sees. @i18n-keys */
 const LENS_HEADING = { inside: "Inside", outside: "Outside", world: "World" } as const;
@@ -80,7 +97,8 @@ function SourceItem({ source, connected }: { source: CtemSignalPathSource; conne
   const state = sourceState(source, connected);
   const possible = state === "not_connected";
   const event = source.event ? t_i18n(source.event) : null;
-  const stateLine = possible ? t_i18n("Not connected on this platform") : state === "not_set_up" ? t_i18n("Not set up") : null;
+  const icon = sourceStateIcon(state);
+  const stateLine = possible ? t_i18n("Not connected on this platform") : icon ? t_i18n(icon.label) : null;
   const tip = [event, stateLine].filter(Boolean).join(". ") || null;
   return (
     <Tip content={tip}>
@@ -95,12 +113,14 @@ function SourceItem({ source, connected }: { source: CtemSignalPathSource; conne
         data-possible={possible ? true : undefined}
         data-state={state}
       >
+        {icon && <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden data-testid="ctem-signal-source-status-icon" />}
         <ProviderLogo provider={source.provider} className={cn("size-4 shrink-0", possible && "opacity-50 grayscale")} decorative />
         <span className={source.bound ? "truncate" : "truncate text-default-secondary"}>{name}</span>
-        <span className="shrink-0 content-caption text-default-secondary">{t_i18n(SOURCE_KIND_LABEL[source.kind])}</span>
+        <span className="shrink-0 content-caption text-default-secondary">{sourceKindText(t_i18n, source)}</span>
         {source.off && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Off")}</span>}
         {state === "excluded" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not used here")}</span>}
         {state === "not_set_up" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not set up")}</span>}
+        {state === "error" && <span className="shrink-0 content-caption text-feedback-error-primary">{t_i18n("Error")}</span>}
       </span>
     </Tip>
   );
@@ -113,7 +133,7 @@ function PossibleSources({ sources }: { sources: CtemSignalPathSource[] }) {
   const tip = (
     <span className="flex flex-col gap-0.5">
       {sources.map((s) => (
-        <span key={`${s.provider}:${s.kind}`}>{`${sourceName(s)} (${t_i18n(SOURCE_KIND_LABEL[s.kind])})`}</span>
+        <span key={s.key ?? `${s.provider}:${s.kind}`}>{`${sourceName(s)} (${sourceKindText(t_i18n, s)})`}</span>
       ))}
       <span className="text-default-secondary">{t_i18n("Not connected on this platform")}</span>
     </span>
@@ -127,6 +147,31 @@ function PossibleSources({ sources }: { sources: CtemSignalPathSource[] }) {
         data-providers={sources.map((s) => s.provider).join(" ")}
       >
         {t_i18n("{count, plural, other {+# possible}}", { count: sources.length })}
+      </span>
+    </Tip>
+  );
+}
+
+/** The sources not used on this path: one muted item, the list in its tooltip, like "+N possible" (UX round 1 on #2454, B1). */
+function UnusedSources({ sources }: { sources: CtemSignalPathSource[] }) {
+  const { t_i18n } = useFormatter();
+  const tabIndex = useTriggerTabIndex();
+  const tip = (
+    <span className="flex flex-col gap-0.5">
+      {sources.map((s) => (
+        <span key={s.key ?? `${s.provider}:${s.kind}`}>{`${sourceName(s)} (${sourceKindText(t_i18n, s)})`}</span>
+      ))}
+      <span className="text-default-secondary">{t_i18n("Not used here")}</span>
+    </span>
+  );
+  return (
+    <Tip content={tip}>
+      <span
+        tabIndex={tabIndex}
+        className="inline-flex shrink-0 items-center rounded-sm content-caption text-default-secondary"
+        data-testid="ctem-signal-sources-unused"
+      >
+        {t_i18n("{count, plural, other {+# not used here}}", { count: sources.length })}
       </span>
     </Tip>
   );
@@ -180,15 +225,10 @@ function SourceList({
   if (compact) {
     const stateWord = (s: CtemSignalPathSource) => {
       const state = sourceState(s, connected);
-      return state === "off"
-        ? `, ${t_i18n("Off")}`
-        : state === "not_set_up"
-          ? `, ${t_i18n("Not set up")}`
-          : state === "excluded"
-            ? `, ${t_i18n("Not used here")}`
-            : "";
+      const word = state in COMPACT_STATE_WORD ? COMPACT_STATE_WORD[state as keyof typeof COMPACT_STATE_WORD] : null;
+      return word ? `, ${t_i18n(word)}` : "";
     };
-    const label = (s: CtemSignalPathSource) => `${sourceName(s)} (${t_i18n(SOURCE_KIND_LABEL[s.kind])}${stateWord(s)})`;
+    const label = (s: CtemSignalPathSource) => `${sourceName(s)} (${sourceKindText(t_i18n, s)}${stateWord(s)})`;
     const names = shown.map(label).join(", ");
     const tip = [
       names,
@@ -207,11 +247,17 @@ function SourceList({
       </Tip>
     );
   }
+  // A source not used on this path folds into one muted "+N not used here" while something else is listed, so the
+  // cell keeps to two lines (UX round 1 on #2454, B1: the default-off named sources wrapped a row to a third line).
+  const notUsed = (s: CtemSignalPathSource) => sourceState(s, connected) === "excluded";
+  const unused = shown.some((s) => !notUsed(s)) ? shown.filter(notUsed) : [];
+  const listed = unused.length > 0 ? shown.filter((s) => !notUsed(s)) : shown;
   return (
     <span className={className ? `${className} flex min-w-0 flex-wrap items-center gap-x-3` : "flex min-w-0 flex-wrap items-center gap-x-3"}>
-      {shown.map((s) => (
-        <SourceItem key={`${s.provider}:${s.kind}`} source={s} connected={connected} />
+      {listed.map((s) => (
+        <SourceItem key={s.key ?? `${s.provider}:${s.kind}`} source={s} connected={connected} />
       ))}
+      {unused.length > 0 && <UnusedSources sources={unused} />}
       {folded.length > 0 && <PossibleSources sources={folded} />}
     </span>
   );
@@ -233,8 +279,16 @@ export function SignalSourcesPanel() {
   // The path whose sources the side panel shows (#1445): read from the live list so a save refreshes it.
   const [openPath, setOpenPath] = useState<string | null>(null);
   const opened = paths.find((p) => p.id === openPath) ?? null;
+  // The platform sources an administrator turns on from the row's Set up (#2434).
+  const { data: platform } = useCtemPlatformSources(isAdmin);
+  const platformSources = platform?.sources ?? [];
+  const [enabling, setEnabling] = useState<CtemPlatformSource | null>(null);
+  const firstOff = (source: CtemSignalPathSource) =>
+    platformSources.find((s) => s.provider === source.provider && s.kind === source.kind && !s.enabled && s.integration_connected) ?? null;
   // Read once over every path: a provider connected on one path is connected on all of them.
-  const connected = connectedProviders(paths);
+  // A provider whose source XTM One provisions is connected once its integration is, even with every
+  // source still off (#2434): its sources read Not set up, never Not connected.
+  const connected = new Set([...connectedProviders(paths), ...platformSources.filter((s) => s.integration_connected).map((s) => s.provider)]);
   const lastSignal = (path: CtemSignalPath) =>
     path.last_signal_at ? formatShortDateTimeIntl(intl, path.last_signal_at) : t_i18n("None");
 
@@ -274,10 +328,10 @@ export function SignalSourcesPanel() {
       key: "status",
       header: "Status",
       width: 168,
-      sortValue: (path) => STATUS_ORDER.indexOf(pathStatus(path)),
+      sortValue: (path) => PATH_STATUS_ORDER.indexOf(pathStatus(path)),
       cell: (path) => {
         const status = pathStatus(path);
-        return <Chip label={t_i18n(PATH_STATUS_LABEL[status])} severity={PATH_STATUS_TONE[status]} data-testid="ctem-signal-sources-status" />;
+        return <Chip label={pathStatusLabel(path, t_i18n)} severity={PATH_STATUS_TONE[status]} data-testid="ctem-signal-sources-status" />;
       },
     },
     {
@@ -312,12 +366,20 @@ export function SignalSourcesPanel() {
       width: 160,
       interactive: true,
       cell: (path) => {
-        const target = pathStatus(path) === "connected" ? null : connectTarget(path);
+        // An enabled path has nothing to switch on; a partly enabled one offers its source that is off.
+        const target = pathStatus(path) === "enabled" ? null : connectTarget(path);
         // A profile pass is turned on by an administrator: a reader gets no button for it.
         const actionable = target && (isAdmin || !connectNeedsAdmin(target));
+        // A source XTM One provisions, of a connected provider: Set up opens its enable dialog (#2434).
+        const setUp = target && isAdmin && isProvisioned(target) && connected.has(target.provider) ? firstOff(target) : null;
         return (
           <span className="inline-flex items-center justify-end gap-1">
-            {actionable && (
+            {setUp && (
+              <Button variant="secondary" size="sm" onClick={() => setEnabling(setUp)} data-testid="ctem-signal-sources-set-up">
+                {t_i18n("Set up")}
+              </Button>
+            )}
+            {actionable && !setUp && !(isProvisioned(target) && connected.has(target.provider)) && (
               <Button variant="secondary" size="sm" onClick={() => navigate(connectHref(target))} data-testid="ctem-signal-sources-connect">
                 {target.off ? t_i18n("Turn on") : t_i18n("Connect")}
               </Button>
@@ -360,7 +422,7 @@ export function SignalSourcesPanel() {
             key: "status",
             label: "Status",
             values: (path) => [pathStatus(path)],
-            options: STATUS_ORDER.map((s) => ({ value: s, label: t_i18n(PATH_STATUS_LABEL[s]) })),
+            options: PATH_STATUS_ORDER.map((s) => ({ value: s, label: t_i18n(PATH_STATUS_LABEL[s]) })),
             // Ordinal scale: connected first, agents-only last.
             ordered: true,
           },
@@ -401,6 +463,15 @@ export function SignalSourcesPanel() {
         rowTestId="ctem-signal-sources-path"
       />
       <SignalPathSourcesSheet path={opened} paths={paths} connected={connected} onClose={() => setOpenPath(null)} />
+      <PlatformSourceEnableDialog
+        source={enabling}
+        label={
+          enabling
+            ? `${CTEM_PRODUCT_INFO[enabling.provider]?.name ?? INTEGRATION_PROVIDER_NAMES[enabling.provider] ?? enabling.provider} ${t_i18n(SOURCE_KIND_LABEL[enabling.kind])}`
+            : ""
+        }
+        onClose={() => setEnabling(null)}
+      />
     </div>
   );
 }

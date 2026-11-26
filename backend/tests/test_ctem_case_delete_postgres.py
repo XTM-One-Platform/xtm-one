@@ -203,6 +203,10 @@ async def test_a_delete_cascades_cancels_releases_and_audits(_gate):
         audit = (await session.execute(select(AuditLog).where(AuditLog.entity_type == "ctem_case"))).scalars().all()
         assert len(audit) == 1 and audit[0].action == "delete" and audit[0].entity_id == world["legacy"]
         assert audit[0].details["case"]["keys"] == [KEY] and audit[0].details["reason"] == "legacy reset"
+        # A read of the deleted id answers deleted, from that audit row (#2328).
+        answer = await case_delete.deleted_case_answer(session, world["legacy"])
+        assert answer is not None and "was deleted" in answer and "legacy reset" in answer
+        assert await case_delete.deleted_case_answer(session, world["kept"]) is None
 
 
 async def test_the_fix_key_is_free_and_the_released_signal_waits_for_the_sweep():
@@ -237,6 +241,86 @@ async def test_a_filter_and_ids_combine_and_unknown_ids_are_named():
         )
         # kept was opened by a signal: the filter leaves it out, so it is named unknown with the stray id.
         assert cases == [] and sorted(unknown) == sorted([str(world["kept"]), str(stray)])
+
+
+SIM = "3f1c2a40-5b6d-4e7f-8a9b-0c1d2e3f4a5b"
+OTHER_SIM = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+
+
+async def _desk_items(session, world: dict[str, Any]) -> dict[str, uuid.UUID]:
+    """The detection desk's gap, retest and launch items of the legacy case's simulation, and one of another (#2389)."""
+    legacy = await session.get(CtemCase, world["legacy"])
+    legacy.validations = [{"provider": "openaev", "kind": "validation", "ref": SIM, "result": "failed"}]
+    kept = await session.get(CtemCase, world["kept"])
+    kept.validations = [{"provider": "openaev", "kind": "validation", "ref": OTHER_SIM, "result": "failed"}]
+    admin = world["admin"].id
+    rows = {
+        # Filed with the case link the desk now writes.
+        "gap": WorkItem(
+            user_id=admin,
+            title="gap",
+            correlation_key="openaev:detection-desk:gap:inject-1:asset-1",
+            status="blocked",
+            needs_human=True,
+            payload={"ctem_case_id": str(world["legacy"]), "simulation_id": SIM},
+        ),
+        # Filed with the simulation alone: matched on the case's recorded simulation.
+        "retest": WorkItem(
+            user_id=admin,
+            title="retest",
+            correlation_key="openaev:detection-desk:retest:inject-1:asset-1",
+            status="open",
+            payload={"simulation_id": SIM},
+        ),
+        # Filed before any link field: the simulation id only in its text.
+        "launch": WorkItem(
+            user_id=admin,
+            title="launch",
+            correlation_key="openaev:detection-desk:launch:scenario-1",
+            status="blocked",
+            needs_human=True,
+            description=f"Re-run simulation {SIM} to prove the gap closed.",
+            payload={},
+        ),
+        "other": WorkItem(
+            user_id=admin,
+            title="other case",
+            correlation_key="openaev:detection-desk:gap:inject-2:asset-2",
+            status="blocked",
+            needs_human=True,
+            payload={"ctem_case_id": str(world["kept"]), "simulation_id": OTHER_SIM},
+        ),
+    }
+    session.add_all(rows.values())
+    await session.commit()
+    return {name: row.id for name, row in rows.items()}
+
+
+async def test_a_delete_lists_and_cancels_the_detection_desk_items_of_the_case(_gate):
+    """#2389: the desk's keys hold no case id; the payload link and the case's simulation tie them to the case."""
+    async with _database() as sessions, sessions() as session:
+        world = await _world(session)
+        desk = await _desk_items(session, world)
+        cases, _ = await case_delete.select_cases(session, organization_id=world["org"], case_ids=[world["legacy"]])
+        dry = await case_delete.delete_cases(session, cases, actor=world["admin"], dry_run=True)
+        listed = dry["cases"][0]["work_items"]
+        assert {
+            "openaev:detection-desk:gap:inject-1:asset-1",
+            "openaev:detection-desk:retest:inject-1:asset-1",
+            "openaev:detection-desk:launch:scenario-1",
+        } <= set(listed)
+        assert "openaev:detection-desk:gap:inject-2:asset-2" not in listed
+        await case_delete.delete_cases(
+            session, cases, actor=world["admin"], reason="reset", dry_run=False, now=NOW + timedelta(minutes=1)
+        )
+        await session.commit()
+        session.expire_all()
+        for name in ("gap", "retest", "launch"):
+            item = await session.get(WorkItem, desk[name])
+            assert item.status == "cancelled" and item.needs_human is False, name
+            assert item.result.startswith(f"Cancelled: CTEM case {world['legacy']} was deleted"), name
+        other = await session.get(WorkItem, desk["other"])
+        assert other.status == "blocked" and other.needs_human is True
 
 
 async def test_sixteen_cases_and_a_thousand_signals_go_in_one_quick_delete(_gate):

@@ -26,13 +26,14 @@ that viewer is what they see.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
 import time
 import uuid
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
@@ -60,6 +61,19 @@ RESTRICTED = "Restricted"
 LIST_BUILD_WAIT_SECONDS = 2.0
 #: The retry delay a list read names when the view is still building after that wait.
 LIST_RETRY_AFTER_SECONDS = 30
+#: How often a list read waiting on a build another pod holds looks for its result (#2232).
+LIST_POLL_SECONDS = 0.25
+#: Decoded views kept per worker, by the digest of their stored JSON (#2232).
+DECODED_VIEWS_MAX = 16
+#: How long a viewer's previous view answers a list read, marked stale, while the new one builds (#2232):
+#: a build after a case-opening drain outlived :data:`VIEW_TTL_SECONDS` on ctem.one, leaving only a 503,
+#: and an hour still left a 503 when rollouts killed the builds in flight: any age beats an empty list.
+STALE_VIEW_TTL_SECONDS = 7 * 24 * 3600
+#: How long one pod's build lock lives without a refresh (#2232): short, so a pod a rollout stops while it
+#: builds leaves the lock to the next pod within a minute instead of blocking every build for 15.
+BUILD_LOCK_SECONDS = 60
+#: How often the building pod extends its lock, well inside :data:`BUILD_LOCK_SECONDS`.
+BUILD_LOCK_REFRESH_SECONDS = 20
 #: The reasons a product gives about one identity (``ctem_cases_source.IDENTITY_REASONS``): the
 #: viewer has no access there, so what it did not return is refused, not unjudged (#2113).
 _IDENTITY_REASONS = frozenset({"rejected", "not_connected"})
@@ -74,7 +88,8 @@ class ViewRebuildingError(Exception):
 
     def __init__(self, retry_after: int = LIST_RETRY_AFTER_SECONDS) -> None:
         self.retry_after = retry_after
-        super().__init__(f"The case list is rebuilding after new cases opened; retry in {retry_after} s.")
+        # #2287: whatever changed the cases (opened, deleted, reset, reconciled), never a guessed cause.
+        super().__init__(f"The case list is being rebuilt after a change to the cases; retry in {retry_after} s.")
 
 
 @dataclass
@@ -109,6 +124,9 @@ class ViewerView:
     #: True when this viewer's own OpenCTI read is available (CTEM-16-UI, #1115): only
     #: then are the name, ids and link of a case's threat package shown.
     opencti: bool = False
+    #: True when this viewer's own OpenAEV read is available (#2468): only then are the
+    #: name, id and link of a case's validation scenario shown.
+    openaev: bool = False
     #: The member ids of the shared cases this view's read was given (#2113): a product member
     #: outside it belongs to a case opened after the view was built, never judged by it. ``None``
     #: for a view cached before the field (judged as before).
@@ -165,6 +183,7 @@ class ViewerView:
                 "no_access": self.no_access,
                 "opencrq": self.opencrq,
                 "opencti": self.opencti,
+                "openaev": self.openaev,
                 "judged": sorted(self.judged) if self.judged is not None else None,
                 "built_at": self.built_at.isoformat() if self.built_at else None,
             }
@@ -188,6 +207,7 @@ class ViewerView:
             no_access=bool(data.get("no_access", False)),
             opencrq=bool(data.get("opencrq", False)),
             opencti=bool(data.get("opencti", False)),
+            openaev=bool(data.get("openaev", False)),
             judged=set(judged) if isinstance(judged, list) else None,
             built_at=datetime.fromisoformat(built) if isinstance(built, str) and built else None,
         )
@@ -197,6 +217,7 @@ def _issue_json(issue: rules.SourceIssue) -> dict[str, Any]:
     out = asdict(issue)
     out["assets"] = list(issue.assets)
     out["primary_assets"] = list(issue.primary_assets)
+    out["inferred_primary_assets"] = list(issue.inferred_primary_assets)
     out["first_seen_at"] = issue.first_seen_at.isoformat() if issue.first_seen_at else None
     return out
 
@@ -205,11 +226,13 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     data = dict(data)
     data["assets"] = tuple(data.get("assets") or ())
     data["primary_assets"] = tuple(data.get("primary_assets") or ())
+    data["inferred_primary_assets"] = tuple(data.get("inferred_primary_assets") or ())
     seen = data.get("first_seen_at")
     data["first_seen_at"] = datetime.fromisoformat(seen) if seen else None
     # Typed facts (#2038); a view cached before it holds (version, outcome) pairs, read the same way.
     data["version_outcomes"] = rules.version_facts(data.get("version_outcomes"))
     data["kev_cves"] = tuple(data.get("kev_cves") or ())
+    data["unknown_cves"] = tuple(data.get("unknown_cves") or ())
     return rules.SourceIssue(**data)
 
 
@@ -242,6 +265,16 @@ def _latest_key(user_id: str, vertical: str) -> str:
     return f"ctem:cases:view-latest:{user_id}:{vertical}"
 
 
+def _previous_key(user_id: str, vertical: str) -> str:
+    """The viewer's newest built view, whatever its generation (#2232), kept :data:`STALE_VIEW_TTL_SECONDS`."""
+    return f"ctem:cases:view-previous:{user_id}:{vertical}"
+
+
+def _build_lock_key(user_id: str, vertical: str, generation: str) -> str:
+    """The cross-pod lock of one background build (#2232)."""
+    return f"ctem:cases:view-build:{user_id}:{vertical}:{generation}"
+
+
 async def _redis() -> Any | None:
     try:
         from app.core.redis import redis_client
@@ -256,8 +289,8 @@ SIGNAL_SOURCE = "signal"
 
 async def signal_members(db: Any, user_id: str) -> set[str]:
     """The ``signal:<id>`` members *user_id* may read: every case-bound signal for an
-    administrator or a CTEM view or decide right (``services/ctem_access.py``), else the
-    signals recorded for them (the rule of ``GET /ctem-signals``).
+    administrator or a CTEM view or decide right (``services/ctem_access.py``), else none
+    (#2441: no CTEM without a right, the rule of ``GET /ctem-signals``).
 
     A case opened from a signal with no product issue (a path without a CVE) is
     then visible to whoever sees the signal that opened it, never to nobody.
@@ -273,7 +306,7 @@ async def signal_members(db: Any, user_id: str) -> set[str]:
         user is not None and await ctem_access.group_right(db, user_id) is not None
     )
     if not whole:
-        query = query.where(CtemSignal.recorded_by == str(user_id))
+        return set()
     try:
         ids = (await db.execute(query)).scalars()
     except Exception:
@@ -296,6 +329,13 @@ def start_timing() -> dict[str, float]:
 @asynccontextmanager
 async def timed(phase: str) -> AsyncIterator[None]:
     """Add the duration of the block to *phase* of the request's timings, when they are started."""
+    with timed_sync(phase):
+        yield
+
+
+@contextmanager
+def timed_sync(phase: str) -> Iterator[None]:
+    """:func:`timed` for a block with no await (a decode, a filter, a sort)."""
     start = time.perf_counter()
     try:
         yield
@@ -351,10 +391,37 @@ async def viewer_view(
     return replace(view, signals=signals, signal_details=details)
 
 
-def signal_detail(signal: CtemSignal) -> dict[str, Any]:
+def _pivot_id(signal: Any, evidence: dict[str, Any]) -> str | None:
+    """The module id a row pivots to when the signal carries no link, or None (never a guessed page).
+
+    An OpenCTI signal names an OpenCTI object by its id; an OpenAEV one is a finding only when a
+    source reader recorded it from an OpenAEV issue (``evidence.source_issue``): a listener delivery
+    names a scenario or a run, which carries its own ``platform_url`` instead.
+    """
+    external_id = (signal.source_external_id or "").strip() or None
+    provider = (signal.source_provider or "").lower()
+    if provider == "opencti":
+        return external_id
+    if provider in ("openaev", "openbas") and evidence.get("source_issue"):
+        return external_id
+    return None
+
+
+def signal_detail(signal: Any) -> dict[str, Any]:
     """What a signal member is, as a case row names it (#1936): never its id as a label."""
     from app.services.ctem_signals import PATH_CATALOG, provider_name
 
+    # What the row's "Open in <Module>" pivot needs (#1357): the source's own id of the object, and
+    # the link to it the delivery carried (OpenCRQ, OpenCTI: link; OpenAEV: platform_url), http(s) only.
+    evidence = signal.evidence if isinstance(signal.evidence, dict) else {}
+    link = next(
+        (
+            value
+            for value in (evidence.get("link"), evidence.get("platform_url"))
+            if isinstance(value, str) and value.lower().startswith(("https://", "http://"))
+        ),
+        None,
+    )
     return {
         "name": (signal.subject_label or signal.subject_ref or None),
         "trigger_path": signal.trigger_path,
@@ -362,6 +429,8 @@ def signal_detail(signal: CtemSignal) -> dict[str, Any]:
         "lens": signal.lens,
         "source_provider": signal.source_provider,
         "source_name": provider_name(signal.source_provider),
+        "source_external_id": _pivot_id(signal, evidence),
+        "source_link": link,
         "subject_kind": signal.subject_kind,
         "assets": [signal.subject_ref] if signal.subject_kind == "asset" and signal.subject_ref else [],
         "first_seen_at": signal.first_seen_at.isoformat() if signal.first_seen_at else None,
@@ -383,11 +452,30 @@ async def signal_details(db: Any, members: set[str]) -> dict[str, dict[str, Any]
     if not ids:
         return {}
     try:
-        rows = (await db.execute(select(CtemSignal).where(CtemSignal.id.in_(ids)))).scalars().all()
+        # The columns a row names, never whole ORM objects (#2232): every case-bound signal is read
+        # on each list read, and building thousands of tracked instances blocked the event loop.
+        query = select(*(getattr(CtemSignal, name) for name in _DETAIL_COLUMNS)).where(CtemSignal.id.in_(ids))
+        rows = (await db.execute(query)).all()
     except Exception:
         logger.info("CTEM cases: signal details unreadable", exc_info=True)
         return {}
-    return {f"{SIGNAL_SOURCE}:{s.id}": signal_detail(s) for s in rows}
+    with timed_sync("signal-details"):
+        return {f"{SIGNAL_SOURCE}:{s.id}": signal_detail(s) for s in rows}
+
+
+#: The ``CtemSignal`` columns :func:`signal_detail` reads.
+_DETAIL_COLUMNS = (
+    "id",
+    "subject_label",
+    "subject_ref",
+    "subject_kind",
+    "trigger_path",
+    "lens",
+    "source_provider",
+    "source_external_id",
+    "evidence",
+    "first_seen_at",
+)
 
 
 #: Issue ids per ``IN`` list of the source signal read (#1986): far under every engine's parameter cap.
@@ -445,11 +533,47 @@ async def _singleflight(key: str) -> AsyncIterator[None]:
             _build_locks.pop(key, None)
 
 
+#: Decoded views by the digest of their stored JSON (#2232): a view of ~2.5k issues is decoded once
+#: per worker, not on every list read; a rebuilt view has another digest and is decoded again.
+_decoded: dict[bytes, ViewerView] = {}
+
+
+def _copy_view(view: ViewerView) -> ViewerView:
+    """A copy whose collections a caller may change without touching the memo (the issues are immutable)."""
+    return replace(
+        view,
+        issues=dict(view.issues),
+        open_ids=set(view.open_ids),
+        unavailable=set(view.unavailable),
+        missing=list(view.missing),
+        reasons=dict(view.reasons),
+        judged=set(view.judged) if view.judged is not None else None,
+    )
+
+
+def _decode_view(raw: str | bytes) -> ViewerView:
+    """The view stored as *raw*, decoded once per worker (#2232); phase ``decode``, or ``decode-memo``."""
+    data = raw.encode() if isinstance(raw, str) else raw
+    digest = hashlib.blake2b(data, digest_size=16).digest()
+    found = _decoded.get(digest)
+    if found is None:
+        with timed_sync("decode"):
+            found = ViewerView.from_json(data)
+        while len(_decoded) >= DECODED_VIEWS_MAX:
+            _decoded.pop(next(iter(_decoded)))
+        _decoded[digest] = found
+    else:
+        mark("decode", "memo")
+    with timed_sync("copy"):
+        return _copy_view(found)
+
+
 async def _cached_view(client: Any, user_id: str, vertical: str, generation: str) -> ViewerView | None:
     try:
-        cached = await client.get(_view_key(user_id, vertical, generation))
+        async with timed("redis"):
+            cached = await client.get(_view_key(user_id, vertical, generation))
         if cached:
-            return ViewerView.from_json(cached)
+            return _decode_view(cached)
     except Exception:
         logger.info("CTEM cases: view cache unreadable for %s", user_id, exc_info=True)
     return None
@@ -472,7 +596,7 @@ async def _stale_view(
     view, so nothing is shown that the view of today would not show.
     """
     view = await _older_view(client, user_id, vertical, generation)
-    if view is None:
+    if view is None or _age_seconds(view) > VIEW_TTL_SECONDS:
         return None
     product = [m for m in members if not m.startswith(f"{SIGNAL_SOURCE}:")]
     if not all(m in view.issues or m in view.unavailable for m in product):
@@ -480,16 +604,46 @@ async def _stale_view(
     return view
 
 
-async def _older_view(client: Any, user_id: str, vertical: str, generation: str) -> ViewerView | None:
-    """The viewer's own newest view of a generation older than *generation*, while it is in its TTL."""
+def _age_seconds(view: ViewerView) -> float:
+    """How old *view* is; a view with no ``built_at`` (cached before #2113) counts as fresh."""
+    if view.built_at is None:
+        return 0.0
+    return max(0.0, (datetime.now(UTC) - view.built_at).total_seconds())
+
+
+async def _older_view(
+    client: Any, user_id: str, vertical: str, generation: str, *, same_generation: bool = False
+) -> ViewerView | None:
+    """The viewer's own newest view of a generation older than *generation*.
+
+    Kept :data:`STALE_VIEW_TTL_SECONDS` (#2232) under its own key, so a build longer than
+    :data:`VIEW_TTL_SECONDS` still leaves the list a view to answer from; a case read takes it
+    only within :data:`VIEW_TTL_SECONDS` of its build (:func:`_stale_view`).
+
+    With *same_generation* (the list), the kept view of *generation* itself is taken too: with
+    no case change, its own copy expires after :data:`VIEW_TTL_SECONDS` while the kept one stays,
+    and refusing it made every list read a 503 for the whole rebuild, every five minutes.
+    """
     try:
         latest = await client.get(_latest_key(user_id, vertical))
     except Exception:
         return None
     if isinstance(latest, bytes):
         latest = latest.decode()
-    if not latest or str(latest) == generation:
+    if not latest or (str(latest) == generation and not same_generation):
         return None
+    try:
+        async with timed("redis"):
+            previous = await client.get(_previous_key(user_id, vertical))
+    except Exception:
+        logger.info("CTEM cases: previous view unreadable for %s", user_id, exc_info=True)
+        previous = None
+    if previous:
+        try:
+            return _decode_view(previous)
+        except Exception:
+            logger.info("CTEM cases: previous view unreadable for %s", user_id, exc_info=True)
+    # A pointer written before #2232: its view sits under the generation's own key.
     return await _cached_view(client, user_id, vertical, str(latest))
 
 
@@ -498,21 +652,30 @@ async def _list_view(client: Any, user_id: str, vertical: str, generation: str) 
 
     A generation bump says the cases changed, not that the viewer's access did: their
     own older view answers the list (the cases are read fresh from the store, only the
-    issue details come from it) while the new one builds in the background. With no
-    older view, the background build is awaited for :data:`LIST_BUILD_WAIT_SECONDS`.
+    issue details come from it) while the new one builds in the background. The kept
+    view of the current generation past :data:`VIEW_TTL_SECONDS` answers the same way.
+    With no kept view at all, the background build is awaited for
+    :data:`LIST_BUILD_WAIT_SECONDS`.
     """
-    older = await _older_view(client, user_id, vertical, generation)
+    older = await _older_view(client, user_id, vertical, generation, same_generation=True)
     if older is not None:
         mark("cache", "stale")
         _revalidate(user_id, vertical, generation)
         # The cases opened since it was built have members it never judged (#2113): unjudged, never hidden.
         older.stale = True
         return older
+    deadline = time.perf_counter() + LIST_BUILD_WAIT_SECONDS
     task = _revalidate(user_id, vertical, generation)
     if task is not None:
         # Waited on, never cancelled nor raised: a failed or slow build leaves the answer to the cache.
         await asyncio.wait({task}, timeout=LIST_BUILD_WAIT_SECONDS)
     built = await _cached_view(client, user_id, vertical, generation)
+    # Another pod holds the build (#2232): its task here ends at once, so the read looks for the
+    # view that pod writes for the rest of the wait, instead of a 503 while it lands (ctem.one,
+    # overview at 22:39:20Z on 25 Nov 2026, the view written one second later).
+    while built is None and (left := deadline - time.perf_counter()) > 0:
+        await asyncio.sleep(min(LIST_POLL_SECONDS, left))
+        built = await _cached_view(client, user_id, vertical, generation)
     if built is not None:
         mark("cache", "built")
         return built
@@ -528,6 +691,13 @@ def _revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[No
 
     async def build() -> None:
         _timings.set(None)  # the request that started it has answered: its timings are closed
+        client = await _redis()
+        lock = _build_lock_key(user_id, vertical, generation)
+        if not await _take_build_lock(client, lock):
+            # Another pod builds this view (#2232): the list answers the previous one meanwhile.
+            logger.info("CTEM cases: view of %s (generation %s) built by another pod", user_id, generation)
+            return
+        keep = asyncio.create_task(_keep_build_lock(client, lock))
         try:
             from app.core.database import async_session
 
@@ -535,11 +705,46 @@ def _revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[No
                 await _product_view(db, user_id, vertical, fresh=False)
         except Exception:
             logger.info("CTEM cases: background view build failed for %s", user_id, exc_info=True)
+        finally:
+            keep.cancel()
+            await _release_build_lock(client, lock)
 
     task = asyncio.create_task(build())
     _revalidations[key] = task
     task.add_done_callback(lambda _t: _revalidations.pop(key, None))
     return task
+
+
+async def _take_build_lock(client: Any, key: str) -> bool:
+    """Whether this pod builds the view of *key* (#2232); no Redis, or Redis failing, builds here."""
+    if client is None:
+        return True
+    try:
+        return bool(await client.set(key, "1", ex=BUILD_LOCK_SECONDS, nx=True))
+    except Exception:
+        logger.info("CTEM cases: view build lock unreadable for %s", key, exc_info=True)
+        return True
+
+
+async def _keep_build_lock(client: Any, key: str) -> None:
+    """Extend the build lock of *key* every :data:`BUILD_LOCK_REFRESH_SECONDS` while this pod builds (#2232)."""
+    if client is None:
+        return
+    while True:
+        await asyncio.sleep(BUILD_LOCK_REFRESH_SECONDS)
+        try:
+            await client.expire(key, BUILD_LOCK_SECONDS)
+        except Exception:
+            logger.info("CTEM cases: view build lock not extended for %s", key, exc_info=True)
+
+
+async def _release_build_lock(client: Any, key: str) -> None:
+    if client is None:
+        return
+    try:
+        await client.delete(key)
+    except Exception:
+        logger.info("CTEM cases: view build lock not released for %s", key, exc_info=True)
 
 
 async def _product_view(
@@ -605,8 +810,11 @@ async def _build_view(db: Any, client: Any, user_id: str, vertical: str, generat
     await _seen_while_missing(client, user_id, vertical, view)
     if client is not None:
         try:
-            await client.set(_view_key(user_id, vertical, generation), view.to_json(), ex=VIEW_TTL_SECONDS)
-            await client.set(_latest_key(user_id, vertical), generation, ex=VIEW_TTL_SECONDS)
+            raw = view.to_json()
+            await client.set(_view_key(user_id, vertical, generation), raw, ex=VIEW_TTL_SECONDS)
+            # The previous view the list answers from while the next generation builds (#2232).
+            await client.set(_previous_key(user_id, vertical), raw, ex=STALE_VIEW_TTL_SECONDS)
+            await client.set(_latest_key(user_id, vertical), generation, ex=STALE_VIEW_TTL_SECONDS)
             visible = sorted(set(view.issues) | view.unavailable)
             await client.set(_seen_key(user_id, vertical), json.dumps(visible), ex=LAST_SEEN_TTL_SECONDS)
         except Exception:
@@ -677,7 +885,11 @@ def _visible_issue(
     row: CtemCaseIssue, issue: rules.SourceIssue | None, signal: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     if row.source == SIGNAL_SOURCE:  # the signal that opened or joined the case: what it is, by name (#1936)
-        return {"source": row.source, "external_id": row.external_id, "open": row.open, **(signal or {})}
+        out = {"source": row.source, "external_id": row.external_id, "open": row.open, **(signal or {})}
+        if issue is not None:  # #2396: the primary assets its gate decision reached, which the case counts
+            out["primary_assets"] = list(issue.primary_assets)
+            out["primary_asset_links"] = primary_asset_links(issue)
+        return out
     if issue is None:  # seen before, its product does not answer now
         return {"source": row.source, "external_id": row.external_id, "open": row.open, "details_unavailable": True}
     return {
@@ -690,6 +902,8 @@ def _visible_issue(
         "kev": issue.kev,
         "assets": list(issue.assets),
         "primary_assets": list(issue.primary_assets),
+        # #2396: each primary asset with its link basis, proven (manual or OpenCRQ link) or inferred.
+        "primary_asset_links": primary_asset_links(issue),
         "first_seen_at": issue.first_seen_at.isoformat() if issue.first_seen_at else None,
         "open": row.open,
         # The version knowledge of this viewer's own OpenCTI read (CTEM-11, #946; shown by #928).
@@ -715,6 +929,20 @@ def _visible_issue(
     }
 
 
+def primary_asset_links(issue: rules.SourceIssue) -> list[dict[str, str]]:
+    """``[{name, basis}]`` of the primary assets *issue* reaches, ``proven`` or ``inferred`` (#2396)."""
+    inferred = set(issue.inferred_primary_assets)
+    return [{"name": j, "basis": "inferred" if j in inferred else "proven"} for j in issue.primary_assets]
+
+
+#: How a case counts its primary assets (#2396): the reader repeats it beside the counts.
+PRIMARY_ASSET_BASIS = (
+    "primary_asset_count counts the primary assets a manual or OpenCRQ link proves; "
+    "inferred_primary_asset_count those reached only through an inventory rule, a name match "
+    "or the evidence; each issue row lists its primary assets with their basis"
+)
+
+
 def _member_label(member: str, view: ViewerView) -> str | None:
     signal = view.signal_details.get(member)
     if signal is not None:
@@ -730,12 +958,32 @@ def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCas
 SEVERITY_PRIORITY: dict[str, str] = {"P1": "critical", "P2": "high", "P3": "medium"}
 
 #: The aggregates computed from member details: null for a viewer missing the details of an open member.
-DETAIL_AGGREGATES: tuple[str, ...] = ("asset_count", "primary_asset_count", "kev_count", "max_cvss", "max_epss")
+DETAIL_AGGREGATES: tuple[str, ...] = (
+    "asset_count",
+    "primary_asset_count",
+    "inferred_primary_asset_count",
+    "kev_count",
+    "max_cvss",
+    "max_epss",
+)
 #: Why they are null: the reader repeats it instead of reading "none".
 AGGREGATES_RESTRICTED_REASON = (
     "unknown for this reader: some open issues of the case are not readable with their details "
     "(outside your scope, or their product did not answer); this is not a zero"
 )
+#: The aggregates an open signal member leaves unknown when its CVEs' facts were not read (#2225).
+FACT_AGGREGATES: tuple[str, ...] = ("kev_count", "max_cvss", "max_epss")
+#: Why they are null: OpenCTI was not read for this reader (no access, or it failed), or it does not know the CVE.
+FACTS_UNREAD_REASON = (
+    "unknown for this reader: OpenCTI facts (KEV, CVSS, EPSS) were not read for some CVEs the case's "
+    "signals name (no OpenCTI access for this reader, OpenCTI did not answer, or it does not know "
+    "the CVE); this is not a zero"
+)
+
+
+def facts_unread(details: list[Any]) -> int:
+    """The open signal members naming a CVE whose facts were not read (#2225): their KEV and scores are unknown."""
+    return sum(1 for d in details if d.source == SIGNAL_SOURCE and tuple(getattr(d, "unknown_cves", ()) or ()))
 
 
 def kev_count(details: list[Any]) -> int:
@@ -785,6 +1033,10 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
     without_details = sum(1 for r in rows if r.open and r.source != SIGNAL_SOURCE and _member_id(r) not in view.issues)
     if without_details:
         agg = {**agg, **{key: None for key in DETAIL_AGGREGATES}}
+    # A signal member whose CVE facts were not read: KEV and scores unknown, never "0 KEV" (#2225).
+    unread = facts_unread(details)
+    if unread:
+        agg = {**agg, **{key: None for key in FACT_AGGREGATES}}
     unavailable = sorted({r.source for r in visible if r.source != SIGNAL_SOURCE and _member_id(r) not in view.issues})
     # Kept and marked, never discarded (#2004): the running version is to validate first.
     unverified = version_match.unverified_reason(details)
@@ -816,8 +1068,14 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "members_without_details": without_details,
         "aggregates_restricted": bool(without_details),
         "aggregates_reason": AGGREGATES_RESTRICTED_REASON if without_details else None,
+        # The open signal members whose CVE facts were not read (#2225), and why kev_count, max_cvss
+        # and max_epss are then null.
+        "members_facts_unread": unread,
+        "facts_reason": FACTS_UNREAD_REASON if unread else None,
         "asset_count": agg["asset_count"],
         "primary_asset_count": agg["primary_asset_count"],
+        "inferred_primary_asset_count": agg["inferred_primary_asset_count"],
+        "primary_asset_basis": PRIMARY_ASSET_BASIS,
         "kev_count": agg["kev_count"],
         "max_cvss": agg["max_cvss"],
         "max_epss": agg["max_epss"],
@@ -861,8 +1119,21 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     path_label = signal.get("trigger_path_label") if signal is not None else None
     # A treatment plan's name and OpenCRQ link go to a viewer who reads OpenCRQ only (#1068).
     # A threat package's Grouping and coverage go to a viewer who reads OpenCTI only (#1115).
-    hidden = (row.kind == "treatment_plan" and not view.opencrq) or (row.kind == "threat_package" and not view.opencti)
+    # A validation scenario's name and OpenAEV link go to a viewer who reads OpenAEV only (#2468).
+    hidden = (
+        (row.kind == "treatment_plan" and not view.opencrq)
+        or (row.kind == "threat_package" and not view.opencti)
+        or (row.kind == "scenario" and not view.openaev)
+    )
+    named: dict[str, Any] = {}
+    if row.kind == "threat_package":
+        # ``from`` holds the coverage id, never a previous value (#2429): named alongside.
+        named = {
+            "grouping_id": None if hidden else row.to_value,
+            "coverage_id": None if hidden else row.from_value,
+        }
     return {
+        **named,
         "at": row.at.isoformat() if row.at else None,
         "actor": row.actor,
         "kind": row.kind,
@@ -876,20 +1147,63 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     }
 
 
-def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, Any]:
+def case_position(events: list[CtemCaseEvent], view: ViewerView, owner: object = None) -> dict[str, Any]:
     """Where one case stands, from the history this viewer is served (#1503).
 
     ``phase``: its CTEM phase (the list's grouping and the Kanban by phase);
-    ``waiting_on``: the gate it waits on, who and since when (``None`` when none);
+    ``waiting_on``: the gate it waits on, who and since when (``None`` when none); who is a person's
+    id: the one the gate names, else the case *owner* (#2452, ``ctem_case_audit.open_wait``);
     ``stalled_since``: when the sweep found it waiting on nobody, while that is still its newest
     event (``None`` once anything happened to the case after it, #1736).
     """
     served = [_event(row, view) for row in events if row.kind != VERSIONS_KIND]
     return {
         "phase": audit.current_phase(served),
-        "waiting_on": audit.open_wait(served),
+        "waiting_on": audit.open_wait(served, owner),
         "stalled_since": audit.stalled_since(served),
     }
+
+
+#: A detection gap the detection desk proposed on the case (#2393): from the gap key
+#: ``<inject>:<asset>``, to the root cause (or ``answered:<outcome>``), reason the remediation,
+#: evidence ``{technique, simulation_id, evidence, rule_draft, rule_language, item_id}`` as JSON.
+DETECTION_GAP_KIND = "detection_gap"
+
+
+def detection_gaps_of(events: list[CtemCaseEvent]) -> list[dict[str, Any]]:
+    """The detection gaps proposed on the case, one per gap key, oldest first (#2393).
+
+    Each carries its proposal (root cause, remediation, drafted rule, decision item)
+    and its answer once given; a gap proposed again replaces its proposal.
+    """
+    gaps: dict[str, dict[str, Any]] = {}
+    rows = [e for e in events if e.kind == DETECTION_GAP_KIND and e.from_value]
+    for row in sorted(rows, key=lambda e: e.at or datetime.min.replace(tzinfo=UTC)):
+        key = str(row.from_value)
+        at = row.at.isoformat() if row.at else None
+        to = row.to_value or ""
+        if to.startswith("answered:"):
+            if key in gaps:
+                gaps[key]["answer"] = {"outcome": to.split(":", 1)[1], "by": row.reason, "at": at}
+            continue
+        try:
+            detail = json.loads(row.evidence or "{}")
+        except ValueError:
+            detail = {}
+        gaps[key] = {
+            "key": key,
+            "root_cause": to,
+            "remediation": row.reason,
+            "technique": detail.get("technique"),
+            "simulation_id": detail.get("simulation_id"),
+            "evidence": detail.get("evidence"),
+            "rule_draft": detail.get("rule_draft"),
+            "rule_language": detail.get("rule_language"),
+            "decision_item_id": detail.get("item_id"),
+            "proposed_at": at,
+            "answer": None,
+        }
+    return list(gaps.values())
 
 
 def treatment_plan_of(events: list[CtemCaseEvent]) -> dict[str, Any] | None:
@@ -988,7 +1302,7 @@ def review_outcome(events: list[CtemCaseEvent]) -> str | None:
     option = (newest.evidence or "").strip()
     if _APPROVE_OPTION.fullmatch(option) or (not option and _MARK_ANSWER.search(newest.reason or "")):
         return REVIEW_APPROVED
-    if _REJECT_OPTION.fullmatch(option):
+    if _REJECT_OPTION.fullmatch(option) or rules.closes_case(option):
         return REVIEW_REJECTED
     return REVIEW_REPLAN if option else REVIEW_UNREAD
 
@@ -1079,6 +1393,12 @@ def threat_package_for(
     return {**package, **status, "restricted": False}
 
 
+def _served_history(events: list[CtemCaseEvent], page: int | None = None) -> list[CtemCaseEvent]:
+    """The history rows a case read serves: the versions record left out, then the newest *page* (#2429)."""
+    rows = [e for e in events if e.kind != VERSIONS_KIND]
+    return rows if page is None else rows[:page]
+
+
 def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
@@ -1091,31 +1411,45 @@ def _rank(row: CtemCaseIssue, view: ViewerView) -> tuple:
 
 
 def hydrate(
-    case: CtemCase, rows: list[CtemCaseIssue], events: list[CtemCaseEvent], view: ViewerView
+    case: CtemCase,
+    rows: list[CtemCaseIssue],
+    events: list[CtemCaseEvent],
+    view: ViewerView,
+    *,
+    history_page: int | None = None,
 ) -> dict[str, Any] | None:
     """One case for this viewer, ``None`` when they see none of its issues.
 
     A member they cannot see is ``{"restricted": true}`` and nothing else: no
-    id, source, name, score, asset or link.
+    id, source, name, score, asset or link. *events* is the case's whole history,
+    newest first: the treatment plan, the threat package and its review state are
+    derived from all of it, and only the served ``history`` is cut to the newest
+    *history_page* entries (#2429), so a package older than the page still reads.
     """
     head = summary(case, rows, view)
     if head is None:
         return None
     visible = [r for r in sorted(rows, key=lambda r: _rank(r, view)) if view.sees(_member_id(r))]
     restricted = len(rows) - len(visible)
+    issues = [
+        _visible_issue(r, view.issues.get(_member_id(r)), view.signal_details.get(_member_id(r))) for r in visible
+    ] + [{"restricted": True} for _ in range(restricted)]
+    from app.services import ctem_case_assets as case_assets
+    from app.services import ctem_validation_scenario as case_scenario
+
     return {
         **head,
         "keys": list(case.keys or []),
-        "issues": [
-            _visible_issue(r, view.issues.get(_member_id(r)), view.signal_details.get(_member_id(r))) for r in visible
-        ]
-        + [{"restricted": True} for _ in range(restricted)],
+        "issues": issues,
+        # The issues' assets, then the hosts a validation ran on, each with its provenance (#2395).
+        "assets": case_assets.merged_assets(issues, case_assets.attached_assets(case.validations)),
         # The running-versions record (#1694) is served by the case read's ``running_versions.history``.
-        "history": [_event(e, view) for e in events if e.kind != VERSIONS_KIND],
+        "history": [_event(e, view) for e in _served_history(events, history_page)],
         "exploitation": exploitation_for(case, view),
         "attack_path": attack_path_for(case, view),
         "treatment_plan": treatment_plan_for(events, view),
         "threat_package": threat_package_for(events, view, sla_due_at=case.sla_due_at),
+        "scenario": case_scenario.scenario_for(events, view),
     }
 
 
@@ -1312,16 +1646,15 @@ def reaches_primary_asset(rows: list[CtemCaseIssue], view: ViewerView, primary_a
 
 
 async def acts_on_case(db: Any, user: Any, rows: list[CtemCaseIssue], vertical: str) -> bool:
-    """Whether *user_id* may change a case they see (#1748).
+    """Whether *user_id* may change a case they see (#1748, #2441).
 
-    An administrator or a CTEM decide right: every case they see, read and
-    write. A CTEM view right is strictly read only (Sam, 24 Nov 2026): every
-    case write is refused. Without a right, the cases their own read shows.
+    An administrator or a CTEM decide right only: a view right is strictly
+    read only (Sam, 24 Nov 2026) and no right is no CTEM at all (#2441).
     *rows* and *vertical* are kept for the callers' symmetry with the read.
     """
     from app.services import ctem_access
 
-    return await ctem_access.level(db, user) != "view"
+    return await ctem_access.may_decide(db, user)
 
 
 def owner_sees(rows: list[CtemCaseIssue], owner_view: ViewerView) -> bool:
@@ -1345,6 +1678,11 @@ async def user_sees_case(db: Any, user_id: Any, case_id: Any, vertical: Any = No
         case_uuid = uuid.UUID(str(case_id))
         uuid.UUID(str(user_id))
     except (ValueError, TypeError):
+        return False
+    from app.services import ctem_access
+
+    # No CTEM without a right (#2441), re-read at delivery time.
+    if await ctem_access.level(db, str(user_id)) is None:
         return False
     primary = await get_primary(db)
     if primary is None:

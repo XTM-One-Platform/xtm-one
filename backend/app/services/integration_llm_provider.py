@@ -3,8 +3,8 @@
 """A platform LLM provider fed from an integration - the one linking mechanism.
 
 Some integrations hold what a platform LLM provider runs on: an OpenRouter
-account (``services/openrouter_llm_provider.py``), an LM Studio server reached
-through a relay (``services/lmstudio_llm_provider.py``). Their console creates
+account (``services/openrouter_llm_provider.py``), an LM Studio server
+(``services/lmstudio_llm_provider.py``). Their console creates
 the provider from the integration, or adopts one already configured, then picks
 the models it offers. The config records the integration
 (``LLMProviderConfig.source_integration_id``, at most one config per

@@ -74,7 +74,8 @@ GATED_READS: dict[str, str] = {
 #: an integration they cannot see); a non-owner's chat turn still has its
 #: unshared OAuth bindings shadowed first (``shadow_invisible_bindings``).
 BOUND_READS: dict[str, str] = {
-    "services/integration_tools.py:_get_token": (
+    # _get_token scopes the log fields of the resolution (#2197) and delegates the read here.
+    "services/integration_tools.py:_resolve_token": (
         "the tool-token funnel: resolves the bindings it is handed"
     ),
     "services/integration_tools.py:_refresh_inline": (
@@ -289,6 +290,10 @@ PRIVATE_RESOLVERS: dict[str, set[str]] = {
         # token only creates, checks or deletes the assignment's own endpoint and
         # reads its event log for catch-up.
         "services/wordsmith_webhooks.py",
+        # Notion native webhooks (#2185): the Notion integration the delivery came
+        # through, for the assignment's run-as user (provisioning_user_id); the token
+        # only reads the delivered comment and the bot's own user (mentions_bot).
+        "services/notion_webhooks.py",
     },
     "_refresh_by_id": set(),
     "_try_inline_refresh": set(),

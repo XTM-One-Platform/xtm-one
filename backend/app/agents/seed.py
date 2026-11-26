@@ -72,11 +72,13 @@ from app.services.assignment_pause import (
     FLEET_PAUSE_REASON,
     clear_pause_provenance,
     is_emergency_stopped,
+    is_paused_by_person,
     mark_schedule_resumed,
     pause_assignment,
 )
+from app.services.builtin_allowed_tools import with_implicit_scope
 from app.services.builtin_customer_layer import seed_keeps_field, seed_keeps_model
-from app.services.builtin_tool_aliases import canonical_builtin_selection
+from app.services.builtin_tool_aliases import canonical_builtin_selection, platform_scoped_groups
 from app.services.kb_helpers import bump_kb_revision, reset_changed_document
 
 logger = logging.getLogger(__name__)
@@ -371,6 +373,12 @@ def _sync_agent_fields(
     agent.skip_llm = data.get("skip_llm", False)
     # Per-agent runtime config (generic JSON blob for engine-level behaviour)
     agent.config = data.get("config") or None
+    # A group the canonical fold scoped while the definition named no list for it is a
+    # list the platform wrote (#2327, as ``fold_builtin_selection`` marks it, #39): the
+    # functions later releases add to the group reach the agent.
+    implicit = platform_scoped_groups(data.get("builtin_allowed_tools"), agent.builtin_allowed_tools)
+    if implicit:
+        agent.config = with_implicit_scope(agent.config, add=implicit)
     # Memory tiers
     agent.memory_short_term_enabled = data.get("memory_short_term_enabled", True)
     agent.memory_medium_term_enabled = data.get("memory_medium_term_enabled", True)
@@ -907,6 +915,16 @@ async def seed_builtin_assignments(
                     data["name"],
                     agent_slug,
                 )
+            elif desired_enabled and is_paused_by_person(existing):  # type: ignore[arg-type]
+                # A person (or an agent acting as one) switched this one
+                # automation off (#2192): their decision, which a boot must not
+                # revert. They switch it back on.
+                logger.info(
+                    "Built-in assignment '%s' (agent '%s') stays paused: switched off by %s.",
+                    data["name"],
+                    agent_slug,
+                    getattr(existing, "paused_by_label", None) or "a person",
+                )
             elif desired_enabled and emergency_stopped:
                 # An emergency stop outlives a restart: the stop's resume
                 # re-enables this assignment, a boot never does. The stamp
@@ -924,8 +942,9 @@ async def seed_builtin_assignments(
                 # was paused by the quarantine three boots ago.
                 #
                 # The seed is the source of truth for built-in assignments:
-                # anything that disabled one at runtime (manual toggle, legacy
-                # auto-quarantine) is reverted on every boot.
+                # anything else that disabled one at runtime (legacy
+                # auto-quarantine, a pause with no person on it) is reverted on
+                # every boot; a person's switch-off is kept above (#2192).
                 #
                 # Seeding has no acting user, so there is no ``resume`` audit
                 # row to pair with the ``pause`` one this clears. Left silent,
@@ -1950,7 +1969,6 @@ _EDITING_INTENTS: list[tuple[str, str]] = [
 _EDITING_INTENT_AGENTS: list[tuple[str, str]] = [
     ("opencti-assistant", "cti"),
     ("openaev-assistant", "aev"),
-    ("opencrq-assistant", "crq"),
     ("fimi-analyst", "fimi"),
 ]
 
@@ -2004,9 +2022,6 @@ _INTENT_DESCRIPTIONS: dict[str, str] = {
     "cti.stix_harvester": "Extract cyber threat intelligence from documents into STIX 2.1 bundles",
     "cti.stix_transformer": "Transform a STIX 2.1 bundle (enrich, filter, rewrite, normalize) and return a valid STIX 2.1 bundle",
     "cti.stix_consumer": "Consume a STIX 2.1 bundle as the final step of an OpenCTI playbook (summarize, alert, post, dispatch)",
-    "crq.control_gap_analysis": "Analyze control capability gaps against a compliance framework",
-    "crq.risk_scenario_generator": "Draft risk scenarios from business and threat context",
-    "crq.assessment_summary": "Summarize a compliance assessment and its requirement answers",
 }
 
 def _build_intent_bindings() -> list[dict]:

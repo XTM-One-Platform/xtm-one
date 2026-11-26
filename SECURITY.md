@@ -6,6 +6,8 @@ Only the current stable major release (ie. X.X) is supported for updates and bug
 
 ## Reporting a Vulnerability
 
+**Never report a vulnerability in a public issue, pull request, discussion, comment or commit, and never with the `security` label: this repository is public.** A public report is readable by everyone before a patch exists. Use the private channel below, for everyone, contributors and the Filigran team included.
+
 Please report (suspected) security vulnerabilities via GitHub's security advisory reporting system:
 Submit your vulnerability via [this link](https://github.com/XTM-One-Platform/xtm-one/security/advisories/new)
 

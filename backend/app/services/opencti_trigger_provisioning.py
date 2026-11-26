@@ -283,6 +283,32 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
     }
 
 
+def pir_score_filters(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """One OpenCTI composite ``pir_score`` filter per minimum score, each naming its PIRs (#2435). Pure.
+
+    The PIRs of the spec sharing a minimum go in one filter; a spec without
+    ``pir_thresholds`` (a profile saved before the Intelligence policy) answers
+    one filter at ``pir_min_score``, as before.
+    """
+    pir_ids = sorted(spec.get("pir_ids") or [])
+    own = spec.get("pir_thresholds") or {}
+    by_score: dict[int, list[str]] = {}
+    for pid in pir_ids:
+        by_score.setdefault(int(own.get(pid, spec.get("pir_min_score", 1))), []).append(pid)
+    return [
+        {
+            "key": ["pir_score"],
+            "values": [
+                {"key": "score", "values": [str(score)], "operator": "gte"},
+                {"key": "pir_ids", "values": ids},
+            ],
+            "operator": "eq",
+            "mode": "or",
+        }
+        for score, ids in sorted(by_score.items())
+    ]
+
+
 def derive_from_organization_context(spec: dict[str, Any], profile: Any) -> tuple[dict[str, Any], list[str]]:
     """``(spec, missing)``: *spec* with the profile-derived values, and the declared fields left empty.
 
@@ -303,6 +329,9 @@ def derive_from_organization_context(spec: dict[str, Any], profile: Any) -> tupl
             missing.append(f"pir_ids {absent} (absent from the profile PIRs)")
         elif pir_ids:
             derived["pir_ids"] = pir_ids
+            # Each PIR's own minimum score from the Intelligence policy (#2435), the spec's otherwise.
+            own = getattr(profile, "pir_min_scores", None) or {}
+            derived["pir_thresholds"] = {pid: int(own.get(pid, spec.get("pir_min_score", 1))) for pid in pir_ids}
         else:
             missing.append("pir_ids")
     if "regions" in declared:
@@ -456,18 +485,13 @@ def trigger_filters(
         groups.append({"mode": "or", "filters": vuln_signals, "filterGroups": []})
     if spec.get("pir_ids"):
         # OpenCTI's composite PIR filter (stix-testers ``testPirScore``): an
-        # entity flagged in one of these PIRs with at least the score.
-        filters.append(
-            {
-                "key": ["pir_score"],
-                "values": [
-                    {"key": "score", "values": [str(spec.get("pir_min_score", 1))], "operator": "gte"},
-                    {"key": "pir_ids", "values": list(spec["pir_ids"])},
-                ],
-                "operator": "eq",
-                "mode": "or",
-            }
-        )
+        # entity flagged in one of these PIRs with at least the score. One
+        # filter per minimum score (#2435), any of them matching.
+        score_filters = pir_score_filters(spec)
+        if len(score_filters) == 1:
+            filters.append(score_filters[0])
+        else:
+            groups.append({"mode": "or", "filters": score_filters, "filterGroups": []})
     if scope_ids:
         ids = sorted(set(scope_ids))
         groups.append(
@@ -819,13 +843,23 @@ def pir_playbook_nodes(
     """
     pir_ids = sorted(spec.get("pir_ids") or [])
     names = pir_names or {}
-    score_filter: dict[str, Any] = {
-        "mode": "and",
-        "filters": [
-            {"key": ["pir_score"], "values": [str(spec.get("pir_min_score", 1))], "operator": "gte", "mode": "or"}
-        ],
-        "filterGroups": [],
-    }
+    per_score = pir_score_filters(spec)
+    if len(per_score) <= 1:
+        score = per_score[0]["values"][0]["values"][0] if per_score else str(spec.get("pir_min_score", 1))
+        score_filter: dict[str, Any] = {
+            "mode": "and",
+            "filters": [{"key": ["pir_score"], "values": [score], "operator": "gte", "mode": "or"}],
+            "filterGroups": [],
+        }
+    else:
+        # Several minimum scores (#2435): OpenCTI rewrites a first-level pir_score filter to every
+        # listened PIR (listenPirEventsUtils.formatFiltersForPirPlaybookComponent), so each PIR's
+        # own minimum goes in a nested group as the composite filter, which it reads as written.
+        score_filter = {
+            "mode": "and",
+            "filters": [],
+            "filterGroups": [{"mode": "or", "filters": per_score, "filterGroups": []}],
+        }
     # The declared entity types narrow the playbook as they narrow a trigger (#2121): two
     # assignments on the same PIRs with different types never deliver each other's entities.
     if spec.get("entity_types"):
@@ -1266,6 +1300,33 @@ async def integration_gql(db: Any, integration: Any, user_id: Any, *, timeout: i
     return gql, api_base
 
 
+async def integration_connection(db: Any, integration_id: str, user_id: Any) -> tuple[Gql, str, str] | str:
+    """``(gql, integration_id, secret)`` on one OpenCTI integration as *user_id*, or the reason it cannot be built.
+
+    The platform signal sources (``services/ctem_platform_sources.py``, #2434) name
+    their integration and run-as themselves, with no assignment.
+    """
+    from app.models.integration import Integration
+    from app.services.trigger_provisioning import receiver_secret
+
+    try:
+        integration = await db.get(Integration, uuid.UUID(str(integration_id)))
+    except ValueError:
+        integration = None
+    if integration is None or integration.provider != "opencti":
+        return f"OpenCTI integration {integration_id} not found"
+    try:
+        secret = await receiver_secret(integration)
+    except Exception as exc:  # unreadable config, unreadable vault secret or unusable secret
+        return f"the OpenCTI integration's webhook_secret cannot be read: {type(exc).__name__}"
+    if not secret:
+        return "the OpenCTI integration has no webhook_secret: set one so the receiver authenticates OpenCTI"
+    connection = await integration_gql(db, integration, user_id)
+    if isinstance(connection, str):
+        return connection
+    return connection[0], str(integration.id), secret
+
+
 def _with_state(trigger_config: dict, state: dict | None) -> dict:
     updated = dict(trigger_config)
     if state is None:
@@ -1309,7 +1370,8 @@ async def provision_one(db: Any, assignment: Any, agent: Any, *, now: datetime |
         from app.services import organization_context as org_context
 
         row = await org_context.current_version(db)
-        profile = org_context.parse_profile(row.profile) if row is not None else None
+        # The hydrated profile: its PIR fields are the PIRs enabled in the Intelligence policy (#2435).
+        profile = await org_context.hydrated_profile(db, row) if row is not None else None
         spec, missing = derive_from_organization_context(spec, profile)
         if missing:
             new_state = {
@@ -1371,18 +1433,27 @@ async def maintain(db: Any, *, now: datetime | None = None) -> int:
     from app.models.assignment import Assignment
 
     now = now or datetime.now(UTC)
+    from app.services.ctem_platform_sources import replaced_by_source
+
     rows = (
         await db.execute(
             select(Assignment, Agent)
             .join(Agent, Agent.id == Assignment.agent_id)
-            .where(Assignment.trigger_type == "integration_event")
+            .where(Assignment.trigger_type.in_(("integration_event", "platform_event")))
         )
     ).all()
     changed = 0
     for assignment, agent in rows:
         config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
-        if config.get("provider") != "opencti":
-            continue
+        listening = assignment.trigger_type == "integration_event" and config.get("provider") == "opencti"
+        if not listening:
+            # A holder the seed moved to ctem_signal.recorded (#2434) keeps its old objects
+            # until the platform source of the same integration delivers: new before old.
+            if not isinstance(config.get(STATE_KEY), dict) or not await replaced_by_source(
+                db, "opencti", config[STATE_KEY]
+            ):
+                continue
+            config = {k: v for k, v in config.items() if k != PROVISION_KEY}
         if PROVISION_KEY not in config and STATE_KEY not in config:
             continue
         wants = PROVISION_KEY in config and assignment.enabled

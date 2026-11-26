@@ -257,7 +257,10 @@ async def test_a_failed_read_never_fails_the_run(monkeypatch):
     assert await fleet_autonomy.fleet_autonomy_for_run(_FailingDb(), uuid.uuid4()) is None
 
 
-async def test_a_new_custom_fleet_starts_autonomous_with_the_computed_catalog_on(monkeypatch):
+async def test_a_new_custom_fleet_starts_at_full_gates_with_the_computed_catalog_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2279 (Sam, 25 Nov 2026): no level given = Full human gates; it was autonomous from #10153 C2."""
     from app.services import fleets
 
     created: list[dict] = []
@@ -289,12 +292,12 @@ async def test_a_new_custom_fleet_starts_autonomous_with_the_computed_catalog_on
     monkeypatch.setattr(fleets, "Fleet", _Fleet)
     monkeypatch.setattr(fleets, "unique_fleet_slug", _slug)
     await fleets.create_fleet(_Session(), user_id=None, name="A", workspace_id=uuid.uuid4())
-    assert created[-1]["autonomy_level"] == "autonomous"
+    assert created[-1]["autonomy_level"] == "full_gates"
     assert created[-1]["approval_pins"] == {}
     await fleets.create_fleet(
         _Session(), user_id=None, name="B", workspace_id=uuid.uuid4(), approval_gates=[_HIGH], approval_pins=None
     )
-    assert "autonomy_level" not in created[-1]
+    assert created[-1]["autonomy_level"] == "full_gates"
     assert created[-1]["approval_pins"] is None
 
 

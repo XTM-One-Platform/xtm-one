@@ -86,6 +86,8 @@ BUILTIN_GROUP_ALIASES: dict[str, tuple[str, tuple[str, ...]]] = {
             "get_program_status",
             # An agent DMs a waiting item's decision card (#1156).
             "send_decision_card",
+            # The person's notification bell, read (#2198).
+            "list_my_notifications",
         ),
     ),
     "shared_state": (
@@ -386,6 +388,12 @@ def current_function_name(name: str) -> str:
 #: (#1943, migration ``h1943healthgrp01``).
 RENAMED_BUILTIN_GROUPS: dict[str, str] = {
     "concierge_orchestrator": "health_orchestrator",
+    # One CTEM group (#2443): the read and repair groups are merged into ``ctem``;
+    # every function checks the acting person's CTEM right at call time (#2441),
+    # so a former ``ctem_read`` binding never writes beyond that right
+    # (migration ``s2443ctemgrp01``).
+    "ctem_read": "ctem",
+    "ctem_repair": "ctem",
 }
 
 

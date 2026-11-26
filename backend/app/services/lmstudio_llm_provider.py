@@ -1,24 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""The platform LM Studio LLM provider, fed from an LM Studio integration through its relay.
+"""The platform LM Studio LLM provider, fed from an LM Studio integration.
 
-A company-managed LM Studio integration, routed through a relay group, can
-create the platform's LM Studio LLM provider (``app/llm/lmstudio_provider.py``)
+A company-managed LM Studio integration with a server URL can create the platform's LM Studio LLM provider (``app/llm/lmstudio_provider.py``)
 or adopt one it fed before; its Models tab picks the models offered
 (``services/integration_llm_provider.py`` is the linking mechanism).
 
 Unlike a provider holding an API key, the config holds no credential: the
 integration stays the one place where the server's URL, its optional API token
 and its relay group live. Every request the provider sends goes through
-:class:`IntegrationRelayTransport`, which reads them through the provider's
+:class:`IntegrationTransport`, which reads them through the provider's
 config - the integration it is fed by now (:func:`resolve_target`, kept
 :data:`TARGET_TTL_SECONDS` per process and dropped on every edit of the
-integration and every unlink) - and sends the request through the relay
-group. A provider unlinked, or whose integration is gone, personal, unrouted
-or without a server URL, refuses every request with a 424 the SDK does not
-retry - never a direct connection from the platform.
+integration and every unlink) - and sends the request on the integration's
+route: through its relay group when it has one, directly otherwise. A
+provider unlinked, or whose integration is gone, personal or without a
+server URL, refuses every request with a 424 the SDK does not retry.
 
-The relay logs these requests under the integration (``source_type``
+A relay logs these requests under the integration (``source_type``
 ``integration``), like its console's.
 """
 
@@ -64,8 +63,6 @@ REFUSED_STATUS = 424
 
 
 def _refusal(integration: Integration) -> str | None:
-    if integration.relay_group_id is None:
-        return client.PUBLIC_MESSAGES["not_routed"]
     try:
         from app.core.security import decrypt_json
 
@@ -112,7 +109,8 @@ class TargetRefusedError(Exception):
 @dataclass(frozen=True)
 class Target:
     integration_id: uuid.UUID
-    route: EgressRoute
+    #: The integration's relay route; ``None``: the server is called directly.
+    route: EgressRoute | None
     connection: client.Connection
 
 
@@ -152,8 +150,6 @@ async def _read_target(db: AsyncSession, config_id: uuid.UUID) -> Target:
     if refusal is not None:
         raise TargetRefusedError(refusal)
     route = await integration_egress_route(db, integration)
-    if route is None:
-        raise TargetRefusedError(client.PUBLIC_MESSAGES["not_routed"])
     try:
         connection = await client.integration_connection(integration)
     except client.LMStudioError as exc:
@@ -189,8 +185,52 @@ _PLACEHOLDER_HOST = httpx.URL(PLACEHOLDER_ROOT).host
 _REPLACED_HEADERS = frozenset({"host", "authorization"})
 
 
-class IntegrationRelayTransport(httpx.AsyncBaseTransport):
-    """Sends the provider's requests to its integration's server, through its relay group."""
+class _ClosingStream(httpx.AsyncByteStream):
+    """The body of a direct answer; closing it closes the one-request client that read it."""
+
+    def __init__(self, response: httpx.Response, owner: httpx.AsyncClient) -> None:
+        self._response = response
+        self._owner = owner
+
+    async def __aiter__(self):  # type: ignore[override]
+        # The raw stream, still encoded: the provider's client decodes it.
+        stream = self._response.stream
+        if not isinstance(stream, httpx.AsyncByteStream):
+            raise TypeError("a direct LM Studio answer is read asynchronously")
+        async for chunk in stream:
+            yield chunk
+
+    async def aclose(self) -> None:
+        try:
+            await self._response.aclose()
+        finally:
+            await self._owner.aclose()
+
+
+async def _send_direct(request: httpx.Request) -> httpx.Response:
+    """Send ``request`` from the platform, as any direct call of an integration.
+
+    A client per request, closed with the answer's body: no pool outlives the
+    event loop that opened it, and the environment's proxies (``NO_PROXY``
+    included) apply as to every other direct call.
+    """
+    direct = egress_client(route=None, follow_redirects=False)
+    try:
+        response = await direct.send(request, stream=True)
+    except BaseException:
+        await direct.aclose()
+        raise
+    return httpx.Response(
+        response.status_code,
+        headers=response.headers.raw,
+        stream=_ClosingStream(response, direct),
+        extensions=response.extensions,
+        request=request,
+    )
+
+
+class IntegrationTransport(httpx.AsyncBaseTransport):
+    """Sends the provider's requests to its integration's server, on the integration's route."""
 
     def __init__(self, config_id: uuid.UUID | None) -> None:
         self.config_id = config_id
@@ -213,6 +253,8 @@ class IntegrationRelayTransport(httpx.AsyncBaseTransport):
             stream=request.stream,
             extensions=request.extensions,
         )
+        if target.route is None:
+            return await _send_direct(routed)
         return await target.route.transport().handle_async_request(routed)
 
 
@@ -227,17 +269,17 @@ def _refused(request: httpx.Request, message: str) -> httpx.Response:
     )
 
 
-def routed_http_client(config_id: uuid.UUID | None, *, timeout: httpx.Timeout) -> httpx.AsyncClient:
+def integration_http_client(config_id: uuid.UUID | None, *, timeout: httpx.Timeout) -> httpx.AsyncClient:
     """The HTTP client of the provider config ``config_id`` (``None``: one not saved, which refuses everything).
 
-    Its one transport routes every request through the integration's relay
-    group (``route=None`` keeps the ambient egress route out of it, and
-    ``trust_env=False`` keeps an environment proxy from taking the request
-    before the transport sees it).
+    Its one transport sends every request on the integration's route
+    (``route=None`` keeps the ambient egress route out of it, and
+    ``trust_env=False`` keeps an environment proxy from taking the request,
+    still addressed to the placeholder host, before the transport sees it).
     """
     return egress_client(
         route=None,
-        transport=IntegrationRelayTransport(config_id),
+        transport=IntegrationTransport(config_id),
         timeout=timeout,
         trust_env=False,
         follow_redirects=False,

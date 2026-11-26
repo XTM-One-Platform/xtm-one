@@ -43,8 +43,10 @@ def test_every_renamed_id_names_a_registered_group_and_no_former_id_is_one():
 
 def test_migration_map_holds_the_runtime_map():
     # The specialists' former ids were deleted with their groups (#1943, h1943healthgrp01).
-    assert RENAMED_BUILTIN_GROUPS.items() <= _migration()._RENAMED.items()
-    assert RENAMED_BUILTIN_GROUPS == {"concierge_orchestrator": "health_orchestrator"}
+    # The ctem_read / ctem_repair aliases belong to migration s2443ctemgrp01, not to this one.
+    health = {former: current for former, current in RENAMED_BUILTIN_GROUPS.items() if former.startswith("concierge_")}
+    assert health.items() <= _migration()._RENAMED.items()
+    assert health == {"concierge_orchestrator": "health_orchestrator"}
 
 
 @pytest.mark.parametrize(("former", "current"), sorted(RENAMED_BUILTIN_GROUPS.items()))

@@ -83,6 +83,8 @@ export interface DecisionView {
   technical?: ReactNode;
   /** Under the context, before the options (an incomplete card says so here). */
   notice?: ReactNode;
+  /** The primary way to the object the decision is about, under the question, before the sources (#2370). */
+  lead?: ReactNode;
 }
 
 /**
@@ -309,6 +311,7 @@ export function DecisionCard({
           {t_i18n("Asked by {agent}", { agent: view.asker })}
         </p>
       )}
+      {view.lead}
       {links.length > 0 && (
         <ul className="flex flex-wrap gap-2" aria-label={t_i18n("Sources")} data-testid={`${testId}-links`}>
           {links.map((link) => (

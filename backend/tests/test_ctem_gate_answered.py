@@ -161,7 +161,8 @@ def test_every_detection_desk_item_reaches_an_inbox() -> None:
 
 def test_the_re_test_keeps_its_single_path() -> None:
     for prefixes in _FLEETS.values():
-        assert not any("retest" in p for p in prefixes)
+        # The re-test item (``ctem:f<n>:retest:``) is not a gate; ``ctem:close-without-retest:`` is (#2464).
+        assert not any(":retest:" in p for p in prefixes)
 
 
 def test_the_case_page_keys_are_gate_keys() -> None:

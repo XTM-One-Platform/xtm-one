@@ -339,6 +339,23 @@ export function useIntegrationElements(
   });
 }
 
+// --- Notion webhook setup ---
+/** The Notion webhook setup the integration's managers read: the URL to subscribe and the stored verification token. */
+export interface NotionWebhookSetup {
+  webhook_url: string;
+  verification_token: string | null;
+  events: string[];
+  next_step: string;
+}
+
+export function useNotionWebhookSetup(integrationId: string, enabled = true) {
+  return useQuery<NotionWebhookSetup>({
+    queryKey: ["notion-webhook", integrationId],
+    queryFn: () => api.get(`/integrations/${integrationId}/notion-webhook`),
+    enabled: !!integrationId && enabled,
+  });
+}
+
 // --- GitHub Webhook Management ---
 export function useGitHubWebhooks(integrationId: string, enabled = true) {
   return useQuery<{ webhooks: ManagedWebhook[] }>({

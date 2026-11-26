@@ -358,8 +358,8 @@ def test_tech_stack_dedup_on_cpe_and_name() -> None:
 
 def test_hand_rows_with_the_same_name_merge() -> None:
     rows = [{"name": "Payments"}, {"name": "payments "}]
-    [jewel] = ident.dedupe_section("primary_assets", rows)
-    assert jewel.explanation() == "merged on name"
+    [pa_row] = ident.dedupe_section("primary_assets", rows)
+    assert pa_row.explanation() == "merged on name"
 
 
 def test_primary_asset_from_opencrq_merges_with_the_typed_one() -> None:
@@ -367,8 +367,8 @@ def test_primary_asset_from_opencrq_merges_with_the_typed_one() -> None:
         {"name": "Customer data", "source": "manual"},
         {"name": "Customer data", "source": "opencrq", "external_id": "pa-1", "opencrq_asset_id": "pa-1"},
     ]
-    [jewel] = ident.dedupe_section("primary_assets", rows)
-    assert jewel.sources == ["manual", "opencrq"]
+    [pa_row] = ident.dedupe_section("primary_assets", rows)
+    assert pa_row.sources == ["manual", "opencrq"]
 
 
 def test_asset_groups_dedup_on_external_reference_then_name() -> None:

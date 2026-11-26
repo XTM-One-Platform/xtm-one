@@ -264,18 +264,6 @@ def spent_budget_message(workset: Workset) -> str:
     )
 
 
-def spent_budget_refusal(workset: Workset) -> str:
-    """Why a new item of an implicit workset was refused at write time."""
-    message = (
-        f"Not stored: this workset's automatic summarisation budget is spent "
-        f"({workset.auto_calls_used}/{workset.max_auto_calls} calls)."
-    )
-    resets = budget_resets_at(workset)
-    if resets is not None:
-        message += f" It replenishes at {resets.isoformat(timespec='minutes')}: add it again then."
-    return message + (" Or add it now with its own 'summary' and 'priority', which needs no automatic call.")
-
-
 async def roll_budget_window(db: AsyncSession, workset: Workset, *, now: datetime | None = None) -> bool:
     """Open a new budget window on an implicit workset whose window ran out.
 
@@ -1225,20 +1213,16 @@ async def add_item(
         )
 
     # An item the automatic pass would have to pay for, on a budget that is
-    # spent, used to be stored and then failed terminally by the pass. It is
-    # answered NOW: refused on an implicit workset (its rolling budget comes
-    # back, so the caller retries then or summarises it itself), stored with a
-    # warning on an explicit one (its lifetime ceiling is the caller's call).
+    # spent, is stored with a warning that says so, on an implicit workset as
+    # on an explicit one (#2206): a ``to_workset`` diversion cannot retry or
+    # pass a summary, so refusing it dropped a tool result the caller never
+    # saw. The content stays readable and searchable; the warning names when
+    # the budget comes back and how to summarise the item by hand.
     warning: str | None = None
     needs_auto_call = workset.processing == "auto" and source != "none" and not (summary and priority_score is not None)
     if needs_auto_call:
         await roll_budget_window(db, workset)
         if budget_spent(workset):
-            if workset.implicit:
-                return AddOutcome(
-                    action="refused",
-                    error=spent_budget_refusal(workset),
-                )
             warning = spent_budget_message(workset)
 
     incoming_chars = len(content or "")

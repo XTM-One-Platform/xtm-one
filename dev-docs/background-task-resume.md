@@ -889,7 +889,11 @@ process: the durable path starts at the FIRST cut
   the question, 12>`) holding the question, the caller, its run and its work
   item. The consulted agent's inbox answers it and completes it with the
   answer as its result. A re-ask of the same question to the same peer finds
-  the same unfinished item.
+  the same unfinished item. A re-ask in other words (#2218, `open_twin_ask`):
+  when the same caller has an open `consult:<peer 8>-*` ask (never a
+  `-answer` item) to the same peer for the same person created within
+  `TWIN_ASK_WINDOW` (30 minutes), the new wording is a stamped note on that
+  ask and its key is reused for the follow-up: one ask, one run.
 - **The answer back.** When the caller is an assignment run dispatched for a
   work item (`_inbox_dispatched_work_item`), a second item owned by the caller
   and `blocked_on` the ask (key `<ask key>-answer`) is created: the scheduler

@@ -6,14 +6,22 @@
  * `ctem.production_change`, or both, and for every applied change the
  * integration, its kind, what was pushed, the ids the integration returned and
  * how to revert it. The ticket itself keeps its chip in the page header.
- * Never blank: a case with nothing mobilized says what will appear.
+ * The two gates of this step, `ctem.mobilize` and `ctem.production_change`,
+ * show their decision here (#2464): the record, and while one waits its open
+ * decision on the unified card. Never blank: a case with nothing mobilized and
+ * no gate met says what will appear.
  */
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { CtemCaseEvent, CtemCaseTicket } from "@/hooks/api/useCtemCasesApi";
+import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseTicket } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { CASE_SECTION_ICON, CaseCardTitleText, CaseFactChip } from "./case-icons";
 import { APPLIED_CHANGE_KIND_LABEL, MOBILIZATION_MODE_LABEL, appliedChanges, mobilizationMode, type AppliedChange } from "./case-mobilization";
+import { CaseGateDecision } from "./CaseGateDecision";
 import { CaseSectionReason } from "./CaseSectionReason";
+import { gateRecordOf } from "./GateDecisionRecord";
+
+/** The gates of the Mobilize step, in the order they are met. */
+export const MOBILIZATION_GATES = ["ctem.mobilize", "ctem.production_change"] as const;
 
 /** The ids shown before "+N more" (long lists: 8, then the count). */
 const IDS_SHOWN = 8;
@@ -72,10 +80,23 @@ function AppliedChangeRow({ change }: { change: AppliedChange }) {
   );
 }
 
-export function CaseMobilization({ history, tickets }: { history: readonly CtemCaseEvent[]; tickets: readonly CtemCaseTicket[] | undefined }) {
+export function CaseMobilization({
+  history,
+  tickets,
+  gates,
+  personName,
+}: {
+  history: readonly CtemCaseEvent[];
+  tickets: readonly CtemCaseTicket[] | undefined;
+  /** The resolved decision records of the case (#1518); absent on an older API. */
+  gates?: readonly CtemCaseGateRecord[];
+  /** The directory name of a person id, as the case page resolves it. */
+  personName?: (id: string) => string | null;
+}) {
   const { t_i18n } = useFormatter();
   const changes = appliedChanges(history);
   const mode = mobilizationMode(changes, tickets);
+  const records = MOBILIZATION_GATES.map((key) => gateRecordOf(gates, key)).filter((r): r is CtemCaseGateRecord => r !== null);
 
   return (
     <Card data-testid="ctem-case-mobilization">
@@ -85,7 +106,17 @@ export function CaseMobilization({ history, tickets }: { history: readonly CtemC
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
-        {!mode ? (
+        {records.map((record) => (
+          <CaseGateDecision
+            key={record.key}
+            record={record}
+            history={history}
+            personName={personName}
+            titled
+            testId={`ctem-case-mobilization-gate-${record.key === "ctem.mobilize" ? "mobilize" : "production-change"}`}
+          />
+        ))}
+        {!mode && records.length === 0 ? (
           <CaseSectionReason
             own={t_i18n(
               "How the fix is carried out once decided: a ticket for the owner, a change applied through a bound integration after the production change gate, or both.",
@@ -93,7 +124,7 @@ export function CaseMobilization({ history, tickets }: { history: readonly CtemC
             icon={CASE_SECTION_ICON.mobilization}
             testId="ctem-case-mobilization-empty"
           />
-        ) : (
+        ) : !mode ? null : (
           <>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-default-secondary">{t_i18n("Mode")}</span>

@@ -12,18 +12,18 @@
  * not read OpenCTI sees that a package exists, not which. Never blank.
  */
 import { Icon } from "@filigran/design-system";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TruncatedText } from "@/components/ui/truncated-text";
 import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import { mayAnswerCaseGate } from "@/lib/ctem-access";
 import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseThreatPackage } from "@/hooks/api/useCtemCasesApi";
-import { useWorkItems } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { safeExternalUrl } from "@/lib/utils";
-import { waitsForAnswer } from "@/lib/work-item-context";
 import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
+import { useGateDecisionItem } from "./CaseGateDecision";
 import { REVIEW_GATE, REVIEW_STAGE_LABEL, reviewAnswerer, reviewDecisionKey, reviewStage } from "./case-review";
 import { CaseSectionReason } from "./CaseSectionReason";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
@@ -49,8 +49,9 @@ export function CaseAnalystReview({
   // The decision record wins over the case event: an answered decision never reads as waiting (#1518).
   const record = gateRecordOf(gates, REVIEW_GATE);
   const waiting = record ? record.status === "waiting" : gate?.to === "waited";
-  const items = useWorkItems({ correlation_key: reviewDecisionKey(caseId), open_only: true, limit: 1 }, waiting);
-  const item = waiting ? ((items.data ?? []).find(waitsForAnswer) ?? null) : null;
+  // The decision item, by the record's own work item (#2464), the key only on an API that names none.
+  const items = useGateDecisionItem(record, waiting, reviewDecisionKey(caseId));
+  const item = items.item;
   const stage = reviewStage(pkg);
   const href = pkg && !pkg.restricted ? safeExternalUrl(pkg.url ?? undefined) : undefined;
   const name = pkg && !pkg.restricted ? pkg.name || t_i18n("Unnamed Grouping") : null;
@@ -76,6 +77,54 @@ export function CaseAnalystReview({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
+        {/* The package keeps one slot, first in the card, above the gate line, the decision record and the
+            decision card, whatever the gate state or the history order (#2239). */}
+        <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-case-threat-package">
+          {stage === "not_started" && !gate && !record ? (
+            <CaseSectionReason own={t_i18n(REVIEW_STAGE_LABEL[stage])} source="opencti" icon={CASE_SECTION_ICON.analyst_review} testId="ctem-case-analyst-review-empty" />
+          ) : (
+            <span className={stage === "not_started" ? "text-default-secondary" : undefined} data-testid="ctem-case-threat-package-stage">
+              {t_i18n(REVIEW_STAGE_LABEL[stage])}
+            </span>
+          )}
+          {pkg?.draft_overdue && (
+            <span className="flex items-start gap-1 content-compact text-feedback-warning-primary" data-testid="ctem-case-threat-package-overdue">
+              <Icon name="triangle-alert" size={16} className="mt-0.5 shrink-0" aria-hidden />
+              <span>{t_i18n("Still in a draft past the case SLA: validate it in OpenCTI or answer the review")}</span>
+            </span>
+          )}
+          {pkg && (
+            <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              {pkg.restricted ? (
+                <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled aria-describedby="ctem-case-threat-package-restricted" data-testid="ctem-case-threat-package-button">
+                  <Icon name="external-link" size={16} className="shrink-0" aria-hidden />
+                  {t_i18n("Open threat package")}
+                </Button>
+              ) : href ? (
+                <Button variant="outline" size="sm" className="gap-1.5" asChild>
+                  <a href={href} target="_blank" rel="noopener noreferrer" data-testid="ctem-case-threat-package-link">
+                    <Icon name="external-link" size={16} className="shrink-0" aria-hidden />
+                    {t_i18n("Open threat package")}
+                  </a>
+                </Button>
+              ) : null}
+              {pkg.restricted ? (
+                <span id="ctem-case-threat-package-restricted" className="text-default-secondary">
+                  {t_i18n("A Grouping exists in OpenCTI: restricted to OpenCTI readers")}
+                </span>
+              ) : (
+                <span className="min-w-0" data-testid="ctem-case-threat-package-name">
+                  <TruncatedText text={name ?? ""} className="font-medium" />
+                </span>
+              )}
+              {pkg.at && (
+                <span className="ml-auto whitespace-nowrap text-default-secondary">
+                  {intl.formatDate(pkg.at, { dateStyle: "medium", timeStyle: "short" })}
+                </span>
+              )}
+            </span>
+          )}
+        </div>
         {record && (
           <GateDecisionRecord
             record={record}
@@ -102,9 +151,9 @@ export function CaseAnalystReview({
           </div>
         )}
         {waiting && item && (
-          <WorkItemDecisionCard item={item} canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
+          <WorkItemDecisionCard item={item} inCase canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
               readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
-              onAnswered={() => items.refetch()}
+              onAnswered={items.refetch}
             />
         )}
         {waiting && !item && !items.isLoading && record?.decision_filed === false && (
@@ -117,47 +166,6 @@ export function CaseAnalystReview({
             {t_i18n("The review waits for an analyst: the decision is in their Waiting for you list, or they set the review label on the Grouping in OpenCTI.")}
           </p>
         )}
-        <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-case-threat-package">
-          {stage === "not_started" && !gate && !record ? (
-            <CaseSectionReason own={t_i18n(REVIEW_STAGE_LABEL[stage])} source="opencti" icon={CASE_SECTION_ICON.analyst_review} testId="ctem-case-analyst-review-empty" />
-          ) : (
-            <span className={stage === "not_started" ? "text-default-secondary" : undefined} data-testid="ctem-case-threat-package-stage">
-              {t_i18n(REVIEW_STAGE_LABEL[stage])}
-            </span>
-          )}
-          {pkg?.draft_overdue && (
-            <span className="flex items-start gap-1 content-compact text-feedback-warning-primary" data-testid="ctem-case-threat-package-overdue">
-              <Icon name="triangle-alert" size={16} className="mt-0.5 shrink-0" aria-hidden />
-              <span>{t_i18n("Still in a draft past the case SLA: validate it in OpenCTI or answer the review")}</span>
-            </span>
-          )}
-          {pkg && (
-            <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-              {pkg.restricted ? (
-                <span className="text-default-secondary">{t_i18n("A Grouping exists in OpenCTI: restricted to OpenCTI readers")}</span>
-              ) : href ? (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-w-0 items-center gap-1 font-medium hover:underline"
-                  data-testid="ctem-case-threat-package-link"
-                >
-                  <TruncatedText text={name ?? ""} />
-                  <Icon name="external-link" size={16} className="shrink-0" />
-                  <span className="sr-only">{t_i18n("Open in OpenCTI")}</span>
-                </a>
-              ) : (
-                <TruncatedText text={name ?? ""} className="font-medium" />
-              )}
-              {pkg.at && (
-                <span className="ml-auto whitespace-nowrap text-default-secondary">
-                  {intl.formatDate(pkg.at, { dateStyle: "medium", timeStyle: "short" })}
-                </span>
-              )}
-            </span>
-          )}
-        </div>
       </CardContent>
     </Card>
   );

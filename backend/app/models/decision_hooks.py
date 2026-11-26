@@ -164,10 +164,19 @@ def flow_transition(old_state: Any, new_state: Any) -> Transition:
     return None
 
 
-def work_item_transition(old_needs: Any, new_needs: Any, *, answer: dict[str, Any] | None) -> Transition:
-    """What a work item's flush does to its decision (pure)."""
+def work_item_transition(
+    old_needs: Any, new_needs: Any, *, answer: dict[str, Any] | None, ask_changed: bool = False
+) -> Transition:
+    """What a work item's flush does to its decision (pure).
+
+    An ask rewritten while the item keeps waiting for a person carries the new
+    ask onto the open decision (``reask``), so a card sent after the rewrite
+    shows it (#2264).
+    """
     if new_needs and not old_needs:
         return ("open",)
+    if new_needs and old_needs and ask_changed:
+        return ("reask",)
     if old_needs and not new_needs:
         if answer:
             kept = {k: answer[k] for k in ("option", "label", "text") if answer.get(k)}
@@ -265,6 +274,18 @@ def _apply(session: Session, source_type: str, source_id: Any, transition: Trans
         session.add(decision)
         session.add(DecisionEvent(decision_id=decision.id, event="asked", detail={"kind": kind}))
         return
+    if transition[0] == "reask":
+        # The open decision keeps its id, recipient and asking time; only the ask and its deadline follow.
+        _, ask, _, deadline = opener()
+        table = Decision.__table__
+        if not isinstance(table, Table):  # pragma: no cover - a mapped class always has one
+            raise TypeError("decisions is not a table")
+        session.connection().execute(
+            update(table)
+            .where(table.c.source_type == source_type, table.c.source_id == sid, table.c.status == "open")
+            .values(ask=ask, deadline=deadline, updated_at=now)
+        )
+        return
     if transition[0] == "answer":
         _, answer, actor = transition
         actor_id = _uuid_or_none(actor) or answer_actor.get()
@@ -324,6 +345,13 @@ def work_item_opening(item: Any) -> Opening:
 
     # The pull requests and issues the item tracks, as link buttons, when its ask names no source (#1177).
     ask = with_reference_links(ask, getattr(item, "blocked_on_refs", None), getattr(item, "payload", None)) or ask
+    from app.core.config import settings
+    from app.services.work_item_ctem_case import with_case_link
+
+    # The CTEM case a gate is about, as the first link button of every card surface (#2370).
+    ask = with_case_link(
+        ask, getattr(item, "correlation_key", None), getattr(item, "payload", None), settings.frontend_url or ""
+    )
     groups = [str(g) for g in (getattr(item, "waits_for_group_ids", None) or []) if g]
     if groups:
         # Addressed to groups (#1748): the row names the first, the ask carries them all
@@ -374,14 +402,15 @@ def _sync_flow_run(session: Session, run: Any) -> None:
 
 def _sync_work_item(session: Session, item: Any) -> None:
     old_needs, new_needs, changed = _old_new(item, "needs_human")
-    if not changed:
+    _, _, ask_changed = _old_new(item, "ask")
+    if not changed and not (new_needs and ask_changed):
         return
     payload = item.payload if isinstance(item.payload, dict) else {}
     _, _, payload_changed = _old_new(item, "payload")
     # Only an answer this flush stores counts: an older one left in the payload
     # by an earlier decision never answers a later one.
     answer = payload.get("answer") if (payload_changed and not new_needs) else None
-    transition = work_item_transition(old_needs, new_needs, answer=answer)
+    transition = work_item_transition(old_needs, new_needs, answer=answer, ask_changed=ask_changed)
     _apply(session, "work_item", item.id, transition, lambda: work_item_opening(item))
 
 

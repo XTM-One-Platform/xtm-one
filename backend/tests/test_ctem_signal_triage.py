@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -113,6 +114,20 @@ async def test_dismiss_records_who_and_keeps_the_reconcile(fake_io):
     assert row.decision["reconcile"] == {"keys": ["h0.example.com"]}
 
 
+async def test_triage_outcomes_name_each_signal_before_and_after(fake_io: object) -> None:
+    # #2341: the dry run reads these before it rolls back.
+    fresh, dismissed_row = _row(ref="a.example.com"), _row(ref="b.example.com")
+    db: Any = None
+    await store.triage(db, [dismissed_row], action="dismiss", actor="Ana", evaluator_id=None, now=NOW)
+    outcomes: list[dict[str, Any]] = []
+    await store.triage(
+        db, [fresh, dismissed_row], action="dismiss", actor="Ana", evaluator_id=None, now=NOW, outcomes=outcomes
+    )
+    assert [o["outcome"] for o in outcomes] == ["changed", "skipped"]
+    assert outcomes[0] == {"id": str(fresh.id), "before": "to_validate", "after": "discarded", "outcome": "changed"}
+    assert outcomes[1]["before"] == outcomes[1]["after"] == "discarded"
+
+
 async def test_a_dismissed_signal_stays_dismissed_until_restored(fake_io):
     row = _row()
     await store.triage(None, [row], action="dismiss", actor="Ana", evaluator_id=None, now=NOW)
@@ -154,7 +169,7 @@ async def test_an_unknown_action_is_refused(fake_io):
 
 
 async def test_the_triage_route_reads_with_the_callers_rights(monkeypatch):
-    """A non-administrator triages the signals recorded for them; ids or a filter, never both."""
+    """A person with a CTEM decide right triages the organization's signals; ids or a filter, never both (#2441)."""
     import uuid
 
     import httpx
@@ -164,6 +179,7 @@ async def test_the_triage_route_reads_with_the_callers_rights(monkeypatch):
     from app.api.v1 import ctem_signals as api_module
     from app.core.config import settings
     from app.core.database import get_db
+    from app.services import ctem_access
     from app.services import ctem_signals as signals
 
     alice = uuid.uuid4()
@@ -179,6 +195,11 @@ async def test_the_triage_route_reads_with_the_callers_rights(monkeypatch):
 
     monkeypatch.setattr(api_module, "get_primary", _primary)
     monkeypatch.setattr(signals, "select_signals", _select)
+
+    async def _decide(_db, _user):
+        return "decide"
+
+    monkeypatch.setattr(ctem_access, "level", _decide)
 
     class _Db:
         async def commit(self):
@@ -206,7 +227,7 @@ async def test_the_triage_route_reads_with_the_callers_rights(monkeypatch):
         unknown = await http.post("/api/v1/ctem-signals/triage", json={"action": "delete", "ids": [str(uuid.uuid4())]})
     assert ok.status_code == 200, ok.text
     assert ok.json() == {"matched": 150, "counts": {"changed": 150, "skipped": 0, "discarded": 150}}
-    assert seen["recorded_by"] == str(alice) and seen["state"] == "to_validate"
+    assert seen["recorded_by"] is None and seen["state"] == "to_validate"
     assert both.status_code == 422 and unknown.status_code == 422
 
 

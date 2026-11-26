@@ -14,7 +14,9 @@ work-item service reads:
   dequeued without a merge (a ``dequeued`` event, the removal reason as its
   conclusion);
 * ``issues`` closed: an ``issue_closed`` event, which releases the
-  work items blocked on the issue.
+  work items blocked on the issue;
+* ``create`` of a tag: a ``tag_created`` event naming the tag, which hints the
+  work items blocked on a ``tag`` reference (#2209).
 
 Every other delivery answers ``None``.
 """
@@ -55,6 +57,26 @@ def _str(value: object) -> str | None:
 
 #: Removal reasons of a merge queue entry that mean it merged: no wake owed.
 _MERGED_REASONS = frozenset({"MERGE", "MERGED", "ALREADY_MERGED"})
+#: Removal reasons that mean the queue's own CI run failed or timed out.
+_CHECK_REASONS = frozenset({"FAILED_CHECKS", "CI_FAILURE", "CI_TIMEOUT"})
+
+
+def queue_run_hint(repo: str, reason: str | None, removed_at: str | None) -> str | None:
+    """Where the failing merge queue run of a removal is read, ``None`` when the reason is no CI failure. Pure.
+
+    GitHub's ``dequeued`` delivery and the timeline removal name neither the
+    merge group nor its run: the owner listed runs by hand to find it (gaps
+    queue-eject-notice-no-run-id, dequeue-note-without-failing-run). The hint is
+    the exact read that lists it, from the removal's day.
+    """
+    if (reason or "").upper() not in _CHECK_REASONS:
+        return None
+    day = (removed_at or "")[:10]
+    created = f', created=">={day}"' if len(day) == 10 else ""
+    return (
+        f'the failing queue run: list_github_workflow_runs(repo="{repo}", event="merge_group", '
+        f'status="failure"{created}), then list_github_workflow_jobs on its run_id'
+    )
 
 
 def _dequeued(repo: str, payload: dict[str, Any]) -> PullRequestEvent | None:
@@ -69,6 +91,8 @@ def _dequeued(repo: str, payload: dict[str, Any]) -> PullRequestEvent | None:
         return None
     raw_head = pull.get("head")
     head: dict[str, Any] = raw_head if isinstance(raw_head, dict) else {}
+    removed_at = _str(pull.get("updated_at"))
+    hint = queue_run_hint(repo, reason, removed_at)
     return PullRequestEvent(
         kind="dequeued",
         repo=repo,
@@ -78,7 +102,8 @@ def _dequeued(repo: str, payload: dict[str, Any]) -> PullRequestEvent | None:
         conclusion=reason.lower(),
         url=_str(pull.get("html_url")),
         # When GitHub removed it: one wake per removal, a second removal of the same head is another.
-        closed_at=_str(pull.get("updated_at")),
+        closed_at=removed_at,
+        extra={"queue_run_hint": hint} if hint else {},
     )
 
 
@@ -163,6 +188,11 @@ def parse_github_pull_request_event(event_key: str, payload: dict) -> PullReques
         )
     if event == "pull_request" and action == "dequeued":
         return _dequeued(repo, payload)
+    if event == "create" and not action and payload.get("ref_type") == "tag":
+        tag = _str(payload.get("ref"))
+        if not tag:
+            return None
+        return PullRequestEvent(kind="tag_created", repo=repo, extra={"tag": tag})
     if event == "issues" and action == "closed":
         issue = payload.get("issue")
         if not isinstance(issue, dict) or issue.get("pull_request"):

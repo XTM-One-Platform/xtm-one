@@ -27,7 +27,9 @@ import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any
 
 from sqlalchemy import func, select
@@ -394,17 +396,25 @@ async def _session_cached(db: AsyncSession, key: tuple[Any, ...], load: Callable
     pass, not once per signal. A session without ``info`` (a test double) loads
     every time.
     """
-    info = getattr(db, "info", None)
-    cache = info.setdefault(_READ_CACHE_KEY, {}) if isinstance(info, dict) else None
+    hit = _session_hit(db, key)
+    if hit is not None:
+        return hit
     now = time.monotonic()
-    if cache is not None:
-        hit = cache.get(key)
-        if hit is not None and now - hit[0] < READ_CACHE_SECONDS:
-            return hit[1]
     value = await load()
-    if cache is not None:
-        cache[key] = (now, value)
+    info = getattr(db, "info", None)
+    if isinstance(info, dict):
+        info.setdefault(_READ_CACHE_KEY, {})[key] = (now, value)
     return value
+
+
+def _session_hit(db: AsyncSession, key: tuple[Any, ...]) -> Any:
+    """The value :func:`_session_cached` holds for *key* in this session, ``None`` when none is fresh."""
+    info = getattr(db, "info", None)
+    cache = info.get(_READ_CACHE_KEY) if isinstance(info, dict) else None
+    hit = cache.get(key) if isinstance(cache, dict) else None
+    if hit is not None and time.monotonic() - hit[0] < READ_CACHE_SECONDS:
+        return hit[1]
+    return None
 
 
 async def _scenarios_for(db: AsyncSession, row: Any) -> gate.ScenarioIndex:
@@ -436,6 +446,86 @@ async def prepare_system_reads(db: AsyncSession, organization_id: uuid.UUID) -> 
         logger.warning("CTEM scope gate: reads not prepared for %s", organization_id, exc_info=True)
 
 
+async def _with_cve_software(
+    db: AsyncSession,
+    row: CtemSignal,
+    facts: gate.SignalFacts,
+    profile: Any,
+    primary_assets: Any,
+    *,
+    remote: bool = True,
+) -> gate.SignalFacts:
+    """*facts* with the software OpenCTI relates to the CVEs the signal names (#2171).
+
+    Read only when the signal names a CVE and resolves to nothing without it, with
+    the recorder's own OpenCTI access (a ``system`` signal: the OpenCRQ sync
+    owner's, as :func:`_scenarios_for`), once per session and CVE list. Never raises.
+    *remote* False reads nothing, remote or local: only what this session already
+    read (:func:`prepare_cve_reads`) is used, else *facts* are answered unchanged.
+    """
+    from app.services import ctem_cve_software
+
+    cves = gate.signal_cve_ids(facts.subject_ref, facts.subject_label, facts.evidence)
+    if not cves or gate.resolve(profile, facts, primary_assets).resolved:
+        return facts
+    if not remote:
+        fallback = _session_hit(db, ("fallback_reader",))
+        hit = _session_hit(db, ("cve_software", scenario_reader(row, fallback), tuple(cves)))
+        if hit is None:
+            return facts
+        found, how = hit
+        return replace(facts, cve_software=tuple(found), cve_lookup=how)
+    try:
+        async with db.begin_nested():
+            fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
+        reader = scenario_reader(row, fallback)
+        found, how = await _session_cached(
+            db, ("cve_software", reader, tuple(cves)), lambda: ctem_cve_software.cve_software(db, reader, cves)
+        )
+    except Exception:
+        logger.warning("CTEM scope gate: CVE software not read for %s", getattr(row, "id", "?"), exc_info=True)
+        found, how = (), ctem_cve_software.LOOKUP_FAILED
+    return replace(facts, cve_software=tuple(found), cve_lookup=how)
+
+
+async def prepare_cve_reads(
+    db: AsyncSession,
+    rows: list[CtemSignal],
+    *,
+    profiles: dict[uuid.UUID, Any] | None = None,
+    links: dict[uuid.UUID, Any] | None = None,
+) -> None:
+    """Take the OpenCTI CVE software reads of *rows* now, before any of them is written (#2171 review).
+
+    A bulk pass (:func:`evaluate_open`, :func:`recheck_parked`, :func:`recheck_held`,
+    :func:`triage`) decides many signals in one transaction; its earlier rows'
+    updates are flushed while it decides the next ones, so a remote read inside
+    the loop would hold their row locks (#1953). The reads land in the session
+    cache and the pass decides with ``remote_reads=False``. *profiles* and *links*
+    by organization spare a second build; a missing one is read once per session.
+    Never raises: a signal not read here is decided without its CVE software.
+    """
+    for row in rows:
+        if row.state not in GATED_STATES:
+            continue
+        try:
+            facts = facts_of(row)
+            if not isinstance(facts, gate.SignalFacts):
+                continue
+            org = row.organization_id
+            if profiles is not None and org in profiles:
+                profile = profiles[org]
+            else:
+                profile = await _session_cached(db, ("profile", org), partial(_profile, db, org))
+            if links is not None and org in links:
+                primary_assets = links[org]
+            else:
+                primary_assets = await _session_cached(db, ("links", org), partial(_primary_assets, db, org))
+            await _with_cve_software(db, row, facts, profile, primary_assets)
+        except Exception:
+            logger.warning("CTEM scope gate: CVE read not prepared for %s", getattr(row, "id", "?"), exc_info=True)
+
+
 def dismissed(row: CtemSignal) -> bool:
     """A signal a person dismissed (#1505): no pass of the gate moves it back, only a restore."""
     return row.state == "discarded" and (row.decision or {}).get("reason_code") == DISMISSED_CODE
@@ -451,9 +541,14 @@ async def evaluate(
     now: datetime | None = None,
     events: Any = None,
     restore: bool = False,
+    remote_reads: bool = True,
 ) -> gate.Decision | None:
     """Decide *row* and write its state and decision; ``None`` when it opened a case or a person
     dismissed it (*restore* decides a dismissed one again). The caller commits.
+
+    *remote_reads* False (a pass that holds signal row locks, #1953) skips the
+    OpenCTI read of the software of the signal's CVEs (#2171) and uses only what
+    :func:`prepare_cve_reads` read before the pass.
 
     With *events* (``ctem_case_loop.PendingEvents``), a verdict that changes a
     verdict the signal already had adds ``ctem_signal.triaged`` (#1409); the first
@@ -475,9 +570,12 @@ async def evaluate(
     if scenarios is None:
         # #1591 S3: the same OpenCRQ read on every path; a system signal reads with the OpenCRQ sync owner's.
         scenarios = await _scenarios_for(db, row)
+    facts = facts_of(row)
+    if isinstance(facts, gate.SignalFacts):
+        facts = await _with_cve_software(db, row, facts, profile, primary_assets, remote=remote_reads)
     decision = gate.decide(
         profile,
-        facts_of(row),
+        facts,
         related=await related_signals(db, row),
         scenarios=scenarios,
         primary_assets=primary_assets,
@@ -594,13 +692,21 @@ async def evaluate_open(
         .scalars()
         .all()
     )
+    await prepare_cve_reads(db, list(rows), profiles={organization_id: profile}, links={organization_id: links})
     counts: dict[str, int] = {}
     for row in rows:
         reader = scenario_reader(row, user_id)
         if reader not in by_reader:
             by_reader[reader] = await read_scenarios(db, user_id=reader)
         await evaluate(
-            db, row, profile=profile, scenarios=by_reader[reader], primary_assets=links, now=now, events=events
+            db,
+            row,
+            profile=profile,
+            scenarios=by_reader[reader],
+            primary_assets=links,
+            now=now,
+            events=events,
+            remote_reads=False,
         )
         counts[row.state] = counts.get(row.state, 0) + 1
     return counts
@@ -658,6 +764,8 @@ async def _decide_again(db: AsyncSession, rows: list[CtemSignal], *, now: dateti
         if row.organization_id not in profiles:
             profiles[row.organization_id] = await _profile(db, row.organization_id)
             links[row.organization_id] = await _primary_assets(db, row.organization_id)
+    await prepare_cve_reads(db, rows, profiles=profiles, links=links)
+    for row in rows:
         reader = scenario_reader(row, fallback)
         if reader not in by_reader:
             by_reader[reader] = await read_scenarios(db, user_id=reader)
@@ -668,6 +776,7 @@ async def _decide_again(db: AsyncSession, rows: list[CtemSignal], *, now: dateti
             scenarios=by_reader[reader],
             primary_assets=links[row.organization_id],
             now=at,
+            remote_reads=False,
         )
         counts[row.state] = counts.get(row.state, 0) + 1
     return counts
@@ -836,8 +945,12 @@ async def triage(
     actor: str,
     evaluator_id: uuid.UUID | None,
     now: datetime | None = None,
+    outcomes: list[dict[str, Any]] | None = None,
 ) -> dict[str, int]:
     """Dismiss, restore or re-check *rows* (#1505); counts ``changed``, ``skipped`` and by state after. The caller commits.
+
+    With *outcomes*, one entry per row is appended (id, state before and after,
+    ``changed``, ``skipped`` or ``unchanged``): a dry run reads them, then rolls back.
 
     ``dismiss`` moves a signal that opened no case to ``discarded`` with the
     actor's name; ``restore`` decides a dismissed one again; ``recheck`` runs the
@@ -851,11 +964,14 @@ async def triage(
     counts: dict[str, int] = {"changed": 0, "skipped": 0}
     profile: Any = None
     by_reader: dict[uuid.UUID | None, gate.ScenarioIndex] = {}
+    if action != "dismiss":
+        await prepare_cve_reads(db, [row for row in rows if (action == "restore") == dismissed(row)])
     for row in rows:
         before = row.state
         if action == "dismiss":
             if row.state not in GATED_STATES or dismissed(row):
                 counts["skipped"] += 1
+                _outcome(outcomes, row, before, "skipped")
                 continue
             row.decision = dismissal_record(row, by=actor, at=at)
             row.state = "discarded"
@@ -863,13 +979,24 @@ async def triage(
         else:
             if row.state not in GATED_STATES or (action == "restore") != dismissed(row):
                 counts["skipped"] += 1
+                _outcome(outcomes, row, before, "skipped")
                 continue
             if profile is None:
                 profile = await _profile(db, row.organization_id)
             reader = scenario_reader(row, evaluator_id)
             if reader not in by_reader:
                 by_reader[reader] = await read_scenarios(db, user_id=reader)
-            await evaluate(db, row, profile=profile, scenarios=by_reader[reader], now=at, restore=True)
-        counts["changed"] += int(row.state != before or action != "recheck")
+            await evaluate(
+                db, row, profile=profile, scenarios=by_reader[reader], now=at, restore=True, remote_reads=False
+            )
+        changed = row.state != before or action != "recheck"
+        counts["changed"] += int(changed)
         counts[row.state] = counts.get(row.state, 0) + 1
+        _outcome(outcomes, row, before, "changed" if changed else "unchanged")
     return counts
+
+
+def _outcome(outcomes: list[dict[str, Any]] | None, row: CtemSignal, before: str, outcome: str) -> None:
+    """One triage outcome of *row*, read before a dry run rolls the session back (#2341)."""
+    if outcomes is not None:
+        outcomes.append({"id": str(row.id), "before": before, "after": row.state, "outcome": outcome})

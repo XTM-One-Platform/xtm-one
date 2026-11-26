@@ -90,7 +90,9 @@ def can_consult(handover_agent_ids: object, handover_types: object, target_id: o
     if target not in {str(t) for t in (handover_agent_ids or [])}:
         return False
     types = handover_types if isinstance(handover_types, dict) else {}
-    return str(types.get(target) or "delegate") == "consult"
+    from app.services.handover_types import handover_type_set
+
+    return "consult" in handover_type_set(types.get(target) or "delegate")
 
 
 def next_step(facts: FleetSetupFacts) -> str | None:

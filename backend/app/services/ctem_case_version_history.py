@@ -204,6 +204,9 @@ NO_COUNT_RESTRICTED = (
 def with_asset_count(row: dict[str, Any], events: Iterable[Any]) -> dict[str, Any]:
     """*row* (a case list row) with ``asset_count_source`` and, when its issues name no asset, the inventory count.
 
+    ``attached`` (#2395): neither the issues nor the inventory count an asset, and the case's
+    validations attached some (``ctem_case_assets``): their count.
+
     ``issues``: the issues name the assets (unchanged count). ``inventory``: the latest
     snapshot counts the devices running the product (``asset_count_as_of``). ``unknown``:
     ``asset_count`` is ``None`` with ``asset_count_reason``; never a silent 0. A row whose
@@ -220,6 +223,14 @@ def with_asset_count(row: dict[str, Any], events: Iterable[Any]) -> dict[str, An
         row["asset_count_source"] = "inventory"
         row["asset_count_as_of"] = found["as_of"]
         return row
+    from app.services.ctem_case_assets import ATTACHED_SOURCE, attached_assets
+
+    # The hosts a validation ran on, recorded on the case (#2395): never a silent 0 while one ran.
+    attached = attached_assets(row.get("validations"))
+    if attached and not restricted:
+        row["asset_count"] = len(attached)
+        row["asset_count_source"] = ATTACHED_SOURCE
+        return row
     row["asset_count"] = None
     row["asset_count_source"] = "unknown"
     if restricted:
@@ -228,6 +239,26 @@ def with_asset_count(row: dict[str, Any], events: Iterable[Any]) -> dict[str, An
         row["asset_count_reason"] = (
             NO_COUNT_NOT_UPGRADE if row.get("remediation_kind") != "upgrade" else NO_COUNT_NOT_READ
         )
+    return row
+
+
+def with_live_asset_count(row: dict[str, Any], running: Mapping[str, Any] | None, *, at: datetime) -> dict[str, Any]:
+    """*row* (a case read) counted from the live *running* versions the same read answers (#2225).
+
+    The case read reads ``ctem_case_versions.for_case`` live and serves it as ``running_versions``;
+    its ``asset_count`` (the distinct assets running the product) wins over a recorded snapshot or an
+    ``unknown`` count, so the aggregate and ``running_versions`` never disagree. A count from the
+    issues stays; an unread or empty inventory changes nothing. ``asset_count_as_of`` is *at*.
+    """
+    if row.get("asset_count_source") == "issues" or not running:
+        return row
+    count = running.get("asset_count")
+    if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+        return row
+    row["asset_count"] = count
+    row["asset_count_source"] = "inventory"
+    row["asset_count_as_of"] = at.isoformat()
+    row.pop("asset_count_reason", None)
     return row
 
 

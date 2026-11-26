@@ -71,9 +71,15 @@ export interface ProfileLike {
   asset_identity?: AssetIdentitySettings;
 }
 
-/** Per CTEM trigger path, the sources (`provider:kind`) an administrator took off it (#1445). */
+/**
+ * Per CTEM trigger path, the sources (`provider:kind[:name]`) an administrator took off it (#1445), the sources
+ * off by default switched on for it (`included`, #2436) and the OpenCTI PIRs its playbook listens to (`pirs`,
+ * #2436: a path absent takes its default, an empty list provisions no playbook).
+ */
 export interface SignalSourcesSettings {
   excluded?: Record<string, string[]>;
+  included?: Record<string, string[]>;
+  pirs?: Record<string, string[]>;
 }
 
 /** The saved asset identity settings; empty lists and maps keep the engine's defaults. */
@@ -667,7 +673,7 @@ export function toForm(profile: ProfileLike): ProfileForm {
     // The reference rates and the PIR details have their own cards (#1773): carried whole so no other save resets them.
     ...(profile.pir_details ? { pir_details: profile.pir_details } : {}),
     ...(profile.fx_rates ? { fx_rates: profile.fx_rates } : {}),
-    primary_assets: profile.primary_assets.map((jewel) => ({ ...jewel })),
+    primary_assets: profile.primary_assets.map((pa) => ({ ...pa })),
     software: profile.software.map((entry) => ({ ...entry })),
     shipped_products: (profile.shipped_products ?? []).map((entry) => ({ ...entry, repositories: [...entry.repositories] })),
     annual_loss_threshold: numberText(profile.risk_appetite.annual_loss_threshold),
@@ -688,7 +694,15 @@ export function toForm(profile: ProfileLike): ProfileForm {
     ...(profile.case_attention ? { case_attention: { ...profile.case_attention } } : {}),
     ...(profile.evidence_health ? { evidence_health: profile.evidence_health } : {}),
     ...(profile.cases_recompute ? { cases_recompute: profile.cases_recompute } : {}),
-    ...(profile.signal_sources ? { signal_sources: { excluded: { ...(profile.signal_sources.excluded ?? {}) } } } : {}),
+    ...(profile.signal_sources
+      ? {
+          signal_sources: {
+            excluded: { ...(profile.signal_sources.excluded ?? {}) },
+            ...(profile.signal_sources.included ? { included: { ...profile.signal_sources.included } } : {}),
+            ...(profile.signal_sources.pirs ? { pirs: { ...profile.signal_sources.pirs } } : {}),
+          },
+        }
+      : {}),
     ...(profile.asset_identity ? { asset_identity: { key_order: [...profile.asset_identity.key_order], precedence: { ...profile.asset_identity.precedence } } } : {}),
   };
 }
@@ -753,7 +767,7 @@ export function fromForm(form: ProfileForm): { profile: ProfileLike } | { invali
         pir_names: pirNamesOf(form.pir_ids, form.pir_names ?? {}),
         ...(form.pir_details ? { pir_details: form.pir_details } : {}),
         ...(form.fx_rates ? { fx_rates: form.fx_rates } : {}),
-        primary_assets: form.primary_assets.filter((jewel) => jewel.name.trim()),
+        primary_assets: form.primary_assets.filter((pa) => pa.name.trim()),
         // An empty version is left out: the saved shape of a profile that never declares one stays the same.
         software: form.software
           .filter((entry) => entry.product.trim())

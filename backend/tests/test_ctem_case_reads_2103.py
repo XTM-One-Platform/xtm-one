@@ -81,10 +81,9 @@ def test_the_issues_of_a_large_case_page_on() -> None:
 
 
 def test_the_read_group_takes_the_issues_offset() -> None:
-    from app.services.builtin_tools.ctem_read import build_ctem_read_tools
+    from app.services.builtin_tools.ctem_read import build_case_read
 
-    defs, _ = build_ctem_read_tools(user_id=str(uuid.uuid4()), agent_id="")
-    get = next(d for d in defs if d.name == "get_ctem_case")
+    get, _ = build_case_read(user_id=str(uuid.uuid4()), agent_id="")
     assert set(get.input_schema["properties"]) == {"case_id", "issues_offset"}
 
 

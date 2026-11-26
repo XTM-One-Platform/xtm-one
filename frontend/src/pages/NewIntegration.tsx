@@ -27,7 +27,7 @@ import { useAuthConfig } from "@/hooks/api/useAuthApi";
 import { useProviderCatalog, useCreateIntegration } from "@/hooks/api/useIntegrationApi";
 import { useCredentialSharingConfirm } from "@/hooks/useCredentialSharingConfirm";
 import { extraFieldDefaults, hasInvalidExtraField, withoutHiddenExtraFields } from "@/lib/extra-fields";
-import { resolveVariant, setupGuideFor, variantValue } from "@/lib/catalog-variants";
+import { credentialFieldsFor, resolveVariant, setupGuideFor, variantValue } from "@/lib/catalog-variants";
 import { offersSlackEventsUrl } from "@/lib/slack-events";
 import { ExtraFieldInputs } from "@/components/ui/extra-field-inputs";
 import { OpenAPIIntegrationForm, type OpenAPIDraft } from "@/components/integrations/openapi/openapi-integration-form";
@@ -161,6 +161,8 @@ export default function NewIntegration() {
   const effectiveAuthMode = isOpenAPI ? (openapiDraft?.authType ?? "api_key") : (selectedAuthType || selected?.auth_type);
   // The guide of the mode chosen in the form, when the provider sets its modes up apart.
   const setupGuide = setupGuideFor(resolved, effectiveAuthMode);
+  // The credential fields of the mode chosen in the form, not of the default one (#2317).
+  const credentialFields = selected ? credentialFieldsFor(selected, effectiveAuthMode) : [];
 
   const handleCreate = async () => {
     if (!selected) return;
@@ -438,7 +440,7 @@ export default function NewIntegration() {
               {selected.supported_auth_types && selected.supported_auth_types.length > 1 && (
                 <div className="space-y-1.5">
                   <Label className="block text-default-primary">{t_i18n("Authentication mode")}</Label>
-                  <Select value={selectedAuthType || selected.auth_type} onValueChange={(v) => { setSelectedAuthType(v); setForm({ ...form, auth_type: v, ...(v === "none" ? { api_key: "" } : {}) }); if (v === "oauth" || v === "platform_managed") setIsCompanyManaged(false); }}>
+                  <Select value={selectedAuthType || selected.auth_type} onValueChange={(v) => { setSelectedAuthType(v); const kept = credentialFieldsFor(selected, v); setForm({ ...form, auth_type: v, ...(kept.includes("api_key") ? {} : { api_key: "" }), ...(kept.includes("client_id") ? {} : { client_id: "", client_secret: "" }) }); if (v === "oauth" || v === "platform_managed") setIsCompanyManaged(false); }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {selected.supported_auth_types.map((at) => (
@@ -568,7 +570,7 @@ export default function NewIntegration() {
                   )}
                 </div>
               ) : /* Admin pre-configured OAuth — simplified flow */
-              selected.has_oauth_defaults && selected.auth_type === "oauth" ? (
+              selected.has_oauth_defaults && effectiveAuthMode === "oauth" ? (
                 <div className="space-y-3">
                   <div className="rounded-sm bg-feedback-success-primary/5 p-4 flex items-start gap-3">
                     <CheckCircle2 className="h-5 w-5 text-feedback-success-primary shrink-0 mt-0.5" />
@@ -641,7 +643,7 @@ export default function NewIntegration() {
               ) : (
                 /* Standard credential flow (no admin defaults) */
                 <>
-                  {selected.fields.includes("client_id") && selected.fields.includes("api_key") ? (
+                  {credentialFields.includes("client_id") && credentialFields.includes("api_key") ? (
                     <div className="space-y-3">
                       <div className="rounded-sm bg-elevation-hover p-3 space-y-2">
                         <p className="content-compact font-medium">{t_i18n("Option 1: Internal / API key")}</p>
@@ -658,13 +660,13 @@ export default function NewIntegration() {
                     </div>
                   ) : (
                     <>
-                      {selected.fields.includes("client_id") && (
+                      {credentialFields.includes("client_id") && (
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div className="space-y-1"><Label className="block text-default-primary">{t_i18n("Client ID")}</Label><Input aria-label={t_i18n("Client ID")} type={showSecrets ? "text" : "password"} placeholder={t_i18n("Paste client ID...")} value={form.client_id || ""} onChange={(e) => setForm({ ...form, client_id: e.target.value })} helperText={credentialHelp} /></div>
                           <SecretField label={t_i18n("Client Secret")} placeholder={t_i18n("Paste client secret...")} value={form.client_secret || ""} onChange={(client_secret) => setForm({ ...form, client_secret })} helperText={credentialHelp} />
                         </div>
                       )}
-                      {selected.fields.includes("api_key") && (
+                      {credentialFields.includes("api_key") && (
                         <SecretField label={t_i18n("API key")} placeholder={t_i18n("Paste API key...")} value={form.api_key || ""} onChange={(api_key) => setForm({ ...form, api_key })} helperText={credentialHelp} />
                       )}
                     </>

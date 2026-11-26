@@ -119,6 +119,22 @@ def shares_slots(run_type: object) -> bool:
     return run_type in SHARED_SLOT_TRIGGER_TYPES
 
 
+def event_run_working_window(trigger_context: dict[str, Any] | None) -> int | None:
+    """The working window, in tokens, of an event-driven run (#2430).
+
+    A run of a platform event, an integration event or a webhook
+    (``SHARED_SLOT_TRIGGER_TYPES``) gets
+    ``AGENT_LOOP_EVENT_RUN_WORKING_WINDOW_TOKENS``, which the agent loop
+    computes its working-context budgets on (``run_agent_loop(
+    working_window_tokens=)``); every other run, or the setting at ``0``:
+    ``None``, the model's window.
+    """
+    if not isinstance(trigger_context, dict) or not shares_slots(trigger_context.get("type")):
+        return None
+    tokens = settings.agent_loop_event_run_working_window_tokens
+    return tokens if tokens > 0 else None
+
+
 #: Trigger types of a seeded assignment that fires once per event: born with
 #: ``SEEDED_EVENT_CONCURRENCY`` runs at once unless its seed names a cap, so an
 #: event storm on one seeded fleet never takes the whole worker pool.
@@ -504,7 +520,12 @@ class ClaimCandidate:
 
     ``group``: the agent's home fleet, else the agent itself (an agent outside
     any fleet is its own group). ``child_of_live_parent``: a delegated run whose
-    parent run still holds a slot, waiting for it.
+    parent run still holds a slot, waiting for it. ``interactive``: a run a
+    person's answer or a work item started (a gate answered, a released or
+    dispatched work item), which never queues behind bulk event work (#2234).
+    ``assignment``: the assignment the run belongs to; the assignments of one
+    group take turns, so one event-driven assignment's burst never holds back
+    another assignment of the same agent or fleet by more than one turn.
     """
 
     key: Any
@@ -512,6 +533,8 @@ class ClaimCandidate:
     agent: str
     run_at: datetime
     child_of_live_parent: bool = False
+    interactive: bool = False
+    assignment: str = ""
 
 
 def share_cap(pool: int, share: float) -> int:
@@ -536,10 +559,16 @@ def fair_share_order(
     1. Delegated children of a live parent first, oldest first: the parent holds
        a slot until its child ends, so the child never queues behind the
        backlog its parent's slot is part of.
-    2. Then one candidate per group in turn, the group whose oldest due run is
-       oldest first, each group's runs oldest first. A storm of one fleet
-       therefore never delays another fleet's run by more than one slot.
-    3. A group already holding its share of the pool (``fleet_share``), or a
+    2. Then the interactive runs (``interactive``: a gate answered, a work item
+       released or dispatched), oldest first: a person's answer never waits
+       behind a burst of bulk event runs of its own agent (#2234).
+    3. Then one candidate per group in turn, the group whose oldest due run is
+       oldest first. Inside a group the assignments take turns, the assignment
+       whose oldest due run is oldest first, each assignment's runs oldest
+       first: a storm of one fleet never delays another fleet's run by more
+       than one slot, and a storm of one assignment never delays another
+       assignment of the same group by more than one turn of that group.
+    4. A group already holding its share of the pool (``fleet_share``), or a
        run whose agent holds its share (``agent_share``), goes after every
        group still under its share, in the same turn order: work-conserving, an
        otherwise idle pool still runs it.
@@ -549,7 +578,8 @@ def fair_share_order(
     """
     items = sorted(candidates, key=lambda c: (c.run_at, str(c.key)))
     first = [c for c in items if c.child_of_live_parent]
-    rest = [c for c in items if not c.child_of_live_parent]
+    first += [c for c in items if c.interactive and not c.child_of_live_parent]
+    rest = [c for c in items if not c.child_of_live_parent and not c.interactive]
     group_cap = share_cap(pool, fleet_share)
     agent_cap = share_cap(pool, agent_share)
     held_group = dict(running_by_group)
@@ -558,15 +588,18 @@ def fair_share_order(
         held_group[child.group] = held_group.get(child.group, 0) + 1
         held_agent[child.agent] = held_agent.get(child.agent, 0) + 1
 
-    queues: dict[str, deque[ClaimCandidate]] = {}
+    # group -> its assignments in turn order -> each assignment's runs, oldest first.
+    queues: dict[str, dict[str, deque[ClaimCandidate]]] = {}
     for candidate in rest:
-        queues.setdefault(candidate.group, deque()).append(candidate)
+        queues.setdefault(candidate.group, {}).setdefault(candidate.assignment, deque()).append(candidate)
+    turns: dict[str, deque[str]] = {group: deque(by_assignment) for group, by_assignment in queues.items()}
     groups = deque(queues)
     under: list[ClaimCandidate] = []
     over: list[ClaimCandidate] = []
     while groups:
         group = groups.popleft()
-        queue = queues[group]
+        assignment = turns[group].popleft()
+        queue = queues[group][assignment]
         candidate = queue.popleft()
         if held_group.get(group, 0) >= group_cap or held_agent.get(candidate.agent, 0) >= agent_cap:
             over.append(candidate)
@@ -575,6 +608,8 @@ def fair_share_order(
             held_group[group] = held_group.get(group, 0) + 1
             held_agent[candidate.agent] = held_agent.get(candidate.agent, 0) + 1
         if queue:
+            turns[group].append(assignment)
+        if turns[group]:
             groups.append(group)
     return [c.key for c in (*first, *under, *over)]
 

@@ -75,12 +75,14 @@ def test_no_stored_value_answers_the_environment_defaults(monkeypatch):
     monkeypatch.setattr(cr.settings, "work_item_abandoned_after_days", 14)
     monkeypatch.setattr(cr.settings, "shared_state_archive_retention_days", 14)
     monkeypatch.setattr(cr.settings, "workset_resolved_retention_days", 7)
+    monkeypatch.setattr(cr.settings, "assignment_run_retention_days", 90)
     assert cr.coordination_retention_days(None) == {
         "work_item_resolved_days": 90,
         "work_item_abandoned_days": 14,
         "shared_state_resolved_days": 90,
         "shared_state_archive_days": 14,
         "workset_resolved_days": 7,
+        "assignment_run_days": 90,
     }
 
 
@@ -100,8 +102,13 @@ def test_a_stored_value_out_of_bounds_falls_back_to_the_default(monkeypatch, bad
 
 def test_the_overview_reports_the_effective_retention(monkeypatch):
     monkeypatch.setattr(cr.settings, "shared_state_resolved_retention_days", 90)
+    monkeypatch.setattr(cr.settings, "assignment_run_retention_days", 90)
     ps = SimpleNamespace(coordination_retention={"work_item_resolved_days": 45})
-    assert _coordination_retention(ps) == {"work_item_retention_days": 45, "shared_state_retention_days": 90}
+    assert _coordination_retention(ps) == {
+        "work_item_retention_days": 45,
+        "shared_state_retention_days": 90,
+        "run_retention_days": 90,
+    }
 
 
 # -- the settings API --------------------------------------------------------------

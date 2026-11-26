@@ -62,10 +62,11 @@ async def test_an_entry_created_by_a_take_is_a_lease_and_resolves_at_release(mon
 
 @pytest.mark.asyncio
 async def test_a_take_on_an_existing_record_is_not_a_lease_and_stays_active(monkeypatch):
+    # A take on a record needs lease=false said on purpose (#2208).
     state = _state()
     state.is_lease = None
     _holders(monkeypatch, **{str(HOLDER): _run("running")})
-    await _upsert(monkeypatch, state, value={"a": 1}, hold="take", run_id=HOLDER)
+    await _upsert(monkeypatch, state, value={"a": 1}, hold="take", run_id=HOLDER, lease=False)
     assert not state.is_lease
     await _upsert(monkeypatch, state, value={}, hold="release", run_id=HOLDER)
     assert state.status == "active"

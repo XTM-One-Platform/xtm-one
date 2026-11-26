@@ -29,14 +29,14 @@ function VersionRows({ version }: { version: number }) {
   const { t_i18n } = useFormatter();
   const past = useOrganizationContextVersion(version);
   if (!past.data) return <Skeleton className="h-32 w-full" />;
-  const jewels = past.data.profile.primary_assets ?? [];
-  if (jewels.length === 0) return <p className="text-default-secondary">{t_i18n("This version holds no primary asset.")}</p>;
+  const primaryAssets = past.data.profile.primary_assets ?? [];
+  if (primaryAssets.length === 0) return <p className="text-default-secondary">{t_i18n("This version holds no primary asset.")}</p>;
   return (
     <ul className="space-y-1" aria-label={t_i18n("Primary assets of this version")} data-testid="settings.organization.restore-preview">
-      {jewels.map((jewel, index) => (
-        <li key={`${jewel.name}-${index}`} className="flex items-center justify-between gap-2 content-compact">
-          <span className="min-w-0 truncate text-default-primary">{jewel.name}</span>
-          <Badge variant="outline">{t_i18n(CRITICALITY_LABELS[jewel.criticality as keyof typeof CRITICALITY_LABELS] ?? CRITICALITY_LABELS.high)}</Badge>
+      {primaryAssets.map((pa, index) => (
+        <li key={`${pa.name}-${index}`} className="flex items-center justify-between gap-2 content-compact">
+          <span className="min-w-0 truncate text-default-primary">{pa.name}</span>
+          <Badge variant="outline">{t_i18n(CRITICALITY_LABELS[pa.criticality as keyof typeof CRITICALITY_LABELS] ?? CRITICALITY_LABELS.high)}</Badge>
         </li>
       ))}
     </ul>

@@ -53,6 +53,7 @@ from app.core.log_once import fingerprint, log_once
 from app.core.redis import redis_client
 from app.core.security import decrypt_value, encrypt_value
 from app.core.utils import format_exception_message
+from app.core.xtm_hub_key import PLATFORM_IDENTIFIER
 from app.integrations.providers import xtm_hub as hub
 from app.models.user import User
 from app.models.xtm_hub_registration import (
@@ -65,7 +66,6 @@ from app.models.xtm_hub_registration import (
 
 logger = logging.getLogger(__name__)
 
-PLATFORM_IDENTIFIER = "xtmone"
 HEARTBEAT_INTERVAL_SECONDS = 3600
 HEARTBEAT_LEASE_KEY = "xtm_hub:registration_heartbeat"
 _SYSTEM_ACTOR = "xtm_hub_heartbeat"

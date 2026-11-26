@@ -97,10 +97,27 @@ async def stamp_reachability_assertion(
 
 
 async def _read_assertion_flag(integration_id: str, scenario_id: str) -> bool | None:
-    import uuid
     from urllib.parse import quote
 
+    body = await _read_object(integration_id, f"/api/scenarios/{quote(scenario_id, safe='')}")
+    value = body.get(ASSERTION_FIELD) if isinstance(body, dict) else None
+    return value if isinstance(value, bool) else None
+
+
+#: What :func:`_read_object` answers when OpenAEV says the object does not exist (a 404):
+#: told apart from ``None`` (unread: unreachable, 5xx, no credential), which fails open.
+GONE: Any = object()
+
+
+async def _read_object(integration_id: str, path: str) -> Any:
+    """One OpenAEV object read with the integration owner's credential.
+
+    ``GONE`` when OpenAEV answers not found, ``None`` when unread for any other reason.
+    """
+    import uuid
+
     from app.core.database import async_session
+    from app.integrations.http import is_not_found_error
     from app.integrations.providers.openaev._common import _api, _headers
     from app.models.integration import Integration
     from app.services.integration_tools import _get_token
@@ -114,13 +131,93 @@ async def _read_assertion_flag(integration_id: str, scenario_id: str) -> bool | 
     if not token or "||" not in str(token):
         return None
     base_url, _, api_token = str(token).partition("||")
-    path = f"/api/scenarios/{quote(scenario_id, safe='')}"
     resp, err = await _api(base_url.strip().rstrip("/"), _headers(api_token.strip()), "get", path, f"GET {path}")
+    if err and is_not_found_error(err):
+        return GONE
     if err or resp is None:
         return None
-    body = resp.json()
-    value = body.get(ASSERTION_FIELD) if isinstance(body, dict) else None
-    return value if isinstance(value, bool) else None
+    return resp.json()
+
+
+#: The events OpenAEV delivers again on every later update of the same object: its live
+#: triggers watch ``UPDATE`` filtered on a state, with no "changed to" event, so a finished
+#: simulation edited later is notified again (c87c8335). The OpenAEV field that tells one
+#: run of the object from the next (a relaunched simulation ends again, later).
+ONCE_PER_OCCURRENCE: dict[str, tuple[str, str]] = {
+    "simulation_finished": ("/api/exercises/{id}", "exercise_end_date"),
+}
+#: How long a delivered occurrence is remembered (a later update past it starts one more run).
+REPEAT_TTL_SECONDS = 30 * 24 * 3600
+
+
+async def claim_occurrence(
+    event: str, payload: Mapping[str, Any], *, integration_id: str, assignment_id: str, verified: bool
+) -> tuple[bool, str | None]:
+    """Claim this occurrence of a once-per-occurrence event for *assignment_id*.
+
+    Answers ``(repeat, claim)``: ``repeat`` is true when the assignment already received
+    the occurrence; ``claim`` is the key this delivery claimed, or ``None``. The caller
+    keeps the claim only once the delivery started or queued a run, and hands it to
+    :func:`release_occurrence` on every other path (dropped, filtered, busy, failed), so
+    a later delivery of the same occurrence still runs.
+
+    ``simulation_finished`` is delivered once per simulation and end date: a later update
+    of the same finished simulation is a repeat; a relaunched simulation ends again with
+    a new end date and is delivered. Verified deliveries only (a forged one never claims
+    an occurrence); fails open: an unread end date or an unreachable Redis delivers as
+    before. A simulation OpenAEV no longer has (deleted, or its CTEM case deleted) is
+    dropped as a repeat with no claim, so no run starts against a missing object
+    (#2499); a ``DELETE`` delivery is dropped before any read. The claim is one atomic
+    ``SET NX``, so two concurrent deliveries of one occurrence never both run. Never raises.
+    """
+    read = ONCE_PER_OCCURRENCE.get(event)
+    meta = payload.get("_openaev_event") if isinstance(payload, Mapping) else None
+    if read is None or not verified or not isinstance(meta, Mapping):
+        return False, None
+    resource_id = str(meta.get("resource_id") or "").strip()
+    if not resource_id:
+        return False, None
+    if str(meta.get("operation") or "").upper() == "DELETE":
+        logger.info("OpenAEV %s %s is a deletion, delivery dropped", event, resource_id)
+        return True, None
+    from urllib.parse import quote
+
+    path, field = read
+    try:
+        body = await _read_object(integration_id, path.format(id=quote(resource_id, safe="")))
+    except Exception:
+        logger.warning("OpenAEV %s %s not read for its occurrence", event, resource_id, exc_info=True)
+        return False, None
+    if body is GONE:
+        logger.info("OpenAEV %s %s: simulation gone, delivery dropped", event, resource_id)
+        return True, None
+    occurrence = body.get(field) if isinstance(body, dict) else None
+    if not isinstance(occurrence, str) or not occurrence.strip():
+        return False, None
+    marker = "\n".join((assignment_id, event, resource_id, occurrence.strip()))
+    key = f"openaev:occurrence:{hashlib.sha256(marker.encode()).hexdigest()[:32]}"
+    try:
+        from app.core.redis import redis_client
+
+        redis = await redis_client()
+        claimed = await redis.set(key, "1", nx=True, ex=REPEAT_TTL_SECONDS)
+    except Exception:
+        logger.warning("OpenAEV %s occurrence not claimed (delivered)", event, exc_info=True)
+        return False, None
+    return (False, key) if claimed else (True, None)
+
+
+async def release_occurrence(claim: str | None) -> None:
+    """Give back an occurrence *claim* whose delivery started no run. Never raises."""
+    if not claim:
+        return
+    try:
+        from app.core.redis import redis_client
+
+        redis = await redis_client()
+        await redis.delete(claim)
+    except Exception:
+        logger.warning("OpenAEV occurrence claim %s not released", claim, exc_info=True)
 
 
 def references(case: CtemCase, issues: list[CtemCaseIssue], resource_id: str) -> bool:

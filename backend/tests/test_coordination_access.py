@@ -283,6 +283,15 @@ def test_only_this_agent():
     assert not _admits(policy, _agent(B), mode="write")
 
 
+def test_an_agent_acting_for_an_admin_reads_past_any_narrowing_but_writes_within_it() -> None:
+    """#2161 (Sam, 25 Nov 2026): reads only; the write narrowing still holds."""
+    admin_b = agent_writer(is_company_managed=True, agent_id=B, acting_admin=True)
+    for policy in (_policy(read="self", write="self"), _policy(read="agents", write="agents", read_ids=[C])):
+        assert _admits(policy, admin_b, mode="read")
+        assert not _admits(policy, admin_b, mode="write")
+    assert not _admits(_policy(read="self", write="self"), _agent(B), mode="read")
+
+
 def test_selected_agents_count_only_while_company_managed():
     policy = _policy(read="agents", write="agents", read_ids=[B, PERSONAL], write_ids=[B])
     assert _admits(policy, _agent(B), mode="write")

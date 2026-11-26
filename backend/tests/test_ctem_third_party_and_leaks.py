@@ -47,9 +47,14 @@ def test_a_tracked_organization_a_primary_asset_depends_on_opens_a_case() -> Non
     decision = gate.decide(_profile(), _facts("third_party_event", "third_party", "Acme Hosting"), today=TODAY)
     assert decision.outcome == "case"
     assert decision.record["scope"]["criticality"] == "critical"
-    assert {"from": "primary_asset", "name": "Customer SaaS", "criticality": "critical"} in decision.record["scope"][
-        "sources"
-    ]
+    # Named in the evidence, never a recorded link: inferred (#2396).
+    assert {
+        "from": "primary_asset",
+        "name": "Customer SaaS",
+        "criticality": "critical",
+        "basis": "inferred",
+    } in decision.record["scope"]["sources"]
+    assert decision.record["scope"]["primary_asset_basis"] == "inferred"
 
 
 def test_a_primary_asset_named_in_the_evidence_is_the_dependency() -> None:

@@ -140,6 +140,7 @@ The `Auto join` card's `Single sign-on users join this group` switch (default: o
 - **Only single sign-on.** Local accounts, accounts provisioned through SCIM and accounts created through the API join only when they sign in through single sign-on.
 - **With SAML group mapping.** The mapping manages only the memberships it created, so it never removes one that auto join added, even when the assertion does not name the group.
 - **Removing someone.** An administrator can remove a member from the `Members` tab; while the switch stays on, the next single sign-on adds them again.
+- **CTEM Viewers.** The group XTM One seeds for CTEM read access has the switch on. Every account, however it is created, joins it once, at its creation; single sign-on does not add anyone to it again, so a person an administrator removes stays removed. Switching it off keeps it off.
 
 Switching it on adds nobody at once: each person joins at their next single sign-on. Switching it off removes nobody. Both are recorded in the audit log with the previous value.
 

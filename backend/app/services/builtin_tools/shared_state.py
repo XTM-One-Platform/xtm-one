@@ -86,6 +86,9 @@ _WRITE_NOTE_CHARS = 500
 # A top-level key is shown JSON-escaped (quotes, newlines and control characters
 # stay escaped, as in the full rendering) and cut at this length.
 _WRITE_KEY_CHARS = 80
+# An unset_keys write that drops more JSON characters than this, with no
+# archive_key and no confirm_trim, is refused: nothing was written (#2449).
+UNSET_KEYS_GUARD_CHARS = 2000
 
 # The read of a value. The default read shows the value's JSON up to
 # _READ_VALUE_CHARS, then says how much is left and how to read it: a window
@@ -220,6 +223,9 @@ def build_shared_state_tools(
     # The run the tools run in: what ``hold="take"`` stamps on an
     # entry. Without one, the background task around the turn, if any.
     run_id: str | uuid.UUID | None = None,
+    # The person the turn or run acts for is an administrator: the agent reads
+    # past every owner agent's coordination narrowing (#2161).
+    acting_admin: bool = False,
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """Build the generic cross-run shared-state tools for an agent.
 
@@ -237,7 +243,7 @@ def build_shared_state_tools(
     """
     del db  # operations use their own sessions
     acting_user_id = user_id if user_id and user_id != "anonymous" else None
-    writer = agent_writer(is_company_managed=company_managed_agent, agent_id=agent_id)
+    writer = agent_writer(is_company_managed=company_managed_agent, agent_id=agent_id, acting_admin=acting_admin)
     # One entry per key for a company-managed agent, whatever the context:
     # a run whose assignment hides its runs is born personal
     # (``run.is_company_managed`` false), and creating the entry in that
@@ -1353,11 +1359,11 @@ def build_shared_state_tools(
         path_list_ops = (path or "").strip() and any(
             parsed[name] for name in ("append_json", "remove_json", "keep_last_json", "update_json", "fold_json")
         )
-        if (path or "").strip() and parsed_value is None and not path_list_ops:
+        if (path or "").strip() and parsed_value is None and not path_list_ops and not unset_keys:
             return (
                 "Error: path needs value_json, the object to write under it, or list changes "
-                "(append_json, remove_json, update_json, keep_last_json, fold_json) to apply to the "
-                "lists of the object under it. Nothing was written."
+                "(append_json, remove_json, update_json, keep_last_json, fold_json) or unset_keys to "
+                "apply to the object under it. Nothing was written."
             )
         if confirm_trim is not None and not isinstance(confirm_trim, bool):
             return "Error: confirm_trim must be true or false. Nothing was written."
@@ -1378,7 +1384,10 @@ def build_shared_state_tools(
         if unset_keys is not None and (
             not isinstance(unset_keys, list) or not all(isinstance(k, str) and k for k in unset_keys)
         ):
-            return "Error: unset_keys must be a list of top-level key names. Nothing was written."
+            return (
+                "Error: unset_keys must be a list of key names (top-level, or under path when given). "
+                "Nothing was written."
+            )
         retention: dict | None = None
         if retention_json is not None and not isinstance(retention_json, str):
             return "Error: retention_json must be a string holding a JSON object. Nothing was written."
@@ -1436,7 +1445,7 @@ def build_shared_state_tools(
                     return line
                 archive_line += line
             if unset_keys:
-                line = await _archive_unset_keys(key, target, unset_keys)
+                line = await _archive_unset_keys(key, target, unset_keys, path=value_path)
                 if line.startswith("Error:"):
                     return line
                 archive_line += line
@@ -1476,6 +1485,9 @@ def build_shared_state_tools(
                 hold=(hold or "").strip() or None,
                 run_id=current_claim_holder(run_id),
                 unset_keys=unset_keys or None,
+                # An unset nothing archives and the caller did not confirm
+                # never drops a large field silently (#2449).
+                unset_guard_chars=(None if confirm_trim or (archive_key or "").strip() else UNSET_KEYS_GUARD_CHARS),
                 expect_dropped=expect_dropped,
                 lease=lease,
                 linked_work_item_id=linked_item,
@@ -1640,24 +1652,33 @@ def build_shared_state_tools(
             for p in (patches if isinstance(patches, list) else [patches])
         )
 
-    async def _archive_unset_keys(key: str, archive_key: str, unset_keys: list[str]) -> str:
-        """Store the top-level fields *unset_keys* removes under *archive_key*, before the write.
+    async def _archive_unset_keys(key: str, archive_key: str, unset_keys: list[str], *, path: str | None = None) -> str:
+        """Store the fields *unset_keys* removes under *archive_key*, before the write.
 
-        One archive object ``{source_key, unset_keys, archived_at, fields}`` in the
-        archive's ``entries`` list; written first, so a failure leaves a copy, never a loss.
+        The keys are read where the write removes them: under *path* when given,
+        else at the top level (#2449). One archive object ``{source_key, path,
+        unset_keys, archived_at, fields}`` in the archive's ``entries`` list;
+        written first, so a failure leaves a copy, never a loss.
         """
-        from app.services.shared_state import get_state, upsert_state
+        from app.services.shared_state import get_state, parse_value_path, upsert_state, value_at_path
         from app.services.work_item import current_claim_holder
 
         if normalize_correlation_key(archive_key) == normalize_correlation_key(key):
             return "Error: archive_key must name another key than key. Nothing was written."
+        try:
+            value_path = parse_value_path(path)
+        except ValueError as exc:
+            return f"Error: {exc}. Nothing was written."
         source = await get_state(user_id=acting_user_id, key=_ns(key), reader=writer)
         value = (source or {}).get("value") or {}
+        if value_path:
+            value = value_at_path(value, value_path) if isinstance(value, dict) else None
         fields = {k: value[k] for k in dict.fromkeys(unset_keys) if isinstance(value, dict) and k in value}
         if not fields:
             return "Archived: nothing (no unset key is in the value).\n"
         entry = {
             "source_key": key,
+            **({"path": ".".join(value_path)} if value_path else {}),
             "unset_keys": list(fields),
             "archived_at": datetime.now(UTC).isoformat(),
             "fields": fields,
@@ -2022,7 +2043,7 @@ def build_shared_state_tools(
                 "properties": {
                     "key": {"type": "string", "description": "Exact state key (any caller-chosen identifier)"},
                     "value_json": {"type": "string", "description": "A JSON object to merge in (nested objects merge key by key; lists and scalars replace); with path, any JSON value"},
-                    "path": {"type": "string", "description": "Dot-separated sub-key value_json is written under alone, e.g. 'slice_state.P2' (created when missing, siblings kept; replace=true overwrites it alone); list ops apply to its lists"},
+                    "path": {"type": "string", "description": "Dot-separated sub-key value_json is written under alone, e.g. 'slice_state.P2' (created when missing, siblings kept; replace=true overwrites it alone); list ops and unset_keys apply under it"},
                     "label": {"type": "string", "description": "Optional human-friendly label for the entry"},
                     "note": {"type": "string", "description": "Log note (store-stamped)"},
                     "owner_agent_id": {"type": "string", "description": "UUID of the agent responsible for this state (defaults to you on first create)"},
@@ -2030,13 +2051,13 @@ def build_shared_state_tools(
                     "append_json": {"type": "string", "description": "Top-level keys to lists of items to append (list created when missing; an item present is not added twice), e.g. {\"prs\": [{\"number\": 12}]}"},
                     "remove_json": {"type": "string", "description": "Top-level keys to lists of matches: drops each item equal to a match or carrying all its fields (where_json operators). Before append_json"},
                     "keep_last_json": {"type": "string", "description": "List keys to a count N: after removals and appends, only the newest N items stay, e.g. {\"runs\": 30}. Trimming more than appended needs confirm_trim"},
-                    "confirm_trim": {"type": "boolean", "description": "Let keep_last_json or an unarchived retention roll drop more items than appended"},
+                    "confirm_trim": {"type": "boolean", "description": "Let keep_last_json or an unarchived roll drop more items than appended, or unset_keys drop >2,000 chars unarchived"},
                     "unique_by_json": {"type": "string", "description": "List keys to identity field(s), e.g. {\"prs\": \"number\"}: an append replaces the item with the same values"},
                     "update_json": {"type": "string", "description": "Patch matched list items in place: {\"gaps\": {\"match\": {\"slug\": \"x\"}, \"set\": {}, \"increment\": {\"count\": 1}, \"append\": {\"runs\": []}, \"unset\": [\"f\"]}}; match may be a list (any matches; one matching nothing refuses all). Applied after the removals, before the appends"},
                     "fold_json": {"type": "string", "description": "List keys to identity field(s) or {by, sum}: duplicates merge in the first"},
                     "archive_key": {"type": "string", "description": "Key that first receives what remove_json / keep_last_json / an unset drop"},
                     "retention_json": {"type": "string", "description": "List policy per write: keep_last, max_chars, archive_key, archive_when, max_item_chars, overflow_key, keep_fields, roll_open; {} clears"},
-                    "unset_keys": {"type": "array", "items": {"type": "string"}, "description": "Top-level keys to remove from the value"},
+                    "unset_keys": {"type": "array", "items": {"type": "string"}, "description": "Keys to remove (under path when given)"},
                     "hold": {"type": "string", "enum": ["take", "release"], "description": "Hold the entry as a lease (a branch lock): 'take' records this run as its holder (a live other holder answers held, not an error), taking it over once that run ended; 'release' frees it. The platform frees the hold of an ended run. Omit to keep the holder"},
                     "lease": {"type": "boolean", "description": "Resolved at hold release (default: created by take)"},
                     "work_item_id": {"type": "string", "description": "Work item UUID: resolved when it ends"},

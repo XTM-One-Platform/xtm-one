@@ -21,12 +21,28 @@ company-managed agent running with no acting user stores ``user_id`` NULL.
 The recipient is resolved at the write, in this order:
 
 1. an explicit ``recipient`` (a user id or an email), which must be an active
-   user who can read the item;
+   user who can read the item; a company-managed agent may only name a
+   decider (#2422): the person its run acts for, its acting user, a member of
+   a CTEM ``decide`` group for CTEM work, the owner of its home fleet or an
+   administrator, never the seed account unless that account is the run's
+   chosen person (it triggered the run, or the run runs as it). Anyone else is
+   dropped (logged) and the steps below apply, so the decision is never lost;
 2. the run's acting user (the person the run acts for);
-3. the owner of the writing agent;
-4. the platform administrators, when none of the above exists.
+3. the owner of the writing agent, for a personal agent; for a company-managed
+   agent (#2367) its owner is the seed account that stands for the platform,
+   never a decider, so the item goes instead to the CTEM ``decide`` groups
+   (``ctem_access.gate_recipient``) when the agent holds CTEM tools or its
+   home fleet is a CTEM fleet, else to the person its assignment run acts for
+   (the triggering user, else the run-as user, #2422; the seed account only
+   when it is that chosen person, never as the assignment owner standing in),
+   else to the owner of its home fleet when that fleet is a person's (not
+   seeded), else to step 4;
+4. the platform administrators, when none of the above exists (a
+   company-managed agent falls back to its owner only when the platform has
+   no administrator).
 
-1 to 3 are stored in ``work_items.waits_for_user_id``; 4 stores nothing and
+1 to 3 are stored in ``work_items.waits_for_user_id`` (the groups of 3 in
+``work_items.waits_for_group_ids``); 4 stores nothing and
 the clause shows such an item (``needs_human``, no recipient, no user) to every
 administrator, which also surfaces the items written before the column. With
 no administrator either, the write is refused and nothing is written.
@@ -39,6 +55,7 @@ removed cannot; the first answer closes the decision for all.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -49,6 +66,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from app.core.json_sql import when_json_parseable
 from app.core.utils import safe_uuid
 
+logger = logging.getLogger(__name__)
+
 #: The prefix an explicit recipient names a group with.
 GROUP_PREFIX = "group:"
 
@@ -58,7 +77,7 @@ class Recipient:
     """Who a decision item waits for: one person, groups, or the administrators."""
 
     user_id: uuid.UUID | None
-    source: str  # explicit | groups | acting_user | agent_owner | administrators
+    source: str  # explicit | groups | acting_user | run_person | agent_owner | fleet_owner | administrators
     group_ids: tuple[str, ...] = ()
 
 
@@ -136,8 +155,17 @@ async def resolve_recipient(
     item_user_id: uuid.UUID | None,
     is_company_managed: bool,
     workspace_id: uuid.UUID | None,
+    run_person_id: uuid.UUID | None = None,
+    run_person_chosen: bool = False,
 ) -> Recipient:
     """The person a ``needs_human`` item filed this way waits for.
+
+    *run_person_id* is the person the writing assignment run acts for (its
+    triggering user, else its run-as user), which a company-managed run does
+    not carry as *acting_user_id* (#2422). *run_person_chosen* says that
+    person was chosen (the run's trigger or run-as user), not the assignment
+    owner standing in: a chosen person stays the decider even when it is the
+    seed account, which is the platform administrator (``ADMIN_EMAIL``).
 
     Raises :class:`RecipientError` when *explicit* names no active user, a user
     who cannot read the item, or when nobody at all can be notified.
@@ -145,6 +173,8 @@ async def resolve_recipient(
     groups = group_refs(explicit)
     if groups:
         return await _resolve_groups(db, groups)
+    agent = await _agent(db, agent_id)
+    company_agent = agent is not None and bool(getattr(agent, "is_company_managed", False))
     if explicit and explicit.strip():
         person = await _user_by_ref(db, explicit)
         if person is None or not person.is_active:
@@ -157,21 +187,186 @@ async def resolve_recipient(
             workspace_id=workspace_id,
         ):
             raise RecipientError(f"recipient {explicit.strip()!r} cannot see this work item; nothing was written")
-        return Recipient(person.id, "explicit")
+        if not company_agent or await _company_agent_may_name(
+            db,
+            agent,
+            person,
+            acting_user_id=acting_user_id,
+            run_person_id=run_person_id,
+            run_person_chosen=run_person_chosen,
+        ):
+            return Recipient(person.id, "explicit")
+        # A company-managed agent named someone who is no decider (the seed account
+        # above all, #2422): the routing below applies, the decision is kept.
+        logger.warning(
+            "work item recipient %s dropped: agent %s is company-managed and may only name a decider (#2422)",
+            person.id,
+            agent_id,
+        )
     if acting_user_id is not None:
         return Recipient(acting_user_id, "acting_user")
-    if agent_id is not None:
-        from app.models.agent import Agent
-
-        owner = (await db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
-        if owner is not None:
-            return Recipient(owner, "agent_owner")
+    owner: uuid.UUID | None = getattr(agent, "user_id", None)
+    if company_agent:
+        routed = await _company_agent_recipient(
+            db, agent, run_person_id=run_person_id, run_person_chosen=run_person_chosen
+        )
+        if routed is not None:
+            return routed
+    elif owner is not None:
+        return Recipient(owner, "agent_owner")
     if await _any_admin(db):
         return Recipient(None, "administrators")
+    if owner is not None:
+        # A company-managed agent on a platform with no administrator: its owner is the only person left.
+        return Recipient(owner, "agent_owner")
     raise RecipientError(
         "nobody can be notified of this decision: the run acts for no person, the agent has no owner "
         "and the platform has no administrator; pass recipient (a user id or an email). Nothing was written"
     )
+
+
+async def _agent(db: Any, agent_id: uuid.UUID | None) -> Any:
+    if agent_id is None:
+        return None
+    from app.models.agent import Agent
+
+    return (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+
+
+def _is_seed_account(person: Any, agent: Any) -> bool:
+    """Whether *person* is the seed account that owns company-managed rows (``ADMIN_EMAIL``), never a decider."""
+    from app.core.config import settings
+
+    if getattr(person, "id", None) is not None and person.id == getattr(agent, "user_id", None):
+        return True
+    email = str(getattr(person, "email", "") or "").strip().lower()
+    return bool(email) and email == str(settings.admin_email or "").strip().lower()
+
+
+async def _home_fleet(db: Any, agent: Any) -> Any:
+    """``(slug, is_builtin, forked_from, user_id)`` of *agent*'s home fleet; ``None`` without one.
+
+    Raises whatever the read raises: the callers decide what unreadable means.
+    """
+    from app.models.fleet import Fleet, FleetMember
+
+    return (
+        await db.execute(
+            select(Fleet.slug, Fleet.is_builtin, Fleet.forked_from, Fleet.user_id)
+            .join(FleetMember, FleetMember.fleet_id == Fleet.id)
+            .where(FleetMember.agent_id == agent.id, FleetMember.role == "member")
+            .limit(1)
+        )
+    ).first()
+
+
+def _is_ctem(agent: Any, fleet: Any) -> bool:
+    from app.services.organization_context import holds_ctem_tools, is_ctem_fleet
+
+    return holds_ctem_tools(agent) or (
+        fleet is not None and is_ctem_fleet(slug=fleet[0], is_builtin=fleet[1], forked_from=fleet[2])
+    )
+
+
+def _persons_fleet_owner(fleet: Any) -> uuid.UUID | None:
+    """The owner of a home fleet a person owns (a seeded fleet's owner is the seed account)."""
+    if fleet is not None and not fleet[1] and fleet[3] is not None:
+        return safe_uuid(fleet[3])
+    return None
+
+
+async def _company_agent_may_name(
+    db: Any,
+    agent: Any,
+    person: Any,
+    *,
+    acting_user_id: uuid.UUID | None,
+    run_person_id: uuid.UUID | None,
+    run_person_chosen: bool = False,
+) -> bool:
+    """Whether a company-managed *agent* may address its decision to *person* (#2422).
+
+    A decider only: the person its run acts for, its acting user, an
+    administrator, the owner of a home fleet a person owns, or a CTEM
+    ``decide`` group member for CTEM work; never the seed account, unless it
+    is the acting user or the run's chosen person (read first). A failed read
+    refuses (the routing then applies), never a widening.
+    """
+    if person.id is not None and (person.id == acting_user_id or (run_person_chosen and person.id == run_person_id)):
+        return True
+    if _is_seed_account(person, agent):
+        return False
+    if person.id == run_person_id:
+        return True
+    if getattr(person, "is_admin", False):
+        return True
+    try:
+        fleet = await _home_fleet(db, agent)
+    except Exception:
+        logger.info("work item recipient: home fleet of agent %s unreadable", agent.id, exc_info=True)
+        return False
+    if person.id == _persons_fleet_owner(fleet):
+        return True
+    if _is_ctem(agent, fleet):
+        from app.services import ctem_access
+
+        return await ctem_access.group_right(db, person.id) == "decide"
+    return False
+
+
+async def _run_person(
+    db: Any, agent: Any, run_person_id: uuid.UUID | None, *, chosen: bool = False
+) -> uuid.UUID | None:
+    """*run_person_id* when it is an active person; else ``None``.
+
+    The seed account is refused unless *chosen* (it triggered the run or the
+    run runs as it): the assignment owner standing in is never a decider.
+    """
+    if run_person_id is None:
+        return None
+    from app.models.user import User
+
+    try:
+        person = (await db.execute(select(User).where(User.id == run_person_id))).scalar_one_or_none()
+    except Exception:
+        logger.info("work item recipient: run person %s unreadable", run_person_id, exc_info=True)
+        return None
+    if person is None or not person.is_active or (not chosen and _is_seed_account(person, agent)):
+        return None
+    return safe_uuid(person.id)
+
+
+async def _company_agent_recipient(
+    db: Any, agent: Any, *, run_person_id: uuid.UUID | None = None, run_person_chosen: bool = False
+) -> Recipient | None:
+    """Who a company-managed *agent*'s decision waits for when nobody is named (#2367, #2422).
+
+    The CTEM ``decide`` groups (notify on) for an agent holding CTEM tools or
+    living in a CTEM fleet; else the person its run acts for (the seed account
+    only when it is the run's chosen person); else the owner of its home fleet when a person owns it (a seeded
+    fleet's owner is the seed account too); else ``None``: the administrators.
+    A failed read is ``None``, never a widening.
+    """
+    from app.services import ctem_access
+
+    try:
+        fleet = await _home_fleet(db, agent)
+    except Exception:  # unreadable: the run's person, else the administrators
+        fleet = None
+        ctem = False
+    else:
+        ctem = _is_ctem(agent, fleet)
+    if ctem:
+        groups = group_refs(await ctem_access.gate_recipient(db))
+        if groups:
+            return await _resolve_groups(db, groups)
+    person = await _run_person(db, agent, run_person_id, chosen=run_person_chosen)
+    if person is not None:
+        return Recipient(person, "run_person")
+    owner = _persons_fleet_owner(fleet)
+    if owner is not None:
+        return Recipient(owner, "fleet_owner")
+    return None
 
 
 def group_member_clause(user_uuid: uuid.UUID) -> Any:
@@ -209,18 +404,35 @@ def recipient_clause(user_uuid: uuid.UUID) -> Any:
 
 
 async def recipient_line(item: dict[str, Any]) -> str | None:
-    """The tool line naming who a ``needs_human`` item waits for; ``None`` when it needs nobody."""
+    """The tool line naming who a ``needs_human`` item waits for; ``None`` when it needs nobody.
+
+    A recipient unlikely to see the gate (never signed in, not recently, the
+    seed account, a group nobody of which signed in) adds a warning line (#2390).
+    """
     if not item.get("needs_human"):
         return None
-    if item.get("waits_for_group_ids"):
-        return "  - waits for: the members of its groups, notified in the bell; the first answer decides."
+    from app.core.database import async_session
+    from app.services.work_item_decision_reach import inactive_reason, warning_line
+
+    groups = item.get("waits_for_group_ids")
+    if groups:
+        try:
+            async with async_session() as db:
+                reason = await inactive_reason(db, user_id=None, group_ids=groups)
+        except Exception:  # the warning is advice: an unreadable sign-in history says nothing
+            reason = None
+        line = "  - waits for: the members of its groups, notified in the bell; the first answer decides."
+        return f"{line}\n{warning_line(reason)}" if reason else line
     ref = item.get("waits_for_user_id") or item.get("user_id")
     if not ref:
         return "  - waits for: the platform administrators, notified in the bell."
-    from app.core.database import async_session
-
     async with async_session() as db:
         person = await _user_by_ref(db, str(ref))
+        try:
+            reason = await inactive_reason(db, user_id=person.id, group_ids=None) if person is not None else None
+        except Exception:  # the warning is advice: an unreadable sign-in history says nothing
+            reason = None
     if person is None:
         return "  - waits for: a person no longer on the platform; set recipient to notify someone."
-    return f"  - waits for: {person.full_name} ({person.email}), notified in the bell."
+    line = f"  - waits for: {person.full_name} ({person.email}), notified in the bell."
+    return f"{line}\n{warning_line(reason)}" if reason else line

@@ -9,7 +9,9 @@ values a platform starts with. A window is a number of days from 0 to 3650; 0 ke
 the convention of the trace and file retentions.
 
 Every window counts from the row's last update (``updated_at``), except the
-abandoned-open auto-cancel, which counts from the item's last activity.
+abandoned-open auto-cancel, which counts from the item's last activity, and the
+assignment run window, which counts from the run's completion (a run has no
+``updated_at``).
 """
 
 from __future__ import annotations
@@ -36,6 +38,9 @@ RETENTION_KEYS: dict[str, str] = {
     "shared_state_archive_days": "shared_state_archive_retention_days",
     # Resolved worksets, deleted with their documents N days after their resolution.
     "workset_resolved_days": "workset_resolved_retention_days",
+    # Finished assignment runs (Operations > Executions), deleted N days after their
+    # last activity (completed_at, else created_at): services/run_retention.py.
+    "assignment_run_days": "assignment_run_retention_days",
 }
 
 

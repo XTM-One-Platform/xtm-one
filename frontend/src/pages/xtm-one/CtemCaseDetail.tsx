@@ -9,7 +9,7 @@
  * but that word; a case the caller sees nothing of answers 404.
  */
 import { useMemo, useState, type ComponentProps } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Icon, Textarea } from "@filigran/design-system";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +58,7 @@ import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } from "./ctem/case-loop";
 import { CaseTicketChip } from "./ctem/case-ticket";
+import { acceptanceMaxDay } from "./ctem/case-acceptance";
 import { keyVersion } from "./ctem/case-version";
 import { CaseAttackPath } from "./ctem/CaseAttackPath";
 import { CaseExploitation } from "./ctem/CaseExploitation";
@@ -68,11 +69,12 @@ import { CaseAnalystReview } from "./ctem/CaseAnalystReview";
 import { CaseValidation } from "./ctem/CaseValidation";
 import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseMobilization } from "./ctem/CaseMobilization";
+import { CaseWaitingGates } from "./ctem/CaseWaitingGates";
 import { APPLIED_CHANGE_KIND_LABEL, appliedChangeKindLabel, isAppliedChangeKind } from "./ctem/case-mobilization";
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseAffectedAssets } from "./ctem/CaseAffectedAssets";
 import { CaseOpenedBy } from "./ctem/CaseOpenedBy";
-import { eventIssueLabel, isSignalIssue, issueLabel, memberAssetCount, memberKev, signalCaption, signalLensLabel, signalPathLabel } from "./ctem/case-issue-label";
+import { eventIssueLabel, isSignalIssue, issueLabel, memberAssetCount, memberKev, signalCaption, signalLensLabel, signalPathLabel, signalPivot } from "./ctem/case-issue-label";
 import { signalProviderName } from "./ctem/loop/SignalLoopTrace";
 import { ToneBadge } from "@/components/ui/tone-badge";
 import { CaseOwnedBy } from "./ctem/CaseOwnedBy";
@@ -240,6 +242,8 @@ function IssueCaption({ text }: { text: string }) {
 export default function CtemCaseDetail() {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  // Opened from a work item's "Open the case" (#2370): Back returns to that item.
+  const back = useLocation().state as { backTo?: string; backLabel?: string } | null;
   const { t_i18n, intl } = useFormatter();
   const { toast } = useToast();
   const { data: me } = useMe();
@@ -302,7 +306,7 @@ export default function CtemCaseDetail() {
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [reason, setReason] = useState("");
   const [evidence, setEvidence] = useState("");
-  const [expiry, setExpiry] = useState(inDays(90));
+  const [expiry, setExpiry] = useState(acceptanceMaxDay);
   const [formError, setFormError] = useState<string | null>(null);
   // The SLA countdown of the header moves without a reload (#892).
   const now = useNow(60_000);
@@ -494,7 +498,7 @@ export default function CtemCaseDetail() {
   const open = (kind: DialogKind) => {
     setReason("");
     setEvidence("");
-    setExpiry(inDays(90));
+    setExpiry(acceptanceMaxDay());
     setFormError(null);
     setSplitTitle("");
     setDialog(kind);
@@ -557,6 +561,14 @@ export default function CtemCaseDetail() {
                   {t_i18n("From {source}", { source: signalProviderName(r.issue.source_provider) })}
                 </ToneBadge>
               )}
+              {/* A signal from OpenCTI, OpenAEV or OpenCRQ opens its object in the module (#1357),
+                  the small icon a product issue row carries; nothing when there is no target. */}
+              {(() => {
+                const pivot = signalPivot(r.issue, moduleUrls);
+                return pivot ? (
+                  <ModulePivotLink module={pivot.module} baseUrl={null} id={null} href={pivot.href} iconOnly testId="ctem-case-issue-pivot" />
+                ) : null;
+              })()}
             </span>
             {/* The path caption takes its cell's own 26rem width, not the 9rem cap of the Fixed
                 version caption (UX round 1 B3 on #1945). */}
@@ -566,7 +578,7 @@ export default function CtemCaseDetail() {
           </span>
         ) : (
           // The issue, then "Open in <Module>" on the entity it came from (#1357): an OpenCTI
-          // vulnerability by its id, an OpenAEV finding by its id; a signal has no module page.
+          // vulnerability by its id, an OpenAEV finding by its id; a signal row pivots above.
           <span className="flex min-w-0 max-w-[26rem] items-center gap-1.5">
             <span className="truncate font-medium" title={issueLabel(r.issue, t_i18n)}>
               {issueLabel(r.issue, t_i18n)}
@@ -757,8 +769,8 @@ export default function CtemCaseDetail() {
       {/* The app's standard entity header (#1367, Sam 23 Nov 2026: no band with a surface and a border): the
           back link, the title, state, priority and owner on its meta row, the actions on the title line. */}
       <EntityPageHeader
-        backTo="/ctem/cases"
-        backLabel="Back to Cases"
+        backTo={back?.backTo ?? "/ctem/cases"}
+        backLabel={back?.backLabel ?? "Back to Cases"}
         badges={
           <>
             <CaseStateChip state={kase.state} />
@@ -856,6 +868,9 @@ export default function CtemCaseDetail() {
         </p>
       )}
 
+      {/* Every waiting decision, whoever works the case (#2464), first: a gate no section owns is answered here. */}
+      <CaseWaitingGates state={kase.state} gates={kase.gates} history={kase.history} personName={personName} />
+
       {kase.state !== "resolved" && kase.state !== "accepted_risk" && (
         <CaseWorkCard
           work={work}
@@ -874,13 +889,13 @@ export default function CtemCaseDetail() {
 
         <CaseAnalystReview caseId={kase.id} pkg={kase.threat_package} history={kase.history} gates={kase.gates} personName={personName} />
 
-        <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} gates={kase.gates} personName={personName} />
+        <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} gates={kase.gates} personName={personName} scenario={kase.scenario} />
 
         <CaseRemediationDecision caseId={kase.id} history={kase.history} gates={kase.gates} personName={personName} />
 
         <CaseTreatmentPlan plan={kase.treatment_plan} />
 
-        <CaseMobilization history={kase.history} tickets={kase.tickets} />
+        <CaseMobilization history={kase.history} tickets={kase.tickets} gates={kase.gates} personName={personName} />
       </CaseLoopProvider>
 
       <Card>
@@ -1019,6 +1034,7 @@ export default function CtemCaseDetail() {
                   aria-labelledby={settingsFieldLabelId("case-expiry")}
                   aria-describedby={settingsFieldHintId("case-expiry")}
                   min={inDays(1)}
+                  max={acceptanceMaxDay()}
                   value={expiry}
                   onChange={setExpiry}
                 />

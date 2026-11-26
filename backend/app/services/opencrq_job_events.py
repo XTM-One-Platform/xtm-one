@@ -50,6 +50,12 @@ scenarios it re-priced, ``movedCount`` counts them past the id cap, and
 They travel on the payload top level and on the entity as ``moved_scenario_ids``,
 ``moved_count`` and ``moved_ale``, merged across a coalesced page, so a trigger
 filter reacts to "scenario X moved" (``FILTER_KEYS``, declared in the catalog).
+
+A ``finding-score-recompute`` run ends the same way (OpenCRQ #232): its JSON
+summary counts the findings, postures and unique findings it changed in
+``changedCount``. A run whose summary says 0 changed nothing a reader can
+see and is no event (#2169); the count travels as ``changed_count``, added up
+across a coalesced page. A run with no summary (an older OpenCRQ) is kept.
 """
 
 from __future__ import annotations
@@ -83,6 +89,7 @@ FILTER_KEYS: dict[str, str] = {
     "risk_scenario_ids": "Only events whose job payload names this risk scenario id (or one of a list)",
     "moved_scenario_ids": "Only events whose re-pricing moved this risk scenario id (or one of a list)",
     "moved_count": 'How many scenarios the re-pricing moved, e.g. {"ne": 0} for a pass that moved one',
+    "changed_count": "How many finding scores, postures and unique findings the recompute changed (OpenCRQ reports it)",
 }
 
 
@@ -168,6 +175,20 @@ def moved_scenarios(run: dict[str, Any]) -> tuple[list[str], int, list[dict[str,
     return ids, count if count is not None else len(ids), ale
 
 
+def changed_count(run: dict[str, Any]) -> int | None:
+    """``changedCount`` of the run's summary: what a finding score recompute changed, ``None`` when unreported."""
+    return _count(_summary(run).get("changedCount"))
+
+
+def _set_changed(payload: dict[str, Any], count: int | None) -> None:
+    """The changed count on the payload top level (the filter reads it) and on the entity, when reported."""
+    for target in (payload, payload["entity"]):
+        if count is None:
+            target.pop("changed_count", None)
+        else:
+            target["changed_count"] = count
+
+
 def _set_moved(payload: dict[str, Any], ids: list[str], count: int, ale: list[dict[str, Any]]) -> None:
     """The moved fields on the payload top level (the filter reads them) and on the entity."""
     for target in (payload, payload["entity"]):
@@ -212,6 +233,7 @@ def run_event(run: dict, event_type: str, *, base_url: str, tenant_id: str) -> d
         "summary": f"OpenCRQ job {run.get('kind')} {run.get('status')} at {run.get('finishedAt')}",
     }
     _set_moved(payload, *moved_scenarios(run))
+    _set_changed(payload, changed_count(run))
     return payload
 
 
@@ -224,6 +246,7 @@ MOVED_MERGE: dict[str, Any] = {
     "union": ["moved_scenario_ids", "risk_scenario_ids"],
     "by_key": {"moved_ale": "risk_scenario_id"},
     "count_at_least": {"moved_count": "moved_scenario_ids"},
+    "sum": ["changed_count"],
 }
 
 
@@ -239,7 +262,12 @@ def processed_nothing(run: dict[str, Any]) -> bool:
     never reports progress (``crq-price-recompute``, for one) ends every run
     with ``processedTotal`` 0 whatever it re-priced, so a 0 without an
     expected total says nothing and the run is kept.
+
+    A run whose summary reports ``changedCount`` 0 walked its findings and
+    changed none (#2169): no event either.
     """
+    if changed_count(run) == 0:
+        return True
     return _count(run.get("expectedTotal")) is not None and _count(run.get("processedTotal")) == 0
 
 
@@ -259,6 +287,7 @@ def covered_run(run: dict[str, Any], tenant_id: str) -> dict[str, Any]:
         "processed_total": run.get("processedTotal"),
         "risk_scenario_ids": risk_scenario_ids(run),
         "moved_scenario_ids": moved_scenarios(run)[0],
+        "changed_count": changed_count(run),
     }
 
 
@@ -300,6 +329,8 @@ def coalesce_events(
     # The distinct scenarios moved, never a sum over runs that re-price the same
     # ones (#2117); a run whose ids OpenCRQ capped keeps its own larger count.
     _set_moved(event, page_moved, max(len(page_moved), largest_count), list(page_ale.values()))
+    reported = [count for count in (changed_count(run) for run in kept) if count is not None]
+    _set_changed(event, sum(reported) if reported else None)
     event[event_coalescing.MERGE_KEY] = MOVED_MERGE
     if len(covers) > 1:
         event["summary"] = (

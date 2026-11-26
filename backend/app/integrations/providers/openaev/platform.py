@@ -44,7 +44,7 @@ async def _engine_keys_lines(base_url: str, headers: dict[str, str], class_name:
         return [f"Engine keys of '{entity}' for query_openaev_analytics: unavailable ({err or 'none reported'})."]
     lines = [
         f"Engine keys of '{entity}' ({len(keys)}) - the ONLY keys query_openaev_analytics "
-        "accepts (the model keys above are for search tools):"
+        "accepts (the model keys above are for search tools, e.g. search_openaev_assets filter_group):"
     ]
     for name in sorted(keys):
         entry = keys[name]
@@ -222,6 +222,37 @@ def _connector_field_text(c: dict[str, object], kind: str) -> str:
             value = "yes" if value else "no"
         parts.append(f"{suffix[1:].replace('_', ' ')}: {value}")
     return f" {{{', '.join(parts)}}}" if parts else ""
+
+
+def _instance_config_lines(items: object) -> list[str]:
+    """The configuration of a connector instance, one line per key, as OpenAEV returns it.
+
+    ``GET /api/connector-instances/{id}/configurations`` leaves out the encrypted
+    values and the platform token, so a secret key is never shown; an entry still
+    flagged encrypted is written as set and hidden.
+    """
+    if not isinstance(items, list):
+        return []
+    rows: list[tuple[str, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("connector_instance_configuration_key")
+        if not key:
+            continue
+        if item.get("connector_instance_configuration_is_encrypted"):
+            rows.append((str(key), "set (hidden)"))
+            continue
+        value = item.get("connector_instance_configuration_value")
+        if isinstance(value, str | int | float | bool) or value is None:
+            text = "" if value is None else str(value)
+        else:
+            text = json.dumps(value)
+        rows.append((str(key), text))
+    lines = ["  configuration (secret values are not returned by OpenAEV):"]
+    if not rows:
+        return [*lines, "    none"]
+    return [*lines, *(f"    {key}: {text}" for key, text in sorted(rows))]
 
 
 #: Most log lines OpenAEV stores per instance (ConnectorInstanceLogService.LOG_SIZE_LIMIT).
@@ -557,6 +588,18 @@ def register(
                 "its connector instance."
             )
 
+        async def _read_instance_config(instance_id: str) -> list[str]:
+            resp, err = await _api(
+                base_url,
+                headers,
+                "get",
+                f"/api/connector-instances/{instance_id}/configurations",
+                "get connector instance configuration",
+            )
+            if err or resp is None:
+                return [f"  configuration: not readable ({err or 'no answer'})"]
+            return _instance_config_lines(resp.json())
+
         parsed_config: dict = {}
         if config:
             try:
@@ -625,6 +668,7 @@ def register(
             lines.extend(_instance_status_lines(data))
             lines.extend(_instance_runtime_lines(data))
             lines.extend(_raw_scalar_lines(data, _INSTANCE_SHOWN_KEYS))
+            lines.extend(await _read_instance_config(connector_instance_id))
             return "\n".join(lines)
 
         if action == "update_config":
@@ -651,7 +695,13 @@ def register(
             )
             if err:
                 return _instance_err(err)
-            return f"Updated configuration for connector instance {connector_instance_id}."
+            lines = [
+                f"Updated configuration for connector instance {connector_instance_id}: "
+                f"{', '.join(sorted(str(k) for k in parsed_config))} written; "
+                "keys not sent keep their value (OpenAEV merges)."
+            ]
+            lines.extend(await _read_instance_config(connector_instance_id))
+            return "\n".join(lines)
 
         if action in ("start", "stop"):
             if not connector_instance_id:
@@ -809,6 +859,12 @@ def register(
                 "instead of returning an error, so always take keys from this list "
                 "rather than guessing."
             )
+            if class_name.strip().lower() in ("asset", "endpoint"):
+                lines.append(
+                    "Pass these keys to search_openaev_assets filter_group (FilterGroup JSON; "
+                    "limit=1 for a count). asset_status (ACTIVE, INACTIVE, AGENTLESS, STALE) is "
+                    "computed at query time and only filterable there, never in query_openaev_analytics."
+                )
             lines.extend(await _engine_keys_lines(base_url, headers, class_name))
             return "\n".join(lines)
 
@@ -961,8 +1017,9 @@ def register(
                 "(connector_instance_id + catalog_connector_id + config), "
                 "'start'/'stop' (connector_instance_id), 'logs' "
                 "(connector_instance_id, tail), 'delete' (connector_instance_id). "
-                "'get' shows the actual state apart from the requested intent and "
-                "the other fields OpenAEV returns. For a "
+                "'get' shows the actual state apart from the requested intent, the "
+                "configuration (secrets hidden) and the other fields OpenAEV returns; "
+                "'update_config' merges (keys not sent are kept) and reads it back. For a "
                 "connector deployed from the UI, pass its injector, collector or "
                 "executor id as connector_id instead of connector_instance_id. "
                 "Requires Enterprise Edition with a running XTM Composer; secret "

@@ -326,7 +326,7 @@ def test_paths_with_no_cve_map_to_their_remediation_kind(path, kind):
 @pytest.mark.parametrize(
     "state,title",
     [
-        ("never_measured", "Put in place and measure the control on kibana.example.com"),
+        ("never_measured", "Measure kibana.example.com for the first time (no test evidence yet)"),
         ("attested_only", "Measure the control on kibana.example.com (attested only)"),
         ("expired", "Re-test the control on kibana.example.com"),
         ("unknown_state", "Restore the control on kibana.example.com: some reason"),
@@ -345,6 +345,26 @@ def test_a_control_decay_case_is_worded_by_its_evidence_state(state, title):
         )
     )
     assert fix.title == title
+    assert fix.kind == "restore_control" and fix.key == "restore_control:asset/kibana.example.com"
+
+
+def test_a_never_measured_asset_is_a_first_measurement_not_a_missing_control():
+    """#2352: a connector-discovered asset never measured asks for a first measurement."""
+    fix = loop.fix_of(
+        _signal(
+            trigger_path="control_decay",
+            subject_ref="kibana.example.com",
+            subject_label="kibana.example.com: reported by a connector but never measured",
+            evidence={
+                "event": "evidence_expired",
+                "state": "never_measured",
+                "last_evidence_at": None,
+                "sources": [{"origin": "connector"}],
+            },
+        )
+    )
+    assert fix.title.startswith("Measure kibana.example.com for the first time")
+    assert "Put in place" not in fix.title
     assert fix.kind == "restore_control" and fix.key == "restore_control:asset/kibana.example.com"
 
 
@@ -410,7 +430,7 @@ class CloseSession(FakeSession):
             return SimpleNamespace(scalars=lambda: value)
         return SimpleNamespace(scalar_one_or_none=lambda: value, first=lambda: value)
 
-    async def get(self, _model, _id):
+    async def get(self, _model: object, _id: object, **_options: object) -> object:
         return self.case
 
 
@@ -479,6 +499,16 @@ async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
         return 0
 
     monkeypatch.setattr(ctem_case_asset_retire, "close_retired_asset_cases", none_retired)
+    from app.services import ctem_case_owner
+
+    async def no_decider(_db):
+        return None, None
+
+    async def none_owned(_db, **_k) -> int:
+        return 0
+
+    monkeypatch.setattr(ctem_case_owner, "decider_owner", no_decider)
+    monkeypatch.setattr(ctem_case_owner, "backfill_owners", none_owned)
     events = loop.PendingEvents()
     counts = await loop.sweep(db, events=events, now=NOW)
     assert counts == {
@@ -489,6 +519,7 @@ async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
         "announced": 0,
         "stalled": 0,
         "retired": 0,
+        "owned": 0,
     }
     bad.expired = False
     assert bad.state == "confirmed" and good.state == "case_opened"

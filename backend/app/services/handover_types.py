@@ -29,11 +29,78 @@ types that target:
   target added without a type is recorded as ``delegate``;
 - removing targets never empties a map that holds a type, which would give the
   targets left every type.
+
+An entry holds one type (``consult``), several joined by ``|``
+(``consult|delegate``), or ``all`` (every tool type), so one target can keep
+running every type in a map where another runs ``consult`` only
+(``handover_type_set`` reads an entry, ``merged_handover_types`` writes a
+partial update, #2207).
 """
 
 from __future__ import annotations
 
 from collections.abc import Collection, Iterable, Mapping
+
+#: The types a handover tool implements, and what ``all`` stands for.
+TOOL_TYPES: tuple[str, ...] = ("delegate", "consult", "transfer")
+#: Every type an entry may hold; ``mandatory_transfer`` only alone.
+VALID_TYPES: tuple[str, ...] = (*TOOL_TYPES, "mandatory_transfer")
+#: The entry of a target that runs every tool type in an explicit map.
+ALL_TYPES = "all"
+
+
+def handover_type_set(value: object) -> frozenset[str]:
+    """The types one stored entry runs: ``all``, one type, or several joined by ``|``.
+
+    An entry with no type a tool implements runs as ``delegate``, as an absent
+    one does; ``mandatory_transfer`` is never mixed with another type.
+    """
+    raw = str(value or "").strip().lower()
+    if raw == ALL_TYPES:
+        return frozenset(TOOL_TYPES)
+    if raw == "mandatory_transfer":
+        return frozenset({"mandatory_transfer"})
+    types = frozenset(part.strip() for part in raw.split("|")) & frozenset(TOOL_TYPES)
+    return types or frozenset({"delegate"})
+
+
+def parse_handover_type_entry(text: str) -> str | None:
+    """The canonical stored form of a written entry, ``None`` when it is invalid.
+
+    ``consult``, ``consult|delegate`` (sorted, deduplicated; every tool type is
+    written ``all``), ``all`` or ``mandatory_transfer`` alone.
+    """
+    parts = {part.strip().lower() for part in text.split("|") if part.strip()}
+    if not parts:
+        return None
+    if parts == {ALL_TYPES} or parts == {"mandatory_transfer"}:
+        return next(iter(parts))
+    if not parts <= set(TOOL_TYPES):
+        return None
+    if parts == set(TOOL_TYPES):
+        return ALL_TYPES
+    return "|".join(t for t in TOOL_TYPES if t in parts)
+
+
+def merged_handover_types(
+    target_ids: Iterable[object],
+    stored: Mapping[str, str] | None,
+    written: Mapping[str, str],
+) -> dict[str, str]:
+    """The map once *written* types the targets it names, the others left as they ran.
+
+    On an explicit map the targets not named keep their entry. On a legacy
+    (empty) map they each ran every type, so they are written ``all``: typing
+    one target never narrows the others to ``delegate``. An entry for an agent
+    that is not a target is dropped, so a write that types no target leaves the
+    map as it was (a legacy map stays legacy).
+    """
+    targets = [str(agent_id) for agent_id in target_ids]
+    written = {aid: entry for aid, entry in written.items() if str(aid) in targets}
+    if not written:
+        return dict(stored or {})
+    base = dict.fromkeys(targets, ALL_TYPES) if is_legacy_handover_map(stored) else dict(stored or {})
+    return {**base, **written}
 
 
 def is_legacy_handover_map(type_map: Mapping[str, str] | None) -> bool:

@@ -582,7 +582,10 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
             "type": "object",
             "properties": {
                 "repo": {"type": "string", "description": "owner/name"},
-                "kind": {"type": "string", "enum": ["pull_request", "issue", "deployment", "workflow_run"]},
+                "kind": {
+                    "type": "string",
+                    "enum": ["pull_request", "issue", "deployment", "workflow_run", "tag", "a2a_task"],
+                },
                 "number": {"type": "integer"},
                 "sha": {"type": "string"},
                 "workflow": {"type": "string"},
@@ -590,17 +593,17 @@ _BLOCKED_WHY_SCHEMA: dict[str, dict] = {
                 "branch": {"type": "string"},
                 "title_contains": {"type": "string"},
                 "carries": {"type": "string"},
+                "pattern": {"type": "string"},
+                "task": {"type": "string"},
                 "release_on": {
                     "type": "string",
-                    "enum": ["merged", "closed", "merged_or_closed", "deployed", "succeeded"],
+                    "enum": ["merged", "closed", "merged_or_closed", "deployed", "succeeded", "completed", "terminal"],
                 },
             },
-            "required": ["repo"],
         },
         "description": (
-            "Waits for (replaces; [] clears), reopens when all met. PR (branch: "
-            "successors too) or issue: release_on (default merged_or_closed, issue closed). deployment (number "
-            "or sha): build has the merge. workflow_run: a later success."
+            "Replaces ([] clears); all met reopens. PR/issue: release_on. "
+            "deployment: in build. workflow_run: success. tag: carries. a2a_task: collect_task_id."
         ),
     },
     "blocked_reason": {
@@ -897,6 +900,16 @@ def build_work_item_tools(
     # Where the tools run: the conversation, assignment run and flow
     # run every item they create records, so its views link back to them.
     origin: WorkItemOrigin | None = None,
+    # The person the turn or run acts for is an administrator: the agent reads
+    # past every creator's coordination narrowing (#2161).
+    acting_admin: bool = False,
+    # The person an assignment run acts for, apart from *user_id* (the run's
+    # file owner, empty for a company-managed run): who its decisions wait
+    # for when nobody is named (#2422).
+    run_person_id: str | None = None,
+    # That person is the run's triggering or run-as user (not the owner
+    # standing in): the decider even when it is the seed account.
+    run_person_chosen: bool = False,
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """Build the work-item + delegate-to-assignment tools for an agent.
 
@@ -918,7 +931,13 @@ def build_work_item_tools(
     """
     del db  # operations use their own sessions
     acting_user_id = user_id if user_id and user_id != "anonymous" else None
-    writer = agent_writer(is_company_managed=company_managed_agent, agent_id=agent_id)
+    writer = agent_writer(
+        is_company_managed=company_managed_agent,
+        agent_id=agent_id,
+        acting_admin=acting_admin,
+        run_person_id=run_person_id or None,
+        run_person_chosen=run_person_chosen,
+    )
 
     def _refused(exc: CompanyManagedWriteRefusedError, work_item_id: str = "") -> str:
         from app.services.shared_state import WorkspaceWriteRefusedError
@@ -1425,6 +1444,7 @@ def build_work_item_tools(
         query: str = "",
         compact: bool = False,
         group_by: str = "",
+        newest_note_prefix: str = "",
     ) -> str | ToolResult:
         from app.core.utils import safe_uuid
         from app.services import coordination_scope
@@ -1436,6 +1456,7 @@ def build_work_item_tools(
             normalize_sort,
             parse_time_filter,
         )
+        from app.services.work_item_note_runs import newest_note_with_prefix
 
         grouping = (group_by or "").strip()
         if grouping and grouping not in WORK_ITEM_GROUP_BY:
@@ -1457,6 +1478,12 @@ def build_work_item_tools(
             return (
                 f"Error: query is at most {LIST_QUERY_MAX_CHARS} characters, got {len(text)}. "
                 "Nothing was listed."
+            )
+        note_prefix = (newest_note_prefix or "").strip()
+        if len(note_prefix) > LIST_QUERY_MAX_CHARS:
+            return (
+                f"Error: newest_note_prefix is at most {LIST_QUERY_MAX_CHARS} characters, "
+                f"got {len(note_prefix)}. Nothing was listed."
             )
         from .id_prefix import ID_PREFIX_MIN_CHARS, id_prefix, unknown_prefix_text
 
@@ -1494,7 +1521,9 @@ def build_work_item_tools(
                     return owner_err.replace("Nothing was done", "Nothing was listed")
                 owner_filter = full_owner
         try:
-            resolved = await coordination_scope.resolve_coordination_scope(agent_id, acting_user_id, scope)
+            resolved = await coordination_scope.resolve_coordination_scope(
+                agent_id, acting_user_id, scope, acting_admin=writer.acting_admin
+            )
         except Exception as exc:
             logger.error("list_work_items scope failed: %s", format_exception_message(exc), exc_info=True)
             return "Error: failed to resolve the scope of the listing. Please try again."
@@ -1579,10 +1608,23 @@ def build_work_item_tools(
             if it.get("payload"):
                 flags.append("has a payload")
             files = len(attachment_ids(it))
+            note_line = ""
+            if note_prefix:
+                # The newest note opening with the prefix, one row per item,
+                # so a status sweep needs no get_work_item per item (#2263).
+                newest = newest_note_with_prefix(it.get("description"), note_prefix)
+                it["newest_note"] = newest
+                if newest is None:
+                    note_line = f"    newest note {note_prefix!r}: none"
+                else:
+                    run = f" (run {newest['run']})" if newest["run"] else ""
+                    shown = _indented(newest["text"], "      ")
+                    note_line = f"    newest note {note_prefix!r}: {newest['at']}{run}: {shown}"
             if compact:
                 key = f" {it['correlation_key']}" if it.get("correlation_key") else ""
                 deferred = f" ({not_before})" if not_before else ""
-                blocks.append(f"- `{it['id']}`{key} [{it['status']}]{deferred} {it['title']}")
+                line = f"- `{it['id']}`{key} [{it['status']}]{deferred} {it['title']}"
+                blocks.append(f"{line}\n{note_line}" if note_line else line)
                 needs_full.append(False)
                 continue
             if files:
@@ -1595,6 +1637,8 @@ def build_work_item_tools(
                 f"(status: {it['status']}, priority: {it['priority']}, "
                 f"owner: {owner}{corr}){suffix}"
             ]
+            if note_line:
+                row.append(note_line)
             preview, truncated = _description_preview(it)
             row.extend(preview)
             blocks.append("\n".join(row))
@@ -1779,6 +1823,10 @@ def build_work_item_tools(
         if outside:
             return f"Work item `{work_item_id}` is {outside}."
         item = await _with_recipient_line(item)
+        # This run has now read every note on the item: none holds its completion (#2266).
+        from app.services import work_item_note_steering
+
+        await work_item_note_steering.mark_seen(_own_run_ids(), item_id=item.get("id") or work_item_id)
         refs, gone = await work_item_file_refs(item)
         registered = register_work_item_files(file_context, refs)
         return ToolResult(
@@ -1799,7 +1847,9 @@ def build_work_item_tools(
         resolved = await coordination_scope.resolve_coordination_scope(agent_id, acting_user_id, "")
         if isinstance(resolved, str) or resolved.admits(item):
             return None
-        if allow_all and await coordination_scope.user_is_admin(acting_user_id):
+        # The run acts for an administrator: its company-managed run carries no
+        # person in acting_user_id, the writer says it (#2381).
+        if allow_all and (writer.acting_admin or await coordination_scope.user_is_admin(acting_user_id)):
             return None
         return resolved.refusal()
 
@@ -2027,7 +2077,9 @@ def build_work_item_tools(
         from app.services import coordination_scope
 
         try:
-            resolved = await coordination_scope.resolve_coordination_scope(agent_id, acting_user_id, scope)
+            resolved = await coordination_scope.resolve_coordination_scope(
+                agent_id, acting_user_id, scope, acting_admin=writer.acting_admin
+            )
         except Exception as exc:
             logger.error("program scope failed: %s", format_exception_message(exc), exc_info=True)
             return "Error: failed to resolve the scope of the read. Please try again."
@@ -2165,6 +2217,11 @@ def build_work_item_tools(
 
     executor.register(_CARD_TOOL, build_send_decision_card(agent_id, acting_user_id, _read_for_card))
 
+    from app.services.notification_feed_tool import TOOL_NAME as _BELL_TOOL
+    from app.services.notification_feed_tool import build_list_my_notifications, notifications_definition
+
+    executor.register(_BELL_TOOL, build_list_my_notifications(acting_user_id))
+
     definitions = [
         ToolDefinition(
             name="create_work_item",
@@ -2295,8 +2352,7 @@ def build_work_item_tools(
             description=(
                 "List work items with EXACT-match filters, not semantic search. Each item "
                 f"shows the first {LIST_DESCRIPTION_PREVIEW_CHARS} characters of its description "
-                "(get_work_item reads one), claimed_at and completed_at. To process your items, "
-                "DRAIN the queue: list your open items and claim + complete each one. "
+                "(get_work_item reads one), claimed_at and completed_at. "
                 "blocked_on, a work item's id, lists the items waiting for it; "
                 "correlation_key_prefix keeps the items whose key starts with it; "
                 "query keeps the items whose title or key contains a text. Paged, "
@@ -2343,8 +2399,13 @@ def build_work_item_tools(
                     "compact": {
                         "type": "boolean",
                         "description": (
-                            "One line per item (id, correlation_key, status, title), no "
-                            "description preview or flags (default false)"
+                            "One line per item (id, key, status, title), no preview or flags"
+                        ),
+                    },
+                    "newest_note_prefix": {
+                        "type": "string",
+                        "description": (
+                            "Each row also shows its newest note starting with this (e.g. 'PARTNER-STATUS'), or none"
                         ),
                     },
                     "group_by": {
@@ -2537,6 +2598,7 @@ def build_work_item_tools(
             source="builtin:coordination",
         ),
         decision_card_definition(),
+        notifications_definition(),
     ]
 
     return definitions, executor

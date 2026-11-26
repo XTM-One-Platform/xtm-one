@@ -61,6 +61,10 @@ class _Db:
     async def get(self, _model, _id):
         return SimpleNamespace(ctem_vertical=None)
 
+    async def execute(self, _query: object) -> SimpleNamespace:
+        # A close reads the case's open items and timers (#2494): none in this fake session.
+        return SimpleNamespace(scalars=lambda: [])
+
 
 @pytest.fixture
 def env(monkeypatch):
@@ -81,7 +85,7 @@ def env(monkeypatch):
         assert organization_id == ORG
         return [(seen.case, rows)]
 
-    async def _get(_db, case_id, *, organization_id):
+    async def _get(_db: object, case_id: object, *, organization_id: object, **_options: object) -> object:
         if organization_id != ORG:
             return None
         if case_id in seen.created:
@@ -110,12 +114,39 @@ def env(monkeypatch):
     monkeypatch.setattr(store, "get_case", _get)
     monkeypatch.setattr(store, "create_manual_case", _create)
 
+    # No case of these tests was merged away (#2289): the merge lookups answer none.
+    async def _merged_into(_db: object, case_id: object, *, organization_id: object) -> object:
+        return seen.merged.get(case_id)
+
+    async def _merged_with_prefix(_db: object, prefix: str, *, organization_id: object, limit: int = 2) -> list[object]:
+        return [m for m in seen.merged.values() if str(m.case_id).startswith(prefix)][:limit]
+
+    seen.merged = {}
+    monkeypatch.setattr(store, "merged_into", _merged_into)
+    monkeypatch.setattr(store, "merged_with_prefix", _merged_with_prefix)
+
     async def _events(_db: object, case_ids: list[object]) -> dict[object, list[object]]:
         return {cid: [] for cid in case_ids}
 
     # The list's asset count and the read's version history read the case events (#1694).
     monkeypatch.setattr(store, "events_of", _events)
     monkeypatch.setattr(view_of, "viewer_view", _viewer)
+
+    async def _never_deleted(_db: object, _case_id: object) -> None:
+        return None
+
+    # No delete audit row in this fake session (#2328): a miss stays "No case".
+    monkeypatch.setattr("app.services.ctem_case_delete.deleted_case_answer", _never_deleted)
+
+    # The acting person holds a CTEM decide right (#2441: no right refuses every case tool).
+    from app.services import ctem_access
+
+    seen.ctem_level = "decide"
+
+    async def _level(_db: object, _user: object) -> str | None:
+        return seen.ctem_level
+
+    monkeypatch.setattr(ctem_access, "level", _level)
 
     def _tools(user_id: str):
         defs, executor = build_ctem_case_tools(user_id=user_id, agent_id=AGENT)
@@ -212,6 +243,39 @@ async def test_resolving_needs_evidence(env):
         await env.call("update_ctem_case", case_id=str(env.case.id), state="resolved", evidence="CHG-1234 deployed")
     )
     assert body["updated"]["state"] == "resolved"
+
+
+async def test_an_answer_on_a_closed_case_is_refused_and_moves_nothing(env: SimpleNamespace) -> None:
+    """#2494: a gate answered after a person closed the case runs nothing the decision covered."""
+    env.case.state = "accepted_risk"
+    answer = await env.call(
+        "update_ctem_case",
+        case_id=str(env.case.id),
+        gate={"key": "ctem.validation.non_readonly", "outcome": "answered", "by": "Jane", "option": "approve"},
+    )
+    assert answer.startswith("Refused: case") and "closed (accepted_risk)" in answer
+    assert env.case.state == "accepted_risk" and env.db.commits == 0 and env.db.added == []
+
+
+async def test_the_tool_closing_a_case_cancels_its_open_work(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#2494: update_ctem_case into a closed state cancels through the shared helper, as the agent."""
+    from app.services import ctem_case_delete
+
+    calls: list[dict[str, Any]] = []
+
+    async def _cancel(_db: object, case: Any, **kw: Any) -> tuple[list[Any], list[Any]]:
+        calls.append({"case": case.id, **kw})
+        return [], []
+
+    monkeypatch.setattr(ctem_case_delete, "cancel_case_work", _cancel)
+    body = json.loads(
+        await env.call("update_ctem_case", case_id=str(env.case.id), state="resolved", evidence="CHG-1234 deployed")
+    )
+    assert body["updated"]["state"] == "resolved"
+    assert [c["case"] for c in calls] == [env.case.id]
+    assert calls[0]["keep_held"] is True and "moved to resolved" in calls[0]["item_result"]
 
 
 async def test_create_splits_issues_into_a_manual_case(env):
@@ -417,6 +481,8 @@ async def test_a_gate_pass_is_written_on_the_case_and_an_unknown_gate_is_refused
         ("ctem.mobilize", "ctem:f1:case-mobilize:"),
         ("ctem.mobilize", "ctem:f2:mobilize:"),
         ("ctem.accept_risk", "ctem:accept-risk:"),
+        ("ctem.production_change", "ctem:production-change:"),
+        ("ctem.close_without_retest", "ctem:close-without-retest:"),
     ],
 )
 async def test_a_waited_gate_needs_its_open_decision_item(
@@ -622,6 +688,18 @@ async def test_a_merge_rule_refusal_writes_nothing(env: SimpleNamespace, monkeyp
     monkeypatch.setattr(store, "merge_cases", _merge)
     answer = await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[str(env.case.id)])
     assert answer.startswith("Refused: the surviving case") and env.db.commits == 0
+
+
+def test_a_case_names_the_simulations_its_derived_items_are_matched_on() -> None:
+    """#2389: the delete cascade reads the case's validation references and attack-path hops."""
+    from app.services import ctem_case_delete as case_delete
+
+    case = _case(
+        validations=[{"provider": "openaev", "ref": "sim-1"}, {"provider": "openaev", "ref": "sim-1"}, {"ref": ""}],
+        attack_path={"hops": [{"simulation": "sim-2"}, {"simulation": None}]},
+    )
+    assert case_delete.case_simulations(case) == ["sim-1", "sim-2"]
+    assert case_delete.case_simulations(_case()) == []
 
 
 def test_delete_points_to_merge_for_duplicates(env: SimpleNamespace) -> None:

@@ -51,13 +51,11 @@ import { Boxes, Clock, Crown, FolderKanban, Gauge, Link2, Play, Power, TrendingU
 
 import { RoiListCell } from "@/components/roi/RoiListCell";
 
-import { Badge } from "@/components/ui/badge";
 import { BuiltinBadge } from "@/components/ui/builtin-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CompanyManagedIcon } from "@/components/ui/company-managed-badge";
 import { SelectionBox } from "@/components/ui/list-control-bar";
-import { ProviderLogo } from "@/components/ui/provider-logo";
 import { SharedIcon } from "@/components/ui/shared-badge";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
@@ -66,16 +64,14 @@ import { useFormatter } from "@/i18n";
 import type { RoiSummaryItem } from "@/hooks/api/useRoiReportApi";
 import { cardStartsAndModules, moduleDisplayName, type FleetStarts } from "@/lib/fleet-card-facts";
 import { ROI_COLUMN_HEADERS } from "@/lib/roi-summary";
-import { cn, isEntityShared, timeAgo, timeUntil } from "@/lib/utils";
+import { cn, isEntityShared, timeAgo } from "@/lib/utils";
 
 import { autonomyStatusLabel, effectiveAutonomyLevel } from "./fleet-autonomy";
 import { fleetControlState } from "./fleet-control";
+import { FleetHealthSettingsLink, FleetModuleLogos, useFleetStartsLine } from "./FleetHealthStarts";
 import { fleetRefusalMessage } from "./fleet-refusals";
 import { FleetSetupDialog } from "./FleetSetupDialog";
 import { FleetOptInBadge } from "./FleetOptInBadge";
-
-/** The logos one line holds at the narrowest card (1024 px, two columns) before "+N". */
-const LOGOS_SHOWN = 6;
 
 /** What keeps its own action on a card: a click on it never opens the fleet. */
 const CARD_INTERACTIVE = "a[href], button, input, select, textarea, label, [role='button'], [role='checkbox'], [role='link'], [tabindex]";
@@ -98,17 +94,6 @@ function openFromCardClick(event: MouseEvent<HTMLElement>, to: string, navigate:
     return;
   }
   navigate(to);
-}
-
-/** "Events + 3 schedules", "2 schedules", "Events", or nothing starts it. */
-function useStartsLine(starts: FleetStarts): string {
-  const { t_i18n } = useFormatter();
-  if (starts.events && starts.schedules > 0) {
-    return t_i18n("Events + {count, plural, one {# schedule} other {# schedules}}", { count: starts.schedules });
-  }
-  if (starts.schedules > 0) return t_i18n("{count, plural, one {# schedule} other {# schedules}}", { count: starts.schedules });
-  if (starts.events) return t_i18n("Events");
-  return t_i18n("Nothing starts it yet");
 }
 
 function FleetCardAction({ fleet, fleetName }: { fleet: Fleet; fleetName: string }) {
@@ -201,17 +186,9 @@ export function FleetListCard({
   const healthStarts = fleet.health_starts ?? null;
   // Its modules are the ones Platform Health covers (XTM One modes; none in Copilot mode), not its members' bindings.
   const { starts: shownStarts, modules } = cardStartsAndModules(healthStarts, starts, memberModules);
-  const startsBase = useStartsLine(shownStarts);
   // Platform Health off starts nothing: the line says so, never a next run (UX r1 B2 on #980).
-  const startsLine =
-    healthStarts && healthStarts.active === false
-      ? t_i18n("{starts}, off in Settings", { starts: startsBase })
-      : healthStarts?.next_run_at
-        ? t_i18n("{starts}, next {time}", { starts: startsBase, time: timeUntil(healthStarts.next_run_at, locale) })
-        : startsBase;
+  const startsLine = useFleetStartsLine(shownStarts, healthStarts);
   const names = modules.map((m) => moduleDisplayName(m));
-  const shownModules = modules.slice(0, modules.length > LOGOS_SHOWN ? LOGOS_SHOWN - 1 : LOGOS_SHOWN);
-  const hiddenNames = names.slice(shownModules.length);
   const lastRun = fleet.last_run_at
     ? // A short verb, not "Last run": the fr line at a 1024 px card cut the value (UX r3 C1 on #9977).
       // Own key: the fleet is feminine in fr and es ("Ran {time}" is the masculine audit line).
@@ -319,13 +296,7 @@ export function FleetListCard({
                 )}
                 {healthStarts && (
                   // Its schedules live in Settings > Platform Health, the one place they change (#974).
-                  <Link
-                    to={healthStarts.settings_route}
-                    className="relative z-10 shrink-0 rounded-sm text-accent underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
-                    data-testid="fleet-card-health-settings"
-                  >
-                    {t_i18n("Platform Health settings")}
-                  </Link>
+                  <FleetHealthSettingsLink healthStarts={healthStarts} testId="fleet-card-health-settings" className="relative z-10" />
                 )}
               </span>
               {/* Its own full-width line on every card (UX r1 B1/B2 of #10462): "<position>, by instruction" and the fr
@@ -362,31 +333,8 @@ export function FleetListCard({
                 // Copilot mode: Platform Health covers no module, so its line stays empty (the row keeps the card heights equal).
                 healthStarts ? null : <span className="content-compact text-default-secondary">{t_i18n("No modules")}</span>
               ) : (
-                <>
-                  {shownModules.map((provider, index) => (
-                    <Tip key={provider} content={names[index]}>
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center">
-                        <ProviderLogo provider={provider} className="h-5 w-5" decorative />
-                      </span>
-                    </Tip>
-                  ))}
-                  {hiddenNames.length > 0 && (
-                    <Tip content={hiddenNames.join(", ")}>
-                      {/* Focusable outside the card's link: the hidden names open on focus and are read by its label (UX r1 B4). */}
-                      <span
-                        tabIndex={0}
-                        role="img"
-                        aria-label={t_i18n("{count} more modules: {names}", { count: hiddenNames.length, names: hiddenNames.join(", ") })}
-                        className="shrink-0 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus"
-                        data-testid="fleet-card-modules-more"
-                      >
-                        <Badge variant="outline" className="tabular-nums" aria-hidden>
-                          {`+${hiddenNames.length}`}
-                        </Badge>
-                      </span>
-                    </Tip>
-                  )}
-                </>
+                // Focusable outside the card's link: the "+N" names open on focus (UX r1 B4).
+                <FleetModuleLogos modules={modules} testId="fleet-card-modules" />
               )}
             </div>
 

@@ -54,6 +54,7 @@ import ssl
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
+from contextvars import ContextVar
 from types import TracebackType
 from typing import Any
 from urllib.parse import urlparse, urlsplit
@@ -756,6 +757,11 @@ def get_cached_app_token(cache_key: str) -> str | None:
     return None
 
 
+def drop_cached_app_token(cache_key: str) -> None:
+    """Forget the cached app-only token of *cache_key* (a token refused by the API)."""
+    _APP_TOKEN_CACHE.pop(cache_key, None)
+
+
 def set_cached_app_token(
     cache_key: str, token: str, expires_in: int | None = None
 ) -> None:
@@ -1450,6 +1456,19 @@ def format_pagination_hint(
 #: call.
 JWT_PROACTIVE_REFRESH_SKEW_SECONDS = 120.0
 
+#: Outcomes of the reactive token re-mints (:meth:`AutoRefreshClient.refresh_once`)
+#: made while a caller's list is set: ``"refreshed"`` or ``"failed"``, in order.
+#: The run's auth guard sets one around each integration tool call, so a 401 that
+#: survived a re-mint is told from one a re-mint never covered (#2372). A list, not
+#: a value: a request sent from a child task appends to the same list.
+TOKEN_REFRESH_OUTCOMES: ContextVar[list[str] | None] = ContextVar("token_refresh_outcomes", default=None)
+
+
+def _note_refresh_outcome(outcome: str) -> None:
+    sink = TOKEN_REFRESH_OUTCOMES.get()
+    if sink is not None:
+        sink.append(outcome)
+
 
 class RefreshableHeaders(dict):
     """Auth headers that optionally carry a token re-mint callback.
@@ -1712,10 +1731,16 @@ class AutoRefreshClient:
         """
         if self._refreshed or not self._refresh_fn:
             return False
-        new_token = await self._refresh_fn()
+        try:
+            new_token = await self._refresh_fn()
+        except BaseException:
+            _note_refresh_outcome("failed")
+            raise
         if not new_token:
             logger.warning("Token refresh returned nothing — not retrying")
+            _note_refresh_outcome("failed")
             return False
+        _note_refresh_outcome("refreshed")
         # Mutate the shared headers dict so *all* closures see the update
         self._headers["Authorization"] = f"Bearer {new_token}"
         self._refreshed = True

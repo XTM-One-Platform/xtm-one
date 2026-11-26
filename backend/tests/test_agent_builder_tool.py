@@ -432,7 +432,7 @@ async def _writable_agent_from_session(_db, _uid, _agent_uuid, *, action="modify
 
 
 async def _writable_assignment_from_session(
-    _db, _uid, assignment_uuid, *, action="modify"
+    _db, _uid, assignment_uuid, *, action="modify", written=frozenset()
 ):
     """Default writable-assignment gate stub used by mechanic tests."""
     assignment = _db._assignments_by_id.get(assignment_uuid)
@@ -4094,7 +4094,7 @@ def _patch_writable_gate_with_error(monkeypatch, *, error_message: str):
 def _patch_writable_assignment_gate_with_error(
     monkeypatch, *, error_message: str
 ):
-    async def _fake(_db, _uid, _assignment_uuid, *, action="modify"):
+    async def _fake(_db, _uid, _assignment_uuid, *, action="modify", written=frozenset()):
         return None, None, error_message
 
     monkeypatch.setattr(

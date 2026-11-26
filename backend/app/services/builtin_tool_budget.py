@@ -137,7 +137,11 @@ from app.services.builtin_tool_groups import schema_chars
 #: Raised to 493,400 for the ctem group (#1748: the CTEM signal and case tools on any agent,
 #: the owner's CTEM rights, plus triage_ctem_signals, +14,552, opt-in on the agent; the built-in
 #: CTEM agents already carried these functions by slug; on top of #1759, 24 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 493_400
+#: Raised to 494,000 for list_my_notifications in the coordination group (#2198) and
+#: get_platform_health in the health_orchestrator group (#2199): +433, total 493,833 on 25 Nov 2026.
+#: Raised to 494,700 for update_organization_sync in the organization_context group (partial
+#: update of a sync, opt-in and administrator-only, +~650 on 25 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 494_700
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity
@@ -172,8 +176,9 @@ GROUP_SCHEMA_CHARS_CEILING: dict[str, int] = {
     # workset_resolve counted (#12218: 37,779 on 16 Nov 2026); 37,900 with
     # list_shared_state's key_prefix (about 37,870 on 18 Nov 2026); 38,500 with the
     # readable decision card ask (#776: 38,479 on 20 Nov 2026); 39,150 with
-    # send_decision_card (#1156: 39,107 on 22 Nov 2026).
-    "coordination": 39_150,
+    # send_decision_card (#1156: 39,107 on 22 Nov 2026); 39,450 with list_my_notifications
+    # (#2198: 39,401 on 25 Nov 2026).
+    "coordination": 39_450,
     "video_studio": 89_500,
 }
 

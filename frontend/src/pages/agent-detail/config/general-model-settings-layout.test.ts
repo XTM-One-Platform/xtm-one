@@ -1,7 +1,7 @@
 /**
  * The model settings of the agent General form (#11694): Temperature and Max
- * Iterations share one row, then Reasoning Effort, Organization context and
- * Preloaded organization categories share the next one. The DOM order is the
+ * Iterations share one row, then Reasoning Effort and Organization context
+ * share the next one (no preloaded categories picker since #2443). The DOM order is the
  * reading order (left to right, then down), so keyboard focus follows it.
  */
 import { readFileSync } from "node:fs";
@@ -18,16 +18,16 @@ function at(needle: string): number {
 }
 
 describe("agent General form: compact model settings (#11694)", () => {
-  it("lays the two sliders on one row, then the three selects on the next, in reading order", () => {
+  it("lays the two sliders on one row, then the two selects on the next, in reading order", () => {
     const sliders = at('data-testid="agent-general-sliders"');
     const temperature = at("id={TEMPERATURE_FIELD_ID}");
     const maxIterations = at("id={MAX_ITERATIONS_FIELD_ID}");
     const selects = at('data-testid="agent-general-selects"');
     const reasoning = at("id={REASONING_EFFORT_FIELD_ID}");
     const mode = at("<OrganizationContextModeSelect");
-    const categories = at("<OrganizationContextCategoriesSelect");
-    expect([sliders, temperature, maxIterations, selects, reasoning, mode, categories]).toEqual(
-      [sliders, temperature, maxIterations, selects, reasoning, mode, categories].slice().sort((a, b) => a - b),
+    expect([sliders, temperature, maxIterations, selects, reasoning, mode]).toEqual(
+      [sliders, temperature, maxIterations, selects, reasoning, mode].slice().sort((a, b) => a - b),
     );
+    expect(source).not.toContain("OrganizationContextCategoriesSelect");
   });
 });

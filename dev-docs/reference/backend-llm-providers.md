@@ -31,7 +31,7 @@ llm/
 ├── images.py                  ← Image helpers shared by the providers (`nearest_aspect_ratio`, `accepted_image`, `ImageGenerationError`), a drawing asked again through a rate limit and its failure said (`draw_retrying`, `failure_message`)
 ├── kling_provider.py          ← Kling AI (provider type `kling`): video only, its own job API
 ├── litellm_provider.py        ← LiteLLM proxy
-├── lmstudio_provider.py       ← LM Studio on the customer's network, fed only by its integration and reached through its relay group
+├── lmstudio_provider.py       ← LM Studio, fed only by its integration and reached on its route (relay group or direct)
 ├── mistral_provider.py        ← Mistral AI
 ├── model_capabilities.py      ← Per-model request-parameter rules (`MODEL_PARAMETER_RULES`)
 ├── model_limits.py            ← Context window / max output resolution; `parse_token_count()` (128K, 1.05M)

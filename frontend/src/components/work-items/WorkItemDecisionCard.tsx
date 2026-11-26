@@ -44,6 +44,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * #2150: an option the agent marked `confirm` (a terminal one: cancel, close)
  * opens the card's confirm panel before it is sent, so one misclick never
  * hands the item back to its agent with the wrong answer.
+ *
+ * #2370: an item about a CTEM case leads the card with "Open the case";
+ * a card already shown inside that case (*inCase*) never carries it.
  */
 import { useState } from "react";
 
@@ -51,6 +54,7 @@ import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
 import { DecisionCard, type DecisionAnswer, type DecisionOption, type DecisionView } from "@/components/decisions/DecisionCard";
 import { useToast } from "@/components/ui/toast";
 import { WorkItemAskAgent } from "@/components/work-items/WorkItemAskAgent";
+import { WorkItemCaseLink, linksWithoutCase } from "@/components/work-items/WorkItemCaseLink";
 import { useAnswerWorkItem } from "@/hooks/api/useWorkItemApi";
 import { useFormatter } from "@/i18n";
 import type { WorkItem, WorkItemAskOption } from "@/types";
@@ -70,8 +74,8 @@ export function askOptions(options: readonly WorkItemAskOption[], t_i18n: Transl
   );
 }
 
-/** A work item as the shared card reads it. Pure: tests read it. */
-export function workItemDecisionView(item: WorkItem, t_i18n: Translate): DecisionView {
+/** A work item as the shared card reads it; *inCase*: shown inside its own case, no case link. Pure: tests read it. */
+export function workItemDecisionView(item: WorkItem, t_i18n: Translate, { inCase = false }: { inCase?: boolean } = {}): DecisionView {
   const ask = item.ask ?? null;
   const title = item.title?.trim();
   const fallback = item.card_fallback ?? null;
@@ -86,7 +90,9 @@ export function workItemDecisionView(item: WorkItem, t_i18n: Translate): Decisio
     options: askOptions(ask?.options ?? [], t_i18n),
     recommendation: ask?.recommendation ?? null,
     deadline: ask?.deadline ?? null,
-    links: ask?.links?.length ? ask.links : (fallback?.links ?? []),
+    // The case the item is about leads the card (#2370); an agent link to the same case is not shown twice.
+    links: linksWithoutCase(ask?.links?.length ? ask.links : (fallback?.links ?? []), item.ctem_case),
+    lead: item.ctem_case && !inCase ? <WorkItemCaseLink item={item} /> : undefined,
     asker: asker?.accessible && asker.name ? asker.name : null,
     technical: technical ? <p className="whitespace-pre-wrap break-words">{technical}</p> : undefined,
     notice: fallback ? (
@@ -107,9 +113,12 @@ export function WorkItemDecisionCard({
   canAnswer,
   onAnswered,
   readOnlyNote,
+  inCase = false,
 }: {
   item: WorkItem;
   canAnswer: boolean;
+  /** The card is shown inside the CTEM case it is about: no "Open the case" lead (#2370). */
+  inCase?: boolean;
   /** Shown when the person cannot answer; defaults to the company-managed note. */
   readOnlyNote?: string;
   /** Runs once the answer or an ask left: the detail dialog closes. */
@@ -146,7 +155,7 @@ export function WorkItemDecisionCard({
   return (
     <DecisionCard
       key={round}
-      view={workItemDecisionView(item, t_i18n)}
+      view={workItemDecisionView(item, t_i18n, { inCase })}
       canAnswer={canAnswer}
       pending={answer.isPending}
       onAnswer={(a) => void send(a)}

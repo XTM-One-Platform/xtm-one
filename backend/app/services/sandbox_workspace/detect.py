@@ -2694,6 +2694,9 @@ def _python(collector: _Collector, paths: frozenset[str], files: Mapping[str, by
             prefix, install = ["uv", "run"], ["uv", "sync", "--locked"]
         elif _has(paths, directory, "poetry.lock") or "poetry" in tool:
             prefix, install = ["poetry", "run"], ["poetry", "install", "--no-interaction"]
+            if _poetry_extras(project):
+                # The tests import the optional dependencies CI installs with them (gap poetry-unit-check-no-dev-extras).
+                install.append("--all-extras")
         else:
             prefix = []
             requirements = sorted(
@@ -2742,6 +2745,12 @@ def _python(collector: _Collector, paths: frozenset[str], files: Mapping[str, by
             )
 
 
+def _poetry_extras(project: dict[str, Any]) -> bool:
+    """Whether a Poetry ``pyproject.toml`` declares extras (``[tool.poetry.extras]`` or ``[project.optional-dependencies]``)."""
+    extras = (_dig(project, "tool", "poetry", "extras"), _dig(project, "project", "optional-dependencies"))
+    return any(isinstance(value, dict) and value for value in extras)
+
+
 def _roots(paths: Iterable[str], names: tuple[str, ...]) -> list[str]:
     """Directories holding one of *names* with no such file above them (a multi-module build's root)."""
     dirs = {posixpath.dirname(p) for p in paths if posixpath.basename(p) in names and p.count("/") <= MAX_DEPTH and not _skipped(p)}
@@ -2769,15 +2778,74 @@ def _jvm(collector: _Collector, paths: frozenset[str], files: Mapping[str, bytes
         collector.add(directory, "jvm", "build", [*gradle, "--no-daemon", "build", "-x", "test"], source)
 
 
-def _rust(collector: _Collector, paths: frozenset[str]) -> None:
+#: The files a Rust format write takes with ``affected=true``.
+RUST_FORMAT_GLOBS = ("*.rs",)
+#: The edition rustfmt parses with when a ``Cargo.toml`` names none (Cargo's own default).
+_RUST_DEFAULT_EDITION = "2015"
+
+
+def _declared_edition(manifest: dict[str, Any]) -> str | None:
+    """The edition a ``Cargo.toml`` names itself (``[package]``, else ``[workspace.package]``); ``None`` else.
+
+    A member's ``edition.workspace = true`` is a table, not a name: it inherits the root's and counts as none.
+    """
+    for edition in (_dig(manifest, "package", "edition"), _dig(manifest, "workspace", "package", "edition")):
+        if isinstance(edition, str) and edition.isdigit():
+            return edition
+    return None
+
+
+def _rust_edition(directory: str, files: Mapping[str, bytes]) -> str:
+    """The edition rustfmt parses the changed files of the Cargo root *directory* with.
+
+    The root manifest's own edition first. A virtual workspace (``[workspace]`` with ``members``, no
+    ``[workspace.package].edition``) names none: each member declares its own, so the newest edition among
+    the member manifests below *directory* is taken (a newer edition parses the older syntax, 2015 does not
+    parse ``async fn`` or ``.await``). Cargo's default (2015) only when no manifest names one.
+    """
+    root = _declared_edition(_toml(files.get(_join(directory, "Cargo.toml"))))
+    if root:
+        return root
+    prefix = f"{directory}/" if directory else ""
+    members = [
+        _declared_edition(_toml(data))
+        for path, data in files.items()
+        if posixpath.basename(path) == "Cargo.toml" and path.startswith(prefix) and not _skipped(path)
+    ]
+    return max((edition for edition in members if edition), key=int, default=_RUST_DEFAULT_EDITION)
+
+
+def _rust(collector: _Collector, paths: frozenset[str], files: Mapping[str, bytes]) -> None:
     for directory in _roots(paths, ("Cargo.toml",)):
         source = _join(directory, "Cargo.toml")
         locked = ["--locked"] if _has(paths, directory, "Cargo.lock") else []
         collector.add(directory, "rust", "install", ["cargo", "fetch", *locked], source)
         collector.add(directory, "rust", "lint", ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"], source)
         collector.add(directory, "rust", "format", ["cargo", "fmt", "--all", "--check"], source)
+        _rust_format_apply(collector, directory, source, _rust_edition(directory, files))
         collector.add(directory, "rust", "unit", ["cargo", "test", *locked], source)
         collector.add(directory, "rust", "build", ["cargo", "build", *locked], source)
+
+
+def _rust_format_apply(collector: _Collector, directory: str, source: str, edition: str) -> None:
+    """``rust-format-apply``: rustfmt on the changed ``.rs`` files, never ``cargo fmt --all`` over the workspace.
+
+    The write sibling :func:`_apply_formatters` derived from ``cargo fmt --all --check`` dropped ``--check``
+    and rewrote every crate: on a repository whose main is not fmt-clean a one-file fix rewrote 33 files
+    (xtm-composer; gaps rust-format-apply-rewrites-whole-repo, rust-format-apply-whole-crate). rustfmt takes
+    files, reads the same ``rustfmt.toml``, and parses with the manifest's edition (its own default is 2015).
+    """
+    key = (directory, "rust", "format-apply")
+    argv = ["rustfmt", "--edition", edition]
+    if not collector.add(directory, "rust", "format-apply", argv, f"{source} (rustfmt write mode)"):
+        return
+    collector.found[key] = replace(
+        collector.found[key],
+        description=f"write mode of rust-format: rustfmt --edition {edition} on the changed .rs files; args: other files",
+        affected="files",
+        affected_globs=RUST_FORMAT_GLOBS,
+        affected_by_default=True,
+    )
 
 
 def _dbt(collector: _Collector, paths: frozenset[str]) -> None:
@@ -3117,7 +3185,7 @@ def detect(paths: Iterable[str], files: Mapping[str, bytes], *, images: Iterable
     _node(collector, listing, files)
     _python(collector, listing, files)
     _jvm(collector, listing, files)
-    _rust(collector, listing)
+    _rust(collector, listing, files)
     _dbt(collector, listing)
     _helm(collector, listing)
     _make(collector, files)

@@ -212,7 +212,6 @@ export function ConfigTab({
   const [temperature, setTemperature] = useState<number | null>(agent.temperature);
   const [reasoningEffort, setReasoningEffort] = useState<string | null>(agent.reasoning_effort);
   const [organizationContextMode, setOrganizationContextMode] = useState<OrganizationContextMode>(agent.organization_context_mode ?? "inherit");
-  const [organizationContextCategories, setOrganizationContextCategories] = useState<string[] | null>(agent.organization_context_categories ?? null);
   const [maxIterations, setMaxIterations] = useState<number | null>(agent.max_iterations);
   const [guardrails, setGuardrails] = useState(agent.guardrails || "");
   const [bindings, setBindings] = useState<Record<string, string[]>>(agent.integration_bindings || {});
@@ -981,7 +980,7 @@ export function ConfigTab({
   const startEditingGeneral = () => {
     setName(agent.name); setIcon(agent.icon); setDescription(agent.description || "");
     setSlug(agent.slug || ""); setTags(agent.tags || []); setLlmChoice(agentModelChoice(agent));
-    setTemperature(agent.temperature); setReasoningEffort(agent.reasoning_effort); setOrganizationContextMode(agent.organization_context_mode ?? "inherit"); setOrganizationContextCategories(agent.organization_context_categories ?? null); setMaxIterations(agent.max_iterations); setPersona(agent.persona || ""); setOutputFormat(agent.output_format || "markdown"); setOutputSchema(agent.output_schema || null); setDisableChat(agent.disable_chat); setHideRuns(agent.hide_runs); setHideActivity(agent.hide_activity_from_non_admins ?? false);
+    setTemperature(agent.temperature); setReasoningEffort(agent.reasoning_effort); setOrganizationContextMode(agent.organization_context_mode ?? "inherit"); setMaxIterations(agent.max_iterations); setPersona(agent.persona || ""); setOutputFormat(agent.output_format || "markdown"); setOutputSchema(agent.output_schema || null); setDisableChat(agent.disable_chat); setHideRuns(agent.hide_runs); setHideActivity(agent.hide_activity_from_non_admins ?? false);
     setHumanInTheLoop(agent.human_in_the_loop); setHitlPrompt(agent.human_in_the_loop_prompt);
     setGeneralCommitMessage("");
     setEditingGeneral(true);
@@ -989,7 +988,7 @@ export function ConfigTab({
   const cancelEditingGeneral = () => {
     setName(agent.name); setIcon(agent.icon); setDescription(agent.description || "");
     setSlug(agent.slug || ""); setTags(agent.tags || []); setLlmChoice(agentModelChoice(agent));
-    setTemperature(agent.temperature); setReasoningEffort(agent.reasoning_effort); setOrganizationContextMode(agent.organization_context_mode ?? "inherit"); setOrganizationContextCategories(agent.organization_context_categories ?? null); setMaxIterations(agent.max_iterations); setPersona(agent.persona || ""); setOutputFormat(agent.output_format || "markdown"); setOutputSchema(agent.output_schema || null); setDisableChat(agent.disable_chat); setHideRuns(agent.hide_runs); setHideActivity(agent.hide_activity_from_non_admins ?? false);
+    setTemperature(agent.temperature); setReasoningEffort(agent.reasoning_effort); setOrganizationContextMode(agent.organization_context_mode ?? "inherit"); setMaxIterations(agent.max_iterations); setPersona(agent.persona || ""); setOutputFormat(agent.output_format || "markdown"); setOutputSchema(agent.output_schema || null); setDisableChat(agent.disable_chat); setHideRuns(agent.hide_runs); setHideActivity(agent.hide_activity_from_non_admins ?? false);
     setHumanInTheLoop(agent.human_in_the_loop); setHitlPrompt(agent.human_in_the_loop_prompt);
     setGeneralCommitMessage("");
     setEditingGeneral(false);
@@ -1203,7 +1202,6 @@ export function ConfigTab({
     temperature: number | null;
     reasoning_effort: string | null;
     organization_context_mode: OrganizationContextMode;
-    organization_context_categories: string[] | null;
     max_iterations: number | null;
     persona: string;
     output_format: string;
@@ -1227,7 +1225,6 @@ export function ConfigTab({
     temperature,
     reasoning_effort: reasoningEffort || null,
     organization_context_mode: organizationContextMode,
-    organization_context_categories: organizationContextCategories,
     max_iterations: maxIterations,
     persona,
     output_format: outputFormat,
@@ -1251,7 +1248,6 @@ export function ConfigTab({
     temperature: a.temperature,
     reasoning_effort: a.reasoning_effort,
     organization_context_mode: a.organization_context_mode ?? "inherit",
-    organization_context_categories: a.organization_context_categories ?? null,
     max_iterations: a.max_iterations,
     persona: a.persona || "",
     output_format: a.output_format,
@@ -1279,7 +1275,6 @@ export function ConfigTab({
       temperature: "temperature",
       reasoning_effort: "reasoning_effort",
       organization_context_mode: "organization_context_mode",
-      organization_context_categories: "organization_context_categories",
       max_iterations: "max_iterations",
       persona: "persona",
       output_format: "output_format",
@@ -1490,8 +1485,6 @@ export function ConfigTab({
           setReasoningEffort={setReasoningEffort}
           organizationContextMode={organizationContextMode}
           setOrganizationContextMode={setOrganizationContextMode}
-          organizationContextCategories={organizationContextCategories}
-          setOrganizationContextCategories={setOrganizationContextCategories}
           maxIterations={maxIterations != null ? clampMaxIterations(maxIterations) : null}
           setMaxIterations={setMaxIterations}
           persona={persona}

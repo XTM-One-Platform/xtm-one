@@ -32,7 +32,6 @@ import { DataTable, type DataTableColumn, type DataTableFilter, type SortValue }
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   SettingsCard,
@@ -52,7 +51,7 @@ import { useAgenticAIEnabled, useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { OrganizationAiDraftDialog } from "./OrganizationAiDraftDialog";
 import { OrganizationAssetsImportDialog } from "./OrganizationAssetsImportDialog";
-import { OrganizationImportDialog, PROFILE_IMPORT_SECTIONS } from "./OrganizationImportDialog";
+import { OrganizationIntelligencePolicyCard } from "./OrganizationIntelligencePolicyCard";
 import { EXPOSURE_SECTIONS, type ExposureCard, type ExposureIssue, OrganizationExposureCards, exposureIssueFromRefusal, exposureIssues } from "./OrganizationExposureCards";
 import { primeOrganizationOnboarding } from "@/lib/organization-onboarding";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
@@ -86,14 +85,12 @@ import {
   fromForm,
   toForm,
 } from "@/lib/organization-profile";
-import { distinctName, OrganizationPirsView, pirLabels, PirsUnreadable, usePirText } from "./OrganizationPirs";
 import { OrganizationTicketingSync } from "./OrganizationTicketingSync";
 import { type BulkField, type ListEditColumn, ListSaveBar, OrganizationListEditor } from "./OrganizationListEditor";
 import { OrganizationListPasteDialog } from "./OrganizationListPasteDialog";
 import { addRow, addRows, attentionCount, changeCounts, committedValues, type EditRow, fieldSuggestions, isRepository, LIST_ISSUES, LIST_RULES, rowIssues, startRows } from "@/lib/organization-list-edit";
 import type { PasteSpec } from "@/lib/organization-list-paste";
 import { TrackedOrganizations } from "./TrackedOrganizations";
-import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
 import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
@@ -103,7 +100,6 @@ import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import { OrganizationEvidenceHealthCard } from "./OrganizationEvidenceHealthCard";
 import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
 import { OrganizationFxRatesCard } from "./OrganizationFxRatesCard";
-import { OrganizationPirDetailsDialog } from "./OrganizationPirDetailsDialog";
 import {
   PROFILE_CARD_PARAM,
   PROFILE_CARD_TAB,
@@ -162,9 +158,9 @@ const MISSING_TARGET: Record<string, string> = {
  * each, their headers whole and their inputs usable on a synced row. Business service and Owner
  * share what is left; OpenCRQ holds its header and the sort mark.
  */
-export const JEWEL_WIDTHS = { select: 32, name: 240, criticality: 120, assets: 200, opencrq: 112, source: 112, actions: 96 } as const;
+export const PRIMARY_ASSET_WIDTHS = { select: 32, name: 240, criticality: 120, assets: 200, opencrq: 112, source: 112, actions: 96 } as const;
 /** The card width below which Assets and Source of the primary assets table go to the Columns pill. */
-const JEWEL_STEP_ASIDE = "6xl" as const;
+const PRIMARY_ASSET_STEP_ASIDE = "6xl" as const;
 
 /** The values of the primary assets' OpenCRQ filter. @i18n-keys */
 const OPENCRQ_LINK_LABELS = { linked: "Linked to OpenCRQ", not_linked: "Not linked to OpenCRQ" } as const;
@@ -332,32 +328,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     }
   }, [locale]);
   const countryName = (code: string) => regionNames?.of(code) ?? code;
-  // Read in view mode too (#9615): a saved PIR is named, never shown by its id; cached 5 minutes.
+  // The OpenCTI PIR names, saved with pir_ids on a whole-form Save so the profile names them when OpenCTI cannot (#9615).
   const pirs = useOrganizationPirs(!reader);
-  const pirText = usePirText();
-  const savedPirs = useMemo(
-    () => pirLabels(current?.pir_ids ?? [], current?.pir_names ?? {}, pirs.data, pirs.isLoading),
-    [current?.pir_ids, current?.pir_names, pirs.data, pirs.isLoading],
-  );
-  // A saved PIR without a name while OpenCTI's list is on its way: a skeleton, never placeholder text (#11589).
-  const pirsLoading = savedPirs.some((pir) => pir.state === "loading");
-  const savedPirIds = current?.pir_ids;
-  // The PIR whose details dialog is open (#1974), from its row on the Prioritization policy card.
-  const [pirDetails, setPirDetails] = useState<{ id: string; name: string } | null>(null);
-  const missingPirs = useMemo(
-    () => savedPirs.filter((pir) => pir.state === "missing" && savedPirIds?.includes(pir.id)),
-    [savedPirs, savedPirIds],
-  );
-  const pirOptions = useMemo(() => {
-    const known = new Map((pirs.data?.pirs ?? []).map((pir) => [pir.id, pir.name]));
-    // A saved PIR OpenCTI does not list stays a choice under its last known name and state, never its id.
-    for (const pir of savedPirs) if (!known.has(pir.id)) known.set(pir.id, pirText(pir));
-    // One choice per id; two PIRs of the same name are told apart by the start of their id (#11589).
-    const rows = [...known].map(([id, name]) => ({ id, name }));
-    return rows.map((row) => ({ value: row.id, label: distinctName(row, rows) }));
-  }, [pirs.data, savedPirs, pirText]);
-  // OpenCTI was asked and did not answer, or answered an error: the names shown are the saved ones.
-  const pirsUnreadable = pirs.isError || pirs.data?.unavailable === "unreadable";
   const { data: integrations = [] } = useIntegrations();
   const ticketingIntegrations = integrations.filter((integration) => integration.provider in TICKETING_PROJECT_ELEMENT);
   const ticketingIntegration = ticketingIntegrations.find(
@@ -372,13 +344,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     [current?.currency],
   );
   const currencySuffix = current?.currency || t_i18n("currency");
-  // An empty list is "none in OpenCTI" only when OpenCTI answered (UX round 2 B4).
-  const pirsEmptyLabel =
-    pirs.data?.unavailable === "not_connected"
-      ? t_i18n("The PIRs could not be listed: OpenCTI is not connected.")
-      : pirs.data?.unavailable
-        ? t_i18n("The PIRs could not be listed: OpenCTI did not answer.")
-        : t_i18n("No PIR in OpenCTI");
   const dirty = editing && JSON.stringify(withLists(form)) !== JSON.stringify(saved);
   // The open form as a profile, for "With AI" from the form: its proposals are reviewed against what is typed.
   const formProfile = useMemo(() => {
@@ -454,10 +419,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       ? edit.form.prioritization_policy
         ? { ...base, prioritization_policy: { ...(base.prioritization_policy ?? edit.form.prioritization_policy), accepted_risks: edit.form.prioritization_policy.accepted_risks } }
         : base
-      : edit.card === "prioritization_policy"
-        ? // The PIR list is edited on the Prioritization policy card (#1889).
-          { ...base, prioritization_policy: edit.form.prioritization_policy, pir_ids: edit.form.pir_ids, pir_names: edit.form.pir_names }
-        : { ...base, [edit.card]: edit.form[edit.card] };
+      : { ...base, [edit.card]: edit.form[edit.card] };
   const exposureDirty = (edit: { card: ExposureCard; form: ProfileForm }) =>
     saved !== null && JSON.stringify(exposureSaved(edit, saved)) !== JSON.stringify(saved);
   const saveExposure = () => {
@@ -486,9 +448,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     };
     // The asset and group rows are written through their own row APIs on CTEM > Inventory (#1752 slice 3b): never here.
     if (field === "assets_exposure" || field === "asset_groups") return;
-    // The Prioritization policy carries the PIR list with it (#1889); every other card patches its field alone.
-    const withPirs = field === "prioritization_policy" ? { pir_ids: parsed.profile.pir_ids, pir_names: parsed.profile.pir_names } : {};
-    patch.mutate({ fields: { [field]: parsed.profile[field], ...withPirs }, based_on_version: data.version ?? null }, options);
+    // Every card patches its field alone; the PIRs are the Intelligence policy's own rows (#2435).
+    patch.mutate({ fields: { [field]: parsed.profile[field] }, based_on_version: data.version ?? null }, options);
   };
   // One list card in edit (#12256): the other cards stay as they read; the form is not opened.
   const startListEdit = (key: ListKey) => {
@@ -529,20 +490,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const updateExposure = (patch: Partial<ProfileForm>) => {
     setRefusedIssue(null);
     setExposureEdit((prev) => (prev ? { ...prev, form: { ...prev.form, ...patch } } : prev));
-  };
-  // A PIR OpenCTI no longer has, taken out from the read view: the Prioritization policy card opens in
-  // edit without it (#1889), Save writes it.
-  const removePir = (id: string) => {
-    if (!data) return;
-    if (form) {
-      setForm({ ...form, pir_ids: form.pir_ids.filter((pir) => pir !== id) });
-      return;
-    }
-    if (cardOpen) return;
-    const base = toForm(data.profile);
-    setCheckExposure(false);
-    setRefusedIssue(null);
-    setExposureEdit({ card: "prioritization_policy", form: { ...base, pir_ids: base.pir_ids.filter((pir) => pir !== id) } });
   };
   const stopEditing = () => {
     setFocusAfter({ targets: [byTestId("settings.organization.edit")] });
@@ -646,8 +593,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [aiGateOpen, setAiGateOpen] = useState(false);
   const [assetsImportOpen, setAssetsImportOpen] = useState(false);
-  // The OpenCTI PIR import of the Prioritization policy card (#1938): the PIRs section alone.
-  const [pirImportOpen, setPirImportOpen] = useState(false);
   // The chat onboarding (#11224): a new chat with the default assistant interviews for the fields left.
   const startOnboarding = () => {
     if (!aiAvailable) {
@@ -802,20 +747,20 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
    * else the count of its stored links (a sync writes hundreds: a count, never a list); the typed names before the
    * link counts answer.
    */
-  const jewelLinkTotal = (jewel: { name: string; asset_names?: string[] }) => {
-    const total = linkCounts.data?.items?.[primaryAssetLinkKey(jewel.name)]?.total ?? 0;
-    return total > (jewel.asset_names ?? []).length ? total : null;
+  const primaryAssetLinkTotal = (pa: { name: string; asset_names?: string[] }) => {
+    const total = linkCounts.data?.items?.[primaryAssetLinkKey(pa.name)]?.total ?? 0;
+    return total > (pa.asset_names ?? []).length ? total : null;
   };
   // The count is compact from 1,000 ("1.2K linked assets", UX r1 B1 on #2000), its exact value on the DS tooltip.
   const linkedAssetsText = (total: number) =>
     t_i18n("{count, plural, one {{shown} linked asset} other {{shown} linked assets}}", { count: total, shown: formatCount(locale, total) });
-  const jewelAssetsText = (jewel: { name: string; asset_names?: string[] }) => {
-    const total = jewelLinkTotal(jewel);
-    return total === null ? (jewel.asset_names ?? []).join(", ") : linkedAssetsText(total);
+  const primaryAssetLinksText = (pa: { name: string; asset_names?: string[] }) => {
+    const total = primaryAssetLinkTotal(pa);
+    return total === null ? (pa.asset_names ?? []).join(", ") : linkedAssetsText(total);
   };
-  const jewelAssetsCell = (jewel: { name: string; asset_names?: string[] }) => {
-    const total = jewelLinkTotal(jewel);
-    if (total === null || formatCount(locale, total) === exactCount(locale, total)) return readCell(jewelAssetsText(jewel));
+  const primaryAssetLinksCell = (pa: { name: string; asset_names?: string[] }) => {
+    const total = primaryAssetLinkTotal(pa);
+    if (total === null || formatCount(locale, total) === exactCount(locale, total)) return readCell(primaryAssetLinksText(pa));
     return (
       <Tip content={exactCount(locale, total)}>
         <RowAwareTipTrigger className={`inline-flex min-w-0 tabular-nums ${TIP_WRAP_FOCUS_RING}`}>
@@ -840,12 +785,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   };
   // Source steps aside below a 72rem card (UX r1 B1 and B2 on #1174): at 1080 the fixed 128 px cut
   // Business service and Owner to nothing. The lock tip and the Source filter still name it there.
-  const SOURCE_WIDTH = JEWEL_WIDTHS.source;
+  const SOURCE_WIDTH = PRIMARY_ASSET_WIDTHS.source;
   const sourceColumn = <R extends { value: Provenance }>(): DataTableColumn<R> => ({
     key: "source",
     header: "Source",
     hideable: true,
-    hideBelow: JEWEL_STEP_ASIDE,
+    hideBelow: PRIMARY_ASSET_STEP_ASIDE,
     width: SOURCE_WIDTH,
     cell: ({ value }) => sourceCell(value),
     interactive: true,
@@ -862,7 +807,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     key: "source",
     header: "Source",
     hideable: true,
-    hideBelow: JEWEL_STEP_ASIDE,
+    hideBelow: PRIMARY_ASSET_STEP_ASIDE,
     width: SOURCE_WIDTH,
     read: (v) => sourceCell(v),
     sortValue: (v) => sourceLabel(v).toLowerCase(),
@@ -885,16 +830,16 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     options: Object.entries(labels).map(([value, name]) => ({ value, label: t_i18n(name) })),
     ordered,
   });
-  type JewelRow = { index: number; value: ProfileForm["primary_assets"][number] };
+  type PrimaryAssetRow = { index: number; value: ProfileForm["primary_assets"][number] };
   type TechRow = { index: number; value: ProfileForm["software"][number] };
-  const jewelColumns: DataTableColumn<JewelRow>[] = [
+  const primaryAssetColumns: DataTableColumn<PrimaryAssetRow>[] = [
     {
       key: "name",
       header: "Primary asset",
-      width: readWidth(JEWEL_WIDTHS.name),
+      width: readWidth(PRIMARY_ASSET_WIDTHS.name),
       cell: ({ value }) => readCell(value.name),
       interactive: true,
-      sortValue: sortable<JewelRow>(({ value }) => value.name.toLowerCase()),
+      sortValue: sortable<PrimaryAssetRow>(({ value }) => value.name.toLowerCase()),
       firstSort: "asc",
       csv: ({ value }) => value.name,
     },
@@ -904,7 +849,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       hideable: true,
       cell: ({ value }) => readCell(value.business_service),
       interactive: true,
-      sortValue: sortable<JewelRow>(({ value }) => value.business_service.toLowerCase()),
+      sortValue: sortable<PrimaryAssetRow>(({ value }) => value.business_service.toLowerCase()),
       firstSort: "asc",
       csv: ({ value }) => value.business_service,
     },
@@ -914,7 +859,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       hideable: true,
       cell: ({ value }) => readCell(value.owner),
       interactive: true,
-      sortValue: sortable<JewelRow>(({ value }) => value.owner.toLowerCase()),
+      sortValue: sortable<PrimaryAssetRow>(({ value }) => value.owner.toLowerCase()),
       firstSort: "asc",
       csv: ({ value }) => value.owner,
     },
@@ -923,10 +868,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       header: "Criticality",
       hideable: true,
       headerClassName: "w-44",
-      width: readWidth(JEWEL_WIDTHS.criticality),
+      width: readWidth(PRIMARY_ASSET_WIDTHS.criticality),
       cell: ({ value }) => readCell(value.criticality ? optionLabel(CRITICALITY_LABELS, value.criticality) : ""),
       interactive: true,
-      sortValue: sortable<JewelRow>(({ value }) => Object.keys(CRITICALITY_LABELS).indexOf(value.criticality)),
+      sortValue: sortable<PrimaryAssetRow>(({ value }) => Object.keys(CRITICALITY_LABELS).indexOf(value.criticality)),
       firstSort: "desc",
       csv: ({ value }) => value.criticality,
     },
@@ -936,11 +881,11 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       header: "Assets",
       hideable: true,
       // Steps aside at 1080 so Business service reads whole (UX r2 B2 on #1174); the Columns pill brings it back.
-      hideBelow: JEWEL_STEP_ASIDE,
-      cell: ({ value }) => jewelAssetsCell(value),
+      hideBelow: PRIMARY_ASSET_STEP_ASIDE,
+      cell: ({ value }) => primaryAssetLinksCell(value),
       interactive: true,
       // An export keeps exact data: the stored link count as a number, else the typed names.
-      csv: ({ value }) => String(jewelLinkTotal(value) ?? (value.asset_names ?? []).join("; ")),
+      csv: ({ value }) => String(primaryAssetLinkTotal(value) ?? (value.asset_names ?? []).join("; ")),
     },
     {
       key: "opencrq",
@@ -948,7 +893,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       hideable: true,
       // 112 px: the header and its sort mark read whole (96 cut it, UX r2 B2 on #1174).
       headerClassName: "w-28",
-      width: readWidth(JEWEL_WIDTHS.opencrq),
+      width: readWidth(PRIMARY_ASSET_WIDTHS.opencrq),
       cell: ({ value }) =>
         value.opencrq_asset_id ? (
           <Tip content={t_i18n("Linked to OpenCRQ")}>
@@ -958,16 +903,16 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
           </Tip>
         ) : null,
       interactive: true,
-      sortValue: sortable<JewelRow>(({ value }) => !!value.opencrq_asset_id),
+      sortValue: sortable<PrimaryAssetRow>(({ value }) => !!value.opencrq_asset_id),
       csv: ({ value }) => value.opencrq_asset_id,
     },
-    sourceColumn<JewelRow>(),
+    sourceColumn<PrimaryAssetRow>(),
   ];
-  const jewelFilters: DataTableFilter<JewelRow>[] = [
+  const primaryAssetFilters: DataTableFilter<PrimaryAssetRow>[] = [
     // Ordinal scale: low to critical, never alphabetical (#12289).
-    optionFilter<JewelRow>("criticality", "Criticality", CRITICALITY_LABELS, ({ value }) => value.criticality, true),
-    optionFilter<JewelRow>("opencrq", "OpenCRQ", OPENCRQ_LINK_LABELS, ({ value }) => (value.opencrq_asset_id ? "linked" : "not_linked")),
-    sourceFilter<JewelRow>(),
+    optionFilter<PrimaryAssetRow>("criticality", "Criticality", CRITICALITY_LABELS, ({ value }) => value.criticality, true),
+    optionFilter<PrimaryAssetRow>("opencrq", "OpenCRQ", OPENCRQ_LINK_LABELS, ({ value }) => (value.opencrq_asset_id ? "linked" : "not_linked")),
+    sourceFilter<PrimaryAssetRow>(),
   ];
   const techColumns: DataTableColumn<TechRow>[] = [
     {
@@ -1027,7 +972,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     sourceFilter<TechRow>(),
   ];
   // The list editors (#12256): the same columns, a closed row read as text, the open one as fields.
-  type Jewel = ProfileForm["primary_assets"][number];
+  type PrimaryAsset = ProfileForm["primary_assets"][number];
   type Tech = ProfileForm["software"][number];
   type Shipped = ProfileForm["shipped_products"][number];
   const pick = (labels: Record<string, string>, value: string, label: string, onChange: (value: string) => void) => (
@@ -1049,8 +994,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   );
   // The values a free-text field already holds in its list, offered as it is typed (slice 2): 150 rows stay consistent.
   const suggestId = (key: ListKey, field: string) => `${fieldId}-${key}-${field}-suggestions`;
-  const jewelEdit: ListEditColumn<Jewel>[] = [
-    { key: "name", header: "Primary asset", width: readWidth(JEWEL_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Primary asset", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
+  const primaryAssetEdit: ListEditColumn<PrimaryAsset>[] = [
+    { key: "name", header: "Primary asset", width: readWidth(PRIMARY_ASSET_WIDTHS.name), read: (v) => readCell(v.name), edit: (v, set, bad) => editText("Primary asset", v.name, (name) => set({ name }), bad), sortValue: (v) => v.name.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.emptyName, LIST_ISSUES.duplicate] },
     { key: "business_service", header: "Business service", hideable: true, read: (v) => readCell(v.business_service), edit: (v, set) => editText("Business service", v.business_service, (business_service) => set({ business_service })), sortValue: (v) => v.business_service.toLowerCase(), firstSort: "asc" },
     { key: "owner", header: "Owner", hideable: true, read: (v) => readCell(v.owner), edit: (v, set) => editText("Owner", v.owner, (owner) => set({ owner }), false, "Owner", suggestId("primary_assets", "owner")), sortValue: (v) => v.owner.toLowerCase(), firstSort: "asc" },
     { key: "criticality", header: "Criticality", hideable: true, headerClassName: "w-44", width: readWidth(120), read: (v) => readCell(v.criticality ? optionLabel(CRITICALITY_LABELS, v.criticality) : ""), edit: (v, set) => pick(CRITICALITY_LABELS, v.criticality, "Criticality", (criticality) => set({ criticality })), sortValue: (v) => Object.keys(CRITICALITY_LABELS).indexOf(v.criticality), firstSort: "desc" },
@@ -1060,9 +1005,9 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       hideable: true,
       // 200 px so "Link assets" and the chevron fit; Business service and Owner share the rest (UX r2 B1 on #12261).
       // Below 72rem it steps aside, else the two local fields of a synced row kept 61 px (UX r2 B1 on #1174).
-      hideBelow: JEWEL_STEP_ASIDE,
-      width: readWidth(JEWEL_WIDTHS.assets),
-      read: (v) => jewelAssetsCell(v),
+      hideBelow: PRIMARY_ASSET_STEP_ASIDE,
+      width: readWidth(PRIMARY_ASSET_WIDTHS.assets),
+      read: (v) => primaryAssetLinksCell(v),
       edit: (v, set) => {
         const names = v.asset_names ?? [];
         // The groups and assets come from their row APIs (#1752 slice 3b): the profile answers no row.
@@ -1085,7 +1030,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         );
       },
     },
-    sourceEdit<Jewel>(),
+    sourceEdit<PrimaryAsset>(),
   ];
   // Edit mode: the CPE input takes what is left, so the fixed columns give it 100 px more at 1080,
   // Vendor scale (UX round 3 B2 on #931: 240/200/180 left CPE 62 px, header and input clipped).
@@ -1102,7 +1047,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     { key: "vendor", header: "Vendor", hideable: true, width: readWidth(160), read: (v) => readCell(v.vendor), edit: (v, set) => editText("Vendor", v.vendor, (vendor) => set({ vendor }), false, "Vendor", suggestId("shipped_products", "vendor")), sortValue: (v) => v.vendor.toLowerCase(), firstSort: "asc" },
     // Below 72rem CPE steps aside to the Columns pill with Source, so the repositories column keeps at least
     // 240 px for its tag input (UX r1 B2 on #1483: at 1080 it had 58 px, header and chips cut).
-    { key: "cpe", header: "CPE (optional)", hideable: true, hideBelow: JEWEL_STEP_ASIDE, width: readWidth(240), read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
+    { key: "cpe", header: "CPE (optional)", hideable: true, hideBelow: PRIMARY_ASSET_STEP_ASIDE, width: readWidth(240), read: (v) => readCell(v.cpe), edit: (v, set, bad) => editText("CPE (optional)", v.cpe, (cpe) => set({ cpe }), bad, "cpe:2.3:a:vendor:product:*"), sortValue: (v) => v.cpe.toLowerCase(), firstSort: "asc", issues: [LIST_ISSUES.cpe] },
     {
       key: "repositories",
       header: "Source repositories",
@@ -1152,7 +1097,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
         headers: { name: header("Primary asset"), business_service: header("Business service"), owner: header("Owner"), criticality: header("Criticality"), opencrq_asset_id: header("OpenCRQ") },
         choices: { criticality: choiceWords(CRITICALITY_LABELS) },
         identity: LIST_RULES.primary_assets.identity,
-      } as PasteSpec<Jewel>,
+      } as PasteSpec<PrimaryAsset>,
     },
     software: {
       title: "Paste products",
@@ -1353,108 +1298,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
   // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
   const missing = xtmOne ? (data?.missing_fields ?? []).filter((path) => { const owner = tabOfField(path); return owner !== null && !isInventoryTab(owner); }) : [];
-  /**
-   * The PIR list on the Prioritization policy card (#1889): it filters the PIR playbooks beside the two PIR
-   * score thresholds. Read mode: the names as wrapped chips linked to OpenCTI (#9615); edit: the picker.
-   */
-  const pirList = (pirEditing: boolean, pirForm: ProfileForm, pirUpdate: (patch: Partial<ProfileForm>) => void) =>
-    !pirEditing ? (
-      <SettingsReadField
-        label={t_i18n("Priority intelligence requirements (PIRs)")}
-        info={help("pir_ids").info}
-        wide
-        value={
-          <OrganizationPirsView
-            pirs={savedPirs}
-            list={pirs.data}
-            unreadable={pirsUnreadable}
-            retrying={pirs.isFetching}
-            onRetry={() => void pirs.refetch()}
-            onRemove={removePir}
-            details={data?.profile.pir_details}
-            onDetails={(id, name) => setPirDetails({ id, name })}
-          />
-        }
-      />
-    ) : (
-      <SettingsField
-        id={`${fieldId}-pir_ids`}
-        label={t_i18n("Priority intelligence requirements (PIRs)")}
-        wide
-        {...help("pir_ids")}
-        helper={
-          pirs.data?.unavailable === "not_connected"
-            ? t_i18n("The PIRs of OpenCTI could not be listed: the saved ones are kept.")
-            : t_i18n(FIELD_HELP.pir_ids.helper)
-        }
-      >
-        <div className="flex flex-col gap-1.5">
-          {pirsLoading ? (
-            // The picker waits for the names: its chips would otherwise read a placeholder (#11589).
-            <div
-              className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-sm border border-elevation-subtle-soft px-2 py-1.5"
-              role="status"
-              aria-busy="true"
-              aria-label={t_i18n("Loading the PIR names")}
-              data-testid="settings.organization.pirs-loading"
-            >
-              {savedPirs.slice(0, 8).map((pir) => (
-                <Skeleton key={pir.id} className="h-6 w-32 rounded-sm" />
-              ))}
-            </div>
-          ) : (
-            <MultiSelect
-              id={`${fieldId}-pir_ids`}
-              aria-label={t_i18n("Priority intelligence requirements (PIRs)")}
-              aria-describedby={settingsFieldHintId(`${fieldId}-pir_ids`)}
-              options={pirOptions}
-              selected={pirForm.pir_ids}
-              onToggle={(id) => pirUpdate({ pir_ids: pirForm.pir_ids.includes(id) ? pirForm.pir_ids.filter((p) => p !== id) : [...pirForm.pir_ids, id] })}
-              placeholder={t_i18n("Pick the PIRs")}
-              searchPlaceholder={t_i18n("Search a PIR")}
-              emptyOptionsLabel={pirsEmptyLabel}
-              noMatchLabel={t_i18n("No matching PIR")}
-            />
-          )}
-          {/* Edit mode says it too, with Retry, as read mode does (#11589). */}
-          {pirsUnreadable && <PirsUnreadable retrying={pirs.isFetching} onRetry={() => void pirs.refetch()} />}
-          {/* The picker's chips cut a long label at 250 px and take no title (library Chip):
-              a PIR OpenCTI no longer has is also written out whole here (UX round 1 B2). */}
-          {missingPirs.length > 0 && (
-            <ul className="flex flex-col gap-0.5 content-compact text-default-secondary" data-testid="settings.organization.pirs-missing" aria-label={t_i18n("PIR no longer in OpenCTI")}>
-              {missingPirs.map((pir) => (
-                <li key={pir.id} className="break-words">{pirText(pir)}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </SettingsField>
-    );
-  /**
-   * The OpenCTI PIR sources and syncs, under the PIR list of the Prioritization policy (#1938): the profile scope of
-   * the syncs (section pirs). Off only while the policy itself is being saved, never for another card's edit. Never
-   * mounted for a reader: the syncs and sources routes are administrators-only (a 403 would reach the card).
-   */
-  const policySaving = patch.isPending || save.isPending;
-  const pirSources = reader ? undefined : (
-    <OrganizationSourcesSyncs
-      variant="section"
-      scope="profile"
-      title={t_i18n("PIR sources")}
-      description={t_i18n("The OpenCTI imports and syncs that keep the PIR list up to date.")}
-      onAddSource={() => setPirImportOpen(true)}
-      disabled={policySaving}
-      disabledReason={t_i18n("Wait for the prioritization policy to be saved.")}
-    />
-  );
   /** The exposure cards a tab draws (#12329): the exposure tab three, the knowledge tab one. */
   const exposureCards = (cards: readonly (typeof EXPOSURE_SECTIONS)[number][]) =>
     current && (
       <OrganizationExposureCards
         cards={cards}
         readOnly={reader}
-        pirList={pirList}
-        pirSources={pirSources}
         current={!editing && exposureEdit ? exposureEdit.form : current}
         editing={editing}
         fieldId={fieldId}
@@ -1929,8 +1778,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             }
           >
             {listEditor("primary_assets", {
-              columns: jewelEdit,
-              filters: [valueFilter("criticality", "Criticality", CRITICALITY_LABELS, (v: Jewel) => v.criticality, true)], // ordinal scale (#12289)
+              columns: primaryAssetEdit,
+              filters: [valueFilter("criticality", "Criticality", CRITICALITY_LABELS, (v: PrimaryAsset) => v.criticality, true)], // ordinal scale (#12289)
               searchFields: (v) => [v.name, v.business_service, v.owner],
               rowLabel: (v) => v.name,
               storageKey: "settings-organization-primary-assets",
@@ -1942,14 +1791,14 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
               ) : (
                 <DataTable
                   rows={current.primary_assets.map((value, index) => ({ index, value }))}
-                  columns={jewelColumns}
+                  columns={primaryAssetColumns}
                   layout={tableLayout}
                   rowKey={(row) => String(row.index)}
                   // Each saved primary asset opens its page (#1980 S2): its supporting assets and the cases on it.
                   rowHref={(row) => (row.value.name.trim() ? primaryAssetPath(row.value.name) : undefined)}
                   searchFields={(row) => [row.value.name, row.value.business_service, row.value.owner]}
                   searchPlaceholder={t_i18n("Search...")}
-                  filters={jewelFilters}
+                  filters={primaryAssetFilters}
                   exportName="primary-assets"
                   urlKey="ocj_"
                   storageKey="settings-organization-primary-assets"
@@ -2089,6 +1938,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             {full && <OrganizationProposalsCard />}
             {/* The asset and group tables are CTEM > Inventory's, on the row APIs (#1752 slice 3b). */}
             {exposureCards((["prioritization_policy"] as const).filter(show))}
+            {/* The OpenCTI PIRs, each with its own minimum score and signals switch (#2435). */}
+            {show("intelligence_policy") && (
+              <OrganizationIntelligencePolicyCard id={`${fieldId}-intelligence_policy`} fold={cardFold("intelligence_policy", null)} />
+            )}
             {/* Owned domains, address ranges and the outside lens pass (CTEM-26 slice 2, #1140). */}
             {show("outside_lens") && <OrganizationOutsideLensCard id={`${fieldId}-outside_lens`} fold={cardFold("outside_lens", null)} />}
             {/* The OpenCRQ evidence health pass, on by default (#1344): the signal sources' Turn on lands here. */}
@@ -2131,13 +1984,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       {assetsImportOpen && <OrganizationAssetsImportDialog open={assetsImportOpen} onOpenChange={setAssetsImportOpen} />}
       {pasteFor && listOpen(pasteFor) && pasteDialog(pasteFor)}
       {synced.element}
-      {pirImportOpen && <OrganizationImportDialog open={pirImportOpen} onOpenChange={setPirImportOpen} sections={PROFILE_IMPORT_SECTIONS} />}
-      <OrganizationPirDetailsDialog
-        pirId={pirDetails?.id ?? null}
-        pirName={pirDetails?.name ?? ""}
-        canEdit={!reader}
-        onOpenChange={(open) => !open && setPirDetails(null)}
-      />
       <AgenticGateDialogControlled open={aiGateOpen} onOpenChange={setAiGateOpen} feature={t_i18n("Continue onboarding in chat")} />
     </div>
   );

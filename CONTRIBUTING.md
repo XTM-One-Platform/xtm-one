@@ -40,6 +40,8 @@ Any contribution is appreciated and many don't imply coding. Contributions can r
 
 For general suggestions or questions about the project or the documentation, you can open an issue on the repository. We will answer as soon as possible. If you do not wish to publish on the repository, please see the section below [**"How can you get in touch for other questions?"**](#how-can-you-get-in-touch-for-other-questions).
 
+* **Never report a security vulnerability in an issue, a pull request or a comment: this repository is public.** Report it privately with a [GitHub security advisory](https://github.com/XTM-One-Platform/xtm-one/security/advisories/new), as described in [`SECURITY.md`](SECURITY.md).
+
 * Just using XTM One and opening issues if everything is not working as expected will be a huge step forward. To report a bug, please refer to the [bug reporting module](https://github.com/XTM-One-Platform/xtm-one/issues/new?template=1-bug_report.md). To suggest a new feature, please fill in the feature request [form](https://github.com/XTM-One-Platform/xtm-one/issues/new?template=2-feature_request.md).
 
 * Don't hesitate to flag us an issue with the documentation or the templates if you find them incomplete or not clear enough. You can do that either by opening a [bug report](https://github.com/XTM-One-Platform/xtm-one/issues/new?template=1-bug_report.md), a [question](https://github.com/XTM-One-Platform/xtm-one/issues/new?template=4-question.md), or by sending us a message on our [Slack channel](https://community.filigran.io).

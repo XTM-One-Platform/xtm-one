@@ -23,6 +23,10 @@
     "complianceAssessments.createAssessment",
     "tenants.getTenants"
   ],
+  "create_opencrq_dependency_rule": [
+    "assetDependencies.createDependencyRule",
+    "tenants.getTenants"
+  ],
   "create_opencrq_group": [
     "groups.createGroup",
     "tenants.getTenants"
@@ -61,6 +65,10 @@
   ],
   "delete_opencrq_asset_evidence": [
     "supportingAssets.deleteAssetEvidence",
+    "tenants.getTenants"
+  ],
+  "delete_opencrq_dependency_rules": [
+    "assetDependencies.deleteDependencyRules",
     "tenants.getTenants"
   ],
   "delete_opencrq_group": [
@@ -328,6 +336,7 @@
     "tenants.getTenants"
   ],
   "list_opencrq_connector_syncs": [
+    "connectors.getConnector",
     "connectors.getStreamState",
     "connectors.listRuns",
     "tenants.getTenants"
@@ -507,6 +516,10 @@
     "controlCapabilities.getResolvedControlPosture",
     "tenants.getTenants"
   ],
+  "preview_opencrq_dependency_rule": [
+    "assetDependencies.previewDependencyRule",
+    "tenants.getTenants"
+  ],
   "remove_opencrq_tenant_user": [
     "tenants.getTenants",
     "tenants.removeTenantUser"
@@ -524,6 +537,7 @@
   "run_opencrq_connector": [
     "connectors.reconnectStream",
     "connectors.resetState",
+    "connectors.runInventoryNow",
     "connectors.syncNow",
     "tenants.getTenants"
   ],
@@ -554,6 +568,11 @@
   ],
   "update_opencrq_crq_settings": [
     "crqIndicatorSettings.updateCrqIndicatorSettings",
+    "tenants.getTenants"
+  ],
+  "update_opencrq_dependency_rule": [
+    "assetDependencies.listDependencyRules",
+    "assetDependencies.updateDependencyRule",
     "tenants.getTenants"
   ],
   "update_opencrq_evidence_state": [
