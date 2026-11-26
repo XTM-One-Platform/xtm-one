@@ -24,7 +24,13 @@ def _profile(excluded: dict[str, list[str]]) -> oc.OrganizationProfile:
 def test_a_profile_without_the_field_excludes_nothing_and_dumps_no_new_text() -> None:
     profile = oc.parse_profile({})
     assert profile.signal_sources.excluded == {}
-    assert sources.parse_excluded(profile) == {}
+    # #2436: only the sources off by default record nothing; every source on by default records.
+    off_by_default = {
+        path: {tuple(s.key.split(":", 2)) for s in row if not s.default_on}
+        for path, row in sources.PATH_SOURCES.items()
+        if any(not s.default_on for s in row)
+    }
+    assert sources.parse_excluded(profile) == off_by_default
     assert "signal_sources" in oc.EXPOSURE_FIELDS
 
 
@@ -54,7 +60,7 @@ def test_a_path_whose_only_bound_source_is_excluded_no_longer_reads_connected() 
     bound.excluded = sources.parse_excluded(_profile({"control_decay": ["opencrq:pass"]}))
     rows = {r["id"]: r for r in ctem_signals.path_catalog({}, bound=bound, activity={})}
     assert rows["control_decay"]["status"] == "not_connected"
-    assert rows["blind_spot"]["status"] == "connected"
+    assert rows["blind_spot"]["status"] == "enabled"
 
 
 def test_a_shared_pass_names_the_other_paths_it_feeds() -> None:

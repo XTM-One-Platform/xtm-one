@@ -52,7 +52,14 @@ interface MultiSelectOption {
 interface MultiSelectProps {
   options: MultiSelectOption[];
   selected: string[];
-  onToggle: (value: string) => void;
+  /** One call per value added or removed: for a field whose values are independent filters. */
+  onToggle?: (value: string) => void;
+  /**
+   * The whole next selection, once per change (a clear or a chip removal included): for a field
+   * saved as one value, where a toggle per removed value would save from a stale selection and
+   * the last save would win (UX r2 B4 of #2454). Given, `onToggle` is not called.
+   */
+  onChange?: (next: string[]) => void;
   placeholder: string;
   /** The field's accessible name when the placeholder is not one (a default value shown as the hint). */
   "aria-label"?: string;
@@ -101,6 +108,7 @@ export function MultiSelect({
   options,
   selected,
   onToggle,
+  onChange,
   placeholder,
   "aria-label": ariaLabel,
   id,
@@ -140,6 +148,12 @@ export function MultiSelect({
     const nextValues = [
       ...new Set([...(Array.isArray(next) ? next : next ? [next] : []).map((o) => o.value), ...selected.filter((v) => locked.has(v))]),
     ];
+    if (nextValues.length === selected.length && nextValues.every((v) => selected.includes(v))) return;
+    if (onChange) {
+      onChange(nextValues);
+      return;
+    }
+    if (!onToggle) return;
     // One `onToggle` per actual change, in both directions — the call sites
     // treat each value as an independent filter.
     for (const added of nextValues.filter((v) => !selected.includes(v))) onToggle(added);

@@ -53,6 +53,8 @@ class Listener:
     trigger_path: str
     lens: str
     subject_kind: str
+    #: The ``name`` of the source this row feeds when its provider has several on the path (#2436).
+    source: str = ""
 
 
 #: The Aikido deliveries about one issue that record (or re-sight) its signal.
@@ -85,6 +87,17 @@ DEPENDABOT_CLOSING_EVENTS: tuple[str, ...] = (
 #: also reads the advisory's own state and keeps ``published`` only.
 REPOSITORY_ADVISORY_EVENTS: tuple[str, ...] = ("repository_advisory.published",)
 
+#: The GitHub secret scanning alert deliveries that record a leaked secret's signal (#2436, path 10).
+SECRET_SCANNING_OPEN_EVENTS: tuple[str, ...] = ("secret_scanning_alert.created", "secret_scanning_alert.reopened")
+SECRET_SCANNING_CLOSING_EVENTS: tuple[str, ...] = ("secret_scanning_alert.resolved",)
+#: The GitHub code scanning alert deliveries that record a code flaw's signal (#2436, path 3).
+CODE_SCANNING_OPEN_EVENTS: tuple[str, ...] = (
+    "code_scanning_alert.created",
+    "code_scanning_alert.reopened",
+    "code_scanning_alert.reopened_by_user",
+)
+CODE_SCANNING_CLOSING_EVENTS: tuple[str, ...] = ("code_scanning_alert.fixed", "code_scanning_alert.closed_by_user")
+
 #: The declarative table. Event keys are the ones the webhook routes compute.
 LISTENERS: tuple[Listener, ...] = (
     Listener("opencti", ("create", "update"), ("vulnerability",), "new_vulnerability", "world", "vulnerability"),
@@ -111,6 +124,22 @@ LISTENERS: tuple[Listener, ...] = (
     # #1410: an advisory the organization published on one of its repositories is a new
     # vulnerability in a product it ships (path 1); the repository is the asset it names.
     Listener("github", REPOSITORY_ADVISORY_EVENTS, (), "new_vulnerability", "inside", "vulnerability"),
+    # #2436: a secret GitHub found in a repository (path 10; the secret itself is never read) and
+    # a code scanning alert (path 3), each off until an administrator switches its source on.
+    Listener(
+        "github",
+        SECRET_SCANNING_OPEN_EVENTS,
+        ("secret_scanning",),
+        "credential_leak",
+        "world",
+        "code",
+        "secret_scanning",
+    ),
+    Listener("github", CODE_SCANNING_OPEN_EVENTS, ("code_scanning",), "code_flaw", "inside", "code", "code_scanning"),
+    # #2436: a sighting of an indicator in the organization's data is a threat seen inside.
+    Listener(
+        "opencti", ("create",), ("sighting:indicator",), "relevant_threat", "inside", "threat", "indicator_sighting"
+    ),
     # CTEM-26: OpenAEV reports a failed reachability assertion (a target that should not answer
     # answers) as the scenario's SCORE_DEGRADATION; the receiver stamps the assertion flag
     # (ctem_openaev_events.stamp_reachability_assertion), so it is an outside-lens exposure (path 5).
@@ -122,6 +151,10 @@ LISTENERS: tuple[Listener, ...] = (
     # CTEM-27: OpenAEV's freshness job turned an asset STALE (unseen past the tenant's
     # threshold); the provisioned trigger filters on asset_status, so only that transition arrives.
     Listener("openaev", ("asset_stale",), ("asset",), "stale_asset", "outside", "asset"),
+    # #2436: a finding OpenAEV created on an asset (path 5) and an asset an OpenAEV scan found
+    # (path 7), each off until an administrator switches its source on.
+    Listener("openaev", ("finding_created",), ("finding",), "new_exposure", "outside", "asset", "finding_created"),
+    Listener("openaev", ("asset_created",), ("asset",), "surface_drift", "outside", "asset", "asset_created"),
     # CTEM-29: an account or an address a leak source wrote into OpenCTI (path 10, the identity
     # as subject). Only the login or address and the disabled flag are kept, never a secret.
     Listener("opencti", ("create", "update"), ("user-account", "email-addr"), "credential_leak", "world", "identity"),
@@ -173,11 +206,16 @@ def _identity_signal(kind: str, data: Mapping[str, Any], payload: Mapping[str, A
 
 def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any] | None:
     kind, data = _opencti_object(payload)
+    if kind == "sighting" and _text(data.get("sighting_of_ref")).startswith("indicator--"):
+        # #2436: a sighting of an indicator is a threat seen in your data, not a vulnerability's.
+        kind = "sighting:indicator"
     if row.object_types and kind not in row.object_types:
         return None
     if row.subject_kind == "identity":
         return _identity_signal(kind, data, payload)
     external_id = _text(data.get("id"))
+    if kind == "sighting:indicator":
+        return _indicator_sighting_signal(external_id, data, payload)
     if kind.startswith("relationship:") or kind == "sighting":
         target = _text(data.get("sighting_of_ref" if kind == "sighting" else "target_ref"))
         if not target.startswith("vulnerability--"):
@@ -211,6 +249,36 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
     if isinstance(meta, dict) and _text(meta.get("message")):
         evidence["message"] = _text(meta.get("message"))[:500]
     return {"external_id": external_id or None, "ref": ref, "label": label, "evidence": evidence}
+
+
+def _indicator_sighting_signal(
+    external_id: str, data: Mapping[str, Any], payload: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """#2436: an indicator sighted in the organization's data as a path 2 signal (inside lens).
+
+    The subject is the sighted indicator (its STIX id); the sighting's own id is the dedupe
+    key, so each sighting records once. Where it was seen (``where_sighted_refs``) and how often
+    go to the evidence; the scope gate resolves the places to the organization's assets.
+    """
+    target = _text(data.get("sighting_of_ref"))
+    if not target or not external_id:
+        return None
+    evidence: dict[str, Any] = {"event": _text(payload.get("type")), "stix_type": "sighting", "indicator": target}
+    where = [w.strip()[:200] for w in data.get("where_sighted_refs") or [] if isinstance(w, str) and w.strip()]
+    if where:
+        evidence["where_sighted"] = where[:20]
+    count = data.get("count")
+    if isinstance(count, int) and not isinstance(count, bool):
+        evidence["count"] = count
+    for key in ("first_seen", "last_seen"):
+        if _text(data.get(key)):
+            evidence[key] = _text(data.get(key))
+    meta = payload.get("_opencti_event")
+    label = None
+    if isinstance(meta, dict) and _text(meta.get("message")):
+        evidence["message"] = _text(meta.get("message"))[:500]
+        label = evidence["message"][:300]
+    return {"external_id": external_id, "ref": target, "label": label, "evidence": evidence}
 
 
 #: The fields of an OpenCTI object that may carry CPE strings (#1432), read when present.
@@ -511,8 +579,91 @@ def _repository_advisory_signal(payload: Mapping[str, Any]) -> dict[str, Any] | 
     return {"external_id": external_id, "ref": ref, "label": label, "evidence": evidence}
 
 
+def scanning_alert_id(payload: Mapping[str, Any]) -> str:
+    """The dedupe id of a secret or code scanning alert: ``<repository id>:<kind>:<alert number>``, ``""`` when
+    either is missing (numbers restart per repository and per alert kind)."""
+    alert, repository = _dict(payload.get("alert")), _dict(payload.get("repository"))
+    number, repo_id = alert.get("number"), repository.get("id")
+    kind = "secret" if "secret_type" in alert or "secret_type_display_name" in alert else "code"
+    if number in (None, "") or repo_id in (None, ""):
+        return ""
+    return f"{repo_id}:{kind}:{number}"
+
+
+def _repository_assets(repository: Mapping[str, Any]) -> list[str]:
+    from app.services.organization_context_code import GITHUB_HOST, repository_key
+
+    full_name, repo_id = _text(repository.get("full_name")), repository.get("id")
+    assets = [full_name]
+    if repo_id not in (None, ""):
+        assets += [str(repo_id).strip(), repository_key(GITHUB_HOST, repo_id)]
+    return list(dict.fromkeys(a for a in assets if a))
+
+
+def _secret_scanning_signal(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """#2436: a GitHub secret scanning alert as a path 10 signal on its repository.
+
+    The secret type, its validity and the alert link are kept; the secret itself (``secret``) is never read.
+    """
+    alert, repository = _dict(payload.get("alert")), _dict(payload.get("repository"))
+    if "secret_type" not in alert and "secret_type_display_name" not in alert:
+        return None
+    external_id = scanning_alert_id(payload)
+    if not external_id:
+        return None
+    secret_type = _text(alert.get("secret_type_display_name")) or _text(alert.get("secret_type"))
+    full_name = _text(repository.get("full_name"))
+    evidence: dict[str, Any] = {"event": f"secret_scanning_alert.{_text(payload.get('action'))}"}
+    facts = {
+        "secret_type": secret_type[:200],
+        "validity": _text(alert.get("validity")).lower(),
+        "repository": full_name,
+        "alert_url": _text(alert.get("html_url")),
+    }
+    evidence.update({k: v for k, v in facts.items() if v})
+    if isinstance(alert.get("publicly_leaked"), bool):
+        evidence["publicly_leaked"] = alert["publicly_leaked"]
+    evidence["assets"] = _repository_assets(repository)
+    ref = f"{full_name} {secret_type}".strip() or f"secret scanning alert {external_id}"
+    return {"external_id": external_id, "ref": ref, "label": ref, "evidence": evidence}
+
+
+def _code_scanning_signal(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """#2436: a GitHub code scanning alert as a path 3 signal on its repository: rule, severity, tool, file."""
+    alert, repository = _dict(payload.get("alert")), _dict(payload.get("repository"))
+    rule = _dict(alert.get("rule"))
+    if not rule:
+        return None
+    external_id = scanning_alert_id(payload)
+    if not external_id:
+        return None
+    instance = _dict(alert.get("most_recent_instance"))
+    location = _dict(instance.get("location"))
+    full_name = _text(repository.get("full_name"))
+    evidence: dict[str, Any] = {"event": f"code_scanning_alert.{_text(payload.get('action'))}"}
+    facts = {
+        "rule_id": _text(rule.get("id"))[:200],
+        "rule": _text(rule.get("description"))[:300],
+        "severity": _text(rule.get("security_severity_level") or rule.get("severity")).lower(),
+        "tool": _text(_dict(alert.get("tool")).get("name"))[:100],
+        "affected_file": _text(location.get("path"))[:300],
+        "repository": full_name,
+        "alert_url": _text(alert.get("html_url")),
+    }
+    evidence.update({k: v for k, v in facts.items() if v})
+    evidence["assets"] = _repository_assets(repository)
+    ref = facts["rule_id"] or full_name or f"code scanning alert {external_id}"
+    label = facts["rule"] or ref
+    return {"external_id": external_id, "ref": ref, "label": label, "evidence": evidence}
+
+
 def _github_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any] | None:
-    """The GitHub row's signal: a repository advisory (path 1) or a Dependabot alert (path 3)."""
+    """The GitHub row's signal: a repository advisory (path 1), a Dependabot alert (path 3), a secret
+    scanning alert (path 10) or a code scanning alert (path 3, #2436)."""
+    if row.source == "secret_scanning":
+        return _secret_scanning_signal(payload)
+    if row.source == "code_scanning":
+        return _code_scanning_signal(payload)
     if row.trigger_path == "new_vulnerability":
         return _repository_advisory_signal(payload)
     return _dependabot_signal(row, payload)
@@ -558,6 +709,10 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
     if provider == "github" and event_key in DEPENDABOT_CLOSING_EVENTS:
         await _close_at_source(provider, dependabot_alert_id(payload))
         return False
+    if provider == "github" and event_key in (*SECRET_SCANNING_CLOSING_EVENTS, *CODE_SCANNING_CLOSING_EVENTS):
+        # #2436: a resolved secret or a fixed code alert closes the members its signal holds.
+        await _close_at_source(provider, scanning_alert_id(payload))
+        return False
     found = match(provider, event_key, payload)
     if found is None:
         return False
@@ -576,7 +731,7 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
 
             # A delivery of the provisioned PIR playbook is the playbook source, any other the listener (#1445).
             kind = "pir_playbook" if payload.get("xtm_source") == "pir_playbook" else "listener"
-            if is_excluded(await excluded_sources(db, primary.id), row.trigger_path, provider, kind):
+            if is_excluded(await excluded_sources(db, primary.id), row.trigger_path, provider, kind, row.source):
                 return False
             if row.trigger_path in ("relevant_threat", "new_vulnerability") and fields["evidence"].get("pir"):
                 from app.services.ctem_trigger_rules import PIR_FLOOR_KEY
@@ -590,6 +745,10 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
                 from app.services.ctem_trigger_rules import PIR_FLOOR_KEY
 
                 fields["evidence"][PIR_FLOOR_KEY] = False
+            from app.services.ctem_signal_sources import source_key
+
+            # #2436: the source that recorded it, so the signal sources view counts each source apart.
+            fields["evidence"][ctem_signals.SOURCE_KEY_EVIDENCE] = source_key(provider, kind, row.source)
             signal, created = await ctem_signals.record_signal(
                 db,
                 organization_id=primary.id,
@@ -685,6 +844,7 @@ async def note_tracked_organizations(payload: Mapping[str, Any], organization_id
                     "report": _text(data.get("name"))[:300],
                     "relationship": tracked.relationship or "",
                     "organization_criticality": tracked.criticality,
+                    ctem_signals.SOURCE_KEY_EVIDENCE: "opencti:listener",
                 }
                 signal, created = await ctem_signals.record_signal(
                     db,

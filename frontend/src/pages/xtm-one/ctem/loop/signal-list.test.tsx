@@ -70,7 +70,7 @@ function path(over: Partial<CtemSignalPath>): CtemSignalPath {
 }
 
 const PATHS: CtemSignalPath[] = [
-  path({ id: "new_exposure", label: "New exposure", default_lens: "outside", status: "connected", sources: [{ provider: "shodan", kind: "pass", event: "A host appears", bound: true }] }),
+  path({ id: "new_exposure", label: "New exposure", default_lens: "outside", status: "enabled", sources: [{ provider: "shodan", kind: "pass", event: "A host appears", bound: true }] }),
   path({ id: "code_flaw", label: "Code flaw", status: "not_connected", sources: [{ provider: "aikido", kind: "listener", event: "A leaked secret issue", bound: false }] }),
 ];
 

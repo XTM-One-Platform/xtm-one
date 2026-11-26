@@ -136,7 +136,7 @@ export function useCtemCaseSignals(caseId: string | undefined) {
  * but which does not run, #1344), not connected (no integration of a source's provider is connected) or
  * agents and API only (no source).
  */
-export type CtemSignalPathStatus = "connected" | "error" | "not_set_up" | "off" | "not_connected" | "agents_api";
+export type CtemSignalPathStatus = "enabled" | "partly_enabled" | "error" | "not_set_up" | "off" | "not_connected" | "agents_api";
 
 /** One way a trigger path is fired (#1189): an integration listener, a scheduled pass or the OpenCTI PIR playbook. */
 export interface CtemSignalPathSource {
@@ -158,6 +158,15 @@ export interface CtemSignalPathSource {
   available?: boolean;
   /** The other trigger paths this source feeds (a pass is organization-wide: one switch feeds them all). */
   also_feeds?: string[];
+  /** The key the profile names it by: `provider:kind`, `provider:kind:name` when named (#2436). */
+  key?: string;
+  /** Tells apart two sources of one provider and kind on one path (#2436). */
+  name?: string;
+  /** False: the source records nothing until an administrator switches it on for the path (#2436). */
+  default_on?: boolean;
+  /** Signals this source recorded on the path in the last 30 days, and the last one (#2436). */
+  count_30d?: number;
+  last_signal_at?: string | null;
 }
 
 /** One trigger path with the signals the caller sees on it (`GET /ctem-signals/paths`, CTEM-30). */

@@ -44,7 +44,7 @@ const EXPOSURE: CtemSignalPath = {
   counts: {},
   total: 0,
   configured: true,
-  status: "connected",
+  status: "enabled",
   sources: [
     { provider: "shodan", kind: "pass", event: "A new host or port", bound: true, available: true, also_feeds: ["stale_asset", "surface_drift"] },
     { provider: "gti", kind: "pass", event: "A new host or port", bound: false, excluded: true, available: true, also_feeds: ["stale_asset"] },
