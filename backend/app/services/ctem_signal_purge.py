@@ -255,16 +255,43 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+INTERRUPTED_ERROR = "interrupted: the job stopped before its end (its process restarted); start a new purge"
+
+
+def _interrupted(status: dict[str, Any]) -> dict[str, Any]:
+    """*status* read back as a failed job (#2539): the step it reached is failed, its counts kept."""
+    status = json.loads(json.dumps(status))
+    step = status.get("step") or "pause"
+    if step in status.get("steps", {}):
+        status["steps"][step]["state"] = "failed"
+    status["state"] = "failed"
+    status["interrupted"] = True
+    status["error"] = status.get("error") or INTERRUPTED_ERROR
+    return status
+
+
 async def read_status() -> dict[str, Any] | None:
-    """The running or last job: ``{id, state, resync, step, steps: {name: {state, counts}}, error, ...}``."""
+    """The running or last job: ``{id, state, resync, step, steps: {name: {state, counts}}, error, ...}``.
+
+    A ``running`` status whose job lock is gone is read back as interrupted (#2539): the
+    process that ran it restarted mid-job, so its ``finally`` never wrote the end. It is a
+    ``failed`` status with ``interrupted`` true and a reason, the counts reached kept, so a
+    new purge can start and the progress dialog stops polling.
+    """
     try:
         client = await _redis()
         raw = await client.get(STATUS_KEY)
         if raw:
-            return json.loads(raw)
+            stored: dict[str, Any] = json.loads(raw)
+            if stored.get("state") == "running" and not await client.exists(JOB_LOCK_KEY):
+                return _interrupted(stored)
+            return stored
     except Exception:
         logger.info("CTEM signal purge: status read from this process only", exc_info=True)
-    return _LOCAL["status"]
+    local: dict[str, Any] | None = _LOCAL["status"]
+    if local and local.get("state") == "running" and not any(not t.done() for t in _JOBS):
+        return _interrupted(local)
+    return local
 
 
 async def _write_status(status: dict[str, Any]) -> None:

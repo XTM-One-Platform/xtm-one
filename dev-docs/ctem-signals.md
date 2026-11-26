@@ -567,6 +567,13 @@ holds the actor, the resync choice and the counts per step.
 without the word `PURGE`, 409 while a job runs, else 202 with the job's first
 status. A non-administrator gets 403 on both.
 
+A job whose process restarts mid-job never writes its end: its status stays
+`running` while the job lock and the intake pause expire (2 h). `read_status`
+reports such a status (`running` with no job lock) as interrupted (#2539):
+`state` `failed`, `interrupted` true, a reason in `error`, the step it reached
+failed and the counts reached kept. The progress dialog stops polling and the
+purge button opens the confirm dialog again.
+
 ## 7. Tests
 
 `tests/test_ctem_signals.py` (input rules, listener table, API and tools:

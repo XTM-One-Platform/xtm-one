@@ -34,6 +34,7 @@ describe("SignalsPurgeAction", () => {
   beforeEach(() => {
     state.isAdmin = true;
     state.started = [];
+    state.info = { counts: { signals: 4400, cases: 37 }, confirm_word: "PURGE", job: null };
   });
 
   it("is not drawn for a non-administrator", () => {
@@ -62,5 +63,33 @@ describe("SignalsPurgeAction", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: code } });
     fireEvent.click(screen.getByRole("button", { name: "Purge" }));
     expect(state.started).toEqual([{ confirm: "PURGE", resync: true }]);
+  });
+
+  // #2539: a job whose process restarted is read back interrupted (failed): a new purge can start.
+  it("offers a new purge after an interrupted job and says why it stopped", () => {
+    const steps = { state: "done", counts: {} };
+    state.info = {
+      ...state.info,
+      job: {
+        id: "j9",
+        state: "failed",
+        interrupted: true,
+        resync: false,
+        step: "purge",
+        steps: { pause: steps, purge: { state: "failed", counts: { cases: 12 } }, resync: { state: "skipped", counts: {} }, resume: { state: "pending", counts: {} } },
+        error: "interrupted",
+        started_at: "2026-11-26T17:00:00Z",
+        finished_at: null,
+      },
+    };
+    renderWithProviders(<SignalsPurgeAction />);
+    fireEvent.click(screen.getByTestId("ctem-signals-purge"));
+    expect(screen.getByTestId("ctem-signals-purge-preview")).toBeTruthy();
+    expect(screen.queryByTestId("ctem-signals-purge-progress")).toBeNull();
+    const code = screen.getByTestId("confirm-challenge-code").textContent ?? "";
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: code } });
+    fireEvent.click(screen.getByRole("button", { name: "Purge" }));
+    expect(state.started).toEqual([{ confirm: "PURGE", resync: false }]);
+    expect(screen.getByText("Purge interrupted")).toBeTruthy();
   });
 });
