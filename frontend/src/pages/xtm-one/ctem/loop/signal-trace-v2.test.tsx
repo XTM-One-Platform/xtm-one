@@ -251,6 +251,31 @@ describe("loop trace v2 (#1979)", () => {
     expect(cell.textContent?.match(/vpn-gw-01/g)).toHaveLength(1);
   });
 
+  // UX r2 B1 on #2533: the tooltip drew a joined string cut at 280 characters, so the last names were lost.
+  it("draws every software name tried in the tooltip, the last of 14 long names included (UX r2 B1 on #2533)", async () => {
+    const names = Array.from({ length: 14 }, (_, n) => `Vendor ${n} Enterprise Remote Access Gateway Appliance ${n}`);
+    await renderTrace({
+      ...signal,
+      state: "to_validate",
+      decision: { ...signal.decision, outcome: "to_validate", reason_code: "subject_unresolved", reconcile: { assets: [], software_refs: names } } as CtemSignal["decision"],
+    });
+    const cell = screen.getByTestId("ctem-decision-input-software_tried");
+    fireEvent.focus(within(cell).getByText(/^14 /));
+    const tip = (await screen.findAllByTestId("ctem-decision-input-tip-software_tried"))[0];
+    expect(within(tip).getAllByRole("listitem")).toHaveLength(14);
+    expect(tip).toHaveTextContent(names[13]);
+  });
+
+  it("draws the first 20 matched assets in the tooltip and counts the rest (UX r2 B1 on #2533)", async () => {
+    const names = Array.from({ length: 40 }, (_, n) => `ws-${String(n).padStart(5, "0")}`);
+    await renderTrace({ ...signal, decision: { ...signal.decision, reconcile: { ...signal.decision!.reconcile!, assets: names } } as CtemSignal["decision"] });
+    fireEvent.focus(within(screen.getByTestId("ctem-decision-input-matched_assets")).getByText(/assets: /));
+    const tip = (await screen.findAllByTestId("ctem-decision-input-tip-matched_assets"))[0];
+    expect(within(tip).getAllByRole("listitem")).toHaveLength(21);
+    expect(tip).toHaveTextContent("ws-00019");
+    expect(tip).toHaveTextContent("+20 more");
+  });
+
   it("reads a record older than the cap flag as capped when a primary asset total is larger (UX r2 B7 on #1995)", async () => {
     const names = Array.from({ length: 40 }, (_, n) => `ws-${String(n).padStart(5, "0")}`);
     await renderTrace({ ...signal, decision: { ...signal.decision, reconcile: { ...signal.decision!.reconcile!, assets: names } } as CtemSignal["decision"] });
