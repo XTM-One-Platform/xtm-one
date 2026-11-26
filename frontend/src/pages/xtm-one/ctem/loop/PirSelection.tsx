@@ -47,7 +47,7 @@ export function PirSelection({
         </span>
       ) : (
         <>
-          {available.length === 0 && (
+          {isDefault && available.length === 0 && (
             <span className="text-default-secondary" data-testid="ctem-path-source-pirs-none-of-type">
               {t_i18n("None available of this path's type in OpenCTI: every enabled PIR is listened to by default.")}
             </span>

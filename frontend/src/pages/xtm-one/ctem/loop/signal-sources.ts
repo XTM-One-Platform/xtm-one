@@ -299,3 +299,22 @@ export const SOURCE_KIND_LABEL = {
   pass: "Scheduled pass",
   pir_playbook: "PIR playbook",
 } as const satisfies Record<CtemSignalPathSource["kind"], string>;
+
+/**
+ * The names that tell apart two sources of one provider and kind on one path (#2436, UX round 1 on #2454, B2):
+ * shown after the kind wherever a source is listed. @i18n-keys
+ */
+export const SOURCE_NAME_LABEL = {
+  indicator_sighting: "Indicator sighting",
+  code_scanning: "Code scanning",
+  secret_scanning: "Secret scanning",
+  finding_created: "Finding created",
+  asset_created: "Asset created",
+} as const;
+
+/** The kind of a source in words, its name after it when it has one: "Live listener · Code scanning". */
+export function sourceKindText(t: (key: string) => string, source: Pick<CtemSignalPathSource, "kind" | "name">): string {
+  const kind = t(SOURCE_KIND_LABEL[source.kind]);
+  const name = source.name ? (SOURCE_NAME_LABEL as Record<string, string>)[source.name] : undefined;
+  return name ? `${kind} · ${t(name)}` : kind;
+}

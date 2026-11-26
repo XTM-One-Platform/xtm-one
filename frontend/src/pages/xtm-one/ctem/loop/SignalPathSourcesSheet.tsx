@@ -53,6 +53,7 @@ import {
   PATH_ICON,
   PATH_STATUS_TONE,
   SOURCE_KIND_LABEL,
+  sourceKindText,
   canExclude,
   connectHref,
   connectNeedsAdmin,
@@ -160,7 +161,7 @@ function SourceRow({
       <div className="flex min-w-0 items-center gap-2">
         <ProviderLogo provider={source.provider} className={cn("size-4 shrink-0", state === "not_connected" && "opacity-50 grayscale")} decorative />
         <span className={cn("truncate font-medium", state === "not_connected" && "text-default-secondary")}>{providerName(source.provider)}</span>
-        <span className="shrink-0 content-caption text-default-secondary">{t_i18n(SOURCE_KIND_LABEL[source.kind])}</span>
+        <span className="shrink-0 content-caption text-default-secondary">{sourceKindText(t_i18n, source)}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1 content-caption text-default-secondary">
           {icon && <Icon name={icon.icon} size={16} className={icon.className} aria-hidden data-testid="ctem-path-source-state-icon" />}
           <span data-testid="ctem-path-source-state">{icon ? t_i18n(icon.label) : t_i18n("Not connected on this platform")}</span>

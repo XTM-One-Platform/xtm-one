@@ -21917,9 +21917,6 @@
   "The PIR policy was not saved: {reason}": "The PIR policy was not saved: {reason}",
   "In OpenCTI": "In OpenCTI",
   "Listed": "Listed",
-  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.",
-  "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, one {# unread notification} other {# unread notifications}}",
-  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}",
   "{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}": "{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}",
   "Last signal: {date}": "Last signal: {date}",
   "PIRs this playbook listens to": "PIRs this playbook listens to",
@@ -21932,5 +21929,12 @@
   "Each PIR records at its own minimum score: {list}": "Each PIR records at its own minimum score: {list}",
   "Use the default": "Use the default",
   "Open the Intelligence policy": "Open the Intelligence policy",
-  "PIR selection saved": "PIR selection saved"
+  "PIR selection saved": "PIR selection saved",
+  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.",
+  "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, one {# unread notification} other {# unread notifications}}",
+  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}",
+  "Indicator sighting": "Indicator sighting",
+  "Code scanning": "Code scanning",
+  "Secret scanning": "Secret scanning",
+  "{count, plural, other {+# not used here}}": "{count, plural, other {+# not used here}}"
 }

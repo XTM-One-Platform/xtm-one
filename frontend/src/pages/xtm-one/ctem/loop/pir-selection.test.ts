@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
-import { pirSelection, sourceKey, withExclusion, withPirSelection } from "./signal-sources";
+import { pirSelection, SOURCE_NAME_LABEL, sourceKey, sourceKindText, withExclusion, withPirSelection } from "./signal-sources";
 
 const PIRS = [
   { pir_id: "p-threat", pir_type: "THREAT_LANDSCAPE" },
@@ -31,6 +31,17 @@ describe("signal source settings (#2436)", () => {
   it("names a source by its key, its name included", () => {
     expect(sourceKey({ provider: "github", kind: "listener", name: "secret_scanning" })).toBe("github:listener:secret_scanning");
     expect(sourceKey({ provider: "aikido", kind: "listener" })).toBe("aikido:listener");
+  });
+
+  it("shows a named source by its name after the kind, so two sources of one provider and kind read apart (UX r1 on #2454, B2)", () => {
+    const t = (k: string) => k;
+    expect(sourceKindText(t, { kind: "listener", name: "code_scanning" })).toBe("Live listener · Code scanning");
+    expect(sourceKindText(t, { kind: "listener", name: "secret_scanning" })).toBe("Live listener · Secret scanning");
+    expect(sourceKindText(t, { kind: "pass" })).toBe("Scheduled pass");
+    // Every name the backend declares has a label (backend/app/services/ctem_signal_sources.py).
+    for (const name of ["indicator_sighting", "code_scanning", "secret_scanning", "finding_created", "asset_created"] as const) {
+      expect(SOURCE_NAME_LABEL[name]).toBeTruthy();
+    }
   });
 
   it("switches a source off by default through `included`, and keeps `pirs` on every write", () => {
