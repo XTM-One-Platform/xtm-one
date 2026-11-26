@@ -201,6 +201,88 @@ async def test_one_signal_the_recheck_cannot_decide_never_takes_the_batch_down(f
     assert rows[1].state == "confirmed"
 
 
+class _Backlog:
+    """A session over a backlog of ``new`` rows: each select answers the oldest still new past the grace."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.commits = 0
+        self.selects = 0
+        self.info: dict = {}
+
+    async def execute(self, statement):
+        self.selects += 1
+        limit = statement._limit_clause.value
+        due = [r for r in self.rows if r.state == "new" and r.updated_at < NOW - store.UNDECIDED_GRACE]
+        return _Result(sorted(due, key=lambda r: r.updated_at)[:limit])
+
+    async def commit(self):
+        self.commits += 1
+
+    def begin_nested(self):
+        return _Nested()
+
+
+async def test_a_backlog_of_new_signals_drains_in_one_pass_batch_by_batch(fake_io):
+    """#2530: 1,200 signals left new past the grace are decided in one pass, 500 per committed batch."""
+    rows = [_row(f"host-{i}.example.com") for i in range(1200)]
+    fresh = _row("fresh.example.com")
+    fresh.updated_at = NOW - timedelta(minutes=2)
+    db = _Backlog([*rows, fresh])
+    counts = await store.drain_new(db, now=NOW, batch=500)
+    assert counts == {"to_validate": 1200, "batches": 3}
+    assert db.commits == 3 and db.selects == 3
+    assert all(r.state != "new" for r in rows)
+    assert fresh.state == "new" and fresh.decision is None
+
+
+async def test_the_drain_stops_at_its_time_budget(fake_io):
+    rows = [_row(f"host-{i}.example.com") for i in range(1200)]
+    db = _Backlog(rows)
+    ticks = iter([0.0, 30.0])
+    counts = await store.drain_new(db, now=NOW, batch=500, budget_seconds=20.0, clock=lambda: next(ticks))
+    assert counts == {"to_validate": 500, "batches": 1}
+    assert sum(r.state == "new" for r in rows) == 700
+
+
+async def test_a_row_the_drain_cannot_decide_leaves_the_selection_and_never_loops(fake_io, monkeypatch):
+    rows = [_row("broken.example.com"), _row("langfuse.example.com")]
+    real = store.evaluate
+
+    async def _evaluate(db, row, **kwargs):
+        if row.id == "broken.example.com":
+            raise RuntimeError("bad evidence")
+        return await real(db, row, **kwargs)
+
+    monkeypatch.setattr(store, "evaluate", _evaluate)
+    fake_io.append("langfuse.example.com")
+    db = _Backlog(rows)
+    counts = await store.drain_new(db, now=NOW, batch=1)
+    assert counts == {"failed": 1, "confirmed": 1, "batches": 2}
+    assert rows[0].state == "new" and rows[0].updated_at == NOW
+    assert db.selects == 3
+
+
+async def test_an_empty_drain_answers_nothing(fake_io):
+    db = _Backlog([])
+    assert await store.drain_new(db, now=NOW) == {}
+    assert db.commits == 1
+
+
+async def test_the_drain_never_opens_a_case(fake_io, monkeypatch):
+    """Case opening stays with the case sweep: the drain never calls the case loop."""
+    from app.services import ctem_case_loop
+
+    async def _never(*_a, **_k):
+        raise AssertionError("the drain opened a case")
+
+    monkeypatch.setattr(ctem_case_loop, "open_from_signal", _never)
+    fake_io.append("langfuse.example.com")
+    rows = [_row("langfuse.example.com")]
+    counts = await store.drain_new(_Backlog(rows), now=NOW)
+    assert counts == {"confirmed": 1, "batches": 1}
+
+
 async def test_only_the_bulk_prefetch_releases_the_connection_during_the_cve_read(fake_io, monkeypatch):
     """#2518 review: the prefetch has no savepoint open and releases; the record-time gate never does."""
     seen: list[bool] = []
