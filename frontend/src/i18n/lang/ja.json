@@ -8762,6 +8762,7 @@
   "Recommendation": "推奨事項",
   "Critical": "重大",
   "Passed": "合格",
+  "Passed, not conclusive": "合格（判定不能）",
   "Needs immediate action": "ただちに対応が必要",
   "Should be reviewed": "確認が必要",
   "For your information": "参考情報",
@@ -20098,6 +20099,7 @@
   "Escalated: SLA breached": "エスカレーション: SLA 超過",
   "Stalled: waiting on nobody": "停滞: 誰も対応していません",
   "Not exposed": "露出なし",
+  "Not exposed, not conclusive": "露出なし（判定不能）",
   "Reopened: re-test failed": "再オープン: 再テスト失敗",
   "Closed on passing re-test": "再テスト合格でクローズ",
   "Escalated": "エスカレーション",
@@ -21912,5 +21914,6 @@
   "Type a whole number from 0 to 100.": "0〜100 の整数を入力してください。",
   "The PIR policy was not saved: {reason}": "PIR ポリシーは保存されませんでした: {reason}",
   "In OpenCTI": "OpenCTI 内",
-  "Listed": "掲載中"
+  "Listed": "掲載中",
+  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "判定可能にするには、資産上で稼働中のバージョンを読み取るチェック（認証付きスキャンまたはエージェント）を実行してください。"
 }

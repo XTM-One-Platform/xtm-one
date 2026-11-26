@@ -8762,6 +8762,7 @@
   "Recommendation": "Recommandation",
   "Critical": "Critique",
   "Passed": "Réussi",
+  "Passed, not conclusive": "Réussi, non concluant",
   "Needs immediate action": "Action immédiate requise",
   "Should be reviewed": "À examiner",
   "For your information": "Pour information",
@@ -20098,6 +20099,7 @@
   "Escalated: SLA breached": "Escaladé : SLA dépassé",
   "Stalled: waiting on nobody": "À l'arrêt : n'attend personne",
   "Not exposed": "Non exposé",
+  "Not exposed, not conclusive": "Non exposé, non concluant",
   "Reopened: re-test failed": "Rouvert : le nouveau test a échoué",
   "Closed on passing re-test": "Clos sur un nouveau test réussi",
   "Escalated": "Escaladé",
@@ -21912,5 +21914,6 @@
   "Type a whole number from 0 to 100.": "Saisissez un nombre entier de 0 à 100.",
   "The PIR policy was not saved: {reason}": "La politique du PIR n'a pas été enregistrée : {reason}",
   "In OpenCTI": "Dans OpenCTI",
-  "Listed": "Listé"
+  "Listed": "Listé",
+  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "Pour le rendre concluant, lancez un contrôle qui lit la version en service sur l'actif : un scan authentifié ou un agent."
 }
