@@ -257,46 +257,55 @@ async def list_ctem_cases(
         cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
     view = await list_view(db, str(user.id), vertical)
     # A case deleted between the case read and the view read is gone, never hidden (#2113).
-    cases = await view_of.drop_gone(db, cases, view)
-    rows, counts = view_of.list_for_viewer(
-        cases,
-        view,
-        state=state,
-        owner_user_id=str(owner_user_id) if owner_user_id else None,
-        priority=priority,
-        asset=asset,
-        primary_asset=primary_asset,
-        limit=limit,
-        offset=offset,
-    )
+    async with view_of.timed("gone"):
+        cases = await view_of.drop_gone(db, cases, view)
+    with view_of.timed_sync("rows"):
+        rows, counts = view_of.list_for_viewer(
+            cases,
+            view,
+            state=state,
+            owner_user_id=str(owner_user_id) if owner_user_id else None,
+            priority=priority,
+            asset=asset,
+            primary_asset=primary_asset,
+            limit=limit,
+            offset=offset,
+        )
     # The CTEM phase of each case on the page and what it waits on (#1503): the list groups by
     # phase, the Kanban lays its columns out by it, a case waiting for decision says on whom.
     from app.services import ctem_case_delete as case_delete
 
     async with view_of.timed("history"):
         history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
-    for row in rows:
-        row.update(view_of.case_position(history.get(uuid.UUID(row["id"]), []), view, row.get("owner_user_id")))
-        # How the case came to be (#1723): the list's "Opened by" filter, the same reading as bulk-delete.
-        row["opened_by"] = case_delete.origin(history.get(uuid.UUID(row["id"]), []))
-        # Issues that name no asset: the inventory count, else "unknown" with its reason (#1694).
-        version_history.with_asset_count(row, history.get(uuid.UUID(row["id"]), []))
+    with view_of.timed_sync("position"):
+        for row in rows:
+            events = history.get(uuid.UUID(row["id"]), [])
+            row.update(view_of.case_position(events, view, row.get("owner_user_id")))
+            # How the case came to be (#1723): the list's "Opened by" filter, the same reading as bulk-delete.
+            row["opened_by"] = case_delete.origin(events)
+            # Issues that name no asset: the inventory count, else "unknown" with its reason (#1694).
+            version_history.with_asset_count(row, events)
+    with view_of.timed_sync("visibility"):
+        visibility = view_of.list_visibility(cases, view)
+    async with view_of.timed("extras"):
+        target = await ticketing.ticketing_target(db)
+        fresh = await refresh.freshness(vertical)
     body = {
         "vertical": vertical,
         "counts": {s: counts.get(s, 0) for s in CASE_STATES},
         "cases": rows,
         # The open cases the caller is refused (hidden_cases) or the view could not judge now
         # (unjudged_cases, #2113), by state, with the view's condition: the list is never the org total.
-        **view_of.list_visibility(cases, view),
+        **visibility,
         "details_unavailable": view.missing,
         # Why each of those products did not answer this viewer's read (#1852): rejected, too_large,
         # timeout, not_connected or unavailable, so the empty state says what failed.
         "details_unavailable_reasons": {p: view.reasons.get(p, "unavailable") for p in view.missing},
         # Whether a ticketing target is declared (CTEM-19-UI, #1032): the case
         # screens say "No ticketing connected" with the settings link.
-        "ticketing": await ticketing.ticketing_target(db),
+        "ticketing": target,
         # When the cases were last recomputed, and a product that did not answer since (s.4.3).
-        "freshness": await refresh.freshness(vertical),
+        "freshness": fresh,
     }
     response.headers["Server-Timing"] = view_of.server_timing(phases)
     return body
@@ -607,6 +616,8 @@ async def ctem_loop_measures(
 @router.get("/overview")
 async def ctem_cases_overview(
     vertical: str | None = Query(default=None),
+    *,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
@@ -618,15 +629,23 @@ async def ctem_cases_overview(
     cases, one of the viewer's view and one of the history of every visible case.
     """
     _require_xtm_one()
+    phases = view_of.start_timing()
     vertical = normalize_vertical(vertical or getattr(user, "ctem_vertical", None))
     primary = await get_primary(db)
     if primary is None:
         return {"vertical": vertical, **overview.empty()}
-    cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
+    async with view_of.timed("cases"):
+        cases = await store.list_cases(db, organization_id=primary.id, vertical=vertical)
+    # The list's view (#2232): an older view while the new one builds, a build another pod holds
+    # awaited within the short wait, a 503 only when the viewer has no view at all.
     view = await list_view(db, str(user.id), vertical)
     seen = [case.id for case, rows in cases if view_of.visible_members(rows, view)]
-    history = await store.events_of(db, seen)
-    return {"vertical": vertical, **overview.build(cases, view, history)}
+    async with view_of.timed("history"):
+        history = await store.events_of(db, seen)
+    with view_of.timed_sync("build"):
+        body = {"vertical": vertical, **overview.build(cases, view, history)}
+    response.headers["Server-Timing"] = view_of.server_timing(phases)
+    return body
 
 
 class CaseOpening(BaseModel):
@@ -754,6 +773,10 @@ async def _inventory_of(case: Any, rendered: dict[str, Any], events: list[Any]) 
         # host, rows stored before #2448 included: asset_id is the inventory id.
         assets = [dict(a) for a in rendered.get("assets") or []]
         await case_assets.enrich_source_ids(db, [*assets, *(affected.get("assets") or [])])
+        # The hosts the issues name, resolved to their inventory id and module ids in one lookup (#2492).
+        await case_assets.resolve_named_rows(
+            db, getattr(case, "organization_id", None), [*assets, *(affected.get("assets") or [])]
+        )
         return {
             "assets": assets,
             # The versions the case's product runs on the assets (#1252), never a typed software version.

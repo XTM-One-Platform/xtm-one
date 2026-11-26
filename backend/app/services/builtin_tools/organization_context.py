@@ -134,7 +134,9 @@ def build_organization_context_tool(
                         if merged is not None:
                             return merged
                     if found_category.name == cats.SOFTWARE and isinstance(org_id, uuid.UUID):
-                        rows = await _software_rows(db, org_id) or rows
+                        paged = await _software_page(db, org_id, str(query or ""), _int(offset), _int(limit))
+                        if paged is not None:
+                            return paged
                     return cats.render_page(
                         found_category,
                         rows,
@@ -203,27 +205,32 @@ def build_organization_context_tool(
             list(page.items), total=page.total, query=query, offset=offset, limit=size, held=held
         )
 
-    async def _software_rows(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, object]]:
-        """The organization's Software entities (#1495), synced and hand-typed; ``[]`` when it has none."""
+    async def _software_page(
+        db: AsyncSession, organization_id: uuid.UUID, query: str, offset: int, limit: int
+    ) -> str | None:
+        """One SQL page of the Software entities (#1495, #2443: never the whole list loaded).
+
+        ``None`` (the profile's typed rows answer) while the organization holds no Software entity.
+        """
         from app.services import organization_asset_store as store
+        from app.services import organization_context_categories as cats
         from app.services import organization_software_store as software_store
 
         try:
             async with db.begin_nested():
                 await store.ensure_built(db, organization_id)
-            page = await software_store.list_software(db, organization_id, limit=software_store.MAX_PAGE)
-            items = list(page.items)
-            while len(items) < page.total:
-                more = await software_store.list_software(
-                    db, organization_id, offset=len(items), limit=software_store.MAX_PAGE
-                )
-                if not more.items:
-                    break
-                items += more.items
-            return [_software_row(item) for item in items]
+            size = max(1, min(limit or cats.DEFAULT_PAGE, cats.MAX_PAGE))
+            page = await software_store.list_software(db, organization_id, q=query, offset=offset, limit=size)
+            if not page.total and not query.strip():
+                return None
         except Exception:  # the profile's typed rows still answer
             logger.warning("Software read failed", exc_info=True)
-            return []
+            return None
+        rows = [_software_row(item) for item in page.items]
+        found = cats.get(cats.SOFTWARE)
+        if found is None:
+            return None
+        return cats.render_rows_page(found, rows, total=page.total, query=query, offset=offset, limit=size)
 
     def _software_row(item: dict[str, object]) -> dict[str, object]:
         """One Software as an agent reads it: what identifies it and where it runs, no internal field."""
@@ -291,7 +298,16 @@ def build_organization_context_tool(
         priority=0,
         core=True,
     )
-    return [definition], executor
+    # The inventory query functions ride with the profile read (#2443): wherever an agent reads
+    # the profile it queries the assets and software, never a list preloaded into its prompt.
+    from .inventory_query import build_inventory_query_tools
+
+    inventory_defs, inventory_exec = build_inventory_query_tools()
+    for inventory_def in inventory_defs:
+        inventory_handler = inventory_exec.handler(inventory_def.name)
+        if inventory_handler is not None:
+            executor.register(inventory_def.name, inventory_handler)
+    return [definition, *inventory_defs], executor
 
 
 def _uuid(value: object) -> uuid.UUID | None:

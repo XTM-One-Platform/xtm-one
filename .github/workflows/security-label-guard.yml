@@ -1,0 +1,42 @@
+name: Security label guard
+
+# Removes the retired `security` label from any issue or pull request
+# (dev-docs/reference/security-reporting.md). It adds nothing that names the item:
+# no comment, a fixed run name, a job that always runs, no step `env:` (Actions
+# prints it) and a generic error. The labeling itself stays public (the item's
+# timeline, the repository's issue events; a failed removal is the only red
+# run): a labeled item counts as publicly flagged. pull_request_target is safe
+# here: nothing of the pull request is checked out or run.
+run-name: Security label guard
+
+on:
+  issues:
+    types: [labeled]
+  pull_request_target:
+    types: [labeled]
+
+permissions: {}
+
+jobs:
+  remove-label:
+    name: Remove the label
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Remove the label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          # Read from the event file: a step's env values are printed in its log.
+          label=$(jq -r '.label.name' "$GITHUB_EVENT_PATH")
+          # Label names are case-insensitive: `Security` too.
+          [ "$(printf '%s' "$label" | tr '[:upper:]' '[:lower:]')" = security ] || exit 0
+          number=$(jq -r '(.issue // .pull_request).number' "$GITHUB_EVENT_PATH")
+          # A label someone removed meanwhile answers 404: nothing left to do.
+          if ! out=$(gh api -X DELETE "repos/${GITHUB_REPOSITORY}/issues/${number}/labels/$(jq -rn --arg l "$label" '$l|@uri')" 2>&1); then
+            case "$out" in *"HTTP 404"*) exit 0 ;; *) echo "Could not remove the label." >&2; exit 1 ;; esac
+          fi

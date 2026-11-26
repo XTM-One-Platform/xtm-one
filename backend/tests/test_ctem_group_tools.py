@@ -38,10 +38,11 @@ from app.services.builtin_tools import (
     offers_ctem_tools,
 )
 from app.services.builtin_tools.ctem import TRIAGE_TOOL
+from app.services.builtin_tools.ctem_repair import PASSES_TOOL
 from app.tools.base import ToolCall
 
 ORG = uuid.uuid4()
-ALL = (*CTEM_SIGNAL_TOOL_NAMES, TRIAGE_TOOL, *CTEM_CASE_TOOL_NAMES)
+ALL = (*CTEM_SIGNAL_TOOL_NAMES, TRIAGE_TOOL, *CTEM_CASE_TOOL_NAMES, PASSES_TOOL)
 
 
 @pytest.fixture
@@ -65,7 +66,8 @@ def test_the_group_is_registered_agent_keyed_with_every_signal_and_case_tool() -
 
 def test_offered_when_bound_in_xtm_one_mode_only(monkeypatch: pytest.MonkeyPatch, xtm_one: None) -> None:
     assert offers_ctem_tools(["ctem"])
-    assert not offers_ctem_tools(["ctem_read"])
+    # A former id is canonicalised before wiring (runtime_builtin_tool_ids, #2443).
+    assert not offers_ctem_tools(["web_fetch"])
     assert not offers_ctem_tools(None)
     monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: True), raising=False)
     assert not offers_ctem_tools(["ctem"])
@@ -83,19 +85,17 @@ def test_not_wired_without_a_person_or_without_the_binding(xtm_one: None) -> Non
 
 
 def test_no_function_is_offered_twice(xtm_one: None) -> None:
-    # The read group, wired first, keeps its reads.
-    wired = ctem_tools_for(_agent(), ["ctem_read", "ctem"], user_id=str(uuid.uuid4()))
+    # One group (#2443): each function once, the enriched case read included.
+    wired = ctem_tools_for(_agent(), ["ctem"], user_id=str(uuid.uuid4()))
     assert wired is not None
-    defs, executor = wired
-    names = {d.name for d in defs}
-    assert not names & {"list_ctem_signals", "list_ctem_cases", "get_ctem_case"}
-    assert executor.handler("list_ctem_cases") is None
-    assert {"update_ctem_case", "record_ctem_signal", TRIAGE_TOOL} <= names
-    # A built-in agent carrying both suites by slug only gains the triage tool.
+    names = [d.name for d in wired[0]]
+    assert len(names) == len(set(names))
+    assert {"update_ctem_case", "record_ctem_signal", TRIAGE_TOOL, "get_ctem_case"} <= set(names)
+    # A built-in agent carrying both suites by slug gains the triage tool and the passes read.
     orchestrator = _agent("ctem-vuln-prioritization-orchestrator", builtin=True)
     wired = ctem_tools_for(orchestrator, ["ctem"], user_id=str(uuid.uuid4()))
     assert wired is not None
-    assert [d.name for d in wired[0]] == [TRIAGE_TOOL]
+    assert [d.name for d in wired[0]] == [TRIAGE_TOOL, PASSES_TOOL]
 
 
 class _Db:

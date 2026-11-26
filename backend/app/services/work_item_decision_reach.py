@@ -26,9 +26,13 @@ signals, none of which refuses a write:
   warning line (:func:`app.services.work_item_recipient.recipient_line`).
 * **Unseen.** :func:`raise_unseen_decisions`, on the scheduler tick: a gate
   waiting ``work_item_decision_unseen_hours`` hours that no person opened
-  (``GET /work-items/{id}`` stamps :data:`OPENED_MARK_KEY`) notifies every
-  active administrator in the bell and raises
-  ``work_item.needs_human_unseen``, once per gate (:data:`UNSEEN_MARK_KEY`).
+  (``GET /work-items/{id}`` stamps :data:`OPENED_MARK_KEY`) reminds its
+  recipient in the bell (the person, or the active members of its groups)
+  and raises ``work_item.needs_human_unseen``, once per gate
+  (:data:`UNSEEN_MARK_KEY`). The administrators are told only about the gates
+  nobody can answer (an inactive, deactivated or removed recipient, the seed
+  account, a dead group, or a gate addressed to them), in one summary per
+  administrator per tick (#2483).
 * **Fleet health.** ``decision_unseen`` and ``decision_recipient_inactive``
   findings (``services/fleet_health_signals.py``), read live.
 
@@ -91,9 +95,17 @@ def signed_in_recently(last_login: datetime | None, *, now: datetime, days: int)
 
 
 def person_inactive_reason(
-    *, email: str | None, last_login: datetime | None, now: datetime, days: int, seed_email: str | None
+    *,
+    email: str | None,
+    last_login: datetime | None,
+    now: datetime,
+    days: int,
+    seed_email: str | None,
+    active: bool = True,
 ) -> str | None:
     """Why a person-recipient is unlikely to see a gate, or ``None``."""
+    if not active:
+        return "the recipient's account is deactivated"
     if seed_email and email and email.strip().lower() == seed_email.strip().lower():
         return "the recipient is the platform's technical seed account, which no person signs in to"
     if last_login is None:
@@ -177,8 +189,12 @@ async def inactive_reasons(
         ).all():
             members.setdefault(gid, []).append(uid)
     emails: dict[uuid.UUID, str | None] = {}
+    active: dict[uuid.UUID, bool] = {}
     if people:
-        emails = dict((await db.execute(select(User.id, User.email).where(User.id.in_(people)))).all())
+        for uid, email, is_active in (
+            await db.execute(select(User.id, User.email, User.is_active).where(User.id.in_(people)))
+        ).all():
+            emails[uid], active[uid] = email, bool(is_active)
     logins = await last_logins(db, {*people, *(u for us in members.values() for u in us)})
     out: list[str | None] = []
     for person, gids in recipients:
@@ -192,9 +208,17 @@ async def inactive_reasons(
         if uid is None:
             out.append(None)
             continue
+        if uid not in emails:
+            out.append("the recipient is no longer on the platform")
+            continue
         out.append(
             person_inactive_reason(
-                email=emails.get(uid), last_login=logins.get(uid), now=now, days=days, seed_email=settings.admin_email
+                email=emails.get(uid),
+                last_login=logins.get(uid),
+                now=now,
+                days=days,
+                seed_email=settings.admin_email,
+                active=active.get(uid, True),
             )
         )
     return out
@@ -255,23 +279,90 @@ def unseen_event_id(item: Any) -> str:
     return f"{item.id}:needs_human_unseen:{since.isoformat() if since else ''}"
 
 
-async def _notify_admins(db: Any, item: Any, *, hours: int) -> list[str]:
+#: Decisions named one by one in the administrators' summary; the rest are counted.
+SUMMARY_LISTED = 10
+#: Why the administrators are told about a gate addressed to nobody but them.
+ADDRESSED_TO_ADMINS = "it is addressed to the administrators"
+#: Why the administrators are told about a group gate none of whose members is active.
+NO_ACTIVE_GROUP_MEMBER = "no active member is left in its recipient groups"
+
+
+def reminder_targets(*, person: Any, group_ids: Any, reason: str | None) -> tuple[str, Any]:
+    """Who an unseen gate's reminder goes to: ``("person", id)``, ``("groups", ids)`` or ``("admins", reason)``.
+
+    The administrators are the fallback only: a gate addressed to them, or one
+    whose recipient nobody uses (*reason*, from :func:`inactive_reasons`).
+    """
+    if reason:
+        return "admins", reason
+    if group_ids:
+        return "groups", list(group_ids)
+    if person:
+        return "person", person
+    return "admins", ADDRESSED_TO_ADMINS
+
+
+def admin_summary(entries: Sequence[tuple[Any, str]], *, hours: int) -> dict[str, Any]:
+    """One bell entry for the administrators naming every gate of a sweep nobody can answer."""
+    from app.services.decision_links import work_item_link
+
+    if len(entries) == 1:
+        item, reason = entries[0]
+        return {
+            "title": f"A decision has waited {hours} hours unseen: {str(item.title)[:300]}",
+            "summary": f"Nobody can answer it: {reason}. Open it, answer it, or name an active recipient.",
+            "path": work_item_link(item.id),
+            "work_items": [{"id": str(item.id), "title": str(item.title), "path": work_item_link(item.id)}],
+        }
+    lines = [
+        f"- {str(item.title)[:120]} ({reason}): {work_item_link(item.id)}" for item, reason in entries[:SUMMARY_LISTED]
+    ]
+    if len(entries) > SUMMARY_LISTED:
+        lines.append(f"- and {len(entries) - SUMMARY_LISTED} more")
+    return {
+        "title": f"{len(entries)} decisions have waited {hours} hours with nobody to answer them",
+        "summary": "Open each, answer it, or name an active recipient.\n" + "\n".join(lines),
+        "path": "/tasks/work-items",
+        "work_items": [
+            {"id": str(item.id), "title": str(item.title), "path": work_item_link(item.id)} for item, _ in entries
+        ],
+    }
+
+
+async def _admin_ids(db: Any) -> list[str]:
     from app.models.user import User
+
+    rows = await db.execute(select(User.id).where(User.role == "admin", User.is_active.is_(True)))
+    return [str(a) for a in rows.scalars().all()]
+
+
+async def _group_member_ids(db: Any, group_ids: Sequence[Any]) -> list[str]:
+    """The active members of *group_ids*, each once."""
+    from app.models.group import GroupMember
+    from app.models.user import User
+
+    gids = [g for g in (safe_uuid(str(x)) for x in group_ids) if g is not None]
+    if not gids:
+        return []
+    rows = await db.execute(
+        select(GroupMember.user_id)
+        .join(User, User.id == GroupMember.user_id)
+        .where(GroupMember.group_id.in_(gids), User.is_active.is_(True))
+        .distinct()
+    )
+    return [str(u) for u in rows.scalars().all()]
+
+
+async def _remind(db: Any, user_ids: Sequence[str], item: Any, *, hours: int) -> None:
     from app.services.decision_links import work_item_link
     from app.services.notify import notify_web_user
 
-    admin_ids = [
-        str(a)
-        for a in (await db.execute(select(User.id).where(User.role == "admin", User.is_active.is_(True))))
-        .scalars()
-        .all()
-    ]
-    for admin_id in admin_ids:
+    for user_id in user_ids:
         await notify_web_user(
             db,
-            admin_id,
-            title=f"A decision has waited {hours} hours unseen: {str(item.title)[:300]}",
-            summary="Nobody opened this decision. Open it, answer it, or name an active recipient.",
+            user_id,
+            title=f"A decision waits for your answer: {str(item.title)[:300]}",
+            summary=f"It has waited {hours} hours and nobody opened it. Open it and answer it.",
             source_label="Work items",
             extra_data={
                 "notification_source": UNSEEN_NOTIFICATION_SOURCE,
@@ -279,11 +370,41 @@ async def _notify_admins(db: Any, item: Any, *, hours: int) -> list[str]:
                 "work_item_id": str(item.id),
             },
         )
+
+
+async def _notify_admins(db: Any, entries: Sequence[tuple[Any, str]], *, hours: int) -> list[str]:
+    """One summary per administrator for every gate of the sweep nobody can answer."""
+    from app.services.notify import notify_web_user
+
+    if not entries:
+        return []
+    admin_ids = await _admin_ids(db)
+    entry = admin_summary(entries, hours=hours)
+    for admin_id in admin_ids:
+        await notify_web_user(
+            db,
+            admin_id,
+            title=entry["title"],
+            summary=entry["summary"],
+            source_label="Work items",
+            extra_data={
+                "notification_source": UNSEEN_NOTIFICATION_SOURCE,
+                "path": entry["path"],
+                "work_item_ids": [w["id"] for w in entry["work_items"]],
+                "work_items": entry["work_items"],
+            },
+        )
     return admin_ids
 
 
 async def raise_unseen_decisions(*, now: datetime | None = None, limit: int = UNSEEN_SCAN_LIMIT) -> int:
-    """Tell the administrators once about each gate nobody opened in time; how many gates."""
+    """Remind once about each gate nobody opened in time; how many gates.
+
+    The recipient is reminded in its own bell (the person, or the active members
+    of its groups). The administrators are told only about the gates nobody can
+    answer (:func:`reminder_targets`), in one summary per administrator per
+    sweep. A gate already marked (:data:`UNSEEN_MARK_KEY`) is never taken again.
+    """
     from app.core.database import async_session
     from app.models.work_item import WORK_ITEM_OPEN_STATUSES, WorkItem
     from app.services.platform_events import publish, work_item_data
@@ -297,7 +418,10 @@ async def raise_unseen_decisions(*, now: datetime | None = None, limit: int = UN
         WorkItem.payload[OPENED_MARK_KEY].astext.is_(None),
         WorkItem.payload[UNSEEN_MARK_KEY].astext.is_(None),
     )
-    raised = 0
+    # Plain gate ids, never ORM rows: a rollback expires every instance of the
+    # session and an AsyncSession cannot lazy-load the expired attributes.
+    to_admins: list[tuple[str, str]] = []
+    events: list[tuple[dict[str, Any], str]] = []
     async with async_session() as db:
         ids = (
             (
@@ -318,15 +442,34 @@ async def raise_unseen_decisions(*, now: datetime | None = None, limit: int = UN
                 if item is None:
                     await db.rollback()
                     continue
-                payload = dict(item.payload or {})
-                payload[UNSEEN_MARK_KEY] = now.isoformat()
-                item.payload = payload
-                admins = await _notify_admins(db, item, hours=hours)
+                person = item.waits_for_user_id or item.user_id
+                groups = list(item.waits_for_group_ids or []) or None
+                reason = (
+                    await inactive_reason(db, user_id=person, group_ids=groups, now=now) if (person or groups) else None
+                )
+                kind, target = reminder_targets(person=person, group_ids=groups, reason=reason)
+                reminded: list[str] = []
+                if kind == "person":
+                    reminded = [str(target)]
+                elif kind == "groups":
+                    reminded = await _group_member_ids(db, target)
+                    if not reminded:
+                        kind, target = "admins", NO_ACTIVE_GROUP_MEMBER
+                if kind == "admins":
+                    # Marked with the administrators' summary, in its transaction (below).
+                    to_admins.append((str(item.id), str(target)))
+                else:
+                    await _remind(db, reminded, item, hours=hours)
+                    payload = dict(item.payload or {})
+                    payload[UNSEEN_MARK_KEY] = now.isoformat()
+                    item.payload = payload
                 data = work_item_data(item, previous_status=item.status)
                 since = _aware(item.last_activity_at)
                 data["waiting_since"] = since.isoformat() if since else None
                 data["unseen_hours"] = hours
-                data["notified_admin_ids"] = admins
+                data["reminded_user_ids"] = reminded
+                data["notified_admin_ids"] = []
+                data["no_recipient_reason"] = str(target) if kind == "admins" else None
                 data["waits_for_user_id"] = str(item.waits_for_user_id) if item.waits_for_user_id else None
                 data["waits_for_group_ids"] = list(item.waits_for_group_ids or []) or None
                 event_id = unseen_event_id(item)
@@ -335,16 +478,58 @@ async def raise_unseen_decisions(*, now: datetime | None = None, limit: int = UN
                 logger.warning("Unseen decision %s not raised: %s", item_id, format_exception_message(exc))
                 await db.rollback()
                 continue
-            await publish(UNSEEN_EVENT, data, event_id=event_id)
-            raised += 1
-    return raised
+            events.append((data, event_id))
+        if to_admins:
+            # The summary and the marks of its gates share one transaction: a failed
+            # send leaves the gates unmarked, so the next tick retries them.
+            alerted: set[str] = set()
+            admins: list[str] = []
+            try:
+                taken: list[tuple[Any, str]] = []
+                taken_ids: set[str] = set()
+                for gate_id, reason in to_admins:
+                    locked = (
+                        await db.execute(
+                            select(WorkItem).where(WorkItem.id == gate_id, *clause).with_for_update(skip_locked=True)
+                        )
+                    ).scalar_one_or_none()
+                    if locked is None:
+                        continue
+                    payload = dict(locked.payload or {})
+                    payload[UNSEEN_MARK_KEY] = now.isoformat()
+                    locked.payload = payload
+                    taken.append((locked, reason))
+                    taken_ids.add(gate_id)
+                admins = await _notify_admins(db, taken, hours=hours)
+                await db.commit()
+                alerted = taken_ids
+            except Exception as exc:
+                logger.warning("Unseen decisions summary not sent: %s", format_exception_message(exc))
+                await db.rollback()
+                admins = []
+            pending = {gate_id for gate_id, _ in to_admins}
+            kept: list[tuple[dict[str, Any], str]] = []
+            for data, event_id in events:
+                work_item_id = data.get("work_item_id")
+                if work_item_id in pending and work_item_id not in alerted:
+                    continue
+                if work_item_id in alerted:
+                    data["notified_admin_ids"] = admins
+                kept.append((data, event_id))
+            events = kept
+    for data, event_id in events:
+        await publish(UNSEEN_EVENT, data, event_id=event_id)
+    return len(events)
 
 
 __all__ = [
+    "ADDRESSED_TO_ADMINS",
     "DECISION_MARK_KEYS",
     "OPENED_MARK_KEY",
+    "SUMMARY_LISTED",
     "UNSEEN_EVENT",
     "UNSEEN_MARK_KEY",
+    "admin_summary",
     "carry_decision_marks",
     "clear_decision_marks",
     "group_inactive_reason",
@@ -354,6 +539,7 @@ __all__ = [
     "mark_opened",
     "person_inactive_reason",
     "raise_unseen_decisions",
+    "reminder_targets",
     "signed_in_recently",
     "warning_line",
 ]

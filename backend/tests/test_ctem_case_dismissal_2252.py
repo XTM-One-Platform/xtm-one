@@ -101,6 +101,10 @@ class _Db:
     async def scalar(self, _query: Any) -> None:
         return None
 
+    async def execute(self, _query: Any) -> Any:
+        # The close cancels the case's open items and timers (#2494): none here.
+        return SimpleNamespace(scalars=lambda: [])
+
     def add(self, row: Any) -> None:
         self.added.append(row)
 

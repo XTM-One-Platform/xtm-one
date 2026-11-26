@@ -20,6 +20,8 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: false }) }));
 vi.mock("@/hooks/api/useWorkItemApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useWorkItemApi")>()),
   useWorkItems: (_filters: unknown, enabled: boolean) => ({ data: enabled ? state.items : undefined, isLoading: false, refetch: vi.fn() }),
+  // A gate card reads its decision by the record's work_item_id (#2464): the first open item stands for it.
+  useWorkItem: (id: string | null | undefined) => ({ data: id ? state.items[0] : undefined, isLoading: false, refetch: vi.fn() }),
 }));
 vi.mock("@/components/work-items/WorkItemDecisionCard", () => ({
   WorkItemDecisionCard: () => <div data-testid="unified-decision-card" />,

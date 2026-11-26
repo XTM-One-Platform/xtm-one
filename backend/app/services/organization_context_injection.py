@@ -30,9 +30,9 @@ The block is "basic + categories": the identity (name, sector, regions,
 size, risk appetite; :data:`SUMMARY_MAX_CHARS`, enforced, never grows with
 a list) and the CATEGORY INDEX (one line per category of
 ``organization_context_categories`` with its size and the call that reads
-it). The categories the cascade selects (``organization_context_categories``
-on platform, agent and assignment, the same most-specific-explicit rule) are
-preloaded after it, each capped, the rest behind the tool. A fleet run keeps
+it), then one inventory line (sizes and the query functions, #2443). No
+category is preloaded: ``organization_context_categories`` (platform, agent,
+assignment) is stored and ignored for one release. A fleet run keeps
 its own fuller block (``organization_context.fleet_run_context``); the
 assignment engine then leaves this one out so the profile appears once.
 
@@ -122,7 +122,7 @@ def tools_enabled_for(*, agent: object = None, assignment: object = None) -> boo
 
 
 async def platform_categories(db: AsyncSession) -> list[str]:
-    """The categories every inheriting agent preloads (Settings > Organization); none by default."""
+    """The stored platform selection (Settings > Organization), kept and no longer preloaded (#2443)."""
     from app.models.platform_settings import PlatformSettings
     from app.services.organization_context_categories import normalize_categories
 
@@ -134,17 +134,6 @@ async def platform_categories(db: AsyncSession) -> list[str]:
         )
     ).scalar_one_or_none()
     return normalize_categories(value)
-
-
-async def categories_for(db: AsyncSession, *, agent: object = None, assignment: object = None) -> list[str]:
-    """The preloaded categories of a turn: assignment > agent > platform, most specific explicit list wins."""
-    from app.services.organization_context_categories import resolve_categories
-
-    return resolve_categories(
-        platform_categories=await platform_categories(db),
-        agent_categories=getattr(agent, "organization_context_categories", None),
-        assignment_categories=getattr(assignment, "organization_context_categories", None),
-    )
 
 
 async def effective_for(db: AsyncSession, *, agent: object = None, assignment: object = None) -> bool:
@@ -286,24 +275,45 @@ async def _tracked(db: AsyncSession) -> list[Any]:
     return [o for o in await orgs.list_organizations(db) if o.role == "tracked"]
 
 
-async def render_preloaded_categories(db: AsyncSession, row: Any, names: list[str]) -> str:
-    """The categories the cascade selected, each capped, after the basic block (``""`` when none)."""
-    from app.services import organization_context_categories as cats
-    from app.services.organization_context import hydrated_profile
+#: Hard cap of the inventory line (sizes and the functions that query them), in characters.
+INVENTORY_LINE_MAX_CHARS = 400
 
-    # Copilot mode exposes no category (#1690): a stored selection is kept, never preloaded.
-    names = [name for name in names if name in cats.available_names()]
-    if row is None or not names:
+
+def render_inventory_line(sizes: dict[str, int] | None) -> str:
+    """One line: how large the inventory is and the functions that query it, never a row (#2443).
+
+    ``""`` without sizes (no profile, Copilot mode). The functions are
+    named from ``inventory_query.INVENTORY_QUERY_TOOLS``, so a renamed
+    function cannot leave a stale name in the prompt.
+    """
+    from app.services.builtin_tools.inventory_query import INVENTORY_QUERY_TOOLS
+
+    if not sizes:
         return ""
-    profile = await hydrated_profile(db, row)  # the asset and group rows from the records (#1543)
-    parts: list[str] = []
-    for name in names:
-        category = cats.get(name)
-        if category is None:
-            continue
-        rows = cats.tracked_rows(await _tracked(db)) if not category.field else cats.rows_of(profile, category)
-        parts.append(cats.render_preloaded(category, rows))
-    return "\n\n".join(parts)
+    counts = ", ".join(
+        f"{int(sizes.get(key) or 0)} {label}"
+        for key, label in (
+            ("assets", "assets"),
+            ("software", "software"),
+            ("asset_groups", "asset groups"),
+            ("primary_assets", "primary assets"),
+        )
+    )
+    line = f"Inventory: {counts}. Query it, never guess it: {', '.join(INVENTORY_QUERY_TOOLS)}."
+    return line[:INVENTORY_LINE_MAX_CHARS]
+
+
+async def _inventory_sizes(db: AsyncSession, row: Any) -> dict[str, int] | None:
+    """The four inventory counts of *row*'s organization, ``None`` without one (Copilot mode included)."""
+    import uuid
+
+    from app.services.organization_context import identity_only
+    from app.services.organization_inventory_query import inventory_sizes
+
+    organization_id = getattr(row, "organization_id", None)
+    if identity_only() or not isinstance(organization_id, uuid.UUID):
+        return None
+    return await inventory_sizes(db, organization_id)
 
 
 async def assignment_run_organization_context(
@@ -341,9 +351,11 @@ async def organization_summary_for(
 ) -> str:
     """The block a turn's system prompt starts with, or ``""`` (resolved off, no profile, unreadable).
 
-    The basic block (identity + category index), then the categories the
-    cascade preloads. A failed read never fails the turn: the profile is
-    context, and ``get_organization_context`` stays available.
+    The basic block (identity + category index), then one inventory line
+    (sizes and the query functions, :func:`render_inventory_line`). No list
+    is preloaded any more (#2443): ``organization_context_categories`` is
+    stored and ignored for one release. A failed read never fails the turn:
+    the profile is context, and ``get_organization_context`` stays available.
     """
     try:
         if not await effective_for(db, agent=agent, assignment=assignment):
@@ -359,10 +371,8 @@ async def organization_summary_for(
             ctem_work=await ctem_work_for(db, agent),
             asset_counts=await agent_list_counts(db, row.organization_id),
         )
-        preloaded = await render_preloaded_categories(
-            db, row, await categories_for(db, agent=agent, assignment=assignment)
-        )
-        return basic + (f"\n\n{preloaded}" if preloaded else "")
+        inventory = render_inventory_line(await _inventory_sizes(db, row))
+        return basic + (f"\n{inventory}" if inventory else "")
     except Exception as exc:  # context, never a reason to fail a turn
         from app.core.utils import format_exception_message
 

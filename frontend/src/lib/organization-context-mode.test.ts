@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ORGANIZATION_CONTEXT_MODES, organizationContextCategoriesEffective, organizationContextEffective } from "./constants";
+import { ORGANIZATION_CONTEXT_MODES, organizationContextEffective } from "./constants";
 
 /** The mirror of backend services/organization_context_injection.resolve (#11533). */
 function expected(platform: boolean, agent: string, assignment: string): boolean {
@@ -26,17 +26,4 @@ describe("organizationContextEffective", () => {
       expect(organizationContextEffective(platform)).toBe(platform);
     });
   }
-});
-
-/** The mirror of backend services/organization_context_categories.resolve_categories (#11533). */
-describe("organizationContextCategoriesEffective", () => {
-  it("inherits the platform list by default (none)", () => {
-    expect(organizationContextCategoriesEffective([])).toEqual([]);
-    expect(organizationContextCategoriesEffective(["pirs"], null, null)).toEqual(["pirs"]);
-  });
-  it("lets the most specific explicit list win, an empty one included", () => {
-    expect(organizationContextCategoriesEffective(["pirs"], ["software"])).toEqual(["software"]);
-    expect(organizationContextCategoriesEffective(["pirs"], ["software"], [])).toEqual([]);
-    expect(organizationContextCategoriesEffective(["pirs"], [], ["primary_assets"])).toEqual(["primary_assets"]);
-  });
 });

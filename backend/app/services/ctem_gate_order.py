@@ -89,9 +89,9 @@ def waited_refusal(gate: str, case_id: str, open_keys: set[str]) -> str | None:
     """Why a ``waited`` gate event of *case_id* is refused, else ``None``. Pure.
 
     *open_keys* are the correlation keys of the open ``needs_human`` items of the
-    case (:func:`open_gate_item_keys`). A gate with keys of its own needs one of
-    them; a gate without (``ctem.production_change``, ``ctem.accept_risk``,
-    ``ctem.close_without_retest``) needs any open ``ctem:`` decision of the case.
+    case (:func:`open_gate_item_keys`). A gate with keys of its own (every gate of
+    the catalog since #2464) needs one of them, so ``decision_filed`` is per gate;
+    a gate outside the catalog needs any open ``ctem:`` decision of the case.
     """
     keys = waited_item_keys(gate, case_id)
     if keys and any(key in open_keys for key in keys):

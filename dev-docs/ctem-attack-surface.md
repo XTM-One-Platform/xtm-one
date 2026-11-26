@@ -149,9 +149,9 @@ no `previous_pass_at` (raised before this rule), with the verdict
 `false_positive` and reason code `partial_previous_read`. The hosts stay in the
 baseline; a signal that opened a case is left to the case step.
 
-Agents call both through the `ctem_repair` built-in group
-(`dev-docs/ctem-cases.md` section 8.2): `list_ctem_attack_surface_passes` and
-`repair_ctem_attack_surface_new_hosts` (`dry_run` true by default).
+Agents read the passes through the `ctem` built-in group
+(`list_ctem_attack_surface_passes`, `dev-docs/ctem-cases.md` section 8.1); the
+repair is an administrator REST route only since #2443 (section 8.2).
 
 ## 2ter. OpenAEV feeds (CTEM-27)
 

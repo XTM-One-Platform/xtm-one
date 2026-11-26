@@ -17,11 +17,11 @@ import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseSummary } from "@/hooks
 import { useWorkItems } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
-import { waitsForAnswer } from "@/lib/work-item-context";
 import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
 import { PROVIDER_NAMES } from "./case-loop";
 import { VALIDATION_GATE, autoPassReason, chosenOptionLabel, latestValidations, validationDecisionKey } from "./case-validation";
 import { CaseSectionReason } from "./CaseSectionReason";
+import { useGateDecisionItem } from "./CaseGateDecision";
 import { CASE_FACT_ICON, CASE_SECTION_ICON, CaseCardTitleText, CaseIcon } from "./case-icons";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 import { ToneBadge, type HotTone } from "@/components/ui/tone-badge";
@@ -97,13 +97,11 @@ export function CaseValidation({
   const record = gateRecordOf(gates, VALIDATION_GATE);
   const waiting = record ? record.status === "waiting" : gate?.to === "waited";
   const answered = !record && gate?.to === "answered";
-  // The decision item, read with the viewer's own work-item visibility: the
-  // open one while it waits, the closed one once answered (its option labels).
-  const items = useWorkItems(
-    { correlation_key: validationDecisionKey(caseId), open_only: waiting, limit: 1 },
-    waiting || (answered && !!gate?.evidence),
-  );
-  const item = waiting ? ((items.data ?? []).find(waitsForAnswer) ?? null) : null;
+  // The open decision while it waits, by the record's own work item (#2464), the
+  // key only on an API that names none; the closed one once answered (its option labels).
+  const open = useGateDecisionItem(record, waiting, validationDecisionKey(caseId));
+  const items = useWorkItems({ correlation_key: validationDecisionKey(caseId), open_only: false, limit: 1 }, answered && !!gate?.evidence);
+  const item = open.item;
   const chosen = answered ? chosenOptionLabel(items.data?.[0], gate?.evidence) : null;
   const auto = autoPassReason(gate?.to);
   const who = answered && gate ? ((gate.reason && personName?.(gate.reason)) || t_i18n("a person")) : null;
@@ -155,15 +153,15 @@ export function CaseValidation({
         {waiting && item && (
           <WorkItemDecisionCard item={item} inCase canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
               readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
-              onAnswered={() => items.refetch()}
+              onAnswered={open.refetch}
             />
         )}
-        {waiting && !item && !items.isLoading && record?.decision_filed === false && (
+        {waiting && !item && !open.isLoading && record?.decision_filed === false && (
           <p className="text-default-secondary" data-testid="ctem-case-validation-not-filed">
             {t_i18n("No validation decision was filed, so nobody can answer it yet. The fleet files it the next time it runs this case.")}
           </p>
         )}
-        {waiting && !item && !items.isLoading && record?.decision_filed !== false && (
+        {waiting && !item && !open.isLoading && record?.decision_filed !== false && (
           <p className="text-default-secondary" data-testid="ctem-case-validation-elsewhere">
             {t_i18n("The validation waits for a person: the decision is in their Waiting for you list.")}
           </p>

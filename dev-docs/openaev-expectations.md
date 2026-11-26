@@ -58,6 +58,18 @@ What SUCCESS proves, per family:
 - `HUMAN_RESPONSE` - a person or team reacted as the playbook expects. Validated
   manually, never by a security product.
 
+Names are never ours (#2480). No XTM One code path writes or rewrites an
+expectation's name, whatever its type. An inject created with explicit types
+(`add_openaev_inject_to_scenario(expectations=[...])`) carries, for each type,
+the injector contract's own `availableExpectations` (or legacy
+`predefinedExpectations`) object, name unchanged; a type the contract does not
+offer gets OpenAEV's default name for it (`ExpectationBuilderService`:
+`Prevention`, `Detection`, `Logging`, `Not vulnerable`, `Manual expectation`,
+`Expect targets to read the article(s)`, `Expect targets to complete the
+challenge(s)`). An inject update (`manage_openaev_inject` update) whose new
+`content` carries no `expectations` key keeps the stored expectations as they
+are, since OpenAEV's PUT replaces `inject_content` whole.
+
 ## Status derivation
 
 `InjectExpectationHelper.computeStatus(score, expectedScore)`:

@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import String, cast, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.models.ctem_case import CLOSED_STATES, OPEN_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.services import ctem_case_version_history as version_history
 from app.services import ctem_case_versions
 from app.services import ctem_cases as rules
@@ -641,6 +641,7 @@ async def update_case(
     if note and note.strip():
         db.add(_event(case.id, actor, "note", reason=note.strip(), at=now))
     if state is not None:
+        closing = case.state in OPEN_STATES and state in CLOSED_STATES
         reason_text = (reason or "").strip()
         evidence_text = (evidence or "").strip()
         if resolution_kind == rules.DISMISSED:
@@ -673,7 +674,41 @@ async def update_case(
         else:
             case.accepted_reason = None
             case.accepted_until = None
+        if closing:
+            await cancel_on_close(db, case, state=state, actor=actor, actor_kind=actor_kind, now=now)
     return case
+
+
+#: The result written on a work item a close cancelled (#2494).
+CLOSED_ITEM_RESULT = "Cancelled: CTEM case {case_id} moved to {state} by {who}: nothing is left to decide."
+#: The outcome written on a timer a close cancelled (#2494).
+CLOSED_TIMER_OUTCOME = "cancelled: CTEM case {case_id} moved to {state}"
+
+
+async def cancel_on_close(
+    db: AsyncSession, case: CtemCase, *, state: str, actor: str, actor_kind: str, now: datetime
+) -> int:
+    """Cancel the open work items and armed timers of a case a person or an agent just closed (#2494).
+
+    A closed case waits on nobody: its pending gates leave the bell and its loop
+    items and reminders stop, as a delete and a retired-asset resolve already do
+    (one helper, ``ctem_case_delete.cancel_case_work``). An agent closing the case
+    from the run that answers one of its items keeps that held item, to complete it
+    itself. A reopen (an expired acceptance, a manual reopen) files fresh items.
+    Answers how many items were cancelled.
+    """
+    from app.services.ctem_case_delete import cancel_case_work
+
+    who = f"a person ({actor})" if actor_kind == "user" else f"{actor_kind} {actor}"
+    items, _ = await cancel_case_work(
+        db,
+        case,
+        item_result=CLOSED_ITEM_RESULT.format(case_id=case.id, state=state, who=who),
+        timer_outcome=CLOSED_TIMER_OUTCOME.format(case_id=case.id, state=state),
+        now=now,
+        keep_held=actor_kind != "user",
+    )
+    return len(items)
 
 
 async def create_manual_case(

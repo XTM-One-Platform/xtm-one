@@ -758,7 +758,10 @@ def check_transition(
             raise CaseRuleError("accepting risk needs an expiry date")
         if accepted_until <= now:
             raise CaseRuleError("the expiry date must be in the future")
-        if accepted_until > now + max_acceptance:
+        if accepted_until.date() > (as_utc(now) + max_acceptance).date():
+            # The limit is a calendar day (UTC), its end included: the dialogs
+            # send the end of the picked day, so the default (today + 90) stays
+            # valid at any hour (#2490).
             raise CaseRuleError(f"the expiry date is at most {max_acceptance.days} days away")
     if (
         target in OPEN_STATES

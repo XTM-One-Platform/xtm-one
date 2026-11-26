@@ -404,6 +404,27 @@ def _stored_dependencies(raw: Any) -> list[dict[str, Any]]:
     return out
 
 
+def _keep_stored_expectations(body: dict[str, Any], stored_content: Any) -> None:
+    """Carry the stored expectations onto a new ``inject_content`` that names none.
+
+    OpenAEV's PUT replaces ``inject_content`` whole, so a content change that
+    leaves ``expectations`` out would drop every stored expectation, names
+    included. XTM One never rewrites an expectation (#2480): the stored list is
+    kept exactly as-is unless the caller's content carries its own
+    ``expectations`` key.
+    """
+    content = body.get("inject_content")
+    if not isinstance(content, dict) or "expectations" in content:
+        return
+    if isinstance(stored_content, str):
+        try:
+            stored_content = json.loads(stored_content)
+        except ValueError:
+            return
+    if isinstance(stored_content, dict) and isinstance(stored_content.get("expectations"), list):
+        body["inject_content"] = {**content, "expectations": stored_content["expectations"]}
+
+
 def stored_inject_input(stored: Any, changes: dict[str, Any]) -> tuple[dict[str, Any], str]:
     """The full InjectInput of an update: the stored inject, *changes* laid over it.
 
@@ -441,6 +462,7 @@ def stored_inject_input(stored: Any, changes: dict[str, Any]) -> tuple[dict[str,
     if "inject_documents" in stored:
         body["inject_documents"] = _stored_documents(stored.get("inject_documents"))
     body.update(changes)
+    _keep_stored_expectations(body, stored.get("inject_content"))
     if not body.get("inject_title"):
         missing.append("inject_title (pass title)")
     if not body.get("inject_injector_contract"):

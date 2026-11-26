@@ -6690,21 +6690,13 @@ async def execute_assignment_run(
 
             if _ctem_ok and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=str(run.user_id)))
-            # --- Read-only CTEM group (#1337): bound on any agent, as the run's user ---
-            from app.services.builtin_tools import ctem_read_tools_for
-
-            _ctem_read = (
-                ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
-            )
-            if _ctem_read is not None:
-                composite.add_tools(*_ctem_read)
             # --- CTEM group (#1748): signal and case tools on any agent, the run user's rights ---
             from app.services.builtin_tools import ctem_tools_for
 
             _ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
             if _ctem_group is not None:
                 composite.add_tools(*_ctem_group)
-            # --- CTEM administrator repairs (#1778): the CTEM case agents, or the group bound ---
+            # --- Attack surface passes read (#1778, #2443): the CTEM case agents not bound to ctem ---
             from app.services.builtin_tools import ctem_repair_tools_for
 
             _ctem_repair = (
