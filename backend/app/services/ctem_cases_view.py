@@ -119,6 +119,9 @@ class ViewerView:
     #: True when this viewer's own OpenCTI read is available (CTEM-16-UI, #1115): only
     #: then are the name, ids and link of a case's threat package shown.
     opencti: bool = False
+    #: True when this viewer's own OpenAEV read is available (#2468): only then are the
+    #: name, id and link of a case's validation scenario shown.
+    openaev: bool = False
     #: The member ids of the shared cases this view's read was given (#2113): a product member
     #: outside it belongs to a case opened after the view was built, never judged by it. ``None``
     #: for a view cached before the field (judged as before).
@@ -175,6 +178,7 @@ class ViewerView:
                 "no_access": self.no_access,
                 "opencrq": self.opencrq,
                 "opencti": self.opencti,
+                "openaev": self.openaev,
                 "judged": sorted(self.judged) if self.judged is not None else None,
                 "built_at": self.built_at.isoformat() if self.built_at else None,
             }
@@ -198,6 +202,7 @@ class ViewerView:
             no_access=bool(data.get("no_access", False)),
             opencrq=bool(data.get("opencrq", False)),
             opencti=bool(data.get("opencti", False)),
+            openaev=bool(data.get("openaev", False)),
             judged=set(judged) if isinstance(judged, list) else None,
             built_at=datetime.fromisoformat(built) if isinstance(built, str) and built else None,
         )
@@ -1039,7 +1044,12 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     path_label = signal.get("trigger_path_label") if signal is not None else None
     # A treatment plan's name and OpenCRQ link go to a viewer who reads OpenCRQ only (#1068).
     # A threat package's Grouping and coverage go to a viewer who reads OpenCTI only (#1115).
-    hidden = (row.kind == "treatment_plan" and not view.opencrq) or (row.kind == "threat_package" and not view.opencti)
+    # A validation scenario's name and OpenAEV link go to a viewer who reads OpenAEV only (#2468).
+    hidden = (
+        (row.kind == "treatment_plan" and not view.opencrq)
+        or (row.kind == "threat_package" and not view.opencti)
+        or (row.kind == "scenario" and not view.openaev)
+    )
     named: dict[str, Any] = {}
     if row.kind == "threat_package":
         # ``from`` holds the coverage id, never a previous value (#2429): named alongside.
@@ -1349,6 +1359,7 @@ def hydrate(
         _visible_issue(r, view.issues.get(_member_id(r)), view.signal_details.get(_member_id(r))) for r in visible
     ] + [{"restricted": True} for _ in range(restricted)]
     from app.services import ctem_case_assets as case_assets
+    from app.services import ctem_validation_scenario as case_scenario
 
     return {
         **head,
@@ -1362,6 +1373,7 @@ def hydrate(
         "attack_path": attack_path_for(case, view),
         "treatment_plan": treatment_plan_for(events, view),
         "threat_package": threat_package_for(events, view, sla_due_at=case.sla_due_at),
+        "scenario": case_scenario.scenario_for(events, view),
     }
 
 

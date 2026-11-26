@@ -466,6 +466,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         treatment_plan: dict[str, Any] | None = None,
         threat_package: dict[str, Any] | None = None,
         applied_change: dict[str, Any] | None = None,
+        scenario: dict[str, Any] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -577,6 +578,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     case_loop.record_threat_package(
                         db, case, threat_package, view_of.threat_package_of(history), actor=agent_id
                     )
+                if scenario is not None:
+                    from app.services import ctem_validation_scenario as case_scenario
+
+                    history = (await store.events_of(db, [case.id])).get(case.id, [])
+                    case_scenario.record_scenario(
+                        db, case, scenario, case_scenario.scenario_of(history), actor=agent_id
+                    )
                 await db.commit()
                 committed = True
                 # A compact answer (#2092): what this call wrote, never the whole case re-read
@@ -608,6 +616,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                                     ("treatment_plan", treatment_plan),
                                     ("threat_package", threat_package),
                                     ("applied_change", applied_change),
+                                    ("scenario", scenario),
                                 )
                                 if value not in (None, "") and name not in unchanged
                             ),
@@ -1346,8 +1355,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ToolDefinition(
             name="update_ctem_case",
             description=(
-                "Change a CTEM case: owner, due date, note, state with its reason, triage exploitation or "
-                "attack path, a loop gate, treatment plan, threat package, or a change applied through an "
+                "Change a CTEM case: owner, due date, note, state with its reason, exploitation, attack "
+                "path, gate, treatment plan, threat package, scenario, or a change applied through an "
                 "integration (gate ctem.production_change); these move the status. resolved needs evidence, "
                 "reopening a reason; accepted_risk and dismissed need a person."
             ),
@@ -1364,7 +1373,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "resolution_kind": {"type": "string"},
                     "exploitation": {
                         "type": "array",
-                        "description": "Per supporting asset: techniques in attack order, exposure, reading. Replaces the stored one.",
+                        "description": "Per supporting asset: techniques in attack order, exposure, reading. Replaces it.",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -1394,8 +1403,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "gate": {
                         "type": "object",
                         "description": (
-                            "A gate of the fleet's catalog: passed automatically (by: level or pin), "
-                            "waited, or answered (by: who, option)."
+                            "A catalog gate: passed_automatically (by: level|pin), waited, answered (by, option)."
                         ),
                         "properties": {
                             "key": {"type": "string", "description": "The gate key, e.g. ctem.mobilize."},
@@ -1408,8 +1416,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "treatment_plan": {
                         "type": "object",
                         "description": (
-                            "The risk treatment plan the remediation decision created for this case, as the "
-                            "plan tool answered it: its id, name and Link url."
+                            "The remediation decision's risk treatment plan, as the plan tool answered: id, name, Link url."
                         ),
                         "properties": {
                             "id": {"type": "string"},
@@ -1421,9 +1428,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "threat_package": {
                         "type": "object",
                         "description": (
-                            "The Grouping the review step drafted for this case (id, name, page url) and its "
-                            "requested coverage_id. A url not live is replaced by the draft page; refused while "
-                            "the analyst review is not approved."
+                            "The Grouping the review drafted (id, name, page url) and its coverage_id. A url not "
+                            "live becomes the draft page; refused until the analyst review approves."
                         ),
                         "properties": {
                             "grouping_id": {"type": "string"},
@@ -1433,11 +1439,17 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         },
                         "required": ["grouping_id"],
                     },
+                    "scenario": {
+                        "type": "object",
+                        "description": (
+                            "OpenAEV scenario: scenario_id, name, url, techniques_total, techniques_playable, "
+                            "playable_tests."
+                        ),
+                    },
                     "applied_change": {
                         "type": "object",
                         "description": (
-                            "A fix applied through a bound integration, read back: what was pushed, the ids "
-                            "returned and how to revert it."
+                            "A fix applied through a bound integration, read back: pushed, ids, how to revert."
                         ),
                         "properties": {
                             "integration": {"type": "string"},
