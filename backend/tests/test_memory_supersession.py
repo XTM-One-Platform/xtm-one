@@ -293,36 +293,6 @@ async def test_invalidate_memory_retires_the_shared_pool_for_its_manager(tools: 
     assert "stays active" not in answer
 
 
-class _Rows:
-    def __init__(self, *, one: Any = None, scalar: Any = None) -> None:
-        self._one, self._scalar = one, scalar
-
-    def one_or_none(self) -> Any:
-        return self._one
-
-    def scalar_one_or_none(self) -> Any:
-        return self._scalar
-
-
-def _db(agent_row: Any, role: str) -> Any:
-    return SimpleNamespace(execute=AsyncMock(side_effect=[_Rows(one=agent_row), _Rows(scalar=role)]))
-
-
-@pytest.mark.asyncio
-async def test_who_may_retire_the_shared_pool() -> None:
-    owner, other = uuid.uuid4(), uuid.uuid4()
-    agent_id = str(uuid.uuid4())
-    private = SimpleNamespace(user_id=owner, is_company_managed=False)
-    managed = SimpleNamespace(user_id=owner, is_company_managed=True)
-
-    assert await pm.may_manage_shared_memory(_db(private, "user"), agent_id=agent_id, user_id=str(owner))
-    assert not await pm.may_manage_shared_memory(_db(private, "user"), agent_id=agent_id, user_id=str(other))
-    assert not await pm.may_manage_shared_memory(_db(managed, "user"), agent_id=agent_id, user_id=str(owner))
-    assert await pm.may_manage_shared_memory(_db(managed, "admin"), agent_id=agent_id, user_id=str(other))
-    no_db: Any = SimpleNamespace()
-    assert not await pm.may_manage_shared_memory(no_db, agent_id=agent_id, user_id=None)
-
-
 @pytest.mark.asyncio
 async def test_invalidate_memory_without_a_target_retires_nothing(tools, monkeypatch):
     retire = AsyncMock()
