@@ -2130,9 +2130,7 @@ BUILTIN_AGENTS: list[dict] = [
     # once they are seeded, the seed skips a slug it does not know.
     {
         "slug": "ctem-vuln-prioritization-orchestrator",
-        # Vulnerability and exposure work reads the whole software inventory (#11533),
-        # the assets with their exposure and the prioritization policy (#11543).
-        "organization_context_categories": ["software", "primary_assets", "assets_exposure", "prioritization_policy"],
+        # No category preload (#2443): the inventory is queried (find_assets_running, search_assets).
         "persona": "ctem-vuln-prioritization-orchestrator",
         "name": "Vuln Orchestrator",
         "description": (
@@ -2168,9 +2166,7 @@ BUILTIN_AGENTS: list[dict] = [
     },
     {
         "slug": "ctem-vuln-triage-analyst",
-        # Vulnerability and exposure work reads the whole software inventory (#11533),
-        # the assets with their exposure and the prioritization policy (#11543).
-        "organization_context_categories": ["software", "primary_assets", "assets_exposure", "prioritization_policy"],
+        # No category preload (#2443): the inventory is queried (find_assets_running, search_assets).
         "persona": "ctem-vuln-triage-analyst",
         "name": "Vuln Triage Analyst",
         "description": (
@@ -2310,9 +2306,7 @@ CTEM_FLEET_AGENTS: list[dict] = [
     {
         **_CTEM_ROLE_AGENT_BASE,
         "slug": "ctem-remediation-coordinator",
-        # Vulnerability and exposure work reads the whole software inventory (#11533),
-        # the assets with their exposure and the prioritization policy (#11543).
-        "organization_context_categories": ["software", "primary_assets", "assets_exposure", "prioritization_policy"],
+        # No category preload (#2443): the inventory is queried (find_assets_running, search_assets).
         "persona": "ctem-remediation-coordinator",
         "name": "Remediation Coordinator",
         "description": (
@@ -2425,9 +2419,9 @@ BUILTIN_AGENTS.append(
             "opencti-dashboard-widget-creator": "consult",
         },
         # shared_state: the refresh debounce and the fleets' counters
-        # (``ctem:fN:state``); ctem_read: the CTEM cases the board report
-        # counts (#1832), read-only.
-        "builtin_tool_ids": ["shared_state", "ctem_read"],
+        # (``ctem:fN:state``); ctem: the CTEM cases the board report counts
+        # (#1832), within the acting person's CTEM right (one CTEM group, #2443).
+        "builtin_tool_ids": ["shared_state", "ctem"],
         "integration_template_bindings": ["opencti", "openaev", "opencrq"],
         "memory_short_term_enabled": True,
         "memory_medium_term_enabled": False,
@@ -2951,9 +2945,10 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "case_id). Read the case with get_ctem_case. Step 1, propose: when the gate "
             "ctem.validation.non_readonly waits for this case, file the re-run of the validation its "
             "validations list names as one decision item keyed `ctem:validation:` followed by the "
-            "case_id (what runs, on which targets, your recommendation) and end the run: the 'Gate "
-            "answered' assignment launches it on approval. When the gate runs, launch it now and write "
-            "the gate on the case. Step 2, read: the result arrives as ctem_case.validation_finished on "
+            "case_id (what runs, on which targets, the default scope first and recommended, a sample of "
+            "the group second, your recommendation) and end the run: the 'Gate "
+            "answered' assignment launches it on approval. When the gate runs, launch it now on the "
+            "default scope and write the gate on the case. Step 2, read: the result arrives as ctem_case.validation_finished on "
             "the case loop, which writes it with record_ctem_case_validation (kind retest): a negative "
             "validation is inconclusive unless it proves the fixed version (conclusive true), so "
             "the case stays open; failed reopens it. Never wait for the result in this run. When the "
@@ -3022,6 +3017,10 @@ CTEM_SHARED_GATE_PREFIXES: tuple[str, ...] = (
     "ctem:validation:",
     # ctem.remediation.decision, filed by the platform (ctem_cases.py).
     "ctem:remediation:",
+    # ctem.production_change, ctem.accept_risk and ctem.close_without_retest, read by the case page (#2464).
+    "ctem:production-change:",
+    "ctem:accept-risk:",
+    "ctem:close-without-retest:",
 )
 CTEM_F1_GATE_PREFIXES: tuple[str, ...] = (
     *CTEM_SHARED_GATE_PREFIXES,
@@ -3048,8 +3047,9 @@ CTEM_KEY_PREFIX = "ctem:"
 #: evidence_health.max_age_days (path 9 opens again).
 CTEM_CONTROL_MEASUREMENT_RULE = (
     "Choose the measurement like an analyst, from the asset type and the integrations the tenant has "
-    "connected, read at decision time (the integrations and tools you hold, get_organization_context "
-    "category software and assets_exposure), never from a fixed recipe, in this order: (1) a permanent "
+    "connected, read at decision time (the integrations and tools you hold, get_asset on the asset and "
+    "search_software for the security products the organization runs), never from a fixed recipe, in "
+    "this order: (1) a permanent "
     "control an integration already offers for this kind of asset (a repository with Aikido connected: "
     "enable Aikido scanning on it; an IP or host with a vulnerability scanner such as Tenable, Qualys, "
     "Rapid7 or Wiz: permanent scanning of the asset in it; an endpoint with an EDR: the policy or "
@@ -3082,8 +3082,9 @@ CTEM_CONTROL_DECAY_RECONCILE = (
     "A case whose trigger_path is control_decay (never_measured, attested_only or expired) is "
     "reconciled before any validation, scan or new control is proposed: read, read-only, the "
     "control sources you hold for its asset (the OpenAEV results on the asset, the EDR and "
-    "device-management coverage in the organization inventory, get_organization_context category "
-    "assets_exposure, and in any such integration you hold) and what OpenCRQ holds for the control "
+    "device-management coverage in the organization inventory, get_asset with the asset name, which "
+    "names every source that reports it, and in any such integration you hold) and what OpenCRQ holds "
+    "for the control "
     "(get_opencrq_control_validation). In OpenAEV read what already targets the asset with "
     "get_openaev_asset_coverage: its asset groups, static and dynamic, and the scenarios (with "
     "their recurrence), simulations and atomic testings that target it directly or through those "
@@ -3199,7 +3200,12 @@ def _gate_answered_assignment(common: dict[str, Any], *, fleet_key: str) -> dict
             "The answer does not move the case: you decide its next state and set it with "
             "update_ctem_case state and the reason. Approved: run exactly what the ask covered and "
             "continue the loop from that step, writing every result on the case; the case's own work "
-            f"item keyed `{fleet_key}:case:` followed by the case id gets a note. Reject and close "
+            f"item keyed `{fleet_key}:case:` followed by the case id gets a note. An approved validation "
+            "launches the scope the answer chose: a plain approve or the default option launches the "
+            "default scope, the scenario's own targets (manage_openaev_scenario launch without asset_ids); "
+            "the sample option or assets the person named launches the sample (launch with those "
+            "asset_ids, a copy of the scenario, the original unchanged); write the scope, the assets and "
+            "the scenario launched on the case with update_ctem_case note. Reject and close "
             "(option `reject_and_close`, not relevant): delete the draft if any, set state resolved with "
             "resolution_kind dismissed and the person's reason (none given: say so), file no new gate, "
             "arm no reminder, and complete the case's own item. Rejected, deferred "
@@ -3250,10 +3256,6 @@ CTEM_OPENAEV_LOOP_EVENTS: tuple[str, ...] = (
     "critical_asset_reached",
     # CTEM-27: an asset unseen past the tenant's threshold is a path 6 signal.
     "asset_stale",
-    # #2436: a finding created on an asset (path 5) and an asset a scan found (path 7),
-    # both recorded only once an administrator switches their source on.
-    "finding_created",
-    "asset_created",
 )
 #: A key no OpenAEV delivery carries: the trigger provisions and listens, never runs.
 CTEM_LISTEN_ONLY_FILTER: dict[str, Any] = {"_ctem_listen_only": {"exists": True}}
@@ -3493,10 +3495,11 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "followed by the case_id). Read the case with get_ctem_case. Step 1, propose: when the gate "
             "ctem.validation.non_readonly waits for this case, file the re-run of its validated scenario "
             "as one decision item keyed `ctem:validation:` followed by the case_id (the scenario, what its "
-            "injects will do to which targets, the schedule; your recommendation) "
+            "injects will do to which targets, the schedule, the default scope first and recommended, a "
+            "sample of the group second; your recommendation) "
             "and end the run: the 'Gate answered' assignment launches it on approval. When the gate runs, "
-            "launch it now and write the gate on the case. Step 2, read: the result arrives as "
-            "ctem_case.validation_finished on the case loop, which writes it with "
+            "launch it now on the default scope and write the gate on the case. Step 2, read: the result "
+            "arrives as ctem_case.validation_finished on the case loop, which writes it with "
             "record_ctem_case_validation (kind retest; conclusive false when the result does not prove "
             "the exposure gone, as you read it), failed reopens it. Never wait for the result in this run. "
             "When the result is written, ask the Risk Quantifier for the loss after, note the delta on the "
