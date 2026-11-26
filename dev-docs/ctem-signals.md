@@ -82,6 +82,15 @@ card. The case is recognised by its platform title
 A caller may name another lens than the default (a `has` relationship is the
 inside lens of path 1). `GET /api/v1/ctem-signals/paths` answers this table.
 
+OpenCTI `has` relationship and sighting of a vulnerability (#2524): the signal
+is named by the target's value (the OpenCTI extension's `target_value`, a CVE
+id), else by the CVE id the event message names, and by the target's STIX id
+only when neither exists. The STIX id stays in `evidence.target_ref` and the
+CVE goes to `evidence.cve`, so the same CVE delivered as a vulnerability object
+and as a relationship is one subject (related signals, case key, KEV/EPSS).
+The dedupe key is unchanged (the relationship's internal id). Migration
+`r2524relcve01` renames the earlier rows the same way.
+
 Aikido (CTEM-25): the code repository and container image of an issue (name
 and id) go to `evidence.assets`, so the scope gate resolves them to a profile
 asset row (source `aikido`, `external_id` the Aikido id) and to its primary
