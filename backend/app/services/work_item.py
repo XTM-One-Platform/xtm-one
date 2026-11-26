@@ -2434,7 +2434,40 @@ async def create_work_item(
             run_person_id=getattr(writer, "run_person_id", None),
             run_person_chosen=bool(getattr(writer, "run_person_chosen", False)),
         )
+        # A CTEM decision of a kind already asked of the same person joins one grouped card (#2451).
+        grouped = None
+        new_item_id = uuid.uuid4()
+        if needs_human and key:
+            from app.services import ctem_decision_groups
+
+            if ctem_decision_groups.case_id_of(key) is not None:
+                grouped = await ctem_decision_groups.join_group(
+                    db,
+                    member_id=new_item_id,
+                    correlation_key=key,
+                    title=title,
+                    priority=priority,
+                    due_at=_parse_due(due_at),
+                    owner_agent_id=owner_uuid,
+                    created_by_agent_id=creator_uuid,
+                    user_id=user_uuid,
+                    workspace_id=workspace_id,
+                    is_company_managed=is_company_managed,
+                    waits_for_user_id=waits_for,
+                    waits_for_group_ids=waits_for_groups,
+                    now=now,
+                )
+            if grouped is not None:
+                group_item = grouped[0]
+                # It waits on its group, without a card of its own: the group's answer reopens it.
+                needs_human = None
+                status = "blocked"
+                blockers = [str(group_item.id)]
+                reason = f"{ctem_decision_groups.GROUPED_REASON_LEAD}{group_item.id}"
+                # The person is asked by the group's card alone.
+                waits_for, waits_for_groups = None, None
         item = WorkItem(
+            id=new_item_id,
             user_id=user_uuid,
             waits_for_user_id=waits_for,
             waits_for_group_ids=waits_for_groups,
@@ -2477,6 +2510,11 @@ async def create_work_item(
         from types import SimpleNamespace
 
         events = created_events(item, writer=SimpleNamespace(agent_id=creator_uuid, run_id=None))
+        if grouped is not None and grouped[1]:
+            events = [
+                *created_events(grouped[0], writer=SimpleNamespace(agent_id=creator_uuid, run_id=None)),
+                *events,
+            ]
 
     await _publish(events)
     if blockers:
@@ -5264,8 +5302,23 @@ async def answer_work_item(
             return await _read_back(work_item_id, user_id=user_id, writer=writer)
         note = stamped_note(f"ANSWERED{who}: {said}", now)
         item.description = f"{note}\n\n{item.description}" if item.description else note
+        fanned: list[uuid.UUID] = []
+        from app.services import ctem_decision_groups
+
+        if ctem_decision_groups.is_group_key(item.correlation_key) and key:
+            # One answer to a grouped CTEM decision answers each case it lists (#2451).
+            fanned, still_waiting = await ctem_decision_groups.fan_out(db, item, option=key, answer=answer, note=note)
+            if still_waiting:
+                item.last_activity_at = now
+                await db.commit()
+                for fanned_id in fanned:
+                    await publish_transition(fanned_id, previous_status="blocked", note=note, answered=True)
+                return await _read_back(work_item_id, user_id=user_id, writer=writer)
         previous_status = item.status
-        item.status = "open"
+        item.status = "done" if fanned else "open"
+        if fanned:
+            item.completed_at = now
+            item.result = f"Answered for {len(fanned)} grouped case(s): {said}"
         item.claimed_by_agent_id = None
         item.claimed_by_run_id = None
         item.claimed_at = None
@@ -5283,7 +5336,10 @@ async def answer_work_item(
             await db.commit()
         finally:
             answer_actor.reset(token)
-    await publish_transition(wid, previous_status=previous_status, note=note, answered=True)
+    for fanned_id in fanned:
+        await publish_transition(fanned_id, previous_status="blocked", note=note, answered=True)
+    # A group answered whole is done: its cases carry the answer, nothing reopens it.
+    await publish_transition(wid, previous_status=previous_status, note=note, answered=not fanned)
     return await _read_back(work_item_id, user_id=user_id, writer=writer)
 
 
@@ -6483,21 +6539,16 @@ async def work_items_waiting_for_person(*, user_id: str | None) -> dict:
     return {"count": int(count or 0), "oldest": oldest}
 
 
-async def list_work_items_waiting_for_person(*, user_id: str | None, limit: int, offset: int = 0) -> list[dict]:
+async def list_work_items_waiting_for_person(*, user_id: str | None, limit: int) -> list[dict]:
     """The items the dashboard notice counts, newest wait first, for the bell.
-
-    *offset* pages past the first *limit* rows (#2453): the bell's page holds
-    the newest, the next pages reach the oldest decision still waiting.
 
     The same population as :func:`work_items_waiting_for_person` (one clause,
     :func:`_waits_for_person_clause`), so the bell, the notice and the
     Operations "Waiting for me" view never disagree. Each row is ``{id, title,
     question, deadline, since}``: *question* and *deadline* come from the
     structured ask alone, never from ``blocked_reason``, which agents write for
-    agents (#776); a legacy item without an ask has neither. *deadline* is the
-    ask's, else the item's ``due_at`` (#2453): an item with a due date always
-    says when to answer by. An item leaves the list the moment it is answered,
-    so its bell entry clears with it.
+    agents (#776); a legacy item without an ask has neither. An item leaves the
+    list the moment it is answered, so its bell entry clears with it.
     """
     from app.core.database import async_session
 
@@ -6512,23 +6563,20 @@ async def list_work_items_waiting_for_person(*, user_id: str | None, limit: int,
         readable, _ = await _workspace_tiers(db, str(uid))
         rows = (
             await db.execute(
-                select(WorkItem.id, WorkItem.title, WorkItem.ask, since, WorkItem.due_at)
+                select(WorkItem.id, WorkItem.title, WorkItem.ask, since)
                 .where(
                     WorkItem.status.in_(WORK_ITEM_OPEN_STATUSES),
                     _waits_for_person_clause(uid, now),
                     _visible_clause(uid, readable),
                 )
-                .order_by(since.desc(), WorkItem.id.desc())
-                .offset(max(0, offset))
+                .order_by(since.desc())
                 .limit(limit)
             )
         ).all()
     waiting: list[dict] = []
-    for item_id, title, ask, stamp, due_at in rows:
+    for item_id, title, ask, stamp in rows:
         question = ask.get("question") if isinstance(ask, dict) else None
         deadline = ask.get("deadline") if isinstance(ask, dict) else None
-        if not (isinstance(deadline, str) and deadline) and due_at is not None:
-            deadline = due_at.isoformat()
         waiting.append(
             {
                 "id": str(item_id),
