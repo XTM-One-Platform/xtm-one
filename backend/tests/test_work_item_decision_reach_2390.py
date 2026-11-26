@@ -424,6 +424,73 @@ async def test_a_failed_administrator_summary_leaves_the_gate_unmarked_for_the_n
     assert published == [] and session.rollbacks == 1
 
 
+class _ExpiringGate(SimpleNamespace):
+    """A gate whose attributes cannot be read once a rollback expired it, as under AsyncSession."""
+
+    expired = False
+
+    def __getattribute__(self, name):
+        if name not in ("expired", "__dict__", "__class__") and object.__getattribute__(self, "expired"):
+            raise RuntimeError(f"MissingGreenlet: expired attribute {name} read after a rollback")
+        return object.__getattribute__(self, name)
+
+
+class _ExpiringSession(_UnseenSession):
+    """A rollback expires every gate of the session; a locked re-read refreshes the row it returns."""
+
+    def __init__(self, gates, rereads=None):
+        super().__init__(gates, rereads)
+        self._gates = list(gates)
+
+    async def execute(self, statement):
+        rows = await super().execute(statement)
+        for row in rows._rows:
+            if isinstance(row, _ExpiringGate):
+                row.expired = False
+        return rows
+
+    async def rollback(self):
+        await super().rollback()
+        for gate in self._gates:
+            gate.expired = True
+
+
+@pytest.mark.asyncio
+async def test_a_failed_administrator_summary_reads_no_expired_gate(monkeypatch):
+    from app.services import notify
+
+    gate = _ExpiringGate(**vars(_gate()))
+    session = _ExpiringSession([gate])
+    published, notified = [], []
+    reasons = {str(gate.waits_for_user_id): "the recipient has never signed in"}
+    _patch(monkeypatch, session, published, notified, admins=[uuid.uuid4()], reasons=reasons)
+
+    async def _broken(_db, _user_id, **_kwargs):
+        raise RuntimeError("bell down")
+
+    monkeypatch.setattr(notify, "notify_web_user", _broken)
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 0
+    assert published == [] and session.rollbacks == 1
+
+
+@pytest.mark.asyncio
+async def test_a_rollback_in_the_sweep_does_not_break_the_administrator_summary(monkeypatch):
+    """A gate queued for the administrators, then another tick holding the next gate (rollback)."""
+    queued = _ExpiringGate(**vars(_gate(title="Nobody can answer")))
+    held = _ExpiringGate(**vars(_gate()))
+    admins = [uuid.uuid4()]
+    session = _ExpiringSession([queued, held], rereads=[queued, None])
+    published, notified = [], []
+    reasons = {str(queued.waits_for_user_id): "the recipient has never signed in"}
+    _patch(monkeypatch, session, published, notified, admins=admins, reasons=reasons)
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 1
+    assert [u for u, _ in notified] == [str(admins[0])]
+    assert notified[0][1]["extra_data"]["work_item_ids"] == [str(queued.id)]
+    assert published[0][1]["notified_admin_ids"] == [str(admins[0])]
+
+
 @pytest.mark.asyncio
 async def test_a_sweep_of_active_recipients_tells_no_administrator(monkeypatch):
     """The 25 Nov 2026 backlog: eleven gates addressed to active people, zero administrator notices."""

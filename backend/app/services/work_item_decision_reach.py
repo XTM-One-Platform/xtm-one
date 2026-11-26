@@ -418,7 +418,9 @@ async def raise_unseen_decisions(*, now: datetime | None = None, limit: int = UN
         WorkItem.payload[OPENED_MARK_KEY].astext.is_(None),
         WorkItem.payload[UNSEEN_MARK_KEY].astext.is_(None),
     )
-    to_admins: list[tuple[Any, str]] = []
+    # Plain gate ids, never ORM rows: a rollback expires every instance of the
+    # session and an AsyncSession cannot lazy-load the expired attributes.
+    to_admins: list[tuple[str, str]] = []
     events: list[tuple[dict[str, Any], str]] = []
     async with async_session() as db:
         ids = (
@@ -455,7 +457,7 @@ async def raise_unseen_decisions(*, now: datetime | None = None, limit: int = UN
                         kind, target = "admins", NO_ACTIVE_GROUP_MEMBER
                 if kind == "admins":
                     # Marked with the administrators' summary, in its transaction (below).
-                    to_admins.append((item, str(target)))
+                    to_admins.append((str(item.id), str(target)))
                 else:
                     await _remind(db, reminded, item, hours=hours)
                     payload = dict(item.payload or {})
@@ -480,13 +482,15 @@ async def raise_unseen_decisions(*, now: datetime | None = None, limit: int = UN
         if to_admins:
             # The summary and the marks of its gates share one transaction: a failed
             # send leaves the gates unmarked, so the next tick retries them.
-            taken: list[tuple[Any, str]] = []
+            alerted: set[str] = set()
             admins: list[str] = []
             try:
-                for item, reason in to_admins:
+                taken: list[tuple[Any, str]] = []
+                taken_ids: set[str] = set()
+                for gate_id, reason in to_admins:
                     locked = (
                         await db.execute(
-                            select(WorkItem).where(WorkItem.id == item.id, *clause).with_for_update(skip_locked=True)
+                            select(WorkItem).where(WorkItem.id == gate_id, *clause).with_for_update(skip_locked=True)
                         )
                     ).scalar_one_or_none()
                     if locked is None:
@@ -495,14 +499,15 @@ async def raise_unseen_decisions(*, now: datetime | None = None, limit: int = UN
                     payload[UNSEEN_MARK_KEY] = now.isoformat()
                     locked.payload = payload
                     taken.append((locked, reason))
+                    taken_ids.add(gate_id)
                 admins = await _notify_admins(db, taken, hours=hours)
                 await db.commit()
+                alerted = taken_ids
             except Exception as exc:
                 logger.warning("Unseen decisions summary not sent: %s", format_exception_message(exc))
                 await db.rollback()
-                taken = []
-            pending = {str(item.id) for item, _ in to_admins}
-            alerted = {str(item.id) for item, _ in taken}
+                admins = []
+            pending = {gate_id for gate_id, _ in to_admins}
             kept: list[tuple[dict[str, Any], str]] = []
             for data, event_id in events:
                 work_item_id = data.get("work_item_id")
