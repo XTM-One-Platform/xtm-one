@@ -211,6 +211,121 @@ def test_an_opencti_actor_is_a_path_2_signal_and_a_report_is_nothing():
     assert listeners.match("opencti", "create", other) is None
 
 
+def _malware(stix_id: str, name: str, *, internal: str | None = "5b7f1c2e-internal") -> dict[str, Any]:
+    data: dict[str, Any] = {"type": "malware", "id": stix_id, "name": name}
+    if internal is not None:
+        data["extensions"] = {listeners.OPENCTI_EXTENSION: {"id": internal}}
+        data["x_opencti_stix_ids"] = ["malware--older"]
+    return {"type": "update", "data": data}
+
+
+def _matched(event: str, payload: dict[str, Any]) -> tuple[listeners.Listener, dict[str, Any]]:
+    found = listeners.match("opencti", event, payload)
+    assert found is not None
+    return found
+
+
+async def test_an_opencti_entity_whose_standard_id_changes_stays_one_signal(store: Any) -> None:
+    """#2505: two updates of one entity (same internal id, new STIX id and name) record one signal."""
+    no_db: Any = None
+    recorded: list[tuple[CtemSignal, bool]] = []
+    for stix_id, name in (("malware--b0b05453", "AxolotLoader"), ("malware--fdb464ad", "AxolotlLoader")):
+        row, fields = _matched("update", _malware(stix_id, name))
+        assert fields["external_id"] == "5b7f1c2e-internal"
+        assert fields["evidence"]["stix_id"] == stix_id
+        assert fields["evidence"]["stix_ids"] == ["malware--older"]
+        recorded.append(
+            await signals.record_signal(
+                no_db,
+                organization_id=ORG,
+                signal=signals.SignalInput(
+                    trigger_path=row.trigger_path,
+                    source_provider="opencti",
+                    subject_kind=row.subject_kind,
+                    subject_ref=fields["ref"],
+                    source_external_id=fields["external_id"],
+                    subject_label=fields["label"],
+                    evidence=fields["evidence"],
+                ),
+                recorded_via="listener",
+                recorded_by=signals.SYSTEM_ACTOR,
+            )
+        )
+    (first, created_first), (second, created_second) = recorded
+    assert created_first is True and created_second is False
+    assert first is second and len(store.rows) == 1
+    assert second.subject_label == "AxolotlLoader"
+    assert second.dedupe_key == "relevant_threat:opencti:5b7f1c2e-internal"
+
+
+def test_an_opencti_delivery_without_the_extension_keeps_the_stix_id_as_key() -> None:
+    _row, fields = _matched("update", _malware("malware--b0b05453", "AxolotLoader", internal=None))
+    assert fields["external_id"] == "malware--b0b05453"
+    assert "stix_ids" not in fields["evidence"]
+    _row, blank = _matched("update", _malware("malware--b0b05453", "AxolotLoader", internal="  "))
+    assert blank["external_id"] == "malware--b0b05453"
+
+
+def test_opencti_relationships_sightings_and_identities_are_keyed_on_the_internal_id() -> None:
+    ext = {listeners.OPENCTI_EXTENSION: {"id": "rel-internal"}}
+    relationship: dict[str, Any] = {
+        "type": "create",
+        "data": {
+            "type": "relationship",
+            "relationship_type": "has",
+            "id": "relationship--1",
+            "target_ref": "vulnerability--1",
+            "extensions": ext,
+        },
+    }
+    assert _matched("create", relationship)[1]["external_id"] == "rel-internal"
+    sighting: dict[str, Any] = {
+        "type": "create",
+        "data": {"type": "sighting", "id": "sighting--1", "sighting_of_ref": "indicator--1", "extensions": ext},
+    }
+    assert _matched("create", sighting)[1]["external_id"] == "rel-internal"
+    account: dict[str, Any] = {
+        "type": "create",
+        "data": {"type": "email-addr", "id": "email-addr--1", "value": "a@example.com", "extensions": ext},
+    }
+    _row, fields = _matched("create", account)
+    assert fields["external_id"] == "rel-internal"
+    assert fields["evidence"]["stix_id"] == "email-addr--1"
+
+
+async def test_a_close_at_source_on_the_internal_id_reaches_the_signal_from_before_the_id_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2505: the stored key is the internal id, so a close for it finds the first signal."""
+    from collections.abc import AsyncIterator
+
+    _row, before = _matched("update", _malware("malware--b0b05453", "AxolotLoader"))
+    _row, after = _matched("update", _malware("malware--fdb464ad", "AxolotlLoader"))
+    assert before["external_id"] == after["external_id"]
+    asked: list[tuple[str, str]] = []
+
+    @asynccontextmanager
+    async def _session() -> AsyncIterator[_Db]:
+        yield _Db()
+
+    async def _primary(_db: Any) -> SimpleNamespace:
+        return SimpleNamespace(id=ORG)
+
+    async def _close(_db: Any, *, organization_id: Any, provider: str, external_id: str, events: Any) -> int:
+        asked.append((provider, external_id))
+        return 1 if external_id == before["external_id"] else 0
+
+    async def _publish(_pending: Any) -> None:
+        return None
+
+    monkeypatch.setattr("app.core.database.async_session", _session)
+    monkeypatch.setattr("app.services.organizations.get_primary", _primary)
+    monkeypatch.setattr("app.services.ctem_case_loop.close_signal_members", _close)
+    monkeypatch.setattr("app.services.ctem_case_loop.publish_pending", _publish)
+    assert await listeners._close_at_source("opencti", after["external_id"]) == 1
+    assert asked == [("opencti", "5b7f1c2e-internal")]
+
+
 def test_an_aikido_new_issue_is_a_path_3_signal_and_a_closed_one_is_nothing():
     payload = {
         "event_type": "issue.open.created",
@@ -481,6 +596,7 @@ class _Store:
             row.last_seen_at = max(row.last_seen_at, at)
             row.seen_count += 1
             row.evidence = clean.evidence
+            row.subject_label = clean.subject_label or row.subject_label
             return row, False
         row = CtemSignal(
             id=uuid.uuid4(),
