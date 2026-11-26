@@ -267,6 +267,35 @@ describe("SignalSourcesPanel", () => {
     expect(within(row).queryByText("Hook 4")).toBeNull();
   });
 
+  it("shows a source that is on first, its name whole in its own span (UX round 2 on #2509, B1 and A2)", async () => {
+    const mixed = path({
+      id: "new_exposure",
+      label: "New exposure",
+      default_lens: "outside",
+      status: "enabled",
+      sources: [
+        { provider: "opencti", kind: "pir_playbook", event: "A PIR match", bound: false },
+        { provider: "opencti", kind: "listener", event: "A new vulnerability", bound: true },
+        { provider: "webhook", kind: "webhook" as const, event: "", bound: true, key: "webhook:1", name: "Lab VPN appliance alerts" },
+      ],
+    });
+    get.mockResolvedValue({ paths: [mixed, PATHS[1]] });
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalSourcesPanel />
+      </MemoryRouter>,
+    );
+    const rows = await screen.findAllByTestId("ctem-signal-sources-path");
+    const row = rows.find((r) => r.getAttribute("data-path") === "new_exposure") as HTMLElement;
+    const shown = within(row).getAllByTestId("ctem-signal-source");
+    expect(shown.map((s) => s.getAttribute("data-state"))).toEqual(["bound"]);
+    const name = within(shown[0]).getByTestId("ctem-signal-source-name");
+    // The name is its own element, the captions after it (the width rule is measured in the UX lab, not here).
+    expect(name.textContent).toBe("OpenCTI");
+    expect(shown[0].textContent?.startsWith("OpenCTI")).toBe(true);
+    expect(within(row).getByTestId("ctem-signal-sources-more").textContent).toBe("+2 more");
+  });
+
   it("counts the sources on of the available ones per path, and opens the path's sources from the empty state (#2506)", async () => {
     get.mockResolvedValue({
       paths: [

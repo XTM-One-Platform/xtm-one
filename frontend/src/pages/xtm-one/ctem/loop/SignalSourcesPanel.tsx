@@ -142,8 +142,12 @@ function SourceItem({
   const state = sourceDisplayState(source, connected, platform);
   const event = source.event ? t_i18n(source.event) : null;
   const icon = sourceStateIcon(state);
-  const stateLine = icon ? t_i18n(icon.label) : null;
-  const tip = [event, stateLine].filter(Boolean).join(". ") || null;
+  const word = state in COMPACT_STATE_WORD ? COMPACT_STATE_WORD[state as keyof typeof COMPACT_STATE_WORD] : null;
+  // The tooltip names the source first, as MoreSources and the folded variant do (UX round 2 on #2509, B1): the name
+  // can be cut on a narrow cell, so it is always readable here, then the event that fires it.
+  const heading = `${name} (${sourceKindText(t_i18n, source)}${word ? `, ${t_i18n(word)}` : ""})`;
+  const stateLine = icon && !word ? t_i18n(icon.label) : null;
+  const tip = [heading, event, stateLine].filter(Boolean).join(". ");
   return (
     <Tip content={tip}>
       <span
@@ -158,12 +162,15 @@ function SourceItem({
       >
         {icon && <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden data-testid="ctem-signal-source-status-icon" />}
         <ProviderLogo provider={source.provider} className="size-4 shrink-0" decorative />
-        <span className={source.bound ? "truncate" : "truncate text-default-secondary"}>{name}</span>
-        <span className="shrink-0 content-caption text-default-secondary">{sourceKindText(t_i18n, source)}</span>
-        {state === "off" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Off")}</span>}
-        {state === "excluded" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not used here")}</span>}
-        {state === "not_set_up" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not set up")}</span>}
-        {state === "error" && <span className="shrink-0 content-caption text-feedback-error-primary">{t_i18n("Error")}</span>}
+        {/* The name keeps its own width (up to 12rem) and the captions give way first (UX round 2 on #2509, B1). */}
+        <span className={cn("max-w-48 shrink-0 truncate", !source.bound && "text-default-secondary")} data-testid="ctem-signal-source-name">
+          {name}
+        </span>
+        <span className="min-w-0 truncate content-caption text-default-secondary">{sourceKindText(t_i18n, source)}</span>
+        {state === "off" && <span className="min-w-0 truncate content-caption text-default-secondary">{t_i18n("Off")}</span>}
+        {state === "excluded" && <span className="min-w-0 truncate content-caption text-default-secondary">{t_i18n("Not used here")}</span>}
+        {state === "not_set_up" && <span className="min-w-0 truncate content-caption text-default-secondary">{t_i18n("Not set up")}</span>}
+        {state === "error" && <span className="min-w-0 truncate content-caption text-feedback-error-primary">{t_i18n("Error")}</span>}
       </span>
     </Tip>
   );
@@ -308,7 +315,11 @@ function SourceList({
   // cell keeps to two lines (UX round 1 on #2454, B1: the default-off named sources wrapped a row to a third line).
   const notUsed = (s: CtemSignalPathSource) => sourceState(s, connected) === "excluded";
   const unused = shown.some((s) => !notUsed(s)) ? shown.filter(notUsed) : [];
-  const listed = unused.length > 0 ? shown.filter((s) => !notUsed(s)) : shown;
+  const kept = unused.length > 0 ? shown.filter((s) => !notUsed(s)) : shown;
+  // The sources that are on come first, so the one source a wide row shows says what records the path (UX round 2
+  // advisory A2 on #2509); the order is otherwise kept.
+  const isOn = (s: CtemSignalPathSource) => sourceDisplayState(s, connected, platform) === "bound";
+  const listed = [...kept.filter(isOn), ...kept.filter((s) => !isOn(s))];
   // One line, never a third row height (UX round 1 on #2509, B1): the first source, then "+N more" with the
   // rest in the DS tooltip, as the folded variant does. Two sources with their kind and state never fit the cell.
   const inline = listed.slice(0, INLINE_SOURCES);
