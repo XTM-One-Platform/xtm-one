@@ -110,6 +110,8 @@ def test_listeners_cover_the_paths_whose_events_exist_today():
         "credential_leak",
         "stale_asset",
         "new_exposure",
+        # #2436: the OpenAEV new asset source (off by default).
+        "surface_drift",
     }
     assert all(row.trigger_path in TRIGGER_PATHS for row in listeners.LISTENERS)
 
@@ -542,6 +544,20 @@ class _Store:
                 row["last_signal_at"] = r.last_seen_at.isoformat()
         return out
 
+    async def activity_by_source(
+        self, _db: Any, *, organization_id: Any, recorded_by: Any, since: datetime
+    ) -> dict[str, dict[str, dict[str, Any]]]:
+        out: dict[str, dict[str, dict[str, Any]]] = {}
+        for r in self._mine(organization_id, recorded_by):  # type: ignore[no-untyped-call]
+            key = str((r.evidence or {}).get(signals.SOURCE_KEY_EVIDENCE) or r.source_provider)
+            row = out.setdefault(r.trigger_path, {}).setdefault(key, {"count_30d": 0, "last_signal_at": None})
+            if r.last_seen_at >= since:
+                row["count_30d"] = int(row["count_30d"]) + 1
+            last = row["last_signal_at"]
+            if last is None or r.last_seen_at.isoformat() > last:
+                row["last_signal_at"] = r.last_seen_at.isoformat()
+        return out
+
 
 class _Db:
     commits = 0
@@ -572,6 +588,7 @@ def store(monkeypatch):
     monkeypatch.setattr(signals, "get_signal", fake.get)
     monkeypatch.setattr(signals, "counts_by_path", fake.counts_by_path)
     monkeypatch.setattr(signals, "activity_by_path", fake.activity_by_path)
+    monkeypatch.setattr(signals, "activity_by_source", fake.activity_by_source)
     fake.bound = set()  # type: ignore[attr-defined]
 
     async def _bound(_db: Any, _user_id: Any) -> set[tuple[str, str]]:
@@ -718,6 +735,7 @@ async def test_the_paths_endpoint_names_the_listened_paths(client):
         "credential_leak",
         "stale_asset",
         "new_exposure",
+        "surface_drift",
     }
 
 
@@ -737,7 +755,7 @@ async def test_the_paths_count_only_the_signals_the_caller_reads_and_say_not_con
     assert alice["stale_asset"]["total"] == 2 and alice["stale_asset"]["counts"]["new"] == 2
     assert admin["stale_asset"]["total"] == 2
     assert alice["stale_asset"]["configured"] is True
-    assert alice["surface_drift"] == {**alice["surface_drift"], "total": 0, "configured": False}
+    assert alice["blind_spot"] == {**alice["blind_spot"], "total": 0, "configured": False}
     assert alice["new_vulnerability"]["configured"] is True and alice["new_vulnerability"]["total"] == 0
 
 
@@ -748,7 +766,7 @@ async def test_the_paths_name_their_sources_status_and_30_day_activity(client: A
         await http.post("/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "a"))  # type: ignore[no-untyped-call]
         paths = {p["id"]: p for p in (await http.get("/api/v1/ctem-signals/paths")).json()["paths"]}
     vuln = paths["new_vulnerability"]
-    assert vuln["status"] == "connected" and vuln["description"]
+    assert vuln["status"] == "enabled" and vuln["description"]
     assert {(s["provider"], s["kind"], s["bound"]) for s in vuln["sources"]} == {
         ("opencti", "listener", True),
         ("opencti", "pir_playbook", False),
