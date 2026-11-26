@@ -4,7 +4,7 @@
  * What the bell and the companion inbox share about a notification kind, so
  * the two surfaces cannot disagree (`services/notification_feed.py`).
  */
-import type { NotificationDecisionSource, NotificationItem, NotificationKind } from "@/types";
+import type { NotificationDecisionSource, NotificationFeed, NotificationItem, NotificationKind } from "@/types";
 
 type Translate = (text: string, values?: Record<string, string | number>) => string;
 
@@ -69,6 +69,25 @@ export function canMarkAllRead(items: ReadonlyArray<Pick<NotificationItem, "unre
  */
 export function hasUnreadApproval(items: ReadonlyArray<Pick<NotificationItem, "unread" | "awaiting_answer">>): boolean {
   return items.some((item) => item.unread && isWaitingDecision(item));
+}
+
+/** Past it the badge reads `99+`; the exact count stays in its name and the menu header. */
+export const BADGE_DISPLAY_CAP = 99;
+
+/**
+ * The bell badge's count (#2453): the server's `unread_total`, every decision
+ * waiting on the person whatever the page holds, plus the other unread
+ * entries; an older server without it falls back to the page's unread entries.
+ */
+export function badgeCount(feed: Pick<NotificationFeed, "items" | "unread_total"> | undefined): number {
+  if (!feed) return 0;
+  const onPage = feed.items.filter((item) => item.unread).length;
+  return typeof feed.unread_total === "number" ? Math.max(feed.unread_total, onPage) : onPage;
+}
+
+/** The badge's text: the count, or `99+` past the cap (a visual cap only). */
+export function badgeText(count: number): string {
+  return count > BADGE_DISPLAY_CAP ? `${BADGE_DISPLAY_CAP}+` : String(count);
 }
 
 /**
