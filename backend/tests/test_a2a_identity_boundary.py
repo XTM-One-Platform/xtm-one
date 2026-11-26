@@ -17,6 +17,7 @@ things hold, one class each:
 
 import asyncio
 import inspect
+import re
 import uuid
 from types import SimpleNamespace
 
@@ -333,3 +334,169 @@ class TestThePartnerGetsNoPlatformBuilderReach:
         assert actors == [str(admin.id)]
         assert {"create_agent", "update_agent", "delete_agent"} <= chatting
         assert flow_tools <= chatting and evaluation_tools <= chatting
+
+
+class TestThePartnerDrivesNoRunner:
+    """``computer_use`` drives the run-as identity's enrolled machines (shell,
+    files, screenshots, input): a partner's task never gets it, and the model is
+    told why rather than hearing "unknown tool"."""
+
+    def _suite(self) -> set[str]:
+        from app.services.builtin_tools import build_computer_use_tools
+
+        defs, _ = build_computer_use_tools(
+            user_id=None, is_admin=False, user_group_ids=[], agent_runner_ids=[], agent_runner_labels=[]
+        )
+        return {d.name for d in defs}
+
+    async def test_a_partner_task_withholds_the_suite(self):
+        from app.a2a.partner_scope import withhold_runner_tools
+        from app.tools.base import CompositeToolExecutor
+
+        composite = CompositeToolExecutor()
+        with partner_task_scope():
+            assert withhold_runner_tools(composite) is True
+        assert not set(composite.tool_names)
+        assert set(composite.withheld) == self._suite()
+
+    async def test_any_other_turn_keeps_it(self):
+        from app.a2a.partner_scope import withhold_runner_tools
+        from app.tools.base import CompositeToolExecutor
+
+        composite = CompositeToolExecutor()
+        assert withhold_runner_tools(composite) is False
+        assert not composite.withheld
+
+    def test_every_builder_of_an_agent_run_asks_first(self):
+        from app.services import agent_chat, assignment_engine
+
+        gate = re.compile(
+            r'runners_enabled\s+and "computer_use" in agent_builtin_tool_ids\s+and not withhold_runner_tools\(composite\)'
+        )
+        for module in (agent_chat, assignment_engine):
+            source = inspect.getsource(module)
+            assert source.count("build_computer_use_tools(") == 1, module.__name__
+            assert gate.search(source), module.__name__
+
+
+class TestAnAssignmentAPartnerTaskStartsStaysInItsScope:
+    """A partner task that starts an assignment run (``delegate_to_assignment``,
+    then whatever that run chains) hands it the partner-task scope: the run
+    records it on its trigger payload and the assignment worker reopens it, so
+    the run's agent gets no runner, no trace inspection and the builder's read
+    half only, like a background delegation."""
+
+    class _CaptureDB:
+        def __init__(self):
+            self.added: list = []
+
+        def add(self, obj):
+            self.added.append(obj)
+
+        async def execute(self, _stmt, _params=None):
+            return SimpleNamespace(scalar_one_or_none=lambda: None)
+
+        async def flush(self):
+            return None
+
+        async def commit(self):
+            return None
+
+    async def _trigger(self, monkeypatch, payload: dict | None = None) -> dict:
+        from app.services import assignment_engine
+
+        async def _ai_on(_assignment) -> bool:
+            return False
+
+        async def _create_execution(_db, **_kwargs):
+            return SimpleNamespace(id=uuid.uuid4())
+
+        async def _wake():
+            return None
+
+        monkeypatch.setattr(assignment_engine, "_refuse_if_ai_disabled", _ai_on)
+        monkeypatch.setattr(assignment_engine, "create_execution", _create_execution)
+        monkeypatch.setattr(assignment_engine, "notify_orchestration_wake", _wake)
+        assignment = SimpleNamespace(
+            id=uuid.uuid4(), agent_id=uuid.uuid4(), name="Fix it", enabled=True, delay=None,
+            timeout_seconds=300, max_iterations=None, user_id=uuid.uuid4(), run_as_user_id=None,
+            is_company_managed=True,
+        )
+        agent = SimpleNamespace(enabled=True, name="Operator", max_iterations=None)
+        db = self._CaptureDB()
+        await assignment_engine.trigger_assignment(
+            assignment, agent, payload=payload or {"trigger_type": "delegation", "task": "do it"}, db=db
+        )
+        (run,) = db.added
+        return run.trigger_payload
+
+    async def test_the_run_records_the_scope(self, monkeypatch):
+        partner = PartnerPrincipal(exposure_id=uuid.uuid4(), client_id="partner-1")
+        with partner_task_scope(principal=partner):
+            payload = await self._trigger(monkeypatch)
+        assert payload["task"] == "do it"
+        assert queued_partner_task(payload)
+        assert queued_partner_principal(payload) == partner
+
+    async def test_any_other_trigger_records_none(self, monkeypatch):
+        payload = await self._trigger(monkeypatch)
+        assert payload == {"trigger_type": "delegation", "task": "do it"}
+
+    def _forged(self) -> dict:
+        """A caller payload (a webhook body, a flow's data) naming some partner's scope."""
+        other = PartnerPrincipal(exposure_id=uuid.uuid4(), client_id="someone-else")
+        return {"task": "do it", PARTNER_TASK_PAYLOAD_KEY: True, PARTNER_PRINCIPAL_PAYLOAD_KEY: other.as_payload()}
+
+    async def test_a_caller_payload_cannot_name_a_scope(self, monkeypatch):
+        """Reopened, a forged principal would lend that partner's run history: it widens."""
+        payload = await self._trigger(monkeypatch, self._forged())
+        assert payload == {"task": "do it"}
+
+    async def test_a_partner_task_records_its_own_scope_whatever_the_payload_names(self, monkeypatch):
+        partner = PartnerPrincipal(exposure_id=uuid.uuid4(), client_id="partner-1")
+        with partner_task_scope(principal=partner):
+            payload = await self._trigger(monkeypatch, self._forged())
+        assert queued_partner_principal(payload) == partner
+
+    @pytest.mark.parametrize("recorded", [True, False], ids=["partner", "other"])
+    async def test_the_assignment_worker_reopens_it(self, monkeypatch, recorded):
+        from app.services import assignment_engine
+        from app.services.orchestration_adapters.assignment import AssignmentAdapter
+        from app.services.orchestration_adapters.base import AdapterContext
+        from tests.agentic_gate_stub import stub_agentic_gate
+
+        stub_agentic_gate(monkeypatch)
+        partner = PartnerPrincipal(exposure_id=uuid.uuid4(), client_id="partner-1")
+        payload = (
+            {"task": "do it", PARTNER_TASK_PAYLOAD_KEY: True, PARTNER_PRINCIPAL_PAYLOAD_KEY: partner.as_payload()}
+            if recorded
+            else {"task": "do it"}
+        )
+        run = SimpleNamespace(status="completed", error=None)
+
+        class _DB:
+            def in_transaction(self):
+                return False
+
+            async def execute(self, stmt, *_a, **_k):
+                columns = [c.get("name") for c in getattr(stmt, "column_descriptions", [])]
+                value = payload if columns == ["trigger_payload"] else run
+                return SimpleNamespace(scalar_one_or_none=lambda: value)
+
+            async def commit(self):
+                return None
+
+            async def rollback(self):
+                return None
+
+        seen: list = []
+
+        async def _execute(_run_id, **_kwargs):
+            seen.append((in_partner_task(), current_partner()))
+
+        monkeypatch.setattr(assignment_engine, "execute_assignment_run", _execute)
+        execution = SimpleNamespace(payload={"run_id": str(uuid.uuid4())})
+        await AssignmentAdapter().execute(AdapterContext(db=_DB(), worker_id="w1"), execution)
+
+        assert seen == ([(True, partner)] if recorded else [(False, None)])
+        assert not in_partner_task()

@@ -416,7 +416,7 @@ async def test_an_install_on_mains_schema_upgrades_keeping_its_data():
 
 
 _DROP_REVISION = "e686spdtol01"
-_BEFORE_DROP = "x1784hubkey01"
+_BEFORE_DROP = "e684cbkeys01"
 
 
 @pytest.mark.integration

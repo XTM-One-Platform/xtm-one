@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
@@ -43,7 +44,7 @@ from app.models.group import Group, GroupMember
 from app.models.integration import Integration
 from app.models.knowledge_base import KnowledgeBase
 from app.models.mcp_server import MCPServer
-from app.models.user import User, is_platform_admin
+from app.models.user import User, admin_email_change_refusal, is_platform_admin
 from app.services import token_store
 from app.services.assignment_pause import owner_not_deactivated
 from app.services.audit import log_audit
@@ -1448,6 +1449,88 @@ async def update_user_role(
     return {"status": "ok", "user_id": user_id, "role": body.role}
 
 
+class UpdateEmailRequest(BaseModel):
+    email: EmailStr
+
+
+@router.put("/{user_id}/email")
+async def update_user_email(
+    user_id: str,
+    body: UpdateEmailRequest,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change a user's email (admin-only), the one way an email changes.
+
+    Other products find their account by this address (the cross-platform JWT
+    and the product sign-in carry it), so the person never sets it themselves
+    (``PUT /settings/preferences`` refuses it). It applies to an SSO account too,
+    to align it with the identity provider. The password reset links sent to
+    the old address stop working, and when SMTP is configured a notice goes to
+    the old and the new address.
+    """
+    from app.core.email_domains import email_domain_allowed
+    from app.core.sso_helpers import get_sso_config
+
+    result = await db.execute(select(User).where(User.id == parse_path_id(user_id, not_found_detail="User not found")))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    email = str(body.email).strip().lower()
+    old_email = user.email
+    if email == (old_email or "").strip().lower():
+        return {"status": "ok", "user_id": user_id, "email": old_email}
+
+    refusal = admin_email_change_refusal(user, email)
+    if refusal:
+        raise HTTPException(status_code=400, detail=refusal)
+
+    domain_list = (await get_sso_config(db)).allowed_domain_list
+    if not email_domain_allowed(email, domain_list):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Email addresses are restricted to: {', '.join(domain_list)}",
+        )
+
+    taken = await db.execute(select(User).where(func.lower(User.email) == email, User.id != user.id))
+    if taken.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="A user with this email already exists")
+
+    user.email = email
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        # Taken in between: the unique index on lower(email) refuses it.
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="A user with this email already exists") from exc
+    await log_audit(
+        db,
+        user=admin,
+        action="update",
+        entity_type="email",
+        entity_id=user.id,
+        entity_name=user.full_name,
+        summary=f"Changed email of '{old_email}' to '{email}'",
+        details={"old_email": old_email, "new_email": email},
+        request=request,
+    )
+    # Commit before answering: the next sign-in and the next platform token
+    # carry the new address.
+    await db.commit()
+
+    from app.services import email as email_service
+
+    if email_service.is_email_configured():
+        html, text = email_service.email_changed_email(old_email=old_email, new_email=email)
+        for recipient in dict.fromkeys((old_email, email)):
+            await email_service.send_email(
+                to=recipient, subject="Your email address changed", html=html, text=text
+            )
+    return {"status": "ok", "user_id": user_id, "email": email}
+
+
 @router.put("/{user_id}/active")
 async def toggle_user_active(
     user_id: str,
@@ -1681,6 +1764,7 @@ async def send_password_reset(
         user_id=user.id,
         created_by_id=admin.id,
         ttl_hours=ttl_hours,
+        email=user.email,
     )
 
     # Reset link targets the frontend ``/reset-password`` route — use

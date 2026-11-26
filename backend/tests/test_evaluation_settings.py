@@ -355,6 +355,9 @@ def _with_evaluation(package: bytes, agent: dict | None = None, **changes) -> Up
         pytest.param({"timeout_seconds": "an hour"}, "timeout_seconds", id="timeout_not_a_number"),
         pytest.param({"judge_max_tokens": 10}, "judge_max_tokens", id="judge_budget_below_its_minimum"),
         pytest.param({"performance_tolerance": -1}, "performance_tolerance", id="negative_tolerance"),
+        pytest.param({"run_mode": "batch"}, "run_mode", id="unknown_run_mode"),
+        pytest.param({"penalty_factor": -0.5}, "penalty_factor", id="negative_penalty_factor"),
+        pytest.param({"sub_score_weights": {"coherence": 2.0}}, "sub_score_weights", id="weight_above_one"),
         pytest.param({"tags": ["red"]}, "tags", id="tags_not_an_object"),
         pytest.param({"custom_params": "nightly"}, "custom_params", id="custom_params_not_an_object"),
         pytest.param({"scorer_selection": ["oracle"]}, "oracle", id="unknown_scorer"),
@@ -474,6 +477,107 @@ def test_create_refuses_a_reuse_default_the_column_would_refuse():
     for request_model in (CreateEvaluationRequest, UpdateEvaluationRequest):
         with pytest.raises(pydantic.ValidationError):
             request_model(name="E", reuse_default="sometimes")
+
+
+# ── run_mode, penalty_factor and sub_score_weights are checked (#685) ────────
+
+_ALL_ON_COHERENCE = {"coherence": 1.0}
+
+
+@pytest.mark.parametrize("request_model", [CreateEvaluationRequest, UpdateEvaluationRequest])
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        pytest.param("run_mode", "batch", id="unknown_run_mode"),
+        pytest.param("penalty_factor", -0.1, id="negative_penalty_factor"),
+        pytest.param("penalty_factor", 1.6, id="penalty_factor_above_the_slider"),
+        pytest.param("sub_score_weights", {"coherence": 0.5, "charm": 0.5}, id="unknown_criterion"),
+        pytest.param("sub_score_weights", {"coherence": 1.5, "response_accuracy": -0.5}, id="weight_outside_0_1"),
+        pytest.param("sub_score_weights", {"coherence": 0.5, "response_accuracy": 0.2}, id="weights_not_summing_to_1"),
+        pytest.param("sub_score_weights", {}, id="no_weight"),
+    ],
+)
+def test_a_setting_that_would_run_or_score_wrong_is_refused_naming_it(request_model, field, value):
+    """A 422 naming the field on create and update, never a value stored as is."""
+    import pydantic
+
+    with pytest.raises(pydantic.ValidationError) as exc:
+        request_model(name="E", **{field: value})
+    assert {error["loc"][0] for error in exc.value.errors()} == {field}
+
+
+@pytest.mark.parametrize("request_model", [CreateEvaluationRequest, UpdateEvaluationRequest])
+def test_the_bounds_and_a_partial_weighting_are_accepted(request_model):
+    for penalty_factor in (0.0, 1.5):
+        assert request_model(name="E", penalty_factor=penalty_factor).penalty_factor == penalty_factor
+    # Weights the creation page normalised, and a single criterion carrying all of
+    # it: stored as sent, the criteria left out weighing 0 and not written.
+    thirds = {"coherence": 1 / 3, "response_accuracy": 1 / 3, "instruction_adherence": 1 / 3}
+    for weights in (thirds, _ALL_ON_COHERENCE):
+        assert request_model(name="E", sub_score_weights=weights).sub_score_weights.stored() == weights
+
+
+def test_an_export_writes_the_run_mode_a_stored_unknown_one_runs_in():
+    exported = evaluations_api._exported_settings(Evaluation(name="E", trigger_config={}, run_mode="batch"))
+    assert exported["run_mode"] == "parallel"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("_stub_audit_and_groups")
+@pytest.mark.parametrize(
+    ("stored", "field"),
+    [
+        pytest.param({"penalty_factor": -1.0}, "penalty_factor", id="negative_penalty_factor"),
+        pytest.param({"sub_score_weights": {"coherence": 3.0}}, "sub_score_weights", id="weights_above_one"),
+    ],
+)
+async def test_a_copy_refuses_a_stored_setting_create_would_refuse_and_copies_nothing(stored, field):
+    """A value stored before its rule existed is a 422 naming it, never copied."""
+    from fastapi import HTTPException
+
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            admin, source_id, _agents = await _evaluation_with_every_setting(s)
+            source = await s.get(Evaluation, source_id)
+            for name, value in stored.items():
+                setattr(source, name, value)
+            await s.commit()
+            before = await _counts(s)
+
+            with pytest.raises(HTTPException) as exc:
+                await evaluations_api.copy_evaluation(evaluation_id=str(source_id), user=admin, db=s)
+            await s.rollback()
+            after = await _counts(s)
+
+        assert exc.value.status_code == 422
+        # The field, or the key of it at fault (``sub_score_weights.coherence``).
+        assert exc.value.detail.split(":")[0].split(".")[0] == field
+        assert after == before
+    finally:
+        await cleanup()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("_stub_audit_and_groups")
+async def test_a_copy_writes_the_run_mode_a_stored_unknown_one_runs_in():
+    """Any run_mode but ``sequential`` runs in parallel: the copy stores that, which it can then edit."""
+    sm, cleanup = await _make_db_full()
+    try:
+        async with sm() as s:
+            admin, source_id, _agents = await _evaluation_with_every_setting(s)
+            source = await s.get(Evaluation, source_id)
+            source.run_mode = "batch"
+            await s.commit()
+
+            copied = await evaluations_api.copy_evaluation(evaluation_id=str(source_id), user=admin, db=s)
+            copy, _settings, _links = await _settings_of(s, uuid.UUID(copied["id"]))
+
+        assert copy.run_mode == "parallel"
+    finally:
+        await cleanup()
 
 
 # ── quality_weight is retired ────────────────────────────────────────

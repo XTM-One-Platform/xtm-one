@@ -6593,7 +6593,13 @@ async def execute_assignment_run(
             # mirroring the tool / KB scoping model. Visibility runs as the
             # run's user (``is_admin=False``); a company-managed run with no
             # owner reaches company-managed runners only.
-            if settings.runners_enabled and "computer_use" in agent_builtin_tool_ids:
+            from app.a2a.partner_scope import withhold_runner_tools
+
+            if (
+                settings.runners_enabled
+                and "computer_use" in agent_builtin_tool_ids
+                and not withhold_runner_tools(composite)
+            ):
                 from app.api.v1.helpers import get_user_group_ids
                 from app.services.builtin_tools import build_computer_use_tools
 
@@ -10394,6 +10400,16 @@ def _acting_identity(user_id: _uuid.UUID | None, agent: Agent | None) -> _uuid.U
     return user_id or (agent.user_id if agent else None)
 
 
+def _with_partner_scope(payload: dict | None) -> dict | None:
+    """*payload* recording the partner-task scope a partner's task starts the run in, and no other.
+
+    The assignment worker reopens it (``orchestration_adapters.assignment``), so
+    the run gets what the task's own turn gets (``a2a.partner_scope``)."""
+    from app.a2a.partner_scope import partner_scoped_payload
+
+    return partner_scoped_payload(payload)
+
+
 async def trigger_assignment(
     assignment: Assignment,
     agent: Agent,
@@ -10481,6 +10497,7 @@ async def trigger_assignment(
     """
     await _refuse_if_ai_disabled(assignment)
     await _refuse_if_group_ai_disabled(_run_person(assignment, triggered_by_user_id, agent))
+    payload = _with_partner_scope(payload)
 
     # Defense-in-depth: reject disabled assignments/agents early
     if not assignment.enabled:
@@ -11303,6 +11320,8 @@ async def trigger_or_queue_assignment(
     """
     await _refuse_if_ai_disabled(assignment)
     await _refuse_if_group_ai_disabled(_run_person(assignment, None, agent))
+    # Before any path: a delivery folded into a waiting run merges its payload.
+    payload = _with_partner_scope(payload)
 
     if not assignment.enabled:
         raise ValueError(f"Assignment '{assignment.name}' is disabled")
@@ -11933,6 +11952,7 @@ async def _create_queued_run(
     run_visible_to_all = assignment.is_company_managed and not resolve_hide_runs(
         agent, assignment
     )
+    payload = _with_partner_scope(payload)
     run = AssignmentRun(
         assignment_id=assignment.id,
         agent_id=assignment.agent_id,

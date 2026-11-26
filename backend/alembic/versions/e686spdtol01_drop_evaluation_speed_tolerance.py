@@ -1,7 +1,7 @@
 """drop evaluations.speed_tolerance
 
 Revision ID: e686spdtol01
-Revises: x1784hubkey01
+Revises: e684cbkeys01
 """
 
 from collections.abc import Sequence
@@ -10,7 +10,7 @@ from alembic import op
 from app.core.migration_ddl import column_exists, set_lock_timeout, terminate_lock_holders
 
 revision: str = "e686spdtol01"
-down_revision: str | Sequence[str] | None = "x1784hubkey01"
+down_revision: str | Sequence[str] | None = "e684cbkeys01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

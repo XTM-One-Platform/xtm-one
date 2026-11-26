@@ -98,7 +98,6 @@ export function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: {
-      email?: string;
       full_name?: string;
       title?: string;
       timezone?: string | null;
@@ -511,6 +510,19 @@ export function useUpdateUserRole() {
   return useMutation({
     mutationFn: ({ userId, role }: { userId: string; role: string }) =>
       api.put(`/users/${userId}/role`, { role }),
+    onSuccess: (_d, { userId }) => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["user-detail", userId] });
+    },
+  });
+}
+
+/** An administrator changes a user's email: the one way it changes (a person never sets their own). */
+export function useUpdateUserEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, email }: { userId: string; email: string }) =>
+      api.put<{ status: string; user_id: string; email: string }>(`/users/${userId}/email`, { email }),
     onSuccess: (_d, { userId }) => {
       qc.invalidateQueries({ queryKey: ["users"] });
       qc.invalidateQueries({ queryKey: ["user-detail", userId] });

@@ -167,8 +167,11 @@ that user can reach**. There is no per-exposure tool allow-list.
 The one narrowing: a partner is an external caller, like a channel
 sender with no account, however privileged the run-as identity is. The A2A
 executor runs the task in a partner-task scope (`a2a/partner_scope.py`), which
-every in-process hop inherits with the asyncio context and a background
-delegation carries in its execution payload (`a2a_partner_task`). In it:
+every in-process hop inherits with the asyncio context, a background
+delegation carries in its execution payload (`a2a_partner_task`), and an
+assignment run the task starts (`delegate_to_assignment`, then whatever that run
+chains) records on its `trigger_payload` (`assignment_engine.trigger_assignment`,
+`trigger_or_queue_assignment`; `partner_scope.partner_scoped_payload`, which drops the scope keys a caller's payload names, so a delivery folded into a waiting run brings none), reopened by the assignment worker. In it:
 
 | Surface | What the task gets |
 | --- | --- |
@@ -179,6 +182,7 @@ delegation carries in its execution payload (`a2a_partner_task`). In it:
 | `list_work_items`, exposure opted in | Also the work items of the exposed agent's home fleet (`a2a/partner_runs.partner_fleet_work_items_clause`, #2202) when the live exposure carries `partner_fleet_reads` (off by default) |
 | `list_fleets`, `get_fleet`, `get_fleet_health` | Wired in every partner task that names its partner (`agent_chat._add_partner_fleet_tools`), scoped by `a2a/partner_fleet.py` (#2202): with `partner_fleet_reads` off (the default) or the exposure revoked every call refuses; on, the three answer the exposed agent's HOME fleet alone, `list_fleets` adds the running build, any other fleet answers like an unknown id and `get_fleet_health` never applies a fix. Read at each call, never cached on the task. No fleet write is registered |
 | `flow_builder`, the evaluation tools | Not wired |
+| `computer_use` (runners) | Not wired, withheld with its reason so the model is told why (`partner_scope.withhold_runner_tools`, called by the agent chat and the assignment builders, so an assignment run the task started gets none either): the suite would drive the run-as identity's enrolled machines. No exposure opts in |
 | Everything else | Unchanged, as the run-as user |
 
 A channel sender with no account gets the same builder surface.
