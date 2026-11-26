@@ -5,6 +5,7 @@
  * 2bis): the status of a trigger path, where its Connect action goes, and the
  * icon of each path and lens. Pure, so the status derivation is unit-tested.
  */
+import type { IconName } from "@filigran/design-system";
 import type { CtemSignalPath, CtemSignalPathSource, CtemSignalPathStatus } from "@/hooks/api/useCtemSignalsApi";
 import type { SignalSourcesSettings } from "@/lib/organization-profile";
 import { profileFieldHref } from "@/lib/organization-profile-tabs";
@@ -162,29 +163,101 @@ export function connectTarget(path: Pick<CtemSignalPath, "sources">): CtemSignal
   return [...unbound].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))[0] ?? null;
 }
 
-/** The key of one source in the profile's `signal_sources.excluded` (#1445): `provider:kind`. */
-export function sourceKey(source: Pick<CtemSignalPathSource, "provider" | "kind">): string {
-  return `${source.provider}:${source.kind}`;
+/**
+ * The status icon and word of one source (#2436, Sam 26 Nov 2026): on, off, not used here, not set up or error, so
+ * a path's row alone tells what runs; the side panel says the same word. A source not connected here has none:
+ * its greyed logo says it. The icon is decorative, the word travels in the tooltip and beside it. Its words are catalog keys
+ * already (On, Off, Not used here, Not set up, Error).
+ */
+const SOURCE_STATE_ICON = {
+  bound: { icon: "circle-check", className: "text-feedback-success-primary", label: "On" },
+  off: { icon: "circle-x", className: "text-default-secondary", label: "Off" },
+  excluded: { icon: "circle-x", className: "text-default-secondary", label: "Not used here" },
+  not_set_up: { icon: "circle-alert", className: "text-default-secondary", label: "Not set up" },
+  error: { icon: "circle-alert", className: "text-feedback-error-primary", label: "Error" },
+} as const satisfies Record<Exclude<SourceState, "not_connected">, { icon: IconName; className: string; label: string }>;
+
+export function sourceStateIcon(state: SourceState): (typeof SOURCE_STATE_ICON)[keyof typeof SOURCE_STATE_ICON] | null {
+  return state === "not_connected" ? null : SOURCE_STATE_ICON[state];
+}
+
+/** The key of one source in the profile's `signal_sources` (#1445): `provider:kind`, `provider:kind:name` when named (#2436). */
+export function sourceKey(source: Pick<CtemSignalPathSource, "provider" | "kind" | "name" | "key">): string {
+  return source.key ?? (source.name ? `${source.provider}:${source.kind}:${source.name}` : `${source.provider}:${source.kind}`);
+}
+
+function withPathKey(lists: Record<string, string[]> | undefined, path: string, key: string, on: boolean): Record<string, string[]> {
+  const all: Record<string, string[]> = { ...(lists ?? {}) };
+  const keys = new Set(all[path] ?? []);
+  if (on) keys.add(key);
+  else keys.delete(key);
+  if (keys.size > 0) all[path] = [...keys].sort();
+  else delete all[path];
+  return all;
+}
+
+/** The settings as the backend stores them: every list kept, an empty map dropped. */
+function settings(excluded: Record<string, string[]>, included: Record<string, string[]>, pirs: Record<string, string[]> | undefined): SignalSourcesSettings {
+  return {
+    excluded,
+    ...(Object.keys(included).length > 0 ? { included } : {}),
+    ...(pirs && Object.keys(pirs).length > 0 ? { pirs } : {}),
+  };
 }
 
 /**
  * The `signal_sources` of the profile with one source taken off (`excluded` true) or put back on one
  * path (#1445): the other paths and sources are kept, an empty path list is dropped, keys sorted
- * like the backend stores them.
+ * like the backend stores them. A source off by default (`default_on` false, #2436) is switched
+ * through `included` instead; `included` and `pirs` always travel whole.
  */
 export function withExclusion(
   current: SignalSourcesSettings | undefined,
   path: string,
   key: string,
   excluded: boolean,
+  defaultOn = true,
 ): SignalSourcesSettings {
-  const all: Record<string, string[]> = { ...(current?.excluded ?? {}) };
-  const keys = new Set(all[path] ?? []);
-  if (excluded) keys.add(key);
-  else keys.delete(key);
-  if (keys.size > 0) all[path] = [...keys].sort();
-  else delete all[path];
-  return { excluded: all };
+  const included = defaultOn ? { ...(current?.included ?? {}) } : withPathKey(current?.included, path, key, !excluded);
+  const excl = defaultOn ? withPathKey(current?.excluded, path, key, excluded) : withPathKey(current?.excluded, path, key, false);
+  return settings(excl, included, current?.pirs);
+}
+
+/** The OpenCTI `pir_type` values a path takes by default, as the backend's `PIR_PATH_TYPES` (#2436). */
+const PIR_PATH_TYPES: Record<string, readonly string[]> = {
+  new_vulnerability: ["VULNERABILITY"],
+  relevant_threat: ["THREAT_LANDSCAPE", "THREAT_ORIGIN", "THREAT_CUSTOM"],
+};
+
+function ofPathType(path: string, pirType: string): boolean {
+  const value = (pirType || "").toUpperCase();
+  return (PIR_PATH_TYPES[path] ?? []).includes(value) || (path === "new_vulnerability" && value.includes("VULNERAB"));
+}
+
+/**
+ * The PIRs one path's playbook listens to, as the backend's `pir_selection` (#2436): the administrator's pick (a PIR
+ * no longer enabled drops out), else the PIRs of the path's type, else every enabled PIR.
+ */
+export function pirSelection(
+  path: string,
+  enabled: readonly { pir_id: string; pir_type: string }[],
+  chosen: Record<string, string[]> | undefined,
+): { pirIds: string[]; available: string[]; isDefault: boolean } {
+  const ids = new Set(enabled.map((p) => p.pir_id));
+  const available = enabled.filter((p) => ofPathType(path, p.pir_type)).map((p) => p.pir_id).sort();
+  if (chosen && path in chosen) return { pirIds: (chosen[path] ?? []).filter((id) => ids.has(id)), available, isDefault: false };
+  return { pirIds: available.length > 0 ? available : [...ids].sort(), available, isDefault: true };
+}
+
+/**
+ * The `signal_sources` of the profile with the PIRs of one path's playbook set (#2436): `null` drops the
+ * path back to its default (the enabled PIRs of its OpenCTI type), an empty list provisions no playbook.
+ */
+export function withPirSelection(current: SignalSourcesSettings | undefined, path: string, pirIds: readonly string[] | null): SignalSourcesSettings {
+  const pirs: Record<string, string[]> = { ...(current?.pirs ?? {}) };
+  if (pirIds === null) delete pirs[path];
+  else pirs[path] = [...new Set(pirIds)].sort();
+  return settings({ ...(current?.excluded ?? {}) }, { ...(current?.included ?? {}) }, pirs);
 }
 
 /**

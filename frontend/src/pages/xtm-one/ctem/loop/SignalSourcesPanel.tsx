@@ -58,6 +58,7 @@ import {
   SOURCE_KIND_LABEL,
   connectedProviders,
   sourceState,
+  sourceStateIcon,
   splitSources,
 } from "./signal-sources";
 
@@ -95,7 +96,8 @@ function SourceItem({ source, connected }: { source: CtemSignalPathSource; conne
   const state = sourceState(source, connected);
   const possible = state === "not_connected";
   const event = source.event ? t_i18n(source.event) : null;
-  const stateLine = possible ? t_i18n("Not connected on this platform") : state === "not_set_up" ? t_i18n("Not set up") : null;
+  const icon = sourceStateIcon(state);
+  const stateLine = possible ? t_i18n("Not connected on this platform") : icon ? t_i18n(icon.label) : null;
   const tip = [event, stateLine].filter(Boolean).join(". ") || null;
   return (
     <Tip content={tip}>
@@ -110,6 +112,7 @@ function SourceItem({ source, connected }: { source: CtemSignalPathSource; conne
         data-possible={possible ? true : undefined}
         data-state={state}
       >
+        {icon && <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden data-testid="ctem-signal-source-status-icon" />}
         <ProviderLogo provider={source.provider} className={cn("size-4 shrink-0", possible && "opacity-50 grayscale")} decorative />
         <span className={source.bound ? "truncate" : "truncate text-default-secondary"}>{name}</span>
         <span className="shrink-0 content-caption text-default-secondary">{t_i18n(SOURCE_KIND_LABEL[source.kind])}</span>
@@ -221,7 +224,7 @@ function SourceList({
   return (
     <span className={className ? `${className} flex min-w-0 flex-wrap items-center gap-x-3` : "flex min-w-0 flex-wrap items-center gap-x-3"}>
       {shown.map((s) => (
-        <SourceItem key={`${s.provider}:${s.kind}`} source={s} connected={connected} />
+        <SourceItem key={s.key ?? `${s.provider}:${s.kind}`} source={s} connected={connected} />
       ))}
       {folded.length > 0 && <PossibleSources sources={folded} />}
     </span>

@@ -33,8 +33,10 @@ import { type CtemPlatformSource, type CtemSignalPath, type CtemSignalPathSource
 import { useIntegrations } from "@/hooks/api/useIntegrationApi";
 import { type OrganizationProfile, useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
+import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
+import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import {
   DEFAULT_ATTACK_SURFACE,
   DEFAULT_EVIDENCE_HEALTH,
@@ -45,7 +47,8 @@ import {
 } from "@/lib/organization-profile";
 import { cn } from "@/lib/utils";
 import { PlatformSourceControls, PlatformSourceEnableDialog } from "./PlatformSourceControls";
-import { isProvisioned, PLATFORM_SOURCE_STATUS_LABEL } from "./platform-sources";
+import { isProvisioned } from "./platform-sources";
+import { PirSelection } from "./PirSelection";
 import {
   PATH_ICON,
   PATH_STATUS_TONE,
@@ -58,18 +61,9 @@ import {
   profilePassField,
   sourceKey,
   sourceState,
+  sourceStateIcon,
   withExclusion,
 } from "./signal-sources";
-
-/** Each source state in words. @i18n-keys */
-const SOURCE_STATE_LABEL = {
-  error: "Error",
-  bound: "Feeds this path",
-  excluded: "Not used on this path",
-  off: "Off",
-  not_set_up: "Not set up",
-  not_connected: "Not connected on this platform",
-} as const;
 
 function providerName(provider: string): string {
   return CTEM_PRODUCT_INFO[provider]?.name ?? INTEGRATION_PROVIDER_NAMES[provider] ?? provider;
@@ -98,7 +92,7 @@ function SourceRow({
   platformSources: readonly CtemPlatformSource[];
   onEnable: (source: CtemPlatformSource) => void;
 }) {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, intl } = useFormatter();
   const navigate = useNavigate();
   const { data: integrations = [] } = useIntegrations();
   const state = sourceState(source, connected);
@@ -108,13 +102,19 @@ function SourceRow({
   const provisioned = isProvisioned(source);
   // "Set up" opens the enable dialog of the first integration of the provider still off (#2434).
   const firstOff = platformSources.find((s) => s.provider === source.provider && s.kind === source.kind && !s.enabled && s.integration_connected);
-  // A source XTM One provisions says its platform status (Off / Connected / Error), the one its lines below
-  // show, never the path-level Not set up (UX round 1 on #2442, B1); a reader reads the path state.
+  // The source's word and icon are the row chip's (#2436, Sam 26 Nov 2026: same wording in the side panel): On, Off,
+  // Not used here, Not set up or Error; a source XTM One provisions reads its platform status (UX round 1 on #2442, B1).
   const own = platformSources.filter((s) => s.provider === source.provider && s.kind === source.kind);
-  const platformLabel =
+  const shownState =
     provisioned && own.length > 0 && state !== "not_connected" && state !== "excluded"
-      ? PLATFORM_SOURCE_STATUS_LABEL[own.some((s) => s.status === "error") ? "error" : own.some((s) => s.status === "connected") ? "connected" : "off"]
-      : null;
+      ? own.some((s) => s.status === "error")
+        ? "error"
+        : own.some((s) => s.status === "connected")
+          ? "bound"
+          : "off"
+      : state;
+  const icon = sourceStateIcon(shownState);
+  const { count: formatCount } = useNumberFormat();
 
   const attackSurface = { ...DEFAULT_ATTACK_SURFACE, ...(profile?.attack_surface ?? {}) };
   const evidenceHealth: EvidenceHealthPass = { ...DEFAULT_EVIDENCE_HEALTH, ...((profile?.evidence_health ?? {}) as Partial<EvidenceHealthPass>) };
@@ -144,7 +144,10 @@ function SourceRow({
       );
   };
   const toggleUse = (use: boolean) =>
-    onSave({ signal_sources: withExclusion(profile?.signal_sources, path.id, key, !use) }, use ? t_i18n("Source used on this path") : t_i18n("Source taken off this path"));
+    onSave(
+      { signal_sources: withExclusion(profile?.signal_sources, path.id, key, !use, source.default_on !== false) },
+      use ? t_i18n("Source used on this path") : t_i18n("Source taken off this path"),
+    );
 
   return (
     <li
@@ -158,11 +161,22 @@ function SourceRow({
         <ProviderLogo provider={source.provider} className={cn("size-4 shrink-0", state === "not_connected" && "opacity-50 grayscale")} decorative />
         <span className={cn("truncate font-medium", state === "not_connected" && "text-default-secondary")}>{providerName(source.provider)}</span>
         <span className="shrink-0 content-caption text-default-secondary">{t_i18n(SOURCE_KIND_LABEL[source.kind])}</span>
-        <span className="ml-auto shrink-0 content-caption text-default-secondary" data-testid="ctem-path-source-state">
-          {t_i18n(platformLabel ?? SOURCE_STATE_LABEL[state])}
+        <span className="ml-auto flex shrink-0 items-center gap-1 content-caption text-default-secondary">
+          {icon && <Icon name={icon.icon} size={16} className={icon.className} aria-hidden data-testid="ctem-path-source-state-icon" />}
+          <span data-testid="ctem-path-source-state">{icon ? t_i18n(icon.label) : t_i18n("Not connected on this platform")}</span>
         </span>
       </div>
       {source.event && <p className="content-compact text-default-secondary">{t_i18n(source.event)}</p>}
+      {source.count_30d !== undefined && state !== "not_connected" && (
+        <p className="content-compact text-default-secondary" data-testid="ctem-path-source-activity">
+          {t_i18n("{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}", { count: source.count_30d, shown: formatCount(source.count_30d) })}
+          {". "}
+          {t_i18n("Last signal: {date}", { date: source.last_signal_at ? formatShortDateTimeIntl(intl, source.last_signal_at) : t_i18n("None") })}
+        </p>
+      )}
+      {source.kind === "pir_playbook" && state !== "not_connected" && (
+        <PirSelection path={path} profile={profile} isAdmin={isAdmin} saving={saving} onSave={onSave} />
+      )}
 
       {passField && state !== "not_connected" && (
         <div className="flex flex-col gap-1.5 content-compact">
