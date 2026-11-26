@@ -32,7 +32,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ctem_case import CASE_STATES
+from app.models.ctem_case import CASE_STATES, CLOSED_STATES
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._shared import logger
@@ -555,6 +555,20 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 refused = await _view_only(db, rows, vertical)
                 if refused:
                     return refused
+                if (
+                    isinstance(gate, dict)
+                    and str(gate.get("outcome") or "") == "answered"
+                    and not state
+                    and case.state in CLOSED_STATES
+                ):
+                    # A closed case waits on nobody (#2494): an answer that arrives after the
+                    # close is not applied, so no ticket, launch or move follows it.
+                    return (
+                        f"Refused: case {case.id} is closed ({case.state}); the answer to gate "
+                        f"{str(gate.get('key') or '')!r} is not applied and its decision was cancelled "
+                        "at the close. Run nothing it covered; reopen the case first if the work must go on. "
+                        "Nothing was changed."
+                    )
                 before = (await store.events_of(db, [case.id])).get(case.id, [])
                 known = {e.id for e in before}
                 unchanged: list[str] = []

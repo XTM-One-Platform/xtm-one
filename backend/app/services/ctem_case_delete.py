@@ -252,6 +252,44 @@ async def _armed_timers(db: AsyncSession, case: Any) -> list[Any]:
     )
 
 
+async def cancel_case_work(
+    db: AsyncSession,
+    case: Any,
+    *,
+    item_result: str,
+    timer_outcome: str,
+    now: datetime,
+    keep_held: bool = False,
+) -> tuple[list[Any], list[Any]]:
+    """Cancel the open work items and armed timers of *case*; answers ``(items, timers)`` cancelled (#2494).
+
+    The one write of the three paths that end a case: a delete, a resolve on a retired
+    asset and a person's (or an agent's) move into a closed state. Every item is
+    cancelled with *item_result* and ``needs_human`` cleared, so the bell stops asking;
+    every armed timer is cancelled with *timer_outcome*. *keep_held* leaves an item a
+    run holds (claimed or in progress) to that run: an agent that closes the case from
+    the run answering one of its gates completes that item itself.
+    """
+    from app.models.platform_timer import TIMER_CANCELLED
+
+    items = [
+        i
+        for i in await _open_items(db, case)
+        if not (keep_held and i.status in ("claimed", "in_progress") and i.claimed_by_run_id is not None)
+    ]
+    for item in items:
+        item.status = "cancelled"
+        item.needs_human = False
+        item.completed_at = now
+        item.result = item_result.strip()
+    timers = await _armed_timers(db, case)
+    for timer in timers:
+        timer.state = TIMER_CANCELLED
+        timer.outcome = timer_outcome
+        timer.ended_at = now
+    return items, timers
+
+
 async def _signals(db: AsyncSession, case_id: uuid.UUID) -> list[Any]:
     from app.models.ctem_signal import CtemSignal
 
@@ -558,17 +596,13 @@ async def delete_cases(
         summaries.append(deletion.summary())
         if dry_run:
             continue
-        for item in await _open_items(db, case):
-            item.status = "cancelled"
-            item.needs_human = False
-            item.completed_at = now
-            item.result = CANCELLED_ITEM_RESULT.format(case_id=case.id, actor=actor_name, reason=note).strip()
-        for timer in await _armed_timers(db, case):
-            from app.models.platform_timer import TIMER_CANCELLED
-
-            timer.state = TIMER_CANCELLED
-            timer.outcome = CANCELLED_TIMER_OUTCOME.format(case_id=case.id)
-            timer.ended_at = now
+        await cancel_case_work(
+            db,
+            case,
+            item_result=CANCELLED_ITEM_RESULT.format(case_id=case.id, actor=actor_name, reason=note),
+            timer_outcome=CANCELLED_TIMER_OUTCOME.format(case_id=case.id),
+            now=now,
+        )
         await log_audit(
             db,
             user=actor,
