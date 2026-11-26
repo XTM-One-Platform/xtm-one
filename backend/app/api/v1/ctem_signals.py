@@ -122,13 +122,15 @@ async def list_ctem_signal_paths(
     primary = await get_primary(db)
     counts: dict[str, dict[str, int]] = {}
     activity: dict[str, dict[str, Any]] = {}
+    by_source: dict[str, dict[str, dict[str, Any]]] = {}
     if primary is not None:
         reader = await _reader(db, user)
         counts = await signals.counts_by_path(db, organization_id=primary.id, recorded_by=reader)
         since = datetime.now(UTC) - timedelta(days=30)
         activity = await signals.activity_by_path(db, organization_id=primary.id, recorded_by=reader, since=since)
+        by_source = await signals.activity_by_source(db, organization_id=primary.id, recorded_by=reader, since=since)
     bound = await bound_sources(db, user.id)
-    return {"paths": signals.path_catalog(counts, bound=bound, activity=activity)}
+    return {"paths": signals.path_catalog(counts, bound=bound, activity=activity, by_source=by_source)}
 
 
 class SignalSourceEnable(BaseModel):

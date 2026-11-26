@@ -26,7 +26,7 @@ The full conventions and per-model constraints live in `dev-docs/reference/backe
 - **Typing**: `Mapped[]` annotations with `mapped_column` (SQLAlchemy 2.0 style).
 - **Secrets**: Fernet-encrypted, in a column ending in `_enc` (e.g. `access_token_enc`).
 - **JSON**: `postgresql.JSON`; vectors: `pgvector.sqlalchemy.Vector()`, dimension-agnostic (the embedding dimension is configured).
-- **Platform-wide state** lives on `PlatformSettings`: Terms of Use acceptance (never per user), agent default model, routing / fallback model, embedding / image defaults, MCP endpoint and AI-adoption config; `GeneralAssistantConfig` keeps the General Assistant's own chat model (`llm_model`), system prompt, and tool / KB / integration bindings.
+- **Platform-wide state** lives on `PlatformSettings`: Terms of Use acceptance (never per user), agent default model, routing / fallback model, embedding / image defaults, MCP endpoint and AI-adoption config, the XTM Hub signing key version (`xtm_hub_key_version`, `core/xtm_hub_key.py`); `GeneralAssistantConfig` keeps the General Assistant's own chat model (`llm_model`), system prompt, and tool / KB / integration bindings.
 
 ## Adding a model
 

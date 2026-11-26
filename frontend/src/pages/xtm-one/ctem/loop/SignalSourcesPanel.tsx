@@ -57,7 +57,9 @@ import {
   pathStatusLabel,
   SOURCE_KIND_LABEL,
   connectedProviders,
+  sourceKindText,
   sourceState,
+  sourceStateIcon,
   splitSources,
 } from "./signal-sources";
 
@@ -95,7 +97,8 @@ function SourceItem({ source, connected }: { source: CtemSignalPathSource; conne
   const state = sourceState(source, connected);
   const possible = state === "not_connected";
   const event = source.event ? t_i18n(source.event) : null;
-  const stateLine = possible ? t_i18n("Not connected on this platform") : state === "not_set_up" ? t_i18n("Not set up") : null;
+  const icon = sourceStateIcon(state);
+  const stateLine = possible ? t_i18n("Not connected on this platform") : icon ? t_i18n(icon.label) : null;
   const tip = [event, stateLine].filter(Boolean).join(". ") || null;
   return (
     <Tip content={tip}>
@@ -110,9 +113,10 @@ function SourceItem({ source, connected }: { source: CtemSignalPathSource; conne
         data-possible={possible ? true : undefined}
         data-state={state}
       >
+        {icon && <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden data-testid="ctem-signal-source-status-icon" />}
         <ProviderLogo provider={source.provider} className={cn("size-4 shrink-0", possible && "opacity-50 grayscale")} decorative />
         <span className={source.bound ? "truncate" : "truncate text-default-secondary"}>{name}</span>
-        <span className="shrink-0 content-caption text-default-secondary">{t_i18n(SOURCE_KIND_LABEL[source.kind])}</span>
+        <span className="shrink-0 content-caption text-default-secondary">{sourceKindText(t_i18n, source)}</span>
         {source.off && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Off")}</span>}
         {state === "excluded" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not used here")}</span>}
         {state === "not_set_up" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not set up")}</span>}
@@ -129,7 +133,7 @@ function PossibleSources({ sources }: { sources: CtemSignalPathSource[] }) {
   const tip = (
     <span className="flex flex-col gap-0.5">
       {sources.map((s) => (
-        <span key={`${s.provider}:${s.kind}`}>{`${sourceName(s)} (${t_i18n(SOURCE_KIND_LABEL[s.kind])})`}</span>
+        <span key={s.key ?? `${s.provider}:${s.kind}`}>{`${sourceName(s)} (${sourceKindText(t_i18n, s)})`}</span>
       ))}
       <span className="text-default-secondary">{t_i18n("Not connected on this platform")}</span>
     </span>
@@ -143,6 +147,31 @@ function PossibleSources({ sources }: { sources: CtemSignalPathSource[] }) {
         data-providers={sources.map((s) => s.provider).join(" ")}
       >
         {t_i18n("{count, plural, other {+# possible}}", { count: sources.length })}
+      </span>
+    </Tip>
+  );
+}
+
+/** The sources not used on this path: one muted item, the list in its tooltip, like "+N possible" (UX round 1 on #2454, B1). */
+function UnusedSources({ sources }: { sources: CtemSignalPathSource[] }) {
+  const { t_i18n } = useFormatter();
+  const tabIndex = useTriggerTabIndex();
+  const tip = (
+    <span className="flex flex-col gap-0.5">
+      {sources.map((s) => (
+        <span key={s.key ?? `${s.provider}:${s.kind}`}>{`${sourceName(s)} (${sourceKindText(t_i18n, s)})`}</span>
+      ))}
+      <span className="text-default-secondary">{t_i18n("Not used here")}</span>
+    </span>
+  );
+  return (
+    <Tip content={tip}>
+      <span
+        tabIndex={tabIndex}
+        className="inline-flex shrink-0 items-center rounded-sm content-caption text-default-secondary"
+        data-testid="ctem-signal-sources-unused"
+      >
+        {t_i18n("{count, plural, other {+# not used here}}", { count: sources.length })}
       </span>
     </Tip>
   );
@@ -199,7 +228,7 @@ function SourceList({
       const word = state in COMPACT_STATE_WORD ? COMPACT_STATE_WORD[state as keyof typeof COMPACT_STATE_WORD] : null;
       return word ? `, ${t_i18n(word)}` : "";
     };
-    const label = (s: CtemSignalPathSource) => `${sourceName(s)} (${t_i18n(SOURCE_KIND_LABEL[s.kind])}${stateWord(s)})`;
+    const label = (s: CtemSignalPathSource) => `${sourceName(s)} (${sourceKindText(t_i18n, s)}${stateWord(s)})`;
     const names = shown.map(label).join(", ");
     const tip = [
       names,
@@ -218,11 +247,17 @@ function SourceList({
       </Tip>
     );
   }
+  // A source not used on this path folds into one muted "+N not used here" while something else is listed, so the
+  // cell keeps to two lines (UX round 1 on #2454, B1: the default-off named sources wrapped a row to a third line).
+  const notUsed = (s: CtemSignalPathSource) => sourceState(s, connected) === "excluded";
+  const unused = shown.some((s) => !notUsed(s)) ? shown.filter(notUsed) : [];
+  const listed = unused.length > 0 ? shown.filter((s) => !notUsed(s)) : shown;
   return (
     <span className={className ? `${className} flex min-w-0 flex-wrap items-center gap-x-3` : "flex min-w-0 flex-wrap items-center gap-x-3"}>
-      {shown.map((s) => (
-        <SourceItem key={`${s.provider}:${s.kind}`} source={s} connected={connected} />
+      {listed.map((s) => (
+        <SourceItem key={s.key ?? `${s.provider}:${s.kind}`} source={s} connected={connected} />
       ))}
+      {unused.length > 0 && <UnusedSources sources={unused} />}
       {folded.length > 0 && <PossibleSources sources={folded} />}
     </span>
   );
@@ -331,7 +366,8 @@ export function SignalSourcesPanel() {
       width: 160,
       interactive: true,
       cell: (path) => {
-        const target = pathStatus(path) === "connected" ? null : connectTarget(path);
+        // An enabled path has nothing to switch on; a partly enabled one offers its source that is off.
+        const target = pathStatus(path) === "enabled" ? null : connectTarget(path);
         // A profile pass is turned on by an administrator: a reader gets no button for it.
         const actionable = target && (isAdmin || !connectNeedsAdmin(target));
         // A source XTM One provisions, of a connected provider: Set up opens its enable dialog (#2434).

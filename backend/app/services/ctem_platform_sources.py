@@ -60,17 +60,19 @@ PIR_PLAYBOOK_ENTITY_TYPES: tuple[str, ...] = (
 )
 
 
-def _opencti_pir_spec() -> dict[str, Any]:
+def _opencti_pir_spec(path: str = "") -> dict[str, Any]:
+    """The PIR playbook spec; for *path* (#2436), the playbook of that path alone, over its entity types."""
     from app.services import opencti_trigger_provisioning as prov
+    from app.services.ctem_signal_sources import PIR_PATHS
 
     spec = prov.read_provision_spec(
         {
             "provider": "opencti",
             "provision": {
                 "fleet": OBJECT_FLEET,
-                "purpose": "OpenCTI PIR playbook",
+                "purpose": f"OpenCTI PIR playbook - {path}" if path else "OpenCTI PIR playbook",
                 "mode": prov.PIR_PLAYBOOK_MODE,
-                "entity_types": list(PIR_PLAYBOOK_ENTITY_TYPES),
+                "entity_types": list(PIR_PATHS[path] if path else PIR_PLAYBOOK_ENTITY_TYPES),
                 "organization_context": ["pir_ids"],
                 "pir_min_score": 1,
             },
@@ -122,8 +124,10 @@ class Provisioned:
     """How one source kind of one provider is provisioned."""
 
     module: str
-    spec: Callable[[], dict[str, Any]]
+    spec: Callable[..., dict[str, Any]]
     label: str
+    #: One set of objects per trigger path and PIR selection (#2436): ``spec(path)`` builds each.
+    per_pir_path: bool = False
 
 
 #: ``(provider, kind)`` -> how it is provisioned.
@@ -132,7 +136,9 @@ PROVISIONED: dict[tuple[str, str], Provisioned] = {
     ("opencti", "listener"): Provisioned(
         "app.services.opencti_trigger_provisioning", _opencti_listener_spec, "OpenCTI"
     ),
-    ("opencti", "pir_playbook"): Provisioned("app.services.opencti_trigger_provisioning", _opencti_pir_spec, "OpenCTI"),
+    ("opencti", "pir_playbook"): Provisioned(
+        "app.services.opencti_trigger_provisioning", _opencti_pir_spec, "OpenCTI", per_pir_path=True
+    ),
 }
 
 
@@ -149,7 +155,9 @@ def is_connected(state: Any) -> bool:
     return (
         isinstance(state, dict)
         and state.get("status") == "provisioned"
-        and bool(state.get("trigger_ids") or state.get("trigger_id") or state.get("playbook_id"))
+        and bool(
+            state.get("trigger_ids") or state.get("trigger_id") or state.get("playbook_id") or state.get("playbook_ids")
+        )
     )
 
 
@@ -165,7 +173,11 @@ def status_of(row: Any) -> tuple[str, str | None]:
 
 def _held(state: Any) -> bool:
     return isinstance(state, dict) and bool(
-        state.get("notifier_id") or state.get("trigger_ids") or state.get("trigger_id") or state.get("playbook_id")
+        state.get("notifier_id")
+        or state.get("trigger_ids")
+        or state.get("trigger_id")
+        or state.get("playbook_id")
+        or any(_held(sub) for sub in (state.get("paths") or {}).values())
     )
 
 
@@ -208,15 +220,27 @@ async def _run_as_reason(db: Any, provider: str, user_id: Any) -> str | None:
     return None
 
 
-async def _spec(db: Any, provider: str, kind: str) -> dict[str, Any]:
-    """The spec of a source, its organization context derived; raises :class:`SourceRefusedError` naming what is missing."""
-    spec = PROVISIONED[(provider, kind)].spec()
+async def _spec(
+    db: Any, provider: str, kind: str, *, path: str = "", pir_ids: list[str] | None = None
+) -> dict[str, Any]:
+    """The spec of a source, its organization context derived; raises :class:`SourceRefusedError` naming what is missing.
+
+    *path* and *pir_ids* build one PIR playbook of a per-path source (#2436): its
+    PIRs are that selection, each at its Intelligence policy minimum.
+    """
+    spec = PROVISIONED[(provider, kind)].spec(path) if path else PROVISIONED[(provider, kind)].spec()
+    if pir_ids is not None:
+        spec = {**spec, "pir_subset": sorted(pir_ids)}
     if spec.get("organization_context"):
         from app.services import opencti_trigger_provisioning as prov
         from app.services import organization_context as org_context
+        from app.services.organization_pirs import overlay_profile
 
         row = await org_context.current_version(db)
         profile = org_context.parse_profile(row.profile) if row is not None else None
+        if profile is not None and path:
+            # The enabled PIRs and their minimum scores come from the Intelligence policy (#2435).
+            profile = await overlay_profile(db, profile)
         spec, missing = prov.derive_from_organization_context(spec, profile)
         if missing:
             raise SourceRefusedError(
@@ -224,6 +248,85 @@ async def _spec(db: Any, provider: str, kind: str) -> dict[str, Any]:
                 "the source is not provisioned without them"
             )
     return spec
+
+
+async def pir_path_selections(db: Any) -> dict[str, list[str]]:
+    """Per PIR path, the PIRs its playbook listens to (#2436): ``signal_sources.pirs`` over the enabled PIRs."""
+    from sqlalchemy import select
+
+    from app.models.organization_pir import OrganizationPir
+    from app.services import organization_context as org_context
+    from app.services.ctem_signal_sources import PIR_PATHS, pir_selection
+
+    row = await org_context.current_version(db)
+    profile = org_context.parse_profile(row.profile if row is not None else {})
+    rows = (await db.execute(select(OrganizationPir).where(OrganizationPir.enabled.is_(True)))).scalars().all()
+    # Before the Intelligence policy stores PIRs, the profile's own ids, of no known type.
+    enabled = {r.pir_id: r.pir_type or "" for r in rows} if rows else dict.fromkeys(profile.pir_ids or [], "")
+    chosen = profile.signal_sources.pirs
+    return {path: pir_selection(path, enabled, chosen)["pir_ids"] for path in PIR_PATHS}
+
+
+async def _reconcile_pir_paths(db: Any, row: Any, conn: tuple[Any, str, str], now: datetime) -> dict[str, Any]:
+    """One playbook per PIR path over its selection, each PIR at its own minimum (#2436).
+
+    The per-path states live under ``paths``; a path whose selection is empty holds
+    nothing (its objects are removed). A single playbook provisioned before #2436
+    is removed once every path is provisioned, so no delivery is lost.
+    """
+    from app.core.config import settings
+
+    stamp = now.isoformat()
+    state = dict(row.state or {})
+    module = _module(row.provider, row.kind)
+    client, integration_id, secret = conn
+    url = receiver_url(settings.base_url, integration_id, str(row.id))
+    selections = await pir_path_selections(db)
+    previous = dict(state.get("paths") or {})
+    paths: dict[str, Any] = {}
+    errors: list[str] = []
+    for path, pir_ids in selections.items():
+        sub = dict(previous.pop(path, None) or {})
+        if not pir_ids:
+            if _held(sub):
+                leftover = await module.remove(client, sub)
+                if leftover:
+                    errors.append(f"{path}: objects not removed: {leftover}")
+                    paths[path] = sub
+            continue
+        try:
+            spec = await _spec(db, row.provider, row.kind, path=path, pir_ids=pir_ids)
+        except SourceRefusedError as exc:
+            errors.append(f"{path}: {exc}")
+            paths[path] = {**sub, "status": "error", "error": str(exc), "checked_at": stamp}
+            continue
+        sub = await module.reconcile(client, spec, sub, url=url, secret=secret, now=now)
+        sub["pir_ids"] = list(pir_ids)
+        paths[path] = sub
+        if not is_connected(sub):
+            errors.append(f"{path}: {sub.get('error') or 'not provisioned'}")
+    for gone in previous.values():  # a path no longer fed by a PIR playbook
+        if _held(gone):
+            await module.remove(client, gone)
+    legacy = {k: state[k] for k in ("notifier_id", "playbook_id", "trigger_id") if state.get(k)}
+    if legacy and not errors:
+        leftover = await module.remove(client, legacy)
+        if leftover:
+            errors.append(f"objects not removed: {leftover}")
+    out: dict[str, Any] = {
+        "status": "error" if errors else "provisioned",
+        "error": "; ".join(errors)[:500] if errors else None,
+        "paths": paths,
+        "playbook_ids": sorted(s["playbook_id"] for s in paths.values() if s.get("playbook_id")),
+        "fingerprint": ",".join(f"{p}={s.get('fingerprint')}" for p, s in sorted(paths.items())),
+        "checked_at": stamp,
+        "integration_id": integration_id,
+    }
+    if errors:
+        out.update(legacy)  # kept until the per-path playbooks deliver
+    elif not paths:
+        out["status"], out["error"] = "error", "no PIR selected on any path: the PIR playbook feeds nothing"
+    return out
 
 
 async def _reconcile(db: Any, row: Any, now: datetime) -> dict[str, Any]:
@@ -239,6 +342,8 @@ async def _reconcile(db: Any, row: Any, now: datetime) -> dict[str, Any]:
     conn = await _connection(db, row)
     if isinstance(conn, str):
         return {**state, "status": "error", "error": conn, "checked_at": stamp}
+    if PROVISIONED[(row.provider, row.kind)].per_pir_path:
+        return await _reconcile_pir_paths(db, row, conn, now)
     try:
         spec = await _spec(db, row.provider, row.kind)
     except SourceRefusedError as exc:
@@ -258,7 +363,19 @@ async def _remove(db: Any, row: Any) -> str | None:
     conn = await _connection(db, row)
     if isinstance(conn, str):
         return conn
-    return await _module(row.provider, row.kind).remove(conn[0], state)
+    module = _module(row.provider, row.kind)
+    errors: list[str] = []
+    for sub in (state.get("paths") or {}).values():
+        if _held(sub):
+            err = await module.remove(conn[0], sub)
+            if err:
+                errors.append(err)
+    top = {k: v for k, v in state.items() if k != "paths"}
+    if _held(top):
+        err = await module.remove(conn[0], top)
+        if err:
+            errors.append(err)
+    return "; ".join(errors) if errors else None
 
 
 async def get_or_create(db: Any, provider: str, kind: str, integration_id: uuid.UUID) -> Any:

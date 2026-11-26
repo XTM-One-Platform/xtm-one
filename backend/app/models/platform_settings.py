@@ -20,11 +20,14 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+
+#: The XTM Hub key version every instance starts at (``xtm_hub_key_version``).
+XTM_HUB_DEFAULT_KEY_VERSION = 1
 
 
 class PlatformSettings(Base):
@@ -35,7 +38,12 @@ class PlatformSettings(Base):
     # ``get_platform_settings()``.  Folded from ``n2s3g4l5e6t7`` so the squashed
     # baseline and ``create_all`` fresh installs carry the same index and the
     # autogenerate drift probe stays at zero operations.
-    __table_args__ = (Index("ix_platform_settings_singleton", text("(true)"), unique=True),)
+    __table_args__ = (
+        Index("ix_platform_settings_singleton", text("(true)"), unique=True),
+        CheckConstraint(
+            "xtm_hub_key_version >= 1", name="ck_platform_settings_xtm_hub_key_version_positive"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -231,6 +239,17 @@ class PlatformSettings(Base):
     # (#11533, ``services/organization_context_categories.py``); none by default.
     organization_context_categories: Mapped[list[str]] = mapped_column(
         JSON, nullable=False, default=list, server_default=text("'[]'::json")
+    )
+
+    # --- XTM Hub signing key ──────────────────────────────────────────────
+    # The version of the Ed25519 key this instance signs its XTM Hub calls
+    # with, derived from SECRET_KEY (``core/xtm_hub_key.py``). A new version
+    # gives a new key, which the Hub learns only through a new registration.
+    xtm_hub_key_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=XTM_HUB_DEFAULT_KEY_VERSION,
+        server_default=str(XTM_HUB_DEFAULT_KEY_VERSION),
     )
 
     # --- Tool approval gate ────────────────────────────────────────

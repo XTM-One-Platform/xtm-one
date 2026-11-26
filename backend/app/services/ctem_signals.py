@@ -360,6 +360,61 @@ async def activity_by_path(
     return out
 
 
+#: The evidence key a system recording point stamps with its source key (``ctem_signal_sources.source_key``, #2436),
+#: so the signal sources view counts each source of a path apart. Stored, never reconciled by the gate.
+SOURCE_KEY_EVIDENCE = "xtm_source_key"
+
+
+async def activity_by_source(
+    db: AsyncSession, *, organization_id: uuid.UUID, recorded_by: str | None, since: datetime
+) -> dict[str, dict[str, dict[str, Any]]]:
+    """Per trigger path and source key, the signals last seen since *since* and the newest sighting (#2436).
+
+    Same visibility as :func:`activity_by_path`. A signal recorded before its
+    source stamped :data:`SOURCE_KEY_EVIDENCE` counts under its ``source_provider``.
+    """
+    key = func.coalesce(CtemSignal.evidence[SOURCE_KEY_EVIDENCE].as_string(), CtemSignal.source_provider)
+    statement = _visible(
+        select(
+            CtemSignal.trigger_path,
+            key,
+            func.count().filter(CtemSignal.last_seen_at >= since),
+            func.max(CtemSignal.last_seen_at),
+        ),
+        organization_id=organization_id,
+        recorded_by=recorded_by,
+    ).group_by(CtemSignal.trigger_path, key)
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    for path, source, number, last in (await db.execute(statement)).all():
+        out.setdefault(path, {})[str(source)] = {"count_30d": int(number or 0), "last_signal_at": _iso(last)}
+    return out
+
+
+def source_activity(
+    path: str, source: dict[str, Any], activity: dict[str, dict[str, dict[str, Any]]]
+) -> dict[str, Any]:
+    """The activity of one source of *path* (:func:`activity_by_source`). Pure.
+
+    Its own key first; an unnamed source also takes the signals of its provider
+    recorded before #2436, when it is the only unnamed source of that provider on the path.
+    """
+    from app.services.ctem_signal_sources import PATH_SOURCES
+
+    seen = activity.get(path) or {}
+    own = seen.get(source["key"]) or {}
+    count = int(own.get("count_30d") or 0)
+    last = own.get("last_signal_at")
+    provider = source["provider"]
+    alone = sum(1 for s in PATH_SOURCES.get(path, ()) if s.provider == provider and not s.name) == 1
+    if not source.get("name") and alone:
+        legacy = seen.get(provider) or {}
+        count += int(legacy.get("count_30d") or 0)
+        other = legacy.get("last_signal_at")
+        if other and (last is None or other > last):
+            last = other
+    return {"count_30d": count, "last_signal_at": last}
+
+
 async def observed_by_case(
     db: AsyncSession, case_ids: list[uuid.UUID], *, organization_id: uuid.UUID, recorded_by: str | None
 ) -> dict[uuid.UUID, list[datetime]]:
@@ -542,6 +597,7 @@ def path_catalog(
     *,
     bound: set[tuple[str, str]] | None = None,
     activity: dict[str, dict[str, Any]] | None = None,
+    by_source: dict[str, dict[str, dict[str, Any]]] | None = None,
 ) -> list[dict[str, Any]]:
     """The 12 trigger paths, with their default lens and whether a listener maps an event to them.
 
@@ -554,7 +610,8 @@ def path_catalog(
     (``ctem_signal_sources.path_status``): ``error``, ``connected``,
     ``not_set_up``, ``off``, ``not_connected`` or ``agents_api`` (no source:
     agents and the API only, never connected). With *activity* (:func:`activity_by_path`):
-    ``count_30d`` and ``last_signal_at`` (#1189).
+    ``count_30d`` and ``last_signal_at`` (#1189). With *by_source* (:func:`activity_by_source`),
+    each source carries its own ``count_30d`` and ``last_signal_at`` (#2436).
     """
     from app.services.ctem_signal_listeners import paths_with_listener
     from app.services.ctem_signal_sources import PATH_CAPABILITIES, PATH_DESCRIPTIONS, path_sources, path_status
@@ -563,6 +620,9 @@ def path_catalog(
     out: list[dict[str, Any]] = []
     for path, (label, lens) in PATH_CATALOG.items():
         sources = path_sources(path, bound)
+        if by_source is not None:
+            for source in sources:
+                source.update(source_activity(path, source, by_source))
         row: dict[str, Any] = {
             "id": path,
             "label": label,
