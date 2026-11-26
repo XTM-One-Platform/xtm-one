@@ -186,11 +186,12 @@ export function connectHref(source: Pick<CtemSignalPathSource, "provider" | "kin
 
 /**
  * The first source a path should connect: a pass turned off first (Turn on is one click),
- * then a listener, then a pass, then the playbook.
+ * then a listener, then a pass, then the playbook. A signed webhook source is never one: it is switched on
+ * from its own row of the path table, and has no integration page to open.
  */
 export function connectTarget(path: Pick<CtemSignalPath, "sources">): CtemSignalPathSource | null {
   // A source an administrator excluded from the path is a choice, never a source to connect.
-  const unbound = (path.sources ?? []).filter((s) => !s.bound && !s.excluded);
+  const unbound = (path.sources ?? []).filter((s) => !s.bound && !s.excluded && s.kind !== "webhook");
   const off = unbound.find((s) => s.off);
   if (off) return off;
   const order = ["listener", "pass", "pir_playbook"];

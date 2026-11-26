@@ -95,6 +95,15 @@ describe("signal source rules", () => {
     expect(connectTarget({ sources: [{ provider: "aikido", kind: "listener", event: "", bound: false }, off] })).toBe(off);
   });
 
+  it("never offers an off webhook source as Connect or Turn on: it is switched on from its own row (#2509 review)", () => {
+    const hook = { provider: "webhook", kind: "webhook" as const, event: "", bound: false, off: true, key: "webhook:w-1", name: "Scanner" };
+    expect(connectTarget({ sources: [hook] })).toBeNull();
+    const listener = { provider: "aikido", kind: "listener" as const, event: "", bound: true };
+    expect(connectTarget({ sources: [listener, hook] })).toBeNull();
+    const unboundListener = { provider: "censys", kind: "listener" as const, event: "", bound: false };
+    expect(connectTarget({ sources: [hook, unboundListener] })).toBe(unboundListener);
+  });
+
   it("keeps Turn on of a profile pass for administrators: a reader gets no button for it (UX round 1 on #1356, B3)", () => {
     expect(connectNeedsAdmin({ provider: "opencrq", kind: "pass" })).toBe(true);
     expect(connectNeedsAdmin({ provider: "shodan", kind: "pass" })).toBe(true);
