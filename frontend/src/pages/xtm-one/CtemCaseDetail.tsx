@@ -879,9 +879,6 @@ export default function CtemCaseDetail() {
         />
       )}
 
-      {/* Every waiting decision, whoever works the case (#2464): a gate no section owns is answered here. */}
-      <CaseWaitingGates state={kase.state} gates={kase.gates} history={kase.history} personName={personName} />
-
       <CaseLoopProvider value={loopState}>
         <CaseOpenedBy caseId={kase.id} history={kase.history} />
 
