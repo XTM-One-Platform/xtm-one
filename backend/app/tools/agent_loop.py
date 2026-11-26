@@ -6823,6 +6823,20 @@ def _plan_model_downgrade(
     )
 
 
+def _working_window(context_window: int, working_window_tokens: int | None) -> int:
+    """The window the working-context budgets of a run are computed on.
+
+    The model's *context_window*, or *working_window_tokens* when that is set
+    (above ``0``) and smaller. An event-driven listener that loops 40+ tool
+    calls on a 1M-token model has no reason to carry more working context
+    than it would on a 128k one: the budgets scaled on the 1M window let it
+    re-send ~800k characters of tool results on every call (#2430).
+    """
+    if working_window_tokens and working_window_tokens > 0 and context_window > 0:
+        return min(context_window, working_window_tokens)
+    return context_window
+
+
 def _compute_live_tool_result_budget(context_window: int) -> int:
     """Char budget for tool-result bodies kept verbatim in the live context.
 
@@ -7469,6 +7483,30 @@ _SUBSTANTIVE_TEXT_MIN_CHARS = 900
 #: window is bounded by the window gate, not by this.
 _TURN_PROTECTION_LIVE_BUDGET_FACTOR = 4
 _TURN_PROTECTION_MIN_CHARS = _TURN_PROTECTION_LIVE_BUDGET_FACTOR * _TOOL_RESULT_LIVE_MIN_CHARS
+
+
+#: Under a working window (#2430) the protection holds ONE live budget: an
+#: event-driven listener works by tool calls and seldom writes 900
+#: characters, so the protection is never released and its four live
+#: budgets (192,000 characters at the floor) were re-sent on every call.
+_WORKING_WINDOW_TURN_PROTECTION_FACTOR = 1
+
+
+def _turn_protection_budget(context_window: int, working_window_tokens: int | None) -> int:
+    """Characters of unwritten current-turn results the protection holds.
+
+    On the model's window: ``max(_TURN_PROTECTION_MIN_CHARS, 4 x the live
+    budget)``, as before. Under a working window smaller than the model's:
+    one live budget of that window, so a tool-call-only loop carries at most
+    about one live budget of tool results besides the batch it is shown.
+    """
+    window = _working_window(context_window, working_window_tokens)
+    if window < context_window:
+        return _WORKING_WINDOW_TURN_PROTECTION_FACTOR * _compute_live_tool_result_budget(window)
+    return max(
+        _TURN_PROTECTION_MIN_CHARS,
+        _TURN_PROTECTION_LIVE_BUDGET_FACTOR * _compute_live_tool_result_budget(window),
+    )
 
 
 def _unwritten_turn_results(
@@ -10184,6 +10222,8 @@ async def run_agent_loop(
     # turn that changes an integration the run is bound to refreshes the
     # surface through it at the end of that iteration. None: no refresh.
     tool_surface_refresher: IntegrationSurfaceRefresher | None = None,
+    # The working window of an event-driven run (#2430): see the docstring.
+    working_window_tokens: int | None = None,
 ) -> ChatResponse:
     """Run the agentic loop until the LLM stops calling tools.
 
@@ -10409,6 +10449,15 @@ async def run_agent_loop(
             ``agent_memory``, ``skills_catalog``...). Splits the ``system``
             bucket of each reading's ``context_detail``, what the chat's
             ``/context`` command shows; ``None`` leaves that split out.
+        working_window_tokens: A window, in tokens, that the working-context
+            budgets are computed on instead of the model's when it is
+            smaller: the live tool-result budget, the unwritten-turn
+            protection, the vision budget and the compaction trigger and
+            target. The model's real window stays the hard bound of every
+            request (the overflow guard, the emergency prune). An
+            event-driven run on a 1M-token model otherwise re-sent up to
+            ~800k characters of tool results on every call of a 40-call
+            loop (#2430). ``None`` or ``0``: the model's window, as before.
 
     Returns:
         The final ``ChatResponse`` (the one without tool calls; the
@@ -11588,11 +11637,7 @@ async def run_agent_loop(
             _unwritten_turn_results(
                 messages,
                 is_history=_is_history_tool_result,
-                budget_chars=max(
-                    _TURN_PROTECTION_MIN_CHARS,
-                    _TURN_PROTECTION_LIVE_BUDGET_FACTOR
-                    * _compute_live_tool_result_budget(_resolve_ctx_window()),
-                ),
+                budget_chars=_turn_protection_budget(_resolve_ctx_window(), working_window_tokens),
             )
         )
 
@@ -12979,6 +13024,9 @@ async def run_agent_loop(
                 iter_tools = None
 
             _ctx_window = _resolve_ctx_window()
+            # The budgets below are computed on the working window (#2430);
+            # the overflow guard further down stays on the model's.
+            _work_window = _working_window(_ctx_window, working_window_tokens)
 
             # ── Tool-result curation (always-on context-rot guard) ────────
             # BEFORE measuring/compacting: keep the working context focused even
@@ -13003,12 +13051,12 @@ async def run_agent_loop(
             )
             _clear_stale_tool_results(
                 messages,
-                live_budget_chars=_compute_live_tool_result_budget(_ctx_window),
+                live_budget_chars=_compute_live_tool_result_budget(_work_window),
                 is_unseen=_is_protected_tool_body,
             )
             _clear_stale_tool_result_files(
                 messages,
-                files_budget_bytes=_compute_tool_result_files_budget(_ctx_window),
+                files_budget_bytes=_compute_tool_result_files_budget(_work_window),
                 is_unseen=_is_unseen_tool_result,
             )
 
@@ -13017,14 +13065,14 @@ async def run_agent_loop(
             # the one measure: text plus provider extras.
             _estimated_session_chars = _transcript_chars(messages)
             _estimated_tokens = _estimated_session_chars // _CHARS_PER_TOKEN
-            _context_utilization = _estimated_tokens / _ctx_window if _ctx_window > 0 else 0.0
+            _context_utilization = _estimated_tokens / _work_window if _work_window > 0 else 0.0
             _compaction_trigger_chars = min(
                 max_session_chars,
-                int(_ctx_window * _COMPACTION_TRIGGER_UTILIZATION * _CHARS_PER_TOKEN),
+                int(_work_window * _COMPACTION_TRIGGER_UTILIZATION * _CHARS_PER_TOKEN),
             )
             _compaction_target_chars = min(
                 max_session_chars,
-                int(_ctx_window * _COMPACTION_TARGET_UTILIZATION * _CHARS_PER_TOKEN),
+                int(_work_window * _COMPACTION_TARGET_UTILIZATION * _CHARS_PER_TOKEN),
             )
             _overflow_target_chars = _compaction_target_chars
 

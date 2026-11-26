@@ -8627,6 +8627,10 @@ async def execute_assignment_run(
                 )
                 if _preload_groups:
                     loop_kwargs["preload_tool_groups"] = _preload_groups
+                # An event-driven run works in a bounded window (#2430).
+                _work_window = assignment_dispatch.event_run_working_window(run.trigger_context)
+                if _work_window is not None:
+                    loop_kwargs["working_window_tokens"] = _work_window
                 # Pass agent-level temperature if configured
                 if agent.temperature is not None:
                     loop_kwargs["temperature"] = agent.temperature

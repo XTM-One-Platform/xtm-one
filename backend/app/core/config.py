@@ -3336,6 +3336,14 @@ class Settings(BaseSettings):
     agent_loop_identical_call_refuse_after: int = 5
     agent_loop_similar_call_warn_after: int = 6
     agent_loop_similar_call_refuse_after: int = 10
+    # Working window of an EVENT-DRIVEN assignment run (a platform event, an
+    # integration event, a webhook), in tokens: the loop computes its
+    # working-context budgets (live tool results, the unwritten-turn
+    # protection, the compaction trigger) on this window instead of the
+    # model's when it is smaller, so a 40-call listener loop on a 1M-token
+    # model re-sends what it would on a 128k one (#2430). The model's own
+    # window still bounds every request. ``0`` keeps the model's window.
+    agent_loop_event_run_working_window_tokens: int = 128_000
     # Fraction of ``max_iterations`` at which the loop tells the model, once,
     # how much of its step budget it has spent and on which tools (the top 3
     # by call count) - before the wind-down nudge, which comes a few
@@ -3507,6 +3515,7 @@ class Settings(BaseSettings):
         "agent_loop_identical_call_refuse_after",
         "agent_loop_similar_call_warn_after",
         "agent_loop_similar_call_refuse_after",
+        "agent_loop_event_run_working_window_tokens",
         "agent_loop_vision_views_per_turn",
         "agent_loop_read_windows_per_file",
     )
