@@ -21916,5 +21916,8 @@
   "The PIR policy was not saved: {reason}": "PIR ポリシーは保存されませんでした: {reason}",
   "In OpenCTI": "OpenCTI 内",
   "Listed": "掲載中",
-  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "判定可能にするには、資産上で稼働中のバージョンを読み取るチェック（認証付きスキャンまたはエージェント）を実行してください。"
+  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "判定可能にするには、資産上で稼働中のバージョンを読み取るチェック（認証付きスキャンまたはエージェント）を実行してください。",
+  "Open scenario": "シナリオを開く",
+  "{total, plural, one {Not playable: {missing} of # technique has no payload} other {Not playable: {missing} of # techniques have no payload}}": "{total, plural, other {実行不可: # 件のテクニックのうち {missing} 件にペイロードがありません}}",
+  "Recorded the validation scenario": "検証シナリオを記録しました"
 }
