@@ -21912,5 +21912,11 @@
   "Type a whole number from 0 to 100.": "0〜100 の整数を入力してください。",
   "The PIR policy was not saved: {reason}": "PIR ポリシーは保存されませんでした: {reason}",
   "In OpenCTI": "OpenCTI 内",
-  "Listed": "掲載中"
+  "Listed": "掲載中",
+  "a group": "グループ",
+  "everyone in the company": "社内の全員",
+  "the administrators": "管理者",
+  "Waits for {name}: {gate}": "{name}を待機中: {gate}",
+  "No decision was filed for this gate, so nobody can answer it yet. The fleet files it the next time it runs this case.": "このゲートの判断はまだ登録されていないため、誰も回答できません。フリートが次にこのケースを処理するときに登録します。",
+  "This gate waits for a person: the decision is in their Waiting for you list.": "このゲートは担当者を待っています。判断はその人の「あなたの対応待ち」リストにあります。"
 }

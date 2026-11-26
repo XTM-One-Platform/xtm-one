@@ -21912,5 +21912,11 @@
   "Type a whole number from 0 to 100.": "Saisissez un nombre entier de 0 à 100.",
   "The PIR policy was not saved: {reason}": "La politique du PIR n'a pas été enregistrée : {reason}",
   "In OpenCTI": "Dans OpenCTI",
-  "Listed": "Listé"
+  "Listed": "Listé",
+  "a group": "un groupe",
+  "everyone in the company": "toute l'entreprise",
+  "the administrators": "les administrateurs",
+  "Waits for {name}: {gate}": "Attend {name} : {gate}",
+  "No decision was filed for this gate, so nobody can answer it yet. The fleet files it the next time it runs this case.": "Aucune décision n'a été déposée pour cette validation, personne ne peut donc y répondre pour l'instant. La flotte la dépose la prochaine fois qu'elle traite ce cas.",
+  "This gate waits for a person: the decision is in their Waiting for you list.": "Cette validation attend une personne : la décision est dans sa liste En attente de vous."
 }
