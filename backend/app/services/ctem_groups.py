@@ -7,12 +7,16 @@ So that nobody loses CTEM at the upgrade that introduced that rule, two groups
 are seeded, each found by its stable ``Group.seed_key`` (an administrator may
 rename either):
 
-* "CTEM Viewers" (``ctem_viewers``): ``view``, read only. The first seed puts
-  every active account in it; every account created afterwards (local
-  registration, invitation, administrator, SCIM, single sign-on) joins it once,
-  at its creation (:func:`join_viewers_at_creation`). An administrator who
-  removes a person is never overridden: nothing adds them back at a later
-  sign-in (the group is not ``auto_join``).
+* "CTEM Viewers" (``ctem_viewers``): ``view``, read only, ``auto_join`` on
+  (#2478). The first seed puts every active account in it; every account
+  created afterwards (local registration, invitation, administrator, SCIM,
+  single sign-on) joins it once, at its creation
+  (:func:`join_viewers_at_creation`). That creation join is how its auto join
+  is served: the single sign-on auto join skips it
+  (:data:`JOINED_AT_CREATION_KEYS`), so an administrator who removes a person
+  is never overridden at that person's next sign-in. Platforms seeded before
+  #2478 get the toggle on once, by migration ``t2478viewersaj01``; nothing
+  turns it on again at boot, so an administrator's toggle-off holds.
 * "CTEM Operators" (``ctem_operators``): ``decide``, seeded empty; the
   administrators choose who acts on cases and signals.
 
@@ -58,6 +62,11 @@ SEEDED_GROUPS: dict[str, tuple[str, str, str]] = {
         "administrators choose its members.",
     ),
 }
+
+#: Seeded groups whose auto join is served once, at account creation, and never
+#: at a single sign-on (``services/group_auto_join.py``), so an administrator's
+#: removal holds (#2478).
+JOINED_AT_CREATION_KEYS: frozenset[str] = frozenset({VIEWERS_KEY})
 
 #: The content modes that serve CTEM.
 CTEM_MODES = ("xtm_one", "dev")
@@ -122,7 +131,7 @@ async def seed_ctem_groups(db: AsyncSession, *, platform_mode: str) -> int:
             description=description,
             ctem_access=right,
             ctem_notify=True,
-            auto_join=False,
+            auto_join=key in JOINED_AT_CREATION_KEYS,
             kind="access",
             seed_key=key,
         )
