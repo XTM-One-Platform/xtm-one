@@ -34,9 +34,10 @@ export function PirSelection({
   const enabled = (data?.pirs ?? []).filter((p) => p.enabled && !p.gone_at);
   const { pirIds, available, isDefault } = pirSelection(path.id, enabled, profile?.signal_sources?.pirs);
   const byId = new Map(enabled.map((p) => [p.pir_id, p]));
+  // One save per change of the field, with the whole next pick: Clear saves the empty pick once
+  // (UX r2 B4 of #2454), never one save per removed PIR from a stale selection.
   const save = (next: string[] | null) =>
     onSave({ signal_sources: withPirSelection(profile?.signal_sources, path.id, next) }, t_i18n("PIR selection saved"));
-  const toggle = (id: string) => save(pirIds.includes(id) ? pirIds.filter((v) => v !== id) : [...pirIds, id]);
 
   return (
     <div className="flex flex-col gap-1.5 content-compact" data-testid="ctem-path-source-pirs" data-default={isDefault}>
@@ -55,7 +56,7 @@ export function PirSelection({
           <MultiSelect
             options={enabled.map((p) => ({ value: p.pir_id, label: p.name }))}
             selected={pirIds}
-            onToggle={toggle}
+            onChange={save}
             placeholder={t_i18n("No PIR: no playbook on this path")}
             aria-label={t_i18n("PIRs this playbook listens to")}
             searchPlaceholder={t_i18n("Search PIRs")}
