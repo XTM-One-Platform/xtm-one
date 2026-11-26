@@ -294,6 +294,8 @@ describe("SignalSourcesPanel", () => {
     expect(name.textContent).toBe("OpenCTI");
     expect(shown[0].textContent?.startsWith("OpenCTI")).toBe(true);
     expect(within(row).getByTestId("ctem-signal-sources-more").textContent).toBe("+2 more");
+    // The folded line lists the sources that are on first too.
+    expect(within(row).getByTestId("ctem-signal-sources-compact").textContent).toMatch(/^OpenCTI \(Live listener\)/);
   });
 
   it("counts the sources on of the available ones per path, and opens the path's sources from the empty state (#2506)", async () => {

@@ -152,7 +152,7 @@ function SourceItem({
     <Tip content={tip}>
       <span
         tabIndex={tabIndex}
-        className="inline-flex min-w-0 items-center gap-1.5 overflow-hidden rounded-sm"
+        className="inline-flex h-5 min-w-0 flex-wrap content-start items-center gap-x-1.5 gap-y-2 overflow-hidden rounded-sm"
         data-testid="ctem-signal-source"
         data-provider={source.provider}
         data-kind={source.kind}
@@ -162,15 +162,16 @@ function SourceItem({
       >
         {icon && <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden data-testid="ctem-signal-source-status-icon" />}
         <ProviderLogo provider={source.provider} className="size-4 shrink-0" decorative />
-        {/* The name keeps its own width (up to 12rem) and the captions give way first (UX round 2 on #2509, B1). */}
+        {/* The name keeps its own width (up to 12rem); a caption that does not fit whole wraps onto the hidden second
+            line instead of being cut, the tooltip carrying it (UX round 2 on #2509, B1). */}
         <span className={cn("max-w-48 shrink-0 truncate", !source.bound && "text-default-secondary")} data-testid="ctem-signal-source-name">
           {name}
         </span>
-        <span className="min-w-0 truncate content-caption text-default-secondary">{sourceKindText(t_i18n, source)}</span>
-        {state === "off" && <span className="min-w-0 truncate content-caption text-default-secondary">{t_i18n("Off")}</span>}
-        {state === "excluded" && <span className="min-w-0 truncate content-caption text-default-secondary">{t_i18n("Not used here")}</span>}
-        {state === "not_set_up" && <span className="min-w-0 truncate content-caption text-default-secondary">{t_i18n("Not set up")}</span>}
-        {state === "error" && <span className="min-w-0 truncate content-caption text-feedback-error-primary">{t_i18n("Error")}</span>}
+        <span className="shrink-0 whitespace-nowrap content-caption text-default-secondary">{sourceKindText(t_i18n, source)}</span>
+        {state === "off" && <span className="shrink-0 whitespace-nowrap content-caption text-default-secondary">{t_i18n("Off")}</span>}
+        {state === "excluded" && <span className="shrink-0 whitespace-nowrap content-caption text-default-secondary">{t_i18n("Not used here")}</span>}
+        {state === "not_set_up" && <span className="shrink-0 whitespace-nowrap content-caption text-default-secondary">{t_i18n("Not set up")}</span>}
+        {state === "error" && <span className="shrink-0 whitespace-nowrap content-caption text-feedback-error-primary">{t_i18n("Error")}</span>}
       </span>
     </Tip>
   );
@@ -294,7 +295,10 @@ function SourceList({
   const { live } = splitSources(path, connected);
   const anyOn = live.some((s) => sourceDisplayState(s, connected, platform) === "bound");
   if (!anyOn) return <NoSourceOn onOpen={onOpen} className={className} compact={compact} />;
-  const shown = live;
+  // The sources that are on come first, so the row says what records the path, folded or wide (UX round 2 advisory
+  // A2 on #2509); the order is otherwise kept.
+  const isOn = (s: CtemSignalPathSource) => sourceDisplayState(s, connected, platform) === "bound";
+  const shown = [...live.filter(isOn), ...live.filter((s) => !isOn(s))];
   if (compact) {
     const stateWord = (s: CtemSignalPathSource) => {
       const state = sourceDisplayState(s, connected, platform);
@@ -315,11 +319,7 @@ function SourceList({
   // cell keeps to two lines (UX round 1 on #2454, B1: the default-off named sources wrapped a row to a third line).
   const notUsed = (s: CtemSignalPathSource) => sourceState(s, connected) === "excluded";
   const unused = shown.some((s) => !notUsed(s)) ? shown.filter(notUsed) : [];
-  const kept = unused.length > 0 ? shown.filter((s) => !notUsed(s)) : shown;
-  // The sources that are on come first, so the one source a wide row shows says what records the path (UX round 2
-  // advisory A2 on #2509); the order is otherwise kept.
-  const isOn = (s: CtemSignalPathSource) => sourceDisplayState(s, connected, platform) === "bound";
-  const listed = [...kept.filter(isOn), ...kept.filter((s) => !isOn(s))];
+  const listed = unused.length > 0 ? shown.filter((s) => !notUsed(s)) : shown;
   // One line, never a third row height (UX round 1 on #2509, B1): the first source, then "+N more" with the
   // rest in the DS tooltip, as the folded variant does. Two sources with their kind and state never fit the cell.
   const inline = listed.slice(0, INLINE_SOURCES);
