@@ -2110,6 +2110,28 @@ carries the gate keys that wait (`fleet_autonomy.waiting_gate_keys`, context key
 `update`, naming the gate, so a repeat is never set through the coverage. When
 the gate runs, the coverage keeps `P1D` and starts on its own.
 
+Launch scope (#2482, Sam, 26 Nov 2026). Every validation decision that
+launches a scenario on asset groups (the initial validation and the re-test of
+the threat response and vulnerability prioritization fleets) offers two scopes,
+the default first and always the recommended one: **Default**, the scenario's
+own targets, the whole asset group(s) as built (`manage_openaev_scenario`
+`launch` without `asset_ids`, as before); **Sample**, a few assets of the group
+(3 unless the person says otherwise, never more than the group holds; one per
+platform present, agents online first, the case's own asset included when the
+case names one), named on the card, which says the result measures only those
+assets. `launch` with `asset_ids` duplicates the scenario, retargets every
+inject of the copy to exactly those assets (`inject_assets`, no
+`inject_asset_groups`, content targets aligned) and launches the copy; the
+original scenario is never written, and a copy that cannot be fully retargeted
+is deleted with nothing launched (`simulations._retargeted_copy`). OpenAEV's
+own launch targets (`ScenarioTargetsInput`) are not used: they add targets to
+the injects instead of replacing the group, behind a preview feature flag. The
+daily repeat keeps the scope chosen; the Gate answered run launches the scope
+the answer chose (a plain approve is the default) and writes the scope, the
+assets and the scenario launched on the case. A sample that leaves out the
+case's own asset says it does not close the case. A gate that runs without a
+decision always launches the default scope.
+
 No seeded gate names a tool or a grant (#1675, Sam, 24 Nov 2026): every tool
 is offered and runs when called; a gate that waits is one decision item the
 orchestrator files between two steps (`needs_human`, its ask card), and the
