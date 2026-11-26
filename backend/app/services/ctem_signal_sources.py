@@ -216,6 +216,46 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
 }
 
 
+#: The paths a PIR playbook feeds (#2436), with the OpenCTI entity types its playbook delivers.
+PIR_PATHS: dict[str, tuple[str, ...]] = {
+    "new_vulnerability": ("Vulnerability",),
+    "relevant_threat": ("Intrusion-Set", "Threat-Actor-Group", "Threat-Actor-Individual", "Campaign", "Malware"),
+}
+
+#: The OpenCTI ``pir_type`` values a path takes by default (#2436). OpenCTI offers threat PIRs today;
+#: a vulnerability PIR type is matched by name as soon as OpenCTI offers one.
+PIR_PATH_TYPES: dict[str, tuple[str, ...]] = {
+    "new_vulnerability": ("VULNERABILITY",),
+    "relevant_threat": ("THREAT_LANDSCAPE", "THREAT_ORIGIN", "THREAT_CUSTOM"),
+}
+
+
+def _of_path_type(path: str, pir_type: str) -> bool:
+    wanted = PIR_PATH_TYPES.get(path, ())
+    value = (pir_type or "").upper()
+    return value in wanted or (path == "new_vulnerability" and "VULNERAB" in value)
+
+
+def pir_selection(path: str, enabled: dict[str, str], chosen: dict[str, list[str]] | None) -> dict[str, Any]:
+    """The PIRs the PIR playbook of *path* listens to (#2436). Pure.
+
+    *enabled* maps each enabled PIR id to its OpenCTI ``pir_type``; *chosen* is
+    ``signal_sources.pirs``. A path the administrator set takes its list (a PIR
+    no longer enabled drops out; an empty list provisions nothing). Otherwise the
+    PIRs of the path's type; when none is of that type, every enabled PIR, as
+    before #2436, so no path goes silent on the upgrade. ``available`` lists the
+    PIRs of the path's type, empty when OpenCTI offers none (the UI says so).
+    """
+    available = sorted(pid for pid, kind in enabled.items() if _of_path_type(path, kind))
+    if chosen is not None and path in chosen:
+        return {
+            "pir_ids": [pid for pid in chosen[path] if pid in enabled],
+            "available": available,
+            "default": False,
+        }
+    return {"pir_ids": available or sorted(enabled), "available": available, "default": True}
+
+
 def path_status(sources: list[dict[str, Any]]) -> str:
     """``agents_api`` with no source; ``error`` when a source is in error; ``connected`` when one is bound;
     ``not_set_up`` when a source of a connected provider is not set up; ``off`` when one is off; else

@@ -846,6 +846,9 @@ class SignalSourcesSettings(BaseModel):
     took off that path alone: an excluded source records nothing on it and is
     not bound on it, while it keeps feeding its other paths. ``included`` names
     the sources off by default (#2436) an administrator switched on for a path.
+    ``pirs`` names, per path a PIR playbook feeds, the OpenCTI PIRs it listens
+    to (#2436): a path absent takes its default (``ctem_signal_sources.pir_selection``),
+    an empty list provisions no playbook for that path.
     Set from the Sources tab of CTEM > Signals.
     """
 
@@ -853,6 +856,27 @@ class SignalSourcesSettings(BaseModel):
 
     excluded: dict[str, list[str]] = Field(default_factory=dict)
     included: dict[str, list[str]] = Field(default_factory=dict)
+    pirs: dict[str, list[str]] = Field(default_factory=dict)
+
+    @field_validator("pirs")
+    @classmethod
+    def _clean_pirs(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        from app.services.ctem_signal_sources import PIR_PATHS
+
+        out: dict[str, list[str]] = {}
+        for path, ids in value.items():
+            if path not in PIR_PATHS:
+                raise ValueError(f"{path!r} is not a trigger path a PIR playbook feeds")
+            cleaned: list[str] = []
+            for pid in ids:
+                pid = str(pid).strip()
+                if not pid or len(pid) > 100:
+                    raise ValueError(f"{pid!r} is not a PIR id")
+                if pid not in cleaned:
+                    cleaned.append(pid)
+            # An empty list is kept: it switches the path's playbook off.
+            out[path] = sorted(cleaned)
+        return out
 
     @field_validator("excluded", "included")
     @classmethod
