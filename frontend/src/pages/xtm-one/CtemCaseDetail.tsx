@@ -58,6 +58,7 @@ import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } from "./ctem/case-loop";
 import { CaseTicketChip } from "./ctem/case-ticket";
+import { acceptanceMaxDay } from "./ctem/case-acceptance";
 import { keyVersion } from "./ctem/case-version";
 import { CaseAttackPath } from "./ctem/CaseAttackPath";
 import { CaseExploitation } from "./ctem/CaseExploitation";
@@ -305,7 +306,7 @@ export default function CtemCaseDetail() {
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [reason, setReason] = useState("");
   const [evidence, setEvidence] = useState("");
-  const [expiry, setExpiry] = useState(inDays(90));
+  const [expiry, setExpiry] = useState(acceptanceMaxDay);
   const [formError, setFormError] = useState<string | null>(null);
   // The SLA countdown of the header moves without a reload (#892).
   const now = useNow(60_000);
@@ -497,7 +498,7 @@ export default function CtemCaseDetail() {
   const open = (kind: DialogKind) => {
     setReason("");
     setEvidence("");
-    setExpiry(inDays(90));
+    setExpiry(acceptanceMaxDay());
     setFormError(null);
     setSplitTitle("");
     setDialog(kind);
@@ -1033,6 +1034,7 @@ export default function CtemCaseDetail() {
                   aria-labelledby={settingsFieldLabelId("case-expiry")}
                   aria-describedby={settingsFieldHintId("case-expiry")}
                   min={inDays(1)}
+                  max={acceptanceMaxDay()}
                   value={expiry}
                   onChange={setExpiry}
                 />
