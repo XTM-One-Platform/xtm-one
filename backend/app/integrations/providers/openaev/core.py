@@ -35,6 +35,7 @@ from ._common import (
     SCENARIO_SEVERITIES,
     _aev_link,
     _api,
+    _assets_carry_tags,
     _contains_filter,
     _fmt_asset,
     _fmt_asset_group,
@@ -48,6 +49,7 @@ from ._common import (
     _fmt_vulnerability,
     _merge_fork_candidates,
     _multi_contains_filter,
+    _openaev_tag_names,
     _providing_filter_clause,
     _require_response,
     _resolve_output_types,
@@ -384,9 +386,10 @@ def register_core(
         criteria = describe_filter_group(parsed_group) if parsed_group else ""
         if search:
             criteria = f"{criteria} AND text '{search}'" if criteria else f"'{search}'"
+        tag_names = await _openaev_tag_names(base_url, hdrs) if _assets_carry_tags(items) else {}
         return format_entity_list(
             items,
-            partial(_fmt_asset, base_url=base_url),
+            partial(_fmt_asset, base_url=base_url, tag_names=tag_names),
             noun="asset",
             total=data.get("totalElements"),
             empty_msg=f"No assets found for {criteria or 'this search'} (total 0).",
@@ -409,7 +412,10 @@ def register_core(
             return err
         resp = _require_response(resp)
         data = resp.json()
-        return _fmt_asset(data, base_url) if data else f"Asset '{asset_id}' not found."
+        if not data:
+            return f"Asset '{asset_id}' not found."
+        tag_names = await _openaev_tag_names(base_url, hdrs) if _assets_carry_tags([data]) else {}
+        return _fmt_asset(data, base_url, tag_names)
 
     # ── 3. Search asset groups ────────────────────────────────────────
 
