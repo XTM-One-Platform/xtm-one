@@ -1040,7 +1040,15 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     # A treatment plan's name and OpenCRQ link go to a viewer who reads OpenCRQ only (#1068).
     # A threat package's Grouping and coverage go to a viewer who reads OpenCTI only (#1115).
     hidden = (row.kind == "treatment_plan" and not view.opencrq) or (row.kind == "threat_package" and not view.opencti)
+    named: dict[str, Any] = {}
+    if row.kind == "threat_package":
+        # ``from`` holds the coverage id, never a previous value (#2429): named alongside.
+        named = {
+            "grouping_id": None if hidden else row.to_value,
+            "coverage_id": None if hidden else row.from_value,
+        }
     return {
+        **named,
         "at": row.at.isoformat() if row.at else None,
         "actor": row.actor,
         "kind": row.kind,
@@ -1299,6 +1307,12 @@ def threat_package_for(
     return {**package, **status, "restricted": False}
 
 
+def _served_history(events: list[CtemCaseEvent], page: int | None = None) -> list[CtemCaseEvent]:
+    """The history rows a case read serves: the versions record left out, then the newest *page* (#2429)."""
+    rows = [e for e in events if e.kind != VERSIONS_KIND]
+    return rows if page is None else rows[:page]
+
+
 def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
@@ -1311,12 +1325,20 @@ def _rank(row: CtemCaseIssue, view: ViewerView) -> tuple:
 
 
 def hydrate(
-    case: CtemCase, rows: list[CtemCaseIssue], events: list[CtemCaseEvent], view: ViewerView
+    case: CtemCase,
+    rows: list[CtemCaseIssue],
+    events: list[CtemCaseEvent],
+    view: ViewerView,
+    *,
+    history_page: int | None = None,
 ) -> dict[str, Any] | None:
     """One case for this viewer, ``None`` when they see none of its issues.
 
     A member they cannot see is ``{"restricted": true}`` and nothing else: no
-    id, source, name, score, asset or link.
+    id, source, name, score, asset or link. *events* is the case's whole history,
+    newest first: the treatment plan, the threat package and its review state are
+    derived from all of it, and only the served ``history`` is cut to the newest
+    *history_page* entries (#2429), so a package older than the page still reads.
     """
     head = summary(case, rows, view)
     if head is None:
@@ -1335,7 +1357,7 @@ def hydrate(
         # The issues' assets, then the hosts a validation ran on, each with its provenance (#2395).
         "assets": case_assets.merged_assets(issues, case_assets.attached_assets(case.validations)),
         # The running-versions record (#1694) is served by the case read's ``running_versions.history``.
-        "history": [_event(e, view) for e in events if e.kind != VERSIONS_KIND],
+        "history": [_event(e, view) for e in _served_history(events, history_page)],
         "exploitation": exploitation_for(case, view),
         "attack_path": attack_path_for(case, view),
         "treatment_plan": treatment_plan_for(events, view),
