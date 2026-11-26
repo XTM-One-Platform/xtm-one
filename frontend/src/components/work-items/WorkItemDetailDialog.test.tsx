@@ -11,7 +11,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import { ToastProvider } from "@/components/ui/toast";
 import { renderWithProviders, testQueryClient } from "@/testing/providers";
-import { canClose, canRequeue, pullRequestsOf, visiblePayload, waitsForSomeone } from "@/lib/work-item-context";
+import { answeredKeepsWaiting, canClose, canRequeue, pullRequestsOf, visiblePayload, waitsForReader, waitsForSomeone } from "@/lib/work-item-context";
 import type { WorkItem, WorkItemContext } from "@/types";
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -545,6 +545,80 @@ describe("the work item detail", () => {
       expect(within(card).getByTestId("work-item-decision-link").textContent).toBe("FIN-798");
     });
 
+    describe("an item on a CTEM case opens the case first (#2370)", () => {
+      const CASE_ID = "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f";
+      const kase = { id: CASE_ID, title: "Patch the VPN gateways", state: "validating", path: `/ctem/cases/${CASE_ID}` };
+
+      it("leads the card with Open the case above the options, in the app, and drops the agent's link to it", () => {
+        openDialog(
+          waiting({
+            correlation_key: `ctem:validation:${CASE_ID}`,
+            ctem_case: kase,
+            ask: {
+              ...ask,
+              links: [
+                { label: "The case", url: `https://one.example.test/xtm-one/ctem/cases/${CASE_ID}` },
+                { label: "FIN-798", url: "https://example.atlassian.net/browse/FIN-798" },
+              ],
+            },
+          }),
+          { answer: true },
+        );
+        const card = screen.getByTestId("work-item-decision");
+        const open = within(card).getByTestId("work-item-case-link");
+        expect(open.textContent).toContain("Open the case");
+        expect(open.getAttribute("href")).toBe(`/ctem/cases/${CASE_ID}`);
+        expect(open.getAttribute("target")).toBeNull();
+        expect(within(card).getByTestId("work-item-case-title").textContent).toBe("Patch the VPN gateways");
+        // Above the options: the link comes first in document order.
+        const options = within(card).getByTestId("work-item-decision-options");
+        expect(open.compareDocumentPosition(options) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(within(card).getAllByTestId("work-item-decision-link").map((a) => a.textContent)).toEqual(["FIN-798"]);
+      });
+
+      it("shows the link on an answered item too, outside the card", () => {
+        openDialog(item({ status: "done", correlation_key: `ctem:review:${CASE_ID}`, ctem_case: kase }), {});
+        expect(screen.queryByTestId("work-item-decision")).toBeNull();
+        expect(screen.getByTestId("work-item-case-link").getAttribute("href")).toBe(`/ctem/cases/${CASE_ID}`);
+      });
+
+      it("shows no link when the reader may not read the case, and a non-CTEM item is unchanged", () => {
+        openDialog(waiting({ correlation_key: `ctem:validation:${CASE_ID}`, ctem_case: null, ask }), { answer: true });
+        expect(screen.queryByTestId("work-item-case-link")).toBeNull();
+        cleanup();
+        openDialog(waiting({ ask }), { answer: true });
+        expect(screen.queryByTestId("work-item-case")).toBeNull();
+        expect(screen.getByTestId("work-item-decision-question").textContent).toBe("Which pricing tier ships first?");
+      });
+    });
+
+    it("asks to confirm a terminal option before sending it, Back sends nothing (#2150)", () => {
+      const terminal = {
+        question: "Close the case?",
+        options: [
+          { key: "keep", label: "Keep it open" },
+          { key: "cancel", label: "Cancel the case", confirm: true },
+        ],
+        recommendation: "keep",
+      };
+      answerMutation.mutateAsync.mockClear();
+      openDialog(waiting({ ask: terminal }), { answer: true });
+      const card = screen.getByTestId("work-item-decision");
+      const cancel = within(card)
+        .getAllByTestId("work-item-decision-option")
+        .find((b) => b.textContent?.includes("Cancel the case"));
+      expect(cancel).toBeTruthy();
+      fireEvent.click(cancel!);
+      expect(answerMutation.mutateAsync).not.toHaveBeenCalled();
+      expect(within(card).getByTestId("work-item-decision-confirm").getAttribute("data-option")).toBe("cancel");
+      fireEvent.click(within(card).getByText("Back"));
+      expect(within(card).queryByTestId("work-item-decision-confirm")).toBeNull();
+      expect(answerMutation.mutateAsync).not.toHaveBeenCalled();
+      fireEvent.click(cancel!);
+      fireEvent.click(within(card).getByTestId("work-item-decision-confirm-send"));
+      expect(answerMutation.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ option: "cancel" }));
+    });
+
     it.each([
       ["409", "409 Conflict: the work item changed since it was read"],
       ["500", "500 Internal Server Error: database unavailable"],
@@ -795,6 +869,44 @@ describe("the work item detail", () => {
     expect(screen.getByTestId("work-item-pickup").textContent).toContain("Waiting for a decision");
     expect(screen.queryByText(/not picked up/)).toBeNull();
     expect(screen.getByText("Mark done")).toBeTruthy();
+  });
+
+  // #2500 UX round 1 B1: after a keeps_waiting answer "Who acts on it" no
+  // longer says it waits for a decision nor goes back once the card is answered.
+  it("says the answer is recorded in Who acts on it after a keeps_waiting answer", () => {
+    const ask = {
+      question: "Ship it?",
+      options: [
+        { key: "ship", label: "Ship", effect: "ships" },
+        { key: "later", label: "Later", effect: "waits", keeps_waiting: true },
+      ],
+      recommendation: "ship",
+    };
+    const waiting = {
+      status: "blocked" as const,
+      needs_human: true,
+      ask,
+      context: context({ pickup: { ...context().pickup, state: "waiting_for_person" as const, auto_cancel_at: null } }),
+    };
+    expect(answeredKeepsWaiting(item(waiting as Partial<WorkItem>))).toBe(false);
+    const answeredItem = item({
+      ...waiting,
+      payload: { answer: { option: "LATER", label: "Later", answered_by: "Ada", answered_at: "2026-11-26T09:00:00Z" } },
+    } as Partial<WorkItem>);
+    expect(answeredKeepsWaiting(answeredItem)).toBe(true);
+    // Any other option, or a finished item, is not a recorded keeps_waiting answer.
+    expect(answeredKeepsWaiting({ ...answeredItem, payload: { answer: { option: "ship", answered_at: "2026-11-26T09:00:00Z" } } })).toBe(false);
+    expect(answeredKeepsWaiting({ ...answeredItem, status: "done" })).toBe(false);
+    // The list's Waiting for you badge reads the same rule (#2500, UX round 2 B2).
+    expect(waitsForReader({ ...answeredItem, scheduled: null }, answeredItem.user_id ?? undefined)).toBe(false);
+    expect(waitsForReader({ ...answeredItem, payload: {}, scheduled: null }, answeredItem.user_id ?? undefined)).toBe(true);
+    openDialog(answeredItem, { close: vi.fn() });
+    const pickup = screen.getByTestId("work-item-pickup");
+    expect(pickup.textContent).toContain("Answer recorded");
+    expect(pickup.textContent).not.toContain("Waiting for a decision");
+    expect(screen.queryByText(/goes back to .* once the decision card is answered/)).toBeNull();
+    expect(screen.getByText(/Your answer is recorded; it keeps waiting until .* asks again\./)).toBeTruthy();
+    expect(screen.queryByTestId("work-item-blocked-person")).toBeNull();
   });
 
   // #864 UX round 1 B1: a person's decision plus an item it waits for keeps

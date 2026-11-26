@@ -17,8 +17,8 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Awaitable, Callable
-from contextlib import AsyncExitStack
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, unquote
@@ -349,21 +349,45 @@ _AEV_UI_PATHS: dict[str, str] = {
 }
 
 
-def _aev_link(base_url: str, entity_type: str, entity_id: str | None) -> str:
-    """Return a markdown ``Link:`` line for the entity, or ``""``.
+def aev_ui_url(base_url: str, entity_type: str, entity_id: str | None, tenant_id: str = "") -> str:
+    """The OpenAEV UI page of the entity, or ``""`` (#2468).
 
-    Returns an empty string when:
-      * ``base_url`` is empty (never emit a bare path the chat UI would
-        mis-resolve against its own origin);
-      * ``entity_id`` is missing / ``"N/A"``;
-      * ``entity_type`` is not in ``_AEV_UI_PATHS``.
+    On a tenant-scoped OpenAEV the UI route carries the tenant segment
+    (``{base}/{tenant_id}/admin/scenarios/{id}``), the form OpenAEV itself
+    reports; without a resolved tenant the legacy form. Empty when ``base_url``
+    is empty (never a bare path the chat UI would resolve against its own
+    origin), ``entity_id`` is missing or ``"N/A"``, or ``entity_type`` is not in
+    ``_AEV_UI_PATHS``.
     """
     if not base_url or not entity_id or entity_id == "N/A":
         return ""
     path = _AEV_UI_PATHS.get(entity_type)
     if not path:
         return ""
-    return f"  Link: [Open in OpenAEV]({base_url}{path}/{entity_id})"
+    tenant = f"/{quote(tenant_id.strip(), safe='')}" if tenant_id and tenant_id.strip() else ""
+    return f"{base_url.rstrip('/')}{tenant}{path}/{entity_id}"
+
+
+def _aev_link(base_url: str, entity_type: str, entity_id: str | None, tenant_id: str = "") -> str:
+    """Return a markdown ``Link:`` line for the entity (:func:`aev_ui_url`), or ``""``."""
+    url = aev_ui_url(base_url, entity_type, entity_id, tenant_id)
+    return f"  Link: [Open in OpenAEV]({url})" if url else ""
+
+
+async def ui_tenant_id(headers: Any) -> str:
+    """The tenant the tool set's calls go to, for its UI links (#2468); ``""`` when none or unresolved.
+
+    Same resolver as :func:`_scope_path`: headers without one (a bare collector) are unscoped.
+    """
+    resolver = getattr(headers, "tenant_scope", None)
+    if resolver is None:
+        return ""
+    try:
+        scope = await resolver.tenant_scope()
+    except Exception:  # a link without the tenant beats no answer
+        logger.debug("OpenAEV tenant unreadable for a UI link", exc_info=True)
+        return ""
+    return "" if scope.error else (scope.tenant_id or "")
 
 # ---------------------------------------------------------------------------
 # Scenario / payload enums (matching OpenAEV API constants)
@@ -1189,6 +1213,14 @@ EXPECTATION_TYPES = [
 #: carry a platform scope.
 TECHNICAL_EXPECTATION_TYPES = ["PREVENTION", "DETECTION", "VULNERABILITY"]
 
+#: The expectation types a payload (threat arsenal action) accepts. OpenAEV's
+#: ``PayloadService`` maps only DETECTION, PREVENTION, LOGGING and VULNERABILITY
+#: and answers 400 "Unsupported expectation type" for anything else; LOGGING is
+#: behind the ``LOGGING_EXPECTATION`` preview flag, so it is not offered. Human
+#: expectations (MANUAL / ARTICLE / CHALLENGE) belong to the manual, email and
+#: challenge inject contracts, never to a payload.
+PAYLOAD_EXPECTATION_TYPES = ["PREVENTION", "DETECTION", "VULNERABILITY"]
+
 #: ``SecurityPlatform.SECURITY_PLATFORM_TYPE`` - the product families an
 #: expectation can be scoped to. Empty scope for a given expectation means
 #: "any security platform" (the legacy default).
@@ -1462,7 +1494,7 @@ def _tenant_path(path: str, tenant_id: str) -> str:
 
 
 # Stay on the base path: no tenant twin (settings, which is also how the tenant
-# is found; platform-*; schemas; me/*, only GET /me has one), or the run decides
+# is found; platform-*; schemas and engine/schemas; me/*, only GET /me has one), or the run decides
 # its tenant (autonomous-runs, @RunTenantScope: the prefixed path would 404 others).
 _UNSCOPED_PREFIXES = (
     "/api/me",
@@ -1471,6 +1503,7 @@ _UNSCOPED_PREFIXES = (
     "/api/platform-roles",
     "/api/platform-groups",
     "/api/schemas",
+    "/api/engine/schemas",
     "/api/autonomous-runs",
 )
 
@@ -1643,42 +1676,135 @@ async def _api(
     return _require_response(resp), None
 
 
-def keep_findings_schema() -> dict[str, Any]:
-    """Schema of the ``keep_findings`` argument of a delete that cascades to findings.
+#: The finding statuses that close a finding at source (OpenAEV #9233, CTEM-14). ``OPEN`` is the
+#: only other status; a finding is never inferred closed from its absence in a search.
+FINDING_CLOSED_STATUSES: frozenset[str] = frozenset({"NOT_REPRODUCED", "RESOLVED"})
+#: What an OpenAEV delete answers about the findings of what it deleted (OpenAEV #9233: a finding
+#: survives its inject, scenario, simulation or atomic test; its occurrence loses the link).
+FINDINGS_KEPT_AS_HISTORY = "Its findings are kept in OpenAEV as history."
 
-    A fresh dict per tool, so a schema pass on one tool never edits another's.
+
+@dataclass(frozen=True)
+class Finding:
+    """One OpenAEV finding as XTM One reads it (OpenAEV #9233: one per type, value and location).
+
+    The single parser of a finding: every reader (CTEM cases, CTEM metrics, the tool
+    answers) goes through :func:`parse_finding`, so a change of the OpenAEV finding
+    payload is a change of this function and its contract test
+    (``tests/test_openaev_finding_contract.py``).
     """
-    return {
-        "type": "boolean",
-        "default": True,
-        "description": (
-            "Delete only. True (default) keeps the findings it produced, detached; false deletes them with it."
-        ),
-    }
+
+    id: str
+    type: str
+    value: str
+    #: ``OPEN`` | ``NOT_REPRODUCED`` | ``RESOLVED``, upper case; ``None`` when the answer carries none
+    #: (``POST /api/findings/search`` does not return it; ``GET /api/findings/{id}`` does).
+    status: str | None
+    #: The location: ``(asset id, asset name)`` pairs; empty for a user or unknown location.
+    assets: tuple[tuple[str, str], ...]
+    #: The inject of the latest occurrence.
+    inject_id: str | None
+    #: Row times: creation and last write. Any write moves ``updated_at`` (a status, an asset link,
+    #: the #9233 identity migration), so it is not a detection (OpenAEV #9846).
+    created_at: str | None
+    updated_at: str | None
+    last_tested: str | None
+    retest_inject_id: str | None
+    #: Detection times: ``finding_first_seen`` / ``finding_last_seen`` when OpenAEV answers them
+    #: (OpenAEV #9846), else the creation and update times of an older OpenAEV.
+    first_seen: str | None = None
+    last_seen: str | None = None
+    #: True when ``last_seen`` is OpenAEV's detection time, False when it is the update time.
+    seen_reported: bool = False
+
+    @property
+    def closed(self) -> bool:
+        """True only when OpenAEV says the finding is closed (re-test status)."""
+        return self.status in FINDING_CLOSED_STATUSES
+
+    @property
+    def asset_ids(self) -> tuple[str, ...]:
+        return tuple(i for i, _ in self.assets if i)
+
+    @property
+    def asset_labels(self) -> tuple[str, ...]:
+        """Each asset's name, else its id."""
+        return tuple(dict.fromkeys(n or i for i, n in self.assets if n or i))
 
 
-def keep_findings_params(keep_findings: bool) -> dict[str, str]:
-    """The ``keep_findings`` query parameter of an OpenAEV delete.
+def _finding_assets(raw: Any) -> tuple[tuple[str, str], ...]:
+    """``finding_assets`` as objects (search) or as id strings (``GET /api/findings/{id}``)."""
+    out: list[tuple[str, str]] = []
+    for a in raw if isinstance(raw, list) else []:
+        if isinstance(a, dict):
+            pair = (str(a.get("asset_id") or ""), str(a.get("asset_name") or ""))
+        elif isinstance(a, str):
+            pair = (a, "")
+        else:
+            continue
+        if (pair[0] or pair[1]) and pair not in out:
+            out.append(pair)
+    return tuple(out)
 
-    Sent on both values: OpenAEV defaults to false (findings deleted), the tools
-    default to true so an agent's clean-up never destroys evidence silently.
-    """
-    return {"keep_findings": "true" if keep_findings else "false"}
 
+def parse_finding(raw: Any) -> Finding | None:
+    """Parse one OpenAEV finding (search row or ``GET /api/findings/{id}``); ``None`` without an id."""
+    if not isinstance(raw, dict):
+        return None
+    fid = str(raw.get("finding_id") or "").strip()
+    if not fid:
+        return None
+    inject = raw.get("finding_inject")
+    inject_id = (inject.get("inject_id") if isinstance(inject, dict) else None) or raw.get("finding_inject_id")
+    status = str(raw.get("finding_status") or "").strip().upper() or None
 
-def findings_fate(keep_findings: bool, owner: str) -> str:
-    """What a delete did to the findings of *owner*, for the tool answer.
+    def _text(key: str) -> str | None:
+        value = raw.get(key)
+        return str(value) if value else None
 
-    An OpenAEV older than the keep_findings parameter ignores it and deletes the
-    findings anyway, so the answer never claims they were kept for sure.
-    """
-    if not keep_findings:
-        return f"Its findings were deleted with the {owner} (keep_findings=false)."
-    return (
-        f"keep_findings=true was sent: OpenAEV keeps the findings of the {owner}, "
-        "detached from it. An OpenAEV version without this option ignores it and "
-        "deletes them; search_openaev_findings shows which is the case."
+    created_at = _text("finding_created_at")
+    updated_at = _text("finding_updated_at")
+    first_seen = _text("finding_first_seen")
+    last_seen = _text("finding_last_seen")
+    return Finding(
+        id=fid,
+        type=str(raw.get("finding_type") or "").strip().lower(),
+        value=str(raw.get("finding_value") or "").strip(),
+        status=status,
+        assets=_finding_assets(raw.get("finding_assets")),
+        inject_id=str(inject_id) if inject_id else None,
+        created_at=created_at,
+        updated_at=updated_at,
+        last_tested=_text("finding_last_tested"),
+        retest_inject_id=_text("finding_retest_inject_id"),
+        first_seen=first_seen or created_at,
+        last_seen=last_seen or updated_at,
+        seen_reported=last_seen is not None,
     )
+
+
+@asynccontextmanager
+async def tool_client(
+    headers: dict[str, str], *, timeout: int = 30
+) -> AsyncIterator[httpx.AsyncClient | AutoRefreshClient]:
+    """The client every OpenAEV tool opens for its own requests (#2372).
+
+    With a re-mint callback on *headers* (a platform-managed integration's
+    short-lived cross-platform JWT), the token is re-minted before it expires
+    (:func:`ensure_fresh_token`) and the client is an :class:`AutoRefreshClient`,
+    so a 401/403 re-mints once and retries, as :func:`_api` does. Without one
+    (a static API key) it is the plain egress client, as before. A tool that
+    opened ``egress_client`` directly sent an expired JWT about 10 minutes into
+    a run and turned one expiry into a run-wide auth refusal.
+    """
+    refresh_fn = getattr(headers, "refresh_fn", None)
+    if refresh_fn is None:
+        async with egress_client(timeout=timeout) as plain:
+            yield plain
+        return
+    await _ensure_fresh_token(headers, refresh_fn)
+    async with AutoRefreshClient(headers, refresh_fn, timeout=timeout) as refreshing:
+        yield refreshing
 
 
 async def scoped_safe_request(
@@ -1982,7 +2108,12 @@ class PlatformCapabilities:
 # ---------------------------------------------------------------------------
 
 
-def _fmt_asset(a: dict, base_url: str = "") -> str:
+def _fmt_asset(a: dict[str, Any], base_url: str = "", tag_names: dict[str, str] | None = None) -> str:
+    """Format one OpenAEV asset for the read tools.
+
+    *tag_names* maps tag ids to names (one ``/api/tags`` read per tool call,
+    :func:`_openaev_tag_names`); an id it does not know is printed alone.
+    """
     name = a.get("asset_name") or a.get("endpoint_name") or a.get("asset_id", "?")
     asset_id = a.get("asset_id") or a.get("endpoint_id", "N/A")
     lines = [f"[Asset] {name}"]
@@ -2007,13 +2138,63 @@ def _fmt_asset(a: dict, base_url: str = "") -> str:
         value = a.get(key)
         if value is not None and value != "":
             lines.append(f"  {label}: {value}")
+    if "asset_internet_facing" in a and a["asset_internet_facing"] is None:
+        # Present but null: say so, so "not set" is never read as "not returned".
+        lines.append("  Internet-facing: unset")
     if a.get("asset_description"):
         lines.append(f"  Description: {a['asset_description'][:300]}")
-    tags = [t.get("tag_id") if isinstance(t, dict) else t for t in a.get("asset_tags") or []]
-    tags = [str(t) for t in tags if t]
+    raw_tags = [t.get("tag_id") if isinstance(t, dict) else t for t in a.get("asset_tags") or []]
+    tags: list[str] = [str(t) for t in raw_tags if t]
     if tags:
-        lines.append(f"  Tags: {', '.join(tags)}")
+        names = tag_names or {}
+        lines.append(f"  Tags: {', '.join(f'{names[t]} ({t})' if names.get(t) else t for t in tags)}")
+    lines.extend(_fmt_asset_metadata(a.get("asset_metadata")))
     return "\n".join(lines)
+
+
+#: Bounds of the ``asset_metadata`` block (the free-form map collectors write).
+_ASSET_METADATA_MAX_KEYS = 30
+_ASSET_METADATA_VALUE_CHARS = 200
+
+
+def _fmt_asset_metadata(metadata: Any) -> list[str]:
+    """One ``key: value`` line per metadata entry, sorted and bounded."""
+    if not isinstance(metadata, dict) or not metadata:
+        return []
+    keys = sorted(metadata, key=str)
+    lines = ["  Metadata:"]
+    for key in keys[:_ASSET_METADATA_MAX_KEYS]:
+        value = metadata[key]
+        text = value if isinstance(value, str) else json.dumps(value, default=str)
+        if len(text) > _ASSET_METADATA_VALUE_CHARS:
+            text = text[:_ASSET_METADATA_VALUE_CHARS] + "..."
+        lines.append(f"    {key}: {text}")
+    if len(keys) > _ASSET_METADATA_MAX_KEYS:
+        lines.append(f"    +{len(keys) - _ASSET_METADATA_MAX_KEYS} more")
+    return lines
+
+
+def _assets_carry_tags(assets: list[dict[str, Any]]) -> bool:
+    """Whether any of *assets* carries a tag (a tag lookup is then worth one read)."""
+    return any(a.get("asset_tags") for a in assets if isinstance(a, dict))
+
+
+async def _openaev_tag_names(base_url: str, headers: dict[str, str]) -> dict[str, str]:
+    """Tag id to name, read once per tool call; empty on failure (ids are kept)."""
+    resp, err = await _api(base_url, headers, "get", "/api/tags", "list tags", retry_transient=True)
+    if err or resp is None:
+        return {}
+    try:
+        data = resp.json()
+    except ValueError:
+        return {}
+    if not isinstance(data, list):
+        return {}
+    return {
+        str(t["tag_id"]): str(t["tag_name"])
+        for t in data
+        if isinstance(t, dict) and t.get("tag_id") and t.get("tag_name")
+    }
 
 
 #: The fields manage_openaev_asset writes, printed so a write can be read back
@@ -2198,11 +2379,11 @@ def _fmt_attack_pattern(ap: dict) -> str:
     return "\n".join(lines)
 
 
-def _fmt_scenario(s: dict, base_url: str = "") -> str:
+def _fmt_scenario(s: dict, base_url: str = "", tenant_id: str = "") -> str:
     scenario_id = s.get("scenario_id", "N/A")
     lines = [f"[Scenario] {s.get('scenario_name', '?')}"]
     lines.append(f"  ID: {scenario_id}")
-    link = _aev_link(base_url, "scenario", scenario_id)
+    link = _aev_link(base_url, "scenario", scenario_id, tenant_id)
     if link:
         lines.append(link)
     if s.get("scenario_description"):
@@ -2345,24 +2526,29 @@ def _simulation_inject_status_lines(rows: Any) -> list[str]:
 
 
 def _fmt_finding(f: dict, base_url: str = "") -> str:
-    finding_id = f.get("finding_id", "N/A")
-    lines = [f"[Finding] {f.get('finding_value', '?')}"]
-    lines.append(f"  ID: {finding_id}")
-    link = _aev_link(base_url, "finding", finding_id)
+    finding = parse_finding(f)
+    if finding is None:
+        return f"[Finding] {f.get('finding_value', '?') if isinstance(f, dict) else '?'}\n  ID: N/A"
+    lines = [f"[Finding] {finding.value or '?'}"]
+    lines.append(f"  ID: {finding.id}")
+    link = _aev_link(base_url, "finding", finding.id)
     if link:
         lines.append(link)
-    lines.append(f"  Type: {f.get('finding_type', 'N/A')}")
-    # Surface the producing inject so the orchestrator can tie a finding back to the
-    # step that emitted it (the wiring it needs to confirm a discovery ignited a
-    # reactor, and to distinguish its own run's findings on a shared tenant). Only
-    # rendered when present, so this is inert-safe if the field is absent.
-    inject_id = f.get("finding_inject_id")
-    if inject_id:
-        lines.append(f"  Inject: {inject_id}")
-    assets = f.get("finding_assets") or []
-    if assets:
-        asset_names = [a.get("asset_name", a.get("asset_id", "?")) for a in assets]
-        lines.append(f"  Assets: {', '.join(asset_names)}")
+    lines.append(f"  Type: {finding.type or 'N/A'}")
+    if finding.status:
+        lines.append(f"  Status: {finding.status}")
+    # The inject of the latest occurrence, so the orchestrator ties a finding back to the
+    # step that last produced it (search rows carry it as finding_inject.inject_id).
+    if finding.inject_id:
+        lines.append(f"  Inject: {finding.inject_id}")
+    if finding.asset_labels:
+        lines.append(f"  Assets: {', '.join(finding.asset_labels)}")
+    # Only OpenAEV's detection time is a "last seen"; an older OpenAEV answers the row's update
+    # time, which any write moves, so it is labelled as what it is (OpenAEV #9846).
+    if finding.seen_reported:
+        lines.append(f"  Last seen: {finding.last_seen}")
+    elif finding.updated_at:
+        lines.append(f"  Updated: {finding.updated_at}")
     return "\n".join(lines)
 
 
@@ -2592,13 +2778,45 @@ def _fmt_payload(p: dict, base_url: str = "") -> str:
     return "\n".join(lines)
 
 
-def _inject_row_executed(row: dict) -> bool:
-    """Whether an inject result row has run: OpenAEV sets ``inject_status`` on
-    the first execution and leaves it null before."""
+# OpenAEV ExecutionStatus: only these close an execution (isClosed(), plus the
+# legacy SUCCESS alias of EXECUTED). DRAFT, QUEUING, EXECUTING and PENDING are
+# set before or during a run, so the presence of a status never means it ran.
+_INJECT_STATUSES_EXECUTED = frozenset(
+    {"EXECUTED", "SUCCESS", "ERROR", "PARTIAL", "MAYBE_PREVENTED", "MAYBE_PARTIAL_PREVENTED"}
+)
+_INJECT_STATUSES_IN_PROGRESS = frozenset({"QUEUING", "EXECUTING", "PENDING"})
+
+
+def _inject_row_status_name(row: dict[str, Any]) -> str:
     status = row.get("inject_status")
     if isinstance(status, dict):
-        return bool(status.get("status_name"))
-    return bool(status)
+        status = status.get("status_name")
+    return str(status or "").strip().upper()
+
+
+def _inject_row_state(row: dict[str, Any]) -> str:
+    """Classify an inject result row: ``executed``, ``in_progress`` or ``not_executed``.
+
+    Executed means a closed execution status (xtm-one #2238). A disabled
+    inject, a DRAFT or a null status never sent has not run; a queued,
+    executing or pending one (or one sent with no closed status) may still
+    produce results.
+    """
+    name = _inject_row_status_name(row)
+    if name in _INJECT_STATUSES_EXECUTED:
+        return "executed"
+    if row.get("inject_enabled") is False:
+        return "not_executed"
+    if name in _INJECT_STATUSES_IN_PROGRESS:
+        return "in_progress"
+    if name in ("", "DRAFT"):
+        return "in_progress" if row.get("inject_sent_at") else "not_executed"
+    return "in_progress"
+
+
+def _inject_row_executed(row: dict[str, Any]) -> bool:
+    """Whether an inject result row has run: its status closes an execution."""
+    return _inject_row_state(row) == "executed"
 
 
 def _no_expectation_results_message(executed: bool | None) -> str:
@@ -2628,7 +2846,9 @@ def _simulation_no_results_message(subject: str, rows: Any, rows_err: str | None
 
     ``rows`` is the ``/api/exercises/{id}/injects/results`` answer. Each inject
     is either executed with no expectation (findings only) or not executed
-    yet, so the caller knows whether to wait or to stop looking.
+    yet, so the caller knows whether to wait or to stop looking. A draft,
+    disabled or never sent inject is counted as not executed, never as
+    executed (xtm-one #2238).
     """
     head = f"No expectation results for {subject}." if subject else "No expectation results."
     if rows_err or not isinstance(rows, list):
@@ -2639,8 +2859,10 @@ def _simulation_no_results_message(subject: str, rows: Any, rows_err: str | None
     injects = [r for r in rows if isinstance(r, dict)]
     if not injects:
         return f"{head} The simulation has no inject."
-    executed = [r for r in injects if _inject_row_executed(r)]
-    pending = [r for r in injects if not _inject_row_executed(r)]
+    states = [(r, _inject_row_state(r)) for r in injects]
+    executed = [r for r, s in states if s == "executed"]
+    running = [r for r, s in states if s == "in_progress"]
+    not_run = [r for r, s in states if s == "not_executed"]
     lines = [head]
     if executed:
         lines.append(
@@ -2648,12 +2870,25 @@ def _simulation_no_results_message(subject: str, rows: Any, rows_err: str | None
             "no result will come for them (findings only); they measure nothing "
             "about the security posture."
         )
-    if pending:
-        lines.append(f"  {len(pending)} inject(s) not executed yet: results may still come.")
-    for row in injects[:SIMULATION_INJECT_ROWS]:
+    if running:
+        lines.append(f"  {len(running)} inject(s) in progress (queued, executing or pending): results may still come.")
+    if not_run:
+        lines.append(
+            f"  {len(not_run)} inject(s) not executed (draft, disabled or never sent): "
+            "nothing ran, so nothing was measured; no result comes for them until "
+            "they are enabled and run."
+        )
+    for row, state in states[:SIMULATION_INJECT_ROWS]:
         title = row.get("inject_title") or row.get("inject_id") or "?"
-        state = "executed, no expectations" if _inject_row_executed(row) else "not executed"
-        lines.append(f"    {title} (id: {row.get('inject_id', '?')}): {state}")
+        status = _inject_row_status_name(row) or "no status"
+        if state == "executed":
+            label = f"executed ({status}), no expectations"
+        elif state == "in_progress":
+            label = f"in progress ({status})"
+        else:
+            disabled = ", disabled" if row.get("inject_enabled") is False else ""
+            label = f"not executed ({status}{disabled})"
+        lines.append(f"    {title} (id: {row.get('inject_id', '?')}): {label}")
     if len(injects) > SIMULATION_INJECT_ROWS:
         lines.append(f"    {len(injects) - SIMULATION_INJECT_ROWS} more not shown")
     return "\n".join(lines)
@@ -2980,6 +3215,7 @@ __all__ = [
     "FILTER_MODES",
     "FILTER_OPERATORS",
     "JSON_READ_CHARS",
+    "PAYLOAD_EXPECTATION_TYPES",
     "PAYLOAD_TYPES",
     "PLATFORMS",
     "REPORTING_CONTEXT_TYPES",
@@ -3003,6 +3239,7 @@ __all__ = [
     "_RefreshableHeaders",
     "_aev_link",
     "_annotate_not_found",
+    "_assets_carry_tags",
     "_bearer_seconds_remaining",
     "_contains_filter",
     "_ensure_fresh_token",
@@ -3023,6 +3260,7 @@ __all__ = [
     "_fmt_vulnerability",
     "_headers",
     "_multi_contains_filter",
+    "_openaev_tag_names",
     "_require_response",
     "_scope_path",
     "_search_body",

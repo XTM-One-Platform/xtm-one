@@ -2694,6 +2694,9 @@ def _python(collector: _Collector, paths: frozenset[str], files: Mapping[str, by
             prefix, install = ["uv", "run"], ["uv", "sync", "--locked"]
         elif _has(paths, directory, "poetry.lock") or "poetry" in tool:
             prefix, install = ["poetry", "run"], ["poetry", "install", "--no-interaction"]
+            if _poetry_extras(project):
+                # The tests import the optional dependencies CI installs with them (gap poetry-unit-check-no-dev-extras).
+                install.append("--all-extras")
         else:
             prefix = []
             requirements = sorted(
@@ -2742,6 +2745,12 @@ def _python(collector: _Collector, paths: frozenset[str], files: Mapping[str, by
             )
 
 
+def _poetry_extras(project: dict[str, Any]) -> bool:
+    """Whether a Poetry ``pyproject.toml`` declares extras (``[tool.poetry.extras]`` or ``[project.optional-dependencies]``)."""
+    extras = (_dig(project, "tool", "poetry", "extras"), _dig(project, "project", "optional-dependencies"))
+    return any(isinstance(value, dict) and value for value in extras)
+
+
 def _roots(paths: Iterable[str], names: tuple[str, ...]) -> list[str]:
     """Directories holding one of *names* with no such file above them (a multi-module build's root)."""
     dirs = {posixpath.dirname(p) for p in paths if posixpath.basename(p) in names and p.count("/") <= MAX_DEPTH and not _skipped(p)}
@@ -2769,15 +2778,74 @@ def _jvm(collector: _Collector, paths: frozenset[str], files: Mapping[str, bytes
         collector.add(directory, "jvm", "build", [*gradle, "--no-daemon", "build", "-x", "test"], source)
 
 
-def _rust(collector: _Collector, paths: frozenset[str]) -> None:
+#: The files a Rust format write takes with ``affected=true``.
+RUST_FORMAT_GLOBS = ("*.rs",)
+#: The edition rustfmt parses with when a ``Cargo.toml`` names none (Cargo's own default).
+_RUST_DEFAULT_EDITION = "2015"
+
+
+def _declared_edition(manifest: dict[str, Any]) -> str | None:
+    """The edition a ``Cargo.toml`` names itself (``[package]``, else ``[workspace.package]``); ``None`` else.
+
+    A member's ``edition.workspace = true`` is a table, not a name: it inherits the root's and counts as none.
+    """
+    for edition in (_dig(manifest, "package", "edition"), _dig(manifest, "workspace", "package", "edition")):
+        if isinstance(edition, str) and edition.isdigit():
+            return edition
+    return None
+
+
+def _rust_edition(directory: str, files: Mapping[str, bytes]) -> str:
+    """The edition rustfmt parses the changed files of the Cargo root *directory* with.
+
+    The root manifest's own edition first. A virtual workspace (``[workspace]`` with ``members``, no
+    ``[workspace.package].edition``) names none: each member declares its own, so the newest edition among
+    the member manifests below *directory* is taken (a newer edition parses the older syntax, 2015 does not
+    parse ``async fn`` or ``.await``). Cargo's default (2015) only when no manifest names one.
+    """
+    root = _declared_edition(_toml(files.get(_join(directory, "Cargo.toml"))))
+    if root:
+        return root
+    prefix = f"{directory}/" if directory else ""
+    members = [
+        _declared_edition(_toml(data))
+        for path, data in files.items()
+        if posixpath.basename(path) == "Cargo.toml" and path.startswith(prefix) and not _skipped(path)
+    ]
+    return max((edition for edition in members if edition), key=int, default=_RUST_DEFAULT_EDITION)
+
+
+def _rust(collector: _Collector, paths: frozenset[str], files: Mapping[str, bytes]) -> None:
     for directory in _roots(paths, ("Cargo.toml",)):
         source = _join(directory, "Cargo.toml")
         locked = ["--locked"] if _has(paths, directory, "Cargo.lock") else []
         collector.add(directory, "rust", "install", ["cargo", "fetch", *locked], source)
         collector.add(directory, "rust", "lint", ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"], source)
         collector.add(directory, "rust", "format", ["cargo", "fmt", "--all", "--check"], source)
+        _rust_format_apply(collector, directory, source, _rust_edition(directory, files))
         collector.add(directory, "rust", "unit", ["cargo", "test", *locked], source)
         collector.add(directory, "rust", "build", ["cargo", "build", *locked], source)
+
+
+def _rust_format_apply(collector: _Collector, directory: str, source: str, edition: str) -> None:
+    """``rust-format-apply``: rustfmt on the changed ``.rs`` files, never ``cargo fmt --all`` over the workspace.
+
+    The write sibling :func:`_apply_formatters` derived from ``cargo fmt --all --check`` dropped ``--check``
+    and rewrote every crate: on a repository whose main is not fmt-clean a one-file fix rewrote 33 files
+    (xtm-composer; gaps rust-format-apply-rewrites-whole-repo, rust-format-apply-whole-crate). rustfmt takes
+    files, reads the same ``rustfmt.toml``, and parses with the manifest's edition (its own default is 2015).
+    """
+    key = (directory, "rust", "format-apply")
+    argv = ["rustfmt", "--edition", edition]
+    if not collector.add(directory, "rust", "format-apply", argv, f"{source} (rustfmt write mode)"):
+        return
+    collector.found[key] = replace(
+        collector.found[key],
+        description=f"write mode of rust-format: rustfmt --edition {edition} on the changed .rs files; args: other files",
+        affected="files",
+        affected_globs=RUST_FORMAT_GLOBS,
+        affected_by_default=True,
+    )
 
 
 def _dbt(collector: _Collector, paths: frozenset[str]) -> None:
@@ -3001,6 +3069,97 @@ def _node_relock(collector: _Collector) -> None:
         )
 
 
+#: A git command that reads or writes the repository (``git status``, ``execSync('git diff ...')``): a script
+#: holding one needs a ``.git``, which a checkout has not.
+_GIT_CALL = re.compile(
+    r"(?<![\w./-])git\s+(?:-C\s+\S+\s+)?"
+    r"(?:status|diff|ls-files|rev-parse|log|show|merge-base|describe|stash|add|commit|checkout|blame|grep)\b"
+)
+#: A repository file a package.json script runs (``tsx scripts/check.ts``, ``node bin/x.mjs``, ``bash run.sh``).
+_SCRIPT_FILE = re.compile(
+    r"(?:^|[\s;&|(])(?:tsx|ts-node|node|bun|bash|sh|python3?)\s+(?:-{1,2}[\w-]+(?:=\S+)?\s+)*"
+    r"([\w@./-]+\.(?:ts|mts|cts|js|mjs|cjs|sh|py))(?![\w.])"
+)
+#: Repository files :func:`script_files` names at most.
+MAX_SCRIPT_FILES = 40
+
+
+def _manifest_scripts(files: Mapping[str, bytes]) -> dict[str, tuple[str, dict[str, str]]]:
+    """Every read ``package.json`` by directory: its package ``name`` and its string scripts."""
+    found: dict[str, tuple[str, dict[str, str]]] = {}
+    for path in sorted(p for p in files if posixpath.basename(p) == "package.json"):
+        manifest = _json(files[path])
+        scripts = {k: v for k, v in _mapping(manifest.get("scripts")).items() if isinstance(v, str)}
+        name = manifest.get("name") if isinstance(manifest.get("name"), str) else ""
+        found[posixpath.dirname(path)] = (name, scripts)
+    return found
+
+
+def _run_files(directory: str, body: str) -> list[str]:
+    """The repository paths (from the checkout root) of the files the script *body* of *directory* runs."""
+    out = []
+    for match in _SCRIPT_FILE.finditer(body):
+        rel = posixpath.normpath(_join(directory, match.group(1)))
+        if not rel.startswith("../") and rel != "..":
+            out.append(rel)
+    return out
+
+
+def script_files(paths: Iterable[str], files: Mapping[str, bytes]) -> list[str]:
+    """The repository files the read ``package.json`` scripts run, present in the listing *paths*, bounded.
+
+    Read after :func:`candidates` and given to :func:`detect` with them, so a check whose script runs
+    a file that calls git is detected as one (:func:`_apply_git_repo`).
+    """
+    listing = frozenset(paths)
+    picked: list[str] = []
+    for directory, (_name, scripts) in _manifest_scripts(files).items():
+        for body in scripts.values():
+            for rel in _run_files(directory, body):
+                if rel in listing and rel not in picked and not _skipped(rel):
+                    picked.append(rel)
+    return picked[:MAX_SCRIPT_FILES]
+
+
+def _check_script(spec: CheckSpec, manifests: Mapping[str, tuple[str, dict[str, str]]]) -> tuple[str, str] | None:
+    """The (directory, script name) a node check runs: ``yarn x``, ``npm run x``, ``yarn workspace <name> x``."""
+    argv = list(spec.argv)
+    if len(argv) < 2 or posixpath.basename(argv[0]) not in ("yarn", "npm", "pnpm", "bun"):
+        return None
+    directory = spec.cwd
+    rest = argv[1:]
+    if rest[0] == "workspace" and len(rest) >= 3:
+        directory = next((d for d, (name, _s) in manifests.items() if name and name == rest[1]), "")
+        if not directory:
+            return None
+        rest = rest[2:]
+    if rest[0] in ("run", "run-script") and len(rest) >= 2:
+        rest = rest[1:]
+    return directory, rest[0]
+
+
+def _apply_git_repo(collector: _Collector, files: Mapping[str, bytes]) -> None:
+    """``git_repo`` on every node check whose script calls git, itself or through a file it runs (#1958).
+
+    A checkout has no ``.git``: the check then runs in a throwaway repository of the checkout
+    (:data:`checks.GIT_REPO_SHELL`), as a declared ``git_repo = true`` check does and as CI runs it in a clone.
+    """
+    manifests = _manifest_scripts(files)
+    for key, spec in list(collector.found.items()):
+        if key[1] != "node" or spec.git_repo:
+            continue
+        found = _check_script(spec, manifests)
+        if found is None:
+            continue
+        directory, script = found
+        body = manifests.get(directory, ("", {}))[1].get(script, "")
+        if not body:
+            continue
+        sources = [body, *(_text(files.get(rel)) for rel in _run_files(directory, body))]
+        if any(_GIT_CALL.search(text) for text in sources):
+            collector.found[key] = replace(spec, git_repo=True)
+
+
 def _compose(files: Mapping[str, bytes], infra: list[Infra]) -> None:
     for path in sorted(p for p in files if _COMPOSE.match(posixpath.basename(p))):
         services = _yaml(files[path]).get("services")
@@ -3026,7 +3185,7 @@ def detect(paths: Iterable[str], files: Mapping[str, bytes], *, images: Iterable
     _node(collector, listing, files)
     _python(collector, listing, files)
     _jvm(collector, listing, files)
-    _rust(collector, listing)
+    _rust(collector, listing, files)
     _dbt(collector, listing)
     _helm(collector, listing)
     _make(collector, files)
@@ -3035,6 +3194,7 @@ def detect(paths: Iterable[str], files: Mapping[str, bytes], *, images: Iterable
     _apply_pnpm(collector, files)
     _apply_formatters(collector)
     _node_relock(collector)
+    _apply_git_repo(collector, files)
     _actions_lint(collector, listing)
     _compose(files, infra)
     unique = list(dict.fromkeys(row for row in infra if row.name))[:MAX_INFRA]

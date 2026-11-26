@@ -20,6 +20,8 @@ from .teams_chat_members import _FALSE_WORDS, _format_chat_members, _member_labe
 #: The delegated Graph permissions the write tools need, named on a denial.
 TEAM_MEMBER_PERMISSION = "TeamMember.ReadWrite.All"
 CHANNEL_MEMBER_PERMISSION = "ChannelMember.ReadWrite.All"
+#: The delegated permission ``list_microsoft_channel_members`` needs on a private or shared channel (#2188).
+CHANNEL_MEMBER_READ_PERMISSION = "ChannelMember.Read.All"
 
 
 def _permission_hint(err: str, permission: str) -> str:

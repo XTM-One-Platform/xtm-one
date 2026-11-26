@@ -123,17 +123,8 @@ export function blockedFixPath(blocked: Pick<FleetSlotBlockedIntegration, "integ
   return `/integrations/${blocked.integration_id}`;
 }
 
-/** The capabilities that take several integrations at once: the picker is a multi-select (#1201). */
-export const MULTI_CHANNEL_CAPABILITIES: ReadonlySet<string> = new Set(["notification"]);
-
 /** The picker value of a capability's built-in option (never an integration id). */
 const BUILTIN_VALUE_PREFIX = "builtin:";
-
-/**
- * The picker value of a member's "No integration" choice: a member overridden to none is an
- * option of the list, never a clear control beside the field (UX r1 B1 of #1209).
- */
-export const NO_INTEGRATION_VALUE = "none:";
 
 /**
  * One design-system icon per capability of the backend catalog
@@ -209,17 +200,9 @@ export function builtinValue(type: Pick<FleetCapabilityType, "builtin">): string
 }
 
 /**
- * The integrations a single-choice pick writes: the built-in option and an
- * emptied field write none (the built-in option alone, or nothing), any other
- * value is that one integration.
- */
-export function idsForPick(value: string): string[] {
-  return !value || value.startsWith(BUILTIN_VALUE_PREFIX) || value === NO_INTEGRATION_VALUE ? [] : [value];
-}
-
-/**
- * The next set of a multi-channel pick after one toggle: the built-in option
- * is always on and never toggled off, an integration is added or removed.
+ * The next set of a capability pick after one toggle (every capability takes several integrations,
+ * #2424): the built-in option is always on and never toggled off, an integration is added or
+ * removed, the others stay bound.
  */
 export function toggledIds(current: readonly string[], value: string): string[] {
   if (value.startsWith(BUILTIN_VALUE_PREFIX)) return [...current].sort();
@@ -227,7 +210,7 @@ export function toggledIds(current: readonly string[], value: string): string[] 
 }
 
 /**
- * The values a multi-channel picker shows checked (#1373): the always-on built-in option first,
+ * The values a capability picker shows checked (#1373): the always-on built-in option first,
  * then the bound channels. The built-in is a locked row of the list, never a field placeholder.
  */
 export function multiChannelSelection(
@@ -243,24 +226,9 @@ export function isBuiltinValue(value: string): boolean {
   return value.startsWith(BUILTIN_VALUE_PREFIX);
 }
 
-/** The value a single-choice picker shows: the bound integration, else the built-in option, else nothing. */
-export function pickerValue(type: Pick<FleetCapabilityType, "builtin">, bound: readonly FleetSlotIntegration[]): string {
-  return bound[0]?.integration_id ?? builtinValue(type);
-}
-
 /** The members of a type whose slot nothing fills: no integration bound and no built-in option. */
 export function unsetMembers(type: FleetCapabilityType): FleetCapabilityTypeMember[] {
   return type.builtin ? [] : type.members.filter((member) => member.bound.length === 0);
-}
-
-/**
- * The value the type picker shows. A Partial type shows none: the fleet choice reads in the
- * Integration column with how many members are not set, and picking it, the same value
- * included, writes it on every member without it (UX r1 B2 of #1209: re-picking the shown
- * value wrote nothing).
- */
-export function typePickerValue(type: FleetCapabilityType): string {
-  return type.state === "partial" ? "" : pickerValue(type, type.choice);
 }
 
 /** The instruction part of the folded Fleet defaults summary. @i18n-keys */

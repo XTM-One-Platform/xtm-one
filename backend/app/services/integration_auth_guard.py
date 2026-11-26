@@ -37,6 +37,7 @@ import json
 import re
 from typing import Any
 
+from app.integrations.http import TOKEN_REFRESH_OUTCOMES
 from app.tools.base import ToolCall, ToolDefinition, ToolResult, is_auth_failure_result
 
 #: Prefix of ``ToolDefinition.source`` for an integration tool.
@@ -54,6 +55,10 @@ FORBIDDEN_FAIL_FAST = 3
 #: ``AssignmentRun.stop_reason`` of a run in which no called integration was readable.
 UNREADABLE_STOP_REASON = "integrations_unreadable"
 
+#: Ref of the friction a recorded auth failure is filed under, already disposed
+#: of: the run reports the failure on ``integration_auth_failures`` (#2204).
+AUTH_FAILURE_RECORDED_REF = "integration auth failure recorded on the run"
+
 
 def auth_failure_status(content: str) -> str:
     """``"403"`` for a call the credential may not make, ``"401"`` for a credential rejected."""
@@ -67,6 +72,7 @@ class IntegrationAuthGuard:
         self._failures: dict[str, dict[str, Any]] = {}
         self._called: set[str] = set()
         self._answered: set[str] = set()
+        self._refresh_failed: set[str] = set()
         self._refused_calls = 0
 
     def note_call(self, integration: str) -> None:
@@ -76,8 +82,15 @@ class IntegrationAuthGuard:
         """A call of *integration* answered without an auth failure."""
         self._answered.add(integration)
 
-    def record(self, integration: str, tool: str, content: str) -> None:
+    def record(self, integration: str, tool: str, content: str, *, after_refresh: bool = False) -> None:
+        """Record an auth failure of *tool*.
+
+        *after_refresh*: the call re-minted its token (or tried to) and was still
+        refused, so the credential could not be refreshed (#2372).
+        """
         status = auth_failure_status(content)
+        if after_refresh:
+            self._refresh_failed.add(integration)
         entry = self._failures.get(integration)
         if entry is None:
             entry = {"integration": integration, "status": status, "first_tool": tool, "tools": []}
@@ -102,6 +115,10 @@ class IntegrationAuthGuard:
         if entry["status"] == STATUS_REJECTED:
             return True
         return self._all_forbidden(integration) and len(entry["tools"]) >= FORBIDDEN_FAIL_FAST
+
+    def refresh_failed(self, integration: str) -> bool:
+        """Whether a re-mint of *integration*'s token was made, or failed, before its failure."""
+        return integration in self._refresh_failed
 
     def failures_of(self, integration: str) -> str | None:
         """The recorded status of *integration* (``"401"`` / ``"403"``), ``None`` when it never failed."""
@@ -238,27 +255,53 @@ class AuthGuardedExecutor:
             return passed
         if guard.rejected(integration):
             guard.refuse()
-            why = (
-                "rejected this run's credential (authentication failed)"
-                if guard.failures_of(integration) == STATUS_REJECTED
-                else f"answered 403 Forbidden on {FORBIDDEN_FAIL_FAST} tools with no successful read"
-            )
-            return ToolResult(
-                tool_call_id=call.id,
-                content=(
+            rejected = guard.failures_of(integration) == STATUS_REJECTED
+            if rejected and guard.refresh_failed(integration):
+                # The token was re-minted (or the re-mint failed) and still
+                # refused: the platform could not refresh it, nobody has to
+                # re-authorize anything (#2372).
+                content = (
+                    f"Error: not called. The {integration} integration's credential could not be "
+                    "refreshed earlier in this run (a token re-mint was refused), so none of its "
+                    "tools can read anything in this run. Do not retry its tools: say in your "
+                    f"answer that {integration} data was unavailable in this run, and do not infer it."
+                )
+            else:
+                why = (
+                    "rejected this run's credential (authentication failed)"
+                    if rejected
+                    else f"answered 403 Forbidden on {FORBIDDEN_FAIL_FAST} tools with no successful read"
+                )
+                content = (
                     f"Error: not called. The {integration} integration {why} earlier in this run, "
                     "so none of its tools can read anything until it is re-authorized. Do not retry "
                     f"its tools: say in your answer that {integration} data was unavailable, and do "
                     "not infer it."
-                ),
+                )
+            return ToolResult(
+                tool_call_id=call.id,
+                content=content,
                 is_error=True,
                 refused=True,
+                auth_failure_recorded=f"{integration} {guard.failures_of(integration)}",
             )
         guard.note_call(integration)
-        result: ToolResult = await inner.execute_tool(call)
+        # The token re-mints this call makes (AutoRefreshClient): a 401 answered
+        # after one is a credential that could not be refreshed, told apart from
+        # a static credential's rejection (#2372). A call whose re-mint succeeded
+        # and whose retry answered is no failure at all.
+        refreshes: list[str] = []
+        token = TOKEN_REFRESH_OUTCOMES.set(refreshes)
+        try:
+            result: ToolResult = await inner.execute_tool(call)
+        finally:
+            TOKEN_REFRESH_OUTCOMES.reset(token)
         content = result.content if isinstance(result.content, str) else ""
         if content and is_auth_failure_result(content):
-            guard.record(integration, call.name, content)
+            guard.record(integration, call.name, content, after_refresh=bool(refreshes))
+            # Recorded on the run (integration_auth_failures, coverage notice):
+            # the loop files its friction already disposed of (#2204).
+            result.auth_failure_recorded = f"{integration} {guard.failures_of(integration)}"
         else:
             guard.note_answer(integration)
         return result

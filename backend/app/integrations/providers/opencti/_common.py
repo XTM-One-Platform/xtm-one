@@ -469,7 +469,7 @@ _RELATIONSHIP_FIELDS = """
     from {
         ... on BasicObject { id entity_type parent_types }
         ... on StixObject { standard_id }
-        ... on AttackPattern { name }
+        ... on AttackPattern { name x_mitre_id }
         ... on Campaign { name }
         ... on CourseOfAction { name }
         ... on Individual { name }
@@ -499,7 +499,7 @@ _RELATIONSHIP_FIELDS = """
     to {
         ... on BasicObject { id entity_type parent_types }
         ... on StixObject { standard_id }
-        ... on AttackPattern { name }
+        ... on AttackPattern { name x_mitre_id }
         ... on Campaign { name }
         ... on CourseOfAction { name }
         ... on Individual { name }
@@ -1159,7 +1159,7 @@ def _context_failure_message(
         return _drop_dead_draft(headers, draft_id, errors)
     if status is not None:
         kind = f"{kind} (HTTP {status})"
-    return _describe_graphql_failure(
+    message = _describe_graphql_failure(
         errors,
         operation,
         root_field,
@@ -1167,6 +1167,24 @@ def _context_failure_message(
         kind=kind,
         auth_failure=_is_request_auth_failure(errors, status, draft_id),
     )
+    if draft_id and _is_object_outside_draft(errors):
+        message += OBJECT_OUTSIDE_DRAFT_HINT.format(draft_id=draft_id)
+    return message
+
+
+#: Appended to an object OpenCTI could not find inside the run's draft (#2397).
+OBJECT_OUTSIDE_DRAFT_HINT = (
+    " — the object is not visible in OpenCTI draft {draft_id}, the draft this request ran in: OpenCTI "
+    "resolves an object per draft, so an id a read outside this draft returned may live in another draft "
+    "(a case package's own draft, for one) or was deleted. Write it in the draft that holds it, or read it "
+    "again in this draft and recreate it here; nothing was written."
+)
+
+
+def _is_object_outside_draft(errors: list[Any]) -> bool:
+    """An object (not the draft itself) OpenCTI did not find in a draft-scoped request (#2397)."""
+    text = _errors_text(errors)
+    return "cannot be found" in text and "draft" not in text and "user cannot be found" not in text
 
 
 def _log_context_failure(
@@ -1622,6 +1640,22 @@ def _format_entity(entity: dict, base_url: str = "", *, full_text: bool = False)
     return "\n".join(lines)
 
 
+def _relationship_end_ref(end: dict[str, Any]) -> str:
+    """The ids of one end of a relationship: its id, then its STIX id and MITRE ID.
+
+    An agent walking a campaign to its techniques needs the id of each end to
+    read or link it, never the name alone (two techniques share a name across
+    the Enterprise and Mobile matrices). Empty when the end carries no id.
+    """
+    end_id = end.get("id")
+    if not end_id:
+        return ""
+    extra = [str(end["standard_id"])] if end.get("standard_id") else []
+    if end.get("x_mitre_id"):
+        extra.append(f"MITRE {end['x_mitre_id']}")
+    return f"{end_id} ({', '.join(extra)})" if extra else str(end_id)
+
+
 def _format_relationship(rel: dict, base_url: str = "", *, full_text: bool = False) -> str:
     """Format a STIX core relationship into a readable string.
 
@@ -1650,6 +1684,9 @@ def _format_relationship(rel: dict, base_url: str = "", *, full_text: bool = Fal
     )
     rel_id = rel.get('id', 'N/A')
     lines.append(f"  ID: {rel_id}")
+    for label, end in (("From", from_obj), ("To", to_obj)):
+        if ref := _relationship_end_ref(end):
+            lines.append(f"  {label}: {ref}")
     if rel_id != 'N/A' and base_url:
         lines.append(f"  Link: [Open in OpenCTI]({base_url}/dashboard/id/{rel_id})")
     if rel.get("description"):

@@ -83,9 +83,11 @@ def _waits_on_someone(case_id_text: ColumnElement[str]) -> ColumnElement[bool]:
     """SQL: an open needs_human ``ctem:`` item of the case, or an armed reminder of the case (``waiting_on`` in SQL)."""
     from app.models.platform_timer import TIMER_ARMED, PlatformTimer
     from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
+    from app.services.ctem_decision_groups import GROUPED_REASON_LEAD
 
     gated = exists().where(
-        WorkItem.needs_human.is_(True),
+        # A decision of its own, or one grouped with others of the same kind (#2451).
+        or_(WorkItem.needs_human.is_(True), WorkItem.blocked_reason.like(f"{GROUPED_REASON_LEAD}%")),
         WorkItem.status.not_in(WORK_ITEM_TERMINAL_STATUSES),
         WorkItem.correlation_key.like(f"{GATE_KEY_PREFIX}%"),
         WorkItem.correlation_key.like(literal("%", String) + case_id_text),

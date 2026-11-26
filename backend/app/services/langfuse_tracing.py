@@ -52,8 +52,10 @@ import contextlib
 import json
 import logging
 import os
+import threading
 import uuid
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -993,6 +995,32 @@ LANGFUSE_EXPORT_TIMEOUT = 30
 # processes, each with its own loop).
 _langfuse_init_lock: asyncio.Lock | None = None
 
+# The SDK calls that wait on the Langfuse host (client construction and auth
+# check, flush) run on their own small pool, never the loop's default executor:
+# that one also serves the DNS lookups of every new database and HTTP
+# connection, S3 and bcrypt, so a Langfuse host that never answers must not
+# hold any of its threads. Here it can only delay other Langfuse work.
+_LANGFUSE_EXECUTOR_WORKERS = 2
+_langfuse_executor: ThreadPoolExecutor | None = None
+_langfuse_executor_lock = threading.Lock()
+
+
+def _get_langfuse_executor() -> ThreadPoolExecutor:
+    global _langfuse_executor
+    with _langfuse_executor_lock:
+        if _langfuse_executor is None:
+            _langfuse_executor = ThreadPoolExecutor(
+                max_workers=_LANGFUSE_EXECUTOR_WORKERS,
+                thread_name_prefix="xtmone-langfuse",
+            )
+        return _langfuse_executor
+
+
+async def run_langfuse_blocking[T](fn: Callable[..., T], /, *args: Any) -> T:
+    """Run a blocking Langfuse SDK call off the event loop, on the Langfuse pool."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_get_langfuse_executor(), fn, *args)
+
 
 class _LangfuseAuthError(Exception):
     """Raised by the blocking init helper when the auth check fails."""
@@ -1009,11 +1037,21 @@ def _get_init_lock() -> asyncio.Lock:
 def _blocking_init_and_auth(public_key: str, secret_key: str, host: str) -> Langfuse:
     """Construct the Langfuse client and run the project auth check. BLOCKING.
 
-    MUST be invoked via ``asyncio.to_thread``: the Langfuse v4 SDK is
+    MUST be invoked via :func:`run_langfuse_blocking`: the Langfuse v4 SDK is
     synchronous, so running the client construction and ``api.projects.get()``
     directly on the event loop would freeze the whole worker whenever the
     Langfuse host is slow/unreachable. Raises on auth failure; the async
     caller maps that to the retry cooldown.
+
+    A failed check never shuts the client down. The SDK keeps one resource
+    manager per public key for the whole process (its consumer threads, its
+    span processor on the global tracer provider), and every later
+    ``Langfuse(...)`` with that key gets the same one back. Shutting it down
+    cannot be undone: the next attempt would get a manager with no consumers,
+    and from the third shutdown its ``flush()`` waits forever on a queue
+    nothing drains, holding a thread for good at every retry. The next attempt
+    reuses the running manager instead, and the SDK shuts it down once, at
+    process exit.
 
     Two distinct timeouts are in play:
 
@@ -1036,17 +1074,10 @@ def _blocking_init_and_auth(public_key: str, secret_key: str, host: str) -> Lang
         host=host,
         timeout=LANGFUSE_EXPORT_TIMEOUT,
     )
-    try:
-        projects = client.api.projects.get(
-            request_options={"timeout_in_seconds": _LANGFUSE_AUTH_TIMEOUT}
-        )
-    except Exception:
-        with contextlib.suppress(Exception):
-            client.shutdown()
-        raise
+    projects = client.api.projects.get(
+        request_options={"timeout_in_seconds": _LANGFUSE_AUTH_TIMEOUT}
+    )
     if not projects.data:
-        with contextlib.suppress(Exception):
-            client.shutdown()
         raise _LangfuseAuthError("no project found for the configured keys")
     return client
 
@@ -1141,8 +1172,9 @@ async def get_langfuse_client(db: AsyncSession) -> Langfuse | None:
         # Decrypt + construct + auth-check off the event loop, hard-bounded by a
         # timeout. ``wait_for`` hands control back after the timeout even if the
         # worker thread is still blocked on a dead host (the thread can't be
-        # cancelled, but the SDK ``timeout`` keeps it short); the single-flight
-        # lock + cooldown prevent any pile-up. Reading the keys is inside the
+        # cancelled, but the SDK ``timeout`` keeps it short, and it is a thread
+        # of the Langfuse pool); the single-flight lock + cooldown prevent any
+        # pile-up. Reading the keys is inside the
         # guard too: a decryption failure (rotated SECRET_KEY / corrupted token)
         # or a vault that cannot hand a key over must arm the cooldown and
         # return None, never 500 the chat/assignment request that triggered the
@@ -1152,7 +1184,7 @@ async def get_langfuse_client(db: AsyncSession) -> Langfuse | None:
             public_key = await reveal_field(config, "public_key_enc") or ""
             secret_key = await reveal_field(config, "secret_key_enc") or ""
             client = await asyncio.wait_for(
-                asyncio.to_thread(
+                run_langfuse_blocking(
                     _blocking_init_and_auth, public_key, secret_key, host
                 ),
                 timeout=_LANGFUSE_AUTH_TIMEOUT + 2,
@@ -1209,17 +1241,16 @@ def flush_langfuse() -> None:
 
 
 def reset_langfuse_client() -> None:
-    """Reset the cached client – call after config changes."""
+    """Reset the cached client – call after config changes.
+
+    Flushes the old client without shutting it down: its resource manager is
+    the SDK's process-wide one for that public key (see
+    :func:`_blocking_init_and_auth`).
+    """
     global _langfuse_client, _langfuse_enabled, _langfuse_retry_after
     logger.info("Langfuse client cache reset requested")
     if _langfuse_client:
         flush_langfuse()
-        try:
-            _langfuse_client.shutdown()
-        except Exception as exc:
-            logger.debug(
-                "Langfuse shutdown failed (non-critical): %s", format_exception_message(exc), exc_info=True
-            )
     _langfuse_client = None
     _langfuse_enabled = None
     _langfuse_retry_after = 0
@@ -1231,8 +1262,9 @@ async def areset_langfuse_client() -> None:
     """Async-safe reset for request handlers (config save / test connection).
 
     Detaches the cached client and clears the globals **under the single-flight
-    init lock**, then flushes + shuts down the *detached* client in a worker
-    thread (outside the lock). Two reasons for this shape:
+    init lock**, then flushes the *detached* client on the Langfuse pool
+    (outside the lock), without shutting it down (see
+    :func:`reset_langfuse_client`). Two reasons for this shape:
 
     1. **Serialize against an in-flight init.** ``get_langfuse_client`` performs
        its (slow, offloaded) init while holding ``_get_init_lock()``. Clearing
@@ -1241,9 +1273,9 @@ async def areset_langfuse_client() -> None:
        tear down the client it built, or it waits for us and re-reads the fresh
        config — it can never repopulate the cache with an *old-config* client
        *after* the reset.
-    2. **Never block the loop.** The synchronous flush/shutdown runs off the
-       event loop AND outside the lock, against the now-detached reference, so
-       an unreachable Langfuse host can neither stall the loop nor hold the lock
+    2. **Never block the loop.** The synchronous flush runs off the event loop
+       AND outside the lock, against the now-detached reference, so an
+       unreachable Langfuse host can neither stall the loop nor hold the lock
        (a concurrent re-init builds its own new-config client meanwhile).
     """
     global _langfuse_client, _langfuse_enabled, _langfuse_retry_after
@@ -1259,19 +1291,13 @@ async def areset_langfuse_client() -> None:
     if old is None:
         return
 
-    def _flush_and_shutdown(client: Langfuse) -> None:
+    def _flush(client: Langfuse) -> None:
         try:
             client.flush()
         except Exception:
             logger.debug("Langfuse flush on reset failed (non-critical)", exc_info=True)
-        try:
-            client.shutdown()
-        except Exception:
-            logger.debug(
-                "Langfuse shutdown on reset failed (non-critical)", exc_info=True
-            )
 
-    await asyncio.to_thread(_flush_and_shutdown, old)
+    await run_langfuse_blocking(_flush, old)
 
 
 # ---------------------------------------------------------------------------

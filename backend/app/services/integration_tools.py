@@ -25,7 +25,7 @@ import json as _json
 import logging
 import re
 import uuid
-from collections.abc import Awaitable, Callable, Iterator, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs
@@ -46,6 +46,7 @@ from app.core.platform_identity import (
     registered_procedure_manifest,
 )
 from app.core.security import decrypt_json, decrypt_value, encrypt_value
+from app.integrations import entra_token_errors
 from app.integrations.http import format_http_error, format_network_error
 from app.integrations.providers.abusech import build_tools as abusech_tools
 from app.integrations.providers.abuseipdb import build_tools as abuseipdb_tools
@@ -2433,7 +2434,61 @@ async def _report_invalid_config(
         )
 
 
+#: The log fields :func:`_resolve_token` binds about the integration it resolved (#2197).
+INTEGRATION_LOG_FIELDS: tuple[str, ...] = (
+    "integration_name",
+    "integration_owner_user_id",
+    "integration_auth_type",
+    "integration_is_company_managed",
+    "github_installation_ids",
+    "github_account_logins",
+    "github_account_types",
+)
+
+
 async def _get_token(
+    db: AsyncSession,
+    integration_id: str,
+    provider: str = "",
+    *,
+    user_id: str | None = None,
+    source_label: str = "",
+    binding_origin: str = "",
+    integ: Integration | None = None,
+    prefetched_token: str | None = None,
+    refresh_attempted: bool = False,
+    keep_log_context: bool = False,
+) -> str | None:
+    """A *fresh* decrypted access token for an integration (:func:`_resolve_token`).
+
+    The integration's log fields are bound for the resolution only, then the
+    caller's own values are put back (#2197): a token read for one product never
+    labels the later lines of the task (another product's errors, the run's own
+    lines). ``keep_log_context`` keeps them bound for a caller that unbinds them
+    itself once its block ends (the tool build loop, whose provider builders log
+    under the integration they build).
+    """
+    before = {k: v for k, v in structlog.contextvars.get_contextvars().items() if k in INTEGRATION_LOG_FIELDS}
+    try:
+        return await _resolve_token(
+            db,
+            integration_id,
+            provider,
+            user_id=user_id,
+            source_label=source_label,
+            binding_origin=binding_origin,
+            integ=integ,
+            prefetched_token=prefetched_token,
+            refresh_attempted=refresh_attempted,
+        )
+    finally:
+        if not keep_log_context:
+            structlog.contextvars.unbind_contextvars(*INTEGRATION_LOG_FIELDS)
+            if before:
+                structlog.contextvars.bind_contextvars(**before)
+
+
+async def _resolve_token(
     db: AsyncSession,
     integration_id: str,
     provider: str = "",
@@ -4769,6 +4824,29 @@ def _make_hitl_approval_fn(run_id: str) -> Callable[[str], Awaitable[bool]]:
     return _approved
 
 
+def _make_case_draft_fn() -> Callable[[str], Awaitable[bool]]:
+    """A callback answering whether a draft holds a CTEM case's recorded threat package (#2089).
+
+    Bounds ``delete_opencti_draft`` on a fleet gating the draft validation:
+    the draft of a refused review's package may be discarded, never any other
+    open draft. Runs on its own ``async_session`` (integration tools execute
+    concurrently) and fails closed (False) on any lookup error.
+    """
+
+    async def _holds_case_package(draft_id: str) -> bool:
+        try:
+            from app.core.database import async_session
+            from app.services.ctem_threat_package_live import is_case_package_draft
+
+            async with async_session() as own_db:
+                return await is_case_package_draft(own_db, draft_id)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("CTEM case draft lookup failed: %s", format_exception_message(exc))
+            return False
+
+    return _holds_case_package
+
+
 def _make_persist_file_fn(
     context: dict[str, Any],
     executor: Any | None = None,
@@ -5228,7 +5306,8 @@ async def _acquire_azure_delegated_token(
     if not integ.client_id_enc or not integ.refresh_token_enc:
         return None
 
-    cache_key = f"azure_deleg_token:{integration_id}:{scope}"
+    cache_key = _azure_delegated_cache_key(integration_id, scope)
+    failure_key = entra_token_errors.delegated_key(integration_id, scope)
     redis = None
     try:
         redis = await redis_client()
@@ -5299,6 +5378,9 @@ async def _acquire_azure_delegated_token(
             format_exception_message(e),
             body,
         )
+        # Kept for the tool that asked (#2386): a missing admin consent on this
+        # audience is not fixed by re-authorizing, an expired refresh token is.
+        entra_token_errors.remember(failure_key, entra_token_errors.classify(e.response.status_code, body))
         return None
     except Exception as e:
         logger.warning(
@@ -5322,26 +5404,79 @@ async def _acquire_azure_delegated_token(
                     fresh.refresh_token_enc = encrypt_value(new_refresh)
                     await upd_db.commit()
     expires_in = int(tokens.get("expires_in") or 3600)
+    entra_token_errors.remember(failure_key, None)
     if redis is not None:
         with contextlib.suppress(Exception):
             await redis.set(cache_key, access, ex=max(60, expires_in - 60))
     return access
 
 
+def _azure_delegated_cache_key(holder: str, scope: str) -> str:
+    """The Redis key of a delegated per-audience token of *holder*."""
+    return f"azure_deleg_token:{holder}:{scope}"
+
+
+async def forget_azure_delegated_tokens(holder: str, scopes: Iterable[str] | None = None) -> None:
+    """Drop the cached per-audience delegated tokens of *holder* (#2386).
+
+    Called when the grant behind them changed (an OAuth callback, a credential
+    update) or when an API refused one: a token minted before an admin consent
+    would otherwise be served for up to an hour after it. Reads no credential.
+    """
+    from app.core.redis import redis_client
+
+    keys = [_azure_delegated_cache_key(holder, s) for s in (scopes or _AZURE_DELEGATED_SCOPES)]
+    for scope in scopes or _AZURE_DELEGATED_SCOPES:
+        entra_token_errors.remember(entra_token_errors.delegated_key(holder, scope), None)
+    with contextlib.suppress(Exception):
+        redis = await redis_client()
+        await redis.delete(*keys)
+
+
+class _AzureDelegatedTokenFn:
+    """A per-audience delegated token callback (scope -> token).
+
+    Passed to the Defender / Sentinel / Purview tool builders as
+    ``token_acquirer`` when the integration authenticates via delegated OAuth,
+    so each tool can obtain a token for whichever Microsoft audience it targets.
+    ``failure(scope)`` says why the last redemption for *scope* failed and
+    ``forget(scope)`` drops its cached token (#2386).
+    """
+
+    def __init__(self, holder: str) -> None:
+        self._holder = holder
+
+    async def __call__(self, scope: str) -> str | None:
+        return await _acquire_azure_delegated_token(self._holder, scope)
+
+    def failure(self, scope: str) -> entra_token_errors.EntraTokenFailure | None:
+        return entra_token_errors.recall(entra_token_errors.delegated_key(self._holder, scope))
+
+    async def forget(self, scope: str) -> None:
+        await forget_azure_delegated_tokens(self._holder, [scope])
+
+
+async def redeem_azure_delegated_audience(
+    holder: str, scope: str
+) -> tuple[str | None, entra_token_errors.EntraTokenFailure | None]:
+    """Redeem a fresh delegated token for one audience, for a connection test.
+
+    The cached token is dropped first, so the answer is Entra's verdict on the
+    grant as it stands now (an admin consent given since is seen at once);
+    the second value is why it refused, when it did (#2386). The caller has
+    already gated the tester on the integration (test_integration).
+    """
+    await forget_azure_delegated_tokens(holder, [scope])
+    access = await _acquire_azure_delegated_token(holder, scope)
+    failure = None if access else entra_token_errors.recall(entra_token_errors.delegated_key(holder, scope))
+    return access, failure
+
+
 def _make_azure_delegated_token_fn(
     integration_id: str,
 ) -> Callable[[str], Awaitable[str | None]]:
-    """Create a per-audience delegated token callback (scope -> token).
-
-    Passed to the Defender / Sentinel tool builders as ``token_acquirer`` when
-    the integration authenticates via delegated OAuth, so each tool can obtain a
-    token for whichever Microsoft audience it targets.
-    """
-
-    async def _token(scope: str) -> str | None:
-        return await _acquire_azure_delegated_token(integration_id, scope)
-
-    return _token
+    """Create a per-audience delegated token callback (scope -> token)."""
+    return _AzureDelegatedTokenFn(integration_id)
 
 
 async def _get_extra_config_value(db: AsyncSession, integration_id: str, key: str) -> str:
@@ -6634,6 +6769,9 @@ async def _build_integration_tools_inner(
                     integ=_holders.get(integration_id),
                     prefetched_token=_prefetched_tokens.get(integration_id),
                     refresh_attempted=integration_id in _refresh_attempted,
+                    # The provider builders below log under this integration; the
+                    # finally of this iteration unbinds every field (#2197).
+                    keep_log_context=True,
                 )
             except Exception as exc:
                 logger.warning(
@@ -6847,12 +6985,22 @@ async def _build_integration_tools_inner(
                     # review, #1480) offers it with Live writes off: the gate,
                     # not the setting, decides the validation. Never on a
                     # read-only binding.
-                    from app.services.fleet_autonomy import FLEET_GATED_TOOLS_CONTEXT_KEY
+                    from app.agents.builtin_fleet_docs import CTEM_VALIDATION_GATE
+                    from app.services.fleet_autonomy import (
+                        FLEET_GATED_TOOLS_CONTEXT_KEY,
+                        FLEET_WAITING_GATES_CONTEXT_KEY,
+                    )
 
                     if "apply_opencti_draft" in (
                         context.get(FLEET_GATED_TOOLS_CONTEXT_KEY) or ()
                     ) and not is_read_only_binding(integration_id, _read_only_ids):
                         _builder_kwargs["gated_draft_validation"] = True
+                        _builder_kwargs["case_draft_fn"] = _make_case_draft_fn()
+                    # The CTEM validation gate waits: a security coverage
+                    # carrying a periodicity would start its OpenAEV scenario
+                    # before the decision, so the tool refuses it (#2102).
+                    if CTEM_VALIDATION_GATE in (context.get(FLEET_WAITING_GATES_CONTEXT_KEY) or ()):
+                        _builder_kwargs["waiting_validation_gate"] = CTEM_VALIDATION_GATE
                 # When HITL is on, give OpenCTI a way to VERIFY a human approved
                 # an irreversible action (entity merge) rather than trusting the
                 # model's word for it. The run's ``human_input_history`` is the
@@ -7164,7 +7312,7 @@ async def _build_integration_tools_inner(
             structlog.contextvars.unbind_contextvars(
                 "integration_provider",
                 "integration_id",
-                "integration_name",
+                *INTEGRATION_LOG_FIELDS,
             )
 
     return definitions, executor

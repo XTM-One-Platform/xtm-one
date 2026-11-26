@@ -37,10 +37,17 @@ was read from, so one read tells a fleet orchestrator everything the seeded
 * ``decision_card_not_readable``: an open item waiting for a person whose ask
   is missing, incomplete or holds ids and timestamps
   (:func:`app.services.work_item_ask_backfill.card_unreadable`, #776).
+* ``decision_unseen``: an open decision gate nobody opened in
+  ``work_item_decision_unseen_hours`` hours; ``decision_recipient_inactive``: one
+  whose recipient never signed in, not recently, is the seed account, or is a
+  group none of whose members signed in (:mod:`app.services.work_item_decision_reach`, #2390).
 * ``wait_cycle``: blocked items waiting on each other, through ``blocked_on`` or a
   pull request a review item gates (:mod:`app.services.work_item_wait_cycles`, #606).
 * ``blocked_chain_stalled``: a chain of blocked items waiting on each other, every
-  one quiet for two hours and none held by a live run.
+  one quiet for two hours and none held by a live run. A chain that ends on a
+  person's open decision (a readable card, unanswered, not past its due date) is
+  no finding: it is listed under ``waiting_on_people`` with its age and recipient
+  (#2326).
 * ``disabled_owner``: a disabled member that still owns open items.
 * ``oversize_state``: an active shared-state entry of the fleet over the soft
   size limit (``shared_state_value_soft_limit_chars``).
@@ -99,6 +106,8 @@ FINDING_FIX: dict[str, str] = {
     "not_picked_up": FIX_OWNER,
     "blocked_without_blocker": FIX_OWNER,
     "decision_card_not_readable": FIX_OWNER,
+    "decision_unseen": FIX_OWNER,
+    "decision_recipient_inactive": FIX_OWNER,
     "wait_cycle": FIX_OWNER,
     "blocked_chain_stalled": FIX_OWNER,
     "disabled_owner": FIX_OWNER,
@@ -127,11 +136,26 @@ FINDING_ADVICE: dict[str, str] = {
         "Rewrite the item's ask for its reader: a plain question, 2 to 4 context lines, 2 options or more; "
         "ids and timestamps go in blocked_reason."
     ),
+    "decision_unseen": (
+        "Nobody opened these decisions in time: open and answer them, or name an active recipient "
+        "(update_work_item recipient)."
+    ),
+    "decision_recipient_inactive": (
+        "Their recipient never signed in, not recently, or is the seed account: name an active person or group "
+        "(update_work_item recipient)."
+    ),
     "wait_cycle": "Block the review on the fix item and let the merge wait on the review, or drop one wait.",
-    "blocked_chain_stalled": "Read the chain's first blocker: unblock it, re-point the waits or cancel the chain.",
+    "blocked_chain_stalled": (
+        "Read the chain's end: a decision past its due date, remind the person; a decision answered that did "
+        "not release its chain, reopen it; any other blocker, unblock it or re-point the waits."
+    ),
     "disabled_owner": "Hand the items to an enabled member or cancel them.",
     "oversize_state": "Archive or split the entry (keep_last_json with archive_key, or one key per object).",
-    "handover_not_allowed": "Expose the target member or point the handover at the fleet's orchestrator.",
+    "handover_not_allowed": (
+        "The sources are agents outside this fleet (each named with its home fleet): point their handover at "
+        "the fleet's orchestrator, or remove it. Exposing the target lets every other fleet reach it, so "
+        "expose it only when that is wanted."
+    ),
     "cost_spike": "Read the member's runs of the day for a loop or an oversized read.",
 }
 
@@ -248,6 +272,8 @@ class FleetHealthReport:
     findings: list[FleetFinding]
     #: The live dismissals of the fleet (#12014), each with ``hides``.
     dismissed: list[dict[str, Any]] = field(default_factory=list)
+    #: Chains waiting on a person's open decision (#2326): informational, no finding.
+    waiting_on_people: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def healthy(self) -> bool:
@@ -261,6 +287,7 @@ class FleetHealthReport:
             "status": self.status,
             "findings": [f.as_dict() for f in self.findings],
             "dismissed": [dict(d) for d in self.dismissed],
+            "waiting_on_people": [dict(w) for w in self.waiting_on_people],
         }
 
 
@@ -279,6 +306,7 @@ async def build_fleet_health_report(
     status, members, _in_workspace = await build_fleet_health(db, fleet, user_id=user_id, run_scope=run_scope, now=now)
     ids = [m.agent_id for m in members]
     findings: list[FleetFinding] = []
+    person_waits: list[dict[str, Any]] = []
 
     failing = [m.agent_id for m in members if m.status == "failing"]
     if failing:
@@ -291,7 +319,7 @@ async def build_fleet_health_report(
         findings.append(_finding("disabled_owner", f"{len(held)} disabled member(s) still own open work items", held))
 
     findings += await _assignment_findings(db, ids, run_scope=run_scope, now=now)
-    findings += await _work_item_findings(db, fleet, ids, user_id=user_id, now=now)
+    findings += await _work_item_findings(db, fleet, ids, user_id=user_id, now=now, person_waits=person_waits)
     findings += await _shared_state_findings(db, fleet, ids, user_id=user_id)
     findings += await _handover_findings(db, fleet)
     findings += await _cost_findings(db, ids, run_scope=run_scope, now=now)
@@ -313,6 +341,7 @@ async def build_fleet_health_report(
         ],
         findings=active,
         dismissed=dismissed,
+        waiting_on_people=person_waits,
     )
 
 
@@ -388,7 +417,13 @@ async def _assignment_findings(
 
 
 async def _work_item_findings(
-    db: AsyncSession, fleet: Fleet, agent_ids: Sequence[uuid.UUID], *, user_id: str, now: datetime
+    db: AsyncSession,
+    fleet: Fleet,
+    agent_ids: Sequence[uuid.UUID],
+    *,
+    user_id: str,
+    now: datetime,
+    person_waits: list[dict[str, Any]] | None = None,
 ) -> list[FleetFinding]:
     from app.core.utils import safe_uuid
     from app.models.work_item import WORK_ITEM_OPEN_STATUSES, WorkItem
@@ -505,7 +540,52 @@ async def _work_item_findings(
                 unreadable,
             )
         )
-    out += await _wait_graph_findings(db, scope, now)
+    out += await _decision_reach_findings(db, scope, now)
+    out += await _wait_graph_findings(db, scope, now, person_waits=person_waits)
+    return out
+
+
+#: Decision gates read per fleet for ``decision_unseen`` and ``decision_recipient_inactive``.
+DECISION_REACH_SCAN = 200
+
+
+async def _decision_reach_findings(db: AsyncSession, scope: Any, now: datetime) -> list[FleetFinding]:
+    """``decision_unseen`` and ``decision_recipient_inactive`` over the fleet's open gates (#2390)."""
+    from app.models.work_item import WorkItem
+    from app.services.work_item_decision_reach import inactive_reasons, is_unseen, unseen_hours
+
+    gates = (
+        await db.execute(
+            select(
+                WorkItem.id,
+                WorkItem.payload,
+                WorkItem.last_activity_at,
+                WorkItem.waits_for_user_id,
+                WorkItem.waits_for_group_ids,
+                WorkItem.user_id,
+            )
+            .where(scope, WorkItem.needs_human.is_(True))
+            .order_by(WorkItem.last_activity_at.desc())
+            .limit(DECISION_REACH_SCAN)
+        )
+    ).all()
+    if not gates:
+        return []
+    hours = unseen_hours()
+    out: list[FleetFinding] = []
+    unseen = [g[0] for g in gates if is_unseen(g[1], waiting_since=g[2], now=now, hours=hours)]
+    if unseen:
+        out.append(_finding("decision_unseen", f"{len(unseen)} decision(s) nobody opened in {hours} hours", unseen))
+    reasons = await inactive_reasons(db, [(g[3] or g[5], g[4]) for g in gates], now=now)
+    inactive = [g[0] for g, reason in zip(gates, reasons, strict=True) if reason]
+    if inactive:
+        out.append(
+            _finding(
+                "decision_recipient_inactive",
+                f"{len(inactive)} decision(s) wait for a recipient that is unlikely to see them",
+                inactive,
+            )
+        )
     return out
 
 
@@ -605,9 +685,19 @@ def _heard_by_listener(owner: uuid.UUID | None, key: str | None, listeners: dict
     return any(field_matches(item, "correlation_key", match) for match in listeners.get(owner, []))
 
 
-async def _wait_graph_findings(db: AsyncSession, scope: Any, now: datetime) -> list[FleetFinding]:
-    """``wait_cycle`` and ``blocked_chain_stalled`` over the fleet's open items (#606)."""
-    from app.services.work_item_wait_cycles import find_cycles, load_nodes, stalled_chains
+async def _wait_graph_findings(
+    db: AsyncSession, scope: Any, now: datetime, *, person_waits: list[dict[str, Any]] | None = None
+) -> list[FleetFinding]:
+    """``wait_cycle`` and ``blocked_chain_stalled`` over the fleet's open items (#606).
+
+    The chains waiting on a person's open decision go to *person_waits* (#2326).
+    """
+    from app.services.work_item_wait_cycles import (
+        find_cycles,
+        load_nodes,
+        person_wait_chains,
+        stalled_chains,
+    )
 
     nodes = await load_nodes(db, scope=scope)
     cycles = find_cycles(nodes)
@@ -623,11 +713,34 @@ async def _wait_graph_findings(db: AsyncSession, scope: Any, now: datetime) -> l
         out.append(
             _finding(
                 "blocked_chain_stalled",
-                f"{len(chains)} blocked chain(s) with no progress for 2 hours or more",
+                f"{len(chains)} blocked chain(s) with no activity on any item for 2 hours or more, "
+                "not waiting on a person's open decision",
                 stalled,
             )
         )
+    if person_waits is not None:
+        person_waits.extend(person_wait_rows(nodes, person_wait_chains(nodes, now, in_cycles=in_cycles), now))
     return out
+
+
+def person_wait_rows(nodes: dict[str, Any], chains: Sequence[Sequence[str]], now: datetime) -> list[dict[str, Any]]:
+    """One row per chain waiting on people: its items, the decisions, their recipients and age (#2326). Pure."""
+    from app.services.work_item_wait_cycles import chain_ends
+
+    rows: list[dict[str, Any]] = []
+    for chain in chains:
+        ends = chain_ends(chain, nodes)
+        since = [s for s in (nodes[i].created_at or nodes[i].last_activity_at for i in ends) if s is not None]
+        oldest = min((s if s.tzinfo else s.replace(tzinfo=UTC)) for s in since) if since else None
+        rows.append(
+            {
+                "items": list(chain),
+                "decisions": ends,
+                "recipients": sorted({nodes[i].recipient or "administrators" for i in ends}),
+                "age_hours": round((now - oldest).total_seconds() / 3600, 1) if oldest else None,
+            }
+        )
+    return rows
 
 
 async def _shared_state_findings(
@@ -674,10 +787,42 @@ async def _handover_findings(db: AsyncSession, fleet: Fleet) -> list[FleetFindin
     return [
         _finding(
             "handover_not_allowed",
-            f"{len(pairs)} handover(s) into a member the fleet does not expose",
+            f"{len(pairs)} handover(s) into a member the fleet does not expose: "
+            + await _handover_lines(db, violations),
             pairs,
         )
     ]
+
+
+#: Handovers named one by one in the summary (the evidence keeps every id).
+MAX_NAMED_HANDOVERS = 5
+
+
+async def _handover_lines(db: AsyncSession, violations: Sequence[Any]) -> str:
+    """Each handover as 'source (home fleet or no fleet, outside this one) -> target' (#2132).
+
+    The ask read from ``source->target`` ids alone suggested the sources were
+    members; naming them with their home fleet shows they are outside it.
+    """
+    from app.models.agent import Agent
+    from app.services.fleets import home_fleets_of
+
+    shown = list(violations)[:MAX_NAMED_HANDOVERS]
+    ids = {v.source_agent_id for v in shown} | {v.target_agent_id for v in shown}
+    names = dict((await db.execute(select(Agent.id, Agent.name).where(Agent.id.in_(list(ids))))).all())
+    homes = await home_fleets_of(db, [v.source_agent_id for v in shown])
+
+    def where(agent_id: uuid.UUID) -> str:
+        home = homes.get(agent_id)
+        return f"fleet {home.fleet_name}" if home else "no fleet"
+
+    lines = [
+        f"{names.get(v.source_agent_id, v.source_agent_id)} ({where(v.source_agent_id)}) -> "
+        f"{names.get(v.target_agent_id, v.target_agent_id)}"
+        for v in shown
+    ]
+    more = len(violations) - len(shown)
+    return "; ".join(lines) + (f"; +{more} more" if more > 0 else "")
 
 
 async def _cost_findings(
@@ -752,6 +897,17 @@ def format_report(report: FleetHealthReport, *, applied: dict[str, int] | None =
         lines.append(f"    evidence: {', '.join(f.evidence)}{more}")
     if applied:
         lines.append("Applied: " + ", ".join(f"{k} {v}" for k, v in applied.items()))
+    if report.waiting_on_people:
+        waits = report.waiting_on_people
+        lines.append(f"Waiting on a person's decision ({len(waits)} chain(s), no finding):")
+        for w in waits[:MAX_EVIDENCE]:
+            age = f"{w['age_hours']} h" if w.get("age_hours") is not None else "age unknown"
+            lines.append(
+                f"  • decision {', '.join(w['decisions'])} for {', '.join(w['recipients'])}, {age}; "
+                f"{len(w['items'])} item(s) wait"
+            )
+        if len(waits) > MAX_EVIDENCE:
+            lines.append(f"  (+{len(waits) - MAX_EVIDENCE} more)")
     if report.dismissed:
         lines.append(f"Dismissed ({len(report.dismissed)}, restore with dismiss_fleet_health_findings):")
         for d in report.dismissed:

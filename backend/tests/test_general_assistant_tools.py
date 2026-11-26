@@ -712,13 +712,12 @@ async def test_the_builder_an_agent_carries_reads_its_traces_only_for_whoever_ma
     owner = _chat_user()
     own_agent = _chat_agent(carries=["agent_builder"], company_managed=False, owner=owner.id)
     assert await _turn_trace_tool_ids(object(), owner, own_agent, ["agent_builder"], user_group_ids=[]) == TRACE_SUITES
-    # A suite a session adds is held to the same rule; one the agent carries itself is its
-    # configurator's choice.
+    # A suite a session adds is held to the same rule, and so is one the agent carries itself.
     assert await suites(_chat_user(), ["inspect_my_traces"]) == set()
     carrying = _chat_agent(carries=["agent_builder", "inspect_my_traces"], company_managed=True)
     assert await _turn_trace_tool_ids(
         object(), _chat_user(), carrying, ["agent_builder", "inspect_my_traces"], user_group_ids=[]
-    ) == {"inspect_my_traces"}
+    ) == set()
     assert no_groups == []
 
 

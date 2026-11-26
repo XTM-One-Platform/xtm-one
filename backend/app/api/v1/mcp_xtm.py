@@ -227,6 +227,8 @@ XTM_MCP_READ_TOOLS: frozenset[str] = frozenset(
         "list_health_signals",
         "list_health_cycles",
         "get_health_cycle",
+        # The Platform Health page, read in the caller's role scope (#2199).
+        "get_platform_health",
     }
 )
 

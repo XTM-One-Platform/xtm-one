@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -9,7 +10,7 @@ from typing import Any
 import pytest
 
 from app.api.v1.integration_catalog import PROVIDER_CATALOG
-from app.services import event_poller, opencrq_job_events
+from app.services import event_coalescing, event_poller, opencrq_job_events
 
 
 class _Redis:
@@ -184,6 +185,49 @@ def test_a_job_that_processed_nothing_is_no_event() -> None:
     assert len(opencrq_job_events.coalesce_events([unknown], "finding_score_changed", base_url="", tenant_id="t")) == 1
 
 
+def _score_run(run_id: str, changed: int | None) -> dict[str, Any]:
+    run = {
+        **_run(run_id, "2026-11-25T13:00:00Z", kind="finding-score-recompute"),
+        "processedTotal": 40,
+        "expectedTotal": 40,
+    }
+    if changed is not None:
+        summary = {
+            "scored": 40,
+            "changedFindings": changed,
+            "changedPostures": 0,
+            "changedUniqueFindings": 0,
+            "changedCount": changed,
+        }
+        run["currentStep"] = json.dumps(summary)
+    return run
+
+
+def test_a_finding_score_run_that_changed_nothing_is_no_event() -> None:
+    """OpenCRQ #232 reports changedCount: a recompute that moved no score is dropped (#2169)."""
+    still = _score_run("s0", 0)
+    assert opencrq_job_events.coalesce_events([still], "finding_score_changed", base_url="", tenant_id="t") == []
+    # An OpenCRQ that does not report it yet keeps every run, as before.
+    (older,) = opencrq_job_events.coalesce_events(
+        [_score_run("s1", None)], "finding_score_changed", base_url="", tenant_id="t"
+    )
+    assert "changed_count" not in older and "changed_count" not in older["entity"]
+
+
+def test_the_changed_count_adds_up_over_a_page_and_is_a_filter_key() -> None:
+    runs = [_score_run("s1", 3), _score_run("s2", 0), _score_run("s3", 2)]
+    (event,) = opencrq_job_events.coalesce_events(runs, "finding_score_changed", base_url="", tenant_id="t")
+    assert [c["id"] for c in event["covers"]] == ["s1", "s3"]
+    assert event["changed_count"] == event["entity"]["changed_count"] == 5
+    assert [c["changed_count"] for c in event["covers"]] == [3, 2]
+    assert "changed_count" in opencrq_job_events.FILTER_KEYS
+    (later,) = opencrq_job_events.coalesce_events(
+        [_score_run("s4", 1)], "finding_score_changed", base_url="", tenant_id="t"
+    )
+    merged = event_coalescing.merged_payload(event, later)
+    assert merged["changed_count"] == merged["entity"]["changed_count"] == 6
+
+
 def test_a_kind_that_never_reports_progress_is_kept_at_zero() -> None:
     """A job that reports no expected total ends at 0 whatever it did: its run is still an event."""
     silent = {
@@ -285,11 +329,50 @@ def test_a_coalesced_page_merges_the_moved_scenarios() -> None:
         [first, second, simulation], "risk_scenario_recomputed", base_url="", tenant_id="t"
     )
     assert event["moved_scenario_ids"] == event["entity"]["moved_scenario_ids"] == ["s1", "s2"]
-    assert event["moved_count"] == 3
+    # Distinct scenarios, never the per-run sum (1 + 2) (#2117).
+    assert event["moved_count"] == event["entity"]["moved_count"] == 2
     assert event["moved_ale"] == [{"risk_scenario_id": "s1", "ale_before": 2.0, "ale_after": 3.0, "ale_delta": 1.0}]
     assert event["kind"] == ["crq-price-recompute", "crq-simulation"]
     assert event["risk_scenario_ids"] == ["s9"]
     assert [c["moved_scenario_ids"] for c in event["covers"]] == [["s1"], ["s1", "s2"], []]
+
+
+def test_a_capped_run_keeps_its_own_larger_count() -> None:
+    capped = _priced("a", "2026-11-06T07:00:00Z", {"moved": ["s1"], "movedCount": 40})
+    other = _priced("b", "2026-11-06T07:01:00Z", {"moved": ["s1", "s2"], "movedCount": 2})
+    (event,) = opencrq_job_events.coalesce_events(
+        [capped, other], "risk_scenario_recomputed", base_url="", tenant_id="t"
+    )
+    assert event["moved_count"] == 40
+
+
+def test_a_page_folded_into_a_waiting_run_unions_its_moved_scenarios() -> None:
+    from app.services import event_coalescing
+
+    def page(run_id: str, at: str, moved: list[str], delta: float) -> dict:
+        run = _priced(
+            run_id,
+            at,
+            {
+                "moved": moved,
+                "movedCount": len(moved),
+                "movedAle": [
+                    {"riskScenarioId": sid, "aleBefore": 1, "aleAfter": 1 + delta, "aleDelta": delta} for sid in moved
+                ],
+            },
+        )
+        (event,) = opencrq_job_events.coalesce_events([run], "risk_scenario_recomputed", base_url="", tenant_id="t")
+        return event
+
+    waiting = page("a", "2026-11-06T07:00:00Z", ["s1", "s2"], 1.0)
+    incoming = page("b", "2026-11-06T07:01:00Z", ["s2", "s3"], 2.0)
+    merged = event_coalescing.merged_payload(waiting, incoming)
+    assert merged["moved_scenario_ids"] == merged["entity"]["moved_scenario_ids"] == ["s1", "s2", "s3"]
+    assert merged["moved_count"] == merged["entity"]["moved_count"] == 3
+    deltas = {m["risk_scenario_id"]: m["ale_delta"] for m in merged["moved_ale"]}
+    assert deltas == {"s1": 1.0, "s2": 2.0, "s3": 2.0}
+    assert merged["entity"]["id"] == "b"
+    assert merged["run_count"] == 2
 
 
 def test_the_trigger_filter_reacts_to_a_moved_scenario() -> None:

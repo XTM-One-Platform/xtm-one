@@ -41,8 +41,12 @@ def test_every_renamed_id_names_a_registered_group_and_no_former_id_is_one():
     assert not any(gid.startswith("concierge_") for gid in group_ids)
 
 
-def test_migration_map_matches_the_runtime_map():
-    assert _migration()._RENAMED == RENAMED_BUILTIN_GROUPS
+def test_migration_map_holds_the_runtime_map():
+    # The specialists' former ids were deleted with their groups (#1943, h1943healthgrp01).
+    # The ctem_read / ctem_repair aliases belong to migration s2443ctemgrp01, not to this one.
+    health = {former: current for former, current in RENAMED_BUILTIN_GROUPS.items() if former.startswith("concierge_")}
+    assert health.items() <= _migration()._RENAMED.items()
+    assert health == {"concierge_orchestrator": "health_orchestrator"}
 
 
 @pytest.mark.parametrize(("former", "current"), sorted(RENAMED_BUILTIN_GROUPS.items()))
@@ -66,20 +70,23 @@ def test_an_allow_list_keyed_by_a_former_id_moves_with_its_functions():
 
 
 def test_former_and_current_id_together_collapse_to_one():
-    assert canonical_builtin_selection(["concierge_sandbox", "health_sandbox"], None) == (["health_sandbox"], None)
+    assert canonical_builtin_selection(["concierge_orchestrator", "health_orchestrator"], None) == (
+        ["health_orchestrator"],
+        None,
+    )
 
 
 def test_canonical_selection_is_idempotent_and_a_row_is_folded():
-    once = canonical_builtin_selection(["concierge_diagnosis", "concierge_experiments"], None)
+    once = canonical_builtin_selection(["concierge_orchestrator", "web"], None)
     assert canonical_builtin_selection(*once) == once
 
     class Row:
-        builtin_tool_ids = ["concierge_evaluation"]
+        builtin_tool_ids = ["concierge_orchestrator"]
         builtin_allowed_tools = None
 
     row = Row()
     assert fold_builtin_selection(row) is True
-    assert row.builtin_tool_ids == ["health_evaluation"]
+    assert row.builtin_tool_ids == ["health_orchestrator"]
     assert fold_builtin_selection(row) is False
 
 

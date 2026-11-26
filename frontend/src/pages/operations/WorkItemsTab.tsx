@@ -76,7 +76,7 @@ import { formatList } from "@/lib/format-list";
 import {
   BADGE_TIP_FOCUS, PRIORITY_LABELS, STATUS_LABELS, blockedKind, blockedReason, canClose, canRequeue, cancelledBlockers,
   listedBlockers, offersMarkDone, pullRequestsOf, unfinishedBlockers, waitingPullRequestCount, waitsForSomeone,
-  blockedWithoutReason, pendingBlockedRefs, waitsForReader,
+  blockedWithoutReason, pendingBlockedRefs, waitsForReader, answeredKeepsWaiting,
 } from "@/lib/work-item-context";
 import { BlockedStatusBadge } from "@/components/work-items/BlockedStatusBadge";
 import { WaitingForYouBadge } from "@/components/work-items/WaitingForYouBadge";
@@ -785,11 +785,13 @@ export default function WorkItemsTab({
     if (blockers.length) {
       facts.push({ label: t_i18n("Waits for"), tone: "warning", value: <WorkItemBlockers blockers={blockers} /> });
     }
-    if (item.status === "blocked" && (pendingBlockedRefs(item).length || item.blocked_reason?.trim() || item.needs_human)) {
+    // A keeps_waiting answer is recorded: the item no longer waits for the person (#2500).
+    const waitsForPerson = !!item.needs_human && !answeredKeepsWaiting(item);
+    if (item.status === "blocked" && (pendingBlockedRefs(item).length || item.blocked_reason?.trim() || waitsForPerson)) {
       facts.push({
         label: blockers.length ? t_i18n("Also waits for") : t_i18n("Waits for"),
         tone: "warning",
-        value: <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={!!item.needs_human} />,
+        value: <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={waitsForPerson} />,
       });
     }
     if (context?.owner_agent) {
@@ -822,6 +824,7 @@ export default function WorkItemsTab({
         waiting: blockedKind(item) === "waiting",
         pullRequest: context?.pickup.pull_request,
         pullRequests: context?.pickup.pull_requests,
+        answered: answeredKeepsWaiting(item),
       });
       facts.push({ label: t_i18n("Who acts on it"), value: tip, testId: "work-item-fact-pickup" });
     }
@@ -857,8 +860,9 @@ export default function WorkItemsTab({
     const pullRequests = pullRequestsOf(item.payload);
     const facts = factsOf(item);
     const blockers = item.status === "blocked" ? listedBlockers(item) : [];
+    const waitsForPerson = !!item.needs_human && !answeredKeepsWaiting(item);
     const waitsOnRefs =
-      item.status === "blocked" && (pendingBlockedRefs(item).length > 0 || !!item.blocked_reason?.trim() || !!item.needs_human);
+      item.status === "blocked" && (pendingBlockedRefs(item).length > 0 || !!item.blocked_reason?.trim() || waitsForPerson);
     // The meta column shows the owner, then the key, the references or the due date;
     // line 2 shows what it waits for. "+N" counts the facts left to the hover card.
     // The priority is always on line 1; the pickup, stale and visibility facts
@@ -1001,6 +1005,7 @@ export default function WorkItemsTab({
                     waiting={blockedKind(item) === "waiting"}
                     pullRequest={context?.pickup.pull_request}
                     pullRequests={context?.pickup.pull_requests}
+                    answered={answeredKeepsWaiting(item)}
                     compact
                   />
                 )}
@@ -1026,7 +1031,7 @@ export default function WorkItemsTab({
                   {blockers.length ? (
                     <WorkItemBlockers blockers={blockers} nowrap />
                   ) : (
-                    <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={!!item.needs_human} nowrap />
+                    <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={waitsForPerson} nowrap />
                   )}
                 </div>
               ) : (
@@ -1167,7 +1172,13 @@ export default function WorkItemsTab({
     {
       key: "title",
       header: "Title",
-      cell: (item) => <TruncatedText text={item.title} />,
+      // The card's Waiting for you marker beside the title, same rule and component (#2200, clause 3 of #1001).
+      cell: (item) => (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <TruncatedText text={item.title} className="min-w-0" />
+          {waitsForReader(item, user?.id) && <WaitingForYouBadge testId="work-item-list-waiting-for-you" />}
+        </span>
+      ),
       csv: (item) => item.title,
     },
     {

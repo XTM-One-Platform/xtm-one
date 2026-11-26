@@ -37,6 +37,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ElementType, type HTMLAttributes, type ReactNode, type RefObject } from "react";
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { CountBadge } from "@/components/ui/count-badge";
 import { cn } from "@/lib/utils";
 
 const PILL_BASE =
@@ -99,9 +100,7 @@ export function FilterPillTrigger({ icon: Icon, label, open, count = 0, active =
       {Icon && <Icon className="h-3 w-3" aria-hidden />}
       {label}
       {count > 0 && (
-        <span className="rounded-full bg-accent px-1.5 content-compact font-semibold text-accent-foreground tabular-nums">
-          {count}
-        </span>
+        <CountBadge className="border-transparent bg-accent font-semibold text-accent-foreground">{count}</CountBadge>
       )}
       <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} aria-hidden />
     </button>

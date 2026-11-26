@@ -1148,8 +1148,13 @@ async def test_attaching_a_prompt_with_a_secret_variable_to_a_shared_agent_is_an
     var = await _add(db, Variable(user_id=ALICE, name="token", is_secret=True, value_enc="v"))
     prompt = await _add(db, Prompt(user_id=ALICE, name="Style", content=f"Use {{{{var_id.{var.id}}}}}"))
     agent = await _add(db, _agent(**_team()))
-    [item] = (await _preview(db, "agent", agent, {"prompt_ids": [str(prompt.id)]}))["items"]
-    assert item["resource"]["name"] == "token" and item["gained"]["people_count"] == 2
+    items = {
+        i["resource"]["kind"]: i
+        for i in (await _preview(db, "agent", agent, {"prompt_ids": [str(prompt.id)]}))["items"]
+    }
+    # The private prompt itself is lent too.
+    assert set(items) == {"variable", "prompt"}
+    assert items["variable"]["resource"]["name"] == "token" and items["variable"]["gained"]["people_count"] == 2
 
 
 async def test_editing_an_attached_prompt_lends_its_new_variable_through_the_agents_using_it(db):
@@ -1179,8 +1184,13 @@ async def test_a_flow_s_knowledge_base_node_carries_its_sync_source_to_the_flow_
     )
     node = {"id": "k", "kind": "capability.knowledge_base", "config": {"knowledge_base_ids": [str(kb.id)]}}
     flow = await _add(db, Flow(user_id=ALICE, name="Digest", graph={"nodes": []}, **_team()))
-    [item] = (await _preview(db, "flow", flow, {"graph": {"nodes": [node]}}))["items"]
-    assert item["resource"]["name"] == "Alice GitHub" and item["gained"]["people_count"] == 2
+    items = {
+        i["resource"]["kind"]: i for i in (await _preview(db, "flow", flow, {"graph": {"nodes": [node]}}))["items"]
+    }
+    # The private knowledge base itself is lent too.
+    assert set(items) == {"integration", "knowledge_base"}
+    integration = items["integration"]
+    assert integration["resource"]["name"] == "Alice GitHub" and integration["gained"]["people_count"] == 2
     flow.graph = {"nodes": [node]}
     await db.flush()
     result = await ex.resource_exposure(db, "integration", integ, viewer_id=ALICE, viewer_is_admin=False)
@@ -1317,3 +1327,126 @@ async def test_the_preview_is_for_whoever_may_change_the_entity(db):
     with pytest.raises(HTTPException) as exc:
         await routes.post_exposure_preview(new_assignment, user=_viewer(DAVE), db=db)
     assert exc.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Knowledge bases, skills and prompts: lent by what attaches them, disclosed
+# ---------------------------------------------------------------------------
+
+
+async def _private_knowledge(db, owner=ALICE):
+    kb = await _add(db, KnowledgeBase(user_id=owner, name="Playbooks"))
+    skill = await _add(db, AgentSkill(user_id=owner, name="Runbook"))
+    prompt = await _add(db, Prompt(user_id=owner, name="Style", content="Be brief"))
+    return kb, skill, prompt
+
+
+async def test_sharing_an_agent_names_the_knowledge_bases_skills_and_prompts_it_lends(db):
+    """A shared agent reads what it attaches as its owner may, for everyone who
+    chats with it: the share confirmation names each private one, a
+    company-wide one reaching everyone already is not."""
+    kb, skill, prompt = await _private_knowledge(db)
+    company_kb = await _add(db, KnowledgeBase(user_id=ALICE, name="Handbook", is_company_managed=True))
+    agent = await _add(
+        db,
+        _agent(
+            knowledge_base_ids=[str(kb.id), str(company_kb.id)],
+            skill_ids=[str(skill.id)],
+            prompt_ids=[str(prompt.id)],
+        ),
+    )
+    result = await _preview(db, "agent", agent, {"shared_group_ids": [str(TEAM)]})
+    assert result["requires_confirmation"]
+    items = {i["resource"]["kind"]: i for i in result["items"]}
+    assert set(items) == {"knowledge_base", "skill", "prompt"}
+    assert items["knowledge_base"]["resource"]["name"] == "Playbooks"
+    assert items["knowledge_base"]["secret"]["kind"] == "documents"
+    assert items["skill"]["secret"]["kind"] == "instructions"
+    assert items["prompt"]["secret"]["kind"] == "instructions"
+    for item in items.values():
+        assert item["gained"]["people_count"] == 2
+        assert item["secret"]["is_yours"] is True
+        assert item["via"] == {"type": "agent", "id": str(agent.id), "name": "Helper"}
+        assert item["opt_outs"] == []
+
+
+async def test_a_co_editor_sharing_an_agent_is_told_whose_knowledge_base_it_lends(db):
+    """Bob may configure Alice's agent: re-sharing it lends Alice's knowledge base."""
+    kb = await _add(db, KnowledgeBase(user_id=ALICE, name="Playbooks"))
+    agent = await _add(
+        db,
+        _agent(
+            knowledge_base_ids=[str(kb.id)],
+            shared_user_ids=[str(BOB)],
+            shared_user_permissions={str(BOB): "config"},
+        ),
+    )
+    [item] = (await _preview(db, "agent", agent, {"shared_group_ids": [str(OTHERS)]}, actor=BOB))["items"]
+    assert item["resource"]["name"] == "Playbooks"
+    assert item["secret"]["holder_name"] == "Alice" and item["secret"]["is_yours"] is False
+    assert {g["name"] for g in item["gained"]["groups"]} == {"Others"} and item["gained"]["people_count"] == 1
+
+
+async def test_attaching_a_private_skill_to_a_shared_agent_is_announced(db):
+    _kb, skill, _prompt = await _private_knowledge(db)
+    agent = await _add(db, _agent(**_team()))
+    [item] = (await _preview(db, "agent", agent, {"skill_ids": [str(skill.id)]}))["items"]
+    assert item["resource"]["kind"] == "skill" and item["gained"]["people_count"] == 2
+
+
+async def test_the_preview_never_describes_a_knowledge_base_its_caller_cannot_see(db):
+    hidden = await _add(db, KnowledgeBase(user_id=BOB, name="Bob secret notes"))
+    agent = await _add(db, _agent(**_team()))
+    result = await _preview(db, "agent", agent, {"knowledge_base_ids": [str(hidden.id)]})
+    assert result["items"] == []
+    assert "Bob secret" not in repr(result)
+
+
+async def test_people_who_already_see_the_knowledge_base_are_not_told_again(db):
+    kb = await _add(db, KnowledgeBase(user_id=ALICE, name="Playbooks", **_team()))
+    agent = await _add(db, _agent(knowledge_base_ids=[str(kb.id)]))
+    result = await _preview(db, "agent", agent, {"shared_group_ids": [str(TEAM)]})
+    assert result["items"] == [] and not result["requires_confirmation"]
+
+
+async def test_sharing_a_knowledge_base_itself_does_not_list_it(db):
+    """A change to the knowledge base itself is what its writer sees: only what
+    it lends through agents attaching it is listed, never the change itself."""
+    kb, skill, prompt = await _private_knowledge(db)
+    for entity_type, entity in (("knowledge_base", kb), ("skill", skill), ("prompt", prompt)):
+        result = await _preview(db, entity_type, entity, {"shared_group_ids": [str(TEAM)]})
+        assert result["items"] == [], entity_type
+
+
+async def test_unsharing_an_agent_says_who_loses_its_knowledge_base(db):
+    kb = await _add(db, KnowledgeBase(user_id=ALICE, name="Playbooks"))
+    agent = await _add(db, _agent(knowledge_base_ids=[str(kb.id)], **_team()))
+    [item] = (await _preview(db, "agent", agent, {"shared_group_ids": []}))["items"]
+    assert item["resource"]["kind"] == "knowledge_base"
+    assert item["lost"]["people_count"] == 2 and item["gained"]["people_count"] == 0
+
+
+async def test_a_flow_s_skill_node_lends_the_skill_to_the_flow_audience(db):
+    skill = await _add(db, AgentSkill(user_id=ALICE, name="Runbook"))
+    node = {"id": "s", "kind": "capability.skill", "config": {"skill_ids": [str(skill.id)]}}
+    flow = await _add(db, Flow(user_id=ALICE, name="Digest", graph={"nodes": [node]}))
+    [item] = (await _preview(db, "flow", flow, {"shared_group_ids": [str(TEAM)]}))["items"]
+    assert item["resource"]["name"] == "Runbook" and item["gained"]["people_count"] == 2
+
+
+async def test_a_knowledge_base_the_assistant_searches_reaches_everyone(db):
+    kb = await _add(db, KnowledgeBase(user_id=ADMIN, name="Admin notes"))
+    config = await _add(db, GeneralAssistantConfig())
+    [item] = (
+        await _preview(db, "general_assistant", config, {"knowledge_base_ids": [str(kb.id)]}, actor=ADMIN, admin=True)
+    )["items"]
+    assert item["resource"]["name"] == "Admin notes" and item["gained"]["everyone"] is True
+
+
+async def test_a_knowledge_base_s_own_exposure_lists_the_agents_lending_it(db):
+    kb = await _add(db, KnowledgeBase(user_id=ALICE, name="Playbooks"))
+    await _add(db, _agent(knowledge_base_ids=[str(kb.id)], web_enabled=True, **_team()))
+    result = await ex.resource_exposure(db, "knowledge_base", kb, viewer_id=ALICE, viewer_is_admin=False)
+    [path] = result["paths"]
+    assert path["kind"] == "agent" and path["reasons"] == ["binding"]
+    assert path["lent"]["public_link"] is True and path["lent"]["people_count"] == 3

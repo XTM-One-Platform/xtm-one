@@ -59,7 +59,7 @@ def test_the_fixture_reads_rows_through_the_real_mappers(monkeypatch, section, s
 
 def test_no_fixture_for_a_pair_the_lab_does_not_cover(monkeypatch):
     module, _ = _asgi(monkeypatch, {})
-    assert module.lab_org_import_read("crown_jewels", "opencrq") is None
+    assert module.lab_org_import_read("primary_assets", "opencrq") is None
 
 
 def test_the_stub_replaces_only_a_not_connected_read(monkeypatch):
@@ -79,6 +79,36 @@ def test_the_stub_replaces_only_a_not_connected_read(monkeypatch):
     assert replaced.error is None and replaced.rows
     kept = asyncio.run(imp.read_source(None, source="openaev", **kwargs))
     assert kept is answers["openaev"]
+
+
+OUTAGE = "Error: Could not connect to {} while trying to organization import, the service may be unreachable."
+
+
+def test_the_stub_replaces_a_read_of_the_unreachable_lab_registration(monkeypatch):
+    """The lab registers each platform at ``*.lab.invalid``: the real read answers an outage, not "not connected"."""
+    module, imp = _asgi(monkeypatch, {})
+
+    async def live(db, *, user_id, section, source, filters, batch_type=""):
+        return imp.ReadResult(error=f"{source}: " + OUTAGE.format(source))
+
+    monkeypatch.setattr(imp, "read_source", live)
+    module.stub_org_import({"LAB_ORG_IMPORT": "1"})
+    for source, section in (("opencti", "assets"), ("openaev", "assets"), ("openaev", "asset_groups")):
+        read = asyncio.run(imp.read_source(None, user_id="u", section=section, source=source, filters={}))
+        assert read.error is None and read.rows, (source, section)
+
+
+def test_a_live_opencti_keeps_its_outage(monkeypatch):
+    module, imp = _asgi(monkeypatch, {})
+    outage = imp.ReadResult(error="OpenCTI: " + OUTAGE.format("OpenCTI"))
+
+    async def live(db, *, user_id, section, source, filters, batch_type=""):
+        return outage
+
+    monkeypatch.setattr(imp, "read_source", live)
+    module.stub_org_import({"LAB_ORG_IMPORT": "1", "LAB_OPENCTI": "live"})
+    kept = asyncio.run(imp.read_source(None, user_id="u", section="assets", source="opencti", filters={}))
+    assert kept is outage
 
 
 def test_the_stub_marks_only_an_unavailable_platform_available(monkeypatch):

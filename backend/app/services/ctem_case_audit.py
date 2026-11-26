@@ -24,6 +24,7 @@ it records a change, to ``CHANGE_KINDS``.
 from __future__ import annotations
 
 import re
+import uuid
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -81,11 +82,16 @@ KIND_PHASE: dict[str, str] = {
     "attack_path": STAGE_PRIORITIZATION,
     "threat_package": STAGE_PRIORITIZATION,
     "validation": STAGE_VALIDATION,
+    # The OpenAEV scenario of the validation and its playability (#2468).
+    "scenario": STAGE_VALIDATION,
     "source_event": STAGE_VALIDATION,
     "retest_requested": STAGE_VALIDATION,
     "issue_closed": STAGE_VALIDATION,
     "treatment_plan": STAGE_REMEDIATION,
     "ticket": STAGE_REMEDIATION,
+    "applied_change": STAGE_REMEDIATION,
+    # A detection gap the detection desk proposed on the case, or its answer (#2393).
+    "detection_gap": STAGE_REMEDIATION,
 }
 
 #: The phase a gate of the CTEM catalog (``builtin_fleet_docs.CTEM_GATE_KEYS``) belongs to.
@@ -375,7 +381,14 @@ def current_phase(events: list[dict[str, Any]]) -> str | None:
     return str(current) if current else None
 
 
-def open_wait(events: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _user_id(value: object) -> str | None:
+    try:
+        return str(uuid.UUID(str(value))) if value else None
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def open_wait(events: list[dict[str, Any]], owner: object = None) -> dict[str, Any] | None:
     """What a case waits on now: its newest gate that waited and was not answered, ``None`` when none.
 
     ``{gate, by, since}``: the gate key, who it waits on (the gate's ``reason``:
@@ -385,7 +398,22 @@ def open_wait(events: list[dict[str, Any]]) -> dict[str, Any] | None:
     With no open gate, the latest move into ``waiting_decision`` answers (a
     person set the status by hand, with its required reason; UX r1 B2 on #1515):
     ``gate`` ``None``, ``by`` the actor who moved it, ``since`` that move.
+
+    One derivation of who (#2452): ``by`` is a person's id whenever the case has
+    one to name. A gate whose reason names a person keeps that person; any other
+    reason (a role, a policy, the loop's text, none) or a move by the system
+    answers the case *owner*, the person accountable for the case; the gate's
+    decision item itself goes to the CTEM deciders (``ctem_access.gate_recipient``),
+    who the owner may not be. ``None`` only on a case with no owner, which the
+    case sweep no longer leaves open.
     """
+    wait = _open_wait(events)
+    if wait is None or _user_id(wait.get("by")):
+        return wait
+    return {**wait, "by": _user_id(owner)}
+
+
+def _open_wait(events: list[dict[str, Any]]) -> dict[str, Any] | None:
     annotated = annotate(events)
 
     def _at(e: dict[str, Any]) -> datetime:

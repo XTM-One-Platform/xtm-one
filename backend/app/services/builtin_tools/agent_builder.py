@@ -209,10 +209,20 @@ class _AgentUpdated(str):
     """
 
     fields: tuple[str, ...]
+    #: The agent's id when the update changed which tools its runs hold
+    #: (``tool_surface_timing.AGENT_TOOL_FIELDS``), else ``None``: the
+    #: executor carries it to the loop, which refreshes the surface of a run
+    #: of that agent (#2205).
+    tool_scope_agent_id: str | None
 
-    def __new__(cls, text: str, *, fields: tuple[str, ...] = ()) -> _AgentUpdated:
+    def __new__(cls, text: str, *, fields: tuple[str, ...] = (), agent_id: str | None = None) -> _AgentUpdated:
+        from app.services.tool_surface_timing import AGENT_TOOL_FIELDS
+
         result = super().__new__(cls, text)
         result.fields = fields
+        result.tool_scope_agent_id = (
+            agent_id if agent_id and any(f.split(" ", 1)[0] in AGENT_TOOL_FIELDS for f in fields) else None
+        )
         return result
 
 
@@ -800,8 +810,13 @@ async def _load_writable_assignment_for_builder(
     assignment_uuid: uuid.UUID,
     *,
     action: str = "modify",
+    written: frozenset[str] = frozenset(),
 ):
     """Load an assignment + parent agent and verify the caller can mutate it.
+
+    *written* names the fields the call writes: the switch alone on a
+    built-in agent's assignment lifts the built-in gate, as on the REST route
+    (``builtin_assignment_write_allowed``, #2192).
 
     Mirrors the REST API's ``assert_writable_assignment`` gates so the
     same built-in / company-managed / group-permission constraints apply
@@ -852,8 +867,15 @@ async def _load_writable_assignment_for_builder(
         # about the assignment we just resolved.
         return None, None, f"Assignment `{assignment_uuid}` not found."
 
+    from app.agents.builtin_agents import builtin_assignment_write_allowed
+
     err = writable_assignment_error(
-        assignment_row, agent_row, user, group_ids, action=action
+        assignment_row,
+        agent_row,
+        user,
+        group_ids,
+        action=action,
+        allow_builtin=builtin_assignment_write_allowed(agent_row, assignment_row, written),
     )
     if err is not None:
         return None, None, err
@@ -2492,11 +2514,16 @@ def _describe_builtin_change(before: list[str], after: list[str]) -> str:
 
 
 def _advertised_builtin_tool_ids() -> tuple[str, ...]:
-    """``_VALID_BUILTIN_TOOL_IDS`` minus the former ids and the ids whose feature flag is off."""
+    """``_VALID_BUILTIN_TOOL_IDS`` minus the former ids, Platform Health's internal group (#1943)
+    and the ids whose feature flag is off."""
+    from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
+
+    internal = {group.id for group in BUILTIN_TOOL_GROUPS if group.internal}
     return tuple(
         tool_id
         for tool_id in _VALID_BUILTIN_TOOL_IDS
         if not is_former_builtin_id(tool_id)
+        and tool_id not in internal
         and (
             tool_id not in _FEATURE_GATED_BUILTIN_TOOL_IDS
             or is_feature_enabled(_FEATURE_GATED_BUILTIN_TOOL_IDS[tool_id])
@@ -3894,6 +3921,12 @@ def build_agent_builder_tool(
                     keep[field] = await ids_matching(
                         _db, model, ids, user_visible_filter(model, uid, group_ids, is_admin=False)
                     )
+                # A supervision target is kept only when the caller may read its traces.
+                from app.services.builtin_tools.traces import agents_whose_traces_user_may_read
+
+                keep["trace_supervision_target_agent_ids"] = await agents_whose_traces_user_may_read(
+                    _db, caller, clone.trace_supervision_target_agent_ids or [], group_ids
+                )
                 dropped = retain_agent_bindings(clone, keep)
                 original_channels = clone.channel_config or {}
                 kept_channels, dropped["channel_config"] = await retain_copier_channels(
@@ -4474,6 +4507,11 @@ def build_agent_builder_tool(
                 fleet_err = await fleet_scope_error(trigger_type, trig_config, agent.id)
                 if fleet_err is not None:
                     return fleet_err
+                from app.services.platform_events import ctem_event_error
+
+                ctem_err = await ctem_event_error(trigger_type, trig_config, user_id)
+                if ctem_err is not None:
+                    return ctem_err
                 from app.services.trigger_provisioning import provision_spec_error
 
                 provision_err = provision_spec_error(trigger_type, trig_config)
@@ -5027,6 +5065,17 @@ def build_agent_builder_tool(
                     _token_caller, agent, group_ids
                 )
 
+            # The agent's tool approval policy, resolved as the gate resolves
+            # it, and the platform tool rules for an administrator (#2189).
+            from app.services.agent_approval_policy import approval_policy_lines
+
+            _approval_caller = await _load_caller_user_for_builder(_db, uid) if uid else None
+            _approval_lines = await approval_policy_lines(
+                _db,
+                agent,
+                caller_is_admin=_approval_caller is not None and bool(agent_tool_admin_bypass(_approval_caller)),
+            )
+
             # Self fan-out: the stored setting and what it does once the
             # platform switch and the delegation depth are applied.
             from app.services.builtin_tools.handover import self_fanout_effective_text
@@ -5132,6 +5181,7 @@ def build_agent_builder_tool(
                 "",
                 "Human-in-the-loop:",
                 f"  • Enabled: {_yn(_g('human_in_the_loop', False))}",
+                *_approval_lines,
                 "",
                 "Channels & web:",
                 f"  • Available channels: {_fmt_channels()}",
@@ -5280,6 +5330,8 @@ def build_agent_builder_tool(
             line = f"- **{group.name}** (`{group.id}`) — {count} member{'' if count == 1 else 's'}"
             if str(group.id) in own_group_ids:
                 line += ", you are a member"
+            if group.auto_join:
+                line += ", auto join (single sign-on users join it)"
             if group.description:
                 line += f" — {group.description}"
             if members_listed:
@@ -5706,6 +5758,10 @@ def build_agent_builder_tool(
                     "permission to edit it."
                 )
 
+            from app.services.agent_bindings import (
+                agent_audience,
+                unlink_agent_from_lost_holders,
+            )
             from app.services.agent_config_versioning import (
                 INITIAL_COMMIT_MESSAGE,
                 record_agent_version_changes,
@@ -5715,6 +5771,7 @@ def build_agent_builder_tool(
 
             # What the REST update versions, versioned here too.
             versioned_before = versioned_agent_values(agent)
+            audience_before = agent_audience(agent)
             updated: list[str] = []
             text_read_back = ""
             if text_mode != "replace":
@@ -6870,38 +6927,54 @@ def build_agent_builder_tool(
                     _channel_config_changed = True
 
             # handover_types — "<agent_id>:<type>" pairs, or "none"/"clear".
+            # A merge (#2207): the pairs type only the targets they name, the
+            # others keep how they ran (``merged_handover_types``); a target may
+            # hold several types (``A:consult|delegate``, or repeated pairs) or
+            # ``all``.
             if (handover_types or "").strip():
                 if handover_types.strip().lower() in ("none", "clear"):
                     agent.handover_types = {}
                 else:
-                    ht_map: dict[str, str] = {}
-                    ht_malformed: list[str] = []
-                    valid_types = (
-                        "delegate",
-                        "consult",
-                        "transfer",
-                        "mandatory_transfer",
+                    from app.services.handover_types import (
+                        handover_type_set,
+                        merged_handover_types,
+                        parse_handover_type_entry,
                     )
+
+                    ht_parts: dict[str, set[str]] = {}
+                    ht_malformed: list[str] = []
                     for raw_pair in handover_types.split(","):
                         cleaned = raw_pair.strip()
                         if not cleaned:
                             continue
                         aid, sep, htype = cleaned.partition(":")
-                        aid, htype = aid.strip(), htype.strip().lower()
-                        parsed_aid = safe_uuid(aid)
-                        if not sep or not parsed_aid or htype not in valid_types:
+                        parsed_aid = safe_uuid(aid.strip())
+                        entry = parse_handover_type_entry(htype) if sep else None
+                        if not parsed_aid or entry is None:
                             ht_malformed.append(cleaned)
                             continue
-                        ht_map[str(parsed_aid)] = htype
+                        ht_parts.setdefault(str(parsed_aid), set()).update(handover_type_set(entry))
+                    ht_map: dict[str, str] = {}
+                    for aid, parts in ht_parts.items():
+                        entry = parse_handover_type_entry("|".join(sorted(parts)))
+                        if entry is None:
+                            ht_malformed.append(f"{aid}:{'|'.join(sorted(parts))}")
+                            continue
+                        ht_map[aid] = entry
                     if ht_malformed:
                         return (
                             "Invalid handover_types entry(ies): "
                             f"{', '.join(ht_malformed)}. Use 'AGENT_ID:TYPE' "
                             "pairs separated by commas (TYPE is delegate, "
-                            "consult, transfer or mandatory_transfer), or "
+                            "consult, transfer, several of them joined by '|', "
+                            "all, or mandatory_transfer alone), or "
                             "'none'/'clear' to reset."
                         )
-                    agent.handover_types = ht_map
+                    agent.handover_types = merged_handover_types(
+                        agent.handover_agent_ids or [],
+                        stored_handover_types,
+                        ht_map,
+                    )
                 updated.append("handover_types")
 
             # handover_conditions — JSON {agent_id: condition}, or "none"/"clear".
@@ -7411,6 +7484,10 @@ def build_agent_builder_tool(
                         summary=f"Changed who can use agent '{agent.name}' through an agent",
                         details={"slug": agent.slug, **_share_audit},
                     )
+            # Whoever no longer reaches the agent stops naming it from their
+            # agents, as on the REST update.
+            if agent_audience(agent) != audience_before:
+                await unlink_agent_from_lost_holders(_db, agent)
             _audience = await _agent_audience_lines(_db, agent) if _share_lines else []
 
             try:
@@ -7475,7 +7552,10 @@ def build_agent_builder_tool(
                         + " — a company-managed agent can only bind company-managed "
                         "knowledge bases."
                     )
-            return _AgentUpdated(_result, fields=tuple(updated))
+            _updated_id = getattr(agent, "id", None)
+            return _AgentUpdated(
+                _result, fields=tuple(updated), agent_id=str(_updated_id) if _updated_id is not None else None
+            )
 
     # ── delete_agent ──────────────────────────────────────────────────
 
@@ -7852,6 +7932,17 @@ def build_agent_builder_tool(
                     for _reason, _count in list(_reasons.items())[:10]:
                         parts.append(f"    - {_count} x {_reason}")
 
+            # Webhook deliveries the secret refused (#2180): why a sender gets 401.
+            if assignment.trigger_type == "webhook":
+                from app.services.webhook_refusals import refusals
+
+                _refused = await refusals(assignment.id)
+                if _refused:
+                    parts.append(f"  • Refused deliveries (last {len(_refused)}, newest first):")
+                    for _row in _refused:
+                        _names = ", ".join(_row.get("auth_headers") or []) or "no auth header"
+                        parts.append(f"    - {_row.get('at', '?')}: {_row.get('reason', '?')} ({_names})")
+
             # Surface the prompts in FULL (never truncated) so the agent can
             # faithfully inspect and edit them. The activation gate prompt is a
             # distinct field from the action prompt — both must be visible or
@@ -7999,8 +8090,47 @@ def build_agent_builder_tool(
             # ``Assignment.user_id == uid`` filter blocked admins from
             # editing company-managed assignments through the tool even
             # though the UI allowed it.
+            # The fields this call writes: the switch alone may be written on a
+            # built-in agent's assignment (#2192).
+            _written = frozenset(
+                _arg
+                for _arg, _arg_value in (
+                    ("name", name),
+                    ("prompt", prompt),
+                    ("activation_prompt", activation_prompt),
+                    ("trigger_type", trigger_type),
+                    ("trigger_config", trigger_config),
+                    ("delay", delay),
+                    ("enabled", enabled),
+                    ("description", description),
+                    ("ai_label_prompt", ai_label_prompt),
+                    ("human_in_the_loop_prompt", human_in_the_loop_prompt),
+                    ("human_in_the_loop", human_in_the_loop),
+                    ("ai_label", ai_label),
+                    ("notify_on_complete", notify_on_complete),
+                    ("show_in_digest", show_in_digest),
+                    ("dry_run", dry_run),
+                    ("ignore_self_triggered_events", ignore_self_triggered_events),
+                    ("retry_on_failure", retry_on_failure),
+                    ("max_retries", max_retries),
+                    ("max_iterations", max_iterations),
+                    ("timeout_seconds", timeout_seconds),
+                    ("activation_check", activation_check),
+                    ("wait_policy", wait_policy),
+                    ("organization_context_mode", organization_context_mode),
+                    ("organization_context_categories", organization_context_categories),
+                    ("field", field),
+                    ("edits", edits),
+                    ("section", section),
+                    ("content", content),
+                    ("fix_applied", fix_applied),
+                )
+                if _arg_value is not None and not (isinstance(_arg_value, str) and _arg_value == "")
+            ) | (frozenset({"mode"}) if text_mode != "replace" else frozenset())
+            if assignment_uuid is None:  # _id_arg answered no error
+                return f"Assignment `{assignment_id}` not found or you don't have permission to edit it."
             assignment, _agent, perm_err = await _load_writable_assignment_for_builder(
-                _db, uid, assignment_uuid, action="edit"
+                _db, uid, assignment_uuid, action="edit", written=_written
             )
             if perm_err is not None or assignment is None:
                 return perm_err or (
@@ -8136,6 +8266,15 @@ def build_agent_builder_tool(
                 )
                 if fleet_err is not None:
                     return f"{fleet_err} Nothing was saved."
+                from app.services.platform_events import ctem_event_error
+
+                ctem_err = await ctem_event_error(
+                    trigger_type or assignment.trigger_type,
+                    assignment.trigger_config if parsed_config is None else parsed_config,
+                    getattr(assignment, "user_id", None) or user_id,
+                )
+                if ctem_err is not None:
+                    return f"{ctem_err} Nothing was saved."
                 if parsed_config is not None:
                     from app.services.trigger_provisioning import provision_spec_error
 
@@ -9075,6 +9214,13 @@ def build_agent_builder_tool(
                 if r.completed_at and r.started_at:
                     secs = (r.completed_at - r.started_at).total_seconds()
                     line += f" | Duration: {secs:.0f}s"
+                if r.status in ("pending", "delayed") and r.assignment_id:
+                    # Why it waits and its place in the queue (#2040).
+                    from app.services.run_queue_starvation import queue_wait_line
+
+                    waiting = await queue_wait_line(_db, r.id)
+                    if waiting:
+                        line += f"\n  {waiting}"
                 line += _run_degraded_lines(r, prefix="\n  ")
                 if r.status == "failed" and r.error:
                     err_text = " ".join(r.error.split())
@@ -9275,6 +9421,12 @@ def build_agent_builder_tool(
                 budget_line = await _run_budget_line(_db, run.id)
                 if budget_line:
                     parts.append(budget_line)
+                if run.status in ("pending", "delayed"):
+                    from app.services.run_queue_starvation import queue_wait_line
+
+                    waiting = await queue_wait_line(_db, run.id)
+                    if waiting:
+                        parts.append(waiting)
             from app.services.hitl_resume_clock import awaiting_human_seconds
 
             _paused = awaiting_human_seconds(run)
@@ -12241,12 +12393,13 @@ def build_agent_builder_tool(
 
     async def _list_platform_events(search: str = "") -> str:
         """The platform events a ``platform_event`` trigger subscribes to."""
+        from app.services import ctem_access
         from app.services.platform_events import catalog
 
         needle = (search or "").strip().lower()
-        rows = [
-            e for e in catalog() if not needle or needle in e["event"] or needle in e["description"].lower()
-        ]
+        # The CTEM signal and case events only for a person with a CTEM right (#2441).
+        offered = catalog(ctem=await ctem_access.wires_ctem(user_id))
+        rows = [e for e in offered if not needle or needle in e["event"] or needle in e["description"].lower()]
         if not rows:
             return "No platform event matches."
         lines = [

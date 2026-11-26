@@ -82,7 +82,7 @@ DownloadStatus = Literal["downloading", "paused", "completed", "failed", "alread
 class OverviewResponse(BaseModel):
     """How the integration reaches its server, and the platform provider it feeds."""
 
-    #: The integration is routed through a relay group (the console needs it).
+    #: The integration is routed through a relay group (``False``: reached directly).
     routed: bool
     relay_group_id: str | None = None
     #: The server URL as normalized, or ``None`` when unset or invalid.

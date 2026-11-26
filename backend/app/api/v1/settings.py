@@ -106,6 +106,7 @@ from app.core.database import get_db
 from app.core.email_domains import parse_allowed_domains
 from app.core.security import decrypt_stored_value, decrypt_value, encrypt_value
 from app.core.utils import format_exception_message, normalize_language, safe_uuid
+from app.core.xtm_auth import XTM_JWKS_PATH, xtm_issuer
 from app.llm.custom_openai_provider import CustomOpenAIProvider
 from app.llm.decisions import DECISION_LISTING_TIMEOUT_SECONDS
 from app.llm.env_models import models_env_locked, models_env_var
@@ -161,6 +162,7 @@ from app.services.builtin_tool_catalog import (
     withhold_flow_builder_tools,
     withhold_health_tools,
 )
+from app.services.coordination_retention import coordination_retention_days
 from app.services.ctem_verticals import normalize_vertical
 from app.services.handover_types import with_added_handover_targets
 from app.services.kb_helpers import count_provider_failures, enqueue_reembedding, retry_provider_failures_now
@@ -1946,22 +1948,32 @@ async def resolve_models_with_key(
             provider=body.provider, models=models, model_groups=groups
         )
     except Exception as e:
-        message = format_exception_message(e)
-        gateway_token = (
-            parse_gateway_credential(api_key).token
-            if body.provider == "filigran_gateway"
-            else None
-        )
-        # A gateway may echo the token it rejected.
-        message = redact_token(message, gateway_token)
-        logger.warning("Failed to resolve models for %s: %s", body.provider, message)
-        detail = f"Failed to fetch models: {message}"
-        if body.provider == "filigran_gateway" and not gateway_token:
-            detail += (
-                " — check that the gateway trusts this platform's BASE_URL as an "
-                "issuer and can reach its /xtm/auth/jwks endpoint."
-            )
-        raise HTTPException(status_code=400, detail=detail) from e
+        reason, hint = _discovery_failure(body.provider, body.api_key, api_key, e)
+        logger.warning("Failed to resolve models for %s: %s", body.provider, reason)
+        raise HTTPException(status_code=400, detail=f"Failed to fetch models: {reason}{hint}") from e
+
+
+def _discovery_failure(provider: str, typed_key: str, api_key: str, exc: Exception) -> tuple[str, str]:
+    """Why model discovery failed, fit to show an admin, and a hint for a gateway in JWT mode.
+
+    A provider may echo the key it rejected: what a vault reference resolved to, and a gateway token, are hidden.
+    """
+    reason = format_exception_message(exc)
+    typed = set(typed_key.split("||"))
+    for resolved in api_key.split("||"):
+        if resolved.strip() and resolved not in typed:
+            reason = redact_token(reason, resolved.strip())
+    if provider != "filigran_gateway":
+        return reason, ""
+    token = parse_gateway_credential(api_key).token
+    reason = redact_token(reason, token)
+    if token:
+        return reason, ""
+    jwks = f"{xtm_issuer()}{XTM_JWKS_PATH}" if xtm_issuer() else f"its {XTM_JWKS_PATH} endpoint"
+    return reason, (
+        " — check that the gateway trusts this platform's BASE_URL as an "
+        f"issuer and can reach {jwks}."
+    )
 
 
 # Providers that can ONLY do embeddings and expose no model-discovery API, so
@@ -2279,6 +2291,8 @@ async def validate_provider_with_key(
     # A provider serving one capability (an embedding server, a voice
     # generator) is validated for it, whatever flow added it.
     capability = getattr(provider_cls, "only_capability", None) or body.capability
+    # Why model discovery failed, shown when nothing else validates the provider.
+    discovery_error: str | None = None
 
     try:
         # Attribute gateway calls to the admin performing the validation.
@@ -2310,11 +2324,13 @@ async def validate_provider_with_key(
                 message="Provider validated and models discovered successfully.",
             )
     except Exception as exc:
+        reason, hint = _discovery_failure(body.provider, body.api_key, api_key, exc)
+        discovery_error = reason + hint
         logger.info(
             "Provider validation model discovery failed for %s/%s: %s",
             body.provider,
             capability,
-            format_exception_message(exc),
+            reason,
         )
         from app.llm.speech import SpeechGenerationError
         from app.llm.video import VideoGenerationError
@@ -2359,6 +2375,7 @@ async def validate_provider_with_key(
                 else (
                     "Unable to validate embedding provider connectivity. "
                     f"{message}"
+                    + (f" Model discovery failed: {discovery_error}" if discovery_error else "")
                 )
             ),
         )
@@ -2370,7 +2387,9 @@ async def validate_provider_with_key(
         models_supported=False,
         models=[],
         message=(
-            "Unable to validate provider for this capability. "
+            f"Unable to validate provider for this capability. Model discovery failed: {discovery_error}"
+            if discovery_error
+            else "Unable to validate provider for this capability. "
             "Model discovery failed and no fallback validation is available."
         ),
     )
@@ -5314,6 +5333,22 @@ async def test_sso_oidc(
 # ---------------------------------------------------------------------------
 
 
+class CoordinationRetention(BaseModel):
+    """Days the coordination tables keep a row (#2070), 0 keeps forever.
+
+    Keys of services/coordination_retention.RETENTION_KEYS; every window counts
+    from the row's last update (the abandoned auto-cancel from its last activity).
+    """
+
+    work_item_resolved_days: int = Field(ge=0, le=3650)
+    work_item_abandoned_days: int = Field(ge=0, le=3650)
+    shared_state_resolved_days: int = Field(ge=0, le=3650)
+    shared_state_archive_days: int = Field(ge=0, le=3650)
+    workset_resolved_days: int = Field(ge=0, le=3650)
+    #: Finished assignment runs (Operations > Executions); absent in a body = the stored window.
+    assignment_run_days: int | None = Field(default=None, ge=0, le=3650)
+
+
 class ObservabilityConfigResponse(BaseModel):
     trace_store_provider: str
     trace_store_health_status: str
@@ -5321,6 +5356,8 @@ class ObservabilityConfigResponse(BaseModel):
     trace_storage_enabled: bool
     trace_retention_days: int
     audit_log_retention_days: int = 90
+    #: The effective coordination retention (stored value, else the environment default).
+    coordination_retention: CoordinationRetention | None = None
     trace_store_payloads: bool
     last_aggregation_at: datetime | None = None
     aggregation_stale: bool
@@ -5336,6 +5373,8 @@ class ObservabilityConfigUpdate(BaseModel):
     trace_store_payloads: bool
     #: Days an audit log entry is kept (services/audit_retention.py); unchanged when absent.
     audit_log_retention_days: int | None = Field(default=None, ge=30, le=3650)
+    #: The coordination retention windows; unchanged when absent.
+    coordination_retention: CoordinationRetention | None = None
 
 
 class WorkspaceKnowledgeConfig(BaseModel):
@@ -5712,6 +5751,9 @@ async def _build_observability_config_response(
         ),
         audit_log_retention_days=audit_log_retention_days(
             getattr(ps, "audit_log_retention_days", None)
+        ),
+        coordination_retention=CoordinationRetention(
+            **coordination_retention_days(getattr(ps, "coordination_retention", None))
         ),
         trace_store_payloads=(
             True if ps.trace_store_payloads is None else bool(ps.trace_store_payloads)
@@ -6434,6 +6476,21 @@ async def update_observability_config(
                 "from": previous_audit_retention_days,
                 "to": body.audit_log_retention_days,
             }
+    if body.coordination_retention is not None:
+        previous_coordination = coordination_retention_days(getattr(ps, "coordination_retention", None))
+        stored = {
+            **previous_coordination,
+            **body.coordination_retention.model_dump(exclude_none=True),
+        }
+        # Assign a new dict: an in-place change of a JSON column is not tracked.
+        ps.coordination_retention = dict(stored)
+        changed = {
+            key: {"from": previous_coordination.get(key), "to": value}
+            for key, value in stored.items()
+            if previous_coordination.get(key) != value
+        }
+        if changed:
+            audit_details["coordination_retention"] = changed
 
     await db.flush()
     await log_audit(
@@ -6822,6 +6879,7 @@ async def test_langfuse_connection(
     from app.services.langfuse_tracing import (
         LANGFUSE_EXPORT_TIMEOUT,
         areset_langfuse_client,
+        run_langfuse_blocking,
     )
 
     result = await db.execute(select(LangfuseConfig))
@@ -6853,18 +6911,19 @@ async def test_langfuse_connection(
         host = config.host or LANGFUSE_DEFAULT_HOST
 
         def _blocking_test() -> bool:
-            """Build a throwaway client, auth-check, and shut it down. BLOCKING.
+            """Build a client and auth-check it. BLOCKING.
 
-            The Langfuse SDK is synchronous, so this runs off the event loop
-            (via ``asyncio.to_thread``) so an unreachable host can't stall the
-            web event loop for the whole HTTP timeout.
+            The Langfuse SDK is synchronous, so this runs off the event loop,
+            on the Langfuse pool, so an unreachable host can't stall the web
+            event loop for the whole HTTP timeout.
 
             The constructor ``timeout`` MUST match the real client's export
             timeout: the SDK's resource manager is a per-public-key singleton
             that ``shutdown()`` does not evict, so whichever ``Langfuse(...)``
             construction runs first pins the OTLP span exporter timeout for
-            the whole process.  The auth check itself stays short via
-            per-request options.
+            the whole process.  For the same reason the client is never shut
+            down (``langfuse_tracing._blocking_init_and_auth``).  The auth
+            check itself stays short via per-request options.
             """
             client = Langfuse(
                 public_key=public_key,
@@ -6872,21 +6931,13 @@ async def test_langfuse_connection(
                 host=host,
                 timeout=LANGFUSE_EXPORT_TIMEOUT,
             )
-            try:
-                projects = client.api.projects.get(
-                    request_options={"timeout_in_seconds": 10}
-                )
-                return bool(projects.data)
-            finally:
-                try:
-                    client.shutdown()
-                except Exception:
-                    logger.debug(
-                        "Langfuse test client shutdown failed", exc_info=True
-                    )
+            projects = client.api.projects.get(
+                request_options={"timeout_in_seconds": 10}
+            )
+            return bool(projects.data)
 
         has_project = await asyncio.wait_for(
-            asyncio.to_thread(_blocking_test), timeout=15
+            run_langfuse_blocking(_blocking_test), timeout=15
         )
         if not has_project:
             logger.warning("Langfuse test connection: no project found (host=%s)", host)

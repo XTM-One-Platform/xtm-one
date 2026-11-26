@@ -5,10 +5,10 @@
 import uuid
 from typing import Any
 
-from app.models.organization_asset_record import OrganizationCrownJewelLink
+from app.models.organization_asset_record import OrganizationPrimaryAssetLink
 from app.services import organization_context_opencrq_links as links
 
-JEWELS = {"pa-1": "Payments", "pa-2": "Customer data"}
+PRIMARY_ASSETS = {"pa-1": "Payments", "pa-2": "Customer data"}
 
 
 def _link(
@@ -24,12 +24,12 @@ def _link(
 
 
 def _stored(
-    external_id: str, record_id: uuid.UUID, jewel: str, roles: list[str], removed: bool = False
-) -> OrganizationCrownJewelLink:
-    return OrganizationCrownJewelLink(
+    external_id: str, record_id: uuid.UUID, pa_row: str, roles: list[str], removed: bool = False
+) -> OrganizationPrimaryAssetLink:
+    return OrganizationPrimaryAssetLink(
         id=uuid.uuid4(),
         organization_id=uuid.uuid4(),
-        crown_jewel_key=jewel,
+        primary_asset_key=pa_row,
         record_id=record_id,
         source="opencrq",
         external_id=external_id,
@@ -62,7 +62,7 @@ def test_inherited_needs_take_the_strongest_role() -> None:
 def test_links_match_the_opencrq_record_first_then_a_single_name() -> None:
     by_id, by_name = uuid.uuid4(), uuid.uuid4()
     plan = links.plan_links(
-        JEWELS,
+        PRIMARY_ASSETS,
         [
             _link("l1", "pa-1", "sa-1", "db-01", ["stores"]),
             _link("l2", "pa-2", "sa-9", "Web Front", ["transmits"]),
@@ -76,7 +76,7 @@ def test_links_match_the_opencrq_record_first_then_a_single_name() -> None:
     )
     added = {w.external_id: w for w in plan.add}
     assert set(added) == {"l1", "l2"}
-    assert added["l1"].record_id == by_id and added["l1"].crown_jewel_key == "payments"
+    assert added["l1"].record_id == by_id and added["l1"].primary_asset_key == "payments"
     assert added["l2"].record_id == by_name and added["l2"].roles == ["transmits"]
     assert added["l1"].inherited_needs["traceability"] == "lower"
     assert plan.unmatched == [("Customer data", "nowhere")]
@@ -86,7 +86,7 @@ def test_links_match_the_opencrq_record_first_then_a_single_name() -> None:
 def test_a_link_a_person_removed_is_never_added_back() -> None:
     record = uuid.uuid4()
     plan = links.plan_links(
-        JEWELS,
+        PRIMARY_ASSETS,
         [_link("l1", "pa-1", "sa-1", "db-01", ["stores"])],
         {"sa-1": record},
         {},
@@ -101,7 +101,7 @@ def test_changed_roles_update_and_links_opencrq_dropped_go() -> None:
     gone = _stored("l9", uuid.uuid4(), "payments", ["stores"])
     tomb = _stored("l8", uuid.uuid4(), "payments", ["stores"], removed=True)
     plan = links.plan_links(
-        JEWELS,
+        PRIMARY_ASSETS,
         [_link("l1", "pa-1", "sa-1", "db-01", ["reads"])],
         {"sa-1": record},
         {},
@@ -112,6 +112,100 @@ def test_changed_roles_update_and_links_opencrq_dropped_go() -> None:
 
 
 def test_summary_counts() -> None:
-    plan = links.plan_links(JEWELS, [_link("l1", "pa-1", "sa-1", "x")], {}, {}, [])
+    plan = links.plan_links(PRIMARY_ASSETS, [_link("l1", "pa-1", "sa-1", "x")], {}, {}, [])
     assert plan.summary()["added"] == 0
     assert plan.summary()["not_in_inventory"] == [{"primary_asset": "Payments", "supporting_asset": "x"}]
+    assert plan.summary()["not_in_inventory_count"] == 1
+    assert plan.summary()["ambiguous_count"] == 0
+
+
+def test_summary_carries_the_totals_past_the_50_listed() -> None:
+    plan = links.plan_links(
+        PRIMARY_ASSETS, [_link(f"l{i}", "pa-1", f"sa-{i}", f"host-{i}") for i in range(120)], {}, {}, []
+    )
+    summary = plan.summary()
+    assert len(summary["not_in_inventory"]) == 50
+    assert summary["not_in_inventory_count"] == 120
+
+
+def test_one_asset_seen_by_two_sources_links_once_not_ambiguous() -> None:
+    asset, intune, openaev = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    plan = links.plan_links(
+        PRIMARY_ASSETS,
+        [_link("l1", "pa-1", "sa-1", "lapt-fili-0002", ["processes"])],
+        {},
+        {"lapt-fili-0002": [intune, openaev]},
+        [],
+        asset_of={intune: asset, openaev: asset},
+    )
+    assert not plan.ambiguous and not plan.unmatched
+    assert [w.record_id for w in plan.add] == [min(intune, openaev, key=str)]
+
+
+def test_two_assets_of_one_name_stay_ambiguous() -> None:
+    one, two = uuid.uuid4(), uuid.uuid4()
+    plan = links.plan_links(
+        PRIMARY_ASSETS,
+        [_link("l1", "pa-1", "sa-1", "twin")],
+        {},
+        {"twin": [one, two]},
+        [],
+        asset_of={one: uuid.uuid4(), two: uuid.uuid4()},
+    )
+    assert plan.ambiguous == [("Payments", "twin")] and not plan.add
+
+
+def test_a_hyphenated_hostname_matches_a_display_name_on_the_loose_key() -> None:
+    jamie, nicolas = uuid.uuid4(), uuid.uuid4()
+    loose = {
+        links.loose_key("Jamie\u2019s MacBook Air"): [jamie],
+        links.loose_key("MacBook Pro de Nicolas"): [nicolas],
+    }
+    plan = links.plan_links(
+        PRIMARY_ASSETS,
+        [_link("l1", "pa-1", "sa-1", "Jamies-MacBook-Air"), _link("l2", "pa-1", "sa-2", "MacBook-Pro-de-Nicolas")],
+        {},
+        {},
+        [],
+        records_by_loose_name=loose,
+    )
+    assert {w.external_id: w.record_id for w in plan.add} == {"l1": jamie, "l2": nicolas}
+
+
+def test_the_exact_key_wins_over_the_loose_one() -> None:
+    exact, other = uuid.uuid4(), uuid.uuid4()
+    plan = links.plan_links(
+        PRIMARY_ASSETS,
+        [_link("l1", "pa-1", "sa-1", "db-01")],
+        {},
+        {"db-01": [exact]},
+        [],
+        records_by_loose_name={"db 01": [exact, other]},
+    )
+    assert [w.record_id for w in plan.add] == [exact]
+
+
+def test_a_url_named_supporting_asset_matches_its_fqdn() -> None:
+    saas = uuid.uuid4()
+    plan = links.plan_links(
+        PRIMARY_ASSETS,
+        [_link("l1", "pa-2", "sa-1", "https://acme5957.octi.filigran.io/")],
+        {},
+        {"acme5957.octi.filigran.io": [saas]},
+        [],
+    )
+    assert [w.record_id for w in plan.add] == [saas]
+
+
+def test_a_link_already_on_another_record_of_the_same_asset_is_not_churned() -> None:
+    asset, intune, openaev = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    keep = max(intune, openaev, key=str)
+    plan = links.plan_links(
+        PRIMARY_ASSETS,
+        [_link("l1", "pa-1", "sa-1", "axel", ["stores"])],
+        {},
+        {"axel": [intune, openaev]},
+        [_stored("l1", keep, "payments", ["stores"])],
+        asset_of={intune: asset, openaev: asset},
+    )
+    assert not plan.add and not plan.update and not plan.delete

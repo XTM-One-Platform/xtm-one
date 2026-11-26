@@ -1030,6 +1030,9 @@ async def apply_inbound_status(
         ticket = managed_ticket(case)
         if ticket is None or str(ticket.get("key")) != key or str(ticket.get("integration")) != str(integration_id):
             continue
+        # The case row locked until the caller's commit (#2373): a concurrent tool or loop write
+        # of the same case waits, and the ticket moves the state the case is really in.
+        case = await case_loop.locked_case(db, case.id) or case
         remote = RemoteTicket(
             key=key,
             url=str(ticket.get("url") or ""),

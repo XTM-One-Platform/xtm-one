@@ -26,7 +26,7 @@ def test_each_location_lists_only_its_sections() -> None:
     assert set(profile) | set(inventory) == set(osync.SYNCABLE_SECTIONS)
     assert not set(profile) & set(inventory)
     # Primary assets are an Inventory source (Sam, 24 Nov 2026): their OpenCRQ sync sits with the asset sources.
-    assert osync.in_scope("crown_jewels", "inventory") and not osync.in_scope("crown_jewels", "profile")
+    assert osync.in_scope("primary_assets", "inventory") and not osync.in_scope("primary_assets", "profile")
     assert osync.in_scope("assets", "inventory") and not osync.in_scope("assets", "profile")
     assert osync.in_scope(osync.ALL_SECTIONS, "profile") and osync.in_scope(osync.ALL_SECTIONS, "inventory")
     assert all(osync.in_scope(s, "") for s in osync.SYNCABLE_SECTIONS)
@@ -56,7 +56,8 @@ def _sync(**kwargs) -> SimpleNamespace:
 
 
 def test_syncable_sections_are_the_import_sections_only():
-    assert set(osync.SYNCABLE_SECTIONS) == set(imp.SECTION_SOURCES)
+    # #2435: the PIRs are read by the Intelligence policy's background refresh, never synced.
+    assert set(osync.SYNCABLE_SECTIONS) == set(imp.SECTION_SOURCES) - {"pirs"}
     for typed in ("name", "sector", "regions", "size", "currency", "risk_appetite"):
         with pytest.raises(osync.SyncRefusedError):
             osync.validate(
@@ -66,14 +67,17 @@ def test_syncable_sections_are_the_import_sections_only():
 
 def test_validate_refuses_a_source_that_cannot_feed_the_section_and_a_bad_schedule():
     ok = {"frequency": "daily", "hour": 6, "minute": 0, "weekday": 0, "timezone": "UTC"}
-    osync.validate(section="pirs", source="opencti", **ok)
+    osync.validate(section="primary_assets", source="opencrq", **ok)
     osync.validate(section="all", source="", **ok)
     with pytest.raises(osync.SyncRefusedError, match="cannot feed"):
-        osync.validate(section="pirs", source="openaev", **ok)
+        osync.validate(section="primary_assets", source="openaev", **ok)
     with pytest.raises(osync.SyncRefusedError, match="time zone"):
-        osync.validate(section="pirs", source="opencti", **{**ok, "timezone": "Mars/Olympus"})
+        osync.validate(section="primary_assets", source="opencrq", **{**ok, "timezone": "Mars/Olympus"})
     with pytest.raises(osync.SyncRefusedError, match="hour"):
-        osync.validate(section="pirs", source="opencti", **{**ok, "hour": 24})
+        osync.validate(section="primary_assets", source="opencrq", **{**ok, "hour": 24})
+    # #2435: a PIR sync is refused, the Intelligence policy refreshes the PIRs itself.
+    with pytest.raises(osync.SyncRefusedError, match="section must be one of"):
+        osync.validate(section="pirs", source="opencti", **ok)
 
 
 def test_next_run_daily_in_the_sync_time_zone():
@@ -191,11 +195,11 @@ async def test_a_missing_token_pauses_the_sync_with_its_reason(monkeypatch, stub
 
 @pytest.mark.asyncio
 async def test_a_run_that_only_drops_superseded_rows_saves_the_profile(monkeypatch, stubs):
-    # #1591 review: an older build's supporting-asset crown jewel is dropped even when OpenCRQ
+    # #1591 review: an older build's supporting-asset primary asset is dropped even when OpenCRQ
     # has no primary asset yet; the run saves that cleanup and reports it as removed.
     async def current(_db):
-        jewel = {"name": "Mail server", "source": "opencrq", "external_id": "s1"}
-        return SimpleNamespace(profile={"crown_jewels": [jewel]}, version=7)
+        pa_row = {"name": "Mail server", "source": "opencrq", "external_id": "s1"}
+        return SimpleNamespace(profile={"primary_assets": [pa_row]}, version=7)
 
     async def read(_db, _user, _filters):
         return imp.ReadResult(rows=[], total=0, superseded={"s1"})
@@ -208,7 +212,7 @@ async def test_a_run_that_only_drops_superseded_rows_saves_the_profile(monkeypat
     monkeypatch.setattr(oc, "current_version", current)
     monkeypatch.setattr(imp, "_read_opencrq", read)
     monkeypatch.setattr(opencrq_links, "sync_links_for", no_links)
-    sync = _sync(section="crown_jewels", source="opencrq", filters={})
+    sync = _sync(section="primary_assets", source="opencrq", filters={})
     result = await osync.run_sync(_Db(_admin()), sync, trigger="schedule")
     assert (result["added"], result["updated"], result["removed"], result["version"]) == (0, 0, 1, 8)
     assert len(stubs["saved"]) == 1
@@ -240,11 +244,11 @@ async def test_a_scheduled_primary_asset_run_counts_and_keeps_manual_rows(monkey
     # A manual primary asset survives a scheduled OpenCRQ run (#1591 rule: manual wins); the run counts what it added.
     async def current(_db):
         manual = {"name": "Payroll", "criticality": "critical", "source": "manual"}
-        return SimpleNamespace(profile={"crown_jewels": [manual]}, version=7)
+        return SimpleNamespace(profile={"primary_assets": [manual]}, version=7)
 
     async def read(_db, _user, _filters):
         return imp.ReadResult(
-            rows=[imp.CrownJewel(name="Billing", criticality="high", source="opencrq", external_id="p1")], total=1
+            rows=[imp.PrimaryAsset(name="Billing", criticality="high", source="opencrq", external_id="p1")], total=1
         )
 
     async def links(*_a, **_k):
@@ -262,10 +266,10 @@ async def test_a_scheduled_primary_asset_run_counts_and_keeps_manual_rows(monkey
         return SimpleNamespace(version=8)
 
     monkeypatch.setattr(oc, "save_version", save_version)
-    sync = _sync(section="crown_jewels", source="opencrq", filters={}, remove_gone=True)
+    sync = _sync(section="primary_assets", source="opencrq", filters={}, remove_gone=True)
     result = await osync.run_sync(_Db(_admin()), sync, trigger="schedule")
     assert (result["added"], result["removed"], result["version"], result["links"]) == (1, 0, 8, {"added": 2})
-    names = {(j.name, j.source) for j in saved_profiles[0].crown_jewels}
+    names = {(j.name, j.source) for j in saved_profiles[0].primary_assets}
     assert names == {("Payroll", "manual"), ("Billing", "opencrq")}
     assert sync.last_result["added"] == 1
 

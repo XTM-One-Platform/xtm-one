@@ -52,6 +52,7 @@ const PLATFORM_EVENT_LABELS = {
   "work_item.release_exhausted": "Work item no longer dispatched",
   "work_item.past_due": "Work item past due",
   "work_item.needs_human": "Work item waits for a person",
+  "work_item.needs_human_unseen": "Work item decision not opened",
   "work_item.wait_cycle": "Work items wait on each other",
   "run.completed": "Run completed",
   "run.failed": "Run failed",
@@ -59,6 +60,7 @@ const PLATFORM_EVENT_LABELS = {
   "run.friction_recorded": "Friction recorded",
   "run.completed_with_undisposed_frictions": "Run ended with open frictions",
   "a2a.delegation.completed": "Partner answer arrived",
+  "a2a.ticket.status_changed": "Partner ticket status changed",
   "background_task.completed": "Background task completed",
   "background_task.failed": "Background task failed",
   "video.render.finished": "Video render finished",
@@ -77,6 +79,7 @@ const PLATFORM_EVENT_LABELS = {
   "ctem_case.resolved": "CTEM case resolved",
   "ctem_case.sla_breached": "CTEM case past its SLA",
   "ctem_case.stalled": "CTEM case waiting on nobody",
+  "ctem_case.opening_changed": "CTEM case opening turned on or off",
   "ctem_case.validation_finished": "CTEM case validation finished",
   "ctem_case.retest_requested": "CTEM case re-test requested",
   "ctem_signal.recorded": "CTEM signal recorded",
@@ -189,6 +192,8 @@ export interface PlatformEventDraft {
   once: boolean;
   /** The subscription's deadline (an ISO instant with its offset), optional: past it the trigger no longer starts a run. */
   expiresAt?: string;
+  /** The assignment watches the objects of its events without working them (`trigger_config.role = "observer"`). */
+  observer?: boolean;
 }
 
 export function platformEventDraft(config: TriggerConfig | undefined): PlatformEventDraft {
@@ -201,6 +206,7 @@ export function platformEventDraft(config: TriggerConfig | undefined): PlatformE
     scope: platformEventScope(config?.scope),
     once: config?.once === true,
     ...(typeof config?.expires_at === "string" && config.expires_at ? { expiresAt: config.expires_at } : {}),
+    ...(config?.role === "observer" ? { observer: true } : {}),
   };
 }
 
@@ -215,5 +221,6 @@ export function platformEventConfig(draft: PlatformEventDraft): TriggerConfig {
   if (draft.scope !== "own") config.scope = draft.scope;
   if (draft.once) config.once = true;
   if (draft.expiresAt) config.expires_at = draft.expiresAt;
+  if (draft.observer) config.role = "observer";
   return config;
 }

@@ -96,6 +96,8 @@ from app.services.context_usage import (
     CONTEXT_LEVEL_OVERFLOWED,
     split_tokens,
 )
+from app.services.ctem_module_preflight import refusal_answer as ctem_refusal_answer
+from app.services.ctem_module_preflight import refused_module as ctem_refused_module
 from app.services.langfuse_tracing import (
     USAGE_PARTS_KEY as _LF_USAGE_PARTS_KEY,
 )
@@ -926,6 +928,16 @@ _SEMANTIC_COMPACTION_MARKER = "[Compacted earlier work]"
 # label — a single turn can fan out into dozens of tool calls, and an unbounded
 # ", ".join(...) would balloon the summariser prompt for no added signal.
 _SEMANTIC_COMPACTION_MAX_TOOL_NAMES = 5
+# Identifiers of an elided tool result (#2382): the head+tail excerpt drops the
+# middle of a long listing, so the identifier-bearing lines of that middle are
+# passed to the summariser as a compact verbatim table, bounded per result and
+# per compaction. The summary budget grows with the tables it must carry.
+_SEMANTIC_COMPACTION_ID_TABLE_RESULT_CHARS = 4_000
+_SEMANTIC_COMPACTION_ID_TABLE_TOTAL_CHARS = 20_000
+_SEMANTIC_COMPACTION_ID_TABLE_MAX_TOKENS = 6_144
+_SEMANTIC_COMPACTION_ID_ENTRY_CONTEXT_CHARS = 100
+_SEMANTIC_COMPACTION_RERUN_HINTS = 20
+_SEMANTIC_COMPACTION_RERUN_ARGS_CHARS = 300
 # Name and observation kind of the summariser call's generation.
 _COMPACTION_GENERATION = "context_compaction"
 
@@ -6542,9 +6554,25 @@ def _log_tool_result(tc: ToolCall, result: ToolResult, probe: str | None = None)
         else:
             note_probe_passed(tc.name, probe)
     elif errored:
-        from app.services.frictions import note_tool_error
+        from app.services.ctem_module_preflight import NO_MODULE_ACCOUNT, note_tool_refusal
+        from app.services.frictions import note_expected_error, note_tool_error
+        from app.services.integration_auth_guard import AUTH_FAILURE_RECORDED_REF
 
-        note_tool_error(tc.name, result.content)
+        # A per-user CTEM stage run refused by a module the member has no
+        # account on: expected, recorded already disposed of (#2042).
+        if (refused := note_tool_refusal(tc.name, result.content)) is not None:
+            note_expected_error(tc.name, result.content, f"{NO_MODULE_ACCOUNT}: {refused}")
+        elif result.auth_failure_recorded:
+            # An integration 401 / 403 the run's auth guard already recorded on
+            # integration_auth_failures and the coverage notice: reported once,
+            # never an undisposed friction on top (#2204).
+            note_expected_error(
+                tc.name,
+                result.content,
+                f"{AUTH_FAILURE_RECORDED_REF}: {result.auth_failure_recorded}",
+            )
+        else:
+            note_tool_error(tc.name, result.content)
     if result.is_error:
         logger.warning(
             "Tool '%s' returned error (id=%s): %.500s",
@@ -6793,6 +6821,20 @@ def _plan_model_downgrade(
         max_tool_result_chars=tool_result_chars if derive_context_budget else None,
         provider_max_tools=provider_max_tools,
     )
+
+
+def _working_window(context_window: int, working_window_tokens: int | None) -> int:
+    """The window the working-context budgets of a run are computed on.
+
+    The model's *context_window*, or *working_window_tokens* when that is set
+    (above ``0``) and smaller. An event-driven listener that loops 40+ tool
+    calls on a 1M-token model has no reason to carry more working context
+    than it would on a 128k one: the budgets scaled on the 1M window let it
+    re-send ~800k characters of tool results on every call (#2430).
+    """
+    if working_window_tokens and working_window_tokens > 0 and context_window > 0:
+        return min(context_window, working_window_tokens)
+    return context_window
 
 
 def _compute_live_tool_result_budget(context_window: int) -> int:
@@ -7441,6 +7483,30 @@ _SUBSTANTIVE_TEXT_MIN_CHARS = 900
 #: window is bounded by the window gate, not by this.
 _TURN_PROTECTION_LIVE_BUDGET_FACTOR = 4
 _TURN_PROTECTION_MIN_CHARS = _TURN_PROTECTION_LIVE_BUDGET_FACTOR * _TOOL_RESULT_LIVE_MIN_CHARS
+
+
+#: Under a working window (#2430) the protection holds ONE live budget: an
+#: event-driven listener works by tool calls and seldom writes 900
+#: characters, so the protection is never released and its four live
+#: budgets (192,000 characters at the floor) were re-sent on every call.
+_WORKING_WINDOW_TURN_PROTECTION_FACTOR = 1
+
+
+def _turn_protection_budget(context_window: int, working_window_tokens: int | None) -> int:
+    """Characters of unwritten current-turn results the protection holds.
+
+    On the model's window: ``max(_TURN_PROTECTION_MIN_CHARS, 4 x the live
+    budget)``, as before. Under a working window smaller than the model's:
+    one live budget of that window, so a tool-call-only loop carries at most
+    about one live budget of tool results besides the batch it is shown.
+    """
+    window = _working_window(context_window, working_window_tokens)
+    if window < context_window:
+        return _WORKING_WINDOW_TURN_PROTECTION_FACTOR * _compute_live_tool_result_budget(window)
+    return max(
+        _TURN_PROTECTION_MIN_CHARS,
+        _TURN_PROTECTION_LIVE_BUDGET_FACTOR * _compute_live_tool_result_budget(window),
+    )
 
 
 def _unwritten_turn_results(
@@ -8450,7 +8516,10 @@ _IN_LOOP_COMPACTION_SYSTEM_PROMPT = (
     "- The user's original request and any explicit constraints or "
     "corrections.\n"
     "- Concrete results from tool calls: data, IDs, names, file paths, URLs, "
-    "error messages, and counts — keep identifiers VERBATIM.\n"
+    "error messages, and counts — keep identifiers VERBATIM. A tool result "
+    "whose middle was elided comes with an 'Identifiers in the elided part' "
+    "table: carry every row of it verbatim, never write that an id was not "
+    "captured when the table holds it.\n"
     "- Decisions made and conclusions reached so far.\n"
     "- What still remains to be done.\n"
     "Do NOT invent information, do NOT add pleasantries, and do NOT write a "
@@ -8492,18 +8561,98 @@ def _excerpt_for_transcript(text: str, cap: int) -> str:
     )
 
 
-def _build_inloop_transcript(messages: list[ChatMessage]) -> str:
-    """Build a compact, role-labelled transcript of *messages* for summarising.
+# UUIDs, ULIDs, URLs and the value of a JSON ``id`` / ``*_id`` key: the
+# identifiers an agent writes back later (#2382).
+_TRANSCRIPT_IDENTIFIER_RE = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+    r"|\b[0-9A-HJKMNP-TV-Z]{26}\b"
+    r"|https?://[^\s\"'<>()\[\]]+"
+    r"|(?<=\"id\": \")[^\"\s]{1,128}(?=\")"
+    r"|(?<=_id\": \")[^\"\s]{1,128}(?=\")"
+)
 
-    Each message's content is excerpted to a head+tail window of
-    ``_SEMANTIC_COMPACTION_TRANSCRIPT_MSG_CHARS`` chars (via
-    :func:`_excerpt_for_transcript`) so the summariser call stays cheap even
-    when the slice contains very large tool results, while still surfacing the
-    identifiers that tend to live at the tail. Transient in-loop ``system``
-    nudges are skipped — they carry no task content.
+
+def _elided_identifier_table(text: str, cap: int, budget: int) -> tuple[str, int]:
+    """The identifiers of the part of *text* the excerpt elides, as a table.
+
+    Each identifier is kept verbatim with the start of its line before it (up
+    to ``_SEMANTIC_COMPACTION_ID_ENTRY_CONTEXT_CHARS`` chars: the ``name =``
+    of a listing row), once, in order. The table is bounded by
+    ``_SEMANTIC_COMPACTION_ID_TABLE_RESULT_CHARS`` and by *budget*, what is
+    left of the per-compaction cap; what does not fit is counted. Returns the
+    table (``""`` when nothing is elided or no identifier is found) and the
+    characters it uses.
+    """
+    if len(text) <= cap or budget <= 0:
+        return "", 0
+    head_len = cap // 2
+    tail_len = cap - head_len
+    # Overlap the cut by an identifier's length on each side, so an id the
+    # head or tail cut in two is still read whole.
+    middle = text[max(0, head_len - 128) : len(text) - max(0, tail_len - 128)]
+    header = "Identifiers in the elided part (verbatim):\n"
+    # Room for the header and the "+N more" line: the table never passes its caps.
+    limit = min(_SEMANTIC_COMPACTION_ID_TABLE_RESULT_CHARS, budget) - len(header) - 48
+    rows: list[str] = []
+    seen: set[str] = set()
+    used = 0
+    dropped = 0
+    for match in _TRANSCRIPT_IDENTIFIER_RE.finditer(middle):
+        ident = match.group(0)
+        if ident in seen:
+            continue
+        seen.add(ident)
+        line_start = middle.rfind("\n", 0, match.start()) + 1
+        before = middle[
+            max(line_start, match.start() - _SEMANTIC_COMPACTION_ID_ENTRY_CONTEXT_CHARS) : match.start()
+        ].strip()
+        row = f"- {before} {ident}" if before else f"- {ident}"
+        if used + len(row) + 1 > limit:
+            dropped += 1
+            continue
+        rows.append(row)
+        used += len(row) + 1
+    if not rows:
+        return "", 0
+    table = header + "\n".join(rows)
+    if dropped:
+        table += f"\n- +{dropped} more identifier(s) not listed"
+    return table, len(table)
+
+
+def _rerun_hint(tool_call: ToolCall | None, tool_name: str) -> str:
+    """``re-run <tool>(<args>)`` for an elided tool result, arguments bounded."""
+    args = ""
+    if tool_call is not None and tool_call.arguments:
+        try:
+            args = json.dumps(tool_call.arguments, ensure_ascii=False, sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            args = str(tool_call.arguments)
+        if len(args) > _SEMANTIC_COMPACTION_RERUN_ARGS_CHARS:
+            args = args[:_SEMANTIC_COMPACTION_RERUN_ARGS_CHARS] + "…"
+    return f"re-run {tool_name}({args}) to read the rest"
+
+
+def _inloop_transcript_parts(
+    messages: list[ChatMessage],
+) -> tuple[str, list[str], int]:
+    """The summariser transcript of *messages*, its re-run hints and id chars.
+
+    Returns the transcript (see :func:`_build_inloop_transcript`), one
+    ``re-run <tool>(<args>)`` hint per elided tool result (at most
+    ``_SEMANTIC_COMPACTION_RERUN_HINTS``) and the characters of identifier
+    tables the transcript carries, which sizes the summary budget.
     """
     cap = _SEMANTIC_COMPACTION_TRANSCRIPT_MSG_CHARS
+    calls_by_id: dict[str, ToolCall] = {}
+    for m in messages:
+        if m.role == "assistant" and m.tool_calls:
+            for tc in m.tool_calls:
+                calls_by_id[tc.id] = tc
     parts: list[str] = []
+    hints: list[str] = []
+    id_budget = _SEMANTIC_COMPACTION_ID_TABLE_TOTAL_CHARS
+    id_chars = 0
     for m in messages:
         content = (m.content or "").strip()
         if m.role == "assistant":
@@ -8513,13 +8662,54 @@ def _build_inloop_transcript(messages: list[ChatMessage]) -> str:
             body = _excerpt_for_transcript(content, cap)
             parts.append(f"{label}: {body}".rstrip())
         elif m.role == "tool":
-            parts.append(
-                f"Tool ({m.name or 'tool'}): {_excerpt_for_transcript(content, cap)}"
-            )
+            tool_name = m.name or "tool"
+            part = f"Tool ({tool_name}): {_excerpt_for_transcript(content, cap)}"
+            if len(content) > cap:
+                hint = _rerun_hint(calls_by_id.get(m.tool_call_id or ""), tool_name)
+                part += f"\n[Body elided: {hint}]"
+                if len(hints) < _SEMANTIC_COMPACTION_RERUN_HINTS:
+                    hints.append(hint)
+                table, used = _elided_identifier_table(content, cap, id_budget)
+                if table:
+                    part += "\n" + table
+                    id_budget -= used
+                    id_chars += used
+            parts.append(part)
         elif m.role == "user":
             parts.append(f"User: {_excerpt_for_transcript(content, cap)}")
         # ``system`` messages in the middle are transient nudges — skip them.
-    return "\n\n".join(p for p in parts if p.strip())
+    return "\n\n".join(p for p in parts if p.strip()), hints, id_chars
+
+
+def _build_inloop_transcript(messages: list[ChatMessage]) -> str:
+    """Build a compact, role-labelled transcript of *messages* for summarising.
+
+    Each message's content is excerpted to a head+tail window of
+    ``_SEMANTIC_COMPACTION_TRANSCRIPT_MSG_CHARS`` chars (via
+    :func:`_excerpt_for_transcript`) so the summariser call stays cheap even
+    when the slice contains very large tool results, while still surfacing the
+    identifiers that tend to live at the tail. A tool result whose middle is
+    elided also carries the identifiers of that middle as a bounded verbatim
+    table and a ``re-run <tool>(<args>)`` hint (#2382). Transient in-loop
+    ``system`` nudges are skipped — they carry no task content.
+    """
+    return _inloop_transcript_parts(messages)[0]
+
+
+def _with_rerun_hints(summary: str, hints: list[str]) -> str:
+    """*summary* followed by the re-run hints of the elided tool results.
+
+    Added after the summariser answers, so the way back to an elided body
+    never depends on the summariser keeping it (#2382).
+    """
+    if not summary or not hints:
+        return summary
+    lines = "\n".join(f"- {h}" for h in hints)
+    return (
+        f"{summary}\n\nTool results whose body was elided from this summary "
+        f"(re-read them before writing an id they held; never declare such an "
+        f"id wrong from memory):\n{lines}"
+    )
 
 
 class _SummaryRetryUnaffordableError(Exception):
@@ -8576,9 +8766,11 @@ async def _summarize_messages_for_context(
     budget check) is asked first: when it refuses, the cut summary returns
     ``""`` as one still cut does.
     """
-    transcript = _build_inloop_transcript(middle)
+    transcript, rerun_hints, id_chars = _inloop_transcript_parts(middle)
     if not transcript.strip():
         return ""
+    # A summary that must carry identifier tables gets the room for them.
+    summary_max_tokens = _SEMANTIC_COMPACTION_ID_TABLE_MAX_TOKENS if id_chars else _SEMANTIC_COMPACTION_MAX_TOKENS
 
     from app.llm.base import ChatMessage as LLMMessage
 
@@ -8661,7 +8853,7 @@ async def _summarize_messages_for_context(
         resp, cut = await chat_retrying_a_cut(
             llm,
             model,
-            _SEMANTIC_COMPACTION_MAX_TOKENS,
+            summary_max_tokens,
             _summarize,
             label="Semantic compaction summary",
         )
@@ -8693,7 +8885,7 @@ async def _summarize_messages_for_context(
             "back to deterministic prune"
         )
         return ""
-    return (resp.content or "").strip()
+    return _with_rerun_hints((resp.content or "").strip(), rerun_hints)
 
 
 async def _semantic_compact_session_context(
@@ -10030,6 +10222,8 @@ async def run_agent_loop(
     # turn that changes an integration the run is bound to refreshes the
     # surface through it at the end of that iteration. None: no refresh.
     tool_surface_refresher: IntegrationSurfaceRefresher | None = None,
+    # The working window of an event-driven run (#2430): see the docstring.
+    working_window_tokens: int | None = None,
 ) -> ChatResponse:
     """Run the agentic loop until the LLM stops calling tools.
 
@@ -10255,6 +10449,15 @@ async def run_agent_loop(
             ``agent_memory``, ``skills_catalog``...). Splits the ``system``
             bucket of each reading's ``context_detail``, what the chat's
             ``/context`` command shows; ``None`` leaves that split out.
+        working_window_tokens: A window, in tokens, that the working-context
+            budgets are computed on instead of the model's when it is
+            smaller: the live tool-result budget, the unwritten-turn
+            protection, the vision budget and the compaction trigger and
+            target. The model's real window stays the hard bound of every
+            request (the overflow guard, the emergency prune). An
+            event-driven run on a 1M-token model otherwise re-sent up to
+            ~800k characters of tool results on every call of a 40-call
+            loop (#2430). ``None`` or ``0``: the model's window, as before.
 
     Returns:
         The final ``ChatResponse`` (the one without tool calls; the
@@ -10688,8 +10891,8 @@ async def run_agent_loop(
         # and, when the always-on core alone would leave no room for a gated
         # tool, demotes the least important core tools into a catalogued
         # ``builtin:overflow`` group instead of discarding them (see
-        # ``ToolGate._fit_core``) — so no notice is due; the catalogue lists
-        # them like any other group.
+        # ``ToolGate._fit_core``); the catalogue names each demoted tool and
+        # the ``load_tools`` call that brings it back (#2191).
         if tool_gate.demoted_always_on:
             logger.info(
                 "Always-on tool count leaves no room for a gated tool under "
@@ -11006,6 +11209,12 @@ async def run_agent_loop(
         return LLMMessage(
             role="system",
             content=_surface_refresh_note(refreshed.added, refreshed.removed, gated=_gated),
+        )
+
+    def _changes_own_agent_tools(result: Any) -> bool:
+        """An ``update_agent`` result that changed the tools of the agent this run serves (#2205)."""
+        return tool_surface_refresher is not None and tool_surface_refresher.follows(
+            getattr(result, "agent_tool_scope", None)
         )
 
     # Set by a successful call of a ``changes_tool_surface`` tool; the refresh
@@ -11428,11 +11637,7 @@ async def run_agent_loop(
             _unwritten_turn_results(
                 messages,
                 is_history=_is_history_tool_result,
-                budget_chars=max(
-                    _TURN_PROTECTION_MIN_CHARS,
-                    _TURN_PROTECTION_LIVE_BUDGET_FACTOR
-                    * _compute_live_tool_result_budget(_resolve_ctx_window()),
-                ),
+                budget_chars=_turn_protection_budget(_resolve_ctx_window(), working_window_tokens),
             )
         )
 
@@ -12819,6 +13024,9 @@ async def run_agent_loop(
                 iter_tools = None
 
             _ctx_window = _resolve_ctx_window()
+            # The budgets below are computed on the working window (#2430);
+            # the overflow guard further down stays on the model's.
+            _work_window = _working_window(_ctx_window, working_window_tokens)
 
             # ── Tool-result curation (always-on context-rot guard) ────────
             # BEFORE measuring/compacting: keep the working context focused even
@@ -12843,12 +13051,12 @@ async def run_agent_loop(
             )
             _clear_stale_tool_results(
                 messages,
-                live_budget_chars=_compute_live_tool_result_budget(_ctx_window),
+                live_budget_chars=_compute_live_tool_result_budget(_work_window),
                 is_unseen=_is_protected_tool_body,
             )
             _clear_stale_tool_result_files(
                 messages,
-                files_budget_bytes=_compute_tool_result_files_budget(_ctx_window),
+                files_budget_bytes=_compute_tool_result_files_budget(_work_window),
                 is_unseen=_is_unseen_tool_result,
             )
 
@@ -12857,14 +13065,14 @@ async def run_agent_loop(
             # the one measure: text plus provider extras.
             _estimated_session_chars = _transcript_chars(messages)
             _estimated_tokens = _estimated_session_chars // _CHARS_PER_TOKEN
-            _context_utilization = _estimated_tokens / _ctx_window if _ctx_window > 0 else 0.0
+            _context_utilization = _estimated_tokens / _work_window if _work_window > 0 else 0.0
             _compaction_trigger_chars = min(
                 max_session_chars,
-                int(_ctx_window * _COMPACTION_TRIGGER_UTILIZATION * _CHARS_PER_TOKEN),
+                int(_work_window * _COMPACTION_TRIGGER_UTILIZATION * _CHARS_PER_TOKEN),
             )
             _compaction_target_chars = min(
                 max_session_chars,
-                int(_ctx_window * _COMPACTION_TARGET_UTILIZATION * _CHARS_PER_TOKEN),
+                int(_work_window * _COMPACTION_TARGET_UTILIZATION * _CHARS_PER_TOKEN),
             )
             _overflow_target_chars = _compaction_target_chars
 
@@ -16019,6 +16227,39 @@ async def run_agent_loop(
             for tc in tool_calls:
                 _lb_orig_name = _tool_name_map.get(tc.name, tc.name)
                 tool_call_totals[tc.name] = tool_call_totals.get(tc.name, 0) + 1
+                # A module that refused the member of a per-user CTEM stage
+                # run is not called again in the run (#2042).
+                if (_refused_module := ctem_refused_module(_lb_orig_name)) is not None:
+                    _refused_answer = ctem_refusal_answer(_refused_module)
+                    logger.info(
+                        "CTEM guard: '%s' not sent, %s already refused this member (id=%s)",
+                        tc.name,
+                        _refused_module,
+                        tc.id,
+                    )
+                    messages.append(
+                        LLMMessage(
+                            role="tool",
+                            content=_refused_answer,
+                            tool_call_id=tc.id,
+                            name=tc.name,
+                            not_run="module_refused",
+                        )
+                    )
+                    await _emit(
+                        on_event,
+                        {
+                            "status": "tool_done",
+                            **_tool_timing(report_tool_durations, 0),
+                            "tool": tc.name,
+                            "success": False,
+                            "tool_input": _serialize_tool_arguments(tc.arguments),
+                            "tool_input_full": _serialize_tool_arguments_full(tc.arguments),
+                            "tool_output": _refused_answer,
+                            "tool_output_full": _refused_answer,
+                        },
+                    )
+                    continue
                 _lb_decision = loop_breaker.screen(_lb_orig_name, tc.arguments)
                 if _lb_decision.action == "allow":
                     _screened_calls.append(tc)
@@ -17208,7 +17449,7 @@ async def run_agent_loop(
                         _tc_is_write and not result.is_error and not getattr(result, "no_op", False)
                     )
                     if (
-                        _tc_orig_name in _surface_changing_tools
+                        (_tc_orig_name in _surface_changing_tools or _changes_own_agent_tools(result))
                         and not result.is_error
                         and not getattr(result, "no_op", False)
                     ):
@@ -17695,7 +17936,7 @@ async def run_agent_loop(
                         ):
                             _effective_writes.append(_result_orig_name)
                         if (
-                            _result_orig_name in _surface_changing_tools
+                            (_result_orig_name in _surface_changing_tools or _changes_own_agent_tools(result))
                             and not result.is_error
                             and not getattr(result, "no_op", False)
                         ):

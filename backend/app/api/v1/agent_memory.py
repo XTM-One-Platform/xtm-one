@@ -21,9 +21,10 @@ statistics (entry counts by type) — the actual memory content is restricted
 to administrators to prevent leaking personal information or sensitive
 organizational knowledge that was accumulated across multiple users.
 
-Write operations (update, delete, clear) require management permission:
-- Owner for private agents
-- Admin for company-managed agents
+Write operations (update, delete, clear, maintain) require management
+permission (``can_manage``): the owner, an admin, or a ``config`` /
+``config_with_chats`` grantee of a private agent; an admin of a
+company-managed one.
 
 Import (``POST /{agent_id}/memory``) recreates exported entries for a
 caller who can manage the agent, in the scopes that caller may read.
@@ -130,15 +131,22 @@ def _memory_scope_filter(agent: Agent, user: User):
     )
 
 
-def _can_manage_memory(agent: Agent, user: User) -> bool:
-    """Return True when the user is allowed to modify memory for this agent.
+_NOT_A_MANAGER = "Only a manager of this agent can change its memory."
 
-    - Private agents: the owner can manage.
-    - Company-managed agents: only admins can manage.
+
+async def _managed_agent(db: AsyncSession, user: User, agent_id: str) -> Agent:
+    """The agent *user* may change the memory of, else 404 (unseen) or 403.
+
+    The rule is ``can_manage``: the owner, an admin, or a ``config`` /
+    ``config_with_chats`` grantee of a private agent; an admin of a
+    company-managed one. A ``read_only`` grantee sees the memory and changes
+    none of it.
     """
-    if agent.is_company_managed:
-        return user.role == "admin"
-    return True  # user already passed get_user_agent ownership check
+    user_group_ids = await get_user_group_ids(db, user.id)
+    agent = await get_user_agent(db, user.id, agent_id, user_group_ids, is_admin=user.is_admin)
+    if not can_manage(user, agent, user_group_ids):
+        raise HTTPException(status_code=403, detail=_NOT_A_MANAGER)
+    return agent
 
 
 def _to_response(entry: AgentMemoryEntry, *, restricted: bool = False) -> dict:
@@ -488,18 +496,12 @@ async def update_memory_entry(
 ):
     """Update the content of a single persistent memory entry.
 
-    For company-managed agents, only admins can update memory entries.
+    Requires management permission (``_managed_agent``).
     Entries outside the caller's memory scope (another user's scoped
     entries — see ``_memory_scope_filter``) return 404, so a non-owner
     can never modify another user's scoped entry.
     """
-    agent = await get_user_agent(db, user.id, agent_id, is_admin=user.is_admin)
-
-    if not _can_manage_memory(agent, user):
-        raise HTTPException(
-            status_code=403,
-            detail="Only administrators can modify memory for company-managed agents.",
-        )
+    agent = await _managed_agent(db, user, agent_id)
 
     entry_uuid = parse_path_id(entry_id, not_found_detail="Memory entry not found.")
     entry_filter = [
@@ -574,18 +576,12 @@ async def delete_memory_entry(
 ):
     """Delete a single persistent memory entry.
 
-    For company-managed agents, only admins can delete memory entries.
+    Requires management permission (``_managed_agent``).
     Entries outside the caller's memory scope (another user's scoped
     entries — see ``_memory_scope_filter``) return 404, so a non-owner
     can never delete another user's scoped entry.
     """
-    agent = await get_user_agent(db, user.id, agent_id, is_admin=user.is_admin)
-
-    if not _can_manage_memory(agent, user):
-        raise HTTPException(
-            status_code=403,
-            detail="Only administrators can modify memory for company-managed agents.",
-        )
+    agent = await _managed_agent(db, user, agent_id)
 
     entry_uuid = parse_path_id(entry_id, not_found_detail="Memory entry not found.")
     entry_filter = [
@@ -652,13 +648,7 @@ async def trigger_memory_maintenance(
     Runs pruning, cap enforcement, and fact consolidation.
     Requires management permission.
     """
-    agent = await get_user_agent(db, user.id, agent_id, is_admin=user.is_admin)
-
-    if not _can_manage_memory(agent, user):
-        raise HTTPException(
-            status_code=403,
-            detail="Only administrators can trigger maintenance for company-managed agents.",
-        )
+    agent = await _managed_agent(db, user, agent_id)
 
     from app.services.persistent_memory import (
         consolidate_agent_facts,
@@ -713,16 +703,10 @@ async def clear_all_agent_memories(
 ):
     """Delete all persistent memory entries for an agent.
 
-    For company-managed agents, only admins can clear memory.
+    Requires management permission (``_managed_agent``).
     Also clears Redis short-term and medium-term memory caches.
     """
-    agent = await get_user_agent(db, user.id, agent_id, is_admin=user.is_admin)
-
-    if not _can_manage_memory(agent, user):
-        raise HTTPException(
-            status_code=403,
-            detail="Only administrators can modify memory for company-managed agents.",
-        )
+    agent = await _managed_agent(db, user, agent_id)
 
     from app.services.persistent_memory import clear_agent_memories
 

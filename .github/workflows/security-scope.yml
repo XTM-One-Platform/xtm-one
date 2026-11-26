@@ -1,0 +1,26 @@
+name: Security scope check
+
+# Tests that .githooks/commit-msg and pr-title-check.yml refuse a `security`
+# type or scope with the same pattern (.github/scripts/security-scope.test.sh).
+on:
+  pull_request:
+    paths:
+      - ".githooks/commit-msg"
+      - ".github/workflows/pr-title-check.yml"
+      - ".github/scripts/security-scope.test.sh"
+      - ".github/workflows/security-scope.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test the security scope refusal
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run the tests
+        run: bash .github/scripts/security-scope.test.sh

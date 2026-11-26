@@ -24,17 +24,15 @@ from typing import Any
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._common import (
+    FINDINGS_KEPT_AS_HISTORY,
     _api,
     _fmt_expectation_results_by_type,
     _inject_row_executed,
     _relation_ids,
     _search_body,
-    findings_fate,
     inject_read_answer,
     inject_targets_line,
     json_window,
-    keep_findings_params,
-    keep_findings_schema,
     mirror_content_targets,
 )
 from .testing import _contract_id, _stored_documents
@@ -46,8 +44,14 @@ _SOURCE = "integration:openaev"
 
 #: Target types OpenAEV resolves execution traces for (TargetType.hasExecutionTraces).
 _TRACE_TARGET_TYPES = ("ASSETS", "AGENT", "TEAMS", "PLAYERS", "AI_TARGETS", "MANUAL")
-#: Targets listed per type, and trace reads in flight at once.
-_TRACE_TARGETS_PER_TYPE = 50
+#: Page size of the per-type targets search, and the targets read per type at most.
+_TRACE_SEARCH_PAGE = 200
+_TRACE_TARGETS_MAX_PER_TYPE = 5000
+#: Targets listed per answer by default and at most (offset / limit page the rest).
+_TRACE_TARGETS_PER_ANSWER = 100
+_TRACE_TARGETS_PER_ANSWER_MAX = 300
+#: Up to this many targets, every trace is read so the status counts cover all of them.
+_TRACE_STATUS_READS_MAX = 600
 _TRACE_READS_IN_FLIGHT = 8
 
 
@@ -202,7 +206,60 @@ def _target_label(target: dict[str, Any]) -> str:
     return f"{target.get('target_type', '?')} {name} (id: {target.get('target_id', '?')})"
 
 
-async def _target_traces(base_url: str, headers: dict[str, str], inject_id: str) -> str:
+async def _targets_of_type(
+    base_url: str, headers: dict[str, str], inject_id: str, target_type: str
+) -> tuple[list[dict[str, Any]], int | None, str | None]:
+    """Every target of one type, paged to the end: (targets, total OpenAEV counts, error)."""
+    rows: list[dict[str, Any]] = []
+    total: int | None = None
+    page = 0
+    while len(rows) < _TRACE_TARGETS_MAX_PER_TYPE:
+        resp, err = await _api(
+            base_url,
+            headers,
+            "post",
+            f"/api/injects/{inject_id}/targets/{target_type}/search",
+            "list inject targets",
+            json=_search_body(page=page, size=_TRACE_SEARCH_PAGE),
+        )
+        if err or resp is None:
+            return rows, total, f"page {page + 1} not read ({err})"
+        data = resp.json()
+        content = data.get("content", []) if isinstance(data, dict) else data
+        content = content if isinstance(content, list) else []
+        if isinstance(data, dict) and isinstance(data.get("totalElements"), int):
+            total = data["totalElements"]
+        for row in content:
+            if isinstance(row, dict) and row.get("target_id"):
+                row.setdefault("target_type", target_type)
+                rows.append(row)
+        page += 1
+        if len(content) < _TRACE_SEARCH_PAGE or (total is not None and len(rows) >= total):
+            break
+    return rows[:_TRACE_TARGETS_MAX_PER_TYPE], total, None
+
+
+def _status_counts(statuses: list[tuple[str, str]]) -> list[str]:
+    """'TYPE N: STATUS n, ...' per target type, statuses by count."""
+    by_type: dict[str, dict[str, int]] = {}
+    for target_type, status in statuses:
+        counts = by_type.setdefault(target_type, {})
+        counts[status] = counts.get(status, 0) + 1
+    lines = []
+    for target_type, counts in by_type.items():
+        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        parts = ", ".join(f"{status} {n}" for status, n in ranked)
+        lines.append(f"  {target_type} {sum(counts.values())}: {parts}")
+    return lines
+
+
+async def _target_traces(
+    base_url: str,
+    headers: dict[str, str],
+    inject_id: str,
+    offset: int = 0,
+    limit: int | None = None,
+) -> str:
     """Every target of an inject with its terminal execution trace.
 
     The global status trace names only the targets an executor reached; a
@@ -211,37 +268,47 @@ async def _target_traces(base_url: str, headers: dict[str, str], inject_id: str)
     here per target from /api/injects/execution-traces. The execution timeout
     and the expectation window head the answer as two named lines, so a
     running inject is told apart from an expired expectation.
+
+    The targets search is paged to the end for every type, so the per-type
+    totals and the per-status counts cover every target; the listed targets are
+    a window (offset, limit) over the combined list, and a cut answer ends with
+    a 'truncated' line naming the offset of the next call.
     """
     timing = await _timing_lines(base_url, headers, inject_id)
     targets: list[dict[str, Any]] = []
+    type_totals: list[str] = []
     notes: list[str] = []
     for target_type in _TRACE_TARGET_TYPES:
-        resp, err = await _api(
-            base_url,
-            headers,
-            "post",
-            f"/api/injects/{inject_id}/targets/{target_type}/search",
-            "list inject targets",
-            json=_search_body(size=_TRACE_TARGETS_PER_TYPE),
-        )
-        if err or resp is None:
+        rows, total, err = await _targets_of_type(base_url, headers, inject_id, target_type)
+        if err and not rows:
             notes.append(f"{target_type}: targets not read ({err})")
             continue
-        data = resp.json()
-        rows = data.get("content", []) if isinstance(data, dict) else data
-        rows = [r for r in rows or [] if isinstance(r, dict) and r.get("target_id")]
-        for row in rows:
-            row.setdefault("target_type", target_type)
         targets += rows
-        total = data.get("totalElements") if isinstance(data, dict) else None
-        if isinstance(total, int) and total > len(rows):
-            notes.append(f"{target_type}: {len(rows)} of {total} targets listed")
+        if rows or total:
+            type_totals.append(f"{target_type} {total if isinstance(total, int) else len(rows)}")
+        if err:
+            notes.append(f"{target_type}: {len(rows)} of {total if total is not None else '?'} targets read, {err}")
+        elif isinstance(total, int) and total > len(rows):
+            notes.append(
+                f"{target_type}: {len(rows)} of {total} targets read "
+                f"(cap {_TRACE_TARGETS_MAX_PER_TYPE} per type); the rest are not listed or counted"
+            )
     if not targets:
         return "\n".join([f"Inject {inject_id} has no target with execution traces.", *timing, *notes])
 
+    offset = max(0, int(offset or 0))
+    size = max(1, min(int(limit or _TRACE_TARGETS_PER_ANSWER), _TRACE_TARGETS_PER_ANSWER_MAX))
+    if offset >= len(targets):
+        return (
+            f"offset {offset} is past the last target: inject {inject_id} has "
+            f"{len(targets)} target(s) ({', '.join(type_totals)})."
+        )
+    window = targets[offset : offset + size]
+    counted = targets if len(targets) <= _TRACE_STATUS_READS_MAX else window
+
     gate = asyncio.Semaphore(_TRACE_READS_IN_FLIGHT)
 
-    async def _one(target: dict[str, Any]) -> str:
+    async def _one(target: dict[str, Any]) -> tuple[str, str]:
         async with gate:
             resp, err = await _api(
                 base_url,
@@ -256,11 +323,11 @@ async def _target_traces(base_url: str, headers: dict[str, str], inject_id: str)
                 },
             )
         if err or resp is None:
-            return f"- {_target_label(target)}: traces not read ({err})"
+            return "NOT_READ", f"- {_target_label(target)}: traces not read ({err})"
         traces = resp.json()
         last = _terminal_trace(traces if isinstance(traces, list) else [])
         if last is None:
-            return f"- {_target_label(target)}: no trace yet"
+            return "NO_TRACE", f"- {_target_label(target)}: no trace yet"
         line = (
             f"- {_target_label(target)}: {last.get('execution_status', '?')} "
             f"{last.get('execution_action', '?')} at {last.get('execution_time', '?')}: "
@@ -269,11 +336,22 @@ async def _target_traces(base_url: str, headers: dict[str, str], inject_id: str)
         cause = _failure_cause(traces if isinstance(traces, list) else [], last)
         if cause is not None:
             line += "\n" + _cause_line(cause)
-        return line
+        return str(last.get("execution_status") or "?"), line
 
-    lines = await asyncio.gather(*(_one(t) for t in targets))
-    head = f"Inject {inject_id}: {len(targets)} target(s), terminal trace of each:"
-    return "\n".join([*timing, head, *lines, *notes])
+    results = await asyncio.gather(*(_one(t) for t in counted))
+    by_target = {id(t): r for t, r in zip(counted, results, strict=True)}
+    scope = "every target" if counted is targets else f"the {len(window)} target(s) of this page only"
+    head = [
+        f"Inject {inject_id}: {len(targets)} target(s) ({', '.join(type_totals)}).",
+        f"Terminal status counts over {scope}:",
+        *_status_counts([(str(t.get("target_type")), by_target[id(t)][0]) for t in counted]),
+        f"Targets {offset + 1}-{offset + len(window)} of {len(targets)}, terminal trace of each:",
+    ]
+    lines = [by_target[id(t)][1] for t in window]
+    rest = len(targets) - offset - len(window)
+    if rest > 0:
+        lines.append(f"truncated: {rest} more target(s), call again with offset={offset + len(window)}.")
+    return "\n".join([*timing, *head, *lines, *notes])
 
 
 def _base(scope: str, parent_id: str) -> str | None:
@@ -326,6 +404,27 @@ def _stored_dependencies(raw: Any) -> list[dict[str, Any]]:
     return out
 
 
+def _keep_stored_expectations(body: dict[str, Any], stored_content: Any) -> None:
+    """Carry the stored expectations onto a new ``inject_content`` that names none.
+
+    OpenAEV's PUT replaces ``inject_content`` whole, so a content change that
+    leaves ``expectations`` out would drop every stored expectation, names
+    included. XTM One never rewrites an expectation (#2480): the stored list is
+    kept exactly as-is unless the caller's content carries its own
+    ``expectations`` key.
+    """
+    content = body.get("inject_content")
+    if not isinstance(content, dict) or "expectations" in content:
+        return
+    if isinstance(stored_content, str):
+        try:
+            stored_content = json.loads(stored_content)
+        except ValueError:
+            return
+    if isinstance(stored_content, dict) and isinstance(stored_content.get("expectations"), list):
+        body["inject_content"] = {**content, "expectations": stored_content["expectations"]}
+
+
 def stored_inject_input(stored: Any, changes: dict[str, Any]) -> tuple[dict[str, Any], str]:
     """The full InjectInput of an update: the stored inject, *changes* laid over it.
 
@@ -363,6 +462,7 @@ def stored_inject_input(stored: Any, changes: dict[str, Any]) -> tuple[dict[str,
     if "inject_documents" in stored:
         body["inject_documents"] = _stored_documents(stored.get("inject_documents"))
     body.update(changes)
+    _keep_stored_expectations(body, stored.get("inject_content"))
     if not body.get("inject_title"):
         missing.append("inject_title (pass title)")
     if not body.get("inject_injector_contract"):
@@ -401,8 +501,7 @@ def register(
         status: str = "",
         message: str = "",
         search: str = "",
-        limit: int = 20,
-        keep_findings: bool = True,
+        limit: int | None = None,
         offset: int = 0,
     ) -> str:
         action = (action or "").strip().lower()
@@ -437,7 +536,7 @@ def register(
             if action == "target_traces":
                 if not inject_id:
                     return "inject_id is required."
-                return await _target_traces(base_url, headers, inject_id)
+                return await _target_traces(base_url, headers, inject_id, offset=offset, limit=limit)
             return "For scope 'global', valid actions are: get, status, target_traces."
 
         base = _base(scope, parent_id)
@@ -517,7 +616,7 @@ def register(
             resp, err = await _api(
                 base_url, headers, "post", f"{base}/injects/simple",
                 "list injects",
-                json=_search_body(size=min(limit, 50), text_search=search or None),
+                json=_search_body(size=min(limit or 20, 50), text_search=search),
             )
             if err:
                 return err
@@ -598,11 +697,11 @@ def register(
                 return "inject_id is required for action 'delete'."
             _, err = await _api(
                 base_url, headers, "delete", f"{base}/injects/{inject_id}",
-                "delete inject", params=keep_findings_params(keep_findings),
+                "delete inject",
             )
             if err:
                 return err
-            return f"Deleted inject {inject_id}. " + findings_fate(keep_findings, "inject")
+            return f"Deleted inject {inject_id}. {FINDINGS_KEPT_AS_HISTORY}"
 
         if action == "duplicate":
             if not inject_id:
@@ -704,8 +803,8 @@ def register(
                 "or 'global' (by inject_id). Actions: 'list' (search), 'get', 'create' "
                 "(title + injector_contract_id, optional content JSON, depends_duration "
                 "seconds, team_ids, asset_ids, asset_group_ids, all_teams, tag_ids), "
-                "'update' (inject_id + fields; the others are kept), 'delete' (inject_id, "
-                "keep_findings), 'duplicate' (inject_id), 'activation' (inject_id + "
+                "'update' (inject_id + fields; the others are kept), 'delete' (inject_id; its "
+                "findings stay as history), 'duplicate' (inject_id), 'activation' (inject_id + "
                 "enabled). Build an ATTACK "
                 "PATH (not flat atomic tests) by CHAINING injects: pass "
                 "parent_inject_id so this inject runs AFTER that parent (optionally "
@@ -714,8 +813,7 @@ def register(
                 "(raw JSON array of inject_depends_on entries) for branching / "
                 "multi-parent chains. Global-only: "
                 "'status' (inject_id - read the execution status), 'target_traces' "
-                "(inject_id - every target's terminal trace, execution_timeout, "
-                "expectation_window). Simulation-only: "
+                "(inject_id - each target's terminal trace, counts, timing). Simulation-only: "
                 "'trigger' (manually fire an inject against live assets), 'set_status' "
                 "(inject_id + status + optional message), 'results'. Use "
                 "search_openaev_injector_contracts to find injector_contract_id."
@@ -751,12 +849,11 @@ def register(
                     "status": {"type": "string", "description": "Inject status (set_status)."},
                     "message": {"type": "string", "description": "Status message (set_status)."},
                     "search": {"type": "string"},
-                    "limit": {"type": "integer", "default": 20},
-                    "keep_findings": keep_findings_schema(),
+                    "limit": {"type": "integer"},
                     "offset": {
                         "type": "integer",
                         "default": 0,
-                        "description": "get/status: character to read on from when the answer was cut.",
+                        "description": "get/status: char offset of a cut answer; target_traces: first target (limit per answer, default 100).",
                     },
                 },
                 "required": ["action"],

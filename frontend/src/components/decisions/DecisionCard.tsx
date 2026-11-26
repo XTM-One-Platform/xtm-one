@@ -83,6 +83,25 @@ export interface DecisionView {
   technical?: ReactNode;
   /** Under the context, before the options (an incomplete card says so here). */
   notice?: ReactNode;
+  /** The primary way to the object the decision is about, under the question, before the sources (#2370). */
+  lead?: ReactNode;
+  /**
+   * An answer is recorded and the decision stays open on purpose (a work item's keep-waiting option, #2500):
+   * the card says what was answered, by whom and when, and what it still waits for; the options fold
+   * behind "Change the answer".
+   */
+  answered?: DecisionAnswered | null;
+}
+
+/** A recorded answer that keeps its decision open (#2500). */
+export interface DecisionAnswered {
+  label: string;
+  /** Who answered, named as the server stored it; null when unknown. */
+  by?: string | null;
+  /** ISO-8601: shown in the reader's time zone. */
+  at: string;
+  /** What the decision still waits for, one sentence. */
+  waiting: string;
 }
 
 /**
@@ -275,61 +294,8 @@ export function DecisionCard({
     </div>
   );
 
-  return (
-    <section
-      className="space-y-3 rounded-sm border border-accent/40 bg-accent/5 p-3"
-      aria-labelledby={`${textId}-question`}
-      data-testid={testId}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <Icon name="message-square" size={16} className="shrink-0 text-accent" aria-hidden />
-        <span className="content-caption font-medium uppercase tracking-wider text-default-secondary">
-          {/* A card shown read only never says "your decision" (UX r1 B2 of #1497). */}
-          {canAnswer ? t_i18n("Waiting for your decision") : t_i18n("Waiting for a decision")}
-        </span>
-        {view.deadline && (
-          <Badge variant="secondary" className="content-caption ml-auto gap-1" data-testid={`${testId}-deadline`}>
-            <Icon name="calendar" size={16} aria-hidden />
-            {t_i18n("Answer by {date}", { date: formatShortDateTimeIntl(intl, view.deadline) })}
-          </Badge>
-        )}
-      </div>
-      {view.questionMarkdown ? (
-        <div id={`${textId}-question`} className="content-base font-medium text-default-primary break-words" data-testid={`${testId}-question`}>
-          <ChatMarkdown content={view.question} className="chat-markdown" remoteImages={false} />
-        </div>
-      ) : (
-        <p id={`${textId}-question`} className="content-base font-medium text-default-primary whitespace-pre-wrap break-words" data-testid={`${testId}-question`}>
-          {view.question}
-        </p>
-      )}
-      {view.asker && (
-        <p className="content-caption text-default-secondary" data-testid={`${testId}-asker`}>
-          {t_i18n("Asked by {agent}", { agent: view.asker })}
-        </p>
-      )}
-      {links.length > 0 && (
-        <ul className="flex flex-wrap gap-2" aria-label={t_i18n("Sources")} data-testid={`${testId}-links`}>
-          {links.map((link) => (
-            <li key={link.url}>
-              <Button asChild size="sm" variant="outline" className="gap-1">
-                <a href={link.url} target="_blank" rel="noopener noreferrer" data-testid={`${testId}-link`}>
-                  <Icon name="external-link" size={16} className="shrink-0" aria-hidden />
-                  {link.label}
-                </a>
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {context.length > 0 && (
-        <div data-testid={`${testId}-context`}>
-          <ChatMarkdown content={context.join("\n\n")} className="chat-markdown content-compact text-default-secondary" remoteImages={false} />
-        </div>
-      )}
-      {view.notice}
-
+  const controls = (
+    <>
       {options.length > 0 && (
         <ul className="grid grid-cols-1 gap-2" data-testid={`${testId}-options`}>
           {options.map((option) => (
@@ -389,8 +355,8 @@ export function DecisionCard({
         </div>
       )}
 
-      {canAnswer ? (
-        freeTextMode === "none" ? null : options.length > 0 && freeTextMode === "auto" ? (
+      {canAnswer &&
+        (freeTextMode === "none" ? null : options.length > 0 && freeTextMode === "auto" ? (
           // With options, free text is the exception: folded behind one line (J.1).
           <details data-testid={`${testId}-free-text`}>
             <DisclosureSummary>{t_i18n("Answer differently")}</DisclosureSummary>
@@ -398,10 +364,108 @@ export function DecisionCard({
           </details>
         ) : (
           freeText
+        ))}
+    </>
+  );
+
+  // A card shown read only never says "your decision" (UX r1 B2 of #1497); an answered card waits on, not for you (#2500).
+  const header = view.answered
+    ? t_i18n("Answer recorded")
+    : canAnswer
+      ? t_i18n("Waiting for your decision")
+      : t_i18n("Waiting for a decision");
+
+  return (
+    <section
+      className="space-y-3 rounded-sm border border-accent/40 bg-accent/5 p-3"
+      aria-labelledby={`${textId}-question`}
+      data-testid={testId}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Icon name="message-square" size={16} className="shrink-0 text-accent" aria-hidden />
+        <span className="content-caption font-medium uppercase tracking-wider text-default-secondary">
+          {header}
+        </span>
+        {view.deadline && (
+          <Badge variant="secondary" className="content-caption ml-auto gap-1" data-testid={`${testId}-deadline`}>
+            <Icon name="calendar" size={16} aria-hidden />
+            {t_i18n("Answer by {date}", { date: formatShortDateTimeIntl(intl, view.deadline) })}
+          </Badge>
+        )}
+      </div>
+      {view.questionMarkdown ? (
+        <div id={`${textId}-question`} className="content-base font-medium text-default-primary break-words" data-testid={`${testId}-question`}>
+          <ChatMarkdown content={view.question} className="chat-markdown" remoteImages={false} />
+        </div>
+      ) : (
+        <p id={`${textId}-question`} className="content-base font-medium text-default-primary whitespace-pre-wrap break-words" data-testid={`${testId}-question`}>
+          {view.question}
+        </p>
+      )}
+      {view.asker && (
+        <p className="content-caption text-default-secondary" data-testid={`${testId}-asker`}>
+          {t_i18n("Asked by {agent}", { agent: view.asker })}
+        </p>
+      )}
+      {view.lead}
+      {links.length > 0 && (
+        <ul className="flex flex-wrap gap-2" aria-label={t_i18n("Sources")} data-testid={`${testId}-links`}>
+          {links.map((link) => (
+            <li key={link.url}>
+              <Button asChild size="sm" variant="outline" className="gap-1">
+                <a href={link.url} target="_blank" rel="noopener noreferrer" data-testid={`${testId}-link`}>
+                  <Icon name="external-link" size={16} className="shrink-0" aria-hidden />
+                  {link.label}
+                </a>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {context.length > 0 && (
+        <div data-testid={`${testId}-context`}>
+          <ChatMarkdown content={context.join("\n\n")} className="chat-markdown content-compact text-default-secondary" remoteImages={false} />
+        </div>
+      )}
+      {view.notice}
+
+      {view.answered && (
+        <div className="space-y-1 rounded-sm border border-elevation-subtle bg-elevation-default p-3" data-testid={`${testId}-answered`}>
+          <p className="flex items-start gap-1.5 content-compact font-medium text-default-primary">
+            <Icon name="circle-check" size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+            <span className="min-w-0 break-words" data-testid={`${testId}-answered-line`}>
+              {view.answered.by
+                ? t_i18n("Answered: {option} by {person}, {date}.", {
+                    option: view.answered.label,
+                    person: view.answered.by,
+                    date: formatShortDateTimeIntl(intl, view.answered.at),
+                  })
+                : t_i18n("Answered: {option}, {date}.", {
+                    option: view.answered.label,
+                    date: formatShortDateTimeIntl(intl, view.answered.at),
+                  })}
+            </span>
+          </p>
+          <p className="content-compact text-default-secondary" data-testid={`${testId}-still-waiting`}>
+            {view.answered.waiting}
+          </p>
+        </div>
+      )}
+
+      {view.answered ? (
+        // A recorded answer that keeps the decision open (#2500): the options are folded, one click away.
+        canAnswer && (
+          <details data-testid={`${testId}-change`}>
+            <DisclosureSummary>{t_i18n("Change the answer")}</DisclosureSummary>
+            <div className="space-y-3 pt-2">{controls}</div>
+          </details>
         )
       ) : (
-        readOnlyNote && <p className="content-compact text-default-secondary">{readOnlyNote}</p>
+        controls
       )}
+
+      {!canAnswer && readOnlyNote && <p className="content-compact text-default-secondary">{readOnlyNote}</p>}
 
       {view.technical && (
         <details data-testid={`${testId}-technical`}>

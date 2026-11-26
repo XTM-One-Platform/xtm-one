@@ -32,10 +32,10 @@ FULL = {
     "sub_sector": "electricity distribution",
     "regions": ["fr", "DE", "FR"],
     "size": "1001-5000",
-    "crown_jewels": [
+    "primary_assets": [
         {"name": "SCADA", "business_service": "Grid operations", "owner": "OT", "criticality": "critical"}
     ],
-    "tech_stack": [{"product": "Windows Server 2019", "vendor": "Microsoft", "cpe": "cpe:2.3:o:microsoft:windows_server_2019:-:*:*:*:*:*:*:*"}],
+    "software": [{"product": "Windows Server 2019", "vendor": "Microsoft", "cpe": "cpe:2.3:o:microsoft:windows_server_2019:-:*:*:*:*:*:*:*"}],
     "pir_ids": ["pir-1", "pir-1", " "],
     "risk_appetite": {"annual_loss_threshold": 2_000_000, "approval_threshold": 50_000},
     "loaded_hourly_rate": 95,
@@ -91,7 +91,7 @@ def test_a_zero_threshold_is_a_value_not_a_missing_field():
         ({"currency": "EURO"}, "currency"),
         ({"size": "huge"}, "size"),
         ({"loaded_hourly_rate": -1}, "loaded_hourly_rate"),
-        ({"crown_jewels": [{"name": "x", "criticality": "extreme"}]}, "crown_jewels"),
+        ({"primary_assets": [{"name": "x", "criticality": "extreme"}]}, "primary_assets"),
         # #1844: no alias; a stored ai_systems key is refused, the migration moved it to the assets.
         ({"ai_systems": [{"name": "x"}]}, "ai_systems"),
         ({"unknown_field": 1}, "unknown_field"),
@@ -133,15 +133,19 @@ async def test_save_refuses_an_unknown_source():
 
 
 def test_the_tool_is_core_read_only_and_survives_a_deny_list():
+    from app.services.builtin_tools.inventory_query import INVENTORY_QUERY_TOOLS
+
     definitions, executor = build_organization_context_tool()
-    assert [d.name for d in definitions] == [ORGANIZATION_CONTEXT_TOOL]
-    assert definitions[0].core is True
+    # The inventory query functions ride with the profile read (#2443), each core like it.
+    assert [d.name for d in definitions] == [ORGANIZATION_CONTEXT_TOOL, *INVENTORY_QUERY_TOOLS]
+    assert all(d.core for d in definitions)
     # Optional arguments only: a tracked organization (#9157), a category by page (#11533); none reads the primary.
     assert set(definitions[0].input_schema["properties"]) == {"organization", "category", "query", "offset", "limit"}
     assert definitions[0].input_schema["required"] == []
-    assert set(executor.tool_names) == {ORGANIZATION_CONTEXT_TOOL}
+    assert set(executor.tool_names) == {ORGANIZATION_CONTEXT_TOOL, *INVENTORY_QUERY_TOOLS}
     assert [d.name for d in apply_tool_deny_list(definitions, [ORGANIZATION_CONTEXT_TOOL])] == [
-        ORGANIZATION_CONTEXT_TOOL
+        ORGANIZATION_CONTEXT_TOOL,
+        *INVENTORY_QUERY_TOOLS,
     ]
 
 

@@ -42,4 +42,8 @@ export const CASE_EVENT_LABEL: Readonly<Record<string, string>> = {
   treatment_plan: "Attached the treatment plan",
   // The OpenCTI Grouping and coverage of the review step (CTEM-16-UI, #1115).
   threat_package: "Drafted the threat package",
+  // The OpenAEV scenario of the validation and its playability (#2468).
+  scenario: "Recorded the validation scenario",
+  // A fix applied through a bound integration under ctem.production_change (#2061).
+  applied_change: "Applied a change through an integration",
 };

@@ -81,7 +81,20 @@ What diverges, read on main:
   `flow_hitl` urgent, not `work_item_waiting`.
 - Three recipient rules: the run owner (admins for a company-managed run), the
   flow owner or the whole company (company-managed flow), the work item
-  recipient (explicit, acting user, agent owner, then administrators).
+  recipient (explicit, acting user, agent owner, then administrators). For a
+  company-managed agent the owner is the seed account, never a decider (#2367):
+  its decision goes to the CTEM `decide` groups (notify on) for CTEM work, else
+  to the person its run acts for (triggering user, else run-as user, carried on
+  the agent writer apart from the file owner a company-managed run leaves
+  empty), else to the owner of its home fleet when a person owns it, else to the
+  administrators; the seed owner only on a platform with no administrator. A
+  recipient such an agent names is kept only when it is a decider (run person,
+  acting user, administrator, home fleet owner, CTEM `decide` member for CTEM
+  work); the seed account or anyone else is dropped and this routing applies.
+  The seed account (`ADMIN_EMAIL`) is the platform administrator: when it is
+  the run's chosen person (it triggered the run, or the assignment runs as it)
+  it stays the decider, routed to alone and accepted as an explicit recipient;
+  it is excluded only as the assignment owner standing in (the fallback).
 - An `awaiting_human` run counts in the assignment's blocking statuses
   (`assignment_dispatch`), so a routinely pausing scheduled run holds its
   assignment's queue while it waits.
@@ -111,6 +124,19 @@ widened):
   `ANSWERED ... (keeps waiting)` note) and leaves the item as it was, still
   blocked on the person with its ask and blockers: no status change, no
   dispatch to the owner's inbox. Any other option releases the item as before.
+  The platform never clears `needs_human` on a keeps_waiting answer: the
+  owning agent moves the item to an observable wait (`blocked_on` /
+  `blocked_on_refs`) or re-asks with a new ask. Until then the decision card
+  shows the recorded answer (#2500): "Answered: <label> by <who>, <when>" and
+  what the item still waits for, header "Answer recorded", the options folded
+  behind "Change the answer"; the toast says the answer is recorded and the
+  item keeps waiting. The same keeps_waiting option sent again with the same
+  words is a repeat: nothing is written, no second note. Such an item no
+  longer waits for the person: the "Waiting for me" filter, its count and the
+  notice leave it out (`_answered_keeps_waiting_clause` in
+  `_waits_for_person_clause`), and the list row drops its "Waiting for you"
+  badge and the person part of "Waits for" (`waitsForReader`,
+  `answeredKeepsWaiting`).
 - A work item that reaches `done` or `cancelled` (`complete_work_item`,
   `update_work_item` status) no longer waits for a person (#1719): its
   `needs_human` and ask are cleared in the same write, its open decision is
@@ -495,7 +521,10 @@ an expiry (the decision deadline, else 7 days). Opening it:
    non-recipient gets "Waiting for <name>" and a `refused` event);
 2. answers in one click for an option (no second confirmation), except an
    irreversible consent option, which asks for its code on the page (the
-   `hitl_consent` check is unchanged); "Answer with text" opens the card with
+   `hitl_consent` check is unchanged); on the in-app card and the "Answer
+   with text" page, a work item option the agent marked `confirm` (a
+   terminal one: cancel, close, discard) opens the confirm panel first and is
+   sent only on "Confirm" (#2150); "Answer with text" opens the card with
    the text field;
 3. takes the decision's row lock, writes the answer through the router of
    section 6 with `surface` = the channel the link was sent on (Teams chat,
@@ -721,7 +750,11 @@ under the same `agent_graph_caller` rules. The item needs no `payload.notify`,
 so its end sends no text. This is how a fleet's `work_item.needs_human` listener
 DMs a decision. The send records the same `notified` event, so the message turns
 into the decided card whichever channel closes the decision. A second send to
-the same target answers the message already there. A test item reaches only
+the same target answers the message already there. To check that a decision
+reached the person's bell, the coordination tool `list_my_notifications(limit)`
+(`services/notification_feed_tool.py`, #2198) answers `notification_feed.build_feed`
+for the person the run acts for: the bell's entries, order and read state, nothing
+marked read, never another person's. A test item reaches only
 `WORK_ITEM_NOTIFY_TEST_RECIPIENTS` or `48:notes`. An item that waits for a
 person (not done or cancelled, `needs_human`, an ask with a question and two
 options) but has no open `decisions` row (parked by a bulk write, or its row

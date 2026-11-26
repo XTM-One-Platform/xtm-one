@@ -73,10 +73,10 @@ class BuiltinToolGroup:
     bind_admin_only: bool = False
     #: Acts as the agent, never on the General Assistant (``AGENT_KEYED_BUILTIN_TOOL_IDS``).
     agent_keyed: bool = False
-    #: A Platform Health specialist's suite, carried by the fleet's own agents
-    #: (``health.fleet_seed``), whose writes refuse anyone but the
-    #: Platform Health: a chat's session tools never offer it.
-    health_only: bool = False
+    #: Internal to Platform Health: carried by its fleet's own agents
+    #: (``health.fleet_seed``) alone, never offered on the Tools page, by the
+    #: agent builder or in a chat's session tools (#1943).
+    internal: bool = False
     #: Titled with the platform's own name.
     named_after_platform: bool = False
     #: Former ids this group answers to, [DEPRECATED] (``builtin_tool_aliases``).
@@ -85,6 +85,15 @@ class BuiltinToolGroup:
     #: the group's other functions are loadable on demand through ``load_tools``
     #: as group ``builtin:<id>``. ``None``: the whole group is always-on.
     core: tuple[str, ...] | None = None
+
+
+#: The one internal group of Platform Health's specialists (#1943): the
+#: diagnosis, experiments, sandbox, evaluation, Flow Lab, memory consolidation,
+#: module checks and improvement proposal functions, every one stamped
+#: ``builtin:health_specialists``.
+HEALTH_SPECIALISTS_GROUP = "health_specialists"
+#: The one Platform Health group a person sees and binds.
+HEALTH_ORCHESTRATOR_GROUP = "health_orchestrator"
 
 
 #: Every built-in group, in display order.
@@ -116,36 +125,6 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
             "list_flows",
             "get_flow",
         ),
-    ),
-    BuiltinToolGroup(
-        id="health_sandbox",
-        name="Health Sandbox",
-        tagline="Copy agents and flows into the sandbox and run them with writes intercepted",
-        detail="Make hidden copies of agents and flows and run them in the sandbox: calls recorded in the source traces are replayed, reads run live, and every write is intercepted and answered by a simulated result, counted per case. For Platform Health and administrators, within the supervision scope.",
-        category="platform",
-        icon="FlaskConical",
-        gate="health",
-        agent_keyed=True,
-    ),
-    BuiltinToolGroup(
-        id="health_evaluation",
-        name="Health Evaluation",
-        tagline="Build datasets from production and measure agents and flows against them",
-        detail="Turn rated answers and failed runs of consented agents and flows into evaluation datasets, evaluate agents, flows and their sandbox copies on them, and compare runs on quality, cost and latency with the simulated writes stated. For Platform Health, and for administrators where evaluation is on.",
-        category="platform",
-        icon="Scale",
-        gate="health",
-        agent_keyed=True,
-    ),
-    BuiltinToolGroup(
-        id="improvement_proposals",
-        name="Improvement Proposals",
-        tagline="List improvement proposals and file one for the target's managers to approve",
-        detail="List the improvement proposals on the agents, skills, assignments and flows the caller may read, with the verdict of their experiment or that they are unmeasured. Platform Health's Experimenter files new ones, with their evidence and measurement; the target's managers approve or reject them, and a regression is rolled back.",
-        category="platform",
-        icon="Sparkles",
-        gate="health",
-        agent_keyed=True,
     ),
     BuiltinToolGroup(
         id="files",
@@ -268,28 +247,9 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         # STIX bundle validator and FIMI analytics merged here.
         aliases=("stix_bundle_validator", "fimi_analytics"),
     ),
-    BuiltinToolGroup(
-        # Read-only CTEM signals and cases for any agent (#1337), as the person
-        # the turn or run acts for, with the CTEM routes' permission model.
-        id="ctem_read",
-        name="CTEM Read",
-        tagline="Read the CTEM signals and cases the person you act for can see, read-only",
-        detail="Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.",
-        category="security",
-        icon="ScanEye",
-        agent_keyed=True,
-    ),
-    BuiltinToolGroup(
-        # CTEM administrator repairs (#1778): the attack surface pass summary and
-        # repair and the threat package repair, the REST routes' admin scope.
-        id="ctem_repair",
-        name="CTEM Repair",
-        tagline="Read the attack surface passes and run the CTEM repairs, administrators",
-        detail="Lets the agent read the latest attack surface passes (what each read covered, hosts observed, signals per path), discard the new-host signals raised without a complete previous read, and correct the threat packages stored with a Grouping page whose Grouping is not live. A repair defaults to a dry run that writes nothing and answers the counts and the ids. It acts for the person the turn or run acts for, who must be an administrator, as on the REST routes. XTM One mode only.",
-        category="security",
-        icon="Stethoscope",
-        agent_keyed=True,
-    ),
+    # [DEPRECATED] ``ctem_read`` (#1337) and ``ctem_repair`` (#1778) are renamed into
+    # ``ctem`` (#2443, RENAMED_BUILTIN_GROUPS); every function checks the acting
+    # person's CTEM right at call time (#2441).
     BuiltinToolGroup(
         # CTEM signal and case tools on any agent (#1748): the owner's CTEM rights
         # (administrator, decide, view or own signals) decide the reach.
@@ -333,7 +293,7 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         id="organization_context",
         name="Organization Profile Editing",
         tagline="Administrators only: update the organization profile, or propose a change for review",
-        detail="Lets the agent change the organization profile (crown jewels, software, risk appetite and the other fields of Settings > Organization) for the administrator it acts for: each change is saved as a new version authored by that administrator, with the agent and the basis kept, so the history can roll it back. It can also propose a change for an administrator to review. Only an administrator can bind it, and the tools are offered only on a turn that acts for an administrator; every agent keeps reading the profile without it.",
+        detail="Lets the agent change the organization profile (primary assets, software, risk appetite and the other fields of Settings > Organization) for the administrator it acts for: each change is saved as a new version authored by that administrator, with the agent and the basis kept, so the history can roll it back. It can also propose a change for an administrator to review. Only an administrator can bind it, and the tools are offered only on a turn that acts for an administrator; every agent keeps reading the profile without it.",
         category="platform",
         icon="Building2",
         agent_keyed=True,
@@ -351,17 +311,6 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         icon="UserCog",
         agent_keyed=True,
         bind_admin_only=True,
-    ),
-    BuiltinToolGroup(
-        id="memory_steward",
-        name="Memory Steward",
-        tagline="Consolidate agent memory lanes, reversibly, for Platform Health",
-        detail="Platform Health's memory consolidation: list the memory lanes it may read, run a pass over one (merge duplicates, settle contradictions, demote time-bound entries, promote recurring observations) and count what was applied. Every change is reversible by the lane's owner from their profile. Only the Platform Health identity may call these tools.",
-        category="platform",
-        icon="Brain",
-        gate="health",
-        agent_keyed=True,
-        health_only=True,
     ),
     BuiltinToolGroup(
         id="coordination",
@@ -407,52 +356,17 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         agent_keyed=True,
     ),
     BuiltinToolGroup(
-        id="health_diagnosis",
-        name="Health Diagnosis",
-        tagline="Diagnose supervised agents from their traces, ratings and costs",
-        detail="Platform Health's Quality Analyst: reads the quality signals of the agents in its supervision scope, records each finding once with its evidence, and drafts the variant an experiment will measure. Works only inside a Platform Health run.",
-        category="observability",
+        id=HEALTH_SPECIALISTS_GROUP,
+        name="Platform Health specialists",
+        tagline="Platform Health's internal tools: diagnosis, experiments, sandbox, Flow Lab, memory and module checks",
+        detail="The tools Platform Health's own specialists work with: quality diagnosis, experiments and evaluations on sandbox copies, the Flow Lab, memory consolidation, module checks and improvement proposals. Carried by the Platform Health fleet's agents alone, each scoped to the functions it uses; never offered on the Tools page, in an agent's configuration or in a chat. Every write refuses anyone but Platform Health.",
+        category="platform",
         icon="Stethoscope",
         gate="health",
         agent_keyed=True,
-        health_only=True,
-        core=("get_quality_signals", "list_findings"),
-    ),
-    BuiltinToolGroup(
-        id="health_experiments",
-        name="Health Experiments",
-        tagline="Measure variants on sandbox copies and file what they earn",
-        detail="Platform Health's Experimenter: sizes each experiment to the Platform Health budget, evaluates the current configuration and a variant as sandbox copies on the same production cases, and files the improvement proposal the measurement earned, or unmeasured with its reason. Works only inside a Platform Health run.",
-        category="observability",
-        icon="FlaskConical",
-        gate="health",
-        agent_keyed=True,
-        health_only=True,
-        core=("list_experiments", "get_experiment"),
-    ),
-    BuiltinToolGroup(
-        id="flow_lab",
-        name="Health Flow Lab",
-        tagline="Diagnose flows and measure flow replacements in shadow",
-        detail="Platform Health's Flow Lab: diagnoses a supervised flow's failed runs and costs, finds the tool-call sequences users repeat, checks whether an assignment follows a path a flow could reproduce, and measures a sandbox flow on an assignment's live triggers with every write intercepted. Works only inside a Platform Health run; the reads are also served to the managers of the flow or assignment.",
-        category="flows",
-        icon="Workflow",
-        gate="health",
-        agent_keyed=True,
-        health_only=True,
-        core=("get_flow_diagnosis", "get_assignment_path", "get_flow_shadow"),
-    ),
-    BuiltinToolGroup(
-        id="health_modules",
-        name="Health Modules",
-        tagline="Investigate registered modules and recommend on their findings",
-        detail="Platform Health's Module Analyst: reads the open findings of a registered OpenCTI, OpenAEV or OpenCRQ with the recommendations already attached, and attaches its own recommendation to each finding the module reads explain. Never writes to a module. Works only inside a Platform Health run.",
-        category="observability",
-        icon="Stethoscope",
-        gate="health",
-        agent_keyed=True,
-        health_only=True,
-        core=("list_module_findings",),
+        internal=True,
+        # No ``core``: every function stays always-on, as in the groups it merges;
+        # each agent is scoped to its own functions by ``builtin_allowed_tools``.
     ),
 )
 

@@ -126,10 +126,13 @@ async def documentation_hint(db: AsyncSession, fleet: Fleet) -> str:
     Every fleet write answer (``_describe``) and an applied spec end with it, so
     an orchestrator that changed its fleet knows to call
     ``regenerate_fleet_documentation`` once (#9768 S3). A fleet with no
-    generated documentation (no fingerprint) gets no hint.
+    generated documentation (no fingerprint) or a built-in one gets no hint.
     """
     from app.services.fleet_docs import current_fingerprint
 
+    if getattr(fleet, "is_builtin", False):
+        # The seed owns a built-in fleet's structure and documentation (#1956).
+        return ""
     stored = getattr(fleet, "documentation", None)
     fingerprint = stored.get("fingerprint") if isinstance(stored, dict) else None
     if not fingerprint or fingerprint == await current_fingerprint(db, fleet):
@@ -777,6 +780,11 @@ def build_fleet_tools(
             + (f", {c.paused} paused ({c.fleet_paused} by Pause all)" if c.paused else "")
             + " (members with no assignment count nowhere)"
         ]
+        if c.dashboard_total:
+            lines.append(
+                f"  • Dashboard schedules (not in the badge, they ship on): {c.dashboard_enabled} of "
+                f"{c.dashboard_total} on; Pause all switches them off, Resume back on"
+            )
         for off in state.off:
             lines.append(
                 f"      - off: {off.assignment_name} `{off.assignment_id}` of {off.agent_name} `{off.agent_id}`, "
@@ -1977,14 +1985,19 @@ def build_fleet_tools(
 
         async def _action(db: AsyncSession, user: User) -> str:
             fleet_uuid = _one_id(fleet_id, "fleet_id")
-            # Same permission as a configuration edit; a built-in fleet gets a
-            # local version the next boot keeps (the About page's button).
+            # Same permission as a configuration edit; a built-in fleet is
+            # refused below: the seed writes its documentation (#1956).
             # No row lock (#429): the generation marker below serializes two
             # generations, as on the REST route. A lock held across the model
             # call made a second call wait on it until the statement timeout and
             # answer a generic failure instead of the "already running" refusal.
             fleet = await _manageable_fleet(db, user, fleet_uuid, builtin_ok=True, lock=False)
             wanted = str(section or "").strip() or None
+            if fleet.is_builtin:
+                raise _RefusedError(
+                    f"Fleet {fleet.name} is built in: its documentation is the one shipped with the platform, "
+                    "kept up to date at each update. Nothing was generated."
+                )
             try:
                 # Refused before the claim (#393): a wrong name never shows as a failure on the About page.
                 check_section(wanted)
@@ -2043,8 +2056,6 @@ def build_fleet_tools(
                 f"Fleet **{fleet.name}**: {what} regenerated, saved as version {version}.",
                 f"  • Page: {fleet_link(fleet.id)}",
             ]
-            if fleet.is_builtin:
-                lines.append("  • Built-in fleet: this is a local version; the shipped one can be restored from the page.")
             if filling:
                 lines.append(
                     f"  • {len(draft.pending)} section(s) the model failed on are being filled in the background: "

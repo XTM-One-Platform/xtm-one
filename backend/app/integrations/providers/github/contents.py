@@ -996,9 +996,38 @@ _TRANSIENT_GRAPHQL_KINDS = frozenset({"INTERNAL", "INTERNAL_SERVER_ERROR", "SERV
 _TRANSIENT_GRAPHQL_MESSAGES = ("something went wrong while executing your query", "timedout", "timed out")
 
 
+async def _read_branch_tip(
+    client: httpx.AsyncClient, repo_url: str, headers: dict[str, str], branch: str, repo: str
+) -> str:
+    """The commit ``branch`` points at now, '' when it cannot be read."""
+    resp, err = await _common.safe_request(
+        client,
+        "get",
+        f"{repo_url}/git/ref/heads/{_enc(branch)}",
+        _PROVIDER,
+        f"re-read branch {branch} of {repo}",
+        headers=headers,
+    )
+    if err or resp is None:
+        return ""
+    target = _json_object(resp).get("object")
+    sha = _coerce_str(target.get("sha")) if isinstance(target, dict) else ""
+    return sha if _GIT_OBJECT_ID_RE.fullmatch(sha) else ""
+
+
 def _head_moved(message: str) -> bool:
     low = message.lower()
     return "expected branch to point to" in low or "expectedheadoid" in low
+
+
+#: HTTP statuses after which a mutation may have landed: a 5xx, and the 499 a
+#: proxy answers when it closed the request before GitHub's answer came back.
+_ANSWER_UNKNOWN_CLIENT_STATUSES = frozenset({499})
+
+
+def _answer_unknown_status(status: int) -> bool:
+    """True when a failed commit request says nothing of whether GitHub applied it."""
+    return status >= 500 or status in _ANSWER_UNKNOWN_CLIENT_STATUSES
 
 
 def _transient_commit_failure(resp: httpx.Response | None, err: str | None) -> bool:
@@ -1009,7 +1038,7 @@ def _transient_commit_failure(resp: httpx.Response | None, err: str | None) -> b
     rate limit) is not transient: trying again changes nothing.
     """
     if err:
-        return resp is None or resp.status_code >= 500
+        return resp is None or _answer_unknown_status(resp.status_code)
     answer = _json_object(resp)
     data = answer.get("data")
     created = data.get("createCommitOnBranch") if isinstance(data, dict) else None
@@ -1192,6 +1221,25 @@ async def _note_pending_commit(
     await note(record, branch=branch, parent=parent, written=written, removed=list(delete_paths or []))
 
 
+#: A commit id as an archive or a person writes it: 7 to 40 hex characters (a full id is 40, or 64 for sha256).
+_SHORT_OBJECT_ID_RE = re.compile(r"[0-9a-f]{7,40}(?:[0-9a-f]{24})?")
+
+
+async def _full_commit_id(client: Any, headers: dict[str, str], repo: str, repo_url: str, short: str) -> str:
+    """The full id of commit *short* in *repo*, ``""`` when GitHub does not name exactly one that starts with it."""
+    resp, err = await _common.safe_request(
+        client,
+        "get",
+        f"{repo_url}/commits/{_enc(short)}",
+        _PROVIDER,
+        f"read commit {short} of {repo}",
+        headers=headers,
+        expected_statuses={404, 422},
+    )
+    sha = _coerce_str(_json_object(resp).get("sha")).lower() if not err else ""
+    return sha if _GIT_OBJECT_ID_RE.fullmatch(sha) and sha.startswith(short) else ""
+
+
 async def _reconcile_checkout_drift(
     headers: dict[str, str],
     repo: str,
@@ -1218,14 +1266,35 @@ async def _reconcile_checkout_drift(
     """
     from .checkout_drift import reconcile
 
-    recorded = _coerce_str(getattr(record, "commit", ""))
-    if not _GIT_OBJECT_ID_RE.fullmatch(recorded):
+    recorded = _coerce_str(getattr(record, "commit", "")).lower()
+    if not _SHORT_OBJECT_ID_RE.fullmatch(recorded):
         return files, delete_paths, "", {}, "", False
-    baseline = _coerce_str(getattr(record, "base_commit", ""))
-    if not _GIT_OBJECT_ID_RE.fullmatch(baseline) or baseline == recorded:
+    baseline = _coerce_str(getattr(record, "base_commit", "")).lower()
+    if not _SHORT_OBJECT_ID_RE.fullmatch(baseline):
         baseline = ""
     repo_url = f"{_BASE_URL}/repos/{owner}/{name}"
     async with egress_client(timeout=60) as client:
+        # A checkout record written from an archive names the commit by the archive's short id
+        # (``<owner>-<repo>-<sha7>``): read the full id, or the drift merge below never runs and the
+        # workspace files are written whole over a tip that moved, reverting it (#2152).
+        for label in ("recorded", "baseline"):
+            short = recorded if label == "recorded" else baseline
+            if not short or _GIT_OBJECT_ID_RE.fullmatch(short):
+                continue
+            full = await _full_commit_id(client, headers, repo, repo_url, short)
+            if not full:
+                return (
+                    f"Error: the checkout record of {directory} names commit {short}, which could not be read in "
+                    f"{repo}, so its files cannot be merged with branch '{branch}' and nothing was committed: "
+                    "writing them whole could revert the branch's changes. "
+                    f'Run sandbox_checkout_rebase(checkout="{directory}", ref="{branch}"), then commit again.'
+                )
+            if label == "recorded":
+                recorded = full
+            else:
+                baseline = full
+        if baseline == recorded:
+            baseline = ""
         resolved, err = await _resolve_branch(client, headers, repo, owner, name, branch)
         if err or not resolved or _branch_name_error(resolved):
             # The commit itself reads the branch again and says what is wrong.
@@ -1299,7 +1368,7 @@ async def _reconcile_workspace_writes(
     grouped: dict[str, tuple[Any, list[dict[str, Any]]]] = {}
     for workspace_path, (repo_path, data) in written.items():
         record = records.get(workspace_path)
-        if record is None or not _GIT_OBJECT_ID_RE.fullmatch(_coerce_str(getattr(record, "commit", ""))):
+        if record is None or not _SHORT_OBJECT_ID_RE.fullmatch(_coerce_str(getattr(record, "commit", "")).lower()):
             continue
         recorded_repo = _coerce_str(getattr(record, "repository", ""))
         if recorded_repo and recorded_repo.casefold() != repo.strip().casefold():
@@ -2587,7 +2656,7 @@ def register(
                 if err and resp is not None and resp.status_code == 413:
                     unsigned_reason = "GitHub refused the change as too large for a commit it builds itself"
                     signed_alternative = "Split the change into smaller commits, which GitHub builds and signs itself."
-                elif err and (resp is None or resp.status_code >= 500):
+                elif err and (resp is None or _answer_unknown_status(resp.status_code)):
                     return f"{err}{unknown}"
                 elif err:
                     return f"{err}\nBranch '{branch}' of {repo} is unchanged."
@@ -2613,6 +2682,16 @@ def register(
                         if retried and _head_moved(error_text):
                             # The first attempt may have landed and moved the branch itself.
                             return f"Error: GitHub did not answer the first attempt clearly for {repo}.{unknown}"
+                        if "FORBIDDEN" in kinds and not _head_moved(error_text):
+                            # GitHub answers FORBIDDEN for a stale expectedHeadOid too
+                            # (a resumed call on a branch that moved): the tip says which.
+                            now_tip = await _read_branch_tip(client, repo_url, headers, branch, repo)
+                            if now_tip and now_tip != tip:
+                                if retried:
+                                    return (
+                                        f"Error: GitHub did not answer the first attempt clearly for {repo}.{unknown}"
+                                    )
+                                error_text = f"Expected branch to point to {tip} ({error_text})"
                         if not _signing_unavailable(error_text, kinds):
                             refusal = _graphql_commit_refusal(error_text, kinds, branch, repo, tip)
                             return f"{refusal}{_NO_UNSIGNED_FALLBACK}"

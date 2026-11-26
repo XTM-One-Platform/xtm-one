@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Response, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,8 +67,8 @@ class OrganizationContextVersionSummary(BaseModel):
     created_at: datetime
     author_user_id: str | None
     missing_fields: list[str]
-    #: The crown jewels the version holds (#1558): the restore picker shows which version still has them.
-    crown_jewels: int = 0
+    #: The primary assets the version holds (#1558): the restore picker shows which version still has them.
+    primary_assets: int = 0
     #: An ``ai_draft`` version's accepted proposals: field -> ``{source, basis}``.
     sources: dict[str, Any] | None = None
 
@@ -92,7 +92,7 @@ class PatchOrganizationContextRequest(BaseModel):
 
 
 class RestoreOrganizationContextRequest(BaseModel):
-    #: The profile fields to take from the past version (e.g. ``crown_jewels``); empty: every field.
+    #: The profile fields to take from the past version (e.g. ``primary_assets``); empty: every field.
     fields: list[str] = []
     #: The current version the restore starts from: another version saved since answers 409.
     based_on_version: int | None = None
@@ -103,7 +103,7 @@ class OpenCrqSyncRequest(BaseModel):
     apply: bool = False
     tenant_id: str = ""
     #: The lowest OpenCRQ criticality the check pulls (low, medium, high, very_high, #1558);
-    #: empty: the saved crown-jewel sync's filter, else high.
+    #: empty: the saved primary-asset sync's filter, else high.
     min_criticality: Literal["", "low", "medium", "high", "very_high"] = ""
 
 
@@ -315,7 +315,7 @@ async def list_organization_context_versions(
             created_at=row.created_at,
             author_user_id=str(row.author_user_id) if row.author_user_id else None,
             missing_fields=org_context.missing_fields(org_context.parse_profile(row.profile)),
-            crown_jewels=len((row.profile or {}).get("crown_jewels") or []),
+            primary_assets=len((row.profile or {}).get("primary_assets") or []),
             sources=row.sources,
         )
         for row in rows
@@ -628,10 +628,10 @@ class AssetsImportResponse(BaseModel):
     assets: list[dict[str, Any]]
     #: The asset groups the file declares (rows typed ``asset_group``, #11781).
     groups: list[dict[str, Any]] = []
-    #: crown jewel name -> asset names the file links to it.
+    #: primary asset name -> asset names the file links to it.
     links: dict[str, list[str]]
     errors: list[AssetImportRowError]
-    unknown_crown_jewels: list[str]
+    unknown_primary_assets: list[str]
     #: Asset names already in the profile that the file replaces.
     replaced: list[str]
     version: int | None = None
@@ -649,7 +649,7 @@ async def import_organization_assets(
     The preview lists every row parsed or refused with its line and reason;
     ``apply=true`` with a row refused is 422 (fix the file, preview again).
     Rows are upserted by name, rows the file does not name are kept, and the
-    crown jewel links the file names are added. 422 names a bad file.
+    primary asset links the file names are added. 422 names a bad file.
     """
     from app.services import organization_assets_import as assets_import
 
@@ -666,7 +666,7 @@ async def import_organization_assets(
         groups=[group.model_dump(mode="json") for group in preview.groups],
         links=preview.links,
         errors=[AssetImportRowError(line=e.line, name=e.name, message=e.message) for e in preview.errors],
-        unknown_crown_jewels=preview.unknown_crown_jewels,
+        unknown_primary_assets=preview.unknown_primary_assets,
         replaced=preview.replaced,
     )
     if not apply:
@@ -1346,8 +1346,8 @@ class AssetGroupRequest(BaseModel):
     model_config = {"extra": "allow"}
 
 
-class CrownJewelLinksRequest(BaseModel):
-    #: The asset record and asset group names the crown jewel covers (replaces its links).
+class PrimaryAssetLinksRequest(BaseModel):
+    #: The asset record and asset group names the primary asset covers (replaces its links).
     names: list[str] = Field(default_factory=list, max_length=1000)
 
 
@@ -1680,33 +1680,132 @@ async def list_asset_group_members(
     }
 
 
-@router.put("/crown-jewels/{crown_jewel}/links")
-async def set_crown_jewel_asset_links(
-    crown_jewel: str,
-    body: CrownJewelLinksRequest,
+@router.get("/primary-assets/link-counts")
+async def list_primary_asset_link_counts(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """How many assets and groups support each primary asset, by source (#1978 S2).
+
+    ``items`` maps a primary asset's key (its name, whitespace collapsed and
+    case-folded) to ``{total, manual, opencrq, rule}``; a primary asset with no
+    link is absent. The links a sync wrote count here, so the Assets column of
+    the primary assets table shows them; the profile's ``asset_names`` holds
+    only the names a person typed.
+    """
+    from app.services import organization_asset_records as records
+
+    org = await _built_store(db)
+    if org is None:
+        return {"items": {}}
+    counts = await records.primary_asset_link_counts(db, org)
+    return {
+        "items": {
+            key: {"total": sum(by_source.values()), **{s: by_source.get(s, 0) for s in ("manual", "opencrq", "rule")}}
+            for key, by_source in counts.items()
+        }
+    }
+
+
+@router.get("/primary-assets/{primary_asset}")
+async def get_primary_asset(
+    primary_asset: str,
+    q: str = Query("", max_length=200),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    through: str = Query("", max_length=100),
+    source: str = Query("", max_length=100),
+    sort: str = Query("name", max_length=20),
+    direction: str = Query("asc", pattern="^(asc|desc)$"),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One primary asset's page (#1980 S2): its profile entry and a page of the assets that support it.
+
+    ``primary_asset`` is the profile entry as stored (criticality, owner,
+    business service, source); ``supporters`` is one page of the records linked
+    to it directly or through an asset group, searched on ``q`` (name or group),
+    with ``total`` and the whole primary asset's ``counts`` by path and source.
+    ``through`` and ``source`` are lists of values (comma between them) the rows
+    are filtered on; ``sort`` is ``name`` or ``criticality``, ``direction``
+    ``asc`` or ``desc``. 404 when no primary asset of the profile has that name.
+    """
+    from app.services.ctem_primary_assets import SUPPORTERS_SORTS, primary_asset_supporters
+
+    if sort not in SUPPORTERS_SORTS:
+        raise HTTPException(status_code=422, detail=f"sort must be one of {', '.join(SUPPORTERS_SORTS)}")
+
+    current = await org_context.current_version(db)
+    wanted = " ".join(primary_asset.split()).casefold()
+    entry = next(
+        (
+            dict(j)
+            for j in ((current.profile or {}) if current else {}).get("primary_assets") or []
+            if isinstance(j, dict) and " ".join(str(j.get("name") or "").split()).casefold() == wanted
+        ),
+        None,
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"No primary asset is named '{primary_asset}'")
+    org = await _built_store(db)
+    supporters = (
+        await primary_asset_supporters(
+            db,
+            org,
+            str(entry.get("name") or primary_asset),
+            q=q,
+            offset=offset,
+            limit=limit,
+            through=tuple(v for v in (p.strip() for p in through.split(",")) if v),
+            sources=tuple(v for v in (p.strip() for p in source.split(",")) if v),
+            sort=sort,
+            descending=direction == "desc",
+        )
+        if org is not None
+        else {
+            "items": [],
+            "total": 0,
+            "offset": offset,
+            "limit": limit,
+            "counts": {"total": 0, "through": {}, "source": {}},
+        }
+    )
+    return {"primary_asset": entry, "supporters": supporters}
+
+
+@router.put("/primary-assets/{primary_asset}/links")
+async def set_primary_asset_asset_links(
+    primary_asset: str,
+    body: PrimaryAssetLinksRequest,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> dict[str, Any]:
-    """Replace the assets and groups a crown jewel covers; 422 names the ones that match nothing."""
+    """Replace the assets and groups a primary asset covers; 422 names the ones that match nothing."""
     from app.services import organization_asset_records as records
 
     org = await _write_org(db)
     current = await org_context.current_version(db)
-    jewels = {
+    pa_rows = {
         str(j.get("name") or "").strip().lower()
-        for j in ((current.profile or {}) if current else {}).get("crown_jewels") or []
+        for j in ((current.profile or {}) if current else {}).get("primary_assets") or []
     }
-    if crown_jewel.strip().lower() not in jewels:
-        raise HTTPException(status_code=404, detail=f"No crown jewel is named '{crown_jewel}'")
-    missing = await records.set_crown_jewel_links(db, org, crown_jewel, body.names)
+    if primary_asset.strip().lower() not in pa_rows:
+        raise HTTPException(status_code=404, detail=f"No primary asset is named '{primary_asset}'")
+    missing = await records.set_primary_asset_links(db, org, primary_asset, body.names)
     if missing:
         await db.rollback()
         raise HTTPException(status_code=422, detail="No asset or asset group is named: " + ", ".join(missing))
     await _audit_rows(
-        db, admin, "update", None, "crown_jewel_links", f"Crown jewel {crown_jewel} covers {len(body.names)} items", {}
+        db,
+        admin,
+        "update",
+        None,
+        "primary_asset_links",
+        f"Primary asset {primary_asset} covers {len(body.names)} items",
+        {},
     )
     await db.commit()
-    return {"crown_jewel": crown_jewel, "names": body.names}
+    return {"primary_asset": primary_asset, "names": body.names}
 
 
 @router.get("/changes")
@@ -1837,7 +1936,7 @@ async def sync_organization_context_with_opencrq(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> OpenCrqSyncResponse:
-    """Reconcile the crown jewels with OpenCRQ's supporting assets both ways (administrators).
+    """Reconcile the primary assets with OpenCRQ's supporting assets both ways (administrators).
 
     A dry run answers the plan; ``apply`` saves the next profile version and
     writes the criticalities to OpenCRQ. 409 when OpenCRQ cannot be read.
@@ -1887,6 +1986,148 @@ async def list_organization_pirs(
         unavailable=unavailable,  # type: ignore[arg-type]
         opencti_url=opencti_url,
     )
+
+
+class IntelligencePolicyPir(BaseModel):
+    """One PIR of the Intelligence policy (#2435): what OpenCTI says, and the organization's policy on it."""
+
+    id: str
+    pir_id: str
+    integration_id: str | None
+    name: str
+    description: str
+    pir_type: str
+    criteria_summary: str
+    question: str
+    owner: str
+    review_cadence: str
+    primary_assets: list[str]
+    min_score: int
+    enabled: bool
+    last_seen_at: str | None
+    gone_at: str | None
+
+
+class IntelligencePolicyReadError(BaseModel):
+    """One OpenCTI whose PIRs a refresh could not read, and why."""
+
+    integration_id: str
+    integration: str
+    reason: str
+
+
+class IntelligencePolicyResponse(BaseModel):
+    pirs: list[IntelligencePolicyPir]
+    total: int
+    #: Set by a refresh: the OpenCTIs it could not read (their rows are kept as they were).
+    errors: list[IntelligencePolicyReadError] = Field(default_factory=list)
+
+
+class IntelligencePolicyPatch(BaseModel):
+    """The policy fields of one PIR; a field left out is kept. OpenCTI's own fields are never written here."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str | None = Field(default=None, max_length=1000)
+    owner: str | None = Field(default=None, max_length=200)
+    review_cadence: str | None = None
+    primary_assets: list[str] | None = Field(default=None, max_length=50)
+    min_score: int | None = Field(default=None, ge=0, le=100)
+    enabled: bool | None = None
+
+
+def _policy_pir(row: Any) -> IntelligencePolicyPir:
+    return IntelligencePolicyPir(
+        id=str(row.id),
+        pir_id=row.pir_id,
+        integration_id=str(row.integration_id) if row.integration_id else None,
+        name=row.name or row.pir_id,
+        description=row.description or "",
+        pir_type=row.pir_type or "",
+        criteria_summary=row.criteria_summary or "",
+        question=row.question or "",
+        owner=row.owner or "",
+        review_cadence=row.review_cadence or "",
+        primary_assets=list(row.primary_assets or []),
+        min_score=int(row.min_score),
+        enabled=bool(row.enabled),
+        last_seen_at=row.last_seen_at.isoformat() if row.last_seen_at else None,
+        gone_at=row.gone_at.isoformat() if row.gone_at else None,
+    )
+
+
+@router.get("/intelligence-policy", response_model=IntelligencePolicyResponse)
+async def get_intelligence_policy(
+    search: str = "",
+    offset: int = 0,
+    limit: int = 25,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> IntelligencePolicyResponse:
+    """The stored OpenCTI PIRs with the policy on each (#2435), enabled first, searchable, paged."""
+    from app.services.organization_pirs import list_rows
+
+    rows = await list_rows(db)
+    needle = search.strip().casefold()
+    if needle:
+        rows = [r for r in rows if needle in f"{r.name} {r.pir_id} {r.owner} {r.question}".casefold()]
+    offset, limit = max(offset, 0), min(max(limit, 1), 200)
+    return IntelligencePolicyResponse(pirs=[_policy_pir(r) for r in rows[offset : offset + limit]], total=len(rows))
+
+
+@router.patch("/intelligence-policy/{row_id}", response_model=IntelligencePolicyPir)
+async def patch_intelligence_policy_pir(
+    row_id: uuid.UUID,
+    body: IntelligencePolicyPatch,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> IntelligencePolicyPir:
+    """Write the policy of one PIR (administrators): question, owner, cadence, primary assets, minimum, enabled.
+
+    The next provisioning pass reads it: a PIR disabled here leaves the PIR
+    playbook, its row stays. 404 for an unknown row, 422 for a bad value.
+    """
+    from datetime import UTC, datetime
+
+    from app.models.organization_pir import OrganizationPir
+    from app.services.organization_pirs import PirPolicyError, apply_edit
+
+    row = await db.get(OrganizationPir, row_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="PIR not found in the Intelligence policy")
+    try:
+        apply_edit(row, body.model_dump(exclude_none=True), datetime.now(UTC))
+    except PirPolicyError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    await db.commit()
+    await db.refresh(row)
+    return _policy_pir(row)
+
+
+@router.post("/intelligence-policy/refresh", response_model=IntelligencePolicyResponse)
+async def refresh_intelligence_policy(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> IntelligencePolicyResponse:
+    """Read the PIRs of every connected OpenCTI now, as the calling administrator first (administrators).
+
+    The background refresh does it hourly. An OpenCTI that could not be read
+    is answered in ``errors`` with the reason, never silently.
+    """
+    from app.services.organization_pirs import list_rows, refresh_all
+
+    result = await refresh_all(db, acting_user_id=admin.id)
+    await db.commit()
+    rows = await list_rows(db)
+    errors = [
+        IntelligencePolicyReadError(
+            integration_id=integration_id,
+            integration=result.get("names", {}).get(integration_id, "OpenCTI"),
+            reason=reason,
+        )
+        for integration_id, reason in result.get("errors", {}).items()
+    ]
+    return IntelligencePolicyResponse(pirs=[_policy_pir(r) for r in rows[:25]], total=len(rows), errors=errors)
 
 
 class AiDraftProposal(BaseModel):
@@ -2119,7 +2360,7 @@ class ImportSourcesResponse(BaseModel):
 
 
 class ImportRequest(BaseModel):
-    section: Literal["assets", "asset_groups", "software", "crown_jewels", "pirs"]
+    section: Literal["assets", "asset_groups", "software", "primary_assets", "pirs"]
     source: Literal[
         "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
     ]
@@ -2186,7 +2427,7 @@ class ImportFilterOptionsResponse(BaseModel):
 
 @router.get("/import/options", response_model=ImportFilterOptionsResponse)
 async def list_organization_import_options(
-    section: Literal["assets", "asset_groups", "software", "crown_jewels", "pirs"],
+    section: Literal["assets", "asset_groups", "software", "primary_assets", "pirs"],
     source: Literal[
         "openaev", "opencti", "opencrq", "intune", "defender", "tanium", "crowdstrike", "servicenow", "github", "gitlab"
     ],
@@ -2306,7 +2547,7 @@ async def apply_organization_import(
 
 class OrganizationSyncRequest(BaseModel):
     #: A section of the import, or ``all`` for the global schedule that runs every section sync.
-    section: Literal["assets", "asset_groups", "software", "crown_jewels", "pirs", "all"]
+    section: Literal["assets", "asset_groups", "software", "primary_assets", "pirs", "all"]
     source: Literal[
         "openaev",
         "opencti",
@@ -2507,6 +2748,101 @@ async def update_organization_sync(
     )
     await db.commit()
     return await _sync_response(db, row)
+
+
+class SyncChangeRequest(BaseModel):
+    """The settings of a sync as the Edit dialog would save them (#1982 S2)."""
+
+    filters: dict[str, Any] = {}
+    batch_type: str = ""
+    remove_gone: bool = True
+    #: Omitted: the stored list is kept.
+    excluded_external_ids: list[str] | None = None
+
+
+class SyncChangePreviewResponse(BaseModel):
+    direction: str
+    #: enter, update, leave, kept -> how many rows.
+    counts: dict[str, int]
+    #: Inbound: rows the platform would add; outbound: platform rows the run would create.
+    enter: list[str]
+    update: list[str]
+    #: Rows this sync wrote that the next run removes (outbound: the platform rows it deletes).
+    leave: list[str]
+    #: Inbound: rows that left the filters but stay, another writer wrote them.
+    kept: list[str]
+    error: str | None = None
+
+
+@router.post("/syncs/{sync_id}/preview", response_model=SyncChangePreviewResponse)
+async def preview_organization_sync_change(
+    sync_id: uuid.UUID,
+    body: SyncChangeRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> SyncChangePreviewResponse:
+    """What the next run of a sync would do with new filters, before they are saved (#1982 S2).
+
+    Reads with this administrator's token, the one saving makes the runs read with; nothing is
+    written to the platform or to the sync. No model call.
+    """
+    from app.services import organization_context_sync as osync
+
+    row = await _sync_or_404(db, sync_id)
+    if row.section == osync.ALL_SECTIONS:
+        raise HTTPException(status_code=422, detail="Sync all has no filters: preview a section sync.")
+    excluded = (
+        body.excluded_external_ids if body.excluded_external_ids is not None else list(row.excluded_external_ids or [])
+    )
+    change = await osync.preview_change(
+        db,
+        row,
+        user_id=admin.id,
+        filters=body.filters,
+        batch_type=body.batch_type,
+        remove_gone=body.remove_gone,
+        excluded_ids=excluded,
+    )
+    # The plan of assets and groups reads the records; their first touch imports the profile rows (#1543).
+    await db.commit()
+    return SyncChangePreviewResponse(**change)
+
+
+class OutboundPreviewRequest(BaseModel):
+    """A new outbound sync as the Add a sync dialog would save it (#1982 S4)."""
+
+    section: Literal["assets", "asset_groups", "software", "primary_assets", "pirs"]
+    source: Literal["openaev", "opencti", "opencrq"]
+    filters: dict[str, Any] = {}
+
+
+@router.post("/syncs/outbound-preview", response_model=SyncChangePreviewResponse)
+async def preview_new_outbound_sync(
+    body: OutboundPreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> SyncChangePreviewResponse:
+    """What the first run of a new outbound sync would write, before it is saved (#1982 S4).
+
+    The same plan as the preview of an existing sync, with no platform row created yet; read with
+    this administrator's token. Nothing is written to the platform or saved. No model call.
+    """
+    from types import SimpleNamespace
+
+    from app.services import organization_context_outbound as outbound
+    from app.services import organization_context_sync as osync
+
+    if not outbound.supports(body.section, body.source, "outbound"):
+        raise HTTPException(status_code=422, detail=outbound.directions(body.section, body.source)[1])
+    # A sync not saved yet: the planner reads only these attributes of a stored one.
+    proposed: Any = SimpleNamespace(
+        id=None, section=body.section, source=body.source, direction="outbound", filters={}, outbound_ids={}
+    )
+    change = await osync.preview_change(
+        db, proposed, user_id=admin.id, filters=body.filters, batch_type="", remove_gone=True, excluded_ids=None
+    )
+    await db.commit()
+    return SyncChangePreviewResponse(**change)
 
 
 @router.delete("/syncs/{sync_id}", status_code=204)
@@ -2743,73 +3079,6 @@ async def run_organization_sync(
             status_code=409, detail="Another version was saved at the same time. Run it again."
         ) from None
     return await _sync_response(db, row)
-
-
-class FillAgentRequest(BaseModel):
-    integration_id: str
-    #: True: also create the scheduled assignment that keeps the assets in sync.
-    schedule: bool = False
-    cron: str = "0 6 * * *"
-    timezone: str | None = None
-
-
-class FillAgentResponse(BaseModel):
-    agent_id: str
-    agent_name: str
-    created: bool
-    assignment_id: str | None = None
-    #: The preview instruction the chat starts with.
-    prompt: str
-
-
-@router.post("/fill-agent", response_model=FillAgentResponse)
-async def create_organization_fill_agent(
-    body: FillAgentRequest,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
-    # It creates an agent (and a scheduled assignment): refused when AI is off or unlicensed.
-    _gate: None = Depends(require_agentic_ai),
-) -> FillAgentResponse:
-    """An agent that fills the assets from one connected integration, and its optional sync (#11888).
-
-    Bound to the integration read-only and to the ``organization_context``
-    group, reused when the administrator already has one for that integration.
-    No model call here: the chat or the scheduled run does the reading.
-    """
-    from sqlalchemy import select
-
-    from app.api.v1.helpers import get_user_group_ids, parse_uuid, user_visible_filter
-    from app.core.utils import validate_cron_expression
-    from app.models.integration import Integration
-    from app.services import organization_context_fill_agent as fill
-
-    integration_id = parse_uuid(body.integration_id, label="integration_id")
-    groups = await get_user_group_ids(db, admin.id)
-    integration = (
-        await db.execute(
-            select(Integration).where(
-                Integration.id == integration_id,
-                user_visible_filter(Integration, admin.id, groups, is_admin=True),
-            )
-        )
-    ).scalar_one_or_none()
-    if integration is None:
-        raise HTTPException(status_code=404, detail="Integration not found.")
-    try:
-        cron = validate_cron_expression(body.cron)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from None
-    made = await fill.ensure_fill_agent(
-        db, admin_id=admin.id, integration=integration, schedule=body.schedule, cron=cron, timezone=body.timezone
-    )
-    await db.commit()
-    return FillAgentResponse(
-        agent_id=str(made.agent.id),
-        agent_name=made.agent.name,
-        created=made.created,
-        assignment_id=str(made.assignment.id) if made.assignment else None,
-        prompt=made.prompt,
-    )
 
 
 class SetupPromptResponse(BaseModel):

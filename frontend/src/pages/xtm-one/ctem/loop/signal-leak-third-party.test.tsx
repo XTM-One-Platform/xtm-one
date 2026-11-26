@@ -48,7 +48,7 @@ const leak: CtemSignal = {
     outcome: "case",
     reason_code: "in_scope",
     reason_params: { criticality: "high", threshold: "high", confidence: "medium" },
-    reconcile: { assets: [], crown_jewels_named: [], tech_stack: [] },
+    reconcile: { assets: [], primary_assets_named: [], products: [] },
     scope: { criticality: "high", threshold: "high", sources: [{ from: "owned_domain", name: "corp.example", criticality: "high" }] },
   },
   case_id: null,
@@ -128,20 +128,20 @@ describe("credential-leak and third-party signals", () => {
   it("the trace of a third party that opened a case says its primary assets once, in Decision inputs", async () => {
     const dependent: CtemSignal = {
       ...supplier,
-      evidence: { ...supplier.evidence, crown_jewels: ["Customer portal"], opencrq_asset_ids: ["asset-42"] },
+      evidence: { ...supplier.evidence, primary_assets: ["Customer portal"], opencrq_asset_ids: ["asset-42"] },
       state: "case_opened",
       decision: {
         version: 1,
         outcome: "case",
         reason_code: "in_scope",
         reason_params: { criticality: "high", threshold: "high", confidence: "medium" },
-        reconcile: { assets: [], crown_jewels_named: ["Customer portal"], tech_stack: [] },
+        reconcile: { assets: [], primary_assets_named: ["Customer portal"], products: [] },
         scope: { criticality: "high", threshold: "high", sources: [] },
       },
     };
     const facts = await renderTrace(dependent);
     const evidence = within(facts).queryByTestId("ctem-signal-evidence")?.textContent ?? "";
-    expect(evidence).not.toContain("crown_jewels");
+    expect(evidence).not.toContain("primary_assets");
     expect(evidence).not.toContain("opencrq_asset_ids");
     expect(evidence).not.toContain("asset-42");
     expect(screen.getByTestId("ctem-decision-inputs")).toHaveTextContent("Customer portal");

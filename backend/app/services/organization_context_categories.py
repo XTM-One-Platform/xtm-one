@@ -14,7 +14,7 @@
 """The categories of the organization context, and how an agent resolves them (#11533).
 
 The profile has a short identity (name, sector, regions, size, risk
-appetite) and long lists: the crown jewels, the software,
+appetite) and long lists: the primary assets, the software,
 the PIRs, the tracked organizations. The identity is always in the prompt
 (``organization_context_injection``); a list is a CATEGORY: announced in the
 prompt with its size, preloaded only when the cascade selects it, and read
@@ -62,14 +62,12 @@ _LABELS: dict[str, str] = {
     "shipped_products": "shipped products",
     "prioritization_policy": "prioritization policy",
     "attack_surface": "attack surface pass: enabled, provider integrations, cadence",
-    "tech_stack": "software: vendor, product, type, versions, CPE, asset count",
+    "software": "software: vendor, product, type, versions, CPE, asset count",
     ENTERPRISE_KNOWLEDGE: "procedures and reference documents, read by query",
 }
 #: Rows a page answers by default, and at most.
 DEFAULT_PAGE = 50
 MAX_PAGE = 200
-#: Cap of ONE preloaded category in the prompt, in characters (about 1,500 tokens).
-PRELOAD_MAX_CHARS = 6000
 
 
 @dataclass(frozen=True)
@@ -82,24 +80,17 @@ class Category:
 
 
 #: The profile field the Software category reads before the store is built (#1495).
-SOFTWARE_FIELD = "tech_stack"
+SOFTWARE_FIELD = "software"
 #: The category of the organization's software (#1495): the Software entity. No alias (Sam, 24 Nov 2026).
 SOFTWARE = "software"
-#: The profile field the primary assets are stored under (#1591: OpenCRQ's primary assets, the stored key kept).
-PRIMARY_ASSETS_FIELD = "crown_jewels"
-#: The category of the organization's primary assets (#1591), in OpenCRQ's words.
+#: The category of the organization's primary assets (#1591), in OpenCRQ's words, and its profile field.
+#: No alias (#1844, Sam, 24 Nov 2026).
 PRIMARY_ASSETS = "primary_assets"
-#: Deprecated since #1591 (kept one release): ``crown_jewels`` answers the ``primary_assets`` category.
-CROWN_JEWELS_ALIAS = "crown_jewels"
-#: Each deprecated category name, to the category it answers.
-CATEGORY_ALIASES: dict[str, str] = {CROWN_JEWELS_ALIAS: PRIMARY_ASSETS}
 
 
 def _category_name(field: str) -> str:
     if field == SOFTWARE_FIELD:
         return SOFTWARE
-    if field == PRIMARY_ASSETS_FIELD:
-        return PRIMARY_ASSETS
     # ``pir_ids`` is read as ``pirs``: a category names what it lists.
     return field[: -len("_ids")] + "s" if field.endswith("_ids") else field
 
@@ -138,9 +129,8 @@ def available_names() -> tuple[str, ...]:
 
 
 def canonical_name(name: object) -> str:
-    """*name* lower-cased, a deprecated alias read as the category it answers (``crown_jewels`` -> ``primary_assets``)."""
-    wanted = str(name or "").strip().lower()
-    return CATEGORY_ALIASES.get(wanted, wanted)
+    """*name* lower-cased and stripped."""
+    return str(name or "").strip().lower()
 
 
 def get(name: str) -> Category | None:
@@ -188,22 +178,6 @@ def checked_for_api(value: object) -> list[str] | None:
         return check_categories(value)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
-
-
-def resolve_categories(
-    *,
-    platform_categories: object,
-    agent_categories: object = None,
-    assignment_categories: object = None,
-) -> list[str]:
-    """The preloaded categories: assignment > agent > platform, the most specific explicit list wins.
-
-    ``None`` inherits; an explicit empty list preloads nothing.
-    """
-    for value in (assignment_categories, agent_categories):
-        if value is not None:
-            return normalize_categories(value)
-    return normalize_categories(platform_categories)
 
 
 def rows_of(profile: OrganizationProfile, category: Category) -> list[Any]:
@@ -322,6 +296,29 @@ def render_page(
     return "\n".join([head + ".", wrap_untrusted(json.dumps(page, ensure_ascii=False), "organization profile"), tail])
 
 
+def render_rows_page(
+    category: Category, rows: list[Any], *, total: int, query: str = "", offset: int = 0, limit: int = DEFAULT_PAGE
+) -> str:
+    """One page the database already cut (*total* rows match), read like :func:`render_page` (#2443)."""
+    from app.services.content_safety import wrap_untrusted
+
+    scope = f" matching {query.strip()!r}" if query.strip() else ""
+    if not total:
+        return f"Category {category.name} ({category.label}): no row{scope}. Do not guess it."
+    if not rows:
+        return f"Category {category.name} ({category.label}): offset {offset} is past the {total} rows{scope}."
+    nxt = offset + len(rows)
+    tail = (
+        f'More: get_organization_context(category="{category.name}"'
+        + (f", query={query.strip()!r}" if scope else "")
+        + f", offset={nxt}, limit={limit})."
+        if nxt < total
+        else "End of the category."
+    )
+    head = f"Category {category.name} ({category.label}): rows {offset + 1}-{nxt} of {total}{scope}."
+    return "\n".join([head, wrap_untrusted(json.dumps(rows, ensure_ascii=False), "organization profile"), tail])
+
+
 #: The ``field:value`` terms an agent's query on the assets category filters on (#1774): the
 #: CTEM Inventory list's filters (``organization_asset_store``), ``source`` and ``group`` included.
 ASSET_QUERY_FIELDS: tuple[str, ...] = (
@@ -339,7 +336,7 @@ def split_asset_query(query: str) -> tuple[dict[str, list[str]], str]:
     """``(filters, name text)`` of an assets query: ``os_family:windows source:intune web`` (#1774).
 
     A ``field:value`` term on a known field is a filter (a repeated field ORs its values,
-    fields AND); every other word stays the name substring.
+    fields AND); every other word stays the free text (the name, os_family, os_version or owner, #2085).
     """
     filters: dict[str, list[str]] = {}
     words: list[str] = []
@@ -352,14 +349,33 @@ def split_asset_query(query: str) -> tuple[dict[str, list[str]], str]:
     return filters, " ".join(words)
 
 
-def render_asset_page(rows: list[dict[str, Any]], *, total: int, query: str, offset: int, limit: int) -> str:
-    """One page of the merged CTEM Inventory assets as an agent reads it (#1774)."""
+def held_values_line(held: dict[str, list[str]] | None) -> str:
+    """``os_family holds: Linux, Windows.`` per filtered field, what a zero names so it is never silent (#2085)."""
+    parts = [f"{field} holds: {', '.join(values) if values else 'no value'}" for field, values in (held or {}).items()]
+    return " ".join(f"{part}." for part in parts)
+
+
+def render_asset_page(
+    rows: list[dict[str, Any]],
+    *,
+    total: int,
+    query: str,
+    offset: int,
+    limit: int,
+    held: dict[str, list[str]] | None = None,
+) -> str:
+    """One page of the merged CTEM Inventory assets as an agent reads it (#1774).
+
+    *held* (the values each field filter holds, :func:`organization_asset_store.held_values`) is named
+    when no row matched, so a filter on a value no asset carries says what the field does hold (#2085).
+    """
     from app.services.content_safety import wrap_untrusted
 
     scope = f" matching {query.strip()!r}" if query.strip() else ""
     name = "assets_exposure (merged CTEM Inventory assets, one row per real asset)"
     if not total:
-        return f"Category {name}: no row{scope}. Do not guess it."
+        values = held_values_line(held)
+        return f"Category {name}: no row{scope}." + (f" {values}" if values else "") + " Do not guess it."
     if not rows:
         return f"Category {name}: offset {offset} is past the {total} rows{scope}."
     nxt = offset + len(rows)
@@ -388,30 +404,3 @@ def render_categories(counts: dict[str, int]) -> str:
         )
     lines += [index_line(category, counts.get(category.name, 0)) for category in available()]
     return "\n".join(lines)
-
-
-def render_preloaded(category: Category, rows: list[Any]) -> str:
-    """A category preloaded into the prompt, at most :data:`PRELOAD_MAX_CHARS`, the rest named with its call."""
-    from app.services.content_safety import wrap_untrusted
-
-    if not rows:
-        return f"Preloaded {category.name} ({category.label}): not filled. Do not guess it."
-    kept = list(rows)
-    while True:
-        shown = len(kept)
-        rest = (
-            f" Showing {shown} of {len(rows)}; the rest: "
-            f'get_organization_context(category="{category.name}", offset={shown}).'
-            if shown < len(rows)
-            else ""
-        )
-        text = "\n".join(
-            [
-                f"Preloaded {category.name} ({category.label}), {len(rows)} rows.{rest}",
-                wrap_untrusted(json.dumps(kept, ensure_ascii=False), "organization profile", stable=True),
-            ]
-        )
-        if len(text) <= PRELOAD_MAX_CHARS or shown <= 1:
-            return text if len(text) <= PRELOAD_MAX_CHARS else text[: PRELOAD_MAX_CHARS - 3] + "..."
-        # Halve while far over, then one row at a time, so a 500-row list stays cheap.
-        kept = kept[: max(1, shown // 2)] if len(text) > 2 * PRELOAD_MAX_CHARS else kept[:-1]

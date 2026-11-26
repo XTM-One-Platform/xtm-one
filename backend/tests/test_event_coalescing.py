@@ -60,9 +60,68 @@ def test_the_dispatcher_folds_before_any_slot_or_queue_decision() -> None:
     assert 'status="coalesced"' in source[fold:]
 
 
-def test_the_fold_targets_a_queued_run_of_the_same_assignment_and_key_under_a_row_lock() -> None:
+def test_a_payload_without_a_merge_spec_keeps_the_newest_fields() -> None:
+    waiting = {**_event("a"), "tags": ["x"]}
+    incoming = {**_event("b"), "tags": ["y"]}
+    assert event_coalescing.merged_payload(waiting, incoming)["tags"] == ["y"]
+
+
+def test_a_merge_spec_unions_lists_merges_by_key_and_keeps_counts_whole() -> None:
+    spec = {"union": ["ids"], "by_key": {"rows": "id"}, "count_at_least": {"n": "ids"}}
+    waiting = {
+        **_event("a"),
+        "coalesce_merge": spec,
+        "ids": ["s1", "s2"],
+        "rows": [{"id": "s1", "v": 1}],
+        "n": 7,
+        "entity": {"id": "a", "ids": ["s1", "s2"], "n": 7},
+    }
+    incoming = {
+        **_event("b"),
+        "coalesce_merge": spec,
+        "ids": ["s2", "s3"],
+        "rows": [{"id": "s1", "v": 2}, {"id": "s3", "v": 3}],
+        "n": 2,
+        "entity": {"id": "b", "ids": ["s2", "s3"], "n": 2},
+    }
+    merged = event_coalescing.merged_payload(waiting, incoming)
+    assert merged["ids"] == merged["entity"]["ids"] == ["s1", "s2", "s3"]
+    assert merged["rows"] == [{"id": "s1", "v": 2}, {"id": "s3", "v": 3}]
+    assert "rows" not in merged["entity"]
+    # Never below a side's own count (OpenCRQ caps its ids), never below the ids.
+    assert merged["n"] == merged["entity"]["n"] == 7
+    assert merged["entity"]["id"] == "b"
+
+
+def test_a_sum_field_adds_up_and_counts_a_run_covered_twice_once() -> None:
+    """``sum`` adds both sides' counts, less what a run both events cover carries (#2169)."""
+    spec = {"sum": ["changed"]}
+    waiting = {**_event("a"), "coalesce_merge": spec, "changed": 4, "entity": {"id": "a", "changed": 4}}
+    waiting["covers"] = [{"id": "a", "changed": 4}]
+    incoming = {**_event("b"), "coalesce_merge": spec, "changed": 9, "entity": {"id": "b", "changed": 9}}
+    incoming["covers"] = [{"id": "a", "changed": 4}, {"id": "b", "changed": 5}]
+    merged = event_coalescing.merged_payload(waiting, incoming)
+    assert merged["changed"] == merged["entity"]["changed"] == 9
+    fresh = {**incoming, "covers": [{"id": "b", "changed": 5}], "changed": 5}
+    assert event_coalescing.merged_payload(waiting, fresh)["changed"] == 9
+    assert "changed" not in event_coalescing.merged_payload(_event("a"), {**_event("b"), "coalesce_merge": spec})
+
+
+def test_a_run_that_has_not_started_is_foldable() -> None:
+    assert set(event_coalescing.FOLDABLE_STATUSES) == {assignment_engine.QUEUED_RUN_STATUS, "pending"}
+
+
+def test_the_executor_rereads_a_coalesced_payload_under_the_row_lock_before_it_starts() -> None:
+    source = inspect.getsource(assignment_engine.execute_assignment_run)
+    reread = source.index("select(AssignmentRun.trigger_payload)")
+    assert "event_coalescing.context_key(" in source[reread - 400 : reread]
+    assert "with_for_update()" in source[reread : reread + 200]
+    assert reread < source.index('run.status = "running"')
+
+
+def test_the_fold_targets_a_waiting_run_of_the_same_assignment_and_key_under_a_row_lock() -> None:
     source = inspect.getsource(assignment_engine._fold_into_queued_run)
-    assert "AssignmentRun.status == QUEUED_RUN_STATUS" in source
+    assert "AssignmentRun.status.in_(event_coalescing.FOLDABLE_STATUSES)" in source
     assert "AssignmentRun.assignment_id == assignment.id" in source
     assert "event_coalescing.CONTEXT_KEY" in source
     assert "with_for_update()" in source

@@ -8,7 +8,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from html import escape as html_escape
@@ -195,6 +195,7 @@ from app.core.logging import setup_logging
 from app.core.lone_surrogates import escape_surrogates
 from app.core.shutdown_finalizers import drain_shutdown_finalizers, track_request_task
 from app.core.utils import (
+    GRACEFUL_SHUTDOWN_CANCEL_HINT,
     client_address,
     first_forwarded_hop,
     format_exception_message,
@@ -202,7 +203,7 @@ from app.core.utils import (
 )
 from app.core.worker_exits import register_worker_and_report_lost, unregister_worker
 from app.core.worker_recycle import log_worker_shutdown_summary, recycler, start_recycle_watch
-from app.core.worker_shutdown import background_grace_deadline, install_stop_signal_hook
+from app.core.worker_shutdown import background_grace_deadline, install_stop_signal_hook, on_stop
 from app.services.branding import (
     configure_branded_index_html,
     get_branded_index_html,
@@ -2258,6 +2259,15 @@ async def _do_all_startup_work() -> None:
             "without it (the bot stays offline until the next boot retries)"
         )
 
+    # Defender XDR alert events: the consumer of the tenants' Event Hubs
+    # (Streaming API). Optional like the gateway above.
+    try:
+        from app.services.defender_stream import start_defender_stream
+
+        await start_defender_stream()
+    except Exception:
+        logger.exception("Failed to start the Defender stream supervisor, continuing startup without it")
+
     # Prime the platform branding cache and patch the bundled index.html so
     # link-preview crawlers see the configured (DB-managed) title, logo
     # description, etc. without executing JavaScript.
@@ -2282,6 +2292,13 @@ async def _do_all_startup_work() -> None:
     except Exception:
         logger.exception("Failed to prime branding cache / patch index.html")
     _branding_refresh_task = asyncio.create_task(_branding_refresh_loop())
+
+    # The published schema, built once here off the event loop, so the first
+    # GET /api/openapi.json (a version probe) never builds it on the loop.
+    try:
+        await _prebuild_openapi_schema()
+    except Exception:
+        logger.exception("Failed to build the OpenAPI schema at startup (built on its first request instead)")
 
     # Initialise anonymous usage telemetry (OTLP/HTTP to the Filigran
     # collector). On unless TELEMETRY_ENABLED=false, which skips it before any
@@ -2585,6 +2602,10 @@ async def lifespan(app: FastAPI):
     from app.channels.discord import stop_discord_gateway
 
     await stop_discord_gateway()
+
+    from app.services.defender_stream import stop_defender_stream
+
+    await stop_defender_stream()
 
     if _scheduler_task is not None:
         _scheduler_task.cancel()
@@ -3065,10 +3086,31 @@ application = FastAPI(
 
 
 def _refresh_openapi_branding() -> None:
+    """Put the cached platform name on the published schema.
+
+    The schema already built keeps its paths and components: only its
+    ``info`` is replaced, so a branding change never makes the next
+    ``GET /api/openapi.json`` rebuild the whole schema on the event loop.
+    """
     platform_name = get_cached_branding().name
+    description = _openapi_description(platform_name)
     application.title = platform_name
-    application.description = _openapi_description(platform_name)
-    application.openapi_schema = None
+    application.description = description
+    schema = application.openapi_schema
+    if schema is not None:
+        info = {**schema.get("info", {}), "title": platform_name, "description": description}
+        application.openapi_schema = {**schema, "info": info}
+
+
+async def _prebuild_openapi_schema() -> None:
+    """Build the published schema in a worker thread, then brand it.
+
+    FastAPI builds it on the first request otherwise, synchronously on the
+    event loop: seconds during which the worker answers nothing.
+    """
+    if application.openapi_schema is None:
+        await asyncio.to_thread(application.openapi)
+    _refresh_openapi_branding()
 
 
 application.state.refresh_openapi_branding = _refresh_openapi_branding
@@ -3649,6 +3691,21 @@ class ConcurrencyLimitMiddleware:
 
 _drain_logger = logging.getLogger("app.shutdown_drain")
 
+#: Once this worker is asked to stop, how long a read (GET, HEAD) that has not
+#: started its answer keeps running before it is cut with the 503 + Retry-After
+#: below: the client retries on a live worker at once instead of waiting for
+#: the whole GRACEFUL_TIMEOUT drain. Writes, started streams and agent turns
+#: keep the full drain.
+STOP_READ_GRACE_SECONDS = 5.0
+_STOP_CUT_METHODS = frozenset({"GET", "HEAD"})
+#: Carries uvicorn's drain hint, so every reader of a cut (this middleware,
+#: the log filter, the cut-turn handlers) takes it as the platform stop it is.
+STOP_READ_CANCEL_MESSAGE = f"Task cancelled, {GRACEFUL_SHUTDOWN_CANCEL_HINT} (a read not answered at the stop)"
+
+
+def _no_op() -> None:
+    return None
+
 
 class GracefulShutdownDrainMiddleware:
     """Complete drain-cancelled responses cleanly instead of erroring."""
@@ -3683,6 +3740,24 @@ class GracefulShutdownDrainMiddleware:
             ):
                 response_complete = True
             await send(message)
+
+        cut_timer: asyncio.TimerHandle | None = None
+        unregister: Callable[[], None] = _no_op
+        request_task = asyncio.current_task()
+        if scope.get("method") in _STOP_CUT_METHODS and request_task is not None:
+            loop = asyncio.get_running_loop()
+            cut_task = request_task
+
+            def _cut() -> None:
+                if not response_started and not cut_task.done():
+                    cut_task.cancel(msg=STOP_READ_CANCEL_MESSAGE)
+
+            def _arm() -> None:
+                nonlocal cut_timer
+                if cut_timer is None:
+                    cut_timer = loop.call_later(STOP_READ_GRACE_SECONDS, _cut)
+
+            unregister = on_stop(_arm)
 
         try:
             await self.app(scope, receive, tracking_send)
@@ -3736,6 +3811,10 @@ class GracefulShutdownDrainMiddleware:
                             "more_body": False,
                         }
                     )
+        finally:
+            if cut_timer is not None:
+                cut_timer.cancel()
+            unregister()
 
     def _log_drained(self, path: str, response_started: bool) -> None:
         """One WARNING per drain, per-request breadcrumbs at DEBUG.

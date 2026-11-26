@@ -349,6 +349,19 @@ class FleetBoundaryViolationResponse(BaseModel):
     target_agent_id: str
 
 
+class FleetCaseOwnershipRequest(BaseModel):
+    """``PUT /fleets/{id}/case-ownership`` (#1966): the CTEM cases a fleet runs.
+
+    ``paths`` null = every trigger path, else a non-empty list of trigger
+    paths; ``key`` the prefix of its case work items (``<key>:case:<case id>``),
+    default ``ctem:fleet-<id>``. ``clear`` true removes the declaration.
+    """
+
+    paths: list[str] | None = None
+    key: str | None = Field(default=None, max_length=60)
+    clear: bool = False
+
+
 class FleetResponse(BaseModel):
     id: str
     user_id: str | None
@@ -406,6 +419,8 @@ class FleetResponse(BaseModel):
     #: Provenance of a fork (#9174): the source's id, slug, name, built-in
     #: flag, fingerprint, member mode and fork time; ``null`` = not a fork.
     forked_from: dict | None = None
+    #: The CTEM cases it runs (#1966): ``{paths: null | [trigger path], key}``; ``null`` = none.
+    case_ownership: dict | None = None
     #: The opt-in state of its automations (#9977 S2, the Fleets list card):
     #: the same counts as ``GET /fleets/{id}/health``.
     automations: FleetAutomationsResponse | None = None
@@ -760,6 +775,10 @@ class FleetResetResponse(BaseModel):
     documentation: bool
     #: Automations an emergency stop holds, left as they are.
     held_by_stop: list[str]
+    #: Open decision items (needs_human) of the home members, kept by the reset (#2134).
+    open_gates: int = 0
+    #: Open work items of the home members, kept by the reset (#2134).
+    open_items: int = 0
     #: The fleet's automations after the call.
     automations_state: FleetAutomationsResponse
 

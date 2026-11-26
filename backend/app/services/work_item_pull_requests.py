@@ -546,6 +546,19 @@ def _mark_told_holder(payload: object, done: CiCompleted) -> dict[str, Any]:
     return out
 
 
+def moved_head(payload: object, done: CiCompleted) -> str | None:
+    """The current head of *done*'s pull request when it is no longer *done*'s head, else ``None``. Pure."""
+    if not done.head_sha:
+        return None
+    for binding in pull_request_bindings(payload):
+        if (binding["repo"], binding["number"]) != (done.repo, done.number):
+            continue
+        head = binding.get("head_sha")
+        if head and head != done.head_sha:
+            return str(head)
+    return None
+
+
 def waiting_for_ci(item: dict) -> dict | None:
     """The first open pull request of *item* whose CI has not completed, or ``None``."""
     waiting = pull_requests_waiting_for_ci(item)
@@ -715,8 +728,26 @@ def _apply_ci(binding: dict, event: PullRequestEvent) -> CiCompleted | None:
 
 #: ``conclusion`` of a dispatch made because the merge queue dropped the pull request.
 DEQUEUED_CONCLUSION = "dequeued"
+#: What a merge queue removal reason means for the owner, when the reason alone misleads.
+#: GitHub names a conflict inside the queue's group (with a pull request ahead of it)
+#: ``merge_conflict`` too: the pull request itself may merge cleanly with its base.
+DEQUEUE_HINTS = {
+    "merge_conflict": (
+        "the conflict may be with a pull request ahead of it in the queue's group, not its base: "
+        "read its mergeable state against the base first; mergeable means enqueue the same head again"
+    ),
+}
 #: ``conclusion`` of a dispatch made because the pull request conflicts with its base.
 CONFLICT_CONCLUSION = "conflict"
+
+
+def dequeued_run_name(reason: str | None, run_hint: str | None = None) -> str:
+    """The ``run_name`` of a merge queue removal wake: its reason, what it means when misleading,
+    and where the failing queue run is read when the provider says (``extra["queue_run_hint"]``). Pure."""
+    reason = reason or "unknown"
+    hint = DEQUEUE_HINTS.get(reason)
+    name = f"merge queue: removed ({reason})" + (f"; {hint}" if hint else "")
+    return name + (f"; {run_hint}" if run_hint else "")
 
 
 def _apply_dequeued(binding: dict[str, Any], event: PullRequestEvent) -> CiCompleted | None:
@@ -745,7 +776,7 @@ def _apply_dequeued(binding: dict[str, Any], event: PullRequestEvent) -> CiCompl
         head_sha=sha,
         conclusion=DEQUEUED_CONCLUSION,
         run_url=event.url or binding.get("url"),
-        run_name=f"merge queue: removed ({event.conclusion or 'unknown'})",
+        run_name=dequeued_run_name(event.conclusion, (event.extra or {}).get("queue_run_hint") or None),
         dispatch_key=key,
     )
 
@@ -1164,6 +1195,14 @@ async def _dispatch(item_id: uuid.UUID, done: CiCompleted, now: datetime) -> str
             return "not dispatched: the item is no longer waiting"
         if waits_on_items(item):
             return "not dispatched: it waits for other items"
+        moved = moved_head(item.payload, done)
+        if moved is not None:
+            # A completion held back (a lease, a busy inbox) is stale once the
+            # head moved: the new head's own CI completion dispatches it (#2243).
+            return (
+                f"not dispatched: {done.repo}#{done.number} moved from {(done.head_sha or '?')[:8]} "
+                f"to {moved[:8]}; the new head's CI completion hands it back"
+            )
         # The deferral of an unchanged red waited for this very CI conclusion.
         if clear_red_deferral(item):
             item.last_activity_at = now
@@ -1240,6 +1279,7 @@ async def _dispatch(item_id: uuid.UUID, done: CiCompleted, now: datetime) -> str
                     "reason": CI_COMPLETED_REASON,
                     "conclusion": done.conclusion,
                     "run_url": done.run_url,
+                    "run_name": done.run_name,
                     "pull_request": {
                         "repo": done.repo,
                         "number": done.number,
@@ -1275,14 +1315,24 @@ def reconcile_failure(done: CiCompleted, state: dict[str, Any] | None) -> tuple[
     On the same head, a live ``success`` turns the dispatch green, and an
     undecided read (a required check still running, the red on a check the
     base does not require) dispatches nothing: the answer's second value says
-    why. No read, another head, or a live ``failure``: the delivery stands.
+    why. A live head the pull request moved to past the delivered one also
+    dispatches nothing: that red is spent, the new head's CI decides (#2014).
+    No read, or a live ``failure`` on the same head: the delivery stands.
     """
-    if done.conclusion != "failure" or not isinstance(state, dict) or state.get("head_sha") != done.head_sha:
+    if done.conclusion != "failure" or not isinstance(state, dict):
+        return done, None
+    label = f"{done.repo}#{done.number}"
+    live_sha = state.get("head_sha")
+    if isinstance(live_sha, str) and live_sha and done.head_sha and live_sha != done.head_sha:
+        return done, (
+            f"not dispatched: the red on {label} was on {done.head_sha[:12]}, the pull request moved to "
+            f"{live_sha[:12]} (read live); the new head's CI completion wakes it"
+        )
+    if live_sha != done.head_sha:
         return done, None
     live = state.get("conclusion")
     if live == "failure":
         return done, None
-    label = f"{done.repo}#{done.number}"
     if live == "success":
         return (
             CiCompleted(
@@ -1329,10 +1379,28 @@ def record_unconfirmed_failure(payload: object, done: CiCompleted, state: dict |
     require) marks the recorded failed runs ``not_required``. Either way the
     head no longer reads red (:func:`red_pull_requests`), so neither the red
     self-block release nor the inbox red guard acts on it (#11807). A live
-    ``failure``, another head or no read: unchanged, and ``None``.
+    ``failure`` or no read: unchanged, and ``None``. A live head past the
+    delivered one: the binding takes the live head and forgets the old CI, so
+    the spent red neither releases nor parks the item (#2014).
     """
     out = dict(payload) if isinstance(payload, dict) else {}
-    if done.conclusion != "failure" or not isinstance(state, dict) or state.get("head_sha") != done.head_sha:
+    if done.conclusion != "failure" or not isinstance(state, dict):
+        return out, None
+    live_sha = state.get("head_sha")
+    if isinstance(live_sha, str) and live_sha and done.head_sha and live_sha != done.head_sha:
+        bindings = pull_request_bindings(out)
+        for binding in bindings:
+            if (binding["repo"], binding["number"]) != (done.repo, done.number):
+                continue
+            recorded_ci: dict[str, Any] = binding["ci"] if isinstance(binding.get("ci"), dict) else {}
+            if recorded_ci.get("head_sha") == live_sha:
+                return out, None  # the new head's CI is recorded already
+            binding["head_sha"] = live_sha
+            binding["ci"] = {"head_sha": live_sha}
+            out["pull_requests"] = bindings
+            return out, f"{done.repo}#{done.number} moved from {done.head_sha[:12]} to {live_sha[:12]}"
+        return out, None
+    if state.get("head_sha") != done.head_sha:
         return out, None
     live = state.get("conclusion")
     if live == "failure":
@@ -1642,6 +1710,61 @@ def ci_poll_candidate(item: Any) -> bool:
     return parked_without_release(item) or red_deferred(item)
 
 
+def ci_snapshot_stale(item: Any) -> bool:
+    """Whether *item* is blocked on something else while its views still say it waits for CI. Pure.
+
+    An item blocked on a reference (a review, a merge) or another item is not
+    a :func:`ci_poll_candidate`: its pull requests' CI snapshot is the one taken
+    when it was blocked, so a check that finished since still reads "Waiting
+    for CI" (#2262). The poll reads such an item to refresh the snapshot alone,
+    with no dispatch: its own blocker releases it.
+    """
+    if getattr(item, "status", None) != "blocked" or ci_poll_candidate(item):
+        return False
+    if getattr(item, "needs_human", None):
+        return False
+    return bool(pull_requests_waiting_for_ci({"payload": getattr(item, "payload", None)}))
+
+
+def record_polled_ci(
+    payload: dict[str, Any] | None, *, repo: str, number: int, state: dict[str, Any]
+) -> dict[str, Any]:
+    """*payload* with the live CI verdict *state* of one pull request recorded, owing no dispatch. Pure.
+
+    The snapshot refresh of :func:`ci_snapshot_stale` items: a decided verdict
+    becomes the head's CI (a new head forgets the old one's), the dispatch keys
+    are left as they are, so a later release of the item dispatches as usual.
+    """
+    out = dict(payload or {})
+    bindings = pull_request_bindings(out)
+    wanted = (str(repo).strip().lower(), number)
+    binding = next((b for b in bindings if (b["repo"], b["number"]) == wanted), None)
+    sha = state.get("head_sha") if isinstance(state, dict) else None
+    if binding is None or binding.get("state", "open") != "open" or not isinstance(sha, str) or not sha:
+        return out
+    ci = dict(binding.get("ci") or {}) if isinstance(binding.get("ci"), dict) else {}
+    if binding.get("head_sha") != sha or ci.get("head_sha") not in (None, sha):
+        binding["head_sha"] = sha
+        ci = {"head_sha": sha}
+    if isinstance(state.get("draft"), bool):
+        binding["draft"] = state["draft"]
+    conclusion = state.get("conclusion")
+    if conclusion in ("success", "failure"):
+        ci["head_sha"] = sha
+        ci["runs"] = {
+            POLLED_RUN_KEY: {
+                "run_id": polled_decider(state),
+                "name": "checks of the head (read)",
+                "status": "completed",
+                "conclusion": conclusion,
+                "url": state.get("run_url"),
+            }
+        }
+    binding["ci"] = ci
+    out["pull_requests"] = bindings
+    return out
+
+
 def parked_without_release(item: Any) -> bool:
     """Whether *item* is blocked with nothing a platform event releases, on an open pull request it names.
 
@@ -1665,6 +1788,14 @@ async def _apply_polled(item_id: uuid.UUID, reads: dict[tuple[str, int], dict], 
     to_dispatch: list[CiCompleted] = []
     async with async_session() as db:
         item = (await db.execute(select(WorkItem).where(WorkItem.id == item_id).with_for_update())).scalar_one_or_none()
+        if item is not None and ci_snapshot_stale(item):
+            # The snapshot alone (#2262): its own blocker releases it, nothing is dispatched.
+            payload = item.payload
+            for (repo, number), state in reads.items():
+                payload = record_polled_ci(payload, repo=repo, number=number, state=state)
+            item.payload = payload
+            await db.commit()
+            return []
         if item is None or not ci_poll_candidate(item):
             return []
         payload = item.payload
@@ -1778,7 +1909,7 @@ async def poll_pull_request_ci(now: datetime | None = None) -> dict:
                     [b for b in pull_request_bindings(item.payload) if b.get("state", "open") == "open"],
                 )
                 for item in rows
-                if ci_poll_candidate(item)
+                if (ci_poll_candidate(item) or ci_snapshot_stale(item))
                 and now_mono - _ci_polled.get(item.id, -CI_POLL_QUIET_SECONDS) >= CI_POLL_QUIET_SECONDS
             ][:CI_POLL_MAX_ITEMS]
             tokens: dict[tuple[str, str], str | None] = {}

@@ -71,7 +71,7 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
 
 vi.mock("@/hooks/api/useOrganizationContextApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useOrganizationContextApi")>()),
-  useOrganizationContext: () => ({ data: { profile: { crown_jewels: [], assets_exposure: [] } } }),
+  useOrganizationContext: () => ({ data: { profile: { primary_assets: [], assets_exposure: [] } } }),
 }));
 
 vi.mock("@/hooks/useAuth", async (importOriginal) => ({

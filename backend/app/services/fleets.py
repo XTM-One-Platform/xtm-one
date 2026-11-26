@@ -105,14 +105,18 @@ async def create_fleet(
     """Insert a fleet, retrying once if its slug was taken mid-flight.
 
     A new fleet acts on its computed approval catalog (``approval_pins`` ``{}``,
-    #10153 C1) and, without a declared catalog, starts at ``autonomous``: the
-    level it shows is the one that holds (C2), and a person moves the cursor to
-    make its actions wait. A caller that passes either field keeps its value
-    (a fork passes its source's catalog and ``approval_pins=None``).
+    #10153 C1) and, without a level, starts at Full human gates
+    (``DEFAULT_AUTONOMY_LEVEL``, #2279, Sam, 25 Nov 2026): every gate that waits
+    is one decision item between steps, never a tool approval inside a run
+    (``Fleet.enforce_gates_at_tool_level`` stays off). An administrator raises
+    the level. A caller that passes either field keeps its value (a fork passes
+    its source's catalog and ``approval_pins=None``).
     """
+    from app.services.fleet_autonomy import DEFAULT_AUTONOMY_LEVEL
+
     fields.setdefault("approval_pins", {})
-    if fields.get("approval_gates") is None:
-        fields.setdefault("autonomy_level", "autonomous")
+    if fields.get("autonomy_level") is None:
+        fields["autonomy_level"] = DEFAULT_AUTONOMY_LEVEL
     await db.flush()
     for attempt in (1, 2):
         fleet = Fleet(
@@ -1320,7 +1324,10 @@ async def ensure_fleet_health_check(db: AsyncSession, fleet: Fleet, agent: Agent
     if existing is not None:
         if existing.activation_check != gate:
             existing.activation_check = gate
-            existing.prompt = fleet_health_check_prompt(fleet)
+        # The prompt names the fleet: a renamed fleet (an upgrade included) gets it rewritten (#2121).
+        prompt = fleet_health_check_prompt(fleet)
+        if existing.prompt != prompt:
+            existing.prompt = prompt
         existing.ai_label = False
         return False
     if fleet_health_check_mode(fleet) != HEALTH_CHECK_DEFAULT:
@@ -1678,6 +1685,54 @@ async def refused_cross_fleet_handovers(
         "to other fleets. Hand over to the fleet's orchestrator or one of its exposed agents, "
         "or ask the fleet's owner to expose this agent.",
     )
+
+
+async def configured_handover_reach(
+    db: AsyncSession, source_agent_id: uuid.UUID | None, configured: Iterable[object] | None
+) -> set[uuid.UUID]:
+    """The configured handover targets of *source_agent_id* the handover itself grants.
+
+    A handover an owner or an administrator configured is the grant (Sam,
+    24 Nov 2026): the peer is reached in a person's chat or run whatever that
+    person may open. *configured* is the source's ``handover_agent_ids``; a
+    target that is a non-exposed home member of another fleet is left out, as
+    the exposure rule refuses it (:func:`refused_cross_fleet_handovers`). The
+    person gains nothing on the peer itself: this only widens which peers the
+    source's handover tools load.
+    """
+    targets = [t for t in _as_uuids(configured) if t != source_agent_id]
+    if not targets or source_agent_id is None:
+        return set()
+    hidden = await _crossing_unexposed(db, source_agent_id, targets)
+    return {t for t in targets if t not in hidden}
+
+
+def handover_peer_clause(
+    user_id: uuid.UUID | None, user_group_ids: list[str] | None, granted: Iterable[uuid.UUID]
+) -> Any:
+    """SQL filter on ``Agent`` for the handover peers a person's turn loads.
+
+    The peers the person may open (``user_visible_filter``, unchanged), or one
+    the configured handover grants (*granted*, :func:`configured_handover_reach`).
+    A granted peer still passes ``hidden_rows_excluded``: an internal or
+    sandbox agent is never a peer. With no acting person the grant is not
+    applied: the run keeps the peers it loaded before.
+    """
+    from sqlalchemy import and_, or_
+
+    from app.api.v1.helpers import hidden_rows_excluded, user_visible_filter
+
+    if user_id is None:
+        # No acting person: the company-managed tier the visibility filter
+        # answers for no user, unchanged.
+        return user_visible_filter(Agent, None, user_group_ids)  # type: ignore[arg-type]
+    visible = user_visible_filter(Agent, user_id, user_group_ids)
+    ids = list(granted)
+    if not ids:
+        return visible
+    reached = Agent.id.in_(ids)
+    hidden = hidden_rows_excluded(Agent)
+    return or_(visible, and_(hidden, reached) if hidden is not None else reached)
 
 
 @dataclass(frozen=True)

@@ -692,7 +692,7 @@ async def test_update_memory_entry_stamps_provenance_on_success():
     db = _FakeDB([_Result(scalar_one_or_none=entry)])
 
     with (
-        patch.object(api, "get_user_agent", new=AsyncMock(return_value=agent)),
+        patch.object(api, "_managed_agent", new=AsyncMock(return_value=agent)),
         patch.object(api, "log_audit", new=AsyncMock()),
         patch(
             "app.services.persistent_memory.embed_text_with_model",
@@ -721,7 +721,7 @@ async def test_update_memory_entry_nulls_provenance_on_embed_failure():
     db = _FakeDB([_Result(scalar_one_or_none=entry)])
 
     with (
-        patch.object(api, "get_user_agent", new=AsyncMock(return_value=agent)),
+        patch.object(api, "_managed_agent", new=AsyncMock(return_value=agent)),
         patch.object(api, "log_audit", new=AsyncMock()),
         patch(
             "app.services.persistent_memory.embed_text_with_model",
@@ -752,7 +752,7 @@ async def test_update_memory_entry_strips_null_bytes():
 
     embed_mock = AsyncMock(return_value=([0.2] * 8, "new-model"))
     with (
-        patch.object(api, "get_user_agent", new=AsyncMock(return_value=agent)),
+        patch.object(api, "_managed_agent", new=AsyncMock(return_value=agent)),
         patch.object(api, "log_audit", new=AsyncMock()),
         patch(
             "app.services.persistent_memory.embed_text_with_model",

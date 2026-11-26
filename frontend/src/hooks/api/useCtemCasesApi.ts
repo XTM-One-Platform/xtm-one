@@ -55,9 +55,13 @@ export interface CtemCaseSummary {
   issue_count: number;
   open_issue_count: number;
   restricted_count: number;
-  asset_count: number;
-  crown_jewel_count: number;
-  kev_count: number;
+  /** Open members read without their details: then the detail aggregates are null, unknown for this reader, never 0. */
+  members_without_details?: number;
+  aggregates_restricted?: boolean;
+  aggregates_reason?: string | null;
+  asset_count: number | null;
+  primary_asset_count: number | null;
+  kev_count: number | null;
   max_cvss: number | null;
   max_epss: number | null;
   first_seen_at: string | null;
@@ -85,6 +89,9 @@ export interface CtemCaseSummary {
   waiting_on?: { gate: string | null; by: string | null; since: string | null } | null;
   /** When the case sweep found the case waiting on nobody, while nothing moved it since (#1736); null otherwise. */
   stalled_since?: string | null;
+  /** A running version OpenCTI cannot place (#2004): kept and to validate first; priority and SLA unchanged. */
+  version_unverified?: boolean;
+  version_unverified_reason?: string | null;
 }
 
 /** Where a synced ticket stands against its case (backend ctem_case_loop.TICKET_SYNC_STATES, #917). */
@@ -126,6 +133,10 @@ interface CtemCaseValidation {
   /** "inconclusive" (#1692): a pass that proves nothing, the word given kept in `reported_result`. */
   result: "passed" | "not_exposed" | "failed" | "pending" | "inconclusive";
   reported_result?: "passed" | "not_exposed";
+  /** #1458: false when the check that reported a pass proves nothing; absent when the writer did not say. */
+  conclusive?: boolean;
+  /** #1500: "remediation" (the fix read in place), "validation" (a detection or behaviour test) or "exposure" (#2118). */
+  evidence_type?: string;
   at: string;
   mitigation_only?: boolean;
   note?: string | null;
@@ -145,7 +156,7 @@ export interface CtemCaseVisibleIssue {
   epss?: number | null;
   kev?: boolean;
   assets?: string[];
-  crown_jewels?: string[];
+  primary_assets?: string[];
   first_seen_at?: string | null;
   details_unavailable?: boolean;
   /** Version knowledge from the viewer's own OpenCTI read (CTEM-11, #946): the declared version, the fix and where it came from. */
@@ -163,6 +174,20 @@ export interface CtemCaseVisibleIssue {
   retest_status?: "open" | "not_reproduced" | "resolved" | null;
   last_tested_at?: string | null;
   retest_pending?: boolean;
+  /**
+   * A signal member (source "signal", #1936): what it is, so a row never shows its id. The name is
+   * the subject label, else its ref; absent on an API older than #1936.
+   */
+  trigger_path?: string;
+  trigger_path_label?: string | null;
+  lens?: string;
+  source_provider?: string;
+  source_name?: string;
+  /** The source's own id of the object a module pivot opens (an OpenCTI entity, an OpenAEV finding), or null. */
+  source_external_id?: string | null;
+  /** The link to the object its source delivered (OpenCRQ, OpenCTI `link`, OpenAEV `platform_url`), or null. */
+  source_link?: string | null;
+  subject_kind?: string;
 }
 
 /** A member issue the caller cannot see in its source product: nothing but the flag. */
@@ -178,6 +203,10 @@ export interface CtemCaseEvent {
   kind: string;
   /** The member it is about, or "Restricted" when the caller cannot see it. */
   issue: string | null;
+  /** The name of the signal the event is about, when the caller sees it (#1936); never the id. */
+  issue_label?: string | null;
+  /** The trigger path label of a signal member the caller sees, untranslated: the fallback when it has no name. */
+  issue_path_label?: string | null;
   from: string | null;
   to: string | null;
   reason: string | null;
@@ -280,6 +309,20 @@ export interface CtemCaseTreatmentPlan {
  */
 export type CtemThreatPackageState = "drafted" | "awaiting_review" | "replan" | "rejected" | "validated";
 
+/** The OpenAEV scenario of the validation and its playability (#2468); name, id and link to an OpenAEV reader only. */
+export interface CtemCaseScenario {
+  restricted: boolean;
+  scenario_id?: string | null;
+  name?: string | null;
+  url?: string | null;
+  techniques_total?: number | null;
+  techniques_playable?: number | null;
+  techniques_missing?: number | null;
+  playable?: boolean | null;
+  playable_tests?: string | null;
+  at?: string | null;
+}
+
 export interface CtemCaseThreatPackage {
   restricted: boolean;
   state?: CtemThreatPackageState;
@@ -379,6 +422,8 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   treatment_plan?: CtemCaseTreatmentPlan | null;
   /** Null when no package is attached; absent on an API older than #1115. */
   threat_package?: CtemCaseThreatPackage | null;
+  /** Null when no scenario is recorded; absent on an API older than #2468. */
+  scenario?: CtemCaseScenario | null;
   ticketing?: CtemTicketingTarget;
   /** Upgrade cases only: null when no asset runs the product; absent on an API older than #1252. */
   running_versions?: CtemCaseRunningVersions | null;
@@ -433,6 +478,11 @@ export interface CtemCaseGateRecord {
   wait_seconds: number | null;
   decision_id: string | null;
   work_item_id: string | null;
+  /**
+   * On a waiting record: whether an open decision item of the gate exists for anyone (#1954).
+   * False: the gate reads waiting but no decision was filed, so nobody can answer it. Absent on an older API.
+   */
+  decision_filed?: boolean | null;
   /** False while the answer is on the decision but no `gate answered` event is on the case yet. */
   recorded_on_case: boolean;
   /** The first later event of the case: its kind, and `from` / `to` as the history stores them (a state's new value, a gate key and its outcome). */
@@ -515,7 +565,55 @@ export function ctemCasesPollInterval(status: "pending" | "error" | "success", e
   return status === "error" && !isNetworkError(error) ? false : REFETCH_INTERVAL_SLOW;
 }
 
-/** Every case the caller sees (the page holds them all: the API caps a page at 200). */
+/** The query key of the Cases list (`useCtemCases`). */
+export const CTEM_CASE_LIST_KEY = ["ctem-cases", "list"] as const;
+
+/**
+ * The list row of one case, when the Cases list is in the query cache (#1986):
+ * the case page draws its header from it while the case itself is read.
+ */
+export function cachedCaseSummary(list: CtemCaseList | undefined, id: string | undefined): CtemCaseSummary | undefined {
+  return id ? list?.cases?.find((c) => c.id === id) : undefined;
+}
+
+/** Most cases one `GET /ctem-cases` page returns (`MAX_PAGE` in backend/app/services/ctem_cases_store.py). */
+export const CTEM_CASES_PAGE = 200;
+
+/**
+ * Every case of one `GET /ctem-cases` read, across its pages (#2377): the API caps a page at
+ * {@link CTEM_CASES_PAGE}. The first page's counts by state cover every case of the read (the
+ * hooks pass no state, owner or priority filter), so their sum is the total; the other pages are
+ * read in parallel, one round trip more for every 200 cases, never one after the other. A case
+ * seen on two pages (a recompute between two reads) is kept once.
+ */
+export async function readAllCtemCases(query = ""): Promise<CtemCaseList> {
+  const path = (offset: number) => `/ctem-cases?limit=${CTEM_CASES_PAGE}&offset=${offset}${query ? `&${query}` : ""}`;
+  const first = await api.get<CtemCaseList>(path(0));
+  const total = Object.values(first.counts ?? {}).reduce((sum, n) => sum + (n ?? 0), 0);
+  if (first.cases.length < CTEM_CASES_PAGE || total <= CTEM_CASES_PAGE) return first;
+  const offsets: number[] = [];
+  for (let offset = CTEM_CASES_PAGE; offset < total; offset += CTEM_CASES_PAGE) offsets.push(offset);
+  const rest = await Promise.all(offsets.map((offset) => api.get<CtemCaseList>(path(offset))));
+  const seen = new Set<string>();
+  const cases: CtemCaseSummary[] = [];
+  for (const page of [first, ...rest]) {
+    for (const c of page.cases ?? []) {
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
+      cases.push(c);
+    }
+  }
+  return { ...first, cases };
+}
+
+/** `ids` cut in runs of at most `size` (a bulk route takes 200 case ids a call). */
+export function chunkIds(ids: string[], size = CTEM_CASES_PAGE): string[][] {
+  const runs: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) runs.push(ids.slice(i, i + size));
+  return runs;
+}
+
+/** Every case the caller sees, every page read (#2377). */
 export function useCtemCases(options?: {
   /**
    * A section of a larger page (the command center Cases row) passes `false`:
@@ -523,10 +621,16 @@ export function useCtemCases(options?: {
    * the whole page to the error boundary.
    */
   throwOnError?: boolean;
+  /**
+   * `false` until the list is needed: the case page reads it only for the
+   * Merge dialog (#1986), never on open; a list already in the cache shows at once.
+   */
+  enabled?: boolean;
 }) {
   return useQuery<CtemCaseList>({
-    queryKey: ["ctem-cases", "list"],
-    queryFn: () => api.get("/ctem-cases?limit=200"),
+    queryKey: CTEM_CASE_LIST_KEY,
+    queryFn: () => readAllCtemCases(),
+    enabled: options?.enabled ?? true,
     retry: ctemCasesRetry,
     refetchInterval: (query) => ctemCasesPollInterval(query.state.status, query.state.error),
     placeholderData: keepPreviousData,
@@ -539,7 +643,19 @@ export function useCtemCasesForAsset(asset: string | undefined) {
   const name = asset?.trim() ?? "";
   return useQuery<CtemCaseList>({
     queryKey: ["ctem-cases", "asset", name],
-    queryFn: () => api.get(`/ctem-cases?limit=200&asset=${encodeURIComponent(name)}`),
+    queryFn: () => readAllCtemCases(`asset=${encodeURIComponent(name)}`),
+    enabled: name !== "",
+    retry: ctemCasesRetry,
+    throwOnError: false,
+  });
+}
+
+/** The cases one of whose issues reaches a primary asset: the primary asset page (#1980 S2). */
+export function useCtemCasesForPrimaryAsset(primaryAsset: string | undefined) {
+  const name = primaryAsset?.trim() ?? "";
+  return useQuery<CtemCaseList>({
+    queryKey: ["ctem-cases", "primary-asset", name],
+    queryFn: () => readAllCtemCases(`primary_asset=${encodeURIComponent(name)}`),
     enabled: name !== "",
     retry: ctemCasesRetry,
     throwOnError: false,
@@ -573,7 +689,7 @@ export interface CtemCasesOverviewCase {
   state_since: string | null;
   waiting_on: { gate: string | null; by: string | null; since: string | null } | null;
   /** The primary asset the case touches among the issues the caller sees; null when none. */
-  crown_jewel: string | null;
+  primary_asset: string | null;
 }
 
 /** One CTEM phase of the overview: its open and waiting cases and the five that need attention first. */
@@ -691,7 +807,16 @@ export function useMoveCtemCase() {
 export function useBulkUpdateCtemCases() {
   const qc = useQueryClient();
   return useMutation<CtemCaseBulkResult, Error, CtemCaseUpdate & { case_ids: string[] }>({
-    mutationFn: (body) => api.post("/ctem-cases/bulk", body),
+    // The route takes 200 ids a call: a larger selection is sent in runs, one after the other (#2377).
+    mutationFn: async ({ case_ids, ...change }) => {
+      const merged: CtemCaseBulkResult = { updated: [], failed: [] };
+      for (const ids of chunkIds(case_ids)) {
+        const result = await api.post<CtemCaseBulkResult>("/ctem-cases/bulk", { ...change, case_ids: ids });
+        merged.updated.push(...(result.updated ?? []));
+        merged.failed.push(...(result.failed ?? []));
+      }
+      return merged;
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-cases"] }),
   });
 }
@@ -721,12 +846,28 @@ export interface CtemCaseDeleteResult {
 
 /**
  * Delete cases, administrators only (POST /ctem-cases/bulk-delete, #1723): `dry_run` answers
- * what would go and writes nothing; the real delete refreshes every case read.
+ * what would go and writes nothing; the real delete refreshes every case read. A refusal
+ * (a 409 while a recompute holds the lock, a 500) is shown once, by the caller: the dialog
+ * line for the dry run, the "Delete failed" toast for the delete, never the global toast too.
  */
 export function useDeleteCtemCases() {
   const qc = useQueryClient();
   return useMutation<CtemCaseDeleteResult, Error, { case_ids: string[]; dry_run: boolean; reason?: string }>({
-    mutationFn: (body) => api.post("/ctem-cases/bulk-delete", body),
+    // The route takes 200 ids a call: a larger selection is sent in runs, one after the other (#2377),
+    // so a recompute lock (409) is met by one run, never by parallel ones.
+    mutationFn: async ({ case_ids, ...rest }) => {
+      const runs = chunkIds(case_ids);
+      if (runs.length <= 1) return api.post<CtemCaseDeleteResult>("/ctem-cases/bulk-delete", { case_ids, ...rest });
+      const merged: CtemCaseDeleteResult = { dry_run: rest.dry_run, count: 0, cases: [], unknown: [] };
+      for (const ids of runs) {
+        const result = await api.post<CtemCaseDeleteResult>("/ctem-cases/bulk-delete", { case_ids: ids, ...rest });
+        merged.count += result.count ?? 0;
+        merged.cases.push(...(result.cases ?? []));
+        merged.unknown.push(...(result.unknown ?? []));
+      }
+      return merged;
+    },
+    meta: { suppressGlobalErrorToast: true },
     onSuccess: (result) => {
       if (!result.dry_run) void qc.invalidateQueries({ queryKey: ["ctem-cases"] });
     },
@@ -748,5 +889,41 @@ export function useSplitCtemCase() {
   return useMutation<CtemCaseDetail, Error, { title: string; issue_ids: string[]; reason?: string }>({
     mutationFn: (body) => api.post("/ctem-cases/split", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-cases"] }),
+  });
+}
+
+/** Whether case opening runs, and the confirmed signals that wait for their case (#1951). */
+export interface CtemCaseOpening {
+  vertical: string;
+  on: boolean;
+  waiting: number;
+}
+
+/** The answer of a change: `draining` when the waiting signals are opening their cases now. */
+export interface CtemCaseOpeningChange extends CtemCaseOpening {
+  changed: boolean;
+  draining: boolean;
+}
+
+/** GET /ctem-cases/opening: read by everyone who reads cases; polled while signals wait. */
+export function useCtemCaseOpening() {
+  return useQuery<CtemCaseOpening>({
+    queryKey: ["ctem-cases", "opening"],
+    queryFn: () => api.get("/ctem-cases/opening"),
+    retry: ctemCasesRetry,
+    // While cases open from the waiting signals the count falls: read it again every few seconds.
+    refetchInterval: (query) => (query.state.data?.on && query.state.data.waiting > 0 ? 3000 : REFETCH_INTERVAL_SLOW),
+  });
+}
+
+/** PUT /ctem-cases/opening, administrators only: pause or resume case opening. */
+export function useSetCtemCaseOpening() {
+  const qc = useQueryClient();
+  return useMutation<CtemCaseOpeningChange, Error, { on: boolean }>({
+    mutationFn: (body) => api.put("/ctem-cases/opening", body),
+    onSuccess: (data) => {
+      qc.setQueryData(["ctem-cases", "opening"], { vertical: data.vertical, on: data.on, waiting: data.waiting });
+      void qc.invalidateQueries({ queryKey: ["ctem-cases", "list"] });
+    },
   });
 }

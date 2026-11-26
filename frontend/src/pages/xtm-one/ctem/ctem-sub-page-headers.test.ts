@@ -10,7 +10,7 @@ const PAGES = ["ExposureBriefing.tsx", "CtemStageDetail.tsx", "CtemGovernance.ts
 
 /** The pages on the app's standard headers since #1367 (Sam, 23 Nov 2026: no CTEM band with a surface and a border). */
 const LIST_PAGES = ["CtemCases.tsx", "CtemInventory.tsx"];
-const ENTITY_PAGES = ["CtemCaseDetail.tsx", "CtemAssetDetail.tsx", "CtemSoftwareDetail.tsx", "CtemAssetGroupDetail.tsx"];
+const ENTITY_PAGES = ["CtemCaseDetail.tsx", "CtemAssetDetail.tsx", "CtemSoftwareDetail.tsx", "CtemAssetGroupDetail.tsx", "CtemPrimaryAssetDetail.tsx"];
 
 describe("CTEM sub page headers", () => {
   it.each(LIST_PAGES)("%s renders the standard ListPageHeader, never the CTEM band", (file) => {

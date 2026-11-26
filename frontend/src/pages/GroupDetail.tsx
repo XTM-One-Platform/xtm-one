@@ -6,6 +6,7 @@ import {
   UsersRound, Trash2, X, Users, Pencil, FileText, Gauge, Save, Zap, Key, UserCog, Sparkles,
 } from "lucide-react";
 import { Icon } from "@filigran/design-system";
+import { GroupAutoJoinCard } from "@/components/groups/GroupAutoJoinCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { userSelectOption } from "@/components/ui/entity-select-options";
@@ -135,11 +136,14 @@ export default function GroupDetail() {
 // ---------------------------------------------------------------------------
 
 function OverviewTab({ group, groupId }: { group: NonNullable<ReturnType<typeof useGroup>["data"]>; groupId: string }) {
+  const isXtmOne = useIsXtmOne();
   return (
     <div className="space-y-6">
       <ProfileCard group={group} groupId={groupId} />
       <GroupAiAccessCard group={group} groupId={groupId} />
-      <GroupCtemAccessCard group={group} groupId={groupId} />
+      {/* CTEM is XTM One content: no CTEM access card in Copilot mode (#2441). */}
+      {isXtmOne && <GroupCtemAccessCard group={group} groupId={groupId} />}
+      <GroupAutoJoinCard group={group} groupId={groupId} />
     </div>
   );
 }
@@ -159,7 +163,7 @@ const CTEM_ACCESS_CHOICES = ["none", "view", "decide"] as const;
 
 /** @i18n-keys */
 const CTEM_ACCESS_HINTS = {
-  none: "Members see only the signals they record themselves.",
+  none: "Members have no CTEM access through this group: no CTEM menu, signals, cases, agent tools or triggers.",
   view: "Members read every signal and case of the organization, read only.",
   decide: "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.",
 } as const;

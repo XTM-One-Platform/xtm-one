@@ -563,6 +563,12 @@ NOTICES: dict[str, dict[str, str]] = {
         "fr": "Ouvrir la page",
         "ja": "ページを開く",
     },
+    "card_link_ctem_case": {
+        "en": "Open the case",
+        "es": "Abrir el caso",
+        "fr": "Ouvrir le cas",
+        "ja": "ケースを開く",
+    },
     "card_link_document": {
         "en": "Open the document",
         "es": "Abrir el documento",

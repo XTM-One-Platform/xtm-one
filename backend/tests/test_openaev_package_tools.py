@@ -1138,7 +1138,6 @@ async def test_empty_update_bodies_are_rejected():
         ),
         ("manage_openaev_challenge", {"action": "update", "challenge_id": "c1"}),
         ("manage_openaev_vulnerability", {"action": "update", "vulnerability_id": "v1"}),
-        ("manage_openaev_finding", {"action": "update", "finding_id": "f1"}),
         (
             "manage_openaev_kill_chain_phase",
             {"action": "update", "phase_id": "p1"},
@@ -1647,6 +1646,84 @@ async def test_instance_get_tells_the_requested_intent_from_the_state(monkeypatc
     assert "  raw fields:" in result.content
     assert "    connector_instance_heartbeat_at: 2026-11-23T19:55:24Z" in result.content
     assert "configurations" not in result.content
+
+
+async def test_instance_get_shows_the_configuration_with_secrets_hidden(monkeypatch):
+    # Gap oaev-connector-instance-config-not-readable (xtm-one #2284): 'get' reads
+    # GET .../configurations and prints each key, a secret one as set and hidden.
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "started",
+                "connector_instance_requested_status": "starting",
+            },
+            "/api/connector-instances/ci1/configurations": [
+                {
+                    "connector_instance_configuration_key": "GITHUB_ORG",
+                    "connector_instance_configuration_value": "filigran",
+                },
+                {
+                    "connector_instance_configuration_key": "COLLECTOR_PERIOD",
+                    "connector_instance_configuration_value": 3600,
+                },
+                {
+                    "connector_instance_configuration_key": "GITHUB_TOKEN",
+                    "connector_instance_configuration_value": "",
+                    "connector_instance_configuration_is_encrypted": True,
+                },
+            ],
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert not result.is_error, result.content
+    assert "    GITHUB_ORG: filigran" in result.content
+    assert "    COLLECTOR_PERIOD: 3600" in result.content
+    assert "    GITHUB_TOKEN: set (hidden)" in result.content
+
+
+async def test_instance_update_config_says_merge_and_reads_back(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1/configurations": [
+                {
+                    "connector_instance_configuration_key": "GITHUB_ORG",
+                    "connector_instance_configuration_value": "filigran",
+                },
+                {
+                    "connector_instance_configuration_key": "COLLECTOR_PERIOD",
+                    "connector_instance_configuration_value": "600",
+                },
+            ],
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {
+            "action": "update_config",
+            "connector_instance_id": "ci1",
+            "catalog_connector_id": "cat1",
+            "config": '{"COLLECTOR_PERIOD": 600}',
+        },
+    )
+    assert not result.is_error, result.content
+    assert "COLLECTOR_PERIOD written; keys not sent keep their value" in result.content
+    assert "    GITHUB_ORG: filigran" in result.content
+    assert "    COLLECTOR_PERIOD: 600" in result.content
+    assert [c["method"] for c in fake.calls] == ["put", "get"]
 
 
 async def test_instance_get_says_a_request_is_not_reached_yet(monkeypatch):
@@ -2704,6 +2781,60 @@ def test_threat_arsenal_schema_constrains_expectation_keys():
     tool = next(t for t in tools if t.name == "manage_openaev_threat_arsenal")
     esp = tool.input_schema["properties"]["expected_security_platforms"]
     assert esp["propertyNames"]["enum"] == ["PREVENTION", "DETECTION", "VULNERABILITY"]
+
+
+def test_threat_arsenal_schema_offers_payload_expectation_types_only():
+    # A payload accepts PREVENTION / DETECTION / VULNERABILITY only (OpenAEV
+    # PayloadService answers 400 on the human types), so the enum never offers them.
+    _, tools = _build()
+    tool = next(t for t in tools if t.name == "manage_openaev_threat_arsenal")
+    enum = tool.input_schema["properties"]["expectations"]["items"]["enum"]
+    assert enum == ["PREVENTION", "DETECTION", "VULNERABILITY"]
+
+
+@pytest.mark.parametrize("human_type", ["MANUAL", "article", "Challenge"])
+async def test_threat_arsenal_create_refuses_human_expectation_locally(monkeypatch, human_type):
+    from app.integrations.providers.openaev import threat_arsenal
+
+    executor, _ = _build()
+    fake = _RecordingApi({"injector_contract_id": "a1"})
+    monkeypatch.setattr(threat_arsenal, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_threat_arsenal",
+        {**_ARSENAL_CREATE_BASE, "expectations": [human_type]},
+    )
+    assert human_type.upper() in result.content
+    assert "PREVENTION, DETECTION, VULNERABILITY" in result.content
+    assert "manual inject" in result.content
+    assert not fake.calls  # refused before any request left
+
+
+@pytest.mark.parametrize("action", ["update", "fork"])
+async def test_threat_arsenal_update_and_fork_refuse_human_expectation_locally(monkeypatch, action):
+    from app.integrations.providers.openaev import threat_arsenal
+
+    executor, _ = _build()
+    fake = _RecordingApi({"injector_contract_id": "a1"})
+    monkeypatch.setattr(threat_arsenal, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_threat_arsenal",
+        {"action": action, "action_id": "a1", "expectations": ["MANUAL"]},
+    )
+    assert "PREVENTION, DETECTION, VULNERABILITY" in result.content
+    assert not fake.calls
+
+
+async def test_threat_arsenal_create_with_detection_is_unchanged(monkeypatch):
+    from app.integrations.providers.openaev import threat_arsenal
+
+    executor, _ = _build()
+    fake = _RecordingApi({"injector_contract_id": "a1", "action_name": "Recon sweep"})
+    monkeypatch.setattr(threat_arsenal, "_api", fake)
+    result = await _run(executor, "manage_openaev_threat_arsenal", dict(_ARSENAL_CREATE_BASE))
+    assert not result.is_error, result.content
+    assert fake.last_json()["action_expectations"] == ["DETECTION"]
 
 
 async def test_threat_arsenal_create_sends_empty_association_lists(monkeypatch):
@@ -4971,3 +5102,120 @@ def test_placeholder_id_guard_rejects_fabricated_ids():
     assert _placeholder_id_error(
         "workflow_id", "7f3a9c12-1b2c-4d5e-9f00-abcdef012345", hint
     ) is None
+
+
+# ── Scenario export: lab targets neutralised for publication ─────────────────
+
+
+def _scenario_export_zip(targets: str) -> bytes:
+    import io
+    import zipfile
+
+    scenario = {
+        "scenario_information": {
+            "scenario_description": f"Scans {targets}",
+            "scenario_mail_from": "openaev@example.com",
+        },
+        "scenario_injects": [
+            {
+                "inject_title": "Nuclei",
+                "inject_content": {"target_selector": "manual", "targets": targets},
+            }
+        ],
+    }
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+        info = zipfile.ZipInfo("Lab.json", date_time=(2026, 11, 2, 10, 30, 0))
+        info.comment = b"Scenario"
+        archive.writestr(info, json.dumps(scenario))
+        archive.writestr("documents/a.bin", b"\x00\x01kept")
+    return out.getvalue()
+
+
+def _export_with(monkeypatch, data: bytes) -> list:
+    """Patch the export fetch (no network) and record what deliver_file is handed."""
+    from app.integrations.file_delivery import FetchedFile
+    from app.integrations.providers.openaev import simulations
+
+    delivered: list = []
+
+    async def fake_scope_path(headers, path):
+        return path, ""
+
+    async def fake_fetch(client, method, url, *, provider, action, max_bytes, **kwargs):
+        return FetchedFile(data=data, content_type="application/zip", filename="x.zip")
+
+    async def fake_deliver(**kwargs):
+        from app.tools.base import ToolResult
+
+        delivered.append(kwargs)
+        return ToolResult(
+            tool_call_id="", content="\n".join(["Downloaded", *kwargs.get("notes", ())])
+        )
+
+    monkeypatch.setattr(simulations, "_scope_path", fake_scope_path)
+    monkeypatch.setattr(simulations, "fetch_file", fake_fetch)
+    monkeypatch.setattr(simulations, "deliver_file", fake_deliver)
+    return delivered
+
+
+async def test_export_neutralises_lab_targets_when_asked(monkeypatch):
+    import io
+    import zipfile
+
+    original = _scenario_export_zip("honey.scanme.sh")
+    delivered = _export_with(monkeypatch, original)
+    executor, _ = _build()
+    result = await _run(
+        executor,
+        "export_openaev_scenario",
+        {"scenario_id": "s1", "neutralise_targets": True},
+    )
+    assert not result.is_error, result.content
+    assert "Neutralised 1 lab target value(s)" in result.content
+    data = delivered[0]["data"]
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        scenario = json.loads(archive.read("Lab.json"))
+        assert archive.getinfo("Lab.json").comment == b"Scenario"
+        assert archive.read("documents/a.bin") == b"\x00\x01kept"
+    content = scenario["scenario_injects"][0]["inject_content"]
+    assert content["targets"] == "host.example.com"
+    assert scenario["scenario_information"]["scenario_description"] == "Scans host.example.com"
+    assert b"honey.scanme.sh" not in data
+
+
+@pytest.mark.parametrize("flag", [None, False, "false"])
+async def test_export_without_neutralise_targets_is_byte_identical(monkeypatch, flag):
+    original = _scenario_export_zip("honey.scanme.sh")
+    delivered = _export_with(monkeypatch, original)
+    executor, _ = _build()
+    arguments: dict = {"scenario_id": "s1"}
+    if flag is not None:
+        arguments["neutralise_targets"] = flag
+    result = await _run(executor, "export_openaev_scenario", arguments)
+    assert not result.is_error, result.content
+    assert delivered[0]["data"] == original
+    assert "Neutralised" not in result.content
+
+
+async def test_export_that_cannot_be_neutralised_is_not_delivered(monkeypatch):
+    delivered = _export_with(monkeypatch, b"PK\x03\x04-not-a-zip")
+    executor, _ = _build()
+    result = await _run(
+        executor,
+        "export_openaev_scenario",
+        {"scenario_id": "s1", "neutralise_targets": True},
+    )
+    assert result.is_error
+    assert result.content.startswith("Error: ")
+    assert not delivered
+
+
+def test_export_schema_documents_neutralise_targets():
+    _, tools = _build()
+    tool = next(t for t in tools if t.name == "export_openaev_scenario")
+    prop = tool.input_schema["properties"]["neutralise_targets"]
+    assert prop["type"] == "boolean"
+    assert prop["default"] is False
+    assert "neutralise_targets" in tool.description
+    assert "example hosts" in tool.description

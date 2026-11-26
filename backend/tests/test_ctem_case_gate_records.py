@@ -62,6 +62,19 @@ def test_item_keys_cover_the_shared_gate_prefixes() -> None:
     assert keys[f"ctem:review:{CASE}"] == "ctem.analyst_review"
     assert keys[f"ctem:validation:{CASE}"] == "ctem.validation.non_readonly"
     assert keys[f"ctem:remediation:{CASE}"] == "ctem.remediation.decision"
+    # #2464: the gates no section of the page owns have a key too, so their record names its item.
+    assert keys[f"ctem:production-change:{CASE}"] == "ctem.production_change"
+    assert keys[f"ctem:accept-risk:{CASE}"] == "ctem.accept_risk"
+    assert keys[f"ctem:close-without-retest:{CASE}"] == "ctem.close_without_retest"
+
+
+def test_every_catalog_gate_has_its_item_key() -> None:
+    from app.agents.builtin_agents import CTEM_SHARED_GATE_PREFIXES
+    from app.agents.builtin_fleet_docs import CTEM_GATE_KEYS
+
+    assert set(CTEM_GATE_KEYS) <= set(gates.GATE_ITEM_PREFIXES), set(CTEM_GATE_KEYS) - set(gates.GATE_ITEM_PREFIXES)
+    for gate in ("ctem.production_change", "ctem.accept_risk", "ctem.close_without_retest"):
+        assert set(gates.GATE_ITEM_PREFIXES[gate]) <= set(CTEM_SHARED_GATE_PREFIXES), gate
 
 
 def test_answered_on_the_decision_without_a_case_event_is_answered() -> None:
@@ -101,6 +114,26 @@ def test_answered_event_without_a_decision_row() -> None:
     assert record["option"] == {"key": "B", "label": None}
     assert record["wait_seconds"] == 61 * 60.0
     assert record["recorded_on_case"] is True
+
+
+def test_an_answer_an_agent_recorded_names_the_person_given_as_text() -> None:
+    """#2256: ``record_gate(by=<name>, actor=<agent>)`` names the person, never an unresolvable id."""
+    history = _history(
+        _gate("11:09", "ctem.analyst_review", "waited"),
+        _gate("12:10", "ctem.analyst_review", "answered", AGENT, reason="Jane Doe", evidence="A", actor_type="agent"),
+    )
+    record = _one(gates.resolve(history, [], names=NAMES, now=NOW), "ctem.analyst_review")
+    assert record["answered_by"] == {"id": "Jane Doe", "name": "Jane Doe"}
+
+
+def test_an_answer_named_by_a_word_or_an_unknown_id_stays_unnamed() -> None:
+    for reason in ("a person", "OpenCTI analyst mark", "55555555-5555-5555-5555-555555555555"):
+        history = _history(
+            _gate("11:09", "ctem.analyst_review", "waited"),
+            _gate("12:10", "ctem.analyst_review", "answered", AGENT, reason=reason, actor_type="agent"),
+        )
+        record = _one(gates.resolve(history, [], names=NAMES, now=NOW), "ctem.analyst_review")
+        assert record["answered_by"] == {"id": reason, "name": None}
 
 
 def test_rejected_answer_keeps_the_option_label() -> None:
@@ -171,6 +204,22 @@ def test_attach_extends_answer_on_the_waiting_event() -> None:
     assert asked["answer"]["comment"] == "ok"
     assert asked["answer"]["wait_seconds"] == 600.0
     assert asked["answer"]["recorded_on_case"] is False
+
+
+def test_a_waiting_record_says_whether_its_decision_was_filed() -> None:
+    """#1954: a gate can read waiting with no decision item; the record says so, the page does not point to a list."""
+    history = _history(_gate("11:09", "ctem.analyst_review", "waited"))
+    lost = _one(gates.resolve(history, [], now=NOW, filed={"ctem.analyst_review": False}), "ctem.analyst_review")
+    assert lost["status"] == gates.WAITING and lost["decision_filed"] is False and lost["asked_of"] is None
+    filed = _one(gates.resolve(history, [], now=NOW, filed={"ctem.analyst_review": True}), "ctem.analyst_review")
+    assert filed["decision_filed"] is True
+    assert _one(gates.resolve(history, [], now=NOW), "ctem.analyst_review")["decision_filed"] is None
+    answered = _history(
+        _gate("11:09", "ctem.analyst_review", "waited"),
+        _gate("12:10", "ctem.analyst_review", "answered", PERSON, reason=PERSON, evidence="B"),
+    )
+    record = _one(gates.resolve(answered, [], now=NOW, filed={"ctem.analyst_review": False}), "ctem.analyst_review")
+    assert record["decision_filed"] is None
 
 
 def test_attach_keeps_what_the_case_event_said() -> None:

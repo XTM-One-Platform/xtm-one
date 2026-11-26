@@ -67,6 +67,8 @@ CVE_RECORD = "7b1f0c52-4d7e-4c0a-9a53-0d1c2a9e5f10"
 JOB = "01a13ab0-0bfb-74da-b3e3-2f187831218b"
 PHISHING_TECHNIQUE = "1c75cd63-b80b-58a3-98c4-1f66b3ab6ad7"
 MITIGATION = "0c47db65-3a58-5200-832c-411ff156e649"
+DEPENDENCY_RULE = "0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f"
+TAG = "5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d"
 # The first page of a scenario's walk, ranked by impact on the server.
 EXPOSURE_PAGE = {"riskScenarioId": SCENARIO, "page": 1, "limit": 30, "sortBy": "impact", "sortDesc": True}
 
@@ -139,6 +141,25 @@ def _assert_no_placeholder_for_a_value(out: str, answers: dict[str, Any]) -> Non
     for placeholder in ("N/A", "None", "?"):
         if placeholder not in recorded:
             assert placeholder not in out, f"{placeholder!r} shown in:\n{out}"
+
+
+# A dependency rule as listDependencyRules answers it.
+_STORED_RULE = {
+    "id": DEPENDENCY_RULE,
+    "name": "Web front ends support online banking",
+    "primaryAssetId": PRIMARY_ASSET,
+    "primaryAssetName": "Customer Account Data",
+    "roles": ["processes", "reads"],
+    "enabled": True,
+    "categoryId": "web_application",
+    "subcategoryId": None,
+    "namePattern": "*-portal",
+    "namePatternKind": "glob",
+    "tagId": None,
+    "tagName": None,
+    "source": "microsoft_graph",
+    "linkCount": 4,
+}
 
 
 # -- Reads ----------------------------------------------------------------------
@@ -720,7 +741,7 @@ READS = {
         ("supportingAssets.getSupportingAsset",),
         (
             "URL: https://cmdb.acme.io/srv-0412", "Linked person: Jane Doe",
-            "Tags: crown-jewel (hand-set), edr",
+            "Tags: primary-asset (hand-set), edr",
         ),
         overrides={
             "supportingAssets.getSupportingAsset": {
@@ -728,7 +749,7 @@ READS = {
                 "url": "https://cmdb.acme.io/srv-0412",
                 "linkedPerson": "Jane Doe",
                 "tags": [
-                    {"id": "11111111-0000-4000-8000-000000000001", "name": "crown-jewel", "isManual": True},
+                    {"id": "11111111-0000-4000-8000-000000000001", "name": "primary-asset", "isManual": True},
                     {"id": "11111111-0000-4000-8000-000000000002", "name": "edr", "isManual": False},
                 ],
             },
@@ -828,6 +849,159 @@ READS = {
             "(supporting asset id: " + CORE_BANKING + ")",
             "supporting asset Internet Banking Portal (web_application), roles processes, reads",
         ),
+    ),
+    "list_opencrq_asset_dependencies_provenance_and_paging": Read(
+        "list_opencrq_asset_dependencies",
+        {"primary_asset_id": PRIMARY_ASSET, "offset": 1, "limit": 1},
+        opencrq_assets,
+        [
+            _sent(
+                "assetDependencies.getSupportToPrimaryLinksByPrimaryAssetId",
+                {"primaryAssetId": PRIMARY_ASSET},
+            ),
+        ],
+        (),
+        (
+            # asset-dependencies-router.ts LINK_PROVENANCE_OUTPUT: source, ruleId, ruleName on every link
+            "Primary asset links (3, showing 2 to 2):",
+            "supporting asset Internet Banking Portal (web_application), roles processes, reads, "
+            "written by rule Web front ends support online banking",
+            "... 1 more: call again with offset=2.",
+        ),
+        absent=("Core Banking System", "Payments Gateway"),
+        overrides={
+            "assetDependencies.getSupportToPrimaryLinksByPrimaryAssetId": [
+                {
+                    "id": "b4c5d6e7-f8a9-4b0c-9d2e-3f4a5b6c7d8e",
+                    "supportingAssetId": CORE_BANKING,
+                    "primaryAssetId": PRIMARY_ASSET,
+                    "roles": ["stores"],
+                    "source": "manual",
+                    "ruleId": None,
+                    "ruleName": None,
+                    "supportingAssetName": "Core Banking System",
+                    "supportingAssetDerivedName": None,
+                    "supportingAssetCategoryId": "host",
+                },
+                {
+                    "id": "41e1f2a3-b4c5-4d6e-9f8a-2b3c4d5e6f7a",
+                    "supportingAssetId": "f6a7b8c9-d0e1-4f2a-ab4c-5d6e7f8a9b0c",
+                    "primaryAssetId": PRIMARY_ASSET,
+                    "roles": ["processes", "reads"],
+                    "source": "rule",
+                    "ruleId": "0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+                    "ruleName": "Web front ends support online banking",
+                    "supportingAssetName": "Internet Banking Portal",
+                    "supportingAssetDerivedName": None,
+                    "supportingAssetCategoryId": "web_application",
+                },
+                {
+                    "id": "52f2a3b4-c5d6-4e7f-8a9b-3c4d5e6f7a8b",
+                    "supportingAssetId": "a7b8c9d0-e1f2-4a3b-8c5d-6e7f8a9b0c1d",
+                    "primaryAssetId": PRIMARY_ASSET,
+                    "roles": ["processes"],
+                    "source": "manual",
+                    "ruleId": None,
+                    "ruleName": None,
+                    "supportingAssetName": "Payments Gateway",
+                    "supportingAssetDerivedName": None,
+                    "supportingAssetCategoryId": "web_application",
+                },
+            ],
+        },
+    ),
+    "list_opencrq_dependency_rules": Read(
+        "list_opencrq_dependency_rules",
+        {},
+        opencrq_assets,
+        # asset-dependencies/asset-dependencies-router.ts: listDependencyRules, no input
+        [_sent("assetDependencies.listDependencyRules")],
+        (),
+        (
+            "Dependency rules (1):",
+            "- Web front ends support online banking (id: 0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f), enabled",
+            "to primary asset Customer Account Data (primary asset id: " + PRIMARY_ASSET + "), roles processes, reads",
+            "Conditions: category web_application and name glob *-portal and reported by microsoft_graph",
+            "Links it holds now: 4",
+        ),
+        overrides={
+            "assetDependencies.listDependencyRules": [
+                {
+                    "id": "0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f",
+                    "name": "Web front ends support online banking",
+                    "primaryAssetId": PRIMARY_ASSET,
+                    "primaryAssetName": "Customer Account Data",
+                    "roles": ["processes", "reads"],
+                    "enabled": True,
+                    "categoryId": "web_application",
+                    "subcategoryId": None,
+                    "namePattern": "*-portal",
+                    "namePatternKind": "glob",
+                    "tagId": None,
+                    "tagName": None,
+                    "source": "microsoft_graph",
+                    "linkCount": 4,
+                },
+            ],
+        },
+    ),
+    "preview_opencrq_dependency_rule": Read(
+        "preview_opencrq_dependency_rule",
+        {
+            "primary_asset_id": PRIMARY_ASSET,
+            "category_id": "web_application",
+            "name_pattern": "*-portal",
+            "name_pattern_kind": "glob",
+            "limit": 2,
+        },
+        opencrq_assets,
+        # asset-dependencies/asset-dependencies-router.ts: previewDependencyRule, the six conditions
+        # (each nullable, all sent) and {primaryAssetId, limit}; a query
+        [
+            _sent(
+                "assetDependencies.previewDependencyRule",
+                {
+                    "categoryId": "web_application",
+                    "subcategoryId": None,
+                    "namePattern": "*-portal",
+                    "namePatternKind": "glob",
+                    "tagId": None,
+                    "source": None,
+                    "primaryAssetId": PRIMARY_ASSET,
+                    "limit": 2,
+                },
+            )
+        ],
+        (),
+        (
+            "it would link 3 supporting asset(s) to primary asset " + PRIMARY_ASSET,
+            "1 already linked by a person, 2 unlinked by a person",
+            "- Payments Portal (id: " + SUPPORTING_ASSET + "), web_application / website",
+            "1 more not listed",
+        ),
+        overrides={
+            "assetDependencies.previewDependencyRule": {
+                "total": 3,
+                "alreadyManual": 1,
+                "suppressed": 2,
+                "assets": [
+                    {
+                        "id": SUPPORTING_ASSET,
+                        "name": "Payments Portal",
+                        "derivedName": None,
+                        "categoryId": "web_application",
+                        "subcategoryId": "website",
+                    },
+                    {
+                        "id": UNNAMED_ASSET,
+                        "name": None,
+                        "derivedName": "hr-portal.example",
+                        "categoryId": "web_application",
+                        "subcategoryId": None,
+                    },
+                ],
+            },
+        },
     ),
     "get_opencrq_job": Read(
         "get_opencrq_job", {"job_id": JOB}, opencrq_ops,
@@ -1163,7 +1337,7 @@ WRITES = {
         "update_opencrq_supporting_asset",
         {
             "supporting_asset_id": SUPPORTING_ASSET, "category": "identity", "subcategory": " Service_Account ",
-            "tag_names": [" crown-jewel ", "", "edr"],
+            "tag_names": [" primary-asset ", "", "edr"],
             "properties": {"user_principal_name": "svc@acme.io", "is_enabled": True, "privileged_pim_roles": []},
         },
         opencrq_assets,
@@ -1171,7 +1345,7 @@ WRITES = {
         "supportingAssets.updateSupportingAsset",
         {
             "id": SUPPORTING_ASSET, "categoryId": "identity", "subcategoryId": "service_account",
-            "tagNames": ["crown-jewel", "edr"],
+            "tagNames": ["primary-asset", "edr"],
             "properties": {
                 "family": "identity", "userPrincipalName": "svc@acme.io", "isEnabled": True,
                 "privilegedPimRoles": [],
@@ -1187,6 +1361,15 @@ WRITES = {
         "supportingAssets.updateSupportingAsset",
         {"id": SUPPORTING_ASSET, "tagNames": []},
         ("Updated supporting asset " + SUPPORTING_ASSET,),
+    ),
+    "delete_opencrq_dependency_rules_sends_the_rule_ids": Write(
+        "delete_opencrq_dependency_rules",
+        {"rule_ids": [DEPENDENCY_RULE, DEPENDENCY_RULE]},
+        opencrq_assets,
+        # asset-dependencies/asset-dependencies-router.ts: deleteDependencyRules, an array of uuids
+        "assetDependencies.deleteDependencyRules",
+        [DEPENDENCY_RULE],
+        ("Deleted 1 dependency rule(s); the links they wrote went with them",),
     ),
     "update_opencrq_asset_dependency_roles_replaces_the_roles_of_every_link": Write(
         "update_opencrq_asset_dependency_roles",
@@ -1488,6 +1671,138 @@ async def test_a_treatment_plan_write_opencrq_refuses_is_reported_and_nothing_is
         out = (await _execute("create_opencrq_treatment_plan", organization_id=ORGANIZATION, name="P")).content
     assert "403" in out
     assert "Created" not in out
+
+
+async def test_a_dependency_rule_is_created_with_every_condition_key_and_its_id() -> None:
+    with _recorded_trpc(opencrq_assets, {}) as calls:
+        out = await _run(
+            "create_opencrq_dependency_rule",
+            name=" Web front ends ",
+            primary_asset_id=PRIMARY_ASSET,
+            roles=["processes", "reads"],
+            category_id="web_application",
+            source="microsoft_graph",
+        )
+    assert len(calls) == 1
+    sent = calls[0]
+    # asset-dependencies/asset-dependencies-router.ts: createDependencyRule, the conditions
+    # (each nullable) and {name, primaryAssetId, roles, enabled} and an optional id; a mutation
+    rule_id = sent["input"].pop("id")
+    uuid.UUID(rule_id)
+    assert sent == _sent(
+        "assetDependencies.createDependencyRule",
+        {
+            "categoryId": "web_application",
+            "subcategoryId": None,
+            "namePattern": None,
+            "namePatternKind": None,
+            "tagId": None,
+            "source": "microsoft_graph",
+            "name": "Web front ends",
+            "primaryAssetId": PRIMARY_ASSET,
+            "roles": ["processes", "reads"],
+            "enabled": True,
+        },
+        mutation=True,
+    )
+    assert f"Created dependency rule 'Web front ends' (id: {rule_id})" in out
+
+
+async def test_a_dependency_rule_update_starts_from_the_stored_rule_and_can_disable_it() -> None:
+    answers = {"assetDependencies.listDependencyRules": [_STORED_RULE]}
+    with _recorded_trpc(opencrq_assets, answers) as calls:
+        out = await _run(
+            "update_opencrq_dependency_rule",
+            rule_id=DEPENDENCY_RULE,
+            enabled=False,
+            tag_id=TAG,
+            clear_conditions=["name_pattern", "name_pattern_kind"],
+        )
+    assert calls == [
+        _sent("assetDependencies.listDependencyRules"),
+        # asset-dependencies/asset-dependencies-router.ts: updateDependencyRule replaces the whole rule
+        _sent(
+            "assetDependencies.updateDependencyRule",
+            {
+                "categoryId": "web_application",
+                "subcategoryId": None,
+                "namePattern": None,
+                "namePatternKind": None,
+                "tagId": TAG,
+                "source": "microsoft_graph",
+                "name": "Web front ends support online banking",
+                "primaryAssetId": PRIMARY_ASSET,
+                "roles": ["processes", "reads"],
+                "enabled": False,
+                "id": DEPENDENCY_RULE,
+            },
+            mutation=True,
+        ),
+    ]
+    assert "disabled: the links it wrote are removed at the next apply" in out
+
+
+async def test_updating_a_dependency_rule_that_does_not_exist_writes_nothing() -> None:
+    with _recorded_trpc(opencrq_assets, {"assetDependencies.listDependencyRules": []}) as calls:
+        out = await _run("update_opencrq_dependency_rule", rule_id=DEPENDENCY_RULE, enabled=True)
+    assert [c["procedure"] for c in calls] == ["assetDependencies.listDependencyRules"]
+    assert "nothing was changed" in out
+
+
+@pytest.mark.parametrize(
+    ("tool", "args", "refusal"),
+    [
+        pytest.param(
+            "preview_opencrq_dependency_rule",
+            {"primary_asset_id": PRIMARY_ASSET},
+            "at least one condition",
+            id="preview without a condition",
+        ),
+        pytest.param(
+            "create_opencrq_dependency_rule",
+            {"name": "r", "primary_asset_id": PRIMARY_ASSET, "roles": ["stores"], "name_pattern": "*x"},
+            "go together",
+            id="pattern without its kind",
+        ),
+        pytest.param(
+            "create_opencrq_dependency_rule",
+            {"name": "r", "primary_asset_id": PRIMARY_ASSET, "category_id": "host"},
+            "roles is required",
+            id="no role",
+        ),
+        pytest.param(
+            "create_opencrq_dependency_rule",
+            {
+                "name": "r",
+                "primary_asset_id": PRIMARY_ASSET,
+                "roles": ["stores"],
+                "category_id": "host",
+                "subcategory_id": "website",
+            },
+            "not a subcategory of host",
+            id="subcategory of another category",
+        ),
+        pytest.param(
+            "delete_opencrq_dependency_rules",
+            {"rule_ids": [str(uuid.UUID(int=n)) for n in range(501)]},
+            "at most 500",
+            id="over the write cap",
+        ),
+    ],
+)
+async def test_a_dependency_rule_call_opencrq_would_refuse_is_refused_before_any_call(
+    tool: str, args: dict[str, Any], refusal: str
+) -> None:
+    with _recorded_trpc(opencrq_assets, {}) as calls:
+        out = (await _execute(tool, **args)).content
+    assert refusal in out
+    assert calls == []
+
+
+def test_the_rule_and_link_tools_state_the_lifecycle_of_rule_links() -> None:
+    assert "removed at the next apply" in _tool_description("update_opencrq_dependency_rule")
+    assert "deleted with them" in _tool_description("delete_opencrq_dependency_rules")
+    assert "suppresses that pair for good" in _tool_description("delete_opencrq_asset_dependencies")
 
 
 @pytest.mark.parametrize("case", WRITES.values(), ids=list(WRITES))
@@ -2470,7 +2785,7 @@ async def test_supporting_asset_creation_sends_every_field_opencrq_accepts():
             "create_opencrq_supporting_asset",
             name="ACME-SRV-0500", category="host", exposure="internal", criticality="high",
             subcategory="server", url="https://cmdb.acme.io/srv-0500", linked_person="Jane Doe",
-            tag_names=["crown-jewel", " edr "],
+            tag_names=["primary-asset", " edr "],
             properties={
                 "family": "machine", "hostname": "acme-srv-0500", "ip_addresses": ["10.0.0.5"],
                 "cloud_provider": "aws", "arch": "x86_64", "is_eol": False,
@@ -2488,7 +2803,7 @@ async def test_supporting_asset_creation_sends_every_field_opencrq_accepts():
             "id": asset_id, "name": "ACME-SRV-0500", "description": None, "ownerId": None,
             "exposure": "internal", "categoryId": "host", "criticality": "high",
             "subcategoryId": "server", "url": "https://cmdb.acme.io/srv-0500", "linkedPerson": "Jane Doe",
-            "tagNames": ["crown-jewel", "edr"],
+            "tagNames": ["primary-asset", "edr"],
             "properties": {
                 "family": "machine", "hostname": "acme-srv-0500", "ipAddresses": ["10.0.0.5"],
                 "cloudProvider": "aws", "arch": "x86_64", "isEol": False,

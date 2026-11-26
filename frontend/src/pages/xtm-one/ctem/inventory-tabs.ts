@@ -16,14 +16,14 @@ export const RETIRED_TABS: Record<string, InventoryTab> = { "tech-stack": "softw
  * pass, the prioritization policy and the evidence health pass. They have a tab of their own (#1511): read by
  * everyone, each card's own Edit for administrators, so no card is reachable by URL only.
  */
-export const EXPOSURE_TAB_CARDS = ["outside_lens", "prioritization_policy", "evidence_health"] as const satisfies readonly ProfileCard[];
+export const EXPOSURE_TAB_CARDS = ["outside_lens", "prioritization_policy", "intelligence_policy", "evidence_health"] as const satisfies readonly ProfileCard[];
 
 /**
  * The business inputs of the CTEM loop (#1690, Sam 24 Nov 2026): primary assets and business services, shipped
  * products and tracked organizations moved from Settings > Organization to a tab of their own, read by everyone,
  * each card's own Edit for administrators, as the Exposure policy tab.
  */
-export const BUSINESS_TAB_CARDS = ["crown_jewels", "shipped_products", "tracked_organizations"] as const satisfies readonly ProfileCard[];
+export const BUSINESS_TAB_CARDS = ["primary_assets", "shipped_products", "tracked_organizations"] as const satisfies readonly ProfileCard[];
 
 /** The tabs the page draws, in order (English labels, translated by DetailTabs). */
 // AI targets are assets of category AI target, on the Assets tab: no tab of their own.

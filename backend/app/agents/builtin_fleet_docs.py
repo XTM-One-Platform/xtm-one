@@ -39,6 +39,13 @@ _OPT_IN = (
     "the CTEM Assistant hands nothing over to it."
 )
 
+#: #2157: the members' dashboard schedules are the one exception to :data:`_OPT_IN`.
+_DASHBOARD_EXCEPTION = (
+    " The members' dashboard schedules (the weekly stage assessments and the monthly exposure "
+    "briefing) are the exception: they ship on, stay outside the Automations count, and Pause "
+    "all switches them off."
+)
+
 #: 1. The generic CTEM loop (CTEM-31, #1048): what it does on day one with the
 #: customer's ecosystem. Absorbs the former threat response (F1), posture (F4)
 #: and the three single-product desks, as roles.
@@ -77,7 +84,8 @@ CTEM_LOOP_DOC: dict[str, str] = {
         "goes to its case. The other threat signals wait for the weekly sweep.\n"
         "- **Weekly threat sweep** and **Re-test due**: catches what the events missed, re-runs a "
         "validated scenario once a fix is deployed.\n"
-        "- **Weekly assessments**: the five stage assessments and the exposure briefing, on by default.\n"
+        "- **Weekly assessments**: the five stage assessments and the exposure briefing, on by default (outside the "
+        "Automations count; Pause all switches them off).\n"
         "- **Event refresh** and **Monthly board report**: a closed case refreshes the stages it "
         "touched; the board report on the 1st of the month.\n"
         "- **PIR match created**: the Intelligence desk answers a PIR match in OpenCTI; with the "
@@ -104,7 +112,7 @@ CTEM_LOOP_DOC: dict[str, str] = {
     "prerequisites": (
         "OpenCTI, OpenAEV and OpenCRQ connected for the administrator who switches it on (each role "
         "works with its own module alone), and an organization profile (sector, regions, "
-        "technology, primary assets). " + _OPT_IN
+        "technology, primary assets). " + _OPT_IN + _DASHBOARD_EXCEPTION
     ),
 }
 
@@ -342,7 +350,8 @@ OPENAEV_DETECTION_DESK_DOC: dict[str, str] = {
         "- **Weekly validation plan**: Mondays 06:00.\n"
         "- **Weekly coverage report**: Fridays 08:00.\n"
         "- **Re-test due**: a work item keyed `openaev:detection-desk:retest:` once a remediation is done.\n"
-        "- **Gate answered**: a person answers a launch approval; the simulation is launched or the refusal recorded."
+        "- **Gate answered**: a person answers a launch approval or a remediation; the simulation is launched, "
+        "the re-test scheduled, or the refusal recorded."
     ),
     "flow": (
         "1. Plan: the orchestrator picks the techniques with no recent result against the primary assets; the "
@@ -440,9 +449,9 @@ _INTEGRATIONS = "/integrations"
 _PROFILE_FIELD_TAB: dict[str, tuple[str, str]] = {
     "sector": ("identity", "identity"),
     "regions": ("identity", "identity"),
-    "crown_jewels": ("business", "crown_jewels"),
+    "primary_assets": ("business", "primary_assets"),
     "tracked_organizations": ("business", "tracked_organizations"),
-    "tech_stack": ("technology", "tech_stack"),
+    "software": ("technology", "software"),
 }
 
 
@@ -462,10 +471,10 @@ _NEEDS_OPENAEV = _prereq("integration:openaev", "OpenAEV connected for you", _IN
 _NEEDS_OPENCRQ = _prereq("integration:opencrq", "OpenCRQ connected for you", _INTEGRATIONS)
 _NEEDS_SECTOR = _prereq("profile:sector", "Sector in the organization profile", profile_fix_route("sector"))
 _NEEDS_REGIONS = _prereq("profile:regions", "Regions in the organization profile", profile_fix_route("regions"))
-_NEEDS_JEWELS = _prereq(
-    "profile:crown_jewels", "Primary assets in the organization profile", profile_fix_route("crown_jewels")
+_NEEDS_PRIMARY_ASSETS = _prereq(
+    "profile:primary_assets", "Primary assets in the organization profile", profile_fix_route("primary_assets")
 )
-_NEEDS_TECH = _prereq("profile:tech_stack", "Technology in the organization profile", profile_fix_route("tech_stack"))
+_NEEDS_TECH = _prereq("profile:software", "Technology in the organization profile", profile_fix_route("software"))
 _SWITCHED_ON = _prereq("manual", "An administrator switches each automation on", "")
 
 #: Gate impact classes (#9769, ``app.services.fleet_autonomy``): ``low`` stops
@@ -476,7 +485,8 @@ _SWITCHED_ON = _prereq("manual", "An administrator switches each automation on",
 #: authorized, and a gate that waits is one decision item (a needs_human work
 #: item with its ask card) between steps, never a pause inside a run. The agent
 #: decides what an answer means and moves the case itself.
-#: Seeded fleets ship at Low (#10005), so the class says what still waits:
+#: Seeded fleets ship at Full human gates (#2279), where every gate waits; at
+#: Low (#10005, a level an administrator picks) the class says what still waits:
 #: an OpenAEV launch executes payloads on the organization's endpoints or AI
 #: systems, which the fleet cannot tell from production, and an executed
 #: inject cannot be undone: ``destructive``. An action on a supplier (contact,
@@ -493,8 +503,8 @@ CTEM_VALIDATION_GATE = "ctem.validation.non_readonly"
 GATE_OFFERED_TOOLS: dict[str, tuple[str, ...]] = {"ctem.analyst_review": ("apply_opencti_draft",)}
 
 #: The CTEM loop gate catalog (#916, CTEM-34): one key per loop stage, declared
-#: once and seeded on every CTEM loop fleet. Out of the box (the seeded Low
-#: level) two gates wait per case (Sam, 23 Nov 2026, #1339): the OpenAEV
+#: once and seeded on every CTEM loop fleet. Out of the box every gate waits
+#: (Full human gates, #2279); at Low two gates wait per case (Sam, 23 Nov 2026, #1339): the OpenAEV
 #: validation (``ctem.validation.non_readonly``, on a fleet that has the OpenAEV
 #: validation step) and ``ctem.mobilize``, the ``destructive`` ones; every other
 #: gate runs and the case records it as passed automatically.
@@ -502,7 +512,9 @@ GATE_OFFERED_TOOLS: dict[str, tuple[str, ...]] = {"ctem.analyst_review": ("apply
 #: (``Fleet.approval_pins``, writable on a built-in fleet, never written by the
 #: seed) moves one gate either way and survives a seed upgrade. No gate names a
 #: tool (#1675): the OpenAEV launches belong to ``ctem.validation.non_readonly``,
-#: the remediation tickets and a supplier action to ``ctem.mobilize``, the OpenCRQ
+#: the remediation tickets and a supplier action to ``ctem.mobilize``, a fix applied
+#: through a bound integration (indicators pushed to the EDR in prevention mode, a rule
+#: deployed, a configuration changed, #2061) to ``ctem.production_change``, the OpenCRQ
 #: treatment plan writes to ``ctem.remediation.decision``, by the persona alone.
 CTEM_GATE_KEYS: tuple[str, ...] = (
     "ctem.validation.non_readonly",
@@ -531,8 +543,8 @@ def _ctem_gates(*, launch_tools: bool, mobilize_action: str) -> list[dict[str, A
         gate(CTEM_VALIDATION_GATE, CTEM_VALIDATION_ACTION, "openaev", _LAUNCH_IMPACT if launch_tools else "high"),
         gate(
             "ctem.analyst_review",
-            "Review: an analyst checks the threat package, then its OpenCTI draft is validated and its security "
-            "coverage requested: approving publishes the package and sends the coverage to OpenAEV",
+            "Review the threat package in its OpenCTI draft, nothing live before approval: approve publishes "
+            "it and sends its coverage to OpenAEV, reject deletes the draft, not publishing keeps it unvalidated",
             "opencti",
             "low",
         ),
@@ -543,13 +555,22 @@ def _ctem_gates(*, launch_tools: bool, mobilize_action: str) -> list[dict[str, A
             "high",
         ),
         gate(CTEM_MOBILIZE_GATE, mobilize_action, "platform", "destructive"),
-        gate("ctem.production_change", "Apply a change on production through an integration", "platform", "high"),
+        gate(
+            "ctem.production_change",
+            "Apply a change on production through an integration: indicators blocked in the EDR, a rule "
+            "deployed, a configuration changed, with its rollback",
+            "platform",
+            "high",
+        ),
         gate("ctem.accept_risk", "Accept a residual risk beyond the policy cap", "platform", "high"),
         gate("ctem.close_without_retest", "Close a case without a passing re-test", "platform", "high"),
     ]
 
 
-_MOBILIZE_ACTION = "Mobilize: create the tickets, notify the owners, hand over the prepared change"
+_MOBILIZE_ACTION = (
+    "Mobilize: create the tickets, notify the owners, hand over the prepared change; a fix applied "
+    "through an integration is ctem.production_change"
+)
 
 CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
     "purpose_line": "Turn a published threat into an approved, verified plan in days.",
@@ -607,7 +628,10 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         },
         {
             "title": "Validation",
-            "detail": "An OpenAEV scenario reproduces the threat, then its results are read.",
+            "detail": (
+                "An OpenAEV scenario reproduces the threat, then its results are read. The decision offers "
+                "the whole group (recommended) or a sample of a few assets."
+            ),
             "gate": True,
         },
         {"title": "Risk", "detail": "The expected loss is updated in OpenCRQ."},
@@ -629,7 +653,7 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         _NEEDS_OPENCRQ,
         _NEEDS_SECTOR,
         _NEEDS_REGIONS,
-        _NEEDS_JEWELS,
+        _NEEDS_PRIMARY_ASSETS,
         _SWITCHED_ON,
     ],
     "quota": [
@@ -692,8 +716,13 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
     "steps": [
         {"title": "Asset match", "detail": "No matching asset closes the case, with the reason."},
         # Each step names the gate it stands for (#1074): the About response badges it when that gate
-        # waits at the fleet's live level and pins; the static flag is the seeded level's (Low).
-        {"title": "Exploitability", "detail": "Validated in OpenAEV.", "gate": True, "gate_key": CTEM_VALIDATION_GATE},
+        # waits at the fleet's live level and pins; the static flag is Low's (seeded at full_gates, #2279).
+        {
+            "title": "Exploitability",
+            "detail": "Validated in OpenAEV, on the whole group (recommended) or a sample of a few assets.",
+            "gate": True,
+            "gate_key": CTEM_VALIDATION_GATE,
+        },
         {"title": "Score", "detail": "The finding is scored in OpenCRQ."},
         {
             "title": "Ticket",
@@ -709,7 +738,7 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
         {"module": "opencrq", "objects": ["Finding scores"]},
         {"module": "platform", "objects": ["Approval work items", "Remediation tickets (after approval)"]},
     ],
-    "prerequisites": [_NEEDS_OPENCTI, _NEEDS_OPENAEV, _NEEDS_OPENCRQ, _NEEDS_JEWELS, _NEEDS_TECH, _SWITCHED_ON],
+    "prerequisites": [_NEEDS_OPENCTI, _NEEDS_OPENAEV, _NEEDS_OPENCRQ, _NEEDS_PRIMARY_ASSETS, _NEEDS_TECH, _SWITCHED_ON],
     "quota": [
         {
             "trigger": "New KEV or EPSS jump",
@@ -967,7 +996,7 @@ OPENAEV_DETECTION_DESK_STRUCTURED: dict[str, Any] = {
     ],
     "prerequisites": [
         _NEEDS_OPENAEV,
-        _NEEDS_JEWELS,
+        _NEEDS_PRIMARY_ASSETS,
         _NEEDS_TECH,
         _SWITCHED_ON,
     ],
@@ -1162,7 +1191,7 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
         {"title": "Signal", "detail": "Any trigger path; reconcile and the scope gate open a case or watch it."},
         {"title": "Prioritise", "detail": "Relevance and severity from the profile and the scope criticality."},
         # Each step names its gate (#1074): the About response badges it when that gate waits at the
-        # live level and pins. The static flag is the seeded level's (Low): the validation and ctem.mobilize wait.
+        # live level and pins. The static flag is Low's: the validation and ctem.mobilize wait (seeded: all, #2279).
         {
             "title": "Validate",
             "detail": "An OpenAEV scenario or atomic test, after your approval.",
@@ -1204,7 +1233,7 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
         _NEEDS_OPENCRQ,
         _NEEDS_SECTOR,
         _NEEDS_REGIONS,
-        _NEEDS_JEWELS,
+        _NEEDS_PRIMARY_ASSETS,
         _SWITCHED_ON,
     ],
     "quota": [

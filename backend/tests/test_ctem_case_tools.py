@@ -61,6 +61,10 @@ class _Db:
     async def get(self, _model, _id):
         return SimpleNamespace(ctem_vertical=None)
 
+    async def execute(self, _query: object) -> SimpleNamespace:
+        # A close reads the case's open items and timers (#2494): none in this fake session.
+        return SimpleNamespace(scalars=lambda: [])
+
 
 @pytest.fixture
 def env(monkeypatch):
@@ -81,7 +85,7 @@ def env(monkeypatch):
         assert organization_id == ORG
         return [(seen.case, rows)]
 
-    async def _get(_db, case_id, *, organization_id):
+    async def _get(_db: object, case_id: object, *, organization_id: object, **_options: object) -> object:
         if organization_id != ORG:
             return None
         if case_id in seen.created:
@@ -99,7 +103,7 @@ def env(monkeypatch):
         seen.created[case.id] = case
         return case
 
-    async def _viewer(_db, user_id, vertical, *, fresh=False):
+    async def _viewer(_db, user_id, vertical, *, fresh=False, members=None, stale_ok=False):
         if str(user_id) == str(seen.user_id):
             return view_of.ViewerView(issues={ISSUE.member_id: ISSUE}, open_ids={ISSUE.member_id})
         return view_of.ViewerView()
@@ -110,12 +114,39 @@ def env(monkeypatch):
     monkeypatch.setattr(store, "get_case", _get)
     monkeypatch.setattr(store, "create_manual_case", _create)
 
+    # No case of these tests was merged away (#2289): the merge lookups answer none.
+    async def _merged_into(_db: object, case_id: object, *, organization_id: object) -> object:
+        return seen.merged.get(case_id)
+
+    async def _merged_with_prefix(_db: object, prefix: str, *, organization_id: object, limit: int = 2) -> list[object]:
+        return [m for m in seen.merged.values() if str(m.case_id).startswith(prefix)][:limit]
+
+    seen.merged = {}
+    monkeypatch.setattr(store, "merged_into", _merged_into)
+    monkeypatch.setattr(store, "merged_with_prefix", _merged_with_prefix)
+
     async def _events(_db: object, case_ids: list[object]) -> dict[object, list[object]]:
         return {cid: [] for cid in case_ids}
 
     # The list's asset count and the read's version history read the case events (#1694).
     monkeypatch.setattr(store, "events_of", _events)
     monkeypatch.setattr(view_of, "viewer_view", _viewer)
+
+    async def _never_deleted(_db: object, _case_id: object) -> None:
+        return None
+
+    # No delete audit row in this fake session (#2328): a miss stays "No case".
+    monkeypatch.setattr("app.services.ctem_case_delete.deleted_case_answer", _never_deleted)
+
+    # The acting person holds a CTEM decide right (#2441: no right refuses every case tool).
+    from app.services import ctem_access
+
+    seen.ctem_level = "decide"
+
+    async def _level(_db: object, _user: object) -> str | None:
+        return seen.ctem_level
+
+    monkeypatch.setattr(ctem_access, "level", _level)
 
     def _tools(user_id: str):
         defs, executor = build_ctem_case_tools(user_id=user_id, agent_id=AGENT)
@@ -212,6 +243,39 @@ async def test_resolving_needs_evidence(env):
         await env.call("update_ctem_case", case_id=str(env.case.id), state="resolved", evidence="CHG-1234 deployed")
     )
     assert body["updated"]["state"] == "resolved"
+
+
+async def test_an_answer_on_a_closed_case_is_refused_and_moves_nothing(env: SimpleNamespace) -> None:
+    """#2494: a gate answered after a person closed the case runs nothing the decision covered."""
+    env.case.state = "accepted_risk"
+    answer = await env.call(
+        "update_ctem_case",
+        case_id=str(env.case.id),
+        gate={"key": "ctem.validation.non_readonly", "outcome": "answered", "by": "Jane", "option": "approve"},
+    )
+    assert answer.startswith("Refused: case") and "closed (accepted_risk)" in answer
+    assert env.case.state == "accepted_risk" and env.db.commits == 0 and env.db.added == []
+
+
+async def test_the_tool_closing_a_case_cancels_its_open_work(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#2494: update_ctem_case into a closed state cancels through the shared helper, as the agent."""
+    from app.services import ctem_case_delete
+
+    calls: list[dict[str, Any]] = []
+
+    async def _cancel(_db: object, case: Any, **kw: Any) -> tuple[list[Any], list[Any]]:
+        calls.append({"case": case.id, **kw})
+        return [], []
+
+    monkeypatch.setattr(ctem_case_delete, "cancel_case_work", _cancel)
+    body = json.loads(
+        await env.call("update_ctem_case", case_id=str(env.case.id), state="resolved", evidence="CHG-1234 deployed")
+    )
+    assert body["updated"]["state"] == "resolved"
+    assert [c["case"] for c in calls] == [env.case.id]
+    assert calls[0]["keep_held"] is True and "moved to resolved" in calls[0]["item_result"]
 
 
 async def test_create_splits_issues_into_a_manual_case(env):
@@ -407,6 +471,72 @@ async def test_a_gate_pass_is_written_on_the_case_and_an_unknown_gate_is_refused
     assert refused.startswith("Refused:") and env.db.commits == commits
 
 
+@pytest.mark.parametrize(
+    ("gate", "prefix"),
+    [
+        ("ctem.analyst_review", "ctem:review:"),
+        ("ctem.validation.non_readonly", "ctem:validation:"),
+        ("ctem.validation.non_readonly", "ctem:f2:validate:"),
+        ("ctem.remediation.decision", "ctem:remediation:"),
+        ("ctem.mobilize", "ctem:f1:case-mobilize:"),
+        ("ctem.mobilize", "ctem:f2:mobilize:"),
+        ("ctem.accept_risk", "ctem:accept-risk:"),
+        ("ctem.production_change", "ctem:production-change:"),
+        ("ctem.close_without_retest", "ctem:close-without-retest:"),
+    ],
+)
+async def test_a_waited_gate_needs_its_open_decision_item(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, gate: str, prefix: str
+) -> None:
+    """#1954: a gate reaches waited only through its decision; without one the write is refused, nothing written."""
+    from app.services import ctem_gate_order
+
+    open_keys: set[str] = set()
+
+    async def _open(_db: object, case_id: str) -> set[str]:
+        assert case_id == str(env.case.id)
+        return set(open_keys)
+
+    monkeypatch.setattr(ctem_gate_order, "open_gate_item_keys", _open)
+    commits = env.db.commits
+    refused = await env.call(
+        "update_ctem_case", case_id=str(env.case.id), state="analyzing", gate={"key": gate, "outcome": "waited"}
+    )
+    assert refused.startswith("Refused:") and "create_work_item" in refused
+    assert env.db.commits == commits and env.db.added == []
+    # Another gate's decision is not this gate's decision.
+    open_keys.add(f"ctem:other:{uuid.uuid4()}")
+    assert (
+        await env.call("update_ctem_case", case_id=str(env.case.id), gate={"key": gate, "outcome": "waited"})
+    ).startswith("Refused:")
+    open_keys.add(prefix + str(env.case.id))
+    body = json.loads(
+        await env.call("update_ctem_case", case_id=str(env.case.id), gate={"key": gate, "outcome": "waited"})
+    )
+    assert "updated" in body
+    written = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
+    assert [(g.from_value, g.to_value) for g in written] == [(gate, "waited")]
+
+
+async def test_a_pass_or_an_answer_needs_no_decision_item(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1954: only waited rests on a decision item; a pass or an answer is written as before."""
+    from app.services import ctem_gate_order
+
+    async def _never(_db: object, _case_id: str) -> set[str]:
+        raise AssertionError("read only for a waited gate")
+
+    monkeypatch.setattr(ctem_gate_order, "open_gate_item_keys", _never)
+    for outcome in ("passed_automatically", "answered"):
+        body = json.loads(
+            await env.call(
+                "update_ctem_case", case_id=str(env.case.id), gate={"key": "ctem.analyst_review", "outcome": outcome}
+            )
+        )
+        assert "updated" in body
+
+
 _REMEDIATION_OPTIONS = [
     {"key": "A", "label": "Disable HTTP/2", "cost": 6000, "expected_loss_before": 500, "expected_loss_after": 50},
     {"key": "B", "label": "Upgrade", "cost": 45000, "expected_loss_before": 500, "expected_loss_after": 10},
@@ -514,3 +644,66 @@ async def test_a_person_answer_is_written_on_the_case(env: SimpleNamespace, monk
     assert body == {"decided": True, "option": "B", "by": "user-1"}
     gates = [r for r in env.db.added if isinstance(r, CtemCaseEvent) and r.kind == "gate"]
     assert [(g.to_value, g.reason, g.evidence) for g in gates] == [("answered", "user-1", "B")]
+
+
+# ── #2037: a duplicate is merged by the loop, never deleted ──
+
+
+async def test_an_agent_merges_a_duplicate_into_the_case_it_names(env: SimpleNamespace, monkeypatch) -> None:
+    duplicate = _case(title="Upgrade windows to a fixed version", keys=["upgrade:-/windows@latest"])
+    env.created[duplicate.id] = duplicate
+    calls: list[dict[str, Any]] = []
+
+    async def _merge(_db, **kw):
+        calls.append(kw)
+        return env.case
+
+    monkeypatch.setattr(store, "merge_cases", _merge)
+    body = json.loads(
+        await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[str(duplicate.id)], reason="same fix")
+    )
+    assert body["merged"] == [str(duplicate.id)] and body["into"]["id"] == str(env.case.id)
+    assert calls[0]["actor"] == AGENT and calls[0]["source_ids"] == [duplicate.id]
+    assert calls[0]["target_id"] == env.case.id and calls[0]["reason"] == "same fix"
+    assert env.db.commits == 1
+
+
+async def test_a_merge_of_a_case_the_agent_does_not_see_is_refused(env: SimpleNamespace, monkeypatch) -> None:
+    async def _merge(_db, **kw):
+        raise AssertionError("no merge on a case the acting person does not see")
+
+    monkeypatch.setattr(store, "merge_cases", _merge)
+    unseen = str(uuid.uuid4())
+    assert "No case" in await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[unseen])
+    _, other = env.tools_for(str(uuid.uuid4()))
+    assert "No case" in await other("merge_ctem_cases", target_id=str(env.case.id), case_ids=[unseen])
+    assert "must be ids" in await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[])
+    assert env.db.commits == 0
+
+
+async def test_a_merge_rule_refusal_writes_nothing(env: SimpleNamespace, monkeypatch) -> None:
+    async def _merge(_db, **kw):
+        raise rules.CaseRuleError("the surviving case cannot also be merged into itself")
+
+    monkeypatch.setattr(store, "merge_cases", _merge)
+    answer = await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[str(env.case.id)])
+    assert answer.startswith("Refused: the surviving case") and env.db.commits == 0
+
+
+def test_a_case_names_the_simulations_its_derived_items_are_matched_on() -> None:
+    """#2389: the delete cascade reads the case's validation references and attack-path hops."""
+    from app.services import ctem_case_delete as case_delete
+
+    case = _case(
+        validations=[{"provider": "openaev", "ref": "sim-1"}, {"provider": "openaev", "ref": "sim-1"}, {"ref": ""}],
+        attack_path={"hops": [{"simulation": "sim-2"}, {"simulation": None}]},
+    )
+    assert case_delete.case_simulations(case) == ["sim-1", "sim-2"]
+    assert case_delete.case_simulations(_case()) == []
+
+
+def test_delete_points_to_merge_for_duplicates(env: SimpleNamespace) -> None:
+    described = {d.name: d.description for d in env.defs}
+    assert "reopens at the next reconcile" in described["delete_ctem_cases"]
+    assert "merge duplicates" in described["delete_ctem_cases"]
+    assert "never reopens" in described["merge_ctem_cases"]

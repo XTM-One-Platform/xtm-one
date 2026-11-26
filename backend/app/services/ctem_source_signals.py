@@ -48,6 +48,8 @@ def signal_of(issue: rules.SourceIssue, fix: rules.Remediation) -> SignalInput |
             "fixed_version": fix.fixed_version,
             **({"fixed_versions": dict(fix.fixed_versions)} if fix.fixed_versions else {}),
             "product_label": fix.product_label,
+            # The case's running versions count repository packages only for a package CVE (#2223).
+            **({"language_package": True} if fix.language_package else {}),
         },
         "software": [software] if software else [],
         "cve": issue.cve,
@@ -55,7 +57,7 @@ def signal_of(issue: rules.SourceIssue, fix: rules.Remediation) -> SignalInput |
         "epss": issue.epss,
         "kev": issue.kev or None,
         "assets": list(issue.assets),
-        "crown_jewels": list(issue.crown_jewels),
+        "primary_assets": list(issue.primary_assets),
         "installed_version": issue.installed_version,
         "fixed_version": issue.fixed_version,
         "version_note": issue.version_note,

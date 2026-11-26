@@ -16,7 +16,7 @@
             "items": {
               "type": "object",
               "properties": {
-                "name": {"type": "string", "description": "sector, region, tech_stack, crown_jewels or pir."},
+                "name": {"type": "string", "enum": ["sector", "region", "software", "primary_assets", "pir", "activity"]},
                 "score": {"type": "integer", "minimum": 0, "maximum": 100},
                 "evidence": {"type": "string"}
               },
@@ -24,11 +24,12 @@
               "additionalProperties": false
             }
           },
+          "exposure_confirmed": {"type": "boolean", "description": "True only on a running version proven vulnerable (CPE match or host version)."},
           "context_fields": {"type": "array", "items": {"type": "string"}, "description": "Organization profile fields used."},
           "missing_context": {"type": "array", "items": {"type": "string"}, "description": "Organization profile fields that were empty."},
           "reason": {"type": "string", "description": "One sentence: why relevant or not."}
         },
-        "required": ["stix_id", "name", "relevant", "score", "factors", "context_fields", "missing_context", "reason"],
+        "required": ["stix_id", "name", "relevant", "score", "factors", "exposure_confirmed", "context_fields", "missing_context", "reason"],
         "additionalProperties": false
       }
     }

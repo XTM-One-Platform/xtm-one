@@ -11,7 +11,10 @@ vi.mock("@/hooks/useActivityStream", () => ({ useActivityStream: () => {} }));
 vi.mock("@/hooks/useStaleBuildNotice", () => ({ useStaleBuildNotice: () => {} }));
 vi.mock("@/hooks/useThemeEffect", () => ({ useThemeEffect: () => {} }));
 vi.mock("@/components/layout/EmergencyStopBanner", () => ({ EmergencyStopBanner: () => null }));
-vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isImpersonating: false, user: null, logout: vi.fn() }) }));
+const auth = vi.hoisted(() => ({ ctemAccess: "view" as string | null }));
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ isImpersonating: false, isAdmin: false, user: { ctem_access: auth.ctemAccess }, logout: vi.fn() }),
+}));
 vi.mock("@/hooks/api/useAuthApi", () => ({ useMe: () => ({ data: { full_name: "Romain Example" } }) }));
 
 const install = vi.hoisted(() => ({ method: "unavailable" as string, install: vi.fn() }));
@@ -51,6 +54,7 @@ describe("CompanionShell", () => {
     apiGet.mockReset();
     apiGet.mockImplementation(async () => ({}));
     install.method = "unavailable";
+    auth.ctemAccess = "view";
     localStorage.clear();
   });
   afterEach(() => vi.useRealTimers());
@@ -81,6 +85,13 @@ describe("CompanionShell", () => {
     expect(screen.getByRole("button", { name: "Account" })).toBeTruthy();
     expect(screen.getByText("Notifications card")).toBeTruthy();
     expect(screen.queryByText("Platform page")).toBeNull();
+  });
+
+  it("gives a person without a CTEM right the mode-neutral home, not the command center (#2441)", async () => {
+    auth.ctemAccess = null;
+    drawAt("/");
+    expect(await screen.findByText("Copilot home dashboard")).toBeTruthy();
+    expect(screen.queryByText("XTM One home dashboard")).toBeNull();
   });
 
   it("offers to install where the browser can, until dismissed", () => {

@@ -169,7 +169,7 @@ export function CtemTrialSplash() {
               {t_i18n("Connected")}
             </span>
             {Array.from(new Map(connectedPlatforms.map((p) => [p.name, p])).values()).map((p) => (
-              <div key={p.name} className="flex items-center gap-1.5 px-3 py-1 rounded-full layer-1 bg-elevation-default border border-elevation-subtle-soft">
+              <div key={p.name} className="flex items-center gap-1.5 px-2 py-1 rounded-sm layer-1 bg-elevation-default border border-elevation-subtle-soft">
                 <img src={p.logo} alt={p.name} className="h-3.5 w-3.5" />
                 <span className="content-compact text-default-secondary">{p.name}</span>
                 <Badge variant="outline" className="text-[8px] py-0 px-1.5 h-3.5 ml-1 text-default-secondary border-elevation-subtle">

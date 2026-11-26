@@ -50,8 +50,9 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import String, and_, case, cast, delete, false, func, not_, or_, select, true, update
+from sqlalchemy import String, and_, case, cast, delete, false, func, literal, not_, or_, select, true, update
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.config import settings
 from app.core.json_sql import when_json_parseable
@@ -81,10 +82,12 @@ from app.services.company_managed_writes import (
     restricted_governors,
 )
 from app.services.ownership_scope import ownership_clause
+from app.services.work_item_a2a_refs import names_a2a_task, refuse_unknown_a2a_tasks
 from app.services.work_item_blocked_refs import all_satisfied as all_refs_satisfied
 from app.services.work_item_blocked_refs import (
     blocked_why,
     names_reference_state,
+    names_tag,
     normalize_blocked_on_refs,
     normalize_blocked_reason,
     own_pull_request,
@@ -95,6 +98,7 @@ from app.services.work_item_blocked_refs import (
     refuse_unbound_reference_reason,
     refuse_unobserved_deployment_refs,
 )
+from app.services.work_item_decision_reach import carry_decision_marks, clear_decision_marks
 from app.services.work_item_notify import normalize_notify_payload
 from app.services.work_item_past_due import carry_past_due_mark, clear_past_due_mark
 
@@ -884,6 +888,8 @@ def _visible_clause(
         tiers.append(_owner_agent_clause(actor))
         # An item another person handed to this agent (#858).
         tiers.append(_handed_to_clause(actor))
+        # An item filed in the workspace of a fleet this agent works in (#2381).
+        tiers.append(_fleet_member_read_clause(actor))
     return or_(*tiers)
 
 
@@ -1074,6 +1080,36 @@ def _owner_agent_clause(actor: CompanyManagedWriter | None) -> Any:
     )
 
 
+def _fleet_member_read_clause(actor: CompanyManagedWriter | None) -> Any:
+    """Items filed in the workspace of a fleet *actor* works in: a READ tier (#2381).
+
+    A company-managed agent's run acts with no person
+    (``_resolve_run_file_owner_id`` keeps file stamping personless), so a
+    person's workspace tier never applies to it, and an item another member
+    filed in the fleet's own coordination workspace matched no tier: a fleet
+    orchestrator could not read the gates its loop parks.
+
+    This tier admits, to a company-managed agent's own reads only, the items
+    filed in the coordination workspace of a live fleet the agent is a member
+    of (home or connected) or orchestrates. It never widens a write:
+    ``_writable_clause`` does not call it. A person's read, a personal agent
+    (its runs carry its person's workspace tiers) and a writer without an
+    agent get ``false()``. The creators' ``coordination_access`` narrowing
+    still applies on top.
+    """
+    if actor is None or actor.agent_id is None or not actor.may_write:
+        return false()
+    agent_id = actor.agent_id
+    from app.models.fleet import Fleet, FleetMember
+
+    member_of = select(FleetMember.fleet_id).where(FleetMember.agent_id == agent_id)
+    fleet_workspaces = select(Fleet.workspace_id).where(
+        Fleet.is_archived.is_(False),
+        or_(Fleet.id.in_(member_of), Fleet.orchestrator_agent_id == agent_id),
+    )
+    return and_(WorkItem.workspace_id.is_not(None), WorkItem.workspace_id.in_(fleet_workspaces))
+
+
 def _handed_to_clause(actor: CompanyManagedWriter | None) -> Any:
     """Items another person handed to *actor*, its OWNER agent (#858).
 
@@ -1082,14 +1118,18 @@ def _handed_to_clause(actor: CompanyManagedWriter | None) -> Any:
     as the owner agent's own person, so no other tier admits it and the hand-off
     is dropped without anyone seeing it. This tier admits it to the owner
     agent's own tools, dispatch and settlement (never to a person's read), on
-    one of two grants only (Sam's decision on #858):
+    one of three grants only (Sam's decisions on #858 and #1967):
 
     1. the creator may open the owner agent: their own, company-managed and not
        narrowed, or shared with them or one of their groups
        (``shared_with_user_column_clause``; an administrator's role is no grant);
     2. the creating agent's home fleet and the owner agent's home fleet are
        connected, either fleet naming the other or the other's agent as a
-       ``connected`` member.
+       ``connected`` member;
+    3. the creating agent holds a configured handover (any type) to the owner
+       agent, outside the exposure rule's refusal (a non-exposed home member
+       of another fleet stays out): the handover an owner or an administrator
+       configured is the grant, whatever the person may open.
 
     Nothing else widens: the same check refuses the hand-off at creation
     (:func:`_refuse_unreachable_owner`), so an item no tier gives its owner
@@ -1104,6 +1144,7 @@ def _handed_to_clause(actor: CompanyManagedWriter | None) -> Any:
         or_(
             _creator_may_open_agent(WorkItem.user_id, agent_id),
             _fleets_connected(WorkItem.created_by_agent_id, agent_id),
+            _creator_hands_over_to(WorkItem.created_by_agent_id, agent_id),
         ),
     )
 
@@ -1164,6 +1205,58 @@ def _fleets_connected(creator_agent: Any, owner_agent: Any) -> Any:
     )
 
 
+def _creator_hands_over_to(creator_agent: Any, owner_agent: uuid.UUID) -> Any:
+    """Grant 3 of :func:`_handed_to_clause`: *creator_agent* holds a handover to *owner_agent*.
+
+    Any handover type in the creating agent's ``handover_agent_ids``, unless
+    the owner agent is a non-exposed home member of a fleet other than the
+    creating agent's home fleet (the exposure rule of ``services/fleets.py``,
+    the orchestrator always exposed). *owner_agent* is a value, never a
+    column: both callers name the one owner agent.
+    """
+    from sqlalchemy.orm import aliased
+
+    from app.models.agent import Agent
+    from app.models.fleet import FLEET_ROLE_MEMBER, Fleet, FleetMember
+
+    source = aliased(Agent)
+    configured = (
+        select(source.id)
+        .where(
+            source.id == creator_agent,
+            when_json_parseable(
+                source.handover_agent_ids,
+                cast(source.handover_agent_ids, JSONB).contains([str(owner_agent)]),
+            ),
+        )
+        .exists()
+    )
+    creator_member = aliased(FleetMember)
+    # Nested two levels under a listing: correlate everything but its own
+    # table, as _fleets_connected does (#890).
+    creator_home = (
+        select(creator_member.fleet_id)
+        .where(creator_member.agent_id == creator_agent, creator_member.role == FLEET_ROLE_MEMBER)
+        .correlate_except(creator_member)
+        .limit(1)
+        .scalar_subquery()
+    )
+    owner_member = aliased(FleetMember)
+    unexposed_elsewhere = (
+        select(owner_member.id)
+        .join(Fleet, Fleet.id == owner_member.fleet_id)
+        .where(
+            owner_member.agent_id == owner_agent,
+            owner_member.role == FLEET_ROLE_MEMBER,
+            owner_member.is_exposed.is_(False),
+            Fleet.orchestrator_agent_id.is_distinct_from(owner_agent),
+            or_(creator_home.is_(None), owner_member.fleet_id != creator_home),
+        )
+        .exists()
+    )
+    return and_(configured, not_(unexposed_elsewhere))
+
+
 class OwnerAgentUnreachableError(ValueError):
     """A work item handed to an agent its owner runs could never read (#858)."""
 
@@ -1194,7 +1287,7 @@ async def _refuse_unreachable_owner(
     is_company_managed: bool,
     writer: CompanyManagedWriter,
 ) -> None:
-    """Refuse a person's item for an agent neither grant of :func:`_handed_to_clause` reaches.
+    """Refuse a person's item for an agent no grant of :func:`_handed_to_clause` reaches.
 
     Only an agent's own filing (its create_work_item tool, *writer* naming
     the agent) of a person's item handed to another agent is checked: the
@@ -1219,10 +1312,11 @@ async def _refuse_unreachable_owner(
                 Agent.name,
                 _creator_may_open_agent(user, owner_agent_id),
                 _fleets_connected(creator, owner_agent_id) if created_by_agent_id else false(),
+                _creator_hands_over_to(creator, owner_agent_id) if created_by_agent_id else false(),
             ).where(Agent.id == owner_agent_id)
         )
     ).first()
-    if row is None or row[1] or row[2]:
+    if row is None or row[1] or row[2] or row[3]:
         return
     raise OwnerAgentUnreachableError(
         f"The work item cannot be handed to {row[0]!r}: that agent is not shared with you "
@@ -2210,7 +2304,9 @@ async def create_work_item(
         payload=payload,
     )
     refuse_blocked_on_red_pull_request(status, blocked_on_refs=refs, payload=payload, blocked_on=blockers)
-    refuse_foreign_pull_request_ref(status, correlation_key=correlation_key, title=title, blocked_on_refs=refs)
+    refuse_foreign_pull_request_ref(
+        status, correlation_key=correlation_key, title=title, blocked_on_refs=refs, payload=payload
+    )
     refuse_unbound_reference_reason(
         status,
         blocked_reason=reason,
@@ -2232,6 +2328,9 @@ async def create_work_item(
     async with async_session() as db:
         # A target outside the fleet of its owner or creator is refused.
         await check_targets(db, impact, owner_agent_id=owner_uuid, created_by_agent_id=creator_uuid)
+        if names_a2a_task(refs):
+            # A task id no delegation of this user answered would never release it (#2265).
+            await refuse_unknown_a2a_tasks(db, user_uuid, refs)
         structured_ask = await _complete_case_ask(db, key, structured_ask)
         named_workspace = workspace_id
         if workspace_id is None:
@@ -2333,8 +2432,43 @@ async def create_work_item(
             item_user_id=user_uuid,
             is_company_managed=is_company_managed,
             workspace_id=workspace_id,
+            run_person_id=getattr(writer, "run_person_id", None),
+            run_person_chosen=bool(getattr(writer, "run_person_chosen", False)),
         )
+        # A CTEM decision of a kind already asked of the same person joins one grouped card (#2451).
+        grouped = None
+        new_item_id = uuid.uuid4()
+        if needs_human and key:
+            from app.services import ctem_decision_groups
+
+            if ctem_decision_groups.case_id_of(key) is not None:
+                grouped = await ctem_decision_groups.join_group(
+                    db,
+                    member_id=new_item_id,
+                    correlation_key=key,
+                    title=title,
+                    priority=priority,
+                    due_at=_parse_due(due_at),
+                    owner_agent_id=owner_uuid,
+                    created_by_agent_id=creator_uuid,
+                    user_id=user_uuid,
+                    workspace_id=workspace_id,
+                    is_company_managed=is_company_managed,
+                    waits_for_user_id=waits_for,
+                    waits_for_group_ids=waits_for_groups,
+                    now=now,
+                )
+            if grouped is not None:
+                group_item = grouped[0]
+                # It waits on its group, without a card of its own: the group's answer reopens it.
+                needs_human = None
+                status = "blocked"
+                blockers = [str(group_item.id)]
+                reason = f"{ctem_decision_groups.GROUPED_REASON_LEAD}{group_item.id}"
+                # The person is asked by the group's card alone.
+                waits_for, waits_for_groups = None, None
         item = WorkItem(
+            id=new_item_id,
             user_id=user_uuid,
             waits_for_user_id=waits_for,
             waits_for_group_ids=waits_for_groups,
@@ -2372,9 +2506,16 @@ async def create_work_item(
         deployment = item.status == "blocked" and _names_deployment(refs)
         workflow_runs = item.status == "blocked" and _names_workflow_run(refs)
         reference_states = item.status == "blocked" and names_reference_state(refs)
+        a2a_tasks = item.status == "blocked" and names_a2a_task(refs)
+        tags = item.status == "blocked" and names_tag(refs)
         from types import SimpleNamespace
 
         events = created_events(item, writer=SimpleNamespace(agent_id=creator_uuid, run_id=None))
+        if grouped is not None and grouped[1]:
+            events = [
+                *created_events(grouped[0], writer=SimpleNamespace(agent_id=creator_uuid, run_id=None)),
+                *events,
+            ]
 
     await _publish(events)
     if blockers:
@@ -2402,6 +2543,16 @@ async def create_work_item(
         from app.services.work_item_blocked_refs import schedule_reference_state_check
 
         schedule_reference_state_check(item_id)
+    if a2a_tasks:
+        # Once at creation: the A2A task it waits for may have ended already (#2265).
+        from app.services.work_item_a2a_refs import schedule_a2a_task_check
+
+        schedule_a2a_task_check(item_id)
+    if tags:
+        # Once at creation: the tag may be cut already (#2209).
+        from app.services.work_item_blocked_refs import schedule_tag_check
+
+        schedule_tag_check(item_id)
     created = await _read_back(item_id, user_id=user_id, writer=writer) or {"id": item_id}
     if gate_warning:
         created = {**created, "warnings": [gate_warning]}
@@ -2607,6 +2758,9 @@ async def update_work_item(
                 await _check_blockers(db, user_id, blockers, writer)
         refs = None if blocked_on_refs is None else normalize_blocked_on_refs(blocked_on_refs)
         refuse_unobserved_deployment_refs(refs)
+        if names_a2a_task(refs):
+            # A task id no delegation of the item's user answered would never release it (#2265).
+            await refuse_unknown_a2a_tasks(db, item.user_id, refs)
         stored_reason = getattr(item, "blocked_reason", None)
         reason = stored_reason if blocked_reason is None else normalize_blocked_reason(blocked_reason)
         stored_human = getattr(item, "needs_human", None)
@@ -2638,6 +2792,7 @@ async def update_work_item(
                 correlation_key=item.correlation_key if correlation_key is None else correlation_key,
                 title=item.title if title is None else title,
                 blocked_on_refs=refs,
+                payload=item.payload if payload is None else payload,
             )
         if landing == "blocked" and blocked_reason is not None:
             # A reason naming a pull request nothing watches would never be released (#11045).
@@ -2679,6 +2834,8 @@ async def update_work_item(
             )
         if writer_run_ids is not None:
             _refuse_work_on_finished_item(item, status)
+            # A note the run has not seen yet holds its terminal write (#2266).
+            await _refuse_terminal_over_unseen_notes(item.id, status, writer_run_ids)
         # The stored card stands only for the decision it was written for: a
         # new park for a person brings its own (#762, never a stale question).
         landing_ask = (
@@ -2768,6 +2925,8 @@ async def update_work_item(
                 item_user_id=item.user_id,
                 is_company_managed=bool(item.is_company_managed),
                 workspace_id=item.workspace_id,
+                run_person_id=getattr(writer, "run_person_id", None),
+                run_person_chosen=bool(getattr(writer, "run_person_chosen", False)),
             )
         previous_status = item.status
         if title is not None:
@@ -2789,6 +2948,11 @@ async def update_work_item(
             if status == "open" and item.status != "open":
                 # Back to the queue: nobody holds an open item, so the claim
                 # goes with it and the inbox dispatches it like a new one.
+                if not_before is None and _released_by_its_holder(item, writer_run_ids):
+                    # Its own holder let it go (a person drives it from chat, the
+                    # run had nothing to do): not handed straight back to the same
+                    # inbox (#2212). Any other writer's release dispatches at once.
+                    _hold_own_release(item, now)
                 item.claimed_by_agent_id = None
                 item.claimed_by_run_id = None
                 item.claimed_at = None
@@ -2805,12 +2969,16 @@ async def update_work_item(
             # The notify delivery state is the platform's: kept as stored.
             # A test item may only notify a test recipient.
             # The work_item.past_due mark is the platform's too (#1662).
-            item.payload = carry_past_due_mark(
-                normalize_notify_payload(
-                    payload,
+            # So are the decision marks: opened, unseen alert (#2390).
+            item.payload = carry_decision_marks(
+                carry_past_due_mark(
+                    normalize_notify_payload(
+                        payload,
+                        item.payload,
+                        correlation_key=item.correlation_key,
+                        title=item.title,
+                    ),
                     item.payload,
-                    correlation_key=item.correlation_key,
-                    title=item.title,
                 ),
                 item.payload,
             )
@@ -2865,6 +3033,9 @@ async def update_work_item(
         if blocked_reason is not None:
             item.blocked_reason = reason
         if needs_human is not None:
+            if human and not stored_human:
+                # A new decision gate: watched afresh for being opened (#2390).
+                clear_decision_marks(item)
             item.needs_human = human
             if not human and ask is None:
                 # The card goes with the decision it asked for (#762).
@@ -2924,6 +3095,8 @@ async def update_work_item(
         deployment = bool(refs) and item.status == "blocked" and _names_deployment(refs)
         workflow_runs = bool(refs) and item.status == "blocked" and _names_workflow_run(refs)
         reference_states = bool(refs) and item.status == "blocked" and names_reference_state(refs)
+        a2a_tasks = bool(refs) and item.status == "blocked" and names_a2a_task(refs)
+        tags = bool(refs) and item.status == "blocked" and names_tag(refs)
         # A note on an item another live run holds is relayed to that run.
         relay_holder = getattr(item, "claimed_by_run_id", None) if note else None
         relay_title = item.title
@@ -2971,6 +3144,16 @@ async def update_work_item(
         from app.services.work_item_blocked_refs import schedule_reference_state_check
 
         schedule_reference_state_check(item_id)
+    if a2a_tasks:
+        # Once at the write: the A2A task it waits for may have ended already (#2265).
+        from app.services.work_item_a2a_refs import schedule_a2a_task_check
+
+        schedule_a2a_task_check(item_id)
+    if tags:
+        # Once at the write: the tag may be cut already (#2209).
+        from app.services.work_item_blocked_refs import schedule_tag_check
+
+        schedule_tag_check(item_id)
     updated = await _read_back(item_id, user_id=user_id, writer=writer)
     if gate_warning and updated is not None:
         updated = {**updated, "warnings": [gate_warning]}
@@ -3176,6 +3359,40 @@ async def _finished_under_live_holder(
     return note
 
 
+#: How long an item its own holder run released to open waits before the inbox takes it again (#2212).
+OWN_RELEASE_HOLD = timedelta(minutes=10)
+
+
+def _released_by_its_holder(item: WorkItem, writer_run_ids: Sequence[str | uuid.UUID] | None) -> bool:
+    """Whether the run that holds *item* is among *writer_run_ids*. Pure."""
+    holder = getattr(item, "claimed_by_run_id", None)
+    if holder is None or not writer_run_ids:
+        return False
+    return str(holder) in {str(r) for r in writer_run_ids if r}
+
+
+def _hold_own_release(item: WorkItem, now: datetime) -> None:
+    """Hold back *item*, released to open by its holder run, for :data:`OWN_RELEASE_HOLD` (#2212)."""
+    run = str(item.claimed_by_run_id)
+    payload = dict(item.payload or {})
+    runs = [str(r) for r in (payload.get("_released_by_runs") or []) if r]
+    if run not in runs:
+        runs.append(run)
+    payload["_released_by_runs"] = runs[-_RELEASED_BY_RUNS_KEPT:]
+    item.payload = payload
+    item.not_before = now + OWN_RELEASE_HOLD
+    item.claim_notes = [
+        *(item.claim_notes or []),
+        {
+            "at": now.isoformat(),
+            "text": (
+                f"Released to open by its holder run {run}: not dispatched again before "
+                f"{item.not_before.strftime('%Y-%m-%dT%H:%M:%SZ')} (a not_before in the same write overrides it)"
+            ),
+        },
+    ]
+
+
 def claim_reset_by(status: str | None, current: str, *, blockers: object = None, refs: object = None) -> str | None:
     """The state a write leaves an item in when it drops its holder's claim, ``None`` when it keeps it. Pure.
 
@@ -3236,6 +3453,33 @@ async def _signal_finished_to_holder(item_id: str, holder_run_id: object, note: 
     text = finished_under_holder_text({"claim_notes": [note]})
     if text:
         await work_item_note_steering.offer(item_id, holder_run_id, text, title=title, writer_run_ids=(), any_item=True)
+
+
+async def _refuse_terminal_over_unseen_notes(
+    item_id: str | uuid.UUID, status: str | None, writer_run_ids: Sequence[str | uuid.UUID] | None
+) -> None:
+    """Refuse a terminal write by a run that has not seen a note written on the item after its read.
+
+    The note was relayed to the run (``work_item_note_steering.offer``) and is
+    still pending: neither injected by its loop nor read with ``get_work_item``.
+    Before #2266 the run finalised the item over it (a "do not close" landed a
+    second before the completion, the completion notice already sent). A fresh
+    ``get_work_item`` clears it; *take_over* is not an acknowledgement.
+    """
+    if status not in WORK_ITEM_TERMINAL_STATUSES or not writer_run_ids:
+        return
+    from app.services import work_item_note_steering
+
+    unseen = await work_item_note_steering.unseen_notes(writer_run_ids, item_id)
+    if unseen:
+        newest = unseen[-1]
+        shown = newest if len(newest) <= 300 else newest[:300].rstrip() + "..."
+        raise ValueError(
+            f"a note was written on this item after this run read it and the run has not seen it: "
+            f'"{shown}"'
+            + (f" (and {len(unseen) - 1} more)" if len(unseen) > 1 else "")
+            + f". Read the item again with get_work_item, then decide; nothing was {status}"
+        )
 
 
 def _refuse_write_by_former_holder(item: WorkItem, writer_run_ids: Sequence[str | uuid.UUID] | None) -> None:
@@ -3361,6 +3605,10 @@ def _needs_human_event(item: Any, *, previous_status: str | None, writer: Any = 
     data["needs_human"] = bool(getattr(item, "needs_human", None))
     data["ask"] = getattr(item, "ask", None) or None
     data["waiting_since"] = since.isoformat() if isinstance(since, datetime) else None
+    # Who the decision waits for, so a listener never reads it as addressed to nobody (#2174).
+    waits_for = getattr(item, "waits_for_user_id", None)
+    data["waits_for_user_id"] = str(waits_for) if waits_for else None
+    data["waits_for_group_ids"] = list(getattr(item, "waits_for_group_ids", None) or []) or None
     return ("work_item.needs_human", data)
 
 
@@ -3762,6 +4010,8 @@ async def complete_work_item(
     uid = safe_uuid(user_id) if user_id else None
     status = status if status in WORK_ITEM_TERMINAL_STATUSES else "done"
     now = datetime.now(UTC)
+    # A note the run has not seen yet holds its completion (#2266).
+    await _refuse_terminal_over_unseen_notes(wid, status, writer_run_ids)
 
     async with async_session() as db:
         _readable, writable = await _workspace_tiers(db, user_id)
@@ -3931,6 +4181,13 @@ RED_DEFERRED_UNTIL_KEY = "_red_deferred_until"
 #: on the claim. Past the hand-off, a live claim keeps it back
 #: (``shared_state_pull_requests``), a merge releases it, else the inbox takes it.
 GREEN_HANDOFF_DEFER = timedelta(minutes=3)
+#: How long :func:`settle_inbox_work_item` holds back an item released for the
+#: first time on a red head. The head's red event (a listener woken by the
+#: failing check, which takes the branch lease and pushes the fix) arrives within
+#: seconds of that read: an inbox run started at once is a second run on the
+#: same red. Past the hand-off, a live branch lease keeps it back
+#: (``shared_state_pull_requests``), else the inbox takes it.
+RED_HANDOFF_DEFER = timedelta(minutes=3)
 
 
 def clear_red_deferral(item: Any) -> bool:
@@ -4118,6 +4375,7 @@ def _refresh_from_live(
         and _ci_green(b)
         and not _full_ci_running(reads.get((b["repo"], b["number"])))
         and not _merge_queued(reads.get((b["repo"], b["number"])))
+        and not _awaiting_review(reads.get((b["repo"], b["number"])))
     ]
     return green, unannounced
 
@@ -4141,6 +4399,28 @@ def _merge_queued(read: Any) -> bool:
     merge, never put back in the queue for a run with nothing to do (#404).
     """
     return isinstance(read, dict) and read.get("merge_queue") is True
+
+
+#: Review decisions under which a green pull request cannot merge until a review comes (#2213).
+AWAITING_REVIEW_DECISIONS = frozenset({"REVIEW_REQUIRED", "CHANGES_REQUESTED"})
+
+
+def _awaiting_review(read: Any) -> bool:
+    """Whether the live *read* of a pull request says it waits on a review. Pure.
+
+    Its next wake is the review event (or the merge), never a green hand-off: the
+    item is parked on the merge, not put back in the queue for a run that could
+    only read the missing review and stand down (#2213).
+
+    A base protected by a merge queue, or an account GitHub lets bypass the
+    base's requirements, is never read as waiting on the review: GitHub accepts
+    such a pull request into the queue (or merges it), so the green hand-off
+    goes to a run that enqueues it with ``merge_github_pr``; the item is parked
+    only once GitHub refused or ejected it (#2324).
+    """
+    if not isinstance(read, dict) or read.get("review_decision") not in AWAITING_REVIEW_DECISIONS:
+        return False
+    return not (read.get("queue_base") is True or read.get("can_bypass") is True)
 
 
 def _ci_green(binding: dict[str, Any]) -> bool:
@@ -4412,6 +4692,14 @@ async def settle_inbox_work_item(
                 now=now,
             )
             item.payload = {**(item.payload or {}), RED_RELEASED_ON_KEY: signature}
+            if not unchanged and item.status == "open" and not exhausted:
+                # First release on this red: held back for the head's red event, which
+                # takes the branch lease and fixes it; never a second run on one red.
+                item.not_before = now + RED_HANDOFF_DEFER
+                item.claim_notes[-1]["text"] = (
+                    f"{item.claim_notes[-1]['text']}; held back until "
+                    f"{item.not_before.strftime('%Y-%m-%dT%H:%M:%SZ')} for the head's red event"
+                )
             if unchanged and item.status == "open":
                 # The previous run was released on this very red and nothing moved on
                 # GitHub since (a held draft at its rerun cap): another run at once
@@ -4911,6 +5199,20 @@ async def _refuse_decided_for_group_member(
     raise WorkItemNotWaitingError(_not_waiting_message(decided))
 
 
+def _repeats_kept_answer(payload: object, key: str | None, words: str) -> bool:
+    """Whether *key* and *words* repeat the answer already stored on the item (#2500). Pure.
+
+    A keep-waiting answer leaves the card open on its recorded answer; the
+    same option with the same words sent again is the person confirming what
+    the card shows, never a new answer.
+    """
+    stored = payload.get("answer") if isinstance(payload, dict) else None
+    if not isinstance(stored, dict) or not key:
+        return False
+    same_option = str(stored.get("option") or "").casefold() == key.casefold()
+    return same_option and (stored.get("text") or "") == words
+
+
 async def answer_work_item(
     work_item_id: str,
     *,
@@ -4930,7 +5232,9 @@ async def answer_work_item(
     cleared and the item goes back to ``open``, unclaimed, so its owner
     agent's inbox takes it at once with the answer in its context. An option
     marked ``keeps_waiting`` records the answer and the note alone: the item
-    stays blocked on the person with its ask, nothing is dispatched (#1719).
+    stays blocked on the person with its ask, nothing is dispatched (#1719);
+    the same keep-waiting answer sent again (same option, same words) writes
+    nothing, so a second click never stacks a second note (#2500).
 
     Raises :class:`WorkItemNotWaitingError` when the item does not wait for
     a person (not ``needs_human``, or finished) and ``ValueError`` for an
@@ -4990,6 +5294,12 @@ async def answer_work_item(
             answer["text"] = words
         if answered_by:
             answer["answered_by"] = answered_by
+        from app.services.decision_ask import keeps_waiting
+
+        if keeps_waiting(chosen) and _repeats_kept_answer(item.payload, key, words):
+            # The card already shows this answer (#2500): nothing new to record.
+            await db.rollback()
+            return await _read_back(work_item_id, user_id=user_id, writer=writer)
         payload = dict(item.payload or {})
         payload.pop("_dispatch_attempts", None)
         payload["answer"] = answer
@@ -5003,8 +5313,6 @@ async def answer_work_item(
                 db, uid, item, action="answer", summary=f"Answered work item {item.title}: {said}"
             )
         who = f" by {answered_by}" if answered_by else ""
-        from app.services.decision_ask import keeps_waiting
-
         if keeps_waiting(chosen):
             # "Keep waiting" (#1719): the answer is recorded, the item stays as it
             # is, still waiting with its ask and blockers, and nothing dispatches it.
@@ -5015,8 +5323,23 @@ async def answer_work_item(
             return await _read_back(work_item_id, user_id=user_id, writer=writer)
         note = stamped_note(f"ANSWERED{who}: {said}", now)
         item.description = f"{note}\n\n{item.description}" if item.description else note
+        fanned: list[uuid.UUID] = []
+        from app.services import ctem_decision_groups
+
+        if ctem_decision_groups.is_group_key(item.correlation_key) and key:
+            # One answer to a grouped CTEM decision answers each case it lists (#2451).
+            fanned, still_waiting = await ctem_decision_groups.fan_out(db, item, option=key, answer=answer, note=note)
+            if still_waiting:
+                item.last_activity_at = now
+                await db.commit()
+                for fanned_id in fanned:
+                    await publish_transition(fanned_id, previous_status="blocked", note=note, answered=True)
+                return await _read_back(work_item_id, user_id=user_id, writer=writer)
         previous_status = item.status
-        item.status = "open"
+        item.status = "done" if fanned else "open"
+        if fanned:
+            item.completed_at = now
+            item.result = f"Answered for {len(fanned)} grouped case(s): {said}"
         item.claimed_by_agent_id = None
         item.claimed_by_run_id = None
         item.claimed_at = None
@@ -5034,7 +5357,10 @@ async def answer_work_item(
             await db.commit()
         finally:
             answer_actor.reset(token)
-    await publish_transition(wid, previous_status=previous_status, note=note, answered=True)
+    for fanned_id in fanned:
+        await publish_transition(fanned_id, previous_status="blocked", note=note, answered=True)
+    # A group answered whole is done: its cases carry the answer, nothing reopens it.
+    await publish_transition(wid, previous_status=previous_status, note=note, answered=not fanned)
     return await _read_back(work_item_id, user_id=user_id, writer=writer)
 
 
@@ -5608,8 +5934,12 @@ async def list_work_items(
         # predicate, and a disabled staleness window yields no clause rather
         # than an early return.
         readable, _ = await _workspace_tiers(db, user_id)
-        # An agent's listing also reads the items handed to it (#858).
-        query = select(WorkItem).where(or_(_visible_clause(uid, readable), _handed_to_clause(reader)), *clauses)
+        # An agent's listing also reads the items handed to it (#858) and the
+        # items filed in its fleets' workspaces (#2381).
+        query = select(WorkItem).where(
+            or_(_visible_clause(uid, readable), _handed_to_clause(reader), _fleet_member_read_clause(reader)),
+            *clauses,
+        )
 
         if column_order is not None:
             query = query.order_by(*column_order)
@@ -5975,14 +6305,22 @@ async def bulk_delete_work_items(
         # caller who may no longer delete it (closes the TOCTOU window). Sum the
         # real per-batch rowcounts so the reported total reflects what was
         # actually removed, not merely what was targeted.
+        from app.services.work_item_delete_audit import refresh_cancelled_cards, settle_before_delete
+
         deleted = 0
+        cancelled: list[str] = []
         for start in range(0, len(target_ids), 1000):
             batch = target_ids[start : start + 1000]
+            # The core DELETE never fires the decision hook: the open decisions of the
+            # batch are cancelled and each item audited first, under the same gate (#2201).
+            rows = (await db.execute(select(WorkItem).where(WorkItem.id.in_(batch), deletable))).scalars().all()
+            cancelled.extend(await settle_before_delete(db, uid, rows))
             result = await db.execute(
                 delete(WorkItem).where(WorkItem.id.in_(batch), deletable)
             )
             deleted += result.rowcount or 0
         await db.commit()
+    refresh_cancelled_cards(cancelled)
 
     return deleted
 
@@ -6031,6 +6369,8 @@ async def _resolved_recipient(
     item_user_id: uuid.UUID | None,
     is_company_managed: bool,
     workspace_id: uuid.UUID | None,
+    run_person_id: uuid.UUID | None = None,
+    run_person_chosen: bool = False,
 ) -> uuid.UUID | None:
     """The ``waits_for_user_id`` a write stores (#11893): ``None`` when the item
     needs nobody, waits for its own user, or for the administrators.
@@ -6042,6 +6382,41 @@ async def _resolved_recipient(
         if recipient and recipient.strip():
             raise ValueError("recipient names who a needs_human item waits for: set needs_human too")
         return None
+    person, _groups = await _resolved_recipient_and_groups(
+        db,
+        needs_human=needs_human,
+        recipient=recipient,
+        acting_user_id=acting_user_id,
+        agent_id=agent_id,
+        item_user_id=item_user_id,
+        is_company_managed=is_company_managed,
+        workspace_id=workspace_id,
+        run_person_id=run_person_id,
+        run_person_chosen=run_person_chosen,
+    )
+    return person
+
+
+async def _resolved_recipient_and_groups(
+    db: Any,
+    *,
+    needs_human: bool,
+    recipient: str | None,
+    acting_user_id: uuid.UUID | None,
+    agent_id: uuid.UUID | None,
+    item_user_id: uuid.UUID | None,
+    is_company_managed: bool,
+    workspace_id: uuid.UUID | None,
+    run_person_id: uuid.UUID | None = None,
+    run_person_chosen: bool = False,
+) -> tuple[uuid.UUID | None, list[str] | None]:
+    """The person and the groups :func:`resolve_recipient` names, as stored.
+
+    The groups also come from the routing of a company-managed agent with
+    nobody named (the CTEM ``decide`` groups, #2367).
+    """
+    if not needs_human:
+        return None, None
     from app.services.work_item_recipient import resolve_recipient
 
     found = await resolve_recipient(
@@ -6052,8 +6427,12 @@ async def _resolved_recipient(
         item_user_id=item_user_id,
         is_company_managed=is_company_managed,
         workspace_id=workspace_id,
+        run_person_id=run_person_id,
+        run_person_chosen=run_person_chosen,
     )
-    return found.user_id if found.user_id != item_user_id else None
+    if found.group_ids:
+        return None, list(found.group_ids)
+    return (found.user_id if found.user_id != item_user_id else None), None
 
 
 async def _resolved_recipients(
@@ -6066,6 +6445,8 @@ async def _resolved_recipients(
     item_user_id: uuid.UUID | None,
     is_company_managed: bool,
     workspace_id: uuid.UUID | None,
+    run_person_id: uuid.UUID | None = None,
+    run_person_chosen: bool = False,
 ) -> tuple[uuid.UUID | None, list[str] | None]:
     """``(waits_for_user_id, waits_for_group_ids)`` a write stores (#11893, #1748).
 
@@ -6078,7 +6459,22 @@ async def _resolved_recipients(
     if groups:
         found = await _resolve_groups(db, groups)
         return None, list(found.group_ids)
-    person = await _resolved_recipient(
+    if not needs_human:
+        # Refuses a recipient on an item that needs nobody.
+        await _resolved_recipient(
+            db,
+            needs_human=False,
+            recipient=recipient,
+            acting_user_id=acting_user_id,
+            agent_id=agent_id,
+            item_user_id=item_user_id,
+            is_company_managed=is_company_managed,
+            workspace_id=workspace_id,
+            run_person_id=run_person_id,
+            run_person_chosen=run_person_chosen,
+        )
+        return None, None
+    return await _resolved_recipient_and_groups(
         db,
         needs_human=needs_human,
         recipient=recipient,
@@ -6087,8 +6483,28 @@ async def _resolved_recipients(
         item_user_id=item_user_id,
         is_company_managed=is_company_managed,
         workspace_id=workspace_id,
+        run_person_id=run_person_id,
+        run_person_chosen=run_person_chosen,
     )
-    return person, None
+
+
+def _answered_keeps_waiting_clause() -> ColumnElement[bool]:
+    """SQL: the item's ``payload.answer.option`` is a ``keeps_waiting`` option of its ask (#2500).
+
+    The frontend's ``answeredKeepsWaiting`` in SQL: the answer is recorded and
+    the item keeps waiting for its agent, so the person owes nothing more.
+    The stored option is the ask option's own key (:func:`answer_work_item`),
+    so a containment test matches it. Never NULL: a row without an ask or an
+    answer, or whose JSON PostgreSQL cannot parse, reads false.
+    """
+    option = cast(WorkItem.payload, JSONB)["answer"]["option"]
+    kept = cast(WorkItem.ask, JSONB)["options"].contains(
+        func.jsonb_build_array(
+            func.jsonb_build_object(literal("key", String), option, literal("keeps_waiting", String), true())
+        )
+    )
+    guarded = when_json_parseable(WorkItem.payload, when_json_parseable(WorkItem.ask, kept))
+    return func.coalesce(guarded, false())
 
 
 def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):
@@ -6102,14 +6518,20 @@ def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):
 
     A ``needs_human`` item waits for its recipient (``waits_for_user_id``),
     else its user, else every administrator when it names nobody (#11893,
-    :func:`app.services.work_item_recipient.recipient_clause`).
+    :func:`app.services.work_item_recipient.recipient_clause`). One the
+    person already answered with a ``keeps_waiting`` option waits for its
+    agent, not for them (#2500, :func:`_answered_keeps_waiting_clause`).
     """
     from app.services.work_item_recipient import recipient_clause
 
     return and_(
         WorkItem.action_mode.is_(None),
         or_(
-            and_(WorkItem.needs_human.is_(True), recipient_clause(user_uuid)),
+            and_(
+                WorkItem.needs_human.is_(True),
+                not_(_answered_keeps_waiting_clause()),
+                recipient_clause(user_uuid),
+            ),
             and_(
                 WorkItem.user_id == user_uuid,
                 WorkItem.owner_agent_id.is_(None),
@@ -6163,16 +6585,21 @@ async def work_items_waiting_for_person(*, user_id: str | None) -> dict:
     return {"count": int(count or 0), "oldest": oldest}
 
 
-async def list_work_items_waiting_for_person(*, user_id: str | None, limit: int) -> list[dict]:
+async def list_work_items_waiting_for_person(*, user_id: str | None, limit: int, offset: int = 0) -> list[dict]:
     """The items the dashboard notice counts, newest wait first, for the bell.
+
+    *offset* pages past the first *limit* rows (#2453): the bell's page holds
+    the newest, the next pages reach the oldest decision still waiting.
 
     The same population as :func:`work_items_waiting_for_person` (one clause,
     :func:`_waits_for_person_clause`), so the bell, the notice and the
     Operations "Waiting for me" view never disagree. Each row is ``{id, title,
     question, deadline, since}``: *question* and *deadline* come from the
     structured ask alone, never from ``blocked_reason``, which agents write for
-    agents (#776); a legacy item without an ask has neither. An item leaves the
-    list the moment it is answered, so its bell entry clears with it.
+    agents (#776); a legacy item without an ask has neither. *deadline* is the
+    ask's, else the item's ``due_at`` (#2453): an item with a due date always
+    says when to answer by. An item leaves the list the moment it is answered,
+    so its bell entry clears with it.
     """
     from app.core.database import async_session
 
@@ -6187,20 +6614,23 @@ async def list_work_items_waiting_for_person(*, user_id: str | None, limit: int)
         readable, _ = await _workspace_tiers(db, str(uid))
         rows = (
             await db.execute(
-                select(WorkItem.id, WorkItem.title, WorkItem.ask, since)
+                select(WorkItem.id, WorkItem.title, WorkItem.ask, since, WorkItem.due_at)
                 .where(
                     WorkItem.status.in_(WORK_ITEM_OPEN_STATUSES),
                     _waits_for_person_clause(uid, now),
                     _visible_clause(uid, readable),
                 )
-                .order_by(since.desc())
+                .order_by(since.desc(), WorkItem.id.desc())
+                .offset(max(0, offset))
                 .limit(limit)
             )
         ).all()
     waiting: list[dict] = []
-    for item_id, title, ask, stamp in rows:
+    for item_id, title, ask, stamp, due_at in rows:
         question = ask.get("question") if isinstance(ask, dict) else None
         deadline = ask.get("deadline") if isinstance(ask, dict) else None
+        if not (isinstance(deadline, str) and deadline) and due_at is not None:
+            deadline = due_at.isoformat()
         waiting.append(
             {
                 "id": str(item_id),
@@ -6378,8 +6808,13 @@ async def delete_work_item(
             return False
         if item.status in SCHEDULED_LIVE_STATUSES:
             _refuse_scheduled(item, "deleted before it settled")
+        # Its open decision is cancelled and the delete audited before the row goes (#2201).
+        from app.services.work_item_delete_audit import refresh_cancelled_cards, settle_before_delete
+
+        cancelled = await settle_before_delete(db, uid, [item])
         await db.delete(item)
         await db.commit()
+    refresh_cancelled_cards(cancelled)
     return True
 
 
@@ -7036,14 +7471,24 @@ async def _complete_case_ask(db: Any, correlation_key: object, ask: Any) -> Any:
 
     The card states the running version, the affected range and the fixed
     version, or that the proposal is blind, whatever the agent wrote: the
-    platform builds the line from the case (``ctem_version_match``). Any other
-    item's ask is returned as given.
+    platform builds the line from the case (``ctem_version_match``). The
+    validation card of a ``control_decay`` case states what the run measures
+    in OpenCRQ and its recurrence (``ctem_control_measurement``, #2369). A
+    remediation or mobilize card names the hosts its case's validations ran on
+    and how each was chosen (``ctem_case_assets``, #2395). Any other item's ask
+    is returned as given.
     """
     if not ask:
         return ask
+    from app.services import ctem_case_assets, ctem_control_measurement, ctem_validation_scenario
     from app.services.ctem_version_match import complete_gate_ask
 
-    return await complete_gate_ask(db, correlation_key, ask)
+    # The assets line goes first, then the version match above it: the version match leads the card.
+    ask = await ctem_case_assets.complete_gate_ask(db, correlation_key, ask)
+    ask = await complete_gate_ask(db, correlation_key, ask)
+    ask = await ctem_control_measurement.complete_gate_ask(db, correlation_key, ask)
+    # A validation card links its scenario and package, and states a scenario that is not playable (#2468).
+    return await ctem_validation_scenario.complete_gate_ask(db, correlation_key, ask)
 
 
 def _ux_review_of(correlation_key: object, title: object) -> dict[str, Any] | None:
@@ -7372,6 +7817,64 @@ async def release_ended_run_claims(
     return released
 
 
+async def wake_on_background_task(work_item_id: object, *, task_id: object, outcome: str) -> str | None:
+    """Note a finished background task on the work item its spawning run was dispatched for; never raises.
+
+    The item gets the note ``background task <id> <outcome>`` in its claim
+    notes. When nothing else will run it again, it goes back to ``open`` for
+    its owner's inbox, which resumes it with the task's result to read
+    (#2215): an item still claimed or in progress by a holder that ended, or
+    blocked with no blocker, no reference and no person to wait for. An item
+    held by a live run (the spawning run still working), finished, waiting
+    on a person or on blockers, or a scheduled one-off keeps its status.
+    Returns ``"reopened"``, ``"noted"`` or ``None`` (no such item).
+    """
+    from app.core.database import async_session
+
+    item_uuid = safe_uuid(str(work_item_id or ""))
+    if item_uuid is None:
+        return None
+    now = datetime.now(UTC)
+    note = {"at": now.isoformat(), "text": f"background task {task_id} {outcome}"}
+    try:
+        async with async_session() as db:
+            item = (
+                await db.execute(select(WorkItem).where(WorkItem.id == item_uuid).with_for_update())
+            ).scalar_one_or_none()
+            if item is None:
+                return None
+            reopen = False
+            previous_status = item.status
+            if item.action_mode is None and not item.needs_human:
+                if item.status in CLAIM_HELD_STATUSES:
+                    holder = item.claimed_by_run_id
+                    alive = _holder_alive_clause(holder)  # type: ignore[no-untyped-call]
+                    reopen = holder is None or not (await db.execute(select(alive))).scalar()
+                elif item.status == "blocked":
+                    reopen = not item.blocked_on and not item.blocked_on_refs
+            item.claim_notes = _with_note(item.claim_notes, note)
+            item.last_activity_at = now
+            if reopen:
+                item.status = "open"
+                item.claimed_by_agent_id = None
+                item.claimed_by_run_id = None
+                item.claimed_at = None
+                if previous_status == "blocked":
+                    # Leaving blocked clears the why fields, as the sibling reopens do.
+                    item.blocked_reason = None
+                    item.ask = None
+            await db.commit()
+        if reopen:
+            # Raises work_item.status_changed and nudges the dispatcher, as the other reopens do.
+            await publish_transition(item_uuid, previous_status=previous_status, note=note["text"])
+        return "reopened" if reopen else "noted"
+    except Exception as exc:  # best-effort: the event itself is published
+        logger.warning(
+            "Work item %s not woken by background task %s: %s", work_item_id, task_id, format_exception_message(exc)
+        )
+        return None
+
+
 # A holder that ended this way finished its turn: the claims it left are
 # released without a ``run.orphaned`` (which names a holder that ended
 # without finishing).
@@ -7542,7 +8045,53 @@ async def release_orphaned_legacy_claims(*, limit: int = _RELEASE_BATCH) -> int:
     return released
 
 
-async def reap_work_items() -> dict:
+async def purge_terminal_work_items(*, older_than_days: int, limit: int = 5000) -> int:
+    """Delete up to *limit* TERMINAL (done/cancelled) items last updated over *older_than_days* ago.
+
+    The retention of closed work items (#2070): the window counts from
+    ``updated_at``, the item's last update, and ``<= 0`` keeps them forever.
+    Oldest first; the DELETE re-applies the status and the cutoff (TOCTOU-safe),
+    so an item reopened or touched between the id SELECT and the DELETE is
+    never removed, and a non-terminal item never is. Answers the rows deleted:
+    a result equal to *limit* means more may be left.
+    """
+    from app.core.database import async_session
+
+    if not older_than_days or older_than_days <= 0:
+        return 0
+    cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
+    purged = 0
+    async with async_session() as db:
+        target_ids = (
+            (
+                await db.execute(
+                    select(WorkItem.id)
+                    .where(
+                        WorkItem.status.in_(WORK_ITEM_TERMINAL_STATUSES),
+                        WorkItem.updated_at < cutoff,
+                    )
+                    .order_by(WorkItem.updated_at.asc())
+                    .limit(max(1, limit))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for start in range(0, len(target_ids), 1000):
+            batch = target_ids[start : start + 1000]
+            res = await db.execute(
+                delete(WorkItem).where(
+                    WorkItem.id.in_(batch),
+                    WorkItem.status.in_(WORK_ITEM_TERMINAL_STATUSES),
+                    WorkItem.updated_at < cutoff,
+                )
+            )
+            purged += res.rowcount or 0
+        await db.commit()
+    return purged
+
+
+async def reap_work_items(*, abandon_days: int | None = None, retain_days: int | None = None) -> dict:
     """Autonomous janitor for the work-item queue.
 
     The Work Item twin of ``shared_state.purge_resolved_states`` so the queue
@@ -7565,14 +8114,20 @@ async def reap_work_items() -> dict:
     SELECT) so an item claimed/dispatched or revived between the SELECT and the
     write is never wrongly reaped (TOCTOU-safe, mirroring the bulk-delete and
     shared-state purge guards). Returns ``{"cancelled": N, "purged": M}``.
+
+    *abandon_days* and *retain_days* are the effective windows the scheduler
+    reads from Settings (services/coordination_retention.py); ``None`` falls
+    back to the environment setting.
     """
     from app.core.database import async_session
 
     now = datetime.now(UTC)
     cancelled = 0
     purged = 0
-    abandon_days = getattr(settings, "work_item_abandoned_after_days", 14)
-    retain_days = getattr(settings, "work_item_resolved_retention_days", 30)
+    if abandon_days is None:
+        abandon_days = getattr(settings, "work_item_abandoned_after_days", 14)
+    if retain_days is None:
+        retain_days = getattr(settings, "work_item_resolved_retention_days", 90)
     anchor = func.coalesce(WorkItem.last_activity_at, WorkItem.created_at)
 
     async with async_session() as db:

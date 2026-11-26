@@ -65,12 +65,23 @@ class Group(Base):
         Boolean, nullable=False, default=True, server_default=expression.true()
     )
 
+    # People who sign in through single sign-on (OIDC or SAML) join the group
+    # at every sign-in (``services/group_auto_join.py``, the one writer of the
+    # memberships it grants, source ``auto_join``). Off by default.
+    auto_join: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=expression.false())
+
     # What the group IS for the analytics: ``org_unit``, ``access``,
     # ``distribution``, or ``auto`` (not classified: every group starts there,
     # a SAML-created one included) - ``GROUP_KINDS``.
     kind: Mapped[str] = mapped_column(
         String(20), nullable=False, default="auto", server_default="auto"
     )
+
+    # The stable key of a group the platform seeds (``services/ctem_groups.py``,
+    # #2441: ``ctem_viewers``, ``ctem_operators``); NULL for any other group.
+    # The seed finds its group by this key, never by name: an administrator may
+    # rename it.
+    seed_key: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, default=None)
 
     # The identity provider's id of the group when SCIM provisions it
     # (``externalId``, ``api/v1/scim.py``); NULL for a group SCIM never saw.
@@ -120,9 +131,11 @@ class GroupMember(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
-    # How this membership was created: "manual" (admin/API), "saml" (SAML sync)
-    # or "scim" (SCIM provisioning). SAML sync and SCIM each manage only their
-    # own memberships, preserving the others.
+    # How this membership was created: "manual" (admin/API), "saml" (SAML sync),
+    # "scim" (SCIM provisioning) or "auto_join" (a single sign-on into a group
+    # with ``auto_join`` on). SAML sync and SCIM each manage only their own
+    # memberships, preserving the others; nothing removes an auto-join one but
+    # an administrator.
     source: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="manual", default="manual"
     )

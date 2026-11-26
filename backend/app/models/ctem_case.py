@@ -18,7 +18,7 @@ grouping and the state rules live in ``services/ctem_cases.py``; the design is
   its member id only.
 
 No source content is stored (#11613): the name, CVE, scores, KEV, assets,
-crown jewels, priority and counts of a case are read at display time from the
+primary assets, priority and counts of a case are read at display time from the
 viewer's own source read (``services/ctem_cases_view.py``), so each viewer
 sees exactly what the source products show them, and an issue they cannot see
 is a "Restricted" row.
@@ -45,6 +45,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -90,8 +91,8 @@ REMEDIATION_KINDS: tuple[str, ...] = (
 CASE_PRIORITIES: tuple[str, ...] = ("critical", "high", "medium", "low")
 #: ``signal``: a CTEM signal attached to the case (``external_id`` is its id).
 ISSUE_SOURCES: tuple[str, ...] = ("opencti", "openaev", "signal")
-#: How a resolved case was closed.
-RESOLUTION_KINDS: tuple[str, ...] = ("not_exposed", "mitigated", "fixed", "accepted_risk")
+#: How a resolved case was closed. ``dismissed``: a person answered a gate "reject and close" (#2252).
+RESOLUTION_KINDS: tuple[str, ...] = ("not_exposed", "mitigated", "fixed", "accepted_risk", "dismissed")
 #: Severity from the scope gate (P1 most urgent).
 CASE_SEVERITIES: tuple[str, ...] = ("P1", "P2", "P3")
 #: What a validation reference says.
@@ -192,6 +193,16 @@ class CtemCaseIssue(Base):
 
 class CtemCaseEvent(Base):
     __tablename__ = "ctem_case_events"
+    # The merged-away case ids (#2289): a read of a merged id finds the survivor by
+    # one probe of the ``merge`` rows, by full id or by an 8+ character prefix.
+    __table_args__ = (
+        Index(
+            "ix_ctem_case_events_merged_from",
+            "from_value",
+            postgresql_where=text("kind = 'merge'"),
+            postgresql_ops={"from_value": "varchar_pattern_ops"},
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_id: Mapped[uuid.UUID] = mapped_column(
@@ -209,6 +220,8 @@ class CtemCaseEvent(Base):
     #: | treatment_plan (the OpenCRQ plan of the decision: to the id, reason the name, evidence the link, #1068)
     #: | versions (the per-device running versions moved: to the summary, reason the lines, evidence the snapshot, #1694)
     #: | stalled (the case waited on nobody past the stall window: to ``nobody``, reason since when, #1736)
+    #: | applied_change (a fix applied through an integration under ctem.production_change: from the
+    #:   integration, to the kind, reason what was pushed, evidence ``{ids, rollback}`` as JSON, #2061)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     #: The member id (``source:external_id``) an issue event is about, else ``None``.
     issue: Mapped[str | None] = mapped_column(String(220), nullable=True)

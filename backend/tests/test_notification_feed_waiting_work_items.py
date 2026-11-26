@@ -157,7 +157,7 @@ def test_other_kinds_keep_the_901_read_on_open():
     assert not feed.is_unread(flagged, read_at=datetime(2030, 1, 1, tzinfo=UTC), dismissed=set())
 
 
-def _patch_sources(monkeypatch, waiting_rows, calls):
+def _patch_sources(monkeypatch, waiting_rows, calls, total=None):
     from app.api.v1 import activity, assignments
     from app.core import feature_flags
     from app.services import work_item
@@ -168,9 +168,12 @@ def _patch_sources(monkeypatch, waiting_rows, calls):
     async def _activity(**_kwargs):
         return []
 
-    async def _waiting_list(*, user_id, limit):
+    async def _waiting_list(*, user_id, limit, offset=0):
         calls.append((user_id, limit))
-        return waiting_rows
+        return waiting_rows[offset : offset + limit]
+
+    async def _waiting_count(*, user_id):
+        return {"count": total if total is not None else len(waiting_rows), "oldest": None}
 
     async def _read_state(_db, _user_id):
         return None, []
@@ -179,6 +182,7 @@ def _patch_sources(monkeypatch, waiting_rows, calls):
     monkeypatch.setattr(activity, "list_activity", _activity)
     monkeypatch.setattr(feature_flags, "is_feature_enabled", lambda _flag: False)
     monkeypatch.setattr(work_item, "list_work_items_waiting_for_person", _waiting_list)
+    monkeypatch.setattr(work_item, "work_items_waiting_for_person", _waiting_count)
     monkeypatch.setattr(feed, "load_read_state", _read_state)
 
 
@@ -211,3 +215,54 @@ async def test_opting_out_stops_the_entries(monkeypatch):
     built = await feed.build_feed(None, SimpleNamespace(id="u", notify_waiting_work_items=False))
     assert calls == [], "an opted-out person's waiting items are not even read"
     assert built["items"] == []
+    assert built["waiting_decision_total"] == 0
+
+
+def _rows(count):
+    return [_waiting(id=f"00000000-0000-4000-8000-{n:012d}", title=f"Case {n}") for n in range(count)]
+
+
+@pytest.mark.asyncio
+async def test_the_badge_counts_every_waiting_decision_not_the_page(monkeypatch):
+    """#2453: 551 waiting decisions read 551, the page stays 20."""
+    _patch_sources(monkeypatch, _rows(551), [])
+    built = await feed.build_feed(None, SimpleNamespace(id="u"))
+    assert len(built["items"]) == feed.FEED_WINDOW
+    assert built["unread_count"] == feed.FEED_WINDOW
+    assert built["waiting_decision_total"] == 551
+    assert built["unread_total"] == 551
+    assert built["next_offset"] == feed.FEED_WINDOW
+
+
+@pytest.mark.asyncio
+async def test_the_pages_reach_the_oldest_waiting_decision(monkeypatch):
+    """#2453: next_offset walks every page; the last one names no next page."""
+    rows = _rows(551)
+    _patch_sources(monkeypatch, rows, [])
+    seen: list[str] = []
+    offset: int | None = 0
+    pages = 0
+    while offset is not None:
+        built = await feed.build_feed(None, SimpleNamespace(id="u"), limit=50, offset=offset, decisions_only=True)
+        seen += [i["id"] for i in built["items"]]
+        offset = built["next_offset"]
+        pages += 1
+    assert pages == 12
+    assert seen[-1] == f"work_item:{rows[-1]['id']}"
+    assert len(set(seen)) == 551
+
+
+@pytest.mark.asyncio
+async def test_the_total_never_reads_below_the_page(monkeypatch):
+    """A write between the page and the count never makes the total smaller than what is shown."""
+    _patch_sources(monkeypatch, _rows(5), [], total=3)
+    built = await feed.build_feed(None, SimpleNamespace(id="u"))
+    assert built["waiting_decision_total"] == 5
+    assert built["next_offset"] is None
+
+
+def test_a_due_date_without_an_ask_deadline_still_says_answer_by():
+    """#2453: the list hands the item's due_at as the deadline when the ask has none."""
+    item = feed.present_waiting_work_item(_waiting(deadline="2026-11-27T09:00:00+00:00"))
+    assert item is not None
+    assert item.summary == "Answer by Fri 27 Nov, 09:00 UTC"

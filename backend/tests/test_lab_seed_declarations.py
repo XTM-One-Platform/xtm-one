@@ -1474,6 +1474,13 @@ def test_the_awaiting_human_seed_pauses_runs_on_approvals_and_a_question_on_two_
     cases = {r["trigger_context"]["case"]: r for r in rows}
     assert set(cases) == {"two-approvals", "long-question", "company-managed", "decided", "older"}
     assert all(r["status"] == "awaiting_human" and r["completed_at"] is None for r in rows)
+    # Ids set before the flush, so the decisions dual write opens a decision for each paused run
+    # (dev:harness-gaps lab-decisions-backfill-misses-seeded-runs).
+    import uuid
+
+    assert len({uuid.UUID(r["id"]) for r in rows}) == len(rows)
+    source = (LAB.parent / "seed_awaiting_human_runs.py").read_text(encoding="utf-8")
+    assert '"id": uuid.UUID(row["id"])' in source
     two = cases["two-approvals"]["pending_approvals"]
     assert len(two) == 2 and len({p["source"] for p in two}) == 2
     assert all(p["source"].startswith("integration:") for p in two)
@@ -2637,7 +2644,7 @@ def test_the_lab_answers_the_opencrq_sync_plan_from_its_fixture(monkeypatch):
     assert dry.applied is False and dry.errors == [] and dry.version == 3
     assert {kind: len(dry.plan[kind]) for kind in kinds} == dict.fromkeys(kinds, 1)
     assert dry.plan["pushed_to_opencrq"] == []  # #1591: nothing is written to OpenCRQ
-    assert dry.plan["not_in_opencrq"] == [{"crown_jewel": "Legacy billing", "opencrq_asset_id": "lab-asset-retired"}]
+    assert dry.plan["not_in_opencrq"] == [{"primary_asset": "Legacy billing", "opencrq_asset_id": "lab-asset-retired"}]
     assert dry.plan["ambiguous"] == ["Data warehouse"]
     assert sync(False).plan == dry.plan
 
@@ -4194,6 +4201,12 @@ def test_the_ctem_fleet_optin_seed_plans_one_fleet_per_state_and_leaves_the_othe
     }
     assert module.extras(four) == {"ctem-ai-security": ["failing"]}
     assert module.extras(states) == {} and module.extras(six) == {}
+    # #2261: the single seeded CTEM loop (#2105) reads on; the states no fleet carries are not
+    # planned (lab.py logs them skipped), never a RuntimeError that stops the lab.
+    one = module.plan({"ctem-loop": [("l1", False), ("l2", True)]})
+    assert one == {"ctem-loop": "on"} and module.extras(one) == {}
+    script = (LAB.parent / "seed_ctem_fleet_optin.py").read_text(encoding="utf-8")
+    assert "three are needed" not in script
 
     # A KEV automation can serve the tracked organizations; one reading the primary profile cannot.
     kev = {"provider": "opencti", "provision": {"fleet": "F", "purpose": "P", "entity_types": ["Vulnerability"]}}
@@ -4224,9 +4237,11 @@ def test_the_ctem_fleet_optin_seed_plans_one_fleet_per_state_and_leaves_the_othe
     seeded = ast.unparse(functions["seed_entities"])
     call = "seed_ctem_fleet_optin(token, base)"
     assert call in seeded and "'LAB_CTEM_FLEET_OPTIN'" in seeded
-    # #9689: the start fails when the opt-in states cannot be seeded, never a skip.
+    # #2261: an opt-in seed that cannot run is logged skipped and the lab keeps serving.
     assert "CTEM fleet opt-in states not seeded" in seeded
-    assert "skipped['CTEM fleet opt-in states'] = str(exc)" not in seeded
+    assert "lab: CTEM fleet opt-in states not seeded" not in seeded
+    assert "skipped.update(optin_skipped)" in seeded
+    assert "skipped['CTEM fleet opt-in states missing']" in helper
     # #9716: a community lab skips them (GET /fleets is Enterprise Edition), before any fleet call.
     community = "lab_switch('LAB_EDITION', LAB_EDITIONS) == 'community'"
     assert community in seeded
@@ -4541,11 +4556,11 @@ def test_lab_ctem_kev_tailored_saves_the_tech_stack_with_the_profile_only_when_o
         "seed_org_ai_draft_stub",
     )
     _lab_namespace(*names, api=api)["seed_org_ai_draft_stub"]("t", "http://localhost:3100")
-    assert "tech_stack" not in saved[-1]
+    assert "software" not in saved[-1]
     ns = _lab_namespace(*names, api=api, env={"LAB_CTEM_KEV_TAILORED": "on"})
     ns["seed_org_ai_draft_stub"]("t", "http://localhost:3100")
-    assert saved[-1]["tech_stack"] == [dict(e) for e in ns["LAB_ORG_TECH_STACK"]]
-    assert len(parse_profile(saved[-1]).tech_stack) == len(ns["LAB_ORG_TECH_STACK"]) >= 3
+    assert saved[-1]["software"] == [dict(e) for e in ns["LAB_ORG_TECH_STACK"]]
+    assert len(parse_profile(saved[-1]).software) == len(ns["LAB_ORG_TECH_STACK"]) >= 3
 
 
 def test_lab_ctem_kev_tailored_narrows_the_cyber_kev_count_to_the_saved_stack(monkeypatch):

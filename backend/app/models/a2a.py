@@ -161,6 +161,15 @@ class A2AExposure(Base):
     )
     revoked_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
+    # The per-exposure opt-in of #2202, off by default: a partner's task on
+    # this exposure also reads the work items of the exposed agent's HOME
+    # fleet (``a2a.partner_runs.partner_fleet_work_items_clause``), never the
+    # run-as identity's wider reach. Read at query time, so switching it off
+    # narrows the next call of a task already running.
+    partner_fleet_reads: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

@@ -472,10 +472,6 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
         "fleet workspace the agent is a home member of, for its owner or claimer "
         "only; a caller with no account or no agent gets false()"
     ),
-    ("services/organization_context_fill_agent.py", "_existing_agent"): (
-        "the administrator's own fill agent (#11888), found by its owner id and "
-        "tag: a personal agent of that user, never a caller's visibility tier"
-    ),
     ("services/shared_state.py", "_narrowed_clause"): (
         "an agent's narrowing on top of the visible scope: the company-managed "
         "entries whose owner agent keeps that agent out"
@@ -521,6 +517,10 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
     ("services/organization_opencti.py", "opencti_gql"): (
         "the company-wide OpenCTI an administrator's identity link and PIR sync write against, "
         "on top of integration_visible_filter for that signed-in administrator; never a caller tier"
+    ),
+    ("services/organization_pirs.py", "_opencti_integrations"): (
+        "the company-wide OpenCTIs the scheduled Intelligence policy refresh reads PIRs from, "
+        "with no acting user; lists nothing to a caller, never a caller tier (#2435)"
     ),
     ("services/sub_agent.py", "_background_tasks_query"): (
         "the Background Tasks Company / Shared split of an admin's tasks that are "
@@ -650,6 +650,10 @@ _SHARE_COLUMNS = frozenset({"shared_group_ids", "shared_user_ids"})
 # author thought of: variable resolution matched ``shared_group_ids`` and never
 # ``shared_user_ids``.
 _SHARE_COLUMN_READS_ALLOWED: dict[tuple[str, str], str] = {
+    ("services/agent_bindings.py", "unlink_agents_shared_with_group"): (
+        "the agents granted to a group some members just left, to sweep the "
+        "references those members' agents hold; decides no visibility"
+    ),
     ("services/intent_binding_writes.py", "agent_shared_scope_filter"): (
         "whether an agent is shared at all, never with whom"
     ),

@@ -22,7 +22,7 @@ vi.mock("@/hooks/api/useWorkItemApi", async (importOriginal) => ({
   },
 }));
 vi.mock("@/components/work-items/WorkItemDecisionCard", () => ({
-  WorkItemDecisionCard: () => <div data-testid="unified-decision-card" />,
+  WorkItemDecisionCard: ({ inCase }: { inCase?: boolean }) => <div data-testid="unified-decision-card" data-in-case={String(Boolean(inCase))} />,
 }));
 
 const { CaseAnalystReview } = await import("./CaseAnalystReview");
@@ -87,18 +87,22 @@ describe("CaseAnalystReview", () => {
     renderWithProviders(<CaseAnalystReview caseId="c1" pkg={PKG} history={history} />);
     expect(screen.getByTestId("ctem-case-analyst-review-gate").textContent).toContain("Analyst review skipped by policy");
     expect(screen.getByText("Coverage requested in OpenCTI")).toBeTruthy();
-    const link = screen.getByTestId("ctem-case-threat-package-link") as HTMLAnchorElement;
+    const link = screen.getByRole("link", { name: "Open threat package" }) as HTMLAnchorElement;
     expect(link.href).toBe(PKG.url);
-    expect(link.textContent).toContain("CVE-2026-1234 on nginx");
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toBe("noopener noreferrer");
+    expect(screen.getByTestId("ctem-case-threat-package-name").textContent).toContain("CVE-2026-1234 on nginx");
     expect(screen.queryByText(/level low/)).toBeNull();
     expect(state.calls.every((c) => (c as { enabled: boolean }).enabled === false)).toBe(true);
   });
 
   it("renders a waiting review on the unified decision card", () => {
-    state.items = [{ id: "w1", status: "blocked", needs_human: true, ask: { question: "Request it?", options: [] }, is_company_managed: false }];
+    // Even an item that names its case: inside the case, the card never offers "Open the case" (#2370).
+    const ctem_case = { id: "c1", title: "Case", state: "validating", path: "/ctem/cases/c1" };
+    state.items = [{ id: "w1", status: "blocked", needs_human: true, ask: { question: "Request it?", options: [] }, is_company_managed: false, ctem_case }];
     renderWithProviders(<CaseAnalystReview caseId="c1" pkg={{ ...PKG, coverage_requested: false, coverage_id: null }} history={[ev({ to: "waited" })]} />);
     expect(screen.getByText("Waiting for a person")).toBeTruthy();
-    expect(screen.getByTestId("unified-decision-card")).toBeTruthy();
+    expect(screen.getByTestId("unified-decision-card").getAttribute("data-in-case")).toBe("true");
     expect(screen.getByText("Threat package drafted, coverage not requested yet")).toBeTruthy();
     expect(state.calls.some((c) => (c as { filters: { correlation_key: string } }).filters.correlation_key === "ctem:review:c1")).toBe(true);
   });
@@ -147,6 +151,50 @@ describe("CaseAnalystReview", () => {
     renderWithProviders(<CaseAnalystReview caseId="c1" pkg={{ restricted: true, coverage_requested: true, at: PKG.at }} history={[]} />);
     expect(screen.getByText("A Grouping exists in OpenCTI: restricted to OpenCTI readers")).toBeTruthy();
     expect(screen.queryByTestId("ctem-case-threat-package-link")).toBeNull();
+    const button = screen.getByRole("button", { name: "Open threat package" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-describedby")).toBe("ctem-case-threat-package-restricted");
+  });
+
+  it("draws no button when the package has no URL", () => {
+    renderWithProviders(<CaseAnalystReview caseId="c1" pkg={{ ...PKG, url: null }} history={[]} />);
+    expect(screen.queryByRole("link", { name: "Open threat package" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open threat package" })).toBeNull();
+    expect(screen.getByTestId("ctem-case-threat-package-name").textContent).toContain("CVE-2026-1234 on nginx");
+  });
+
+  // The package keeps one slot, first in the card, whatever the gate state or the history order (#2239).
+  function packageComesFirst() {
+    const card = screen.getByTestId("ctem-case-analyst-review");
+    const content = screen.getByTestId("ctem-case-threat-package").parentElement as HTMLElement;
+    expect(card.contains(content)).toBe(true);
+    expect(content.firstElementChild).toBe(screen.getByTestId("ctem-case-threat-package"));
+  }
+
+  it("keeps the package above the waiting decision card", () => {
+    state.items = [{ id: "w1", status: "blocked", needs_human: true, ask: { question: "Request it?", options: [] }, is_company_managed: false }];
+    renderWithProviders(<CaseAnalystReview caseId="c1" pkg={PKG} history={[ev({ to: "waited" })]} />);
+    packageComesFirst();
+    const pkgBlock = screen.getByTestId("ctem-case-threat-package");
+    const decision = screen.getByTestId("unified-decision-card");
+    expect(pkgBlock.compareDocumentPosition(decision) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps the package above the gate line for an answered or skipped review, in any history order", () => {
+    const answered = ev({ at: "2026-11-21T10:05:00Z", to: "answered", reason: USER });
+    const waited = ev({ at: "2026-11-21T10:02:00Z", to: "waited" });
+    for (const history of [[waited, answered], [answered, waited], [ev({ to: "passed_automatically" })]]) {
+      const { unmount } = renderWithProviders(<CaseAnalystReview caseId="c1" pkg={PKG} history={history} />);
+      packageComesFirst();
+      const gateLine = screen.queryByTestId("ctem-case-analyst-review-gate");
+      if (gateLine) expect(screen.getByTestId("ctem-case-threat-package").compareDocumentPosition(gateLine) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it("keeps the package first with no gate at all", () => {
+    renderWithProviders(<CaseAnalystReview caseId="c1" pkg={PKG} history={[]} />);
+    packageComesFirst();
   });
 
   it("says a case with no package yet, never blank", () => {

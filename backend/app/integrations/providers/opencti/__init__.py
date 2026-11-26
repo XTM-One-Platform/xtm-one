@@ -131,6 +131,12 @@ def build_tools(
     # The run's fleet gates apply_opencti_draft (#1480, the CTEM loop's analyst
     # review): the tool is offered with Live writes off, the gate decides it.
     gated_draft_validation: bool = bool(_kwargs.get("gated_draft_validation"))
+    # The key of the run's fleet validation gate when it waits for a person
+    # (#2102): the security coverage then refuses a periodicity.
+    waiting_validation_gate: str = str(_kwargs.get("waiting_validation_gate") or "")
+    # With that gate, the lookup of the draft holding a case's recorded threat
+    # package (#2089): the only other draft delete_opencti_draft may discard.
+    case_draft_fn = _kwargs.get("case_draft_fn")
 
     # Set when the agent has human-in-the-loop enabled: a callback that verifies
     # a human actually approved a given irreversible action (see
@@ -157,6 +163,7 @@ def build_tools(
         direct_mutations=direct_mutations,
         live_writes=live_writes,
         gated_draft_validation=gated_draft_validation,
+        case_draft_fn=case_draft_fn,
         hitl_approval_fn=hitl_approval_fn,
         persist_file_fn=_kwargs.get("persist_file_fn"),
     )
@@ -169,7 +176,7 @@ def build_tools(
     tools += register_customization(base_url, headers, executor)
     tools += register_audit(base_url, headers, executor)
     tools += register_pir(base_url, headers, executor)
-    tools += register_security_coverage(base_url, headers, executor)
+    tools += register_security_coverage(base_url, headers, executor, waiting_validation_gate=waiting_validation_gate)
     tools += register_ingestion(base_url, headers, executor)
     tools += register_markings(base_url, headers, executor)
     tools += register_data_sharing(base_url, headers, executor)

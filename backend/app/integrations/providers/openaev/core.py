@@ -17,7 +17,6 @@ from functools import partial
 from typing import Any
 from urllib.parse import quote
 
-from app.core.egress import egress_client
 from app.integrations.http import format_entity_list
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -27,6 +26,7 @@ from ._common import (
     COMMAND_EXECUTORS,
     CONTRACT_OUTPUT_TYPES,
     EXPECTATION_TYPES,
+    FINDINGS_KEPT_AS_HISTORY,
     PAYLOAD_TYPES,
     PLATFORMS,
     SCENARIO_CATEGORIES,
@@ -35,6 +35,7 @@ from ._common import (
     SCENARIO_SEVERITIES,
     _aev_link,
     _api,
+    _assets_carry_tags,
     _contains_filter,
     _fmt_asset,
     _fmt_asset_group,
@@ -48,41 +49,75 @@ from ._common import (
     _fmt_vulnerability,
     _merge_fork_candidates,
     _multi_contains_filter,
+    _openaev_tag_names,
     _providing_filter_clause,
     _require_response,
     _resolve_output_types,
     _search_body,
     _simulation_state_lines,
+    _validate_filter_group,
     asset_group_member_ids_lines,
     count_scenario_injects,
-    findings_fate,
+    describe_filter_group,
     fmt_asset_group_members,
     inject_targets_line,
-    keep_findings_params,
-    keep_findings_schema,
     mirror_content_targets,
     scoped_safe_request,
     stored_targets_line,
+    tool_client,
+    ui_tenant_id,
 )
 from .read_scope import area_scope, count_text, with_scope
 
 logger = logging.getLogger(__name__)
 
-#: Human labels for the expectations an inject declares in ``inject_content``.
-#: A technical attack inject with no expectation EXECUTES but MEASURES nothing,
-#: so the Scenario Creator scores its technical steps on prevention + detection.
-#: The names mirror what OpenAEV's own UI shows on the inject.
-_INJECT_EXPECTATION_NAMES = {
-    "PREVENTION": "Prevented by security control",
-    "DETECTION": "Detected by security control",
-    "VULNERABILITY": "Vulnerability confirmed",
-    "MANUAL": "Manual validation",
-    "ARTICLE": "Article read",
-    "CHALLENGE": "Challenge solved",
+#: OpenAEV's own default name per expectation type, as
+#: ``io.openaev.expectation.ExpectationBuilderService`` builds it (VULNERABILITY
+#: is ``ExpectationType.VULNERABILITY.successLabel``). Used only for a type the
+#: injector contract does not offer: a type it offers keeps the contract's own
+#: object, name included, exactly as-is (#2480). XTM One never writes a name
+#: of its own: VULNERABILITY has inverted polarity (SUCCESS = not vulnerable),
+#: so a home-made label such as "Vulnerability confirmed" read the opposite way.
+_OPENAEV_DEFAULT_EXPECTATION_NAMES = {
+    "PREVENTION": "Prevention",
+    "DETECTION": "Detection",
+    "LOGGING": "Logging",
+    "VULNERABILITY": "Not vulnerable",
+    "CHALLENGE": "Expect targets to complete the challenge(s)",
+    "ARTICLE": "Expect targets to read the article(s)",
+    "MANUAL": "Manual expectation",
 }
 
 
-def _build_inject_expectations(types: list[str]) -> list[dict[str, Any]]:
+def _contract_offered_expectations(content_json: str | None) -> dict[str, dict[str, Any]]:
+    """The contract's own expectation object per type, first one of each type.
+
+    Read from the ``key == "expectations"`` field of ``injector_contract_content``:
+    ``availableExpectations`` first, then the legacy ``predefinedExpectations``.
+    Malformed or absent content returns ``{}``.
+    """
+    if not content_json:
+        return {}
+    try:
+        content = json.loads(content_json)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(content, dict) or not isinstance(content.get("fields"), list):
+        return {}
+    offered: dict[str, dict[str, Any]] = {}
+    for field in content["fields"]:
+        if not isinstance(field, dict) or field.get("key") != "expectations":
+            continue
+        for list_key in ("availableExpectations", "predefinedExpectations"):
+            for expectation in field.get(list_key) or []:
+                if isinstance(expectation, dict) and isinstance(expectation.get("expectation_type"), str):
+                    offered.setdefault(expectation["expectation_type"], expectation)
+    return offered
+
+
+def _build_inject_expectations(
+    types: list[str], offered: dict[str, dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
     """Turn expectation TYPE names into ``inject_content.expectations`` objects.
 
     The scenario-creator wires native injects (e.g. HTTP Request) whose contract
@@ -90,23 +125,26 @@ def _build_inject_expectations(types: list[str]) -> list[dict[str, Any]]:
     stack the inject must carry its own DETECTION / PREVENTION expectations, and
     OpenAEV only keeps the contract's predefined ones when ``inject_content`` has
     no ``expectations`` key (``putIfAbsent``), so these REPLACE the default.
-    Score defaults to 100 (the platform's own predefined value) and the platform
-    scope is left empty, i.e. "any security platform".
+
+    A type the contract offers (``offered``, from ``_contract_offered_expectations``)
+    is the contract's own object, its name unchanged; the generic object below
+    only fills the keys it leaves out. A type it does not offer gets OpenAEV's
+    default name for the type (``_OPENAEV_DEFAULT_EXPECTATION_NAMES``), score
+    100 and an empty platform scope, i.e. "any security platform".
     """
     expectations: list[dict[str, Any]] = []
     for expectation_type in types:
-        expectations.append(
-            {
-                "expectation_type": expectation_type,
-                "expectation_name": _INJECT_EXPECTATION_NAMES.get(
-                    expectation_type, expectation_type.title()
-                ),
-                "expectation_description": "",
-                "expectation_score": 100,
-                "expectation_expectation_group": False,
-                "expectation_expected_security_platform_types": [],
-            }
-        )
+        expectation: dict[str, Any] = {
+            "expectation_type": expectation_type,
+            "expectation_name": _OPENAEV_DEFAULT_EXPECTATION_NAMES.get(expectation_type, expectation_type),
+            "expectation_description": "",
+            "expectation_score": 100,
+            "expectation_expectation_group": False,
+            "expectation_expected_security_platform_types": [],
+        }
+        if offered and expectation_type in offered:
+            expectation.update(offered[expectation_type])
+        expectations.append(expectation)
     return expectations
 
 
@@ -212,6 +250,102 @@ def _contract_default_expectations(content_json: str | None) -> list[dict[str, A
     return defaults
 
 
+#: Expectation types a security platform of a given type fulfils. A predefined
+#: one scoped to platform types none of which is registered in the tenant can
+#: never be met: it would expire as a certain failure (#2378).
+_PLATFORM_SCOPED_EXPECTATION_TYPES = frozenset({"PREVENTION", "DETECTION"})
+
+
+def _contract_predefined_expectations(content_json: str | None) -> list[dict[str, Any]]:
+    """The expectations OpenAEV seeds an inject of this contract with.
+
+    The ``expectation_is_predefined`` items of ``availableExpectations`` (every
+    item of a legacy ``predefinedExpectations`` list), in contract order, each
+    a full scored object (the contract's own values win). Malformed or absent
+    content returns ``[]``.
+    """
+    if not content_json:
+        return []
+    try:
+        content = json.loads(content_json)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(content, dict) or not isinstance(content.get("fields"), list):
+        return []
+    predefined: list[dict[str, Any]] = []
+    for field in content["fields"]:
+        if not isinstance(field, dict) or field.get("key") != "expectations":
+            continue
+        for list_key, legacy in (("availableExpectations", False), ("predefinedExpectations", True)):
+            for expectation in field.get(list_key) or []:
+                if not isinstance(expectation, dict):
+                    continue
+                expectation_type = expectation.get("expectation_type")
+                if not isinstance(expectation_type, str):
+                    continue
+                if legacy or expectation.get("expectation_is_predefined") is True:
+                    full = _build_inject_expectations([expectation_type])[0]
+                    full.update(expectation)
+                    predefined.append(full)
+    return predefined
+
+
+def _unmeetable_platform_types(expectation: dict[str, Any], registered_types: set[str]) -> list[str]:
+    """The platform types a PREVENTION / DETECTION expectation is scoped to when
+    none of them is registered, else ``[]`` (an empty scope means any platform)."""
+    if expectation.get("expectation_type") not in _PLATFORM_SCOPED_EXPECTATION_TYPES:
+        return []
+    scope = [
+        str(t).upper()
+        for t in expectation.get("expectation_expected_security_platform_types") or []
+        if isinstance(t, str) and t.strip()
+    ]
+    if not scope or any(t in registered_types for t in scope):
+        return []
+    return scope
+
+
+def _expectations_for_registered_platforms(
+    content_json: str | None, registered_types: set[str] | None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split a contract's predefined expectations by what the tenant can measure.
+
+    Returns ``(kept, left_out)``: ``left_out`` holds every predefined PREVENTION
+    or DETECTION expectation scoped to security platform types none of which is
+    in ``registered_types``; ``kept`` is the rest of the predefined set, in
+    contract order. ``registered_types`` None (the platforms could not be read)
+    returns ``([], [])``: nothing is decided and the inject keeps OpenAEV's own
+    seeding.
+    """
+    if registered_types is None:
+        return [], []
+    registered = {t.upper() for t in registered_types}
+    kept: list[dict[str, Any]] = []
+    left_out: list[dict[str, Any]] = []
+    for expectation in _contract_predefined_expectations(content_json):
+        (left_out if _unmeetable_platform_types(expectation, registered) else kept).append(expectation)
+    return kept, left_out
+
+
+def _left_out_line(left_out: list[dict[str, Any]], registered_types: set[str], *, kept: bool = True) -> str:
+    """The tool answer's line naming the expectations left out and why.
+
+    ``kept`` False: nothing else is predefined, so they stay on the inject
+    (an empty list would make OpenAEV seed them again) and the line says so.
+    """
+    parts = [
+        f"{e['expectation_type']} (expects {', '.join(e.get('expectation_expected_security_platform_types') or [])})"
+        for e in left_out
+    ]
+    registered = ", ".join(sorted(registered_types)) or "none"
+    head = "Expectations left out" if kept else "Expectations that cannot be met (kept: nothing else is predefined)"
+    tail = "pass `expectations` explicitly to keep them." if kept else "expect them to expire as missed."
+    return (
+        f"{head}: {'; '.join(parts)}. No security platform of those types is "
+        f"registered in this OpenAEV (registered: {registered}), so they could never be met; {tail}"
+    )
+
+
 #: The ``UpdateScenarioInput`` fields OpenAEV's own scenario forms send back on
 #: ``PUT /api/scenarios/{id}``, read from ``GET`` under the same JSON names.
 _SCENARIO_UPDATE_FIELDS = (
@@ -242,8 +376,31 @@ def register_core(
 
     # ── 1. Search assets ──────────────────────────────────────────────
 
-    async def search_openaev_assets(search: str, limit: int = 20) -> str:
-        """Search for assets (endpoints) by name, hostname, or IP."""
+    async def search_openaev_assets(search: str = "", limit: int = 20, filter_group: str = "") -> str:
+        """Search for assets (endpoints) by name, hostname, or IP, or by a FilterGroup.
+
+        ``filter_group`` is a FilterGroup JSON on the Asset model keys (``asset_status``
+        is a query-time formula the analytics engine does not index, #2406). With it,
+        ``search`` becomes the platform text search; without it, the name / hostname /
+        IP contains filter as before. The answer always carries the total, so a count
+        needs ``limit=1``.
+        """
+        parsed_group: dict | None = None
+        if filter_group:
+            try:
+                parsed_group = json.loads(filter_group)
+            except ValueError as exc:
+                return f"filter_group must be valid JSON: {exc}"
+            filter_err = _validate_filter_group(parsed_group)
+            if filter_err:
+                return f"filter_group is invalid. {filter_err}"
+        if parsed_group:
+            body = _search_body(size=max(1, min(limit, 50)), filter_group=parsed_group, text_search=search)
+        else:
+            body = _search_body(
+                size=max(1, min(limit, 50)),
+                filter_group=_multi_contains_filter(["asset_name", "asset_hostname", "asset_ips"], search),
+            )
         # Route through _api (not a raw httpx client) so a long autonomous run gets
         # the WS2 AutoRefreshClient JWT auto-refresh: this read otherwise 401s ~10 min
         # in when the platform-managed token expires and stays broken. Idempotent, so
@@ -254,12 +411,7 @@ def register_core(
             "post",
             "/api/endpoints/search",
             "search assets",
-            json=_search_body(
-                size=min(limit, 50),
-                filter_group=_multi_contains_filter(
-                    ["asset_name", "asset_hostname", "asset_ips"], search
-                ),
-            ),
+            json=body,
             retry_transient=True,
         )
         if err:
@@ -267,19 +419,23 @@ def register_core(
         resp = _require_response(resp)
         data = resp.json()
         items = data.get("content", [])
+        criteria = describe_filter_group(parsed_group) if parsed_group else ""
+        if search:
+            criteria = f"{criteria} AND text '{search}'" if criteria else f"'{search}'"
+        tag_names = await _openaev_tag_names(base_url, hdrs) if _assets_carry_tags(items) else {}
         return format_entity_list(
             items,
-            partial(_fmt_asset, base_url=base_url),
+            partial(_fmt_asset, base_url=base_url, tag_names=tag_names),
             noun="asset",
             total=data.get("totalElements"),
-            empty_msg=f"No assets found for '{search}'.",
+            empty_msg=f"No assets found for {criteria or 'this search'} (total 0).",
         )
 
     # ── 2. Get asset ──────────────────────────────────────────────────
 
     async def get_openaev_asset(asset_id: str) -> str:
         """Get full details of a specific asset by ID."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -292,13 +448,16 @@ def register_core(
             return err
         resp = _require_response(resp)
         data = resp.json()
-        return _fmt_asset(data, base_url) if data else f"Asset '{asset_id}' not found."
+        if not data:
+            return f"Asset '{asset_id}' not found."
+        tag_names = await _openaev_tag_names(base_url, hdrs) if _assets_carry_tags([data]) else {}
+        return _fmt_asset(data, base_url, tag_names)
 
     # ── 3. Search asset groups ────────────────────────────────────────
 
     async def search_openaev_asset_groups(search: str, limit: int = 20) -> str:
         """Search for asset groups by name."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -333,7 +492,7 @@ def register_core(
         member_search: str = "",
     ) -> str:
         """An asset group with its dynamic filter and its members, paged."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -355,7 +514,7 @@ def register_core(
         page = max(0, int(members_page))
         # Static and dynamic members alike: OpenAEV resolves the dynamic
         # filter server-side on this search, the group read carries ids only.
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             members_resp, members_err = await scoped_safe_request(
                 client,
                 "post",
@@ -375,7 +534,7 @@ def register_core(
 
     async def search_openaev_teams(search: str, limit: int = 20) -> str:
         """Search for teams by name."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -405,7 +564,7 @@ def register_core(
 
     async def get_openaev_team(team_id: str) -> str:
         """Get full details of a specific team by ID."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -424,7 +583,7 @@ def register_core(
 
     async def search_openaev_players(search: str, limit: int = 20) -> str:
         """Search for players/users by email, first name, or last name."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -462,7 +621,7 @@ def register_core(
         # convention) instead of the declared `search`. Accept it as an alias so
         # a mislabelled argument doesn't waste a whole agent iteration.
         search = search or query
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -489,7 +648,7 @@ def register_core(
 
     async def get_openaev_attack_pattern(attack_pattern_id: str) -> str:
         """Get full details of a specific attack pattern by ID."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -512,7 +671,7 @@ def register_core(
 
     async def search_openaev_scenarios(search: str = "", limit: int = 20) -> str:
         """Search for scenarios or list all."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -529,7 +688,7 @@ def register_core(
         items = data.get("content", [])
         return format_entity_list(
             items,
-            partial(_fmt_scenario, base_url=base_url),
+            partial(_fmt_scenario, base_url=base_url, tenant_id=await ui_tenant_id(hdrs)),
             noun="scenario",
             total=data.get("totalElements"),
             empty_msg=f"No scenarios found{' for ' + repr(search) if search else ''}.",
@@ -539,7 +698,7 @@ def register_core(
 
     async def get_openaev_scenario(scenario_id: str) -> str:
         """Get full details of a specific scenario by ID."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -572,7 +731,7 @@ def register_core(
                     except ValueError:
                         count = None
                 data = {**data, SCENARIO_INJECT_COUNT_KEY: count}
-        return _fmt_scenario(data, base_url)
+        return _fmt_scenario(data, base_url, await ui_tenant_id(hdrs))
 
     # ── 12. Create scenario ───────────────────────────────────────────
 
@@ -596,7 +755,7 @@ def register_core(
         }
         if tags:
             payload["scenario_tags"] = tags
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -644,7 +803,7 @@ def register_core(
             payload["scenario_severity"] = severity
         if not payload:
             return "No fields to update."
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             # The PUT is a full-entity update (UpdateScenarioInput copied onto
             # the scenario): a missing name is a 400 and the other missing
             # fields are wiped, tags included (only reply-to is kept). Send the
@@ -681,13 +840,13 @@ def register_core(
             return err
         resp = _require_response(resp)
         data = resp.json()
-        return f"Scenario {scenario_id} updated.\n" + _fmt_scenario(data, base_url)
+        return f"Scenario {scenario_id} updated.\n" + _fmt_scenario(data, base_url, await ui_tenant_id(hdrs))
 
     # ── 14. Delete scenario ───────────────────────────────────────────
 
-    async def delete_openaev_scenario(scenario_id: str, keep_findings: bool = True) -> str:
-        """Delete a scenario (permanent); its findings are kept unless keep_findings is false."""
-        async with egress_client(timeout=30) as client:
+    async def delete_openaev_scenario(scenario_id: str) -> str:
+        """Delete a scenario (permanent); OpenAEV keeps its findings as history (OpenAEV #9233)."""
+        async with tool_client(hdrs, timeout=30) as client:
             _, err = await scoped_safe_request(
                 client,
                 "delete",
@@ -695,11 +854,10 @@ def register_core(
                 _PROVIDER,
                 "delete scenario",
                 headers=hdrs,
-                params=keep_findings_params(keep_findings),
             )
         if err:
             return err
-        return f"Scenario {scenario_id} deleted. " + findings_fate(keep_findings, "scenario")
+        return f"Scenario {scenario_id} deleted. {FINDINGS_KEPT_AS_HISTORY}"
 
     # ── 15. Create payload ────────────────────────────────────────────
 
@@ -756,7 +914,7 @@ def register_core(
             body["payload_cleanup_executor"] = cleanup_executor
         if cleanup_command:
             body["payload_cleanup_command"] = cleanup_command
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -774,7 +932,7 @@ def register_core(
 
         contract_id = "unknown"
         try:
-            async with egress_client(timeout=15) as c2:
+            async with tool_client(hdrs, timeout=15) as c2:
                 for _attempt in range(5):
                     await asyncio.sleep(1.0 + _attempt * 1.5)
                     cr, _ = await scoped_safe_request(
@@ -818,7 +976,7 @@ def register_core(
 
     async def get_openaev_payload(payload_id: str) -> str:
         """Get full details of a payload by ID."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -837,7 +995,7 @@ def register_core(
 
     async def search_openaev_payloads(search: str = "", limit: int = 20) -> str:
         """Search for payloads or list all."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -862,40 +1020,105 @@ def register_core(
 
     # ── 18. Add inject to scenario ────────────────────────────────────
 
-    async def _contract_expectations_default(contract_id: str) -> list[dict[str, Any]]:
-        """Expectations to default this contract's inject to (see
-        ``_contract_default_expectations``). Best-effort: when the contract
-        cannot be read the inject keeps its predefined expectations, and the
-        failure is logged so an unscored inject can be traced to it.
-        """
+    async def _registered_security_platform_types() -> set[str] | None:
+        """The security platform types registered in this OpenAEV tenant, or
+        None when they cannot be read (the caller then decides nothing)."""
         try:
-            async with egress_client(timeout=15) as client:
+            resp, err = await _api(
+                base_url,
+                hdrs,
+                "post",
+                "/api/security_platforms/search",
+                "search security platforms for expectations scope",
+                json=_search_body(size=500),
+                retry_transient=True,
+            )
+            if err or resp is None:
+                logger.warning(
+                    "Could not read the security platforms to scope an inject's expectations (%s); "
+                    "the inject keeps the contract's predefined ones",
+                    err or "no response",
+                )
+                return None
+            data = resp.json()
+        except Exception:
+            logger.warning("Failed to read the security platforms", exc_info=True)
+            return None
+        items = data.get("content") if isinstance(data, dict) else data
+        if not isinstance(items, list):
+            return None
+        return {
+            str(p["security_platform_type"]).upper()
+            for p in items
+            if isinstance(p, dict) and isinstance(p.get("security_platform_type"), str)
+        }
+
+    async def _contract_content_json(contract_id: str) -> str | None:
+        """The contract's ``injector_contract_content`` JSON, ``None`` when it
+        cannot be read (logged, so an inject named with OpenAEV's defaults
+        instead of the contract's own names can be traced to it)."""
+        try:
+            async with tool_client(hdrs, timeout=15) as client:
                 resp, err = await scoped_safe_request(
                     client,
                     "get",
                     f"{base_url}/api/injector_contracts/{contract_id}",
                     _PROVIDER,
-                    "fetch injector contract for expectations default",
+                    "fetch injector contract expectations",
                     headers=hdrs,
                 )
             if err or resp is None:
                 logger.warning(
-                    "Could not read injector contract %s to default its inject's "
-                    "expectations (%s); the inject keeps the contract's predefined ones",
+                    "Could not read injector contract %s for its expectations (%s); "
+                    "types it offers get OpenAEV's default names",
                     contract_id,
                     err or "no response",
                 )
-                return []
+                return None
             content_json = resp.json().get("injector_contract_content")
         except Exception:
             logger.warning(
-                "Failed to resolve contract %s expectations; the inject keeps the "
-                "contract's predefined ones",
+                "Failed to read contract %s expectations; types it offers get OpenAEV's default names",
                 contract_id,
                 exc_info=True,
             )
-            return []
-        return _contract_default_expectations(content_json)
+            return None
+        return content_json if isinstance(content_json, str) else None
+
+    async def _contract_expectations_default(contract_id: str) -> tuple[list[dict[str, Any]], str]:
+        """Expectations to default this contract's inject to, and a line for the
+        tool answer (empty when nothing was left out).
+
+        ``_contract_default_expectations`` first; when it keeps the contract's
+        predefined set, the predefined PREVENTION / DETECTION expectations scoped
+        to security platform types the tenant has not registered are left out
+        (#2378): the inject then carries the predefined set minus those.
+        Best-effort: when the contract or the platforms cannot be read the inject
+        keeps its predefined expectations, and the failure is logged so an
+        unscored inject can be traced to it.
+        """
+        content_json = await _contract_content_json(contract_id)
+        if content_json is None:
+            return [], ""
+        defaults = _contract_default_expectations(content_json)
+        if defaults:
+            return defaults, ""
+        predefined = _contract_predefined_expectations(content_json)
+        if not any(
+            e.get("expectation_type") in _PLATFORM_SCOPED_EXPECTATION_TYPES
+            and e.get("expectation_expected_security_platform_types")
+            for e in predefined
+        ):
+            return [], ""
+        registered = await _registered_security_platform_types()
+        kept, left_out = _expectations_for_registered_platforms(content_json, registered)
+        if not left_out or registered is None:
+            return [], ""
+        if not kept:
+            # OpenAEV seeds the predefined set again when the list is empty, so
+            # an inject left with nothing measurable keeps it and says why.
+            return [], _left_out_line(left_out, registered, kept=False)
+        return kept, _left_out_line(left_out, registered)
 
     async def add_openaev_inject_to_scenario(
         scenario_id: str,
@@ -920,6 +1143,7 @@ def register_core(
             "inject_asset_groups": asset_group_ids or [],
         }
         inject_content: dict[str, Any]
+        expectations_note = ""
         if content:
             try:
                 inject_content = json.loads(content)
@@ -958,14 +1182,18 @@ def register_core(
                     "omit it to keep the injector contract's predefined "
                     "expectations."
                 )
-            inject_content["expectations"] = _build_inject_expectations(resolved_types)
+            # Each type is the contract's own expectation object, its name as
+            # the contract writes it (#2480); a type the contract does not
+            # offer gets OpenAEV's default for the type.
+            offered = _contract_offered_expectations(await _contract_content_json(injector_contract_id))
+            inject_content["expectations"] = _build_inject_expectations(resolved_types, offered)
         elif not inject_content.get("expectations"):
             # An empty list counts as absent, as OpenAEV's setExpectations does.
-            default_expectations = await _contract_expectations_default(injector_contract_id)
+            default_expectations, expectations_note = await _contract_expectations_default(injector_contract_id)
             if default_expectations:
                 inject_content["expectations"] = default_expectations
         body["inject_content"] = inject_content
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -981,7 +1209,7 @@ def register_core(
         data = resp.json()
         iid = data.get("inject_id", "unknown")
         lines = [f"Inject added to scenario {scenario_id}: [{title}] (Inject ID: {iid})"]
-        lines += [t for t in (targets_note, inject_targets_line(data)) if t]
+        lines += [t for t in (targets_note, inject_targets_line(data), expectations_note) if t]
         return "\n".join(lines)
 
     # ── 19. Search injector contracts ─────────────────────────────────
@@ -1121,7 +1349,7 @@ def register_core(
             return targets_err
         body["inject_assets"] = assets or []
         body["inject_asset_groups"] = groups or []
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -1246,7 +1474,7 @@ def register_core(
 
     async def get_openaev_vulnerability(cve_id: str) -> str:
         """Get a vulnerability by its CVE ID (e.g., CVE-2024-1234)."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -1267,7 +1495,7 @@ def register_core(
 
     async def full_text_search_openaev(search: str) -> str:
         """Full-text search across all OpenAEV entity types. Returns counts per type."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -1296,7 +1524,7 @@ def register_core(
 
     async def list_openaev_kill_chain_phases() -> str:
         """List all kill chain phases available in OpenAEV."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -1325,7 +1553,7 @@ def register_core(
 
     async def list_openaev_tags() -> str:
         """List all tags available in OpenAEV."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -1351,7 +1579,7 @@ def register_core(
 
     async def list_openaev_domains() -> str:
         """List all domains (security domains) available in OpenAEV."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -1398,7 +1626,7 @@ def register_core(
 
     async def search_openaev_exercises(search: str = "", limit: int = 20) -> str:
         """Search for exercises (simulations) or list all."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "post",
@@ -1425,7 +1653,7 @@ def register_core(
 
     async def get_openaev_exercise(exercise_id: str) -> str:
         """Get full details of a specific exercise/simulation by ID."""
-        async with egress_client(timeout=30) as client:
+        async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
                 "get",
@@ -1497,8 +1725,9 @@ def register_core(
             name="search_openaev_assets",
             priority=0,
             description=(
-                "Search for assets (endpoints) in OpenAEV by name, hostname, or IP address. "
-                "Assets represent machines, servers, workstations, or devices in the environment."
+                "Search for assets (endpoints) in OpenAEV by name, hostname, or IP address, "
+                "or count them by model keys (asset_status, asset_category...) with filter_group. "
+                "The answer always carries the total."
             ),
             input_schema={
                 "type": "object",
@@ -1509,11 +1738,18 @@ def register_core(
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Max results (default 20)",
+                        "description": "Max results (default 20); 1 to count",
                         "default": 20,
                     },
+                    "filter_group": {
+                        "type": "string",
+                        "description": (
+                            'FilterGroup JSON on Asset model keys, e.g. {"mode":"and","filters":'
+                            '[{"key":"asset_status","operator":"eq","values":["ACTIVE"]}]}'
+                        ),
+                    },
                 },
-                "required": ["search"],
+                "required": [],
             },
             source="integration:openaev",
         ),
@@ -1835,7 +2071,6 @@ def register_core(
                         "type": "string",
                         "description": "Scenario ID to delete",
                     },
-                    "keep_findings": keep_findings_schema(),
                 },
                 "required": ["scenario_id"],
             },

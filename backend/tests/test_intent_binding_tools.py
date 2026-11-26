@@ -167,12 +167,53 @@ async def test_an_anonymous_caller_binds_nothing():
     definitions, handlers = build_intent_binding_tools("")
     assert {d.name for d in definitions} == INTENT_BINDING_TOOL_NAMES == set(handlers)
     arguments = {
-        LIST_TOOL: {"agent_id": "a"},
         BIND_TOOL: {"agent_id": "a", "intent": "cti.stix_transformer"},
         UNBIND_TOOL: {"agent_id": "a", "intent": "cti.stix_transformer"},
     }
     for name, args in arguments.items():
         assert "not available for anonymous users" in await handlers[name](**args), name
+
+
+class _SessionScope:
+    def __init__(self, db):
+        self.db = db
+
+    async def __aenter__(self):
+        return self.db
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+async def test_a_run_with_no_account_lists_the_global_bindings(monkeypatch):
+    """An A2A run (no user) reads what get_agent shows it, instead of a refusal."""
+    from app.core import database
+    from app.services.builtin_tools import intent_bindings
+
+    agent = _agent(company=True)
+    db = _Session(agent)
+    monkeypatch.setattr(database, "async_session", lambda: _SessionScope(db))
+    seen: list[object] = []
+
+    async def _lines(_db, the_agent, viewer_id):
+        seen.append(viewer_id)
+        return [f"`cti.stix_transformer` - {the_agent.slug}"]
+
+    monkeypatch.setattr(intent_bindings, "agent_binding_lines", _lines)
+    _definitions, handlers = build_intent_binding_tools("")
+    out = await handlers[LIST_TOOL](agent_id="stix-transformer")
+    assert "anonymous" not in out
+    assert "Intent bindings of **STIX transformer**" in out
+    assert seen == [None]  # global bindings only, nobody's personal override
+    assert "is_company_managed" in str(db.statements[0])
+
+
+async def test_a_run_with_no_account_does_not_see_an_agent_out_of_reach(monkeypatch):
+    from app.core import database
+
+    monkeypatch.setattr(database, "async_session", lambda: _SessionScope(_Session(None)))
+    _definitions, handlers = build_intent_binding_tools("")
+    assert "not found or you don't have access" in await handlers[LIST_TOOL](agent_id="private-one")
 
 
 def test_the_list_is_a_read_and_the_writes_are_not():

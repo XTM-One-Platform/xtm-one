@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import ctem_evidence_health as health
 from app.services import organization_context as oc
@@ -220,6 +221,23 @@ async def test_pass_signals_are_recorded_by_system_on_the_inside_lens(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_an_asset_gap_links_to_its_opencrq_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The case row's "Open in OpenCRQ" icon (#1357) reads the asset page the pass writes."""
+    recorded = _patch_record(monkeypatch)
+    reader = _Reader({"s-1": _health(_asset("a1", "expired"))})
+    reader.asset_link = lambda asset_id: f"https://crq.example/t1/assets/{asset_id}/overview"  # type: ignore[attr-defined]
+    db = cast(AsyncSession, object())  # record_signal is patched: the pass never reads the session
+    await health.run_pass(db, organization_id=uuid.uuid4(), reader=reader, max_age_days=45, now=NOW)
+    assert recorded[0]["signal"].evidence["link"] == "https://crq.example/t1/assets/a1/overview"
+
+
+def test_the_opencrq_reader_builds_the_asset_page_or_nothing() -> None:
+    reader = health.OpenCrqEvidenceReader("https://crq.example/", {}, "t1")
+    assert reader.asset_link("a1") == "https://crq.example/t1/assets/a1/overview"
+    assert reader.asset_link("../a1") is None
+
+
+@pytest.mark.asyncio
 async def test_two_identical_passes_give_no_new_signal(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_record(monkeypatch)
     reader = _Reader({"s-1": _health(_asset("a1", "expired"))})
@@ -249,6 +267,31 @@ async def test_an_asset_or_source_in_two_scenarios_is_recorded_once(monkeypatch:
     )
     await health.run_pass(object(), organization_id=uuid.uuid4(), reader=reader, max_age_days=30, now=NOW)
     assert len(recorded) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_pass_checkpoints_every_batch_of_new_signals(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A cut pass keeps what it recorded: every COMMIT_BATCH new signals reach the checkpoint (#2055)."""
+    _patch_record(monkeypatch)
+    total = health.COMMIT_BATCH * 2 + 3
+    reader = _Reader({"s-1": _health(*(_asset(f"a{i}", "expired") for i in range(total)))})
+    checkpoints: list[object] = []
+
+    async def _checkpoint(pending: object) -> None:
+        checkpoints.append(pending)
+
+    result = await health.run_pass(
+        object(),  # type: ignore[arg-type]
+        organization_id=uuid.uuid4(),
+        reader=reader,
+        max_age_days=30,
+        now=NOW,
+        checkpoint=_checkpoint,
+    )
+    assert result["counts"]["new"] == total
+    assert len(checkpoints) == 2
+    # The pending events left after the last batch are the caller's to publish; each batch gets a fresh holder.
+    assert result["pending"] is not checkpoints[-1] and checkpoints[0] is not checkpoints[1]
 
 
 # ── the schedule ────────────────────────────────────────────────────────

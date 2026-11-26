@@ -189,17 +189,17 @@ export function attentionCount<V>(values: readonly V[], check: (value: V, all: r
   return rowIssues(startRows(values), check, identity).size;
 }
 
-type Jewel = { name: string; business_service: string; owner: string; criticality: string };
+type PrimaryAsset = { name: string; business_service: string; owner: string; criticality: string };
 type Tech = { product: string; vendor: string; cpe: string };
 type Shipped = { product: string; vendor: string; cpe: string; repositories: readonly string[] };
 
 /** The checks and the identity of each list of the identity half of the profile. */
 export const LIST_RULES = {
-  crown_jewels: {
-    check: (value: Jewel): ListIssue[] => (value.name.trim() ? [] : [LIST_ISSUES.emptyName]),
-    identity: (value: Jewel) => value.name.trim(),
+  primary_assets: {
+    check: (value: PrimaryAsset): ListIssue[] => (value.name.trim() ? [] : [LIST_ISSUES.emptyName]),
+    identity: (value: PrimaryAsset) => value.name.trim(),
   },
-  tech_stack: {
+  software: {
     check: (value: Tech): ListIssue[] => [
       ...(value.product.trim() ? [] : [LIST_ISSUES.emptyName]),
       ...(value.product.trim() && !value.vendor.trim() ? [LIST_ISSUES.vendor] : []),

@@ -38,6 +38,7 @@ from app.agents.opencti_pir_desk import PIR_DESK_AGENTS, PIR_DESK_ASSIGNMENTS
 from app.agents.output_schema import NlqOutputSchema, cti_stix_transformer_schema
 from app.core.config import settings
 from app.core.feature_flags import FeatureFlag
+from app.models.agent_skill import INTERNAL_SKILL_TAG
 from app.models.general_assistant_config import DEFAULT_GA_BUILTIN_TOOL_IDS, DEFAULT_MAX_ITERATIONS
 
 logger = logging.getLogger(__name__)
@@ -304,6 +305,14 @@ _STAGE_ASSESSMENT_SCHEMA: dict = {
             "type": "string",
             "description": "The single most important next action for this stage.",
         },
+        "caveats": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Optional: each metric read as suspect (for example a 0% detection "
+                "a collector may not have matched) and why, in one short line."
+            ),
+        },
         "coverage": {
             "type": "object",
             "properties": {
@@ -325,7 +334,7 @@ _STAGE_DEFS: list[dict] = [
         "name": "CTEM Scoping Analyst",
         "icon": "Crosshair",
         "focus": "how completely the exposure surface is defined and in scope",
-        "cyber": "asset coverage of the attack surface - the share of endpoints carrying an active OpenAEV agent (target >90%) and the count of UNPROTECTED endpoints to close (below ~85% coverage validation is unreliable); OpenCTI observables/CVEs are the intel-side surface. Call out primary assets lacking coverage",
+        "cyber": "asset coverage of the attack surface - the share of endpoints carrying an active OpenAEV agent (target >90%) and the count of UNPROTECTED endpoints to close (below ~85% coverage validation is unreliable). Count them with search_openaev_assets filter_group and limit=1 (its total), hosts only (asset_category eq HOST; an agentless non-host asset is not a protection gap): total hosts; covered = hosts with asset_status eq ACTIVE; unprotected = hosts with asset_status in INACTIVE, AGENTLESS, STALE; coverage = covered / total. asset_status is not an analytics engine key; OpenCTI observables/CVEs are the intel-side surface. Call out primary assets lacking coverage",
         "fimi": "information-space coverage - narratives, channels, languages and events (especially elections) tracked in OpenCTI",
         "fraud": "brand & asset coverage - monitored brands/organizations, watched domains, and impersonation personas",
     },
@@ -355,7 +364,7 @@ _STAGE_DEFS: list[dict] = [
         "name": "CTEM Validation Analyst",
         "icon": "ShieldCheck",
         "focus": "whether prioritized exposures are proven, not assumed",
-        "cyber": "OpenAEV BAS efficacy - prevention vs detection success, per-technique ATT&CK results, and the DEPTH of the detection stack (security platforms / active collectors) that actually caught the attacks; name techniques exercised but not detected. OpenCTI detection-rule coverage is the fallback proxy",
+        "cyber": "OpenAEV BAS efficacy - prevention vs detection success, per-technique ATT&CK results, and the DEPTH of the detection stack (security platforms / active collectors) that actually caught the attacks; name techniques exercised but not detected. A detection result depends on the collector having matched the security platform's alerts: a uniform 0% detection with a live EDR / SIEM collector is suspect until its traces are read (rule 6). OpenCTI detection-rule coverage is the fallback proxy",
         "fimi": "corroboration - the share of channels with mapped infrastructure (publishing to domains/URLs) evidencing real operations",
         "fraud": "confirmation - validated-malicious share of fraud indicators, proven by OpenAEV phishing simulations (human response) when connected",
     },
@@ -370,6 +379,37 @@ _STAGE_DEFS: list[dict] = [
         "fraud": "phishing / brand-abuse takedown closure (Case-RFT) and open takedowns",
     },
 ]
+
+
+# A uniform 0% detection read while a collector is alive is far more often a
+# collector that did not match the security platform's alerts than a total
+# detection failure (#2402): the validation analyst reads the collector traces
+# before scoring it, and never recommends new detections on that zero.
+_SUSPECT_ZERO_RULE = (
+    "6. A suspect zero is not a finding. A detection rate of 0% (or every "
+    "DETECTION expectation Not Detected) while at least one EDR / SIEM "
+    "collector is registered and alive is SUSPECT: the collector may not have "
+    "matched the security platform's alerts. Before scoring it, read the "
+    "collector traces of one or two of those expectations with "
+    "manage_openaev_expectation action=traces (at most two traces calls per "
+    "assessment). If the traces show alerts the collector did not match to the "
+    "expectation, or the collector wrote no trace for them, write: detection "
+    "result not assessable, the collector did not match the security "
+    "platform's alerts; set score_read to unknown (never critical on that "
+    "zero), add the reason to `caveats`, and make the recommended_action: "
+    "check the collector's matching against the security platform's own "
+    "alerts, not new detections. If the traces show the collector searched "
+    "and the platform raised no alert, the miss is real: report those "
+    "techniques as not detected.\n"
+)
+_SUSPECT_ZERO_PROMPT = (
+    " A 0% detection read while an EDR / SIEM collector is alive is suspect, "
+    "not a finding: read the traces of one or two of those expectations "
+    "(manage_openaev_expectation action=traces, at most two calls) before "
+    "scoring it; when the collector did not match the platform's alerts, say "
+    "the detection result is not assessable, set score_read to unknown, record "
+    "it in `caveats` and recommend checking the collector's matching."
+)
 
 
 def _stage_persona(d: dict) -> str:
@@ -396,7 +436,11 @@ def _stage_persona(d: dict) -> str:
         "that does not see everything: a zero there is not assessable (coverage "
         "unknown), never no activity. Set score_read to unknown for the OpenAEV "
         "part, coverage.openaev to false, and write: OpenAEV not readable with "
-        "full scope for this user.\n\n"
+        "full scope for this user.\n"
+        "5. Every count you write in the headline or the assessment equals the "
+        "number of items you list (six techniques written, six named).\n"
+        + (_SUSPECT_ZERO_RULE if d["key"] == "validation" else "")
+        + "\n"
         "Lead with what the organization HAS: the headline and the start of the "
         "assessment must surface the strongest finding from the CONNECTED "
         "product's data. A product that is not connected is a coverage gap, not "
@@ -430,7 +474,10 @@ def _stage_prompt(d: dict) -> str:
         "score_read, the 1-3 key_metrics that matter (with real values), and ONE "
         "specific, prioritized recommended_action a team can act on this week "
         "(name the asset / CVE / actor / narrative where possible). Set "
-        "`coverage` to which products returned data. Output only the JSON object."
+        "`coverage` to which products returned data. Every count written in "
+        "the headline or the assessment equals the number of items listed."
+        + (_SUSPECT_ZERO_PROMPT if d["key"] == "validation" else "")
+        + " Output only the JSON object."
     )
 
 
@@ -545,10 +592,12 @@ DEFAULT_ASSISTANT_SLUGS: tuple[str, ...] = (
     "fimi-analyst",
 )
 
-#: What a default assistant makes from data: files, reports, decks and videos,
-#: and the template lookup that dresses them in the brand.
+#: What a default assistant makes from data: files, images, reports, decks and
+#: videos, and the template lookup that dresses them in the brand. Both former
+#: ids of ``files`` are named, so the seed stores that group unscoped (#2327).
 DEFAULT_ASSISTANT_MEDIA_TOOL_IDS: tuple[str, ...] = (
     "generate_file",
+    "generate_image",
     "generate_report",
     "generate_presentation",
     "template_search",
@@ -641,6 +690,13 @@ BUILTIN_AGENTS: list[dict] = [
         "memory_medium_term_enabled": False,
         "memory_persistent_enabled": False,
         "memory_user_enabled": False,
+        # PREPARE grounds the query in this OpenCTI's custom-field filter keys,
+        # which the filter schema skill cannot list (a tool result, not prompt).
+        "prepare_tool_ref": {
+            "source": "integration",
+            "provider": "opencti",
+            "tool_name": "get_opencti_nlq_context",
+        },
         "finalize_tool_ref": {
             "source": "integration",
             "provider": "opencti",
@@ -1020,8 +1076,8 @@ BUILTIN_AGENTS: list[dict] = [
         # Scenario Creator's background task - so delete / bulk_delete are always
         # off the global library, not just on a consult.
         "tool_deny_list": [
-            # Global writes it must not touch (only the threat arsenal is allowed).
-            "manage_openaev_finding",
+            # Global writes it must not touch (only the threat arsenal is allowed;
+            # manage_openaev_finding is read-only since OpenAEV #9233).
             "manage_openaev_asset",
             "manage_openaev_asset_group",
             "manage_openaev_security_platform",
@@ -1266,15 +1322,6 @@ BUILTIN_AGENTS: list[dict] = [
         "integration_template_bindings": ["opencrq"],
         "supported_intents": {
             "global.assistant": {"crq": 5},
-            "global.make_it_shorter": {"crq": 0},
-            "global.make_it_longer": {"crq": 0},
-            "global.fix_spelling": {"crq": 0},
-            "global.change_tone": {"crq": 0},
-            "global.summarize": {"crq": 0},
-            "global.explain": {"crq": 0},
-            "crq.control_gap_analysis": {"crq": 0},
-            "crq.risk_scenario_generator": {"crq": 0},
-            "crq.assessment_summary": {"crq": 0},
         },
     },
     {
@@ -2083,9 +2130,7 @@ BUILTIN_AGENTS: list[dict] = [
     # once they are seeded, the seed skips a slug it does not know.
     {
         "slug": "ctem-vuln-prioritization-orchestrator",
-        # Vulnerability and exposure work reads the whole software inventory (#11533),
-        # the assets with their exposure and the prioritization policy (#11543).
-        "organization_context_categories": ["software", "primary_assets", "assets_exposure", "prioritization_policy"],
+        # No category preload (#2443): the inventory is queried (find_assets_running, search_assets).
         "persona": "ctem-vuln-prioritization-orchestrator",
         "name": "Vuln Orchestrator",
         "description": (
@@ -2121,9 +2166,7 @@ BUILTIN_AGENTS: list[dict] = [
     },
     {
         "slug": "ctem-vuln-triage-analyst",
-        # Vulnerability and exposure work reads the whole software inventory (#11533),
-        # the assets with their exposure and the prioritization policy (#11543).
-        "organization_context_categories": ["software", "primary_assets", "assets_exposure", "prioritization_policy"],
+        # No category preload (#2443): the inventory is queried (find_assets_running, search_assets).
         "persona": "ctem-vuln-triage-analyst",
         "name": "Vuln Triage Analyst",
         "description": (
@@ -2220,6 +2263,9 @@ CTEM_FLEET_AGENTS: list[dict] = [
         # The blackboard (ctem:f1:state) and the approval / re-test queue
         # (ctem:f1:<id> work items, needs_human for every environment write).
         "builtin_tool_ids": ["shared_state", "work_items", "generate_file"],
+        # A control_decay case reads EDR and device-management coverage from the
+        # organization inventory those sources sync into (#2354), never through a
+        # template binding here: an unconnected one would be announced as missing.
         "integration_template_bindings": ["opencti", "openaev", "opencrq"],
         "memory_user_enabled": False,
     },
@@ -2260,15 +2306,13 @@ CTEM_FLEET_AGENTS: list[dict] = [
     {
         **_CTEM_ROLE_AGENT_BASE,
         "slug": "ctem-remediation-coordinator",
-        # Vulnerability and exposure work reads the whole software inventory (#11533),
-        # the assets with their exposure and the prioritization policy (#11543).
-        "organization_context_categories": ["software", "primary_assets", "assets_exposure", "prioritization_policy"],
+        # No category preload (#2443): the inventory is queried (find_assets_running, search_assets).
         "persona": "ctem-remediation-coordinator",
         "name": "Remediation Coordinator",
         "description": (
             "Turns a validated exposure into the three actions of the week, "
-            "with the detections drafted, a ticket proposed for each and the "
-            "re-test that proves it."
+            "with the detections drafted, each carried out as a ticket or a change "
+            "applied through a bound integration, and the re-test that proves it."
         ),
         "icon": "ListChecks",
         "output_schema": "ctem-remediation-coordinator",
@@ -2375,9 +2419,9 @@ BUILTIN_AGENTS.append(
             "opencti-dashboard-widget-creator": "consult",
         },
         # shared_state: the refresh debounce and the fleets' counters
-        # (``ctem:fN:state``); ctem_read: the CTEM cases the board report
-        # counts (#1832), read-only.
-        "builtin_tool_ids": ["shared_state", "ctem_read"],
+        # (``ctem:fN:state``); ctem: the CTEM cases the board report counts
+        # (#1832), within the acting person's CTEM right (one CTEM group, #2443).
+        "builtin_tool_ids": ["shared_state", "ctem"],
         "integration_template_bindings": ["opencti", "openaev", "opencrq"],
         "memory_short_term_enabled": True,
         "memory_medium_term_enabled": False,
@@ -2736,6 +2780,55 @@ BUILTIN_ASSIGNMENTS.extend(DETECTION_DESK_ASSIGNMENTS)
 BUILTIN_ASSIGNMENTS.extend(RISK_BUDGET_DESK_ASSIGNMENTS)
 BUILTIN_ASSIGNMENTS.extend(CTEM_POSTURE_ASSIGNMENTS)
 
+# ── One writer per counter of the CTEM loop states (#2250) ──
+# ctem:f1:state and ctem:f2:state hold the counters the monthly posture report reads.
+# Each counter has exactly one seeded writer, so concurrent runs neither skip nor
+# double count it: the case listener (up to CTEM_CASE_LISTENER_CONCURRENCY runs at
+# once) never writes them.
+CTEM_F1_STATE_KEY = "ctem:f1:state"
+CTEM_F2_STATE_KEY = "ctem:f2:state"
+#: Counter name -> the seeded assignment that alone writes it.
+CTEM_F1_COUNTER_WRITERS: dict[str, str] = {
+    "threats_reviewed": "Weekly threat sweep",
+    "threats_relevant": "Weekly threat sweep",
+    "last_refresh": "Weekly threat sweep",
+    "cases_resolved": "Re-test due",
+    "loss_avoided": "Re-test due",
+}
+CTEM_F2_COUNTER_WRITERS: dict[str, str] = {
+    "cve_triaged": "Daily backlog pass",
+    "cve_validated": "Daily backlog pass",
+    "last_pass": "Daily backlog pass",
+    "ticket_closed_retested": "Re-test due",
+}
+CTEM_CASE_NEVER_WRITES_COUNTERS = (
+    f"Never write {CTEM_F1_STATE_KEY} or {CTEM_F2_STATE_KEY}: the sweep, the daily pass and the "
+    "re-test keep their counters."
+)
+CTEM_F1_SWEEP_COUNTERS_RULE = (
+    f"Then, as the only writer of threats_reviewed, threats_relevant and last_refresh in "
+    f"{CTEM_F1_STATE_KEY}: read it, add this week's reviewed and relevant counts to the running "
+    "totals, set last_refresh to now (ISO 8601 UTC) in one set_shared_state call with a note naming "
+    "the week; when a note already names this week, a resumed run adds nothing."
+)
+CTEM_F1_RETEST_COUNTERS_RULE = (
+    f"when the re-test resolves the case, as the only writer of cases_resolved and loss_avoided in "
+    f"{CTEM_F1_STATE_KEY}: add 1 to cases_resolved and the case's loss avoided to loss_avoided in one "
+    "set_shared_state call whose note names the case id, once per case: when a note already names "
+    "this case id, add nothing"
+)
+CTEM_F2_RETEST_COUNTERS_RULE = (
+    f"when the re-test resolves the case, as the only writer of ticket_closed_retested in "
+    f"{CTEM_F2_STATE_KEY}: add 1 to it in one set_shared_state call whose note names the case id, "
+    "once per case: when a note already names this case id, add nothing"
+)
+CTEM_F2_PASS_COUNTERS_RULE = (
+    f"As the only writer of cve_triaged, cve_validated and last_pass in {CTEM_F2_STATE_KEY}: set "
+    "cve_triaged to the number of cases of this fleet list_ctem_cases returns, cve_validated to those "
+    "with a validation recorded, and last_pass to now (ISO 8601 UTC), in one set_shared_state call; "
+    "they are counted from the cases, never added to, so a second pass changes nothing."
+)
+
 # ── CTEM fleet F2 assignments (dev-docs/ctem-fleets.md s.4.2, #9120) ──
 _CTEM_F2_FLEET = "Vulnerability prioritization"
 _CTEM_F2_COMMON: dict = {
@@ -2749,15 +2842,24 @@ _CTEM_F2_COMMON: dict = {
     "timeout_seconds": 900,
 }
 _CTEM_F2_TRIAGE_PROMPT = (
-    "A vulnerability signal arrived from OpenCTI (the event is in the trigger "
-    "payload: the Vulnerability or the sighting of one). Run the fleet loop on "
-    "it: read the organization context, hand the CVE to the Vulnerability "
-    "Triage Analyst, stop with the reason when nothing the organization runs "
-    "is affected, else record it with record_ctem_signal (trigger_path "
-    "new_vulnerability, the CVE and the matched assets as subject, the OpenCTI "
-    "id as source). The scope gate opens or joins its case, and the case "
-    "event runs the loop: do not start it here. {priority}"
+    "A vulnerability signal from OpenCTI was recorded (signal_id and verdict are in the trigger "
+    "payload). Read it with list_ctem_signals signal_id, then the vulnerability it names in "
+    "OpenCTI. Run the fleet loop on it: read the organization context, hand the CVE to the "
+    "Vulnerability Triage Analyst and stop with the reason when nothing the organization runs "
+    "is affected. The signal is already recorded and the scope gate already opened or joined "
+    "its case: never record it again, and the case event runs the loop, so do not start it "
+    "here. " + CTEM_CASE_NEVER_WRITES_COUNTERS + " {priority}"
 )
+#: The signal the F2 triage runs hear (#2434): a vulnerability OpenCTI delivered to a platform
+#: signal source, never a trigger an assignment provisions; each run adds its own routing fact.
+_CTEM_F2_SIGNAL_FILTER: dict[str, Any] = {"trigger_path": "new_vulnerability", "source_provider": "opencti"}
+
+
+def _ctem_f2_on_signal(facts: dict[str, Any]) -> dict[str, Any]:
+    """The ``ctem_signal.recorded`` subscription of one F2 triage run, *facts* its routing filter."""
+    return {"event": "ctem_signal.recorded", "filter": {**_CTEM_F2_SIGNAL_FILTER, **facts}, "scope": "all"}
+
+
 CTEM_F2_ASSIGNMENTS: list[dict] = [
     {
         **_CTEM_F2_COMMON,
@@ -2766,18 +2868,8 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "Triages a vulnerability that enters the CISA KEV list or whose EPSS "
             "score crosses 0.5, against the organization's software inventory."
         ),
-        "trigger_type": "integration_event",
-        "trigger_config": {
-            "provider": "opencti",
-            "provision": {
-                "fleet": _CTEM_F2_FLEET,
-                "purpose": "KEV or EPSS jump",
-                "entity_types": ["Vulnerability"],
-                "cisa_kev": True,
-                "min_epss_score": 0.5,
-                "event_types": ["create", "update"],
-            },
-        },
+        "trigger_type": "platform_event",
+        "trigger_config": _ctem_f2_on_signal({"any": [{"facts.kev": True}, {"facts.epss_high": True}]}),
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(priority=""),
     },
     {
@@ -2788,19 +2880,10 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "System the organization runs, whatever its KEV or EPSS: the source must name a "
             "software product or an asset of the profile, checked before any model call."
         ),
-        "trigger_type": "integration_event",
-        "trigger_config": {
-            "provider": "opencti",
-            "runs_in_profile": "source",
-            "provision": {
-                "fleet": _CTEM_F2_FLEET,
-                "purpose": "Vulnerability on software we run",
-                "relationship_types": ["has"],
-                "from_types": ["Software", "Infrastructure", "System"],
-                "to_types": ["Vulnerability"],
-                "event_types": ["create"],
-            },
-        },
+        "trigger_type": "platform_event",
+        # The scope gate already read the software against the inventory: a discarded signal
+        # names nothing the organization runs, so it starts no run (the former runs_in_profile).
+        "trigger_config": _ctem_f2_on_signal({"facts.software_named": True, "verdict": {"not_in": ["discarded"]}}),
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
             priority=(
                 "The relationship's source is in the organization's software inventory or assets (checked "
@@ -2816,19 +2899,9 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "live PIR score reaches the prioritization policy's threshold for vulnerabilities "
             "(70 by default, editable in Settings), checked before any model call."
         ),
-        "trigger_type": "integration_event",
-        "trigger_config": {
-            "provider": "opencti",
-            "pir_min_score": "policy",
-            "provision": {
-                "fleet": _CTEM_F2_FLEET,
-                "purpose": "Vulnerability flagged in a PIR",
-                "mode": "pir_playbook",
-                "entity_types": ["Vulnerability"],
-                "organization_context": ["pir_ids"],
-                "pir_min_score": 1,
-            },
-        },
+        "trigger_type": "platform_event",
+        # The policy threshold is read when the signal is recorded (pir_floor_met, #1678).
+        "trigger_config": _ctem_f2_on_signal({"facts.pir_flagged": True, "pir_floor_met": True}),
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
             priority=(
                 "The vulnerability is flagged in an organization PIR at or above the policy's threshold "
@@ -2840,17 +2913,8 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
         **_CTEM_F2_COMMON,
         "name": "Vulnerability sighted",
         "description": "Triages, at higher priority, a vulnerability sighted in the organization's data.",
-        "trigger_type": "integration_event",
-        "trigger_config": {
-            "provider": "opencti",
-            "provision": {
-                "fleet": _CTEM_F2_FLEET,
-                "purpose": "Vulnerability sighted",
-                "entity_types": ["stix-sighting-relationship"],
-                "from_types": ["Vulnerability"],
-                "event_types": ["create"],
-            },
-        },
+        "trigger_type": "platform_event",
+        "trigger_config": _ctem_f2_on_signal({"facts.sighted": True}),
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
             priority="A sighting is evidence of presence: rank it above an unsighted CVE of the same score."
         ),
@@ -2865,8 +2929,9 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "Daily backlog pass. List the open CTEM cases with list_ctem_cases and "
             "read the organization context, re-read EPSS, KEV and sightings of their "
             "CVEs in OpenCTI, re-rank them, note on each case its next step "
-            "(validation, quantification, ticket, re-test) and move it there. Answer "
-            "with the ranked list: which cases to fix first."
+            "(validation, quantification, ticket, re-test) and move it there. "
+            + CTEM_F2_PASS_COUNTERS_RULE
+            + " Answer with the ranked list: which cases to fix first."
         ),
     },
     {
@@ -2880,14 +2945,16 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "case_id). Read the case with get_ctem_case. Step 1, propose: when the gate "
             "ctem.validation.non_readonly waits for this case, file the re-run of the validation its "
             "validations list names as one decision item keyed `ctem:validation:` followed by the "
-            "case_id (what runs, on which targets, your recommendation) and end the run: the 'Gate "
-            "answered' assignment launches it on approval. When the gate runs, launch it now and write "
-            "the gate on the case. Step 2, read: the result arrives as ctem_case.validation_finished on "
+            "case_id (what runs, on which targets, the default scope first and recommended, a sample of "
+            "the group second, your recommendation) and end the run: the 'Gate "
+            "answered' assignment launches it on approval. When the gate runs, launch it now on the "
+            "default scope and write the gate on the case. Step 2, read: the result arrives as ctem_case.validation_finished on "
             "the case loop, which writes it with record_ctem_case_validation (kind retest): a negative "
             "validation is inconclusive unless it proves the fixed version (conclusive true), so "
             "the case stays open; failed reopens it. Never wait for the result in this run. When the "
-            "result is written, record the OpenCRQ expected-loss delta in a case note and complete "
-            "the re-test item."
+            "result is written, record the OpenCRQ expected-loss delta in a case note, "
+            + CTEM_F2_RETEST_COUNTERS_RULE
+            + " and complete the re-test item."
         ),
     },
 ]
@@ -2897,10 +2964,11 @@ BUILTIN_ASSIGNMENTS.extend(CTEM_F2_ASSIGNMENTS)
 # The case is the record: ``ctem_case.opened`` starts one run per case (the event
 # is raised once, at creation; a later signal joins the case without a new
 # event), ``ctem_case.reopened`` restarts the same case's loop, and
-# ``ctem_case.sla_breached`` escalates it. Ownership (#1390, CTEM-31): the CTEM
-# loop owns every case on every trigger path; a use-case fleet takes the cases of
-# its own paths only while its case automation is enabled. The owner is computed
-# when the event is published (``services/ctem_case_routing.py`` stamps
+# ``ctem_case.sla_breached`` escalates it. Ownership (#1390, CTEM-31, #1966): a
+# fleet declares the trigger paths whose cases it runs (``Fleet.case_ownership``,
+# seeded from ``case_ownership`` in ``builtin_fleets.py`` on the built-in fleets,
+# set by an administrator or carried by a fork on any other). The owner is
+# computed when the event is published (``services/ctem_case_routing.py`` stamps
 # ``owner_fleet`` on the payload) and each case automation filters on it, so
 # exactly one fleet hears a case event.
 CTEM_CASE_ASSIGNMENT_NAME = "Case opened or reopened"
@@ -2911,22 +2979,21 @@ CTEM_CASE_LISTENER_CONCURRENCY = 5
 #: The payload path the case events are ordered by: two events of one case run one at a
 #: time, in arrival order; events of other cases run beside them.
 CTEM_CASE_ORDERING_KEY = "case_id"
+#: A burst of ``ctem_case.opened`` (a reconcile opening 500 cases) is batched (#2286): the
+#: events of this window join one run, at most ``CTEM_CASE_BATCH_MAX_EVENTS`` cases each, so
+#: the burst starts a bounded number of Loop runs. Every other case event runs alone, at once.
+#: The batch is a dispatch bound only (#2379, ``batch_split``): each case of a batch is
+#: worked in a run and a context of its own, one after the other, never in one conversation
+#: that re-sends every earlier case's tool results.
+CTEM_CASE_BATCH_WINDOW_SECONDS = 60
+CTEM_CASE_BATCH_MAX_EVENTS = 5
+CTEM_CASE_BATCHED_EVENTS: tuple[str, ...] = ("ctem_case.opened",)
+#: The owner token of the two seeded case fleets (a built-in fleet's token is its slug).
 CTEM_LOOP_CASE_FLEET = "ctem-loop"
 CTEM_VULN_CASE_FLEET = "ctem-vuln-prioritization"
-#: The fleets that run cases: fleet slug -> the orchestrator holding the case
-#: automation, the work item key prefix of its case items, and the trigger paths
-#: it takes over while that automation is enabled (``None``: every path, the
-#: default owner).
-CTEM_CASE_FLEETS: dict[str, dict[str, Any]] = {
-    CTEM_LOOP_CASE_FLEET: {"agent": "ctem-threat-response-orchestrator", "key": "ctem:f1", "paths": None},
-    CTEM_VULN_CASE_FLEET: {
-        "agent": "ctem-vuln-prioritization-orchestrator",
-        "key": "ctem:f2",
-        "paths": ("new_vulnerability",),
-    },
-}
-#: The use-case fleets that take a case over from the loop while active.
-CTEM_USE_CASE_FLEETS: tuple[str, ...] = tuple(s for s, f in CTEM_CASE_FLEETS.items() if f["paths"] is not None)
+#: The work item key prefix of each seeded fleet's case items (``<key>:case:<case id>``).
+CTEM_F1_CASE_KEY = "ctem:f1"
+CTEM_F2_CASE_KEY = "ctem:f2"
 _CASE_EVENT_NAMES: tuple[str, ...] = (
     "ctem_case.opened",
     "ctem_case.reopened",
@@ -2950,6 +3017,10 @@ CTEM_SHARED_GATE_PREFIXES: tuple[str, ...] = (
     "ctem:validation:",
     # ctem.remediation.decision, filed by the platform (ctem_cases.py).
     "ctem:remediation:",
+    # ctem.production_change, ctem.accept_risk and ctem.close_without_retest, read by the case page (#2464).
+    "ctem:production-change:",
+    "ctem:accept-risk:",
+    "ctem:close-without-retest:",
 )
 CTEM_F1_GATE_PREFIXES: tuple[str, ...] = (
     *CTEM_SHARED_GATE_PREFIXES,
@@ -2970,7 +3041,68 @@ CTEM_GATE_ANSWERED = GATE_ANSWERED
 CTEM_KEY_PREFIX = "ctem:"
 
 
+#: What measures a control in OpenCRQ (#2369): chosen from the asset type and the tenant's live
+#: integrations, a permanent control first, a recurring OpenAEV scenario next, a one-off last; a
+#: port-only scan reaches OpenCRQ as nothing, and a one-off result expires after
+#: evidence_health.max_age_days (path 9 opens again).
+CTEM_CONTROL_MEASUREMENT_RULE = (
+    "Choose the measurement like an analyst, from the asset type and the integrations the tenant has "
+    "connected, read at decision time (the integrations and tools you hold, get_asset on the asset and "
+    "search_software for the security products the organization runs), never from a fixed recipe, in "
+    "this order: (1) a permanent "
+    "control an integration already offers for this kind of asset (a repository with Aikido connected: "
+    "enable Aikido scanning on it; an IP or host with a vulnerability scanner such as Tenable, Qualys, "
+    "Rapid7 or Wiz: permanent scanning of the asset in it; an endpoint with an EDR: the policy or "
+    "coverage that measures the control); (2) a recurring OpenAEV scenario at a period below "
+    "evidence_health.max_age_days, on the recurring scenario or asset group already targeting the asset "
+    "when one exists: injects with DETECTION or PREVENTION expectations on a technique the control "
+    "covers (read from OpenCRQ), or OpenAEV generic vulnerability scanning (CVE output, which OpenCRQ "
+    "books); (3) a one-off test only when (1) and (2) are impossible, the decision saying why no "
+    "permanent control fits. A port-only scan with no expectation and no CVE output is exposure, never "
+    "the measurement, and never counted as reusable evidence. Several options may be offered, the "
+    "recommended one first; each says whether it is permanent or one-off, what it measures, and what "
+    "OpenCRQ will update (the technique test result, or CVE findings) and will not (other controls; "
+    "nothing from a port-only scan). Before you recommend, compare what a pass of each option proves "
+    "with what closes the case, and say it in the option's effect: 'closes the case' or 'does not close "
+    "the case'. A never_measured case closes only when OpenCRQ books a first measurement for the asset "
+    "(a DETECTION or PREVENTION expectation result on a covered technique, or CVE findings from a scan "
+    "that reads versions); a clean unauthenticated scan gives it nothing to book, so its pass does not "
+    "close the case, and OpenCRQ never takes an OpenAEV result written back by you as evidence. An option "
+    "whose pass does not close the case is never the recommended one; when no option on the instance can "
+    "close it, the first and only decision is the structural one (connect a source that reads versions "
+    "or measures the control), any interim scan offered inside that same decision as an extra that does "
+    "not close the case, never as a gate of its own before it. Nothing applies at all (no integration "
+    "and no OpenAEV path): the decision says no measuring source connected, names it as the root cause "
+    "and the integration to connect, no scan."
+)
+
+#: The reconciliation step of a ``control_decay`` case (#2354): "no current evidence in OpenCRQ"
+#: is not "no control", so the existing control sources are read before any scan is proposed.
+CTEM_CONTROL_DECAY_RECONCILE = (
+    "A case whose trigger_path is control_decay (never_measured, attested_only or expired) is "
+    "reconciled before any validation, scan or new control is proposed: read, read-only, the "
+    "control sources you hold for its asset (the OpenAEV results on the asset, the EDR and "
+    "device-management coverage in the organization inventory, get_asset with the asset name, which "
+    "names every source that reports it, and in any such integration you hold) and what OpenCRQ holds "
+    "for the control "
+    "(get_opencrq_control_validation). In OpenAEV read what already targets the asset with "
+    "get_openaev_asset_coverage: its asset groups, static and dynamic, and the scenarios (with "
+    "their recurrence), simulations and atomic testings that target it directly or through those "
+    "groups, with the latest result on the asset; a scenario search by name is not this read. "
+    "The decision cites each covering scenario: its usable latest result is the evidence, an "
+    "unusable one is named with why and the decision proposes re-running that scenario, and a "
+    "new one-off scan is proposed only when nothing covers the asset. A control found that "
+    "OpenCRQ lacks or "
+    "under-rates gets one decision keyed `ctem:remediation:` followed by the case id proposing to "
+    "record it in OpenCRQ (update_opencrq_control_capability_assessment or "
+    "manage_opencrq_scope_control_posture, the source as justification), never a scan; none found "
+    "gets the decision to put a control in place and measure it; the decision lists every source "
+    "checked and what it returned (found, not found, not readable). " + CTEM_CONTROL_MEASUREMENT_RULE
+)
+
+
 def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: dict[str, Any]) -> dict[str, Any]:
+    """The "Case opened or reopened" listener; *owner_filter* is its whole payload filter on ``owner_fleet``."""
     return {
         **common,
         "name": CTEM_CASE_ASSIGNMENT_NAME,
@@ -2982,24 +3114,35 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
         "trigger_type": "platform_event",
         "trigger_config": {
             "event": list(_CASE_EVENT_NAMES),
-            "filter": {"owner_fleet": owner_filter},
+            "filter": owner_filter,
             "scope": "all",
             # Named here, so the seed keeps it over the one-run event default and
             # rewrites it on the row of an existing install at the next boot.
             "max_concurrent_runs": CTEM_CASE_LISTENER_CONCURRENCY,
             "ordering_key": CTEM_CASE_ORDERING_KEY,
+            "batch_window_seconds": CTEM_CASE_BATCH_WINDOW_SECONDS,
+            "batch_events": list(CTEM_CASE_BATCHED_EVENTS),
+            "batch_max_events": CTEM_CASE_BATCH_MAX_EVENTS,
+            "batch_split": True,
         },
         "prompt": (
             "A CTEM case event is in the trigger below (event name, case_id, trigger_path, "
-            "state, owner_fleet: the fleet the platform routed this case to, yours). The case "
+            "state, owner_fleet: the fleet the platform routed this case to, yours). Each run works "
+            "one case: work it exactly as below, under its own work item and its own gates; never "
+            "merge two cases' loops into one item. The case "
             "is the record of this loop: read it first with "
-            "get_ctem_case. On ctem_case.opened or ctem_case.reopened: own the case's loop "
+            "get_ctem_case. A case asset's asset_id is the inventory id: compare an OpenAEV or OpenCTI id "
+            "with its source_ids[].external_id, never with asset_id. "
+            "On ctem_case.opened or ctem_case.reopened: own the case's loop "
             f"under the work item keyed `{fleet_key}:case:` followed by the case_id (create "
             "it owned by you when no open item has that key; when one is open, add a note "
             "to it and stop, never a second loop), set the case in_progress, run your loop "
             "and write every result on the case: the validation with "
             "record_ctem_case_validation, the ticket with sync_ctem_case_ticket, notes "
-            "with update_ctem_case. On ctem_case.sla_breached: add a note to that work item "
+            "with update_ctem_case. A second open case for the same fix (the same product under another "
+            "name, the same CVEs and assets) is merged with merge_ctem_cases into the case a person holds, "
+            "else the oldest one, never deleted. " + CTEM_CONTROL_DECAY_RECONCILE + " "
+            "On ctem_case.sla_breached: add a note to that work item "
             "and to the case naming the breach and the next step, raise its priority, and file one "
             "needs_human decision keyed `ctem:remediation:` followed by the case id (unless one is "
             "already open for the case) with the options left (act now, defer with a new date, "
@@ -3029,7 +3172,8 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "case id, with an ask card addressed to a named person or team and a deadline; an armed "
             "`ctem-loop-reminder:` timer for the case id (arm_timer); or a terminal case state. A next "
             "step written only as prose leaves the case waiting on nobody. Never keep an "
-            "open item only in shared state. End with the case id, its state and the next step."
+            "open item only in shared state. " + CTEM_CASE_NEVER_WRITES_COUNTERS + " "
+            "End with the case id, its state and the next step."
         ),
     }
 
@@ -3056,7 +3200,15 @@ def _gate_answered_assignment(common: dict[str, Any], *, fleet_key: str) -> dict
             "The answer does not move the case: you decide its next state and set it with "
             "update_ctem_case state and the reason. Approved: run exactly what the ask covered and "
             "continue the loop from that step, writing every result on the case; the case's own work "
-            f"item keyed `{fleet_key}:case:` followed by the case id gets a note. Rejected, deferred "
+            f"item keyed `{fleet_key}:case:` followed by the case id gets a note. An approved validation "
+            "launches the scope the answer chose: a plain approve or the default option launches the "
+            "default scope, the scenario's own targets (manage_openaev_scenario launch without asset_ids); "
+            "the sample option or assets the person named launches the sample (launch with those "
+            "asset_ids, a copy of the scenario, the original unchanged); write the scope, the assets and "
+            "the scenario launched on the case with update_ctem_case note. Reject and close "
+            "(option `reject_and_close`, not relevant): delete the draft if any, set state resolved with "
+            "resolution_kind dismissed and the person's reason (none given: say so), file no new gate, "
+            "arm no reminder, and complete the case's own item. Rejected, deferred "
             "or answered in the person's own words: record it on the case with the reason and move "
             "the case where the answer and the evidence point (back to analyzing, validation again, "
             "remediating, or closed with its evidence), filing a new decision if you judge one is "
@@ -3079,12 +3231,12 @@ def _gate_answered_assignment(common: dict[str, Any], *, fleet_key: str) -> dict
 
 CTEM_F2_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
     _CTEM_F2_COMMON,
-    fleet_key=CTEM_CASE_FLEETS[CTEM_VULN_CASE_FLEET]["key"],
-    owner_filter={"eq": CTEM_VULN_CASE_FLEET},
+    fleet_key=CTEM_F2_CASE_KEY,
+    owner_filter={"owner_fleet": {"eq": CTEM_VULN_CASE_FLEET}},
 )
 CTEM_F2_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
 BUILTIN_ASSIGNMENTS.append(CTEM_F2_CASE_ASSIGNMENT)
-CTEM_F2_GATE_ASSIGNMENT: dict[str, Any] = _gate_answered_assignment(_CTEM_F2_COMMON, fleet_key="ctem:f2")
+CTEM_F2_GATE_ASSIGNMENT: dict[str, Any] = _gate_answered_assignment(_CTEM_F2_COMMON, fleet_key=CTEM_F2_CASE_KEY)
 CTEM_F2_ASSIGNMENTS.append(CTEM_F2_GATE_ASSIGNMENT)
 BUILTIN_ASSIGNMENTS.append(CTEM_F2_GATE_ASSIGNMENT)
 
@@ -3104,6 +3256,10 @@ CTEM_OPENAEV_LOOP_EVENTS: tuple[str, ...] = (
     "critical_asset_reached",
     # CTEM-27: an asset unseen past the tenant's threshold is a path 6 signal.
     "asset_stale",
+    # #2436: a finding created on an asset (path 5) and an asset a scan found (path 7),
+    # both recorded only once an administrator switches their source on.
+    "finding_created",
+    "asset_created",
 )
 #: A key no OpenAEV delivery carries: the trigger provisions and listens, never runs.
 CTEM_LISTEN_ONLY_FILTER: dict[str, Any] = {"_ctem_listen_only": {"exists": True}}
@@ -3224,7 +3380,8 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
         "trigger_config": {
             "provider": "opencti",
             "provision": {
-                "fleet": "Threat response",
+                # The fleet's name (#2121): OpenCTI objects are named after it and renamed with it.
+                "fleet": "CTEM loop",
                 "purpose": "New relevant threats",
                 # Unchanged (#1580): a Report records no signal (no listener row) and the
                 # weekly sweep covers it; the provisioned OpenCTI trigger is left as it is.
@@ -3248,7 +3405,7 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
         "trigger_config": {
             "provider": "opencti",
             "provision": {
-                "fleet": "Threat response",
+                "fleet": "CTEM loop",
                 "purpose": "Threat activity flagged in a PIR",
                 "mode": "pir_playbook",
                 "entity_types": [
@@ -3324,7 +3481,7 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "(list_ctem_cases) or an open ctem:f1 work item already covers. "
             "Ask the Threat Relevance Analyst to score the rest in one batch (" + CTEM_RELEVANCE_RULE + "), "
             "and record the relevant ones in one record_ctem_signals call "
-            "(trigger_path relevant_threat, one row each). End with a short "
+            "(trigger_path relevant_threat, one row each). " + CTEM_F1_SWEEP_COUNTERS_RULE + " End with a short "
             "summary: threats reviewed, relevant, signals recorded."
         ),
     },
@@ -3342,26 +3499,28 @@ CTEM_F1_ASSIGNMENTS: list[dict] = [
             "followed by the case_id). Read the case with get_ctem_case. Step 1, propose: when the gate "
             "ctem.validation.non_readonly waits for this case, file the re-run of its validated scenario "
             "as one decision item keyed `ctem:validation:` followed by the case_id (the scenario, what its "
-            "injects will do to which targets, the schedule; your recommendation) "
+            "injects will do to which targets, the schedule, the default scope first and recommended, a "
+            "sample of the group second; your recommendation) "
             "and end the run: the 'Gate answered' assignment launches it on approval. When the gate runs, "
-            "launch it now and write the gate on the case. Step 2, read: the result arrives as "
-            "ctem_case.validation_finished on the case loop, which writes it with "
+            "launch it now on the default scope and write the gate on the case. Step 2, read: the result "
+            "arrives as ctem_case.validation_finished on the case loop, which writes it with "
             "record_ctem_case_validation (kind retest; conclusive false when the result does not prove "
             "the exposure gone, as you read it), failed reopens it. Never wait for the result in this run. "
             "When the result is written, ask the Risk Quantifier for the loss after, note the delta on the "
-            "case, bump the counters in ctem:f1:state and complete the re-test item."
+            "case, " + CTEM_F1_RETEST_COUNTERS_RULE + " and complete the re-test item."
         ),
     },
 ]
 
 CTEM_F1_CASE_ASSIGNMENT: dict[str, Any] = _case_assignment(
     _F1_RUN,
-    fleet_key=CTEM_CASE_FLEETS[CTEM_LOOP_CASE_FLEET]["key"],
-    # Every case no use-case fleet holds, an event with no owner stamped included.
-    owner_filter={"not_in": list(CTEM_USE_CASE_FLEETS)},
+    fleet_key=CTEM_F1_CASE_KEY,
+    # The cases routed to the loop, and an event with no owner stamped (the routing
+    # was unreadable): never a case another fleet (a fork included) owns (#1966).
+    owner_filter={"any": [{"owner_fleet": {"eq": CTEM_LOOP_CASE_FLEET}}, {"owner_fleet": {"exists": False}}]},
 )
 CTEM_F1_ASSIGNMENTS.append(CTEM_F1_CASE_ASSIGNMENT)
-CTEM_F1_ASSIGNMENTS.append(_gate_answered_assignment(_F1_RUN, fleet_key="ctem:f1"))
+CTEM_F1_ASSIGNMENTS.append(_gate_answered_assignment(_F1_RUN, fleet_key=CTEM_F1_CASE_KEY))
 
 #: The one timer prefix the loop arms (#1574): its reminders reach its own listener, never another agent's.
 CTEM_LOOP_REMINDER_PREFIX = "ctem-loop-reminder:"
@@ -3464,6 +3623,27 @@ def is_admin_opt_in_builtin_assignment(agent, assignment) -> bool:
         getattr(agent, "slug", None),
         getattr(assignment, "name", None),
     ) in ADMIN_OPT_IN_BUILTIN_ASSIGNMENTS
+
+
+#: What whoever may manage a built-in agent may write on ANY of its
+#: assignments: the switch alone, so one automation can be stopped without
+#: disabling the whole agent (#2192). Its seeded definition stays read-only.
+BUILTIN_ASSIGNMENT_SWITCH_FIELDS: frozenset[str] = frozenset({"enabled"})
+
+
+def builtin_assignment_write_allowed(agent: Any, assignment: Any, written: Any) -> bool:
+    """Whether writing the fields *written* lifts the built-in gate on *assignment*.
+
+    True for the switch alone on any assignment of a built-in agent, and for
+    ``ADMIN_OPT_IN_WRITABLE_FIELDS`` on a seeded opt-in one. An empty write
+    never lifts it. The company-managed and manage gates still apply.
+    """
+    fields = frozenset(written or ())
+    if not fields or not bool(getattr(agent, "is_builtin", False)):
+        return False
+    if fields <= BUILTIN_ASSIGNMENT_SWITCH_FIELDS:
+        return True
+    return is_admin_opt_in_builtin_assignment(agent, assignment) and fields <= ADMIN_OPT_IN_WRITABLE_FIELDS
 
 
 #: The seeded fleet automations (``SEEDED_FLEET_OPT_IN``): the opt-in ones
@@ -4079,9 +4259,9 @@ BUILTIN_SKILLS: list[dict] = [
             "in dry-run, unchanged, refused for consent or budget), and report "
             "counts only, never memory content."
         ),
-        "compatibility": "memory_steward",
+        "compatibility": "health_specialists",
         "content": "memory-steward",
-        "tags": ["builtin", "health", "memory"],
+        "tags": ["builtin", "health", "memory", INTERNAL_SKILL_TAG],
         "platform_targets": ["global"],
         "bind_to_agent_slugs": [],
     },
@@ -4286,9 +4466,9 @@ BUILTIN_SKILLS: list[dict] = [
             "tell a pattern from noise, record each finding once with checked evidence, and draft one "
             "targeted variant for the Experimenter to measure."
         ),
-        "compatibility": "health_diagnosis",
+        "compatibility": "health_specialists",
         "content": "health-quality-analyst",
-        "tags": ["builtin", "health", "quality"],
+        "tags": ["builtin", "health", "quality", INTERNAL_SKILL_TAG],
         "platform_targets": ["global"],
     },
     {
@@ -4301,9 +4481,9 @@ BUILTIN_SKILLS: list[dict] = [
             "experiment to it, read the comparison and the simulated writes, and file only what the "
             "measurement earned, or unmeasured with its reason."
         ),
-        "compatibility": "health_experiments",
+        "compatibility": "health_specialists",
         "content": "health-experimenter",
-        "tags": ["builtin", "health", "evaluation"],
+        "tags": ["builtin", "health", "evaluation", INTERNAL_SKILL_TAG],
         "platform_targets": ["global"],
     },
     {
@@ -4316,29 +4496,28 @@ BUILTIN_SKILLS: list[dict] = [
             "flow's or an assignment's evidence, designs one variant on a sandbox flow that keeps its source's "
             "reach, and hands it to the Experimenter to measure."
         ),
-        "compatibility": "flow_lab",
+        "compatibility": "health_specialists",
         "content": "health-flow-lab",
-        "tags": ["builtin", "health", "flows"],
+        "tags": ["builtin", "health", "flows", INTERNAL_SKILL_TAG],
         "platform_targets": ["global"],
     },
-    # Platform Health S15 (#101, dev-docs/platform-health.md section 13.4): the check
-    # playbook of each module health checker. Seeded unbound; the fleet seed binds each
-    # to its checker. The checks grow by edits of these files within the 13.4 scope.
-    *(
-        {
-            "slug": f"health-{module}-checks",
-            "name": f"Platform Health {label} health checks",
-            "description": (
-                f"The {label} health checks Platform Health runs on a registered {label} platform, read-only: "
-                "each check, what it reads, its warn and fail thresholds, and the report it ends with."
-            ),
-            "compatibility": "health_modules",
-            "content": f"health-{module}-checks",
-            "tags": ["builtin", "health", "modules", module],
-            "platform_targets": ["xtm_one", "dev"],
-        }
-        for module, label in (("opencti", "OpenCTI"), ("openaev", "OpenAEV"), ("opencrq", "OpenCRQ"))
-    ),
+    # Platform Health S15 (#101, dev-docs/platform-health.md section 13.4), one skill since
+    # #1943: the check playbook of every module health checker, one section per module.
+    # Seeded unbound; the fleet seed binds it to each checker. The checks grow by edits of
+    # this file within the 13.4 scope; each module's findings track its own section's hash.
+    {
+        "slug": "health-module-checks",
+        "name": "Platform Health: module checks",
+        "description": (
+            "The health checks Platform Health runs on a registered OpenCTI, OpenAEV or OpenCRQ platform, "
+            "read-only: one section per module with each check, what it reads, its warn and fail thresholds, "
+            "and the report it ends with."
+        ),
+        "compatibility": "health_specialists",
+        "content": "health-module-checks",
+        "tags": ["builtin", "health", "modules", "opencti", "openaev", "opencrq"],
+        "platform_targets": ["xtm_one", "dev"],
+    },
 ]
 
 #: Built-in skill slugs renamed in place: former slug -> current slug. The seed
@@ -4349,6 +4528,9 @@ RENAMED_BUILTIN_SKILL_SLUGS: dict[str, str] = {
     "concierge-quality-analyst": "health-quality-analyst",
     "concierge-experimenter": "health-experimenter",
     "concierge-flow-lab": "health-flow-lab",
+    # #1943: the OpenCTI playbook's row becomes the one module checks skill (its id and
+    # history kept); the OpenAEV and OpenCRQ rows are deleted as stale.
+    "health-opencti-checks": "health-module-checks",
 }
 
 # The CTI skills (cti-skills pack, Liberty91, MIT), shipped in XTM One mode.

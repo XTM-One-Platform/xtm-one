@@ -23,7 +23,7 @@ free text; the views had to show that text, or the whole description, and the
 person had to find the question in it. ``ask`` carries the decision itself, so
 a view renders it as a card with one button per option:
 
-``{"question": str, "context"?: str, "options": [{"key", "label", "effect"?, "keeps_waiting"?}],
+``{"question": str, "context"?: str, "options": [{"key", "label", "effect"?, "keeps_waiting"?, "confirm"?}],
 "recommendation"?: option key, "deadline"?: ISO-8601, "links"?: [{"label", "url"}]}``
 
 * ``question``: one sentence, required.
@@ -33,7 +33,9 @@ a view renders it as a card with one button per option:
   ``merge``), ``label`` the button text, ``effect`` what choosing it does,
   ``keeps_waiting`` true for an option that means "keep waiting": answering
   with it records the answer and leaves the item blocked, never dispatched
-  (#1719). None at all: the person answers in free text.
+  (#1719); ``confirm`` true for a terminal option (cancel, close, discard):
+  the card asks the person to confirm it before the answer is sent (#2150).
+  None at all: the person answers in free text.
 * ``recommendation``: the key of the option the agent recommends.
 * ``deadline``: when the answer is needed, normalized to ISO-8601 UTC.
 * ``links``: the sources the reader opens to decide (a Jira ticket, a pull
@@ -122,11 +124,35 @@ READABLE_ASK_EXAMPLE = (
 # (``APPROVE M-1A2B3C4D``, ``hitl_consent.py``): the reader needs it verbatim.
 _ACTION_CODE = re.compile(r"\b[A-Z]{1,3}-[0-9A-F]{8}\b")
 
+# An address the reader needs verbatim to tell what the decision covers (#2254):
+# an http(s) URL, an email address or a dotted hostname. A hexadecimal DNS label
+# (``langfuse-141a8160.example.com``, a preview host) or a number in a link is
+# part of the address, not an id, so the hex and long-digit patterns skip them.
+_ADDRESS = re.compile(
+    r"\bhttps?://\S+"
+    r"|[\w.+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+"
+    r"|\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\.[a-z]{2,}\b",
+    re.IGNORECASE,
+)
+
+# The patterns of ``_UNREADABLE`` matched on the text without its addresses:
+# the hexadecimal id and the long run of digits.
+_ADDRESS_BLIND = frozenset({_UNREADABLE[2][0], _UNREADABLE[3][0]})
+
 
 def unreadable_reasons(text: str) -> list[str]:
-    """What in *text* a person should not have to read, one reason per pattern found."""
+    """What in *text* a person should not have to read, one reason per pattern found.
+
+    A hexadecimal id or a long run of digits inside a URL, an email address or a
+    hostname is not reported (#2254); a bare one next to an address still is.
+    """
     readable = _ACTION_CODE.sub("", text or "")
-    return [reason for pattern, reason in _UNREADABLE if pattern.search(readable)]
+    without_addresses = _ADDRESS.sub(" ", readable)
+    return [
+        reason
+        for pattern, reason in _UNREADABLE
+        if pattern.search(without_addresses if pattern in _ADDRESS_BLIND else readable)
+    ]
 
 
 def _refuse_unreadable(field: str, text: str) -> None:
@@ -231,6 +257,12 @@ def _options(value: object) -> list[dict[str, Any]]:
         if keeps:
             # Answering with it records the answer and leaves the item waiting (#1719).
             option["keeps_waiting"] = True
+        confirm = raw.get("confirm")
+        if confirm not in (None, False, True):
+            raise ValueError("ask.options[].confirm is true or false")
+        if confirm:
+            # The card asks for a second click before sending it (#2150).
+            option["confirm"] = True
         out.append(option)
     return out
 
@@ -309,6 +341,9 @@ def card_link_label(link: dict[str, Any], language: str | None = None) -> str:
     """
     from app.services.channel_notices import notice
 
+    if link.get("kind") == "ctem_case":
+        # The case the item is about, derived by the platform (#2370): worded from the catalog.
+        return notice("card_link_ctem_case", language)
     url = str(link.get("url") or "")
     label = str(link.get("label") or "").strip()
     found = link_kind(url) if (not label or is_derived_label(link)) else None

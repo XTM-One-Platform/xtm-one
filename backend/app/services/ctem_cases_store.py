@@ -17,15 +17,17 @@ confirmed closed, so a narrower view never closes or shrinks a case.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select, update
+from sqlalchemy import String, cast, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
+from app.models.ctem_case import CLOSED_STATES, OPEN_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.services import ctem_case_version_history as version_history
 from app.services import ctem_case_versions
 from app.services import ctem_cases as rules
@@ -58,7 +60,8 @@ def announce(
     db.add(_event(case.id, rules.SYSTEM_ACTOR, ANNOUNCED, to_value=loop.CASE_OPENED, reason=reason, at=at))
     events.verticals.add(case.vertical)
     events.frame(case, "created", at)
-    events.add(loop.CASE_OPENED, loop.case_data(case), loop.case_event_id(loop.CASE_OPENED, case, "open"))
+    # The event is dated at the case's creation, whenever it is raised (the backfill runs hourly).
+    events.add(loop.CASE_OPENED, loop.opened_data(case), loop.case_event_id(loop.CASE_OPENED, case, "open"))
 
 
 def _state_event(case: CtemCase, events: PendingEvents | None, at: datetime) -> None:
@@ -92,6 +95,24 @@ def _rank(case: CtemCase, members: list[rules.SourceIssue], now: datetime) -> bo
     sla = rules.as_utc(case.sla_due_at)
     if sla is None or sla > due:
         case.sla_due_at = due
+    return True
+
+
+def _rerank(case: CtemCase, members: list[rules.SourceIssue], now: datetime) -> bool:
+    """Recompute an open reader case's severity from *members* alone, after issues left it (#2047).
+
+    Unlike :func:`_rank`, it may relax: the issues that drove the old severity are fixed below every
+    running version. A severity the loop set from a decision record (no source member left) is kept.
+    """
+    if not members or case.state not in OPEN_STATES:
+        return False
+    severity = PRIORITY_SEVERITY[rules.default_priority(members)]
+    if case.severity == severity:
+        return False
+    from app.services import ctem_case_loop as loop
+
+    case.severity = severity
+    case.sla_due_at = now + timedelta(hours=loop.DEFAULT_SLA_HOURS[severity])
     return True
 
 
@@ -172,8 +193,11 @@ async def apply_recompute(
     # One inventory read per upgrade case: it decides #1252 and records the per-device history (#1694).
     history = await events_of(db, [c.id for c in cases])
     fixed_in_inventory: set[uuid.UUID] = set()
+    # #2047: every version each upgrade case's product runs, so an issue fixed below all of them leaves the case.
+    running_of: dict[uuid.UUID, tuple[str, ...] | None] = {}
     for c in cases:
         running = await ctem_case_versions.for_case(db, c, with_devices=True)
+        running_of[c.id] = ctem_case_versions.every_running_version(running)
         await version_history.record(db, c, running, history.get(c.id, []), at=now)
         if (
             c.state in (*OPEN_STATES, "resolved")
@@ -195,6 +219,7 @@ async def apply_recompute(
             validation_plan=bool(getattr(c, "validation_plan", False)),
             fixed_in_inventory=c.id in fixed_in_inventory,
             decided_closure=decided.get(c.id),
+            running_versions=running_of.get(c.id),
         )
         for c in cases
     ]
@@ -213,6 +238,8 @@ async def apply_recompute(
                 if issue is None:
                     continue
                 signal, created = await _source_signal(db, organization_id, issue, remediation, now)
+                # Hand the loop back between signals: a read of hundreds of new issues never holds it in one go.
+                await asyncio.sleep(0)
                 if signal is None:
                     continue
                 counts["signals"] += int(created)
@@ -269,9 +296,12 @@ async def apply_recompute(
         for member_id in plan.reopen:
             rows[member_id].open = True
             db.add(_event(case.id, actor, "issue_reopened", issue=member_id, at=now))
+        settled = set(plan.settled)
         for member_id in plan.resolve:
             rows[member_id].open = False
-            evidence = not_affected.get(member_id) or rules.CLOSED_AT_SOURCE
+            evidence = not_affected.get(member_id) or (
+                rules.FIXED_BELOW_RUNNING if member_id in settled else rules.CLOSED_AT_SOURCE
+            )
             db.add(_event(case.id, actor, "issue_closed", issue=member_id, evidence=evidence, at=now))
         if plan.add or plan.reopen or plan.resolve or plan.add_keys:
             counts["updated"] += 1
@@ -289,7 +319,7 @@ async def apply_recompute(
                 )
             )
             counts["resolved" if plan.new_state == "resolved" else "reopened"] += 1
-            if plan.evidence == rules.FIXED_IN_INVENTORY:
+            if plan.evidence in (rules.FIXED_IN_INVENTORY, rules.ALL_FIXED_BELOW_RUNNING):
                 case.resolution_kind = "fixed"
             case.state = plan.new_state
             case.state_since = now
@@ -299,10 +329,102 @@ async def apply_recompute(
         still_open = [
             seen[m] for m, row in rows.items() if m in seen and (row.open or m in plan.reopen) and m not in plan.resolve
         ]
-        _rank(case, [*still_open, *(seen[m] for m in plan.add if m in seen)], now)
+        still_open = [*still_open, *(seen[m] for m in plan.add if m in seen)]
+        if settled:
+            # #2047: the CVEs that left the case no longer drive it; its priority is the one of those left.
+            _rerank(case, still_open, now)
+        else:
+            _rank(case, still_open, now)
     grouping = rules.group_issues(issues)
     counts["no_known_fix"] = len(grouping.no_known_fix)
     counts["not_affected"] = len(grouping.not_affected)
+    return counts
+
+
+async def remap_members(
+    db: AsyncSession,
+    *,
+    organization_id: uuid.UUID,
+    vertical: str,
+    remap: dict[str, str | None],
+    retired_line: str,
+    actor: str = rules.SYSTEM_ACTOR,
+    events: PendingEvents | None = None,
+    now: datetime | None = None,
+) -> dict[str, int]:
+    """Move the members a source re-keyed onto their new id, in place; answers the counts.
+
+    *remap* maps ``source:old`` to ``source:new``, or to ``None`` to retire the member. A moved
+    member keeps its row (so the case keeps its history, owner, tickets, SLA and validations);
+    when the case already holds the new id (a duplicate joined since), the two rows merge into
+    one, open when either was. A retired member leaves the case with *retired_line* in its
+    history and counts neither open nor closed. Pinned issues follow their member. An open case
+    whose members were all retired resolves with *retired_line* as its evidence: no member is
+    left for a recompute to resolve it, so it would stay open with nothing to act on.
+    """
+    now = now or datetime.now(UTC)
+    counts = {"remapped": 0, "merged": 0, "retired": 0, "resolved": 0}
+    if not remap:
+        return counts
+    cases = await _scope_cases(db, organization_id, vertical)
+    members = await _members(db, [c.id for c in cases])
+    for case in cases:
+        rows = {f"{r.source}:{r.external_id}": r for r in members.get(case.id, [])}
+        had_members = bool(rows)
+        pinned = list(case.pinned_issues or [])
+        for old, new in remap.items():
+            row = rows.get(old)
+            if row is None:
+                continue
+            if new is None:
+                await db.delete(row)
+                rows.pop(old)
+                pinned = [p for p in pinned if p != old]
+                db.add(_event(case.id, actor, "note", issue=old, reason=retired_line, at=now))
+                counts["retired"] += 1
+                continue
+            kept = rows.get(new)
+            if kept is not None:
+                kept.open = kept.open or row.open
+                await db.delete(row)
+                counts["merged"] += 1
+            else:
+                row.source, row.external_id = _split_member(new)
+                rows[new] = row
+                counts["remapped"] += 1
+            rows.pop(old)
+            pinned = list(dict.fromkeys(new if p == old else p for p in pinned))
+            db.add(
+                _event(
+                    case.id,
+                    actor,
+                    "note",
+                    issue=new,
+                    from_value=old,
+                    to_value=new,
+                    reason=f"{retired_line}: {old} is now {new}",
+                    at=now,
+                )
+            )
+        if pinned != list(case.pinned_issues or []):
+            case.pinned_issues = pinned
+        if had_members and not rows and case.state in OPEN_STATES:
+            db.add(
+                _event(
+                    case.id,
+                    rules.SYSTEM_ACTOR,
+                    "state",
+                    from_value=case.state,
+                    to_value="resolved",
+                    evidence=retired_line,
+                    at=now,
+                )
+            )
+            case.state = "resolved"
+            case.state_since = now
+            _state_event(case, events, now)
+            counts["resolved"] += 1
+    await db.flush()
     return counts
 
 
@@ -339,7 +461,8 @@ async def _source_signal(
     if created:
         try:
             async with db.begin_nested():
-                await gate_store.evaluate(db, row, now=now)
+                # #1953: this pass holds signal row locks: no remote read (#2171).
+                await gate_store.evaluate(db, row, now=now, remote_reads=False)
         except Exception:
             logging.getLogger(__name__).warning(
                 "CTEM scope gate not run on source signal %s; it stays new", row.id, exc_info=True
@@ -355,8 +478,16 @@ async def _case_of_signal(
 
     if signal.case_id is not None:
         return await db.get(CtemCase, signal.case_id)
+    from app.services import ctem_case_opening
+
+    # #1951: while case opening is paused the signal waits, confirmed with no case.
+    if not await ctem_case_opening.is_on(db, vertical):
+        return None
+    # A case opened here is stamped when it is written, not at the start of the read (*now*), which
+    # can be minutes earlier on a long source read (ctem-case-stamps-pass-start-not-creation).
+    opened_at = max(now, datetime.now(UTC))
     async with db.begin_nested():
-        return await loop.open_from_signal(db, signal, vertical=vertical, events=events, now=now)
+        return await loop.open_from_signal(db, signal, vertical=vertical, events=events, now=opened_at)
 
 
 async def expire_acceptances(db: AsyncSession, *, now: datetime | None = None) -> int:
@@ -406,6 +537,24 @@ async def close_without_retest_answered(db: AsyncSession, case_id: uuid.UUID) ->
     return found is not None
 
 
+async def dismissal_answer(db: AsyncSession, case_id: uuid.UUID) -> CtemCaseEvent | None:
+    """The newest gate of the case a person answered with the close option (#2252), ``None`` when none.
+
+    Read from the case's gate events (``ctem_case_loop.record_gate``: kind ``gate``,
+    the outcome in ``to_value``, who answered in ``reason``, the option in ``evidence``).
+    """
+    rows = await db.scalars(
+        select(CtemCaseEvent)
+        .where(
+            CtemCaseEvent.case_id == case_id,
+            CtemCaseEvent.kind == "gate",
+            CtemCaseEvent.to_value == "answered",
+        )
+        .order_by(CtemCaseEvent.at.desc())
+    )
+    return next((row for row in rows if rules.closes_case(row.evidence)), None)
+
+
 async def update_case(
     db: AsyncSession,
     case: CtemCase,
@@ -413,6 +562,7 @@ async def update_case(
     actor: str,
     actor_kind: str,
     state: str | None = None,
+    resolution_kind: str | None = None,
     owner_user_id: uuid.UUID | None = None,
     clear_owner: bool = False,
     due_at: datetime | None = None,
@@ -433,10 +583,15 @@ async def update_case(
     due_at = rules.as_utc(due_at)
     accepted_until = rules.as_utc(accepted_until)
     new_owner = None if clear_owner else (owner_user_id or case.owner_user_id)
+    dismissal: CtemCaseEvent | None = None
+    if resolution_kind is not None and state is None:
+        raise rules.CaseRuleError("resolution_kind goes with a state change")
     if state is None:
         rules.check_owner(case.state, new_owner)
     else:
         answered = False
+        if resolution_kind == rules.DISMISSED and actor_kind != "user":
+            dismissal = await dismissal_answer(db, case.id)
         if (
             state in ("resolved", "mitigated_watching")
             and actor_kind != "user"
@@ -456,6 +611,8 @@ async def update_case(
             validation_plan=bool(getattr(case, "validation_plan", False)),
             validations=getattr(case, "validations", None),
             close_without_retest_answered=answered,
+            resolution_kind=resolution_kind,
+            dismissal_answered=dismissal is not None,
         )
     if new_owner != case.owner_user_id:
         db.add(
@@ -484,6 +641,14 @@ async def update_case(
     if note and note.strip():
         db.add(_event(case.id, actor, "note", reason=note.strip(), at=now))
     if state is not None:
+        closing = case.state in OPEN_STATES and state in CLOSED_STATES
+        reason_text = (reason or "").strip()
+        evidence_text = (evidence or "").strip()
+        if resolution_kind == rules.DISMISSED:
+            # The person and their reason stay on the history; none given is said (#2252).
+            who = (dismissal.reason or "a person").strip() if dismissal is not None else "a person"
+            reason_text = reason_text or rules.NO_REASON_GIVEN
+            evidence_text = evidence_text or f"dismissed by {who}: not relevant, no action"
         db.add(
             _event(
                 case.id,
@@ -491,20 +656,59 @@ async def update_case(
                 "state",
                 from_value=case.state,
                 to_value=state,
-                reason=(reason or "").strip() or None,
-                evidence=(evidence or "").strip() or None,
+                reason=reason_text[:2000] or None,
+                evidence=evidence_text[:2000] or None,
                 at=now,
             )
         )
         case.state = state
         case.state_since = now
+        if resolution_kind is not None:
+            case.resolution_kind = resolution_kind
+        elif state in OPEN_STATES:
+            # Reopened: how it was closed no longer applies (as the loop's own reopen does).
+            case.resolution_kind = None
         if state == "accepted_risk":
             case.accepted_reason = (reason or "").strip()
             case.accepted_until = accepted_until
         else:
             case.accepted_reason = None
             case.accepted_until = None
+        if closing:
+            await cancel_on_close(db, case, state=state, actor=actor, actor_kind=actor_kind, now=now)
     return case
+
+
+#: The result written on a work item a close cancelled (#2494).
+CLOSED_ITEM_RESULT = "Cancelled: CTEM case {case_id} moved to {state} by {who}: nothing is left to decide."
+#: The outcome written on a timer a close cancelled (#2494).
+CLOSED_TIMER_OUTCOME = "cancelled: CTEM case {case_id} moved to {state}"
+
+
+async def cancel_on_close(
+    db: AsyncSession, case: CtemCase, *, state: str, actor: str, actor_kind: str, now: datetime
+) -> int:
+    """Cancel the open work items and armed timers of a case a person or an agent just closed (#2494).
+
+    A closed case waits on nobody: its pending gates leave the bell and its loop
+    items and reminders stop, as a delete and a retired-asset resolve already do
+    (one helper, ``ctem_case_delete.cancel_case_work``). An agent closing the case
+    from the run that answers one of its items keeps that held item, to complete it
+    itself. A reopen (an expired acceptance, a manual reopen) files fresh items.
+    Answers how many items were cancelled.
+    """
+    from app.services.ctem_case_delete import cancel_case_work
+
+    who = f"a person ({actor})" if actor_kind == "user" else f"{actor_kind} {actor}"
+    items, _ = await cancel_case_work(
+        db,
+        case,
+        item_result=CLOSED_ITEM_RESULT.format(case_id=case.id, state=state, who=who),
+        timer_outcome=CLOSED_TIMER_OUTCOME.format(case_id=case.id, state=state),
+        now=now,
+        keep_held=actor_kind != "user",
+    )
+    return len(items)
 
 
 async def create_manual_case(
@@ -689,13 +893,147 @@ async def events_of(db: AsyncSession, case_ids: list[uuid.UUID]) -> dict[uuid.UU
     return out
 
 
+async def case_ids_with_prefix(
+    db: AsyncSession, prefix: str, *, organization_id: uuid.UUID, limit: int = 2
+) -> list[uuid.UUID]:
+    """The ids of the organization's cases that start with *prefix* (#2103), at most *limit*.
+
+    *prefix* is hex with optional dashes, at least eight characters
+    (``organization_asset_store.id_prefix``); anything else matches nothing.
+    Two answers mean the prefix is ambiguous.
+    """
+    from app.services.organization_asset_store import id_prefix
+
+    text = id_prefix(prefix)
+    if text is None:
+        return []
+    rows = await db.execute(
+        select(CtemCase.id)
+        .where(CtemCase.organization_id == organization_id, cast(CtemCase.id, String).like(f"{text}%"))
+        .order_by(CtemCase.id)
+        .limit(max(1, limit))
+    )
+    return list(rows.scalars())
+
+
+async def case_ids_for_validation_ref(
+    db: AsyncSession, *, organization_id: uuid.UUID, provider: str, ref: str, limit: int = 5
+) -> list[uuid.UUID]:
+    """The open cases whose validations name *ref* from *provider* (#2393), at most *limit*.
+
+    The detection desk finds the case a simulation validates by the simulation id the
+    loop recorded with ``record_ctem_case_validation``. The JSON list is read in Python:
+    a case holds a handful of validations and the open cases of one organization are few.
+    """
+    wanted_provider, wanted_ref = (provider or "").strip(), (ref or "").strip()
+    if not wanted_provider or not wanted_ref:
+        return []
+    rows = await db.execute(
+        select(CtemCase.id, CtemCase.validations).where(
+            CtemCase.organization_id == organization_id, CtemCase.state.in_(OPEN_STATES)
+        )
+    )
+    found: list[uuid.UUID] = []
+    for case_id, validations in rows.all():
+        if any(
+            isinstance(v, dict) and v.get("provider") == wanted_provider and v.get("ref") == wanted_ref
+            for v in validations or []
+        ):
+            found.append(case_id)
+            if len(found) >= limit:
+                break
+    return found
+
+
+@dataclass(frozen=True)
+class MergedCase:
+    """Where a merged-away case went (#2289): the survivor, when and by whom."""
+
+    case_id: uuid.UUID
+    survivor_id: uuid.UUID
+    at: datetime
+    actor: str
+
+    def answer(self) -> str:
+        """What a case tool answers for the merged id."""
+        return (
+            f"Case {self.case_id} was merged into {self.survivor_id} at {self.at.isoformat()} "
+            f"by {self.actor}; read the survivor."
+        )
+
+
+def _merge_lookup(organization_id: uuid.UUID | None) -> Any:
+    """The ``merge`` events, newest first, of *organization_id* (every organization when ``None``).
+
+    Served by the partial index ``ix_ctem_case_events_merged_from`` (``from_value`` of the
+    ``merge`` rows). The merged case's history moves with each merge, so the survivor
+    named is the case that holds the event now: a survivor merged in turn is followed.
+    """
+    query = select(CtemCaseEvent.from_value, CtemCaseEvent.case_id, CtemCaseEvent.at, CtemCaseEvent.actor).where(
+        CtemCaseEvent.kind == "merge"
+    )
+    if organization_id is not None:
+        query = query.join(CtemCase, CtemCase.id == CtemCaseEvent.case_id).where(
+            CtemCase.organization_id == organization_id
+        )
+    return query.order_by(CtemCaseEvent.at.desc())
+
+
+async def merged_into(db: AsyncSession, case_id: uuid.UUID, *, organization_id: uuid.UUID | None) -> MergedCase | None:
+    """The survivor *case_id* was merged into (#2289), ``None`` for a case never merged away.
+
+    A case id is unique across organizations, so a run that only knows the id (a
+    queued ``ctem_case.opened`` run) passes ``organization_id=None``.
+    """
+    row = (
+        await db.execute(_merge_lookup(organization_id).where(CtemCaseEvent.from_value == str(case_id)).limit(1))
+    ).first()
+    if row is None:
+        return None
+    return MergedCase(case_id=case_id, survivor_id=row.case_id, at=row.at, actor=row.actor)
+
+
+async def merged_with_prefix(
+    db: AsyncSession, prefix: str, *, organization_id: uuid.UUID, limit: int = 2
+) -> list[MergedCase]:
+    """The merged-away cases whose id starts with *prefix* (#2289), one per merged id, at most *limit*."""
+    from app.services.organization_asset_store import id_prefix
+
+    text = id_prefix(prefix)
+    if text is None:
+        return []
+    rows = await db.execute(_merge_lookup(organization_id).where(CtemCaseEvent.from_value.like(f"{text}%")))
+    out: dict[str, MergedCase] = {}
+    for row in rows:
+        merged_id = row.from_value
+        if merged_id in out:
+            continue
+        try:
+            case_id = uuid.UUID(merged_id)
+        except (TypeError, ValueError):
+            continue
+        out[merged_id] = MergedCase(case_id=case_id, survivor_id=row.case_id, at=row.at, actor=row.actor)
+        if len(out) >= max(1, limit):
+            break
+    return list(out.values())
+
+
 async def get_case(
-    db: AsyncSession, case_id: uuid.UUID, *, organization_id: uuid.UUID
+    db: AsyncSession, case_id: uuid.UUID, *, organization_id: uuid.UUID, for_update: bool = False
 ) -> tuple[CtemCase, list[CtemCaseIssue], list[CtemCaseEvent]] | None:
-    """One case with its members and history; the caller hydrates it for one viewer."""
-    case = (
-        await db.execute(select(CtemCase).where(CtemCase.id == case_id, CtemCase.organization_id == organization_id))
-    ).scalar_one_or_none()
+    """One case with its members and history; the caller hydrates it for one viewer.
+
+    *for_update* (#2373) locks the case row until the caller's transaction ends:
+    every write path reads the case this way, so two concurrent writes of one
+    case run one after the other and the second reads the state and the history
+    the first committed (a gate decision recorded once, a state event from the
+    state it really left). The history is read after the lock, so it is the
+    committed one.
+    """
+    query = select(CtemCase).where(CtemCase.id == case_id, CtemCase.organization_id == organization_id)
+    if for_update:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    case = (await db.execute(query)).scalar_one_or_none()
     if case is None:
         return None
     issues = list((await db.execute(select(CtemCaseIssue).where(CtemCaseIssue.case_id == case.id))).scalars())

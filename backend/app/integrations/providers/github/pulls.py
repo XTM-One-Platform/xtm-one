@@ -20,6 +20,7 @@ from . import (
     body_edits,
     closing_refs,
     full_ci_gate,
+    issue_close,
     merge_refusals,
     pr_files,
     pr_inherit,
@@ -259,24 +260,26 @@ async def _pr_node_id(
     return node_id, None
 
 
-#: Review decisions under which GitHub auto-merge is refused: the pull request still waits for a
-#: reviewer, and an auto-merge enabled now lets GitHub (or its merge queue) land it the moment the
-#: checks pass, with no tool reading the review again (an admin bypass even skips the rule).
+#: Review decisions under which GitHub auto-merge is refused when GitHub says this account cannot
+#: bypass the base's requirements (``viewerCanMergeAsAdmin`` false or not returned). When it can,
+#: GitHub decides: the review decision alone never refuses (#2324).
 _AUTOMERGE_BLOCKING_DECISIONS = frozenset({"REVIEW_REQUIRED", "CHANGES_REQUESTED"})
 
 _REVIEW_DECISION_QUERY = (
     "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){"
-    "pullRequest(number:$number){reviewDecision}}}"
+    "pullRequest(number:$number){reviewDecision viewerCanMergeAsAdmin}}}"
 )
 
 
 async def _automerge_review_refusal(
     client: httpx.AsyncClient, owner: str, name: str, number: int, headers: dict[str, str]
 ) -> str | None:
-    """The refusal when PR *number* still waits for an approving review, else ``None``.
+    """The refusal when PR *number* still waits for a review this account cannot bypass, else ``None``.
 
     ``reviewDecision`` is ``None`` when the base requires no review: auto-merge then
-    stays allowed. An unreadable decision is refused too: the doubt never enables a merge.
+    stays allowed. When GitHub reads ``viewerCanMergeAsAdmin`` true the account may
+    bypass the review rule, so GitHub decides (#2324). An unreadable decision is
+    refused: the doubt never enables a merge.
     """
     data, err = await _common.gh_graphql(
         client,
@@ -294,11 +297,12 @@ async def _automerge_review_refusal(
     decision = pull.get("reviewDecision") if isinstance(pull, dict) else None
     if decision not in _AUTOMERGE_BLOCKING_DECISIONS:
         return None
+    if isinstance(pull, dict) and pull.get("viewerCanMergeAsAdmin") is True:
+        return None
     return (
         f"Error: auto-merge not enabled on PR #{number}, nothing was written: its review decision is "
-        f"{decision}. Auto-merge would let GitHub merge it as soon as the checks pass, before the review "
-        "the repository asks for (an admin bypass skips the review rule). Wait for an approving review, "
-        "then merge with merge_github_pr."
+        f"{decision} and GitHub does not say this account can bypass it (viewerCanMergeAsAdmin is not "
+        "true). Wait for an approving review, then merge with merge_github_pr."
     )
 
 
@@ -924,7 +928,8 @@ def register(
         (number or exact title) the repository does not define refuses the
         call, and a milestone is never created. Another open pull request of
         the same author that shares a file or an issue is named in a warning
-        (:mod:`.pr_overlap`), never a refusal.
+        (:mod:`.pr_overlap`), never a refusal. A body that marks the PR as the
+        last slice of an issue it does not close is refused (:mod:`.issue_close`).
         """
         owner, name, rerr = parse_repo(repo)
         if rerr:
@@ -941,6 +946,9 @@ def register(
             refusal = await closing_refs.pr_closing_refusal(
                 client, f"{owner}/{name}", {"title": title, "body": body}, headers, "create PR"
             )
+            if refusal:
+                return refusal
+            refusal = await issue_close.last_slice_refusal(client, f"{owner}/{name}", body, headers, "create PR")
             if refusal:
                 return refusal
             if wanted_labels:
@@ -1151,6 +1159,12 @@ def register(
                 )
                 if refusal:
                     return refusal
+            if body:
+                refusal = await issue_close.last_slice_refusal(
+                    client, f"{owner}/{name}", body, headers, f"update PR #{number}"
+                )
+                if refusal:
+                    return refusal
             stored = ""
             if attachment_file_ids:
                 if not body:
@@ -1283,7 +1297,10 @@ def register(
 
         Refused with nothing merged when the PR's title or body, or the commit
         title or message given, carries a closing keyword that points at a pull
-        request: GitHub would close that other PR on this merge. The
+        request: GitHub would close that other PR on this merge. A merged answer
+        ends with 'Still open after this merge' for the issues the PR references
+        without a closing keyword (or with one, on a base that is not the
+        default branch) that read open (:mod:`.issue_close`). The
         messages of the PR's own commits are checked too whenever they reach
         the base branch: a squash without *commit_message* (GitHub builds the
         default message from them), a merge commit or a rebase.
@@ -1298,6 +1315,7 @@ def register(
             return f"Invalid merge_method: {merge_method}. Must be 'merge', 'squash', or 'rebase'."
         async with egress_client(timeout=30) as client:
             texts = {"commit_title": commit_title, "commit_message": commit_message}
+            pr_data: Any = None
             pr_resp, pr_err = await _common.safe_request(
                 client,
                 "get",
@@ -1405,8 +1423,11 @@ def register(
                 return (await _merge_state())[0]
 
             async def _receipt(sha: str) -> str:
-                """The commit receipt, then the full CI runs the merge was gated on."""
-                return await _commit_receipt(sha) + gate_note + loop_note
+                """The commit receipt, the full CI runs the merge was gated on, then the issues left open."""
+                still_open = await issue_close.still_open_line(
+                    client, f"{owner}/{name}", number, pr_data if not pr_err else None, headers
+                )
+                return await _commit_receipt(sha) + gate_note + loop_note + still_open
 
             async def _commit_receipt(sha: str) -> str:
                 """' Merge commit <sha>, signed ...' read from the commit itself.
@@ -1470,6 +1491,24 @@ def register(
                 resp, err = await _put_merge()
                 attempts += 1
             if err and _is_base_modified(resp):
+                # A base protected by a merge queue: the queue takes the PR
+                # whatever the base did meanwhile, so enqueue it now instead of
+                # polling mergeability and advising a branch update (#2147).
+                queued = await merge_refusals.refusal_answer(
+                    client,
+                    headers,
+                    owner,
+                    name,
+                    number,
+                    base_ref,
+                    head_sha,
+                    "Base branch was modified.",
+                    queue_only=True,
+                )
+                if queued:
+                    if queued.startswith(f"PR #{number} in {repo} queued"):
+                        await mark_self_action(repo, number)
+                    return queued
                 # The base moved seconds before the PUT. GitHub recomputes the
                 # PR's mergeability; a clean PR merges once it has, without a
                 # branch update and the CI round that would cost.
@@ -2076,7 +2115,8 @@ def register(
             name="create_github_pr",
             description=(
                 "Create a new pull request from head branch to base branch. A title that breaks the title rule "
-                "the repository declares ([pull_request] in .xtm-one/checks.toml) is refused, the rule named, nothing written."
+                "the repository declares ([pull_request] in .xtm-one/checks.toml) is refused, the rule named, nothing written. "
+                "A last-slice body that writes 'Refs #N' instead of 'Closes #N' is refused."
             ),
             input_schema={
                 "type": "object",
@@ -2197,7 +2237,7 @@ def register(
                 "Merge a pull request using merge commit, squash, or rebase strategy. On a base protected by a "
                 "merge queue the PR is added to the queue (answered queued, with its position). A repository "
                 "declaring [merge] full_ci_workflows merges only once that full run is green on the head "
-                "(dispatched when absent)."
+                "(dispatched when absent). A merged answer names the referenced issues still open."
             ),
             input_schema={
                 "type": "object",

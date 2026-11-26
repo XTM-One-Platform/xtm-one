@@ -69,14 +69,15 @@ export function offeredInAgentChat<T extends { id: string; agentOnly: boolean }>
  *  saved or in the draft being edited. Such a suite stays inactive until an
  *  administrator turns its switch on; hiding it would leave it on the agent
  *  unseen, to come back to life that day. A switched-off suite the agent does
- *  not carry stays hidden. */
-export function listedInAgentConfig<T extends { id: string; available: boolean }>(
+ *  not carry stays hidden, and so does an internal one (Platform Health's
+ *  specialists' group, #1943): it is listed only on an agent that carries it. */
+export function listedInAgentConfig<T extends { id: string; available: boolean; internal?: boolean }>(
   suites: readonly T[],
   saved: readonly string[],
   draft: readonly string[],
 ): T[] {
   const carried = new Set([...saved, ...draft]);
-  return suites.filter((suite) => suite.available || carried.has(suite.id));
+  return suites.filter((suite) => carried.has(suite.id) || (suite.available && !suite.internal));
 }
 
 /** The draft after the grid toggles `suite`. A suite in the draft is removed

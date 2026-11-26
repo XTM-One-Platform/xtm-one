@@ -1,17 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""LM Studio LLM provider - models served by an LM Studio server, reached through an XTM One Relay.
+"""LM Studio LLM provider - models served by an LM Studio server, fed by its integration.
 
 LM Studio serves an OpenAI-compatible API (``/v1/chat/completions``,
 ``/v1/embeddings``, ``/v1/models``) next to its native REST API
-(``/api/v1/models`` lists each model's type). The server sits in the
-customer's network, so this provider is only ever fed by an LM Studio
-integration routed through a relay group (``integration_fed_only``): it holds
-no URL and no key of its own. Its HTTP client sends every request through
-``services/lmstudio_llm_provider.IntegrationRelayTransport``, which reads the
-server URL, token and relay group of the integration feeding its config, and
-refuses (424, never retried) when that integration cannot carry it - never a
-direct connection.
+(``/api/v1/models`` lists each model's type). This provider is only ever fed
+by an LM Studio integration (``integration_fed_only``): it holds no URL and
+no key of its own. Its HTTP client sends every request through
+``services/lmstudio_llm_provider.IntegrationTransport``, which reads the
+server URL, token and relay group of the integration feeding its config,
+sends the request through that relay group or, without one, directly, and
+refuses (424, never retried) when that integration cannot carry it.
 
 Chat, streaming, tools and structured output are the OpenAI-compatible base
 class's; embeddings and the dimension probe are the custom endpoint's. The
@@ -36,7 +35,7 @@ _MAX_LISTING_BYTES = 8 * 1024 * 1024
 
 
 class LMStudioProvider(CustomOpenAIProvider):
-    """LM Studio on the customer's network, through the integration's relay group."""
+    """LM Studio, on the route of the integration feeding it (its relay group, or direct)."""
 
     provider_name = "lmstudio"
     integration_fed_only = True
@@ -50,12 +49,12 @@ class LMStudioProvider(CustomOpenAIProvider):
     max_tools = 64
 
     def __init__(self, api_key: str, *, provider_config_id: Any = None, **kwargs: Any) -> None:
-        from app.services.lmstudio_llm_provider import PLACEHOLDER_ROOT, routed_http_client
+        from app.services.lmstudio_llm_provider import PLACEHOLDER_ROOT, integration_http_client
 
         # The config the transport reads its integration through
         # (``router.provider_instance``); ``None`` refuses every request.
         self.base_url = f"{PLACEHOLDER_ROOT}/v1"
-        self._http = routed_http_client(_as_uuid(provider_config_id), timeout=_TIMEOUT)
+        self._http = integration_http_client(_as_uuid(provider_config_id), timeout=_TIMEOUT)
         # The key the SDK sends is replaced by the integration's token, if any.
         OpenAICompatibleProvider.__init__(self, api_key="lmstudio", http_client=self._http, **kwargs)
 

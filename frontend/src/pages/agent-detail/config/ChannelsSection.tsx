@@ -161,15 +161,18 @@ export function ChannelsSection({
             </p>
           </SettingsSwitchField>
 
-          {agent.web_enabled && agent.web_token && (
+          {agent.web_enabled && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Badge variant="cyan" className="text-[9px] gap-1"><Globe className="h-3 w-3" /> {t_i18n("Live")}</Badge>
                 <span className="content-caption text-default-secondary">{t_i18n("This agent is publicly accessible via the embed widget.")}</span>
               </div>
-              <Button size="sm" className="gap-1.5" onClick={() => setEmbedDialogOpen(true)}>
-                <Code2 className="h-3.5 w-3.5" /> {t_i18n("Get Embed Code")}
-              </Button>
+              {/* The token comes back only to people who may manage the agent. */}
+              {agent.web_token && (
+                <Button size="sm" className="gap-1.5" onClick={() => setEmbedDialogOpen(true)}>
+                  <Code2 className="h-3.5 w-3.5" /> {t_i18n("Get Embed Code")}
+                </Button>
+              )}
 
               {/* Visitor uploads */}
               <SettingsSwitchField
@@ -226,7 +229,7 @@ export function ChannelsSection({
                     {suggestedPrompts.map((prompt, i) => (
                       <div
                         key={i}
-                        className="flex items-center gap-1.5 rounded-full bg-elevation-hover border border-elevation-subtle-soft px-3 py-1.5 text-[11px] text-default-secondary"
+                        className="flex items-center gap-1.5 rounded-sm bg-elevation-hover border border-elevation-subtle-soft px-2 py-1.5 text-[11px] text-default-secondary"
                       >
                         <span>{prompt}</span>
                         {canManage && (

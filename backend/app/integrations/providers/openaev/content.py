@@ -14,7 +14,6 @@ import json
 import logging
 from urllib.parse import quote
 
-from app.core.egress import egress_client
 from app.integrations.file_delivery import (
     PersistFileFn,
     content_disposition_filename,
@@ -33,6 +32,7 @@ from ._common import (
     _search_body,
     _with_scope_hint,
     json_answer,
+    tool_client,
 )
 
 logger = logging.getLogger(__name__)
@@ -155,7 +155,6 @@ def register(
             doc_input = {"document_description": description or None}
             if tags is not None:
                 doc_input["document_tags"] = tags
-            auth_only = {"Authorization": headers.get("Authorization", "")}
             # auth_only drops the tenant resolver that rides on `headers`, so
             # scope the path with the full headers.
             upload_path, scope_hint = await _scope_path(headers, "/api/documents")
@@ -163,7 +162,10 @@ def register(
                 "file": (name, upload_bytes, upload_mime),
                 "input": (None, json.dumps(doc_input).encode("utf-8"), "application/json"),
             }
-            async with egress_client(timeout=60) as client:
+            # tool_client re-mints a platform-managed JWT first (and once on a
+            # 401/403), so auth_only is read inside it, after that re-mint (#2372).
+            async with tool_client(headers, timeout=60) as client:
+                auth_only = {"Authorization": headers.get("Authorization", "")}
                 # tenant-scoped by hand: upload_path
                 resp, err = await safe_request(
                     client, "post", f"{base_url}{upload_path}", _PROVIDER,

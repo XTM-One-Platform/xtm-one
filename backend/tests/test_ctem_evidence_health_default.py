@@ -40,6 +40,10 @@ def test_the_switch_is_unset_by_default() -> None:
         ({"enabled": False}, [ONE], (health.PASS_ON, ONE)),
         ({}, [ONE, TWO], (health.PASS_OFF, "")),
         ({"enabled": False, "integration": ONE}, [ONE], (health.PASS_OFF, "")),
+        # #1937: an explicit off from the path sources panel names the integration the pass ran on,
+        # so it holds with one connected and none declared before; on again runs on that one.
+        ({"enabled": False, "integration": ONE}, [ONE, TWO], (health.PASS_OFF, "")),
+        ({"enabled": True, "integration": ONE}, [ONE], (health.PASS_ON, ONE)),
         ({"enabled": True, "integration": ONE}, [ONE, TWO], (health.PASS_ON, ONE)),
         ({"integration": ONE}, [ONE], (health.PASS_ON, ONE)),
         # A declared integration no longer connected is never swapped for another one.
@@ -106,8 +110,8 @@ async def _bound(
 async def test_opencrq_connected_and_the_pass_unset_reads_connected(monkeypatch: pytest.MonkeyPatch) -> None:
     bound = await _bound(monkeypatch, {}, [ONE])
     assert ("opencrq", "pass") in bound and ("opencrq", "pass") not in bound.off
-    assert sources.path_status(sources.path_sources("control_decay", bound)) == "connected"
-    assert sources.path_status(sources.path_sources("blind_spot", bound)) == "connected"
+    assert sources.path_status(sources.path_sources("control_decay", bound)) == "enabled"
+    assert sources.path_status(sources.path_sources("blind_spot", bound)) == "enabled"
 
 
 @pytest.mark.asyncio
@@ -164,7 +168,7 @@ async def test_a_reader_reads_connected_on_an_attack_surface_pass_that_runs(monk
     _patch(monkeypatch, {"attack_surface": {"enabled": True, "integration": ONE}}, [])
     _reader_platform(monkeypatch, {"shodan": {ONE}})
     bound = await sources.bound_sources(_Db([]), uuid.uuid4())  # type: ignore[arg-type]
-    assert sources.path_status(sources.path_sources("surface_drift", bound)) == "connected"
+    assert sources.path_status(sources.path_sources("surface_drift", bound)) == "enabled"
 
 
 @pytest.mark.asyncio
@@ -172,7 +176,7 @@ async def test_a_reader_reads_the_evidence_health_pass_of_the_platform(monkeypat
     _patch(monkeypatch, {}, [ONE])
     _reader_platform(monkeypatch, {"opencrq": {ONE}})
     bound = await sources.bound_sources(_Db([]), uuid.uuid4())  # type: ignore[arg-type]
-    assert sources.path_status(sources.path_sources("control_decay", bound)) == "connected"
+    assert sources.path_status(sources.path_sources("control_decay", bound)) == "enabled"
 
 
 @pytest.mark.asyncio

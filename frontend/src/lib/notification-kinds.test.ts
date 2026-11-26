@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  badgeCount,
+  badgeText,
   canMarkAllRead,
   decisionSource,
   hasUnreadApproval,
@@ -12,6 +14,26 @@ import {
 
 const t = (text: string, values?: Record<string, string | number>) =>
   `fr:${Object.entries(values ?? {}).reduce((out, [key, value]) => out.replace(`{${key}}`, String(value)), text)}`;
+
+describe("the bell badge (#2453)", () => {
+  const page = Array.from({ length: 20 }, () => ({ unread: true }) as never);
+
+  it("counts every waiting decision, not the page", () => {
+    expect(badgeCount({ items: page, unread_total: 551 })).toBe(551);
+  });
+
+  it("never reads below the page and falls back to it on an older server", () => {
+    expect(badgeCount({ items: page, unread_total: 3 })).toBe(20);
+    expect(badgeCount({ items: page })).toBe(20);
+    expect(badgeCount(undefined)).toBe(0);
+  });
+
+  it("caps the display at 99+ only", () => {
+    expect(badgeText(1)).toBe("1");
+    expect(badgeText(99)).toBe("99");
+    expect(badgeText(551)).toBe("99+");
+  });
+});
 
 describe("notification kinds", () => {
   it("pins a decision while it waits for its answer (#991)", () => {

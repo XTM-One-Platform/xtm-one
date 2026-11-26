@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.organization_asset import (
@@ -773,10 +773,31 @@ def _summary(
 FILTER_FIELDS: tuple[str, ...] = ("category", "subcategory", "criticality", "internet_facing")
 #: Fields a list filters on with no facet in the sidebar: the agent read of the inventory (#1774).
 LIST_ONLY_FILTER_FIELDS: tuple[str, ...] = ("os_family",)
+#: The fields a free-text search reads besides the name (#2085): an OS family or a build number finds its hosts.
+TEXT_FIELDS: tuple[str, ...] = ("os_family", "os_version", "owner")
+#: The most values :func:`held_values` names per field.
+MAX_HELD_VALUES = 20
 
 
 def _field_value(name: str) -> Any:
     return OrganizationAsset.fields[name]["value"].astext
+
+
+#: The shortest id prefix a read takes for an id (#2103): eight hex characters, as ids are quoted.
+MIN_ID_PREFIX = 8
+
+
+def id_prefix(value: str) -> str | None:
+    """*value* as a UUID prefix (hex and dashes, 8+ hex characters, lower case), else ``None``."""
+    text = str(value or "").strip().lower()
+    if len(text.replace("-", "")) < MIN_ID_PREFIX or any(c not in "0123456789abcdef-" for c in text):
+        return None
+    return text
+
+
+def _text(value: str) -> str:
+    """*value* as a free-text search compares it: whitespace collapsed, lower case (PostgreSQL ``lower``)."""
+    return " ".join(str(value or "").split()).lower()
 
 
 def _group_ids(values: Sequence[str]) -> list[uuid.UUID]:
@@ -810,10 +831,23 @@ def _asset_where(
     filters: Mapping[str, Sequence[str]] | None = None,
     skip: str | None = None,
 ) -> list[Any]:
-    """The clauses of the asset list: a name substring, then each filter but *skip* (OR within, AND across)."""
+    """The clauses of the asset list: a text, then each filter but *skip* (OR within, AND across).
+
+    The text is a case-insensitive substring of the name or of one of :data:`TEXT_FIELDS`, or the
+    start of the asset id (a case's ``running_versions`` names assets by id, #2103); a field
+    filter compares case-insensitively, so ``os_family:windows`` keeps the ``Windows`` hosts (#2085).
+    """
     where: list[Any] = [OrganizationAsset.organization_id == organization_id]
     if q.strip():
-        where.append(OrganizationAsset.name_key.contains(_key(q)))
+        text = _text(q)
+        prefix = id_prefix(q)
+        where.append(
+            or_(
+                OrganizationAsset.name_key.contains(_key(q)),
+                *(func.lower(_field_value(name)).contains(text, autoescape=True) for name in TEXT_FIELDS),
+                *((cast(OrganizationAsset.id, String).like(f"{prefix}%"),) if prefix else ()),
+            )
+        )
     for name, values in (filters or {}).items():
         wanted = [str(v) for v in values if str(v).strip()]
         if not wanted or name == skip:
@@ -831,8 +865,39 @@ def _asset_where(
                 )
             )
         elif name in FILTER_FIELDS or name in LIST_ONLY_FILTER_FIELDS:
-            where.append(_field_value(name).in_(wanted))
+            where.append(func.lower(_field_value(name)).in_(sorted({v.strip().lower() for v in wanted})))
     return where
+
+
+async def held_values(
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    filters: Mapping[str, Sequence[str]] | None = None,
+) -> dict[str, list[str]]:
+    """The values each field filter of *filters* holds across the organization's assets (#2085).
+
+    What a read that kept no row names, so a zero is never silent: ``{"os_family": ["Linux", "Windows"]}``.
+    Only the ``fields`` filters are answered (never ``source`` or ``group``), at most
+    :data:`MAX_HELD_VALUES` values each, sorted.
+    """
+    out: dict[str, list[str]] = {}
+    for name, values in (filters or {}).items():
+        if not any(str(v).strip() for v in values):
+            continue
+        if name not in FILTER_FIELDS and name not in LIST_ONLY_FILTER_FIELDS:
+            continue
+        column = _field_value(name)
+        rows = (
+            await db.execute(
+                select(column)
+                .where(OrganizationAsset.organization_id == organization_id, column.is_not(None), column != "")
+                .group_by(column)
+                .order_by(column)
+                .limit(MAX_HELD_VALUES)
+            )
+        ).scalars()
+        out[name] = [str(value) for value in rows]
+    return out
 
 
 async def asset_facets(
@@ -920,7 +985,7 @@ async def list_assets(
     limit: int = 50,
     filters: Mapping[str, Sequence[str]] | None = None,
 ) -> Page:
-    """The canonical assets of *organization_id*, by name, filtered on a name substring *q*.
+    """The canonical assets of *organization_id*, by name, filtered on a text *q* (name, OS, owner).
 
     *filters* keeps the assets whose field (``FILTER_FIELDS``) holds one of the
     values given, and with ``source`` the assets one of whose records comes from

@@ -44,16 +44,23 @@ progress, resolved, accepted risk).
    (#11613).** Cases (the fix and the workflow: state, owner, due date,
    history) are shared by the organization; their content is not. The
    database stores ids and workflow only: no name, CVE, score, KEV, asset,
-   crown jewel, priority or count. Every read renders the case for the viewer
+   primary asset, priority or count. Every read renders the case for the viewer
    from the viewer's OWN source read (their JWT, the same reads recompute
    makes; `services/ctem_cases_view.py`), cached per user and vertical for
    5 minutes. XTM One mirrors no group, role, marking, organization or scope.
+   Reaching cases at all needs a CTEM right (#2441, `services/ctem_access.py`):
+   an administrator, or a member of a group granting `view` (read) or
+   `decide` (read and change); anyone else gets 403 and no CTEM menu, tool or
+   trigger. The seeded "CTEM Viewers" group (Auto join on, #2478) holds every account, "CTEM
+   Operators" starts empty. A case gate waits for the `decide` groups that
+   have an active member (`ctem_access.gate_recipient`); with none, the
+   routing of the person the run acts for, never every administrator.
    - A case with no issue the viewer sees is absent from their list and their
      counts (a count is data) and answers 404 (`No case` for a tool).
    - A member issue the viewer cannot see is a row `{"restricted": true}`,
      nothing else: no id, source, name, score, asset or link (OpenCTI's
      "Restricted" pattern). The member count shows the total and the
-     restricted count; priority, scores, assets and crown jewels are
+     restricted count; priority, scores, assets and primary assets are
      computed on the visible issues only and may differ from one viewer to
      the next. A history line about an issue they cannot see shows
      "Restricted".
@@ -89,7 +96,7 @@ in one line (section 7.3).
 
 | Source | What counts as an open issue | Read |
 |---|---|---|
-| OpenCTI | A Vulnerability related by `has` to a Software observable matching the organization tech stack (the match already used by the tailored KEV, `ctem_metrics_collector._stack_matches`: CPE equal, else the product name with agreeing vendors, a side's vendor being its `vendor` or else the vendor its CPE names, #1693; a CVE OpenCTI links to several stack products is one issue, so one case, per product), and passing the prioritization policy of #11543 when one is set | GraphQL, per-user credentials (as the posture) |
+| OpenCTI | A Vulnerability related by `has` to a Software observable matching the organization tech stack (the match already used by the tailored KEV, `ctem_metrics_collector._stack_matches`: CPE equal, else the product name when nothing known on both sides contradicts it (`ctem_product_identity.conflict`: vendors, a side's vendor being its `vendor` or else the vendor its CPE names, #1693; two CPEs naming another vendor:product; a stack entry with a language-package purl against an OpenCTI Software that is another package, an OS or hardware CPE, or an application CPE not of that ecosystem; an OS-only product against software whose assets all report another OS family; a field unknown on either side never rejects, so a name-only entry still matches by name, #2036; the case's running versions leave out a language package row (`pkg:maven`, `pkg:pypi`, ...) of a repository unless the vulnerable OpenCTI Software is itself a language package, signal `evidence.case_fix.language_package`, #2223); a CVE OpenCTI links to several stack products is one issue, so one case, per product), and passing the prioritization policy of #11543 when one is set | GraphQL, per-user credentials (as the posture) |
 | OpenAEV | A finding of type `cve` on an asset or asset group, not older than the validation window | `/api/findings/search`, per-user credentials |
 
 Without a tech stack in the profile, OpenCTI contributes nothing (no case from
@@ -158,6 +165,35 @@ With it:
   that reason as evidence;
 - when OpenCTI holds no Software of the declared version, nothing is marked
   not affected and every member says "version not known to OpenCTI: <v>";
+  the case is kept with its members, priority and SLA (a KEV or CVSS >= 9
+  member still sets P1) and is marked "to validate" (#2004): the case row
+  answers `version_unverified` true and `version_unverified_reason`
+  (`ctem_version_match.unverified_reason`: the versions OpenCTI does not know,
+  or "no running version reported"), shown as one neutral "To validate" chip
+  on the Cases list and the case page; the marker clears on the next read once
+  OpenCTI places every running version. Validating comes first through the
+  existing gate card wording (`BLIND_ACTION`, "Verify the running version,
+  then upgrade") and the existing validation record; nothing is discarded or
+  derived from versions;
+- platform applicability (#2152): a vulnerability whose every vulnerable
+  Software (its `has` holders) is built for one operating system
+  (`ctem_fixed_version.platform_of_software`: CPE `target_sw` / `target_hw`,
+  else the one OS its name or version names) is "not affected: platform
+  <OS> only; running on <platforms>" when every asset running the product
+  reports a platform (`os_family`, `ctem_case_versions.inventory_platforms`)
+  and none is shared; it is treated as any not-affected member above. A
+  vulnerable Software naming no platform, or one asset with no platform,
+  keeps the member as before: an unknown is never read as not affected;
+- a signal member that names CVE ids (#2041; subject, label or evidence
+  `cve` / `cves`, `ctem_scope_gate.signal_cve_ids`) is enriched from OpenCTI
+  with the viewer's own read, like an OpenCTI issue: its first CVE, KEV, the
+  highest CVSS and EPSS, and the version a course of action names
+  (`ctem_cases_source.enrich_signal_issues`, at most `SIGNAL_CVE_CAP` CVEs a
+  read); a CVE OpenCTI does not know keeps the member with those facts unknown.
+  With no version outcome it marks the case "to validate" ("no running version
+  reported") unless an OpenCTI issue of the same CVE is in the case, whose
+  outcomes judge it; the KEV count counts such a CVE once, from the OpenCTI
+  member;
 - the upgrade members of one product fold onto ONE key, the smallest version
   that fixes every member (the greatest of their fixed versions), titled
   "Upgrade <vendor product> to <version>";
@@ -192,7 +228,8 @@ The platform enforces the line where the card is written, not in a prompt:
 keyed `ctem:remediation:`, `ctem:f1:case-mobilize:` or `ctem:f2:mobilize:`
 and a case id, when the case is an upgrade and the ask has no `Version match:`
 line: the line goes first in the context, then, when blind, "Proposed without
-version matching: ..." and "Verify the running version, then upgrade". A case
+version matching: ..." and "Verify the running version before acting" (never
+"then upgrade": the recommended option may be another treatment, #2174). A case
 that cannot be read leaves the ask as given; the version is never guessed.
 
 ### 4.2ter Running versions from the asset inventory (#1252)
@@ -263,7 +300,55 @@ same way.
   when they name none (an OpenCTI-only case), the device count of the case's
   latest `versions` snapshot, with `asset_count_source` `issues`, `inventory`
   (and `asset_count_as_of`) or `unknown`: then `asset_count` is `null` with
-  `asset_count_reason`, never a silent 0.
+  `asset_count_reason`, never a silent 0. The single case read
+  (`GET /ctem/cases/{id}`, `get_ctem_case`) applies the same rule
+  (`version_history.with_asset_count` on the hydrated case), so the list row
+  and the case read answer the same `asset_count`, source and marker. The
+  case reads that also serve `running_versions` (the page's details, both
+  case tools) then apply `version_history.with_live_asset_count`: when the
+  count is not from the issues and the live answer names assets, its
+  `asset_count` wins (source `inventory`, `asset_count_as_of` the read time),
+  so the aggregate never says "no asset" beside a `running_versions` that
+  lists devices (#2225).
+- unread signal facts (#2225): a signal member whose CVE OpenCTI was not
+  read for (no access for the reader, OpenCTI failed, or the CVE is unknown
+  to it) keeps it in `unknown_cves` with `kev` `null` (unless another of its
+  CVEs is KEV). While one open signal member has an unread CVE, `kev_count`,
+  `max_cvss` and `max_epss` are `null` with `members_facts_unread` and
+  `facts_reason` (`ctem_cases_view.FACTS_UNREAD_REASON`), never "0 KEV" or
+  "no CVSS"; `aggregates_restricted` keeps its scope meaning.
+- scope-limited aggregates: `summary()` counts the open product members the
+  viewer reads WITHOUT their details (outside their scope, or seen before from
+  a product that does not answer now) as `members_without_details`. When it is
+  above 0, `asset_count`, `primary_asset_count`, `kev_count`, `max_cvss` and
+  `max_epss` are `null` with `aggregates_restricted: true` and
+  `aggregates_reason` (`ctem_cases_view.AGGREGATES_RESTRICTED_REASON`), and
+  `with_asset_count` never counts from the issues then (inventory count, else
+  `unknown` with `NO_COUNT_RESTRICTED`). A 0 is a real 0 only when every open
+  product member was read with its details. Chosen basis: the viewer's own
+  read, marked; no link-based count is computed, because the ids of members a
+  viewer cannot read are never served (ids-only rule of the case loop). Signal
+  members carry no issue details for anyone and never restrict. The list
+  answers (API top level; under `scope` in `list_ctem_cases`,
+  `ctem_cases_view.list_visibility`, #2113) `hidden_cases`, the open cases the
+  viewer is refused (every member judged by their view, none theirs), and
+  `unjudged_cases`, the open cases their view could not judge now (a product
+  that did not answer for a product reason such as timeout or too_large, a
+  capped read, or a case opened after an older view was built: the view keeps
+  the member ids its read was given, `judged`), each with its split by state
+  (`hidden_by_state`, `unjudged_by_state`), `counts_partial` and `view`
+  (`complete`, `capped`, `stale`, `age_seconds`, `products_missing` with
+  reasons). For each state, the store's cases = `counts` + hidden + unjudged.
+  A product that refuses the identity (`rejected`, `not_connected`) makes its
+  members refused, hence hidden. Visibility stays per person for
+  administrators too: an administrator sees a product member only through
+  their own OpenCTI / OpenAEV credentials (signal members are read whole for
+  them), so an administrator's `hidden_cases` means members their own product
+  accounts do not return. A case deleted between the case read and the view
+  read (a bulk delete releases its signals in its own transaction) is re-read
+  by id and left out (`drop_gone`), never counted as hidden. Tests:
+  `tests/test_ctem_case_scope_limited_aggregates.py`,
+  `tests/test_ctem_case_list_unjudged.py`.
 - where the per-platform fix comes from (slice 2 of #1572): the OpenCTI reader
   reads each Software that `remediates` the vulnerability with its `cpe`;
   `ctem_fixed_version.platform_of_software` takes the platform from the CPE
@@ -307,6 +392,13 @@ opens the asset overview (`/ctem/inventory/assets/:id`: its software with every
 version and source, SBOM included, its source records and its cases); a row
 outside the inventory is no link (CTEM-20-UI).
 
+**Detail reads gathered.** The case read runs its independent detail reads
+concurrently: the audit trail and the gate records on the request's session,
+the inventory reads (`running_versions`, `affected_assets`) and the settings
+reads (`ticketing`, `owner_fleet`) each on a session of their own. Its
+`Server-Timing` header names each group (`details-trail`, `details-inventory`,
+`details-settings`) beside the total `details` phase.
+
 **Leaving the scope.** At every recompute (`ctem_cases_store.apply_recompute`)
 an upgrade case with a known fixed version, open or resolved, is checked
 against the inventory (`ctem_case_versions.fixed_in_inventory`): when every
@@ -322,6 +414,34 @@ still closes only on its passing validation (#857); a case whose fixed version
 is unknown never leaves the scope on the inventory; an asset that falls back
 below the fix (or a new one running an old version) brings the case back
 through the usual reopen rule.
+
+**Issues fixed below every running version (#2047).** The same inventory read
+hands the recompute every version the product runs (`ctem_case_versions.every_running_version`;
+an asset with no version counts as `unknown`). A member whose own fixed version is
+known and at or below every one of them (`ctem_cases.fixed_below_running`, every
+per-platform fix included, every version comparable) leaves the active issues
+with an `issue_closed` event carrying "fixed version at or below every version
+the asset inventory shows running"; it stays in history. A new member settled
+that way is not added, and a new upgrade group of the same product whose
+members are all settled opens no case. The priority of the case is then
+recomputed from the members left (`ctem_cases_store._rerank`, which may
+relax). A case whose every member is settled resolves, kind `fixed`, evidence
+"every issue of the case is fixed in a version at or below every version
+running (asset inventory)": this is how an `@latest` case closes. A member
+the read sees open with no known fixed version keeps the case open, to
+validate, and also holds back the inventory resolution above: an unknown fix
+or an unknown running version is never read as fixed.
+
+**Nothing to upgrade (#2047).** A software signal whose fix would be
+`upgrade:-/<product>@latest` and which names no CVE (subject or evidence), no
+affected range and no fixed version (a vendor fix made service-side) opens no
+case: `ctem_case_loop.open_from_signal` parks it `to_validate` with outcome
+`review` and the reason `NOTHING_TO_UPGRADE`.
+
+**Assets per issue (#2047).** On the case page, an upgrade case issue whose
+source names no host (an OpenCTI CVE on a product) lists the assets the
+inventory shows running the product (`ctem_case_versions.attribute_assets`,
+`assets_from: inventory`), so the issue lists agree with the case's asset count.
 
 **Read at opening, before the threat package.** The same check runs when
 `ctem_case_loop.open_from_signal` creates an upgrade case (no validation plan,
@@ -369,7 +489,11 @@ explained. A single-platform answer draws the card as before.
     failing never stops the others;
   - the page open: `GET /ctem-cases` starts a background recompute for a viewer
     whose last one is older than the interval (the same one-per-minute slot);
-    the list re-reads on the `ctem_case_update` frame, in place, no toast;
+    the list re-reads on the `ctem_case_update` frame, in place, no toast; a
+    burst of frames (a case-opening drain) is coalesced: the first frame after
+    a quiet window re-reads at once, the rest of the window ends with one
+    re-read of the list and of the open case pages it named, so a tab reads
+    the list at most once per 5 s window (`frontend/src/lib/case-refresh-coalescer.ts`, #2092);
   - events: an OpenAEV or OpenCTI delivery that already moves a case (s.9bis,
     `ctem_openaev_events`) keeps doing so between passes.
   Every recompute records its freshness (`freshness` on the list answer:
@@ -381,6 +505,16 @@ explained. A single-platform answer draws the card as before.
   credentials for it (`not_connected`) writes nothing on that shared line, so a
   scheduled-pass identity never shows an outage to a viewer whose own read
   answered.
+- One recompute at a time per organization and vertical, across pods (#1953):
+  every path takes the Redis lock `ctem:cases:recompute-lock:<org>:<vertical>`
+  (10 min TTL, released by its holder only) in `recompute_as`; a recompute that
+  finds it held reads and writes nothing and answers `busy` (the scheduled pass
+  counts it skipped, the page open retries at the next open, `POST /recompute`
+  answers 409). Its write phase reads nothing remote: the scope gate's OpenCRQ
+  scenarios, fallback reader and inventory links are read before the first
+  signal row is written (`ctem_scope_gate_store.prepare_system_reads`), and a
+  transaction-local `lock_timeout` of 5 s makes a row another writer holds (a
+  case delete) fail the pass fast; the next pass retries.
 - Every failed source read (#1852) records why per product
   (`SourceRead.reasons`): `rejected` (401, 403, AUTH_REQUIRED, Forbidden),
   `too_large` (too_many_clauses, DATABASE_ERROR), `timeout`, `not_connected`
@@ -461,8 +595,8 @@ explained. A single-platform answer draws the card as before.
 | `ctem_case_issues` | case_id, source (`opencti` / `openaev`), external_id, open |
 | `ctem_case_events` | case_id, at, actor (user id or agent id, or `system`), kind (`created`, `state`, `owner`, `due`, `issue_added`, `issue_closed`, `issue_reopened`, `merge`, `split`, `note`, `versions` (#1694)), issue (member id, else null), from, to, reason, evidence |
 
-No source content is stored (#11613): priority, counts, scores, assets, crown
-jewels and names are computed per viewer at read time (principle 8).
+No source content is stored (#11613): priority, counts, scores, assets, primary
+assets and names are computed per viewer at read time (principle 8).
 
 The downgrade drops the three tables; nothing else changes.
 
@@ -498,7 +632,7 @@ downgrade deletes the shared rows and restores the columns.
 | resolved -> needs attention | member issues open again (system) or a user | system, user |
 
 Priority comes from the prioritization policy of #11543 (KEV always in, CVSS and
-EPSS thresholds, internet exposure, crown jewel criticality). Without a policy
+EPSS thresholds, internet exposure, primary asset criticality). Without a policy
 the priority is computed from KEV, max CVSS and max EPSS with the platform
 defaults, labelled "default policy" in the case.
 
@@ -529,7 +663,7 @@ Due date: set by the user, or suggested from the priority SLA of the policy
   hue (needs attention `feedback-warning-primary`, in progress
   `feedback-info-primary`, mitigated `feedback-alert-primary`, resolved
   `feedback-success-primary`, accepted risk `feedback-neutral-primary`). AI purple is never used on Cases (it is the AI
-  colour only): crown jewels are a `neutral` Chip with the shield icon.
+  colour only): primary assets are a `neutral` Chip with the shield icon.
 - **Owners** are the DS `Avatar` (initials, name in its tooltip); unassigned
   reads "Unassigned" in secondary text, never a warning colour.
 - **Period switch**: the shared `SegmentedFilter` (`size="sm"`, radio). One
@@ -620,7 +754,7 @@ then the existing AI assessment and facts grid unchanged.
   30 d", never an empty gap.
 - **Top cases** under each open column: the three highest-priority cases
   (title on one line with ellipsis and its full text in the tooltip, priority
-  Chip, issue count, crown jewel Chip, owner Avatar or "Unassigned", age),
+  Chip, issue count, primary asset Chip, owner Avatar or "Unassigned", age),
   each a link to its page.
 - **Resolved** column: cases resolved in the period, the median time to
   resolve, and the issues they closed ("22 cases, 412 issues closed"; the
@@ -664,7 +798,12 @@ then the existing AI assessment and facts grid unchanged.
   decision, Closed, All) and the toggles (`?c_q=`: Mine, Unassigned, Overdue,
   Critical and high). A case Waiting for decision says what it waits on, who
   and since when (the "Waits on" column; `waiting_on` on each list row: the
-  newest unanswered waiting gate, `ctem_case_audit.open_wait`).
+  newest unanswered waiting gate, `ctem_case_audit.open_wait`). One derivation
+  of who (#2452): `waiting_on.by` is the person the gate names (a user id),
+  else the case owner, the person accountable for the case (the gate's decision
+  item goes to the CTEM deciders, `ctem_access.gate_recipient`, who the owner
+  may not be); owned and unowned cases read alike, and "A decision" is left only for a case with no owner, which the case
+  sweep no longer leaves open (`ctem_case_owner.backfill_owners`).
 - **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
   (quick filters, search and filters applied) at `/ctem/cases` or as columns
   at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.
@@ -685,7 +824,7 @@ then the existing AI assessment and facts grid unchanged.
 - **The shared `DataTable`, its own toolbar anatomy (B2)**, one row at 1080
   and 1728 in en, fr, es and ja: search ("Search fix, product or CVE"), ONE
   `FiltersPill` holding the facets (owner: me / unassigned / a person,
-  priority, crown jewel, source, product, overdue, accepted risk expiring in
+  priority, primary asset, source, product, overdue, accepted risk expiring in
   14 days) with its count badge, "Clear all filters" (an icon with its
   tooltip in compact mode), then right: `TotalChip`, Columns, page size, CSV
   export. Active filters show as the pill's count and the panel's checked
@@ -696,9 +835,9 @@ then the existing AI assessment and facts grid unchanged.
   and "14 CVEs from OpenCTI and OpenAEV" in its tooltip; the sub line is
   gone, so every row is one line), Issues, Owner (Avatar + name, truncate),
   Due ("6 Nov" with the error-tone "Overdue" Chip), State (Chip). Hidden below
-  `xl` and offered in Columns: Crown jewels, Assets, KEV, In state. At 1728
+  `xl` and offered in Columns: Primary assets, Assets, KEV, In state. At 1728
   every column shows.
-- **Sort (round 2 B3)**: Priority, Fix, Issues, Crown jewels, Assets, KEV,
+- **Sort (round 2 B3)**: Priority, Fix, Issues, Primary assets, Assets, KEV,
   Owner, Due and In state are sortable. Default: Priority descending, then
   Due ascending (the most urgent case on top), `?sort=priority&dir=desc` in
   the URL; a click on the active column flips the direction, another column
@@ -769,7 +908,7 @@ with "Ranking points" on the band (a dialog, "Reset to defaults", saved with
 |---|---|---|
 | Priority critical / high / medium / low | `priority_*` | 40 / 25 / 10 / 0 |
 | At least one KEV issue | `kev` | 15 |
-| At least one crown jewel touched | `crown_jewel` | 15 |
+| At least one primary asset touched | `primary_asset` | 15 |
 | SLA breached or due date passed | `overdue` | 20 |
 | Due within `due_soon_days` (1 to 90, default 3) | `due_soon` | 10 |
 | No owner | `no_owner` | 5 |
@@ -778,8 +917,48 @@ with "Ranking points" on the band (a dialog, "Reset to defaults", saved with
 A profile saved before the field reads the defaults; every profile save of
 the Settings form carries it whole.
 
+List reads after a case-opening drain (#2092): the list, the overview and the
+loop measures read the caller's view with `stale_ok`. A generation bump (a case
+opened) retires every cached view; the caller's own newest view of the previous
+generation answers while the new one builds in the background
+(`Server-Timing` `cache-stale`); the cases opened since it was built are
+answered as `unjudged_cases` with `view.stale` true, never as hidden (#2113).
+That previous view is kept `STALE_VIEW_TTL_SECONDS` (1 h, #2232) under
+`ctem:cases:view-previous:<user>:<vertical>`, so a build longer than the view TTL
+(8-9 min after a 500-case drain on ctem.one) never leaves the list a 503; a case
+read takes it only within `VIEW_TTL_SECONDS` of its build. One pod builds a view
+of a generation: the build takes `ctem:cases:view-build:<user>:<vertical>:<generation>`
+(Redis `SET NX`, `BUILD_LOCK_SECONDS`, 15 min) and another pod that finds it held
+stands down. The OpenCTI issue construction runs in a worker thread, off the event
+loop, and the read logs the time of each phase (stack and relations, remediations,
+issues). With none, the read waits
+`LIST_BUILD_WAIT_SECONDS` (2 s, #2139: a 503 held 10 s was no fail-fast answer) for that build, then answers 503 with
+`Retry-After` (`LIST_RETRY_AFTER_SECONDS`, 30 s): never a whole view build on
+the request (400 s on a large tenant). When another pod holds the build, the wait
+looks for the view that pod writes every `LIST_POLL_SECONDS` (#2232), so the
+overview no longer answers 503 while the view lands. Event visibility (`user_sees_case`)
+reads the case's own members, like the case page.
+
+List latency on a warm view (#2232): a kept view is decoded once per worker
+(`_decoded`, keyed by the digest of its stored JSON, `DECODED_VIEWS_MAX` entries)
+and each read gets its own copy; the signal details read only the columns a row
+names, never the ORM objects. The list and the overview answer `Server-Timing`
+phases: `refresh`, `cases`, `view` (`redis`, `decode` or `decode-memo`, `copy`),
+`signals` (`signal-details`), `gone`, `rows`, `history`, `position`,
+`visibility`, `extras` for the list; `cases`, `view`, `signals`, `history`,
+`build` for the overview.
+
 ### 7.3 Case page `/ctem/cases/:id`
 
+- First paint (#1986): opened from the Cases list, the page draws its header
+  (title, state, urgency, owner, loop line) from the list row already in the
+  query cache while `GET /ctem-cases/{id}` runs, the sections as a card
+  skeleton below it; opened by URL with no cached list, the page skeleton. The
+  200-case list itself is read only when Merge into another case opens (the
+  picker says Loading while it runs), never on open. The "Open in <Module>"
+  pivots take the module base URLs from `GET /platform/registrations` (the
+  active registration, the canonical identifier first), never from
+  `/ctem-metrics/posture`, so the page does not wait on a posture build.
 - Header: the CTEM header band (`CtemPageHeader`) with the shared
   `LocationBackButton` "Back to Cases" first, above the band and outside its
   border, exactly as on an entity page (Sam, 22 Nov 2026: no CTEM-only back
@@ -798,7 +977,7 @@ the Settings form carries it whole.
   (`ctem/CasesBulkActions.tsx`); `case-actions.test.ts` fails when the two
   drift apart. Split stays in the Issues table selection.
 - Summary: the shared `StatCard` row (issues, KEV, max CVSS, max EPSS, assets,
-  crown jewels, first seen), wrapping to two rows at 1080; each value's
+  primary assets, first seen), wrapping to two rows at 1080; each value's
   tooltip names its source and read time.
 - "Why this case" sentence: the key rule that grouped it (R1 / R2 / R3) and
   the policy rules that set its priority.
@@ -869,7 +1048,7 @@ the Settings form carries it whole.
   read before signals (legacy)". Legacy cases are labelled, not backfilled:
   their members carry no reference that maps one signal per case for every
   viewer.
-- Assets and crown jewels (from #11543 when present; otherwise "Link assets
+- Assets and primary assets (from #11543 when present; otherwise "Link assets
   in Settings > Organization").
 - History: vertical event list with actor (person Avatar, or the system or
   agent icon of 7.0), time
@@ -924,7 +1103,7 @@ cases the caller sees, with the list's visibility rule, so each count equals
 the list it links to: `counts` by status, `open`, per CTEM phase (`phases`,
 keyed by `ctem_case_audit.PHASES`) the open and waiting cases, the counts by
 status and the five open cases that need attention first (waiting for a
-decision, then priority, then the oldest status; each with the crown jewel it
+decision, then priority, then the oldest status; each with the primary asset it
 touches among the issues the caller sees), `no_phase_open` (open cases with no
 event yet: in the band, in no stage card), `waiting` (the open cases waiting
 for a decision with their gate, the oldest one and its age in hours) and
@@ -938,17 +1117,22 @@ context: every figure 0.
 
 | Tool | Does |
 |---|---|
-| `list_ctem_cases` | filters (state, owner, priority), paging (max 50); returns the API's case rows and the counts by state |
-| `get_ctem_case` | one case with members (source, id), the latest 20 history events |
+| `list_ctem_cases` | filters (state, owner, priority), paging (max 50); returns the API's case rows and the counts by state; after a generation bump it answers the caller's older view while the new one builds, or "Not available yet ... retry in N s" (#2092) |
+| `get_ctem_case` | one case with members (source, id), the latest 20 history events; at most 100 issues (ranked, Restricted last) with `issues_total` and `issues_truncated`; reads the case's own members, never a whole view build (#2092) |
 | `create_ctem_case` | splits open issues (`source:external_id`) out of their cases into a manual case that pins them (`ctem_cases_store.create_manual_case`; a `split` event on each case they leave) |
-| `update_ctem_case` | owner, due date, note, state with `reason`; `resolved` needs `evidence`; `accepted_risk` refused for an agent (a person accepts risk) |
-| `record_ctem_case_validation` | a validation or re-test reference (provider, ref, result, kind, mitigation_only) through `ctem_case_loop.record_validation`: passed or not_exposed resolves (mitigated, watching when mitigation only), failed reopens, the events raised after the commit |
-| `record_ctem_case_ticket` | a ticket reference (integration, key, url, status) through `ctem_case_loop.record_ticket`: one entry per `(integration, key)` updated in place, a `ticket` event on change, never a state move |
+| `update_ctem_case` | owner, due date, note, state with `reason`; `resolved` needs `evidence`; `accepted_risk` refused for an agent (a person accepts risk). Answers a compact result (#2092): id, title, state, owner, due date, `changed`, `unchanged` and `history_written`, never the whole case; a gate decision identical to the newest one of its key is not recorded again (`unchanged: ["gate"]`); a committed write never answers an error; a move from an open state into `accepted_risk`, `resolved` or `mitigated_watching` (this tool, the single PATCH or the bulk endpoint) cancels every open work item and armed timer of the case, `needs_human` cleared, the result naming the transition and who made it, through `ctem_case_delete.cancel_case_work`, the helper a delete and a retired-asset resolve use (an agent's close keeps the item its run holds); a gate `answered` on a closed case is refused, nothing written (#2494) |
+| `record_ctem_case_validation` | a validation or re-test reference (provider, ref, result, kind, mitigation_only) through `ctem_case_loop.record_validation`: passed or not_exposed resolves (mitigated, watching when mitigation only), failed reopens, the events raised after the commit; answers compactly (#2473): id, title, state after the write, `state_changed` (with `previous_state` and `resolution_kind` when it moved), the `validation` entry recorded with its index and the `history_written` events, never the case re-read |
+| `record_ctem_case_ticket` | a ticket reference (integration, key, url, status) through `ctem_case_loop.record_ticket`: one entry per `(integration, key)` updated in place, a `ticket` event on change, never a state move; answers compactly (#2473): id, title, state, `state_changed`, the `ticket` recorded and the `history_written` events |
 | `decide_ctem_case_remediation` | the remediation decision (CTEM-17, gate B, key `ctem.remediation.decision`): options with figures and the recommendation; rules in `services/ctem_remediation_decision.py` (see 9ter) |
+| `merge_ctem_cases` | #2037: folds duplicate cases of one fix (`case_ids`) into `target_id` through `ctem_cases_store.merge_cases`, the rules of `POST /ctem-cases/merge`: every case named must be one the acting person sees and acts on (a view right is refused), the agent is the actor of each `merge` event; the survivor keeps its state, owner and SLA and takes the keys, members, history and signals, so a recompute maps them to it and no case reopens. The seeded loop orchestrators merge a duplicate into the case a person holds, else the oldest, and never delete it: `delete_ctem_cases` frees the fix key, so a case whose signals still match reopens at the next reconcile with a new SLA |
+
+Product spelling (#2037): an upgrade key of the same version whose product matches an open case's key once the vendor is set apart (`upgrade:-/minio@latest` and `upgrade:minio/minio@latest`, `upgrade:-/microsoft windows@latest` and `upgrade:microsoft/windows@latest`) joins that open case and adds its key there, in the recompute (`ctem_cases.same_product_key`, `_alias_owner`) and when a signal looks for its case (`ctem_case_loop._open_case_for_key`). Two known vendors that differ, two vendor-less names that differ, or another version never match; a closed case never takes an alias.
 
 ### 9ter. Remediation decision (CTEM-17)
 
 No decision structure is stored on the case: the decision is the gate `ctem.remediation.decision` of the fleet catalog (CTEM-34), its outcome a `gate` event plus one `note` event listing every option. Rule, no model call: a level or pin of the agent's home fleet that makes the gate wait always wins (no home fleet, or a fleet that does not declare the gate: it waits); otherwise, only when `risk_appetite.approval_threshold` is set, an expected loss above it (or unknown to the deciding user) waits unless the recommended option is a pre-approved runbook; with no threshold the recommendation is applied and recorded "decided by policy". A wait opens one `needs_human` work item keyed `ctem:remediation:<case id>` whose `ask` is the unified decision (`services/decision_ask.py`): question, options with their effect, recommendation; the answer is recorded with `answered_option`. Option figures come from OpenCRQ read with the acting user's identity; a user with no OpenCRQ access (`organization_context_opencrq._opencrq_connection` refuses) gets the options without cost or expected loss in the ask. The case trail (the `gate` event reason and the `note`) never carries a figure, whoever decides: every viewer of the case reads its history whatever their own OpenCRQ access, so the figures stay in the ask and the tool answer (`Decision.case_reason`, `outcome_note`). Tests: `tests/test_ctem_remediation_decision.py`, `tests/test_ctem_case_tools.py`.
+
+The card the decision opens (#2174): an option's label (120 characters), residual risk (160), time to apply (60), runbook (120) and `not_priced_reason` (120) are refused when longer, naming the field, its length and its room, never cut. An option whose effect line, once its figures (or `not priced: <reason>`), residual risk, time to apply and pre-approved runbook are joined, would pass the card's 400-character effect room (`decision_ask.MAX_EFFECT_CHARS`, measured with figures shown in a three-letter currency) is refused the same way at `parse_options`, naming the option and the composed length, so the effect is never cut (#2179). An option with no figure reads `not priced: <not_priced_reason>` (`no risk figures given` when the agent gave none) instead of `cost unknown`. The context opens with the case severity and the case's `sla_due_at` is the ask's `deadline`. The `work_item.needs_human` payload names `waits_for_user_id` and `waits_for_group_ids`, so a listener reads who the decision waits for.
 
 ### 9quater. Treatment plan in OpenCRQ (CTEM-18)
 
@@ -958,7 +1142,7 @@ On the case (CTEM-18-UI, #1068): `create_opencrq_treatment_plan` answers the pla
 
 Threat package state from the live graph (#1547): a threat package reads `validated` only when its stored page is the Grouping page, and that page is stored only once the Grouping resolves in OpenCTI's live graph. `update_ctem_case` `threat_package` runs `ctem_threat_package_live.verify_package` with the acting user's own OpenCTI access (`_user_creds`, never a system token): a live Grouping keeps its page, a Grouping found inside an open draft is recorded with that draft's page (`drafted`), one found nowhere or unreadable is refused and nothing is written. A package with no page reads `drafted` too. Packages stored before the check: `POST /api/v1/ctem-cases/threat-packages/repair` (administrators, `{"dry_run": true}` by default answers the count and the cases) re-reads each case's newest package stored with a Grouping page with the caller's access and writes a new `threat_package` event with the draft page (Grouping in an open draft) or no page (Grouping absent); a live or unreadable one is left (`unreadable` counts the latter).
 
-Admin delete of cases (#1723): `DELETE /api/v1/ctem-cases/{id}` (`dry_run` query, default false) and `POST /api/v1/ctem-cases/bulk-delete` (`case_ids` 1-200 and/or a filter `states`, `opened_by` `legacy` | `signal` | `split`, `vertical`; `dry_run` default true; `reason`), administrators only (403 otherwise). `services/ctem_case_delete.py`: the case row goes with its members and history (`ON DELETE CASCADE`); every non-terminal work item and every armed timer whose correlation key holds the case id is cancelled (the case UUID names one case, so the gate, validation, remediation, mobilize, fleet `:case:` and re-test keys and the `ctem-loop-reminder` / `ctem-gate-watch` / `ctem-loop-watch` timers are all found without a key list); each signal of the case goes back to the scope gate (`case_id` cleared, state `new`, decided again with `evaluate_one`) so the scheduled sweep regroups it, and since no case owns the fix key any more, the next case for it opens fresh with an empty history. One `audit_logs` row per case (`action` delete, `entity_type` `ctem_case`, `details.case` the summary, `details.reason`). `opened_by` reads the history as the Cases page does (`case-loop-reason.ts`): `legacy` is a case with neither a split nor a signal. The OpenCTI / OpenAEV member issues of a recompute-built case are not recreated by a recompute alone (recompute never builds a case, #1529): they come back only through their signals. Agent tools in the CTEM case set: `delete_ctem_cases` (the acting person must be an administrator, `dry_run` default true) and `bulk_update_ctem_cases` (one change on 1-200 cases, each checked as `update_ctem_case`). Tests: `tests/test_ctem_case_delete_postgres.py`, `tests/test_ctem_cases_api.py`. On the Cases list (slice 2 of #1723): each row of `GET /ctem-cases` carries `opened_by` (the same `origin` reading), the list's "Opened by" filter (`c_f_opened_by`: A signal, A split, Legacy); an administrator gets a Delete row action and a Delete selection action (`CasesDeleteAction.tsx`, drawn for no one else, no actions column for a non-administrator): the click asks `bulk-delete` with `dry_run` first, the confirm dialog shows the count and the dry-run summary (cases, open work items cancelled, timers cancelled, signals sent back to the gate) and the delete is typed back with the challenge code.
+Admin delete of cases (#1723): `DELETE /api/v1/ctem-cases/{id}` (`dry_run` query, default false) and `POST /api/v1/ctem-cases/bulk-delete` (`case_ids` 1-200 and/or a filter `states`, `opened_by` `legacy` | `signal` | `split`, `vertical`; `dry_run` default true; `reason`), administrators only (403 otherwise). `services/ctem_case_delete.py`: the case row goes with its members and history (`ON DELETE CASCADE`); every non-terminal work item and every armed timer whose correlation key holds the case id is cancelled (the case UUID names one case, so the gate, validation, remediation, mobilize, fleet `:case:` and re-test keys and the `ctem-loop-reminder` / `ctem-gate-watch` / `ctem-loop-watch` timers are all found without a key list); each signal of the case goes back to the scope gate (`case_id` cleared, state `new`, decision cleared, in ONE `UPDATE` for every case of the delete under `lock_timeout` 10 s; #1950: no gate run and no OpenCRQ read inside the delete, whose per-signal `evaluate_one` held the signal locks for minutes on a case with a thousand signals); after the commit `decide_released` decides the released signals again in the background, 200 per transaction with one OpenCRQ read per reader (`_decide_again`), never opening a case, and a gate failure leaves them `new` for the on-demand pass; a delete that waits past the lock timeout on a recompute answers 409 with the reason and deletes nothing; the scheduled sweep regroups the confirmed ones, and since no case owns the fix key any more, the next case for it opens fresh with an empty history. One `audit_logs` row per case (`action` delete, `entity_type` `ctem_case`, `details.case` the summary, `details.reason`). The threat package's security coverage (`coverage_id` of the newest `threat_package` event) is turned off before the rows are touched (#2397, `retire_coverage`): `securityCoverageFieldPatch` `auto_enrichment_disable` true with the administrator's own OpenCTI access, in the package's draft when its page is a draft page, then live when that draft is gone; the Grouping is kept (#2328); `threat_package.coverage` of the summary and of the audit row says what was done (`action`), a failure or no OpenCTI access is named and never stops the delete, and a dry run names it and calls nothing. A draft-scoped OpenCTI write answered "cannot be found" on an object (not the draft) is explained as an object the draft does not hold (`OBJECT_OUTSIDE_DRAFT_HINT` in `opencti/_common.py`). `opened_by` reads the history as the Cases page does (`case-loop-reason.ts`): `legacy` is a case with neither a split nor a signal. The OpenCTI / OpenAEV member issues of a recompute-built case are not recreated by a recompute alone (recompute never builds a case, #1529): they come back only through their signals. Agent tools in the CTEM case set: `delete_ctem_cases` (the acting person must be an administrator, `dry_run` default true) and `bulk_update_ctem_cases` (one change on 1-200 cases, each checked as `update_ctem_case`). Tests: `tests/test_ctem_case_delete_postgres.py`, `tests/test_ctem_cases_api.py`. On the Cases list (slice 2 of #1723): each row of `GET /ctem-cases` carries `opened_by` (the same `origin` reading), the list's "Opened by" filter (`c_f_opened_by`: A signal, A split, Legacy); an administrator gets a Delete row action and a Delete selection action (`CasesDeleteAction.tsx`, drawn for no one else, no actions column for a non-administrator): the click asks `bulk-delete` with `dry_run` first, the confirm dialog shows the count and the dry-run summary (cases, open work items cancelled, timers cancelled, signals sent back to the gate) and the delete is typed back with the challenge code. The case page's More actions menu ends with the same Delete for an administrator (#1950, `useCaseDelete`, last row after a separator, destructive), whatever the case's state or origin; after the delete it goes back to the Cases list. A failed delete toasts the server's reason.
 
 Threat package state from the review gate (#1573): the page alone never makes a package `validated`. `ctem_cases_view.review_outcome` reads the case's newest `ctem.analyst_review` gate event: `passed_automatically`, an answer by the analyst's mark, or an answered option whose WHOLE text is an approval (approve / accept / validate / publish, optionally followed by "and request coverage", "it" or "the package") is `approved`; an answered option whose whole text is a refusal (reject / refuse / deny / decline, optionally followed by "it" or "the package") is `rejected`; a leading word is never enough, so "Yes, but split the package first" or "No problem, publish it" stays `replan`; any other answered text (free text, another option) is `replan`; `waited` is `waiting`; an answer with no option recorded is `unread` and leaves the page rule alone. `threat_package_state(package, review)` answers `awaiting_review`, `replan` or `rejected` for those three whatever the stored page, else the #1547 page rule (`validated` or `drafted`); a case with no review gate keeps the page rule. A refusal or a re-plan stops only the package recorded before or at its answer (#1677): `ctem_cases_view.package_review` (what `threat_package_for` passes) answers no review when the case's newest `threat_package` event is newer than the newest `ctem.analyst_review` gate event and carries the draft page or no page, so the package the loop re-planned under the answer reads `drafted` (its `coverage_drafted` true when it has a coverage id) until a new review gate is written, which then decides as above; a Grouping page recorded after such an answer keeps `replan` or `rejected` (no approval covered it, and `verify_package` refuses it at record time). An option that names a retry in draft ("Retry in draft") is a re-plan, not an approval: only a whole-answer approval matches `approved` (#1576), and the new draft it produces reads `drafted` by the rule above. The repair route keeps `review_outcome` on purpose: it corrects only Grouping pages, which this rule still holds stopped. `coverage_requested` stays true for `validated` only; `coverage_drafted` and `draft_overdue` cover `drafted` and `awaiting_review`. `verify_package(..., review)` reads an open draft first while the review is not approved: the draft page is recorded, a Grouping found only live is refused (its page was never approved). The repair route reads the case's gate events too: a non-approved case's Grouping page becomes its draft page, or no page when the Grouping sits in no open draft; each corrected case names its `review`. The case page's Analyst review card shows `replan` and `rejected` as their own stages.
 
@@ -977,68 +1161,64 @@ profile tool, acting for the person the turn or run acts for. Tests:
 `tests/test_ctem_case_tools.py`, `tests/test_ctem_cases_postgres.py`
 (manual split survives a recompute).
 
-### 8.1 Read-only on any agent: the `ctem_read` group
-
-Any agent can be granted the reads through the built-in group `ctem_read`
-(`backend/app/services/builtin_tools/ctem_read.py`): `list_ctem_signals`,
-`list_ctem_cases` and `get_ctem_case`, no write function. Bound like any
-other suite, wired by `ctem_read_tools_for` in `agent_chat` and
-`assignment_engine` when a person is acted for, XTM One mode only. The rules
-are the case tools' own: the case renders through that person's source read,
-a case they see none of does not exist. A built-in CTEM agent that already
-carries a function keeps its own; the group adds only what it lacks.
-`get_ctem_case` there also answers `opened_by` (actor, time and how, from the
-oldest `created` event), `history_total` and `empty_sections` (the reason each
-empty section is empty). `list_ctem_cases` and `get_ctem_case` answer the
-same `scope` block as `list_ctem_signals` (`dev-docs/ctem-signals.md`
-section 5, #1359) for the signal members of a case, read by the case view's
-rule (`ctem_cases_view.signal_members`, the admin flag alone); under `own`,
-`hidden_by_scope` counts the case-bound signals the person does not see:
-across the organization for `list_ctem_cases`, bound to that case alone for
-`get_ctem_case` (its note then says "on this case").
-Tests: `tests/test_ctem_read_tools.py`.
-
-### 8.1bis Signals and cases on any agent: the `ctem` group
+### 8.1 One CTEM group on any agent: `ctem` (#1748, #2443)
 
 The built-in group `ctem` (`backend/app/services/builtin_tools/ctem.py`)
 offers every signal tool (`record_ctem_signal`, `record_ctem_signals`,
 `list_ctem_signals`), `triage_ctem_signals` (dismiss, restore or re-check, the
-`POST /ctem-signals/triage` rule) and every case tool to any agent it is
-bound to, wired by `ctem_tools_for` in `agent_chat` and `assignment_engine`
-after `ctem_read`, XTM One mode only. The reach is the acting person's CTEM
-right (`services/ctem_access.py`, #1748): an administrator or a `decide` right
-reads and acts on the organization's signals and cases, a `view` right reads
-them and every write is refused with the view-only message, anyone else works
-on the signals they recorded and the cases their own read shows.
+`POST /ctem-signals/triage` rule), every case tool and the administrator read
+`list_ctem_attack_surface_passes` to any agent it is bound to, wired by
+`ctem_tools_for` in `agent_chat` and `assignment_engine`, XTM One mode only.
+The reach is the acting person's CTEM right (`services/ctem_access.py`,
+#1748): an administrator or a `decide` right reads and acts on the
+organization's signals and cases, a `view` right reads them and every write is
+refused with the view-only message, checked at call time for the person the
+turn or background run acts for, whatever tools the agent carries (#2441). A
+person with no right gets no CTEM tool at all (`ctem_access.wires_ctem`).
 `triage_ctem_signals` reaches exactly what `list_ctem_signals` reads
 (`reader_scope`, agent reach): an administrator kept to their own by strict
 admin access for agent tools or the Platform Health reach triages only their
-own signals. Administrator
-operations (`delete_ctem_cases`, the `ctem_repair` group) stay administrator
-only. A function the agent already carries (by its built-in slug or through
-`ctem_read`) stays its own; the group never offers it twice.
-Tests: `tests/test_ctem_group_tools.py`.
+own signals. `delete_ctem_cases` and the passes read stay administrator only.
+A function the agent already carries by its built-in slug stays its own; the
+group never offers it twice.
 
-### 8.2 Administrator repairs: the `ctem_repair` group
+The case rules are the case tools' own: a case renders through that person's
+source read, a case they see none of does not exist. `get_ctem_case`
+(`ctem_read.build_case_read`) also answers `opened_by` (actor, time and how,
+from the oldest `created` event), `history_total` and `empty_sections` (the
+reason each empty section is empty). `list_ctem_cases` and `get_ctem_case`
+answer the same `scope` block as `list_ctem_signals` (`dev-docs/ctem-signals.md`
+section 5, #1359) for the signal members of a case, read by the case view's
+rule (`ctem_cases_view.signal_members`, the admin flag alone); under `own`,
+`hidden_by_scope` counts the case-bound signals the person does not see:
+across the organization for `list_ctem_cases`, bound to that case alone for
+`get_ctem_case` (its note then says "on this case"). `list_ctem_cases` also
+answers `scope.hidden_cases`, the open cases the person is refused, and
+`scope.unjudged_cases` with `scope.view`, the ones their view could not judge
+now (#2113); a `null` aggregate on a case means unknown for this reader, never
+none (section on scope-limited aggregates above).
 
-Three administrator routes have agent tools in the built-in group
-`ctem_repair` (`backend/app/services/builtin_tools/ctem_repair.py`), the same
-service functions and answers as the routes:
+`list_ctem_attack_surface_passes` (`ctem_repair.py`) serves
+`GET /ctem-signals/attack-surface/passes` for an administrator (anyone else
+gets that fact and nothing runs). The built-in CTEM case agents (section 8)
+carry it by their slug when they are not bound to `ctem`.
+Tests: `tests/test_ctem_group_tools.py`, `tests/test_ctem_read_tools.py`,
+`tests/test_ctem_repair_tools.py`.
 
-| Tool | Route |
-| --- | --- |
-| `list_ctem_attack_surface_passes` | `GET /ctem-signals/attack-surface/passes` |
-| `repair_ctem_attack_surface_new_hosts` | `POST /ctem-signals/attack-surface/repair-new-hosts` |
-| `repair_ctem_threat_packages` | `POST /ctem-cases/threat-packages/repair` |
+### 8.2 Former groups `ctem_read` and `ctem_repair` (#2443)
 
-The group is wired for the built-in CTEM case agents (section 8) and for any
-agent it is bound to, through `ctem_repair_tools_for` in `agent_chat` and
-`assignment_engine`, in XTM One mode only. It acts for the person the turn or
-run acts for, who must be an administrator, as on the routes; anyone else gets
-that fact and nothing runs. A repair defaults to a dry run that writes nothing
-and answers the counts and the ids; `dry_run` false applies it. There is no
-approval card: the agent reads the dry run and decides.
-Tests: `tests/test_ctem_repair_tools.py`.
+`ctem_read` (#1337) and `ctem_repair` (#1778) are [DEPRECATED] ids of `ctem`
+(`RENAMED_BUILTIN_GROUPS` in `services/builtin_tool_aliases.py`): an API call,
+an agent import or a stored row naming one is read as `ctem`, an allow list
+keyed by one applies to `ctem`, and migration `s2443ctemgrp01` rewrites the
+stored agent and assignment bindings. A former read-only binding never writes
+beyond the acting person's right: the writes are checked at call time (#2441).
+The inventory read `list_ctem_assets` (#1782) is replaced by the organization
+inventory functions (`search_assets`, `get_asset`, `lookup_assets`, whose rows
+keep each source's `source_ids`, #2385). The two one-off repairs
+(`POST /ctem-signals/attack-surface/repair-new-hosts`,
+`POST /ctem-cases/threat-packages/repair`) left the agent surface and stay
+administrator REST routes.
 
 ## 9. UX decisions (round 1, 13 Nov 2026)
 
@@ -1062,6 +1242,8 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 
 **Remediation evidence on a patch or upgrade case (#1500).** A reference carries `evidence_type`: `remediation` (a version inventory showing every in-scope endpoint at or above the fixed build) or `validation` (a detection or behaviour test). On a `patch` or `upgrade` case only remediation evidence resolves; a validation pass is recorded with `conclusive` false and the case stays open. When the writer does not say, a provider re-scan or a conclusive check (the fixed version read) counts as remediation, anything else as validation.
 
+**Exposure evidence (#2118).** A passive read that confirms the case affected (a version inventory with endpoints below the fixed build, a configuration read) is written with `evidence_type` `exposure`, `result` `failed` and `conclusive` true: `conclusive` says the check proves its claim, whichever way. A pass with exposure evidence is refused (a read that confirms the exposure never proves it gone).
+
 **No inject classification (#1810).** The platform never classifies an inject, never writes a gate's title or recommendation, and never derives `conclusive` from what an inject is. The agent reads the inject like an analyst (template, payload, targets), says in the gate what it will do to which targets and what its result will and will not prove, recommends, and sets `conclusive` itself on `record_ctem_case_validation`; the only control is the fleet's gate `ctem.validation.non_readonly` at its autonomy level (the key is kept: stored decisions, decision-item keys `ctem:validation:` and `ctem:f2:validate:`, autonomy pins and the case page read it). The former tool `assess_ctem_validation_inject` and the fields `safe_mode` and `inject_class` are gone; old validation entries that carry them stay stored as written and are no longer rendered.
 
 **Schedule.** The autonomous tick runs `ctem_case_loop.sweep` once per `CTEM_CASE_SWEEP_SECONDS` (default 3600, minimum 60, a Redis slot): opens the cases of confirmed signals still waiting (a failed opening is retried here; each signal opens in its own savepoint, so one that fails is logged, counted `skipped` and left `confirmed` without stopping the pass) and escalates every open case past its SLA once. A case key or title longer than its 300-character column is bounded: the title is cut, the key keeps its head and a digest of the whole so two long subjects never share a case.
@@ -1070,11 +1252,34 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 
 **OpenAEV results move the case (CTEM-15, #918).** The seeded assignment "OpenAEV results into cases" of the vulnerability fleet provisions the OpenAEV triggers `simulation_finished`, `finding_updated`, `finding_deleted`, `scenario_score_degraded` and `critical_asset_reached` (optional: an OpenAEV that refuses it keeps the others, its state lists it under `unsupported_events` and the next check retries); its filter drops every delivery, so it never runs. On a verified delivery, the webhook route (`services/ctem_openaev_events.py`) finds the cases that wait on the delivered object (an `openaev` validation reference whose `ref` names it, or an `openaev` member with that id; states `needs_attention`, `in_progress`, `mitigated_watching`, `resolved`), writes one `source_event` history entry per case and raises `ctem_case.validation_finished` once per case and occurrence, with `openaev {event, resource_type, resource_id, platform_url}` on top of the case routing; like the other case events it is in `VIEWER_CHECKED_EVENTS`, so only a run whose user reads the case hears it (#933). Both loop fleets hear it (routed by `trigger_path`), read the result in OpenAEV and write it with `record_ctem_case_validation`, which resolves or reopens the case. No poll, no model call before the run. A `scenario_score_degraded` delivery records a path 8 (`mitigation_regression`) signal through the signal table; an `asset_stale` delivery (an `ASSET` update trigger filtered on `asset_status` = `STALE`, raised once by OpenAEV's freshness job when an asset stays unseen past the tenant's `asset_stale_after_days`, CTEM-27) records a path 6 (`stale_asset`) signal, outside lens, the asset as subject. OpenAEV sends it only to readers of the asset in the trigger's tenant; XTM One records it as a `system` signal, which only administrators read. A `critical_asset_reached` delivery (CTEM-13: a finished simulation's attack path reached a high or very high criticality asset) records a path 4 (`proven_exploitable`) signal with the simulation as subject and its OpenAEV link, and moves the cases waiting on that simulation like `simulation_finished`; the case history names it "Critical asset reached". OpenAEV names no asset in it: the reached assets are read in its attack path with the reader's own rights.
 
-**Gate order (#1606, #1675).** A case moves scoping -> validation -> mobilization, one person decision at a time; the order is the orchestrator's judgement, stated in its persona. `services/ctem_gate_order.py` acts at the agent's work item write (`require_person_ask`, the `create_work_item` / `update_work_item` tools): (1) a `ctem.mobilize` item (`ctem:f1:case-mobilize:`, `ctem:f2:mobilize:` + case id) parked for a person while a `ctem.analyst_review` or `ctem.validation.non_readonly` item of the same case (`ctem:review:`, `ctem:validation:`, `ctem:f2:validate:`) still waits is written with a warning in the tool answer (`mobilize_before_review_warning`), never refused (#1675: ordering by code removed); two card-hygiene rules still refuse, because they protect what a person reads: (2) the question of a waiting gate item is never changed in place: the item is cancelled with a note naming its replacement and a new item is filed, so the stored decision and the cards sent keep their question; (3) a gate card never points to a run, a trace or a transcript: the evidence is in its context. Autonomous mode files no gate item, so nothing holds it. A person's own write and a system write are not checked. The doctrine the orchestrators apply (doubt moves forward, mobilize on unproven validation, deterministic closure of stale items with the reason, a stated outcome per phase) is in their personas.
+**Gate order (#1606, #1675).** A case moves scoping -> validation -> mobilization, one person decision at a time; the order is the orchestrator's judgement, stated in its persona. `services/ctem_gate_order.py` acts at the agent's work item write (`require_person_ask`, the `create_work_item` / `update_work_item` tools): (1) a `ctem.mobilize` item (`ctem:f1:case-mobilize:`, `ctem:f2:mobilize:` + case id) parked for a person while a `ctem.analyst_review` or `ctem.validation.non_readonly` item of the same case (`ctem:review:`, `ctem:validation:`, `ctem:f2:validate:`) still waits is written with a warning in the tool answer (`mobilize_before_review_warning`), never refused (#1675: ordering by code removed); two card-hygiene rules still refuse, because they protect what a person reads: (2) the question of a waiting gate item is never changed in place: the item is cancelled with a note naming its replacement and a new item is filed, so the stored decision and the cards sent keep their question; (3) a gate card never points to a run, a trace or a transcript: the evidence is in its context. Autonomous mode files no gate item, so nothing holds it. A person's own write and a system write are not checked. Every gate of the catalog has its own decision key (`ctem_case_gate_records.GATE_ITEM_PREFIXES`, #2464): `ctem:production-change:`, `ctem:accept-risk:` and `ctem:close-without-retest:` + case id beside the four above, so the case page's record names the item (`work_item_id`) and its `decision_filed` is per gate, never set by another gate's open item. The doctrine the orchestrators apply (doubt moves forward, mobilize on unproven validation, deterministic closure of stale items with the reason, a stated outcome per phase) is in their personas.
 
 **A person's answer resumes the case, whatever its key.** The seeded "Gate answered" listener of each CTEM loop (`agents/gate_answered.py`, `builtin_agents._gate_answered_assignment`) hears `work_item.status_changed` from blocked to open on every own item keyed `ctem:` whose event carries `answered: true`. Only `work_item.answer_work_item` sets that flag (`publish_transition(answered=True)`), so a decision the loop keyed outside its gate catalog (an evidence request such as `ctem:f1:version-read:`, an operational blocker such as `ctem:f1:jira-reauth:`) resumes the case, and a dependency release of a case or re-test item wakes nothing. The catalog `CTEM_F*_GATE_PREFIXES` still names the gates the case page draws and the personas file. Answers of different decisions run side by side: every seeded "Gate answered" listener names `max_concurrent_runs` (`GATE_ANSWERED_CONCURRENCY`, 5) over the one-run default of seeded event triggers, and `ordering_key: correlation_key`, so two answers on one decision key run one at a time in arrival order; the seed rewrites the trigger of an existing install at boot. The "Case opened or reopened" listeners of every case fleet and the loop's "Loop reminder due" do the same (#1923, `CTEM_CASE_LISTENER_CONCURRENCY`, 5): case events ordered by `case_id`, reminders by their timer key `ctem-loop-reminder:CASE_ID`, so one case's events run in order and another case's never wait behind them.
 
 **Visibility.** A `signal` member is shown to a viewer under the signal API's rule (an administrator, or the user it was recorded for); a case with no member the viewer sees stays absent, as before (#11613).
+
+### 9bis.1 Case opening: the administrator switch (#1951)
+
+**One persisted setting, per vertical.** `platform_settings.ctem_case_opening` (JSON, migration `c1951caseopen01`) holds `{vertical: false}` for a vertical whose case opening is paused; NULL or a missing vertical is on, the behaviour before the switch, so a fresh install opens cases. Never an environment variable. `services/ctem_case_opening.py` owns it.
+
+**Off: nothing opens, the signals wait.** The three paths that open a case from a confirmed signal read the switch first: the scope gate's confirmation (`ctem_scope_gate_store.evaluate_after_record`), a source read (`ctem_cases_store._case_of_signal`) and the scheduled sweep (`ctem_case_loop.sweep`, through `open_waiting`). A confirmed signal stays `confirmed` with `case_id` null. The rest of the sweep (SLA breaches, announce, stall) keeps running; a manual split still creates a case.
+
+**On again: an immediate drain.** `PUT /api/v1/ctem-cases/opening {on: true}` starts `ctem_case_opening.drain` in the background: sweep batches (`SWEEP_BATCH`) back to back, each in its own transaction under `pg_advisory_xact_lock(hashtext('ctem-case-drain:<vertical>'))`, committed, then its events and live frames published, so the Cases list fills while the viewer watches. It stops when a pass opens and joins nothing, when case opening is paused again, or after `DRAIN_MAX_PASSES` (100); it logs its totals. Two concurrent drains never open a fix twice: the second pass waits for the first's commit and then finds those signals linked.
+
+**API.** `GET /api/v1/ctem-cases/opening` answers `{vertical, on, waiting}` (`waiting`: confirmed signals with no case) to anyone who reads cases. `PUT` takes `{on, vertical?}`, `require_admin`; a change writes one audit row (`entity_type` `ctem_case_opening`, who, when, on or off) and raises the platform-wide event `ctem_case.opening_changed` (`vertical`, `on`, `changed_by`, `waiting`); the same value again changes nothing (`changed: false`). It answers `{vertical, on, waiting, changed, draining}`.
+
+**Screens.** `CaseOpeningSwitch` is a discreet control for administrators only (Sam, 24 Nov 2026); anyone else sees nothing in every state. On Cases it sits in the table toolbar beside Group by and Views, a 32 px control with their border, padding and label, drawn disabled until the setting is read so the toolbar never shifts; on the Signal sources header it is the same control. Its tooltip is one line, with the waiting count while it is off. While it is off the empty Cases list keeps its usual sentence and adds one muted line, "Case opening is off" (`CaseOpeningOffEmptyState`). Turning it on or off toasts one line, "Case opening on" or "Case opening off"; the opening read is polled every 3 s while signals wait.
+
+### 9bis.2 Same-kind decisions asked once per person (#2451)
+
+A reconcile burst opens hundreds of cases at once; one card per case for one person cannot be answered. `services/ctem_decision_groups.py` folds them:
+
+- **Groupable.** The validation gate (`ctem:validation:<case>`, `ctem:f2:validate:<case>`) of a `control_decay` case whose title says "for the first time" (kind `first_measure`, an asset with no test evidence yet). Every other gate keeps its own card.
+- **Stays individual.** A P1 case whose SLA ends within 72 hours (`NEAR_SLA`), so an urgent decision is never buried in a list.
+- **On write.** `work_item.create_work_item` of a groupable `needs_human` item joins the open group of its recipient and kind, `ctem:group:<kind>:<recipient>` (created on first use, owned by the same agent): the case's item is written blocked on the group (`blocked_reason` "Grouped into <id>"), with no card of its own. The group's card states the count, the priority mix and the numbered list of cases, links to the cases list, and offers approve all, approve selected (the numbers named in the answer, ranges allowed), decline all and later (keeps waiting). Its due date is the earliest due of its members, its priority the highest.
+- **On answer.** `work_item.answer_work_item` on a group fans out: each answered case's item reopens with `payload.answer` (`approve` or `decline`, the person's text, `via_group`) and raises its own answered `work_item.status_changed`, so the fleet's "Gate answered" listener applies it on the case as for an individual card. A whole answer completes the group; approve selected rewrites it with the rest.
+- **Consolidation.** The scheduled case sweep folds the open per-case items of a groupable kind into their groups (`consolidate`, 500 per pass): their cards are closed without a notification. A re-run finds none left and changes nothing.
+- **Waits on someone.** The stall sweep and the case page's "decision filed" count a grouped item as a filed decision.
 
 ## 10. Slices
 

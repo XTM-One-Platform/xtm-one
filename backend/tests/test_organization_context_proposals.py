@@ -80,7 +80,7 @@ def test_a_tracked_organization_has_its_own_contract():
     kept = proposals.validate_field_changes(TRACKED, {}, [{"field": "sector", "value": "Cloud"}])
     assert kept[0]["value"] == "Cloud"
     with pytest.raises(proposals.ProposalError, match="not a field"):
-        proposals.validate_field_changes(TRACKED, {}, [{"field": "tech_stack", "value": []}])
+        proposals.validate_field_changes(TRACKED, {}, [{"field": "software", "value": []}])
 
 
 def test_new_tracked_organizations_are_checked():
@@ -113,6 +113,22 @@ def test_the_outside_lens_settings_are_fields_of_the_primary_profile_only():
     assert values["attack_surface"]["cadence_hours"] == 24
     for path in proposals.PROPOSABLE_EXPOSURE_PATHS:
         assert path not in proposals._contract_paths("tracked")
+
+
+def test_an_agent_can_set_the_evidence_health_pass_of_the_primary_profile() -> None:
+    """#2196: the OpenCRQ evidence health opt-in is writable by an agent, validated by its model."""
+    kept = proposals.validate_field_changes(
+        PRIMARY, {}, [{"field": "evidence_health", "value": {"enabled": True, "max_age_days": 60}}]
+    )
+    value = kept[0]["value"]
+    assert value["enabled"] is True
+    assert value["max_age_days"] == 60
+    assert value["cadence_hours"] == 24
+    assert "evidence_health" not in proposals._contract_paths("tracked")
+    with pytest.raises(proposals.ProposalError, match="evidence_health"):
+        proposals.validate_field_changes(
+            PRIMARY, {}, [{"field": "evidence_health", "value": {"enabled": True, "max_age_days": 0}}]
+        )
 
 
 def test_enterprise_knowledge_is_a_field_an_agent_can_change_on_the_primary_profile() -> None:

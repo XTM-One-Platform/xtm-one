@@ -323,6 +323,23 @@ def test_a_newer_build_booted_while_an_older_one_answers_is_a_rollout_in_progres
     assert payload["previous_release"] == "1.0.0 (aaaaaaa)"
 
 
+def test_an_answering_build_no_row_names_is_the_one_rolling_out_not_an_old_one_still_serving() -> None:
+    """#2219: a row is written at a build's first boot, so an answering build that no row names is newer than every
+    recorded build: the newest row is never told 'in progress' with the new build as the old one still serving."""
+    from app.services.platform_builds import ROLLOUT_IN_PROGRESS, ROLLOUT_UNRECORDED, rollout
+
+    windows = _windows()  # type: ignore[no-untyped-call]
+    new = windows[1].first_seen_at
+    found = rollout(windows, ("1.2.0", "ccccccc3"), now=new + timedelta(minutes=3))
+    assert found.state == ROLLOUT_UNRECORDED and found.state != ROLLOUT_IN_PROGRESS
+    words = found.words()
+    assert "still serving" not in words
+    assert words.startswith("rollout in progress: 1.2.0 (ccccccc) answers and is newer than every recorded build")
+    assert found.payload()["answered_by"] == "1.2.0 (ccccccc)" and found.payload()["release"] == "1.1.0 (bbbbbbb)"
+    # A recorded older build answering is still a rollout in progress of the newest.
+    assert rollout(windows, ("1.0.0", "aaaaaaa1"), now=new + timedelta(minutes=3)).state == ROLLOUT_IN_PROGRESS
+
+
 def test_a_rollout_is_complete_once_the_newest_build_answers_and_the_previous_one_is_gone():
     from app.services.platform_builds import (
         DRAIN_GRACE,
@@ -345,10 +362,15 @@ def test_a_rollout_is_complete_once_the_newest_build_answers_and_the_previous_on
         ReleaseWindow(old.label, old.version, old.git_sha, old.first_seen_at, new + timedelta(minutes=2), new),
         windows[1],
     ]
-    found = rollout(draining, ("1.1.0", "bbbbbbb2"), now=new + timedelta(minutes=5))
+    found = rollout(draining, ("1.1.0", "bbbbbbb2"), now=new + timedelta(minutes=3))
     assert found.state == ROLLOUT_DRAINING and "may still be draining" in found.words()
     # Past the grace, the same rows read as complete.
-    assert rollout(draining, ("1.1.0", "bbbbbbb2"), now=new + timedelta(minutes=5) + DRAIN_GRACE).state == ROLLOUT_COMPLETE
+    assert (
+        rollout(draining, ("1.1.0", "bbbbbbb2"), now=new + timedelta(minutes=2) + DRAIN_GRACE).state == ROLLOUT_COMPLETE
+    )
+    # The grace is a couple of ticks, not a quarter of an hour: an old pod that stopped refreshing is gone soon,
+    # and one that still serves refreshes well within it, so "complete" is never read while it answers.
+    assert DRAIN_GRACE.total_seconds() <= 180
     # The newest build not seen for longer than the grace while an older one answers: a rollback, not a rollout.
     back = rollout(windows, ("1.0.0", "aaaaaaa1"), now=windows[1].last_seen_at + DRAIN_GRACE)
     assert back.state == ROLLOUT_ROLLED_BACK and back.words().startswith("rolled back: 1.1.0 (bbbbbbb)")
@@ -394,6 +416,76 @@ def test_the_release_history_tool_says_where_the_rollout_stands():
     assert rollout(found, ("1.0.0", "aaaaaaa1"), now=windows[1].first_seen_at).state == ROLLOUT_IN_PROGRESS
 
 
+def test_an_ancestor_newest_by_first_boot_reads_superseded_not_in_progress(monkeypatch):
+    """The rows rank builds by first boot: when the answering build's commit carries the newest row's, the newest
+    is an ancestor that booted first, and the rollout is complete on the answering build (#1987)."""
+    from app.services import platform_builds
+    from app.services.platform_builds import (
+        DRAIN_GRACE,
+        ROLLOUT_IN_PROGRESS,
+        ROLLOUT_ROLLED_BACK,
+        ROLLOUT_SUPERSEDED,
+        read_rollout,
+        rollout,
+    )
+
+    windows = _windows()
+    new = windows[1].first_seen_at
+    running = ("1.0.0", "aaaaaaa1")
+    found = rollout(windows, running, now=new + timedelta(minutes=3), running_carries_newest=True)
+    assert found.state == ROLLOUT_SUPERSEDED
+    assert "ancestor, not a rollout in progress" in found.words() and found.payload()["state"] == "superseded"
+
+    asked: list[tuple[str, str]] = []
+
+    async def _carries(_db, _user, newest, running_sha):
+        asked.append((newest.git_sha, running_sha))
+        return carries
+
+    monkeypatch.setattr(platform_builds, "running_carries", _carries)
+    carries = True
+    read = asyncio.run(read_rollout(None, windows, running, user_id="u", now=new + timedelta(minutes=3)))
+    assert read.state == ROLLOUT_SUPERSEDED and asked == [("bbbbbbb2", "aaaaaaa1")]
+    carries = None
+    late = new + timedelta(days=5) + DRAIN_GRACE
+    assert asyncio.run(read_rollout(None, windows, running, user_id="u", now=late)).state == ROLLOUT_ROLLED_BACK
+    carries = False
+    assert (
+        asyncio.run(read_rollout(None, windows, running, user_id="u", now=new + timedelta(minutes=3))).state
+        == ROLLOUT_IN_PROGRESS
+    )
+    # The newest build answering: nothing to read.
+    asked.clear()
+    asyncio.run(read_rollout(None, windows, ("1.1.0", "bbbbbbb2"), user_id="u", now=new + timedelta(days=6)))
+    assert asked == []
+
+
+def test_running_carries_reads_the_containment_reader_on_the_observed_repository(monkeypatch):
+    from app.integrations import reference_state
+    from app.services import work_item_blocked_refs
+    from app.services.platform_builds import running_carries
+
+    windows = _windows()
+    calls: list[tuple] = []
+
+    async def _reader(repo, commit, build_commit, token):
+        calls.append((repo, commit, build_commit, token))
+        return True
+
+    async def _token(_db, provider, _user):
+        return "tok" if provider == "github" else None
+
+    monkeypatch.setattr(reference_state, "_CONTAINMENT_READERS", {"github": _reader})
+    monkeypatch.setattr(work_item_blocked_refs, "reference_token", _token)
+    monkeypatch.setattr(
+        work_item_blocked_refs, "observed_deployment_repositories", lambda: frozenset({"xtm-one-platform/xtm-one"})
+    )
+    assert asyncio.run(running_carries(None, "u", windows[1], "AAAAAAA1")) is True
+    assert calls == [("xtm-one-platform/xtm-one", "bbbbbbb2", "aaaaaaa1", "tok")]
+    # A commit too short to name a build: nothing read.
+    assert asyncio.run(running_carries(None, "u", windows[1], "")) is None and len(calls) == 1
+
+
 def _history_tool(monkeypatch, windows, running=("1.1.0", "bbbbbbb2")):
     """``get_platform_release_history`` over *windows*, the process answering as *running*, no database."""
     from contextlib import asynccontextmanager
@@ -411,9 +503,13 @@ def _history_tool(monkeypatch, windows, running=("1.1.0", "bbbbbbb2")):
         return list(windows)
 
     async def _scope(_db, _user_id):
-        return SimpleNamespace(header=lambda: {"scope": "platform"})
+        return SimpleNamespace(header=lambda: {"scope": "platform"}, user=SimpleNamespace(id="u"))
+
+    async def _carries_unread(_db, _user, _newest, _running_sha):
+        return None
 
     monkeypatch.setattr(database, "async_session", _session)
+    monkeypatch.setattr(platform_builds, "running_carries", _carries_unread)
     monkeypatch.setattr(scope_module, "load_scope", _scope)
     monkeypatch.setattr(platform_builds, "release_windows", _windows_of)
     monkeypatch.setattr(platform_builds, "running_build", lambda: running)

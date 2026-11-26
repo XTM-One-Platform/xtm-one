@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import release_db_connection_before_loop
 from app.core.utils import format_exception_message
-from app.integrations.providers.openaev._common import _api, _search_body
+from app.integrations.providers.openaev._common import _api, _search_body, parse_finding
 from app.integrations.providers.opencti._common import _graphql
 from app.integrations.providers.opencti.capabilities import attach_probe
 from app.models.integration import Integration
@@ -463,7 +463,7 @@ _OCTI_STACK_SOFTWARE = """
 query CtemStackSoftware($filters: FilterGroup, $first: Int, $after: ID) {
   stixCyberObservables(types: ["Software"], filters: $filters, first: $first, after: $after) {
     pageInfo { hasNextPage endCursor }
-    edges { node { id ... on Software { name vendor cpe } } }
+    edges { node { id ... on Software { name vendor cpe x_opencti_purl } } }
   }
 }
 """
@@ -906,30 +906,6 @@ async def _octi_top_vulns(
     return data or {}
 
 
-def _cpe_vendor(cpe: str | None) -> str:
-    """The vendor field of a CPE 2.3 (``cpe:2.3:a:google:chrome:...``) or 2.2 (``cpe:/a:google:chrome``) name."""
-    value = (cpe or "").strip().lower()
-    if value.startswith("cpe:2.3:"):
-        parts = value.split(":")
-        vendor = parts[3] if len(parts) > 3 else ""
-    elif value.startswith("cpe:/"):
-        parts = value[5:].split(":")
-        vendor = parts[1] if len(parts) > 1 else ""
-    else:
-        return ""
-    return "" if vendor in ("*", "-") else vendor
-
-
-def _vendor_token(value: str) -> str:
-    return "".join(ch for ch in value.lower() if ch.isalnum())
-
-
-def _vendors_agree(a: str, b: str) -> bool:
-    """Two vendor names agree when one is unknown or both fold to the same token (``Palo Alto`` and ``palo_alto``)."""
-    a, b = _vendor_token(a), _vendor_token(b)
-    return not a or not b or a == b
-
-
 def _stack_matches(node: dict[str, Any], stack: list[dict[str, Any]]) -> str | None:
     """The stack product a Software observable stands for, or ``None``.
 
@@ -938,15 +914,21 @@ def _stack_matches(node: dict[str, Any], stack: list[dict[str, Any]]) -> str | N
     A side's vendor is its ``vendor``, else the vendor its CPE names, so a node
     of another vendor's product of the same name (an Edge node whose CPE says
     ``microsoft``) never carries its vulnerabilities into the entry's case.
+    Beyond the vendor, the identity a side knows is compared before the name
+    (#2036, :func:`ctem_product_identity.conflict`): a package entry (purl) is
+    not a server or OS product of the same name, two CPEs must name the same
+    product, and an OS-only product never matches software that runs only on
+    another OS. A field unknown on either side never rejects: a name-only
+    entry still matches by name.
     """
+    from app.services import ctem_product_identity as product_identity
+
     cpe = (node.get("cpe") or "").strip().lower()
     name = (node.get("name") or "").strip().lower()
-    vendor = (node.get("vendor") or "").strip() or _cpe_vendor(cpe)
     for entry in stack:
         if entry["cpe"] and cpe and entry["cpe"].lower() == cpe:
             return entry["label"]
-        entry_vendor = (entry.get("vendor") or "").strip() or _cpe_vendor(entry.get("cpe"))
-        if entry["product"].lower() == name and _vendors_agree(entry_vendor, vendor):
+        if entry["product"].lower() == name and product_identity.conflict(entry, node) is None:
             return entry["label"]
     return None
 
@@ -1095,6 +1077,85 @@ async def _octi_kev_tailored(
     }
 
 
+async def _funnel_scope(db: AsyncSession | None, stack: list[dict[str, Any]]) -> dict[str, dict[str, Any]] | None:
+    """The ``business_impact`` and ``policy`` scope of the primary organization (:func:`ctem_funnel.funnel_scope`).
+
+    Read in the DB phase: the profile (primary assets, prioritization policy)
+    and the primary asset index the scope gate reads. ``None`` when the profile
+    cannot be read (both layers then stay not configured).
+    """
+    if db is None:
+        return None
+    from datetime import UTC, datetime
+
+    from app.services import ctem_primary_assets
+    from app.services import organization_context as org_context
+    from app.services.ctem_funnel import funnel_scope
+
+    try:
+        row, profile = await org_context.current_profile(db)
+        if row is None:
+            return None
+        index = await ctem_primary_assets.load_index(db, row.organization_id)
+    except Exception as exc:  # a bad stored profile never breaks the posture
+        logger.info("CTEM funnel scope unreadable: %s", format_exception_message(exc))
+        return None
+    # Pure CPU work over the whole inventory: off the event loop, so a large
+    # inventory never starves /api/health (#2032).
+    return await asyncio.to_thread(
+        funnel_scope, profile=profile, index=index, stack=stack, today=datetime.now(UTC).date()
+    )
+
+
+async def _octi_scope_counts(
+    client: httpx.AsyncClient,
+    base_url: str,
+    headers: dict[str, str],
+    stack: list[dict[str, Any]],
+    scope: dict[str, dict[str, Any]],
+    user_id: str,
+) -> dict[str, int]:
+    """The ``business`` and ``policy`` counts of *scope*, read in one OpenCTI call; ``{}`` when it cannot answer.
+
+    Each counts the exploitable vulnerabilities (KEV or EPSS above the funnel
+    threshold) of the stack software its ``labels`` keep, the policy adding its
+    ``filter_groups``. A layer without labels is left out (not available).
+    """
+    wanted = {name: part for name, part in scope.items() if part.get("configured") and part.get("labels")}
+    if not wanted:
+        return {}
+    labels = {label for part in wanted.values() for label in part["labels"]}
+    sub = [e for e in stack if e.get("label") in labels]
+    software, _complete, err = await _read_stack_software(client, base_url, headers, _OCTI_STACK_SOFTWARE, sub)
+    if err:
+        logger.info("CTEM funnel scope software unavailable for user %s: %s", user_id, err)
+        return {}
+    by_label: dict[str, list[str]] = {}
+    for node in software:
+        label = _stack_matches(node, sub)
+        if label and node.get("id"):
+            by_label.setdefault(label, []).append(node["id"])
+    spec: list[tuple[str, list[str], dict[str, Any] | None]] = []
+    out: dict[str, int] = {}
+    for name, part in wanted.items():
+        ids = sorted({i for label in part["labels"] for i in by_label.get(label, [])})
+        if not ids:
+            out[name] = 0
+            continue
+        regarding = {
+            "key": ["regardingOf"],
+            "values": [{"key": "relationship_type", "values": ["has"]}, {"key": "id", "values": ids}],
+        }
+        groups = [_F_EXPLOITABLE, *(part.get("filter_groups") or [])]
+        spec.append((name, ["Vulnerability"], {"mode": "and", "filters": [regarding], "filterGroups": groups}))
+    if spec:
+        counts = await _octi_multi_counts(client, base_url, headers, spec, user_id)
+        if not counts:
+            return {}
+        out.update(counts)
+    return out
+
+
 async def _organization_software(db: AsyncSession | None) -> list[dict[str, Any]]:
     """What the primary organization runs, as the CVE matcher reads it (#1495), ``[]`` when nothing.
 
@@ -1117,7 +1178,7 @@ async def _organization_software(db: AsyncSession | None) -> list[dict[str, Any]
     except Exception as exc:  # a bad stored profile or store never breaks the posture
         logger.info("CTEM organization software unreadable: %s", format_exception_message(exc))
         return []
-    typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.tech_stack]
+    typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.software]
     return software_store.matcher_entries(software, typed)
 
 
@@ -1149,8 +1210,9 @@ def _profile_reachability(rows: tuple[list[Any], list[Any]] | None) -> dict[str,
     return reachability_split(*rows) if rows else None
 
 
-#: Most OpenAEV CVE findings the Exposed join reads; past it the join is not made (an asset unread
-#: could keep a vulnerability in, so a partial read never drops one).
+#: Most OpenAEV open CVE findings the Exposed join reads; past it the join is not made (an asset
+#: unread could keep a vulnerability in, so a partial read never drops one). Since OpenAEV #9233 a
+#: finding is one per CVE and asset, so the cap counts (CVE, asset) pairs: 2000 open pairs.
 _EXPOSED_FINDING_CAP = 2000
 _EXPOSED_PAGE = 500
 #: CVE names per OpenCTI count of the Exposed join (one multi-count call carries every chunk).
@@ -1186,7 +1248,11 @@ def _exposed_basis(inputs: dict[str, Any], tailored: dict[str, Any]) -> tuple[in
 async def _aev_cve_assets(
     base_url: str, headers: dict[str, str], client: httpx.AsyncClient
 ) -> dict[str, list[dict[str, str]]] | None:
-    """Every OpenAEV CVE finding as CVE name -> the assets it was found on, ``None`` when unread or past the cap."""
+    """Every open OpenAEV CVE finding as CVE name -> the assets it was found on, ``None`` when unread or past the cap.
+
+    A finding with no asset (a user or unknown location, OpenAEV #9233) never makes a CVE exposed:
+    the Exposed layer counts CVEs found on an asset only (partner gap abb45061).
+    """
     by_cve: dict[str, list[dict[str, str]]] = {}
     read = 0
     page = 0
@@ -1197,7 +1263,7 @@ async def _aev_cve_assets(
             "post",
             "/api/findings/search",
             "search CVE findings",
-            json=_search_body(page=page, size=_EXPOSED_PAGE, filter_group=_AEV_CVE_FILTER),
+            json=_search_body(page=page, size=_EXPOSED_PAGE, filter_group=_AEV_OPEN_CVE_FILTER),
             client=client,
         )
         if err or resp is None:
@@ -1207,20 +1273,18 @@ async def _aev_cve_assets(
         read += len(content)
         if read > _EXPOSED_FINDING_CAP or int(body.get("totalElements") or 0) > _EXPOSED_FINDING_CAP:
             return None
-        for finding in content:
-            cve = str(finding.get("finding_value") or "").strip().upper()
+        for raw in content:
+            finding = parse_finding(raw)
+            if finding is None or not finding.assets:
+                continue
+            cve = finding.value.upper()
             if not cve.startswith("CVE-"):
                 continue
             refs = by_cve.setdefault(cve, [])
-            for asset in finding.get("finding_assets") or []:
-                if isinstance(asset, dict) and (asset.get("asset_id") or asset.get("asset_name")):
-                    refs.append(
-                        {
-                            "source": "openaev",
-                            "external_id": str(asset.get("asset_id") or ""),
-                            "name": str(asset.get("asset_name") or ""),
-                        }
-                    )
+            for asset_id, asset_name in finding.assets:
+                ref = {"source": "openaev", "external_id": asset_id, "name": asset_name}
+                if ref not in refs:
+                    refs.append(ref)
         page += 1
         if not content or page >= int(body.get("totalPages") or 0):
             return by_cve
@@ -1258,16 +1322,19 @@ async def _exposed_join(
     rows: tuple[list[Any], list[Any]] | None,
     tailored: Any,
     user_id: str,
-) -> int | None:
-    """The Exposed layer's count: the last live layer's vulnerabilities left on an exposed asset (#12351).
+) -> tuple[int, int] | None:
+    """The Exposed layer's counts: ``(exposed, observed)`` of the last live layer (#12351, #2268).
 
-    The join: OpenAEV's CVE findings name the endpoints each CVE was found
-    on; a CVE whose every endpoint is proven unreachable in the profile
-    (:func:`~app.services.asset_reachability.unreachable_keys`) is counted
-    once in the last live layer through OpenCTI (its name under that layer's
-    filter) and taken off. Everything else stays in (rule 1). ``None`` when
-    the join cannot be made: no profile asset, OpenCTI or OpenAEV not read,
-    findings past the cap, a layer without a countable filter.
+    The join: OpenAEV's CVE findings name the assets each CVE was found on.
+    ``observed`` counts the layer's vulnerabilities found on at least one
+    asset; ``exposed`` those found on at least one asset not proven
+    unreachable in the profile (:func:`~app.services.asset_reachability.unreachable_keys`;
+    an asset the profile does not hold, or of unknown reachability, stays in:
+    rule 1). A vulnerability found on no asset is not exposed: it is counted
+    apart (``observed``), never passed through (partner gap abb45061). Both
+    are OpenCTI counts of the CVE names under that layer's filter. ``None``
+    when the join cannot be made: no profile asset, OpenCTI or OpenAEV not
+    read, findings past the cap, a layer without a countable filter.
     """
     if rows is None or not {"opencti", "openaev"} <= present:
         return None
@@ -1278,7 +1345,7 @@ async def _exposed_join(
     basis = _exposed_basis(inputs, (tailored.get("funnel_tailored") if isinstance(tailored, dict) else None) or {})
     if basis is None:
         return None
-    layer_count, layer_filter = basis
+    _layer_count, layer_filter = basis
     from app.services.asset_reachability import unreachable_keys
 
     try:
@@ -1286,14 +1353,24 @@ async def _exposed_join(
             by_cve = await _aev_cve_assets(aev[0], aev[1], client)
             if by_cve is None:
                 return None
-            dropped_names = unreachable_keys(by_cve, *rows)
-            if not dropped_names:
-                return layer_count
-            dropped = await _octi_named_count(client, octi[0], octi[1], layer_filter, dropped_names, user_id)
+            dropped = set(unreachable_keys(by_cve, *rows))
+            exposed_names = sorted(name for name in by_cve if name not in dropped)
+            exposed = (
+                await _octi_named_count(client, octi[0], octi[1], layer_filter, exposed_names, user_id)
+                if exposed_names
+                else 0
+            )
+            observed = (
+                await _octi_named_count(client, octi[0], octi[1], layer_filter, sorted(by_cve), user_id)
+                if by_cve
+                else 0
+            )
     except Exception as exc:  # the join is best-effort: Exposed then stays not available
         logger.warning("CTEM exposed join error (user %s): %s", user_id, format_exception_message(exc))
         return None
-    return None if dropped is None else max(0, layer_count - dropped)
+    if exposed is None or observed is None:
+        return None
+    return exposed, max(exposed, observed)
 
 
 # ── Cyber collector ──────────────────────────────────────────────────────────
@@ -1702,6 +1779,14 @@ def _aev_finished_filter(since_iso: str | None = None) -> dict:
 _AEV_CVE_FILTER = {
     "mode": "and",
     "filters": [{"key": "finding_type", "mode": "or", "operator": "eq", "values": ["cve"]}],
+}
+#: The CVE findings still open at source (OpenAEV #9233: ``finding_status`` is filterable).
+_AEV_OPEN_CVE_FILTER = {
+    "mode": "and",
+    "filters": [
+        *_AEV_CVE_FILTER["filters"],
+        {"key": "finding_status", "mode": "or", "operator": "eq", "values": ["OPEN"]},
+    ],
 }
 
 
@@ -2416,15 +2501,20 @@ def _attach_funnel(
     stage_facts: dict[str, dict[str, Any]],
     present: set[str],
     reachability: dict[str, int] | None = None,
-    exposed: int | None = None,
+    exposed: tuple[int, int] | None = None,
+    scope: dict[str, dict[str, Any]] | None = None,
+    scope_counts: dict[str, int] | None = None,
 ) -> None:
     """Turn the collected funnel inputs into the prioritization ``funnel`` (#11546).
 
     The inputs never stay in the facts: without OpenCTI there is no funnel.
     ``reachability`` is the split of the profile assets: the Exposed layer
-    shows it, and is live with ``exposed`` (:func:`_exposed_join`), else stays
+    shows it, and is live with ``exposed`` (:func:`_exposed_join`: the exposed
+    and observed counts), else stays
     not available while the vulnerabilities the funnel counts could not be
     joined to an asset (never "not configured" when the profile holds assets).
+    ``scope`` (:func:`_funnel_scope`) and ``scope_counts``
+    (:func:`_octi_scope_counts`) feed the business impact and policy layers.
     """
     prio = stage_facts.get("prioritization")
     if prio is None:
@@ -2441,7 +2531,12 @@ def _attach_funnel(
         asset_findings=prio.get("findings_cve") if "openaev" in present else None,
         filters=_funnel_link_filters(tailored),
         reachability=reachability,
-        exposed=exposed,
+        exposed=exposed[0] if exposed else None,
+        observed=exposed[1] if exposed else None,
+        business=(scope_counts or {}).get("business"),
+        business_scope=(scope or {}).get("business"),
+        policy=(scope_counts or {}).get("policy"),
+        policy_scope=(scope or {}).get("policy"),
     )
     if funnel is not None:
         prio["funnel"] = funnel
@@ -2475,6 +2570,7 @@ async def build_posture_for_user(
     stack = await _organization_software(db) if vertical == VERTICAL_CYBER else []
     asset_rows = await _profile_asset_rows(db) if vertical == VERTICAL_CYBER else None
     reachability = _profile_reachability(asset_rows)
+    scope = await _funnel_scope(db, stack) if vertical == VERTICAL_CYBER else None
 
     creds: dict[str, tuple[str, dict[str, str]] | None] = {}
     for provider in dict.fromkeys(p for p, _ in collectors):
@@ -2516,9 +2612,23 @@ async def build_posture_for_user(
             logger.warning("CTEM tailoring error (user %s): %s", user_id, format_exception_message(exc))
             return None
 
+    async def _scope_counts() -> dict[str, int]:
+        resolved = creds.get("opencti")
+        if not scope or not stack or not resolved:
+            return {}
+        base_url, headers = resolved
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                return await _octi_scope_counts(client, base_url, headers, stack, scope, user_id)
+        except Exception as exc:  # best-effort: the layers then read not available
+            logger.warning("CTEM funnel scope error (user %s): %s", user_id, format_exception_message(exc))
+            return {}
+
+    scope_task = asyncio.ensure_future(_scope_counts())
     *results, tailored = await asyncio.gather(
         *(_run(provider, collector) for provider, collector in collectors), _tailor()
     )
+    scope_counts = await scope_task
     for provider, result in results:
         if result is None:
             continue
@@ -2548,7 +2658,7 @@ async def build_posture_for_user(
         if tailored is not None and "opencti" in present:
             stage_facts.setdefault("prioritization", {}).update(tailored)
         exposed = await _exposed_join(creds, stage_facts, present, asset_rows, tailored, user_id)
-        _attach_funnel(stage_facts, present, reachability, exposed)
+        _attach_funnel(stage_facts, present, reachability, exposed, scope, scope_counts)
 
     logger.info(
         "CTEM: %s posture collected for user %s — present=%s, stages_with_data=%d",

@@ -91,9 +91,17 @@ async def test_the_scheduler_records_a_skipped_run_when_a_run_is_active(monkeypa
     agent.is_builtin = False
 
     db = MagicMock()
-    db.execute = AsyncMock(side_effect=[_result([assignment]), _result([agent])])
+    active = SimpleNamespace(
+        id=uuid.uuid4(),
+        status="running",
+        started_at=datetime.now(UTC),
+        created_at=None,
+        trigger_context={"type": "schedule"},
+    )
+    # A started run is never superseded (#2040): the fire is skipped as before.
+    db.execute = AsyncMock(side_effect=[_result([assignment]), _result([agent]), _result([active])])
     db.commit = AsyncMock()
-    active = SimpleNamespace(id=uuid.uuid4(), status="running", started_at=datetime.now(UTC), created_at=None)
+    db.rollback = AsyncMock()
     monkeypatch.setattr(autonomous, "has_active_run", AsyncMock(return_value=True))
     monkeypatch.setattr(assignment_engine, "find_active_run", AsyncMock(return_value=active))
     trigger = AsyncMock()
@@ -116,6 +124,129 @@ async def test_a_skipped_fire_that_cannot_be_recorded_never_breaks_the_tick(monk
     db = MagicMock()
     await autonomous._record_skipped_fire(db, _assignment(name="x"), "*/20 * * * *", NOW)
     db.add.assert_not_called()
+
+
+# ── (1bis) a fire never started is superseded by the next one (#2040) ─────
+
+
+def _execution_result(execution):
+    res = MagicMock()
+    res.scalar_one_or_none.return_value = execution
+    return res
+
+
+def _stale_fire(**overrides):
+    values = {
+        "id": uuid.uuid4(),
+        "status": "pending",
+        "started_at": None,
+        "created_at": NOW - timedelta(minutes=60),
+        "trigger_context": {"type": "schedule"},
+        "stop_reason": None,
+        "result_summary": None,
+        "completed_at": None,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _db(*results):
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=list(results))
+    db.flush = AsyncMock()
+    db.commit = AsyncMock()
+    db.rollback = AsyncMock()
+    return db
+
+
+@pytest.mark.asyncio
+async def test_a_fire_never_started_is_superseded_and_its_execution_cancelled():
+    run = _stale_fire()
+    execution = SimpleNamespace(
+        state="pending",
+        payload={"run_id": str(run.id)},
+        lease_owner=None,
+        lease_expires_at=None,
+        last_error=None,
+        updated_at=None,
+    )
+    db = _db(_execution_result(execution))
+    assert await schedule_overlap.supersede_never_started(db, run, now=NOW)
+    assert execution.state == "cancelled"
+    assert run.status == "skipped"
+    assert run.stop_reason == schedule_overlap.SUPERSEDED_STOP_REASON == "superseded"
+    assert run.completed_at == NOW
+    assert run.result_summary.startswith("Scheduled fire superseded: it waited for a free worker and never started")
+
+
+@pytest.mark.asyncio
+async def test_a_started_or_claimed_fire_is_never_superseded():
+    started = _stale_fire(status="running", started_at=NOW - timedelta(minutes=5))
+    assert not await schedule_overlap.supersede_never_started(_db(), started, now=NOW)
+    handed_back = _stale_fire()
+    execution = SimpleNamespace(state="pending", payload={"started_at": NOW.isoformat()})
+    assert not await schedule_overlap.supersede_never_started(_db(_execution_result(execution)), handed_back, now=NOW)
+    assert handed_back.status == "pending" and execution.state == "pending"
+    claimed_meanwhile = _stale_fire()
+    assert not await schedule_overlap.supersede_never_started(_db(_execution_result(None)), claimed_meanwhile, now=NOW)
+    assert claimed_meanwhile.status == "pending"
+
+
+def _scheduled(db_results, monkeypatch):
+    agent_id = uuid.uuid4()
+    assignment = MagicMock()
+    assignment.id = uuid.uuid4()
+    assignment.agent_id = agent_id
+    assignment.user_id = uuid.uuid4()
+    assignment.run_as_user_id = None
+    assignment.is_company_managed = False
+    assignment.enabled = True
+    assignment.run_as_all_users = False
+    assignment.name = "Alert triage"
+    assignment.last_triggered_at = datetime.now(UTC) - timedelta(hours=1)
+    assignment.trigger_config = {"cron": "0 * * * *"}
+    agent = MagicMock()
+    agent.id = agent_id
+    agent.enabled = True
+    agent.is_builtin = False
+    db = _db(_result([assignment]), _result([agent]), *db_results)
+    monkeypatch.setattr(autonomous, "has_active_run", AsyncMock(return_value=True))
+    trigger = AsyncMock(return_value=uuid.uuid4())
+    monkeypatch.setattr(autonomous, "trigger_assignment", trigger)
+    return db, trigger
+
+
+@pytest.mark.asyncio
+async def test_the_next_fire_runs_when_the_previous_one_never_started(monkeypatch):
+    stale = _stale_fire()
+    execution = SimpleNamespace(
+        state="pending", payload={}, lease_owner=None, lease_expires_at=None, last_error=None, updated_at=None
+    )
+    db, trigger = _scheduled([_result([stale]), _execution_result(execution)], monkeypatch)
+    find = AsyncMock()
+    monkeypatch.setattr(assignment_engine, "find_active_run", find)
+
+    assert await autonomous._process_scheduled_assignments(db) == 1
+
+    trigger.assert_awaited_once()
+    assert stale.status == "skipped" and stale.stop_reason == "superseded"
+    assert execution.state == "cancelled"
+    find.assert_not_awaited()  # no skipped fire recorded: never both lost
+    db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_event_run_in_the_way_still_skips_the_fire(monkeypatch):
+    event_run = _stale_fire(trigger_context={"type": "integration_event"})
+    db, trigger = _scheduled([_result([event_run])], monkeypatch)
+    active = SimpleNamespace(id=event_run.id, status="pending", started_at=None, created_at=NOW)
+    monkeypatch.setattr(assignment_engine, "find_active_run", AsyncMock(return_value=active))
+
+    assert await autonomous._process_scheduled_assignments(db) == 0
+
+    trigger.assert_not_awaited()
+    assert event_run.status == "pending"
+    assert db.add.call_args.args[0].status == "skipped"
 
 
 # ── (2) the timeout bounds the wall time across resumes ───────────────────

@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 
-import { effectText, orderedOptions } from "@/components/decisions/DecisionCard";
+import { DecisionCard, effectText, orderedOptions } from "@/components/decisions/DecisionCard";
 import {
   approvalDecisionView,
   approvalDecisions,
@@ -14,7 +14,7 @@ import {
   questionDecisionView,
   RunDecisionCard,
 } from "@/components/decisions/RunDecisionCard";
-import { workItemDecisionView } from "@/components/work-items/WorkItemDecisionCard";
+import { keepsWaitingOption, keptAnswer, workItemDecisionView } from "@/components/work-items/WorkItemDecisionCard";
 import { renderWithProviders } from "@/testing/providers";
 import type { ActionProposal, WorkItem, WorkItemAskOption } from "@/types";
 
@@ -103,6 +103,97 @@ describe("decision view helpers", () => {
     expect(view.recommendation).toBe("A");
     expect(view.context).toEqual(["line 1", "line 2"]);
     expect(view.technical).toBeTruthy();
+  });
+
+  it("leads with Open the case on an item about a case, never when the card is shown inside that case (#2370)", () => {
+    const item = {
+      id: "w3",
+      title: "T",
+      correlation_key: "ctem:validation:c1",
+      ctem_case: { id: "c1", title: "Case", state: "validating", path: "/ctem/cases/c1" },
+      ask: { question: "Run it?", options: [] },
+    } as unknown as WorkItem;
+    expect(workItemDecisionView(item, t).lead).toBeTruthy();
+    expect(workItemDecisionView(item, t, { inCase: true }).lead).toBeUndefined();
+  });
+
+  it("asks to confirm an option the agent marked confirm, and only that one (#2150)", () => {
+    const item = {
+      id: "w2",
+      title: "T",
+      ask: {
+        question: "Close the case?",
+        options: [
+          { key: "keep", label: "Keep it open" },
+          { key: "cancel", label: "Cancel the case", confirm: true },
+        ],
+        recommendation: "keep",
+      },
+    } as unknown as WorkItem;
+    const [keep, cancel] = workItemDecisionView(item, t).options;
+    expect(keep.confirm).toBeUndefined();
+    expect(keep.warning).toBeUndefined();
+    expect(cancel.confirm).toBeTruthy();
+    expect(cancel.warning).toBe(true);
+    expect(cancel.label).toBe("Cancel the case");
+  });
+});
+
+describe("a keep-waiting answer on a work item (#2500)", () => {
+  const ask = {
+    question: "Ship it?",
+    options: [
+      { key: "ship", label: "Ship it" },
+      { key: "later", label: "Later", keeps_waiting: true },
+    ],
+    recommendation: "ship",
+  };
+  const answered = (extra: Partial<WorkItem> = {}) =>
+    ({
+      id: "w9",
+      title: "T",
+      status: "blocked",
+      needs_human: true,
+      ask,
+      payload: { answer: { option: "later", label: "Later", answered_by: "Ana", answered_at: "2026-11-26T09:00:00+00:00" } },
+      ...extra,
+    }) as unknown as WorkItem;
+
+  it("reads the recorded answer of a keep-waiting option, never one of another option", () => {
+    expect(keepsWaitingOption({ ask } as unknown as WorkItem, "LATER")?.key).toBe("later");
+    expect(keepsWaitingOption({ ask } as unknown as WorkItem, "ship")).toBeNull();
+    const kept = keptAnswer(answered(), t);
+    expect(kept).toMatchObject({ label: "Later", by: "Ana", at: "2026-11-26T09:00:00+00:00" });
+    expect(kept?.waiting).toContain("its agent asks again");
+    const other = answered({ payload: { answer: { option: "ship", answered_at: "2026-11-26T09:00:00+00:00" } } });
+    expect(keptAnswer(other, t)).toBeNull();
+    expect(keptAnswer(answered({ needs_human: false }), t)).toBeNull();
+  });
+
+  it("says what the item still waits for: its other steps, else its agent", () => {
+    expect(keptAnswer(answered({ blocked_on: ["a", "b"] }), t)?.waiting).toContain("other steps");
+    const named = answered({ context: { owner_agent: { id: "g", name: "Desk", accessible: true } } } as unknown as Partial<WorkItem>);
+    expect(keptAnswer(named, t)?.waiting).toContain("Desk asks again");
+  });
+
+  it("shows the answer, folds the options behind Change the answer, never Waiting for your decision", () => {
+    const view = workItemDecisionView(answered(), t);
+    renderWithProviders(<DecisionCard view={view} canAnswer onAnswer={vi.fn()} testId="wi" />);
+    const card = screen.getByTestId("wi");
+    expect(within(card).queryByText("Waiting for your decision")).toBeNull();
+    expect(within(card).getByText("Answer recorded")).toBeTruthy();
+    expect(within(card).getByTestId("wi-answered-line").textContent).toContain("Answered: Later by Ana");
+    const change = within(card).getByTestId("wi-change");
+    expect(change.hasAttribute("open")).toBe(false);
+    expect(within(change).getAllByTestId("wi-option")).toHaveLength(2);
+  });
+
+  it("keeps the open card unchanged before any answer", () => {
+    const view = workItemDecisionView(answered({ payload: {} }), t);
+    expect(view.answered).toBeNull();
+    renderWithProviders(<DecisionCard view={view} canAnswer onAnswer={vi.fn()} testId="wo" />);
+    expect(screen.getByText("Waiting for your decision")).toBeTruthy();
+    expect(screen.queryByTestId("wo-change")).toBeNull();
   });
 });
 

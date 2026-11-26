@@ -109,7 +109,7 @@ def _signal(**kw) -> SimpleNamespace:
             "scope": {
                 "criticality": "critical",
                 "risk_scenarios": [{"id": "rs-1", "name": "Data theft"}],
-                "sources": [{"from": "crown_jewel", "name": "Customer SaaS hosting", "criticality": "critical"}],
+                "sources": [{"from": "primary_asset", "name": "Customer SaaS hosting", "criticality": "critical"}],
             },
         },
     )
@@ -137,6 +137,7 @@ def _case(**kw) -> CtemCase:
         validations=[],
         validation_plan=False,
         resolution_kind=None,
+        created_at=NOW,
     )
     base.update(kw)
     return CtemCase(**base)
@@ -164,6 +165,35 @@ async def test_signal_with_no_cve_opens_a_case_with_severity_sla_and_scenarios()
     payload = events.items[0][1]
     assert "title" not in payload and "signal_id" not in payload and payload["case_id"] == str(case.id)
     assert "severity" not in payload and "risk_scenario_ids" not in payload  # read on the case (#933)
+
+
+@pytest.mark.asyncio
+async def test_the_opened_event_is_dated_at_the_case_creation_not_at_its_publication():
+    # ctem-case-opened-event-backfill-delay: the event raised after the commit keeps the creation time.
+    db = FakeSession()
+    events = loop.PendingEvents()
+    case = await loop.open_from_signal(db, _signal(), events=events, now=NOW)
+    assert case is not None and case.created_at == NOW and case.state_since == NOW
+    assert events.items[0][1]["occurred_at"] == NOW.isoformat()
+    later = _case(created_at=NOW - timedelta(minutes=37))
+    assert loop.opened_data(later)["occurred_at"] == (NOW - timedelta(minutes=37)).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_a_case_opened_by_a_long_read_is_stamped_when_written_not_at_the_read_start(monkeypatch):
+    # ctem-case-stamps-pass-start-not-creation: the read started 11 s before the case was written.
+    from app.services import ctem_case_opening
+    from app.services import ctem_cases_store as store
+
+    async def on(_db, _vertical):
+        return True
+
+    monkeypatch.setattr(ctem_case_opening, "is_on", on)
+    read_start = datetime.now(UTC) - timedelta(seconds=11)
+    case = await store._case_of_signal(FakeSession(), _signal(), vertical="cyber", events=None, now=read_start)
+    assert case is not None
+    assert case.state_since > read_start and case.created_at == case.state_since
+    assert case.sla_due_at == case.state_since + timedelta(hours=24)
 
 
 @pytest.mark.asyncio
@@ -293,6 +323,58 @@ def test_paths_with_no_cve_map_to_their_remediation_kind(path, kind):
     assert loop.fix_of(_signal(trigger_path=path)).kind == kind
 
 
+@pytest.mark.parametrize(
+    "state,title",
+    [
+        ("never_measured", "Measure kibana.example.com for the first time (no test evidence yet)"),
+        ("attested_only", "Measure the control on kibana.example.com (attested only)"),
+        ("expired", "Re-test the control on kibana.example.com"),
+        ("unknown_state", "Restore the control on kibana.example.com: some reason"),
+        (None, "Restore the control on kibana.example.com: some reason"),
+    ],
+)
+def test_a_control_decay_case_is_worded_by_its_evidence_state(state, title):
+    """#2069: wording only; the key and kind stay those of every control_decay case of the asset."""
+    evidence = {"state": state} if state else {}
+    fix = loop.fix_of(
+        _signal(
+            trigger_path="control_decay",
+            subject_ref="kibana.example.com",
+            subject_label="kibana.example.com: some reason",
+            evidence=evidence,
+        )
+    )
+    assert fix.title == title
+    assert fix.kind == "restore_control" and fix.key == "restore_control:asset/kibana.example.com"
+
+
+def test_a_never_measured_asset_is_a_first_measurement_not_a_missing_control():
+    """#2352: a connector-discovered asset never measured asks for a first measurement."""
+    fix = loop.fix_of(
+        _signal(
+            trigger_path="control_decay",
+            subject_ref="kibana.example.com",
+            subject_label="kibana.example.com: reported by a connector but never measured",
+            evidence={
+                "event": "evidence_expired",
+                "state": "never_measured",
+                "last_evidence_at": None,
+                "sources": [{"origin": "connector"}],
+            },
+        )
+    )
+    assert fix.title.startswith("Measure kibana.example.com for the first time")
+    assert "Put in place" not in fix.title
+    assert fix.kind == "restore_control" and fix.key == "restore_control:asset/kibana.example.com"
+
+
+def test_a_mitigation_regression_keeps_the_restore_wording():
+    fix = loop.fix_of(
+        _signal(trigger_path="mitigation_regression", subject_label="WAF rule", evidence={"state": "never_measured"})
+    )
+    assert fix.title == "Restore the control on WAF rule"
+
+
 def test_a_software_subject_on_a_vulnerability_path_is_an_upgrade():
     fix = loop.fix_of(_signal(trigger_path="new_vulnerability", subject_kind="software", subject_ref="NGINX"))
     assert fix.kind == "upgrade" and fix.key == "upgrade:-/nginx@latest"
@@ -348,7 +430,7 @@ class CloseSession(FakeSession):
             return SimpleNamespace(scalars=lambda: value)
         return SimpleNamespace(scalar_one_or_none=lambda: value, first=lambda: value)
 
-    async def get(self, _model, _id):
+    async def get(self, _model: object, _id: object, **_options: object) -> object:
         return self.case
 
 
@@ -411,9 +493,34 @@ async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
         return await real(session, signal, **kw)
 
     monkeypatch.setattr(loop, "open_from_signal", open_or_fail)
+    from app.services import ctem_case_asset_retire
+
+    async def none_retired(*_a, **_k) -> int:
+        return 0
+
+    monkeypatch.setattr(ctem_case_asset_retire, "close_retired_asset_cases", none_retired)
+    from app.services import ctem_case_owner
+
+    async def no_decider(_db):
+        return None, None
+
+    async def none_owned(_db, **_k) -> int:
+        return 0
+
+    monkeypatch.setattr(ctem_case_owner, "decider_owner", no_decider)
+    monkeypatch.setattr(ctem_case_owner, "backfill_owners", none_owned)
     events = loop.PendingEvents()
     counts = await loop.sweep(db, events=events, now=NOW)
-    assert counts == {"opened": 1, "joined": 0, "skipped": 1, "sla_breached": 1, "announced": 0, "stalled": 0}
+    assert counts == {
+        "opened": 1,
+        "joined": 0,
+        "skipped": 1,
+        "sla_breached": 1,
+        "announced": 0,
+        "stalled": 0,
+        "retired": 0,
+        "owned": 0,
+    }
     bad.expired = False
     assert bad.state == "confirmed" and good.state == "case_opened"
     assert [name for name, _, _ in events.items] == [loop.CASE_OPENED, loop.CASE_SLA_BREACHED]

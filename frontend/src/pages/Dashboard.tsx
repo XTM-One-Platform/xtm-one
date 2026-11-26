@@ -153,7 +153,7 @@ function EcosystemOrbit({ integrationCount, logos }: { integrationCount: number;
       </div>
       {/* Count badge */}
       {integrationCount > 0 && (
-        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-accent/20 text-accent content-caption font-bold rounded-full px-2.5 py-0.5 border border-accent/30 backdrop-blur-xs">
+        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-accent/20 text-accent content-caption font-bold rounded-sm px-2 py-0.5 border border-accent/30 backdrop-blur-xs">
           {t_i18n("{count} connected", { count: formatCompactNumber(integrationCount) })}
         </div>
       )}
@@ -480,7 +480,7 @@ export default function Dashboard() {
                       </p>
                       {/* No room for the orbit: the count it carries. */}
                       {!d.orbit && stats.integrations_connected > 0 && (
-                        <span className="ml-auto shrink-0 bg-accent/20 text-accent content-caption font-bold rounded-full px-2.5 py-0.5 border border-accent/30">
+                        <span className="ml-auto shrink-0 bg-accent/20 text-accent content-caption font-bold rounded-sm px-2 py-0.5 border border-accent/30">
                           {t_i18n("{count} connected", { count: formatCompactNumber(stats.integrations_connected) })}
                         </span>
                       )}

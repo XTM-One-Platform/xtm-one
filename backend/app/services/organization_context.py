@@ -3,10 +3,10 @@
 """The organization profile: one structured, versioned context every agent reads.
 
 The contract is ``dev-docs/ctem-fleets.md`` section 6 (#8987): sector,
-regions, size, crown jewels, software, PIRs, risk
+regions, size, primary assets, software, PIRs, risk
 appetite, loaded hourly rate and currency, ticketing target. It replaces
 the free-text ``company-context`` knowledge base as the source agents
-reason from: a stage analyst ranks by the crown jewels it reads here and
+reason from: a stage analyst ranks by the primary assets it reads here and
 names what is missing instead of guessing it.
 
 Storage is ``organization_context_versions``: a save inserts the next
@@ -21,6 +21,7 @@ and the fleet runs alike.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from datetime import date
@@ -221,8 +222,8 @@ def _legacy_platform_id(data: Any, legacy_key: str, platform: str) -> Any:
     return data
 
 
-class CrownJewel(BaseModel):
-    """A crown jewel; ``source`` / ``external_id`` / ``sync_id`` say where it came from (#1134).
+class PrimaryAsset(BaseModel):
+    """A primary asset; ``source`` / ``external_id`` / ``sync_id`` say where it came from (#1134).
 
     ``opencrq_asset_id`` is the id before #1134, kept readable for one release:
     a row carrying it with no ``source`` reads as an OpenCRQ row, an OpenCRQ
@@ -237,7 +238,7 @@ class CrownJewel(BaseModel):
     owner: str = Field(default="", max_length=200)
     criticality: Literal["low", "medium", "high", "critical"] = "high"
     opencrq_asset_id: str = Field(default="", max_length=100)
-    #: The ``assets_exposure`` rows (assets or asset groups, by name) this crown jewel runs on (#11543).
+    #: The ``assets_exposure`` rows (assets or asset groups, by name) this primary asset runs on (#11543).
     asset_names: list[str] = Field(default_factory=list, max_length=200)
     source: str = Field(default="manual", max_length=80)
     external_id: str = Field(default="", max_length=200)
@@ -255,14 +256,14 @@ class CrownJewel(BaseModel):
         return [name for name in dict.fromkeys(str(v).strip()[:200] for v in value) if name]
 
     @model_validator(mode="after")
-    def _opencrq_id_follows(self) -> CrownJewel:
+    def _opencrq_id_follows(self) -> PrimaryAsset:
         self.source = self.source.strip().lower() or "manual"
         if self.source == "opencrq" and self.external_id:
             self.opencrq_asset_id = self.external_id[:100]
         return self
 
 
-class TechStackEntry(BaseModel):
+class SoftwareEntry(BaseModel):
     model_config = _Strict
 
     product: str = Field(min_length=1, max_length=200)
@@ -404,8 +405,8 @@ class AssetEntry(BaseModel):
     owner: str = Field(default="", max_length=200)
     #: The ``asset_groups`` entry this asset belongs to, by name (empty: none).
     group: str = Field(default="", max_length=200)
-    #: The ``tech_stack`` products running on it, by product name.
-    tech_stack: list[str] = Field(default_factory=list, max_length=100)
+    #: The software products running on it, by product name (the ``software`` rows it runs).
+    products: list[str] = Field(default_factory=list, max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=50)
     source: str = Field(default="manual", max_length=80)
     external_id: str = Field(default="", max_length=200)
@@ -462,7 +463,7 @@ class AssetEntry(BaseModel):
     def _clean_addresses(cls, value: list[str]) -> list[str]:
         return list(dict.fromkeys(v.strip()[:64] for v in value if v and v.strip()))
 
-    @field_validator("tech_stack", "tags")
+    @field_validator("products", "tags")
     @classmethod
     def _clean_names(cls, value: list[str]) -> list[str]:
         return _names(value)
@@ -533,14 +534,14 @@ class AssetGroupEntry(BaseModel):
     environment: Literal["", "production", "staging", "development", "test", "other"] = ""
     internet_facing: Literal["yes", "no", "unknown"] = "unknown"
     owner: str = Field(default="", max_length=200)
-    tech_stack: list[str] = Field(default_factory=list, max_length=100)
+    products: list[str] = Field(default_factory=list, max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=50)
     source: str = Field(default="manual", max_length=80)
     external_id: str = Field(default="", max_length=200)
     #: The sync that last wrote the row (#1134).
     sync_id: str = Field(default="", max_length=64)
 
-    @field_validator("tech_stack", "tags")
+    @field_validator("products", "tags")
     @classmethod
     def _clean_names(cls, value: list[str]) -> list[str]:
         return _names(value)
@@ -631,12 +632,12 @@ class PrioritizationPolicy(BaseModel):
     #: Keep only findings on an asset whose ``internet_facing`` is ``yes``: an opt-in that also drops the
     #: findings on user endpoints, which the Exposed layer always keeps (``asset_reachability``).
     internet_exposure_required: bool = False
-    #: Keep only findings on assets linked to a crown jewel of at least this criticality (empty: any).
-    min_crown_jewel_criticality: Literal["", "low", "medium", "high", "critical"] = ""
+    #: Keep only findings on assets linked to a primary asset of at least this criticality (empty: any).
+    min_primary_asset_criticality: Literal["", "low", "medium", "high", "critical"] = ""
     exclusions: list[PolicyExclusion] = Field(default_factory=list, max_length=200)
     accepted_risks: list[AcceptedRisk] = Field(default_factory=list, max_length=500)
     #: CTEM scope gate (#847): a confirmed signal opens a case when its subject's criticality (assets,
-    #: crown jewels, risk scenarios) is at least this; below, it goes to the watchlist.
+    #: primary assets, risk scenarios) is at least this; below, it goes to the watchlist.
     scope_min_criticality: Literal["low", "medium", "high", "critical"] = "high"
     #: CTEM scope gate (#847): a case also needs an OpenCRQ risk scenario holding the subject.
     require_risk_scenario: bool = False
@@ -660,7 +661,7 @@ RECOMMENDED_POLICY: dict[str, Any] = {
     "epss_min": 0.1,
     "kev_always_in": True,
     "internet_exposure_required": False,
-    "min_crown_jewel_criticality": "",
+    "min_primary_asset_criticality": "",
 }
 
 
@@ -692,7 +693,7 @@ class PirDetail(BaseModel):
 
     OpenCTI keeps the PIR itself; the profile keeps what the organization
     says about it: the intelligence question, its owner, how often it is
-    reviewed and the crown jewels it serves (by name).
+    reviewed and the primary assets it serves (by name).
     """
 
     model_config = _Strict
@@ -700,9 +701,9 @@ class PirDetail(BaseModel):
     question: str = Field(default="", max_length=1000)
     owner: str = Field(default="", max_length=200)
     review_cadence: Literal["", "weekly", "monthly", "quarterly", "half_yearly", "yearly"] = ""
-    crown_jewels: list[str] = Field(default_factory=list, max_length=50)
+    primary_assets: list[str] = Field(default_factory=list, max_length=50)
 
-    @field_validator("crown_jewels")
+    @field_validator("primary_assets")
     @classmethod
     def _clean(cls, value: list[str]) -> list[str]:
         return _names(value)
@@ -834,7 +835,7 @@ class EvidenceHealthPass(BaseModel):
 
 
 #: One source of a trigger path as ``provider:kind`` (``ctem_signal_sources.source_key``).
-_SOURCE_KEY = re.compile(r"^[a-z0-9_-]{1,40}:(listener|pass|pir_playbook)$")
+_SOURCE_KEY = re.compile(r"^[a-z0-9_-]{1,40}:(listener|pass|pir_playbook)(:[a-z0-9_]{1,40})?$")
 
 
 class SignalSourcesSettings(BaseModel):
@@ -843,22 +844,48 @@ class SignalSourcesSettings(BaseModel):
     Every connected source feeds every path it can by default. ``excluded``
     names, per trigger path, the sources (``provider:kind``) an administrator
     took off that path alone: an excluded source records nothing on it and is
-    not bound on it, while it keeps feeding its other paths. Set from the
-    Sources tab of CTEM > Signals.
+    not bound on it, while it keeps feeding its other paths. ``included`` names
+    the sources off by default (#2436) an administrator switched on for a path.
+    ``pirs`` names, per path a PIR playbook feeds, the OpenCTI PIRs it listens
+    to (#2436): a path absent takes its default (``ctem_signal_sources.pir_selection``),
+    an empty list provisions no playbook for that path.
+    Set from the Sources tab of CTEM > Signals.
     """
 
     model_config = _Strict
 
     excluded: dict[str, list[str]] = Field(default_factory=dict)
+    included: dict[str, list[str]] = Field(default_factory=dict)
+    pirs: dict[str, list[str]] = Field(default_factory=dict)
 
-    @field_validator("excluded")
+    @field_validator("pirs")
+    @classmethod
+    def _clean_pirs(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        from app.services.ctem_signal_sources import PIR_PATHS
+
+        out: dict[str, list[str]] = {}
+        for path, ids in value.items():
+            if path not in PIR_PATHS:
+                raise ValueError(f"{path!r} is not a trigger path a PIR playbook feeds")
+            cleaned: list[str] = []
+            for pid in ids:
+                pid = str(pid).strip()
+                if not pid or len(pid) > 100:
+                    raise ValueError(f"{pid!r} is not a PIR id")
+                if pid not in cleaned:
+                    cleaned.append(pid)
+            # An empty list is kept: it switches the path's playbook off.
+            out[path] = sorted(cleaned)
+        return out
+
+    @field_validator("excluded", "included")
     @classmethod
     def _clean_excluded(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
-        from app.services.ctem_signal_sources import PATH_SOURCES, source_key
+        from app.services.ctem_signal_sources import PATH_SOURCES
 
         out: dict[str, list[str]] = {}
         for path, keys in value.items():
-            known = {source_key(s.provider, s.kind) for s in PATH_SOURCES.get(path, ())}
+            known = {s.key for s in PATH_SOURCES.get(path, ())}
             if not known:
                 raise ValueError(f"{path!r} is not a trigger path with a source")
             cleaned: list[str] = []
@@ -903,8 +930,8 @@ class CaseAttentionWeights(BaseModel):
     priority_low: int = Field(default=0, ge=0, le=100)
     #: Points when the case holds at least one KEV issue.
     kev: int = Field(default=15, ge=0, le=100)
-    #: Points when the case touches at least one crown jewel.
-    crown_jewel: int = Field(default=15, ge=0, le=100)
+    #: Points when the case touches at least one primary asset.
+    primary_asset: int = Field(default=15, ge=0, le=100)
     #: Points when the SLA is breached or the due date has passed.
     overdue: int = Field(default=20, ge=0, le=100)
     #: Points when the due date is within ``due_soon_days``.
@@ -989,8 +1016,8 @@ class OrganizationProfile(BaseModel):
     sub_sector: str = Field(default="", max_length=100)
     regions: list[str] = Field(default_factory=list, max_length=250)
     size: Literal["", "1-50", "51-250", "251-1000", "1001-5000", "5001-20000", "20000+"] = ""
-    crown_jewels: list[CrownJewel] = Field(default_factory=list, max_length=200)
-    tech_stack: list[TechStackEntry] = Field(default_factory=list, max_length=500)
+    primary_assets: list[PrimaryAsset] = Field(default_factory=list, max_length=200)
+    software: list[SoftwareEntry] = Field(default_factory=list, max_length=500)
     #: What the organization ships, with its source repositories (#1432). Not a contract
     #: field: a vendor-free organization ships nothing; the software is what it runs.
     shipped_products: list[ShippedProduct] = Field(default_factory=list, max_length=200)
@@ -999,9 +1026,13 @@ class OrganizationProfile(BaseModel):
     #: profile names a PIR even when OpenCTI cannot be read or deleted it (#9615).
     #: Not a contract field: ``missing_fields`` ignores it.
     pir_names: dict[str, str] = Field(default_factory=dict)
-    #: What each PIR asks, its owner, cadence and the crown jewels it serves, by PIR id (#1773).
+    #: What each PIR asks, its owner, cadence and the primary assets it serves, by PIR id (#1773).
     #: Not a contract field; shown to agents only when filled.
     pir_details: dict[str, PirDetail] = Field(default_factory=dict, max_length=100)
+    #: The minimum PIR score of each PIR of ``pir_ids``, by PIR id (#2435): answered from the
+    #: Intelligence policy (``services/organization_pirs.py``); a PIR without one uses the policy's
+    #: global minimum of its kind. Not a contract field.
+    pir_min_scores: dict[str, int] = Field(default_factory=dict, max_length=500)
     risk_appetite: RiskAppetite = Field(default_factory=RiskAppetite)
     loaded_hourly_rate: float | None = Field(default=None, ge=0)
     currency: str = Field(default="", max_length=3)
@@ -1121,8 +1152,8 @@ CONTRACT_FIELDS: tuple[tuple[str, str], ...] = (
     ("sector", "sector"),
     ("regions", "regions of operation"),
     ("size", "organization size"),
-    ("crown_jewels", "primary assets and business services"),
-    ("tech_stack", "software"),
+    ("primary_assets", "primary assets and business services"),
+    ("software", "software"),
     ("pir_ids", "priority intelligence requirements (PIRs)"),
     ("risk_appetite.annual_loss_threshold", "risk appetite: annual loss threshold"),
     ("risk_appetite.approval_threshold", "risk appetite: approval threshold"),
@@ -1199,15 +1230,16 @@ def missing_for_run(missing: list[str], *, ctem_work: bool) -> list[str]:
 
 
 def holds_ctem_tools(agent: object) -> bool:
-    """Whether *agent* holds CTEM tools: a built-in CTEM case or signal agent, or the ``ctem_read`` group bound."""
+    """Whether *agent* holds CTEM tools: a built-in CTEM case or signal agent, or the ``ctem`` group bound (a former ``ctem_read`` id included, #2443)."""
+    from app.services.builtin_tool_aliases import current_group_id
+    from app.services.builtin_tools.ctem import CTEM_GROUP
     from app.services.builtin_tools.ctem_cases import CTEM_CASE_AGENT_SLUGS
-    from app.services.builtin_tools.ctem_read import CTEM_READ_GROUP
     from app.services.builtin_tools.ctem_signals import CTEM_SIGNAL_AGENT_SLUGS
 
     if agent is None:
         return False
     groups = getattr(agent, "builtin_tool_ids", None)
-    if isinstance(groups, (list, tuple, set, frozenset)) and CTEM_READ_GROUP in groups:
+    if isinstance(groups, (list, tuple, set, frozenset)) and CTEM_GROUP in {current_group_id(str(g)) for g in groups}:
         return True
     slug = getattr(agent, "slug", None) or ""
     return bool(getattr(agent, "is_builtin", False)) and slug in (CTEM_CASE_AGENT_SLUGS | CTEM_SIGNAL_AGENT_SLUGS)
@@ -1286,10 +1318,27 @@ def parse_profile(raw: Any) -> OrganizationProfile:
         raise ValueError(f"{where}: {first.get('msg', 'invalid value')}") from None
 
 
+#: The prioritization policy rules an agent may set or propose, one path each (#937, #2129): the scope
+#: threshold and the scalar rules (thresholds, the KEV override, the time to fix per severity). The lists
+#: (exclusions, accepted risks) stay with the settings form.
+POLICY_SETTABLE_PATHS: tuple[str, ...] = (
+    "prioritization_policy.scope_min_criticality",
+    "prioritization_policy.cvss_min",
+    "prioritization_policy.epss_min",
+    "prioritization_policy.kev_always_in",
+    "prioritization_policy.internet_exposure_required",
+    "prioritization_policy.min_primary_asset_criticality",
+    "prioritization_policy.require_risk_scenario",
+    "prioritization_policy.sla_hours",
+    "prioritization_policy.pir_min_score_vulnerability",
+    "prioritization_policy.pir_min_score_threat",
+    "prioritization_policy.identity_criticality",
+)
+
 #: The settable paths beyond the contract fields whose provenance a save keeps too (#1773): what an
 #: agent or the API may write (``organization_context_proposals``), so every written field says who and why.
 PROVENANCE_EXTRA_PATHS: tuple[str, ...] = (
-    "prioritization_policy.scope_min_criticality",
+    *POLICY_SETTABLE_PATHS,
     "owned_domains",
     "address_ranges",
     "attack_surface",
@@ -1369,6 +1418,29 @@ async def asset_list_counts(db: AsyncSession, organization_id: uuid.UUID | None)
     return await records.list_counts(db, organization_id)
 
 
+async def agent_list_counts(db: AsyncSession, organization_id: uuid.UUID | None) -> dict[str, int] | None:
+    """The category sizes an agent reads, counted from what ``get_organization_context`` pages (#2144).
+
+    :func:`asset_list_counts`, then ``assets_exposure`` from the merged
+    inventory (one asset per identity cluster) and ``software`` from the
+    Software entities, each once it holds a row: the paged read answers from
+    those same stores, so the summary, the ``*`` index and the "of N" of a
+    page name one size. Read only, never builds a store.
+    """
+    from app.models.organization_asset import OrganizationAsset, OrganizationSoftware
+
+    if organization_id is None:
+        return None
+    counts = dict(await asset_list_counts(db, organization_id) or {})
+    for name, model in (("assets_exposure", OrganizationAsset), ("software", OrganizationSoftware)):
+        held = (
+            await db.execute(select(func.count()).select_from(model).where(model.organization_id == organization_id))
+        ).scalar() or 0
+        if held:
+            counts[name] = int(held)
+    return counts or None
+
+
 async def hydrated_profile(db: AsyncSession, row: OrganizationContextVersion | None) -> OrganizationProfile:
     """The profile of *row* with ``assets_exposure`` and ``asset_groups`` read from the asset records (#1543).
 
@@ -1378,10 +1450,12 @@ async def hydrated_profile(db: AsyncSession, row: OrganizationContextVersion | N
     capped at 5,000 assets (``profile_lists``), the bound the readers had.
     """
     from app.services import organization_asset_records as records
+    from app.services.organization_pirs import overlay_profile
 
     profile = parse_profile(row.profile if row else {})
     if row is None or row.organization_id is None or not await records.is_imported(db, row.organization_id):
-        return profile
+        # The PIR fields come from the Intelligence policy once PIRs are stored (#2435).
+        return await overlay_profile(db, profile) if row is not None else profile
     asset_rows, group_rows, _truncated = await records.profile_lists(db, row.organization_id, cap=PROFILE_ASSET_CAP)
     assets: list[AssetEntry] = []
     for value in asset_rows:
@@ -1395,7 +1469,7 @@ async def hydrated_profile(db: AsyncSession, row: OrganizationContextVersion | N
             groups.append(AssetGroupEntry.model_validate(value))
         except ValueError:
             continue
-    return profile.model_copy(update={"assets_exposure": assets, "asset_groups": groups})
+    return await overlay_profile(db, profile.model_copy(update={"assets_exposure": assets, "asset_groups": groups}))
 
 
 async def current_profile(
@@ -1427,9 +1501,20 @@ async def software_profile(
     software = await software_store.matcher_software(db, row.organization_id)
     if not software:
         return row, profile
-    typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.tech_stack]
-    entries = [
-        TechStackEntry(
+    typed = [{"vendor": e.vendor, "product": e.product, "cpe": e.cpe, "version": e.version} for e in profile.software]
+    # Pure CPU over every software of the store (thousands on a large estate): built in a worker
+    # thread so the web event loop keeps serving requests meanwhile.
+    entries = await asyncio.to_thread(_software_entries, software, typed)
+    # model_copy does not validate: the store may hold more software than a typed list may.
+    return row, profile.model_copy(update={"software": entries})
+
+
+def _software_entries(software: list[dict[str, Any]], typed: list[dict[str, Any]]) -> list[SoftwareEntry]:
+    """The profile's software rows for the store's *software* and the *typed* rows (pure)."""
+    from app.services import organization_software_store as software_store
+
+    return [
+        SoftwareEntry(
             product=entry["product"][:200],
             vendor=entry["vendor"][:200],
             cpe=entry["cpe"][:300],
@@ -1438,8 +1523,6 @@ async def software_profile(
         )
         for entry in software_store.matcher_entries(software, typed)
     ]
-    # model_copy does not validate: the store may hold more software than a typed list may.
-    return row, profile.model_copy(update={"tech_stack": entries})
 
 
 async def list_versions(
@@ -1659,7 +1742,7 @@ async def fleet_run_context(
         block = render_for_agent(
             primary,
             ctem_work=ctem_work,
-            asset_counts=await asset_list_counts(db, primary.organization_id if primary else None),
+            asset_counts=await agent_list_counts(db, primary.organization_id if primary else None),
         )
         tracked = await scoped_tracked_blocks(db, getattr(resolved, "organization_scope", None))
         scoped = f"\n\n{FLEET_RUN_CONTEXT_HEADER}\n" + "\n\n".join([block, *tracked])
@@ -1742,7 +1825,7 @@ def removed_rows(before: dict[str, Any] | None, after: dict[str, Any]) -> dict[s
     """List field -> the names of the rows *before* held that *after* no longer holds (#1473).
 
     Both are dumped profiles. Rows are matched on ``source`` + ``external_id``
-    when synced, else on their name, so a save that drops a crown jewel (a
+    when synced, else on their name, so a save that drops a primary asset (a
     stale form, an API client sending an old copy) says which ones, never
     silently. A list field absent from *after* is not judged.
     """
@@ -1772,7 +1855,7 @@ def _drop_typed_provenance(row: dict[str, Any]) -> None:
 
 
 def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
-    """The profile as dumped before #11543: the parts it added left out, an empty crown jewel link too.
+    """The profile as dumped before #11543: the parts it added left out, an empty primary asset link too.
 
     An empty software version (CTEM-11) is left out the same way, and so are
     empty reference exchange rates (#1383), and
@@ -1783,13 +1866,13 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     their exact text for a profile that never filled the new parts.
     """
     dumped = profile.model_dump(mode="json", exclude=set(EXPOSURE_FIELDS) | set(PAGE_ONLY_FIELDS))
-    for jewel in dumped.get("crown_jewels") or []:
-        if not jewel.get("asset_names"):
-            jewel.pop("asset_names", None)
-    for entry in dumped.get("tech_stack") or []:
+    for pa_row in dumped.get("primary_assets") or []:
+        if not pa_row.get("asset_names"):
+            pa_row.pop("asset_names", None)
+    for entry in dumped.get("software") or []:
         if not entry.get("version"):
             entry.pop("version", None)
-    for key in ("crown_jewels", "tech_stack"):
+    for key in ("primary_assets", "software"):
         for row in dumped.get(key) or []:
             _drop_typed_provenance(row)
     if not dumped.get("fx_rates"):
@@ -1798,6 +1881,9 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     if not dumped.get("pir_details"):
         # #1773: a profile with no PIR detail dumps as before.
         dumped.pop("pir_details", None)
+    if not dumped.get("pir_min_scores"):
+        # #2435: a profile with no per-PIR minimum score dumps as before.
+        dumped.pop("pir_min_scores", None)
     if not dumped.get("shipped_products"):
         # #1432: a profile that ships nothing dumps as before.
         dumped.pop("shipped_products", None)

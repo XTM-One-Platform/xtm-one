@@ -28,7 +28,7 @@ import type {
 import { useFormatter } from "@/i18n";
 import { workItemPath } from "@/lib/task-routes";
 import { CASE_EVENT_LABEL } from "./case-events";
-import { GATE_LABEL, GATE_OUTCOME_LABEL, GATE_REASON_LABEL, isGateOutcome, latestGate } from "./case-gates";
+import { GATE_LABEL, GATE_OUTCOME_LABEL, GATE_REASON_LABEL, isGateOutcome, isUserId, latestGate } from "./case-gates";
 import { CASE_FACT_ICON, CaseFactChip, CaseIcon, actorIcon } from "./case-icons";
 import { CASE_STATE_LABEL, CaseStateChip } from "./cases-shared";
 
@@ -130,11 +130,16 @@ export function gateOptionLabel(option: CtemCaseGateRecord["option"]): string | 
   return option.label || OPTION_LABEL[option.key.toLowerCase()] || null;
 }
 
+/** A gate answer the case names by a word, not by a person (the analyst's mark, the tools' "a person"). */
+const NOT_A_NAME = /analyst'?s? mark|^a person$/i;
+
 /**
  * Who answered a gate when the record cannot name them (the decision row is
  * unreadable to the viewer, or the answer came as free text): the page
- * directory's name of the answering id, else the actor name the case History
- * draws on the `gate answered` event, else null ("a person").
+ * directory's name of the answering id, else the History actor when a person
+ * wrote the `gate answered` event, else the name the event gives as free text,
+ * else null ("a person"). Never the agent that recorded the answer (#2256): an
+ * agent records a person's answer, it does not decide it.
  */
 export function gateAnswererName(
   record: Pick<CtemCaseGateRecord, "key" | "answered_by">,
@@ -146,7 +151,11 @@ export function gateAnswererName(
   if (byId) return byId;
   const event = history ? latestGate(history, record.key) : null;
   if (event?.to !== "answered") return null;
-  return (event.reason && personName?.(event.reason)) || event.actor_name || null;
+  const reason = event.reason?.trim() ?? "";
+  const byReason = isUserId(reason) ? personName?.(reason) : null;
+  if (byReason) return byReason;
+  if (event.actor_type !== "agent" && event.actor_name) return event.actor_name;
+  return reason && !isUserId(reason) && !NOT_A_NAME.test(reason) ? reason : null;
 }
 
 /** The channel an answer came from (`decision_router.SURFACES`). @i18n-keys */
@@ -313,7 +322,9 @@ export function GateDecisionRecord({
       </Link>
     </Field>
   ) : null;
-  const nextSentence = (GATE_CHIP_NEXT as Partial<Record<GateChip, string>>)[chip];
+  // A waiting gate with no decision filed has nothing to answer (#1954): the card's own line says what resumes it.
+  const nextSentence =
+    waiting && record.decision_filed === false ? null : (GATE_CHIP_NEXT as Partial<Record<GateChip, string>>)[chip];
   // The second step is named for what happened: nobody decided an expired or a cancelled gate (UX round 3 on #1708, B7).
   const outcomeStep = passed
     ? { label: t_i18n("Passed"), icon: CASE_FACT_ICON.decided }
@@ -321,7 +332,8 @@ export function GateDecisionRecord({
       ? { label: t_i18n("No answer"), icon: CASE_FACT_ICON.wait }
       : status === "cancelled"
         ? { label: t_i18n("Cancelled"), icon: CASE_FACT_ICON.state }
-        : { label: t_i18n("Decided"), icon: CASE_FACT_ICON.decided };
+        : // Its own key (advisory A1 of #1708 round 4): the shared "Decided" reads as a date label in ja.
+          { label: t_i18n("Decided (gate step)"), icon: CASE_FACT_ICON.decided };
 
   return (
     <div className="flex min-w-0 flex-col gap-3" data-testid={testId} data-status={status} data-chip={chip}>
@@ -333,7 +345,7 @@ export function GateDecisionRecord({
         {statusAt && <span className="ml-auto whitespace-nowrap text-default-secondary">{when(statusAt)}</span>}
       </div>
       {showAsked && (
-        <Step label={t_i18n("Asked")} icon={CASE_FACT_ICON.asked} testId={`${testId}-step-asked`}>
+        <Step label={t_i18n("Asked (gate step)")} icon={CASE_FACT_ICON.asked} testId={`${testId}-step-asked`}>
           {record.asked_by_agent && (
             <Field label={t_i18n("Asked by")} icon={CASE_FACT_ICON.agent} testId={`${testId}-asked-by`}>
               <CaseFactChip icon={CASE_FACT_ICON.agent} tone="blue" to={`/agents/${record.asked_by_agent.id}`}>

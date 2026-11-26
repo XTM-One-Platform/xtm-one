@@ -44,15 +44,15 @@ from app.services.organization_context import (
     AssetGroupEntry,
     OrganizationProfile,
     ShippedProduct,
-    TechStackEntry,
+    SoftwareEntry,
 )
 
 #: section -> (profile field, row model, most rows the field holds).
 ROW_SECTIONS: dict[str, tuple[str, type[BaseModel], int]] = {
     "assets": ("assets_exposure", AssetEntry, 5000),
     "asset_groups": ("asset_groups", AssetGroupEntry, 500),
-    # #1495: the organization's software, written as Software entities (no ``tech_stack`` alias).
-    "software": ("tech_stack", TechStackEntry, 500),
+    # #1495: the organization's software, written as Software entities.
+    "software": ("software", SoftwareEntry, 500),
     # #1432: what the organization ships, keyed on the product like the software.
     "shipped_products": ("shipped_products", ShippedProduct, 200),
 }
@@ -68,7 +68,7 @@ LISTED = 25
 #: Row formats the upsert maps on the server: ``profile`` rows are taken as they are.
 ROW_FORMATS: tuple[str, ...] = ("profile", "intune_device", "intune_detected_app")
 #: Fields a person may have set on a synced row, kept when the source does not send them.
-_KEPT_FIELDS: tuple[str, ...] = ("environment", "owner", "tech_stack", "group", "description", "criticality")
+_KEPT_FIELDS: tuple[str, ...] = ("environment", "owner", "products", "group", "description", "criticality")
 
 
 @dataclass
@@ -377,7 +377,7 @@ def plan_software_upsert(source: str, rows: list[Any], *, existing: set[tuple[st
             plan.refused.append((label, "not an object"))
             continue
         try:
-            row = TechStackEntry.model_validate(raw)
+            row = SoftwareEntry.model_validate(raw)
         except ValidationError as exc:
             plan.refused.append((label, _first_error(exc)))
             continue

@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.agents.fleet_seed import SEEDED_FLEET_AUTONOMY_LEVEL
-from app.models.fleet import FLEET_ROLE_MEMBER
+from app.models.fleet import FLEET_ROLE_CONNECTED, FLEET_ROLE_MEMBER
 from app.services import fleet_control, fleet_reset
 from app.services.fleets import FleetActionRefusedError
 
@@ -23,7 +24,7 @@ SEEDED_INTEGRATION = str(uuid.uuid4())
 SEEDED_KB = str(uuid.uuid4())
 
 
-def _agent(**overrides):
+def _agent(**overrides: Any) -> SimpleNamespace:
     values = dict(
         id=uuid.uuid4(),
         slug="ctem-orchestrator",
@@ -59,14 +60,15 @@ def _agent(**overrides):
     return SimpleNamespace(**values)
 
 
-def _fleet(**overrides):
+def _fleet(**overrides: Any) -> SimpleNamespace:
     values = dict(
         id=uuid.uuid4(),
         name="CTEM loop",
         slug="ctem-loop",
         is_builtin=True,
         orchestrator_agent_id=None,
-        autonomy_level="full_gates",
+        # Not the shipped level (full_gates since #2279): the reset moves it back.
+        autonomy_level="low",
         approval_pins={"close_case": "run", "mobilise": "wait"},
         customer_gates=[{"key": "mine"}],
         enforce_gates_at_tool_level=True,
@@ -97,9 +99,20 @@ def _actor():
     return SimpleNamespace(id=uuid.uuid4(), email="admin@example.com", full_name="Ada Admin", is_admin=True)
 
 
-def _patches(fleet, agent, automations, *, stop=False, held=()):
+def _patches(
+    fleet: Any,
+    agent: Any,
+    automations: Any,
+    *,
+    stop: bool = False,
+    held: tuple[str, ...] = (),
+    open_work: tuple[int, int] = (0, 0),
+) -> tuple[Any, Any, list[Any]]:
     member = SimpleNamespace(
         role=FLEET_ROLE_MEMBER, agent_id=agent.id, context_inclusion="full", organization_scope=None
+    )
+    connected = SimpleNamespace(
+        role=FLEET_ROLE_CONNECTED, agent_id=uuid.uuid4(), context_inclusion=None, organization_scope=None
     )
 
     async def _get(_model, _id):
@@ -114,7 +127,7 @@ def _patches(fleet, agent, automations, *, stop=False, held=()):
             patch.object(fleet_control, "unsettable_count", AsyncMock(return_value=(1, held))),
             patch.object(fleet_control, "_fleet_automations", AsyncMock(return_value=automations)),
             patch.object(fleet_control, "unset_fleet", AsyncMock()),
-            patch.object(fleet_reset, "fleet_members", AsyncMock(return_value=[member])),
+            patch.object(fleet_reset, "fleet_members", AsyncMock(return_value=[member, connected])),
             patch.object(
                 fleet_reset,
                 "_seeded_bindings",
@@ -125,12 +138,22 @@ def _patches(fleet, agent, automations, *, stop=False, held=()):
             patch("sqlalchemy.orm.attributes.flag_modified", lambda *_a: None),
             patch("app.services.agent_config_versioning.versioned_agent_values", lambda _a: {}),
             patch("app.services.agent_config_versioning.record_agent_version_changes", AsyncMock()),
+            patch.object(fleet_reset, "_open_member_work", AsyncMock(return_value=open_work)),
         ],
     )
 
 
-async def _run(fleet, agent, automations, *, dry_run, stop=False, held=()):
-    db, member, patches = _patches(fleet, agent, automations, stop=stop, held=held)
+async def _run(
+    fleet: Any,
+    agent: Any,
+    automations: Any,
+    *,
+    dry_run: bool,
+    stop: bool = False,
+    held: tuple[str, ...] = (),
+    open_work: tuple[int, int] = (0, 0),
+) -> tuple[Any, Any]:
+    db, member, patches = _patches(fleet, agent, automations, stop=stop, held=held, open_work=open_work)
     for p in patches:
         p.start()
     try:
@@ -173,7 +196,7 @@ async def test_reset_is_refused_while_a_scoped_stop_holds_automations():
         await _run(fleet, agent, [automation], dry_run=False, held=("Daily",))
     assert exc.value.status_code == 409
     assert "Daily" in str(exc.value)
-    assert fleet.approval_pins and fleet.autonomy_level == "full_gates"
+    assert fleet.approval_pins and fleet.autonomy_level == "low"
     assert automation.run_as_user_id is not None
 
 
@@ -237,3 +260,27 @@ async def test_a_second_reset_changes_nothing():
         for p in reversed(patches):
             p.stop()
     assert not again.changed, again.audit_details()
+
+
+@pytest.mark.asyncio
+async def test_before_records_the_fleet_as_it_stood_not_the_changes() -> None:
+    # CTEM partner ticket (#2134): the audit 'before' held the change counts, so a reader saw
+    # 'autonomy_level: low' (the target) as the level before. It now holds the real state.
+    fleet, agent = _fleet(autonomy_level="autonomous"), _agent()
+    outcome, _member = await _run(fleet, agent, [], dry_run=False, open_work=(2, 5))
+
+    assert outcome.before["autonomy_level"] == "autonomous"
+    assert outcome.before["approval_pins"] == {"close_case": "run", "mobilise": "wait"}
+    assert outcome.before["customer_gates"] == 1
+    assert outcome.before["home_members"] == 1 and outcome.before["connected_agents"] == 1
+    assert outcome.before["open_gates"] == 2 and outcome.before["open_items"] == 5
+    assert outcome.autonomy_level == SEEDED_FLEET_AUTONOMY_LEVEL
+    assert fleet.autonomy_level == SEEDED_FLEET_AUTONOMY_LEVEL
+
+
+@pytest.mark.asyncio
+async def test_dry_run_names_the_open_work_the_reset_keeps() -> None:
+    fleet, agent = _fleet(), _agent()
+    outcome, _member = await _run(fleet, agent, [], dry_run=True, open_work=(1, 3))
+    assert (outcome.before["open_gates"], outcome.before["open_items"]) == (1, 3)
+    assert fleet.approval_pins  # still a dry run

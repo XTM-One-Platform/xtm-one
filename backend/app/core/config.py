@@ -2538,10 +2538,12 @@ class Settings(BaseSettings):
     #     negative value) disables the stale signal entirely.
     shared_state_stale_after_days: int = 14
     #   - ``resolved`` entries are purged by the autonomous sweep once their
-    #     resolution is older than this many days (kept briefly for audit). 0 (or
-    #     a negative value) disables the retention purge (resolved entries are
-    #     kept until an agent or admin deletes them).
-    shared_state_resolved_retention_days: int = 30
+    #     last update is older than this many days. 0 (or a negative value)
+    #     disables the retention purge (resolved entries are kept until an agent
+    #     or admin deletes them). The default of Settings > Observability >
+    #     Coordination retention: a value an administrator stores there wins
+    #     (services/coordination_retention.py), as for the four knobs below.
+    shared_state_resolved_retention_days: int = 90
     #   - Items an ``archive_key`` write moved into an archive entry are stamped
     #     and purged by the same sweep once older than this many days (an
     #     archive is an active entry, which the resolved purge never touches).
@@ -2592,10 +2594,19 @@ class Settings(BaseSettings):
     #     follow-ups nobody ever picked up disappear on their own. 0 (or
     #     negative) disables auto-cancellation.
     work_item_abandoned_after_days: int = 14
-    #   - Terminal (done/cancelled) items are purged by the sweep once they are
-    #     older than this many days (kept briefly for audit). 0 (or negative)
-    #     disables the retention purge.
-    work_item_resolved_retention_days: int = 30
+    #   - Terminal (done/cancelled) items are purged by the sweep once their
+    #     last update is older than this many days. 0 (or negative) disables the
+    #     retention purge.
+    work_item_resolved_retention_days: int = 90
+
+    # --- Assignment run retention (Operations > Executions) ---
+    #   - A finished run (completed, failed, skipped, cancelled) is deleted by
+    #     the hourly retention pass once its last activity (``completed_at``,
+    #     else ``created_at``) is older than this many days; a run still
+    #     working, waiting for a person, holding a claim or a lease, or the
+    #     parent of a kept run never is. A window saved in Settings >
+    #     Observability wins. 0 (or negative) keeps every run.
+    assignment_run_retention_days: int = 90
 
     # --- Workset lifecycle ---
     # A workset is a WORKSPACE, not a deliverable: a scoped corpus an agent
@@ -2651,6 +2662,14 @@ class Settings(BaseSettings):
     #     parked in ``blocked`` (so a permanently-failing item can't re-dispatch
     #     forever). The attempt counter rides in the item's ``payload``.
     work_item_max_dispatch_attempts: int = 5
+    #   - A decision recipient that has not signed in for this many days (or
+    #     never, or the seed admin account) is named in a warning at the write
+    #     and in the fleet health finding decision_recipient_inactive (#2390).
+    work_item_recipient_inactive_days: int = 7
+    #   - A decision gate nobody opened for this many hours reminds its
+    #     recipient once (the administrators only when nobody can answer it,
+    #     one summary per tick) and raises work_item.needs_human_unseen.
+    work_item_decision_unseen_hours: int = 24
     #   - Comma-separated targets a TEST work item (correlation key starting
     #     with ``retest:`` or ``test:``, title starting with ``Notify retest``)
     #     may notify: an address (``payload.notify.user``), a Teams chat
@@ -3318,6 +3337,14 @@ class Settings(BaseSettings):
     agent_loop_identical_call_refuse_after: int = 5
     agent_loop_similar_call_warn_after: int = 6
     agent_loop_similar_call_refuse_after: int = 10
+    # Working window of an EVENT-DRIVEN assignment run (a platform event, an
+    # integration event, a webhook), in tokens: the loop computes its
+    # working-context budgets (live tool results, the unwritten-turn
+    # protection, the compaction trigger) on this window instead of the
+    # model's when it is smaller, so a 40-call listener loop on a 1M-token
+    # model re-sends what it would on a 128k one (#2430). The model's own
+    # window still bounds every request. ``0`` keeps the model's window.
+    agent_loop_event_run_working_window_tokens: int = 128_000
     # Fraction of ``max_iterations`` at which the loop tells the model, once,
     # how much of its step budget it has spent and on which tools (the top 3
     # by call count) - before the wind-down nudge, which comes a few
@@ -3489,6 +3516,7 @@ class Settings(BaseSettings):
         "agent_loop_identical_call_refuse_after",
         "agent_loop_similar_call_warn_after",
         "agent_loop_similar_call_refuse_after",
+        "agent_loop_event_run_working_window_tokens",
         "agent_loop_vision_views_per_turn",
         "agent_loop_read_windows_per_file",
     )

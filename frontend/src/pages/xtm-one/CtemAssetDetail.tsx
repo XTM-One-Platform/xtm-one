@@ -34,7 +34,7 @@ import { AssetOverviewCard, AssetSection } from "./ctem/AssetOverview";
 import { deletableRows, recordRefs } from "./ctem/inventory-entries";
 import { InventoryDeleteAction } from "./ctem/InventoryDeleteAction";
 import { InventoryEntryDialog, type EntryDialogMode } from "./ctem/InventoryEntryDialog";
-import { INVENTORY_PATH, assetGroupPath, isCodeRepository, softwarePath, sourceLabel } from "./ctem/inventory";
+import { INVENTORY_PATH, assetGroupPath, isCodeRepository, primaryAssetPath, softwarePath, sourceLabel } from "./ctem/inventory";
 import { CategoryMark, SourceLogo } from "./ctem/inventory-icons";
 
 /** The Software (or Dependencies) table opens at 25 rows, the platform's page size; the picker changes it. */
@@ -87,8 +87,8 @@ export default function CtemAssetDetail() {
 
   const openCases = (cases.data?.cases ?? []).filter((c) => OPEN_STATES.has(c.state));
   const nameKey = (data?.name ?? "").trim().toLowerCase();
-  const jewels = nameKey
-    ? (context?.profile.crown_jewels ?? []).filter((j) => (j.asset_names ?? []).some((n) => n.trim().toLowerCase() === nameKey))
+  const primaryAssets = nameKey
+    ? (context?.profile.primary_assets ?? []).filter((j) => (j.asset_names ?? []).some((n) => n.trim().toLowerCase() === nameKey))
     : [];
 
   const onSbom = (file: File | undefined) => {
@@ -334,16 +334,16 @@ export default function CtemAssetDetail() {
       </AssetSection>
 
       <AssetSection
-        id="asset-jewels"
+        id="asset-primary-assets"
         title={t_i18n("Primary assets it supports")}
-        count={jewels.length}
-        empty={jewels.length === 0}
+        count={primaryAssets.length}
+        empty={primaryAssets.length === 0}
         emptyLabel={t_i18n("No primary asset names this asset.")}
       >
-        <ul className="flex flex-wrap gap-2" data-testid="ctem-asset-jewels">
-          {jewels.map((j) => (
+        <ul className="flex flex-wrap gap-2" data-testid="ctem-asset-primary-assets">
+          {primaryAssets.map((j) => (
             <li key={j.name}>
-              <Link to="/settings/organization?card=crown_jewels" className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
+              <Link to={primaryAssetPath(j.name)} className="inline-flex items-center gap-1.5 text-sm underline-offset-2 hover:underline">
                 <Icon name="gem" size={16} className="text-default-secondary" aria-hidden />
                 {j.name}
               </Link>

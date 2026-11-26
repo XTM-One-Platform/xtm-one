@@ -72,9 +72,9 @@ _CASE_SCHEMA: dict = {
             "type": "object",
             "properties": {
                 "services": {"type": "array", "items": {"type": "string"}},
-                "crown_jewels": {"type": "array", "items": {"type": "string"}},
+                "primary_assets": {"type": "array", "items": {"type": "string"}},
             },
-            "required": ["services", "crown_jewels"],
+            "required": ["services", "primary_assets"],
         },
         "expected_loss": {
             "type": "object",
@@ -176,8 +176,8 @@ THIRD_PARTY_RISK_ASSIGNMENTS: list[dict] = [
             "An OpenCTI {{trigger.entity_type}} was created: {{trigger.entity_name}} ({{trigger.entity_id}}). "
             "The run block names the tracked organizations it concerns.\n"
             "Each tracked organization this event names by identity already has a third_party_event "
-            "signal (path 11, recorded before this run): the scope gate opens its CTEM case when a crown "
-            "jewel depends on it, else watches it. Read it with list_ctem_signals when you hold it.\n"
+            "signal (path 11, recorded before this run): the scope gate opens its CTEM case when a primary "
+            "asset depends on it, else watches it. Read it with list_ctem_signals when you hold it.\n"
             "Run one case of the third-party risk loop: a provider gets a supplier-exposure case "
             "(dependency, expected loss from OpenCRQ, actions behind approval work items); a "
             "customer, partner or subsidiary gets an awareness case with no action toward them. "

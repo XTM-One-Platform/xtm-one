@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""#1778: the ``ctem_repair`` group, the CTEM administrator repairs from an agent."""
+"""#1778, #2443: the CTEM attack surface passes read (the former ``ctem_repair`` group is renamed into ``ctem``)."""
 
 from __future__ import annotations
 
@@ -24,10 +24,9 @@ import pytest
 
 from app.core import database
 from app.core.config import settings
-from app.services import ctem_attack_surface, ctem_threat_package_live, organizations
+from app.services import ctem_attack_surface, organizations
 from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
 from app.services.builtin_tools import (
-    AGENT_KEYED_BUILTIN_TOOL_IDS,
     CTEM_REPAIR_TOOL_NAMES,
     build_ctem_repair_tools,
     ctem_repair_tools_for,
@@ -78,20 +77,10 @@ def world(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         state.calls.append(("passes", org, limit))
         return [SimpleNamespace(id="p1")]
 
-    async def _hosts(_db: Any, org: Any, *, dry_run: bool = True) -> dict[str, Any]:
-        state.calls.append(("hosts", org, dry_run))
-        return {"discarded": 2, "signal_ids": ["s1", "s2"]}
-
-    async def _packages(_db: Any, org: Any, user_id: str, *, dry_run: bool = True) -> dict[str, Any]:
-        state.calls.append(("packages", org, user_id, dry_run))
-        return {"corrected": 1, "case_ids": ["c1"]}
-
     monkeypatch.setattr(database, "async_session", _session)
     monkeypatch.setattr(organizations, "get_primary", _primary)
     monkeypatch.setattr(ctem_attack_surface, "list_passes", _passes)
     monkeypatch.setattr(ctem_attack_surface, "pass_to_dict", lambda row: {"id": row.id})
-    monkeypatch.setattr(ctem_attack_surface, "repair_partial_read_new_hosts", _hosts)
-    monkeypatch.setattr(ctem_threat_package_live, "repair_stored_packages", _packages)
     return state
 
 
@@ -100,43 +89,32 @@ def _tools(user_id: str) -> Any:
     return executor
 
 
-def test_the_group_is_registered_agent_keyed_with_three_tools() -> None:
-    group = next(g for g in BUILTIN_TOOL_GROUPS if g.id == "ctem_repair")
-    assert group.agent_keyed
-    assert "ctem_repair" in AGENT_KEYED_BUILTIN_TOOL_IDS
+def test_only_the_passes_read_is_left_on_the_agent_surface() -> None:
+    """#2443: the two one-off repairs left the agent surface (they stay admin REST routes)."""
+    assert not {"ctem_repair", "ctem_read"} & {g.id for g in BUILTIN_TOOL_GROUPS}
     defs, _ = build_ctem_repair_tools(user_id="")
-    assert tuple(d.name for d in defs) == CTEM_REPAIR_TOOL_NAMES
+    assert tuple(d.name for d in defs) == CTEM_REPAIR_TOOL_NAMES == ("list_ctem_attack_surface_passes",)
+    assert all(d.source == "builtin:ctem" for d in defs)
 
 
-def test_offered_to_the_ctem_case_agents_and_when_bound(monkeypatch: pytest.MonkeyPatch, xtm_one: None) -> None:
-    assert offers_ctem_repair_tools(_agent(), ["ctem_repair"])
-    assert offers_ctem_repair_tools(_agent("ctem-threat-response-orchestrator", builtin=True), [])
+def test_offered_by_slug_to_the_ctem_case_agents_not_bound_to_ctem(
+    monkeypatch: pytest.MonkeyPatch, xtm_one: None
+) -> None:
+    case_agent = _agent("ctem-threat-response-orchestrator", builtin=True)
+    assert offers_ctem_repair_tools(case_agent, [])
     assert not offers_ctem_repair_tools(_agent("ctem-threat-response-orchestrator", builtin=False), [])
-    assert not offers_ctem_repair_tools(_agent(), ["ctem_read"])
-    assert ctem_repair_tools_for(_agent(), ["ctem_repair"], user_id="") is None
-    monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: True), raising=False)
+    # Bound to ctem (or a former id): the group serves it, never twice.
+    assert not offers_ctem_repair_tools(case_agent, ["ctem"])
     assert not offers_ctem_repair_tools(_agent(), ["ctem_repair"])
+    assert ctem_repair_tools_for(case_agent, [], user_id="") is None
+    monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: True), raising=False)
+    assert not offers_ctem_repair_tools(case_agent, [])
 
 
-async def test_a_dry_run_is_the_default_and_answers_counts_and_ids(world: SimpleNamespace) -> None:
+async def test_the_pass_summary_reads_for_an_administrator(world: SimpleNamespace) -> None:
     admin = SimpleNamespace(id=uuid.uuid4(), is_admin=True)
     world.db = _Db(admin)
-    executor = _tools(str(admin.id))
-    hosts = json.loads(await executor.handler("repair_ctem_attack_surface_new_hosts")())
-    packages = json.loads(await executor.handler("repair_ctem_threat_packages")())
-    assert hosts == {"discarded": 2, "signal_ids": ["s1", "s2"], "dry_run": True}
-    assert packages == {"corrected": 1, "case_ids": ["c1"], "dry_run": True}
-    assert ("hosts", ORG, True) in world.calls
-    assert ("packages", ORG, str(admin.id), True) in world.calls
-
-
-async def test_apply_passes_dry_run_false_and_the_pass_summary_reads(world: SimpleNamespace) -> None:
-    admin = SimpleNamespace(id=uuid.uuid4(), is_admin=True)
-    world.db = _Db(admin)
-    executor = _tools(str(admin.id))
-    await executor.handler("repair_ctem_threat_packages")(dry_run=False)
-    assert ("packages", ORG, str(admin.id), False) in world.calls
-    passes = json.loads(await executor.handler("list_ctem_attack_surface_passes")(limit=500))
+    passes = json.loads(await _tools(str(admin.id)).handler("list_ctem_attack_surface_passes")(limit=500))
     assert passes == {"passes": [{"id": "p1"}], "count": 1}
     assert ("passes", ORG, ctem_attack_surface.MAX_PASSES) in world.calls
 
@@ -144,8 +122,25 @@ async def test_apply_passes_dry_run_false_and_the_pass_summary_reads(world: Simp
 async def test_a_non_administrator_gets_the_fact_and_nothing_runs(world: SimpleNamespace) -> None:
     member = SimpleNamespace(id=uuid.uuid4(), is_admin=False)
     world.db = _Db(member)
-    executor = _tools(str(member.id))
-    for name in CTEM_REPAIR_TOOL_NAMES:
-        answer = await executor.handler(name)()
-        assert answer.startswith("Not run: these CTEM repairs are for an administrator")
+    answer = await _tools(str(member.id)).handler("list_ctem_attack_surface_passes")()
+    assert answer.startswith("Not run: these CTEM repairs are for an administrator")
     assert world.calls == []
+
+
+async def test_an_empty_pass_list_says_why(world: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2331: no pass record answers why_empty instead of a bare empty list."""
+
+    async def _none(_db: Any, _org: Any, *, limit: int = 10) -> list[Any]:
+        return []
+
+    async def _why(_db: Any, org: Any) -> str:
+        world.calls.append(("why", org))
+        return "the attack surface pass is turned off"
+
+    monkeypatch.setattr(ctem_attack_surface, "list_passes", _none)
+    monkeypatch.setattr(ctem_attack_surface, "why_no_pass", _why)
+    admin = SimpleNamespace(id=uuid.uuid4(), is_admin=True)
+    world.db = _Db(admin)
+    passes = json.loads(await _tools(str(admin.id)).handler("list_ctem_attack_surface_passes")())
+    assert passes == {"passes": [], "count": 0, "why_empty": "the attack surface pass is turned off"}
+    assert ("why", ORG) in world.calls

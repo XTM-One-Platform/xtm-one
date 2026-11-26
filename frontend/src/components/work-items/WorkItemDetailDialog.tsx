@@ -56,6 +56,7 @@ import { Tip } from "@/components/ui/tooltip";
 import { DisclosureSummary } from "@/components/ui/disclosure";
 import { BlockedStatusBadge } from "@/components/work-items/BlockedStatusBadge";
 import { WorkItemAskAgent, offersAskTheAgent } from "@/components/work-items/WorkItemAskAgent";
+import { WorkItemCaseLink } from "@/components/work-items/WorkItemCaseLink";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import { WorkItemFiles } from "@/components/work-items/WorkItemFiles";
 import { CLOSE_EFFECTS, REQUEUE_EFFECT, staleBadgeText, staleReasonText } from "@/lib/work-item-effects";
@@ -81,6 +82,7 @@ import { formatShortDateTimeIntl, formatTimeAgo } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 import {
   FLEET_IMPACT_KIND_LABELS,
+  answeredKeepsWaiting,
   pickupExplanation,
   PRIORITY_LABELS,
   STATUS_LABELS,
@@ -182,6 +184,9 @@ function WhoActs({ item, context }: { item: WorkItem; context: WorkItemContext }
   const pullRequests = pullRequestsOf(item.payload);
   // The badge counts what the "Waits for" list shows.
   const listedBlockers = item.status === "blocked" ? listedBlockersOf(item) : [];
+  // A keeps_waiting answer is recorded (#2500): the item no longer waits for a decision.
+  const answered = answeredKeepsWaiting(item);
+  const waitsForPerson = !!item.needs_human && !answered;
   return (
     <Section icon={Zap} title={t_i18n("Who acts on it")}>
       <Field label={t_i18n("Owner agent")}>
@@ -252,9 +257,10 @@ function WhoActs({ item, context }: { item: WorkItem; context: WorkItemContext }
           waiting={blockedKind(item) === "waiting"}
           pullRequest={pickup.pull_request}
           pullRequests={pickup.pull_requests}
+          answered={answered}
         />
         <p className="min-w-0 flex-1">
-          {t_i18n(pickupExplanation(pickup.state, item.can_write), {
+          {t_i18n(pickupExplanation(pickup.state, item.can_write, answered), {
             agent: agentWord,
             date: pickup.available_at ? formatShortDateTime(pickup.available_at) : "",
             count: waitingPullRequestCount(pickup),
@@ -288,9 +294,9 @@ function WhoActs({ item, context }: { item: WorkItem; context: WorkItemContext }
         </Field>
       ) : null}
       {/* The pull requests, issues, reason or person it waits for. */}
-      {item.status === "blocked" && (pendingBlockedRefs(item).length || item.blocked_reason?.trim() || item.needs_human) ? (
+      {item.status === "blocked" && (pendingBlockedRefs(item).length || item.blocked_reason?.trim() || waitsForPerson) ? (
         <Field label={listedBlockers.length ? t_i18n("Also waits for") : t_i18n("Waits for")}>
-          <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={!!item.needs_human} />
+          <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={waitsForPerson} />
         </Field>
       ) : null}
       {autoBlocked && (
@@ -508,6 +514,8 @@ function Body({ item, actions, onClose }: { item: WorkItem; actions: WorkItemAct
 
       <div className="max-h-[62vh] space-y-5 overflow-y-auto pr-1" data-testid="work-item-detail">
         {deciding && <WorkItemDecisionCard item={item} canAnswer={!!actions.answer} onAnswered={onClose} />}
+        {/* An item on a CTEM case, answered or not, opens its case first (#2370); the card above carries it when deciding. */}
+        {!deciding && <WorkItemCaseLink item={item} />}
         {!deciding && !scheduled && offersAskTheAgent(item) && (
           <section className="rounded-sm border border-elevation-subtle p-3" data-testid="work-item-ask-agent-section">
             <WorkItemAskAgent item={item} bordered={false} onDone={onClose} />

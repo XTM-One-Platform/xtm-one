@@ -328,6 +328,10 @@ class _SyncSession(FakeSession):
         cases = self.cases
         return type("R", (), {"scalars": lambda self: type("S", (), {"all": lambda s: list(cases)})()})()
 
+    async def get(self, _model: object, case_id: object, **_options: object) -> CtemCase | None:
+        # The locked re-read of a case before a write (#2373).
+        return next((c for c in self.cases if c.id == case_id), None)
+
 
 @pytest.mark.asyncio
 async def test_scheduled_pass_never_creates_then_pulls_pushes_and_raises_the_retest_once(monkeypatch):

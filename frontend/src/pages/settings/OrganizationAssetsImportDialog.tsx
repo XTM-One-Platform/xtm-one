@@ -101,7 +101,7 @@ export function OrganizationAssetsImportDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>{t_i18n("Import assets from CSV")}</DialogTitle>
           <DialogDescription>
-            {t_i18n("Upload a CSV with columns: name, type, environment, internet_facing, owner, group, crown_jewels. Rows are upserted by name.")}
+            {t_i18n("Upload a CSV with columns: name, type, environment, internet_facing, owner, group, primary_assets. Rows are upserted by name.")}
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="space-y-4">
@@ -146,18 +146,18 @@ export function OrganizationAssetsImportDialog({ open, onOpenChange }: Props) {
                 <div className="space-y-1">
                   <p className="content-compact font-semibold text-default-primary">{t_i18n("Primary asset links")}</p>
                   <ul className="list-disc space-y-0.5 pl-5 content-compact text-default-secondary">
-                    {Object.entries(preview.links).map(([jewel, assets]) => (
-                      <li key={jewel}>
-                        {jewel}: {assets.join(", ")}
+                    {Object.entries(preview.links).map(([pa, assets]) => (
+                      <li key={pa}>
+                        {pa}: {assets.join(", ")}
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {preview.unknown_crown_jewels.length > 0 && (
+              {preview.unknown_primary_assets.length > 0 && (
                 <p className="content-compact text-feedback-warning-primary">
-                  {t_i18n("Unknown primary assets (ignored): {names}", { names: preview.unknown_crown_jewels.join(", ") })}
+                  {t_i18n("Unknown primary assets (ignored): {names}", { names: preview.unknown_primary_assets.join(", ") })}
                 </p>
               )}
 

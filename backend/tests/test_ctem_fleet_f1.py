@@ -95,6 +95,15 @@ def test_the_shared_role_agents_declare_their_roi_unit_and_schema(slug):
     assert slug in BUILTIN_ROI_UNITS
 
 
+def test_the_orchestrator_reads_the_software_inventory_before_an_absence_and_corrects_a_contradicted_note():
+    """#2136, #2443: an absence is read from the inventory query, a contradicted case note is corrected."""
+    persona = (_SEED_DATA / "agent_persona" / f"{_ORCH}.md").read_text(encoding="utf-8")
+    assert "call `search_software` with `query` the product" in persona
+    assert "`find_assets_running`" in persona
+    assert "without that read the presence is written as unknown" in persona
+    assert "gets a correcting note on the case before you finish" in persona
+
+
 def test_the_new_agents_are_seeded_once():
     slugs = [a["slug"] for a in BUILTIN_AGENTS]
     assert all(slugs.count(a["slug"]) == 1 for a in CTEM_FLEET_AGENTS)

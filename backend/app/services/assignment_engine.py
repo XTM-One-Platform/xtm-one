@@ -104,8 +104,10 @@ from app.services.assignment_helpers import (
     _publish_run_status,
     _render_prompt,
     _warn_unresolved_placeholders,
+    assignment_memory_scope,
     resolve_assignment_kb_access,
     select_best_result_summary,
+    store_assignment_agent_memory,
 )
 from app.services.assignment_pause import (
     OWNER_DEACTIVATED_RESUME_ERROR,
@@ -134,6 +136,7 @@ from app.services.builtin_tools import (
     merge_tool_allow_lists,
     offered_handover_types,
 )
+from app.services.ctem_module_preflight import guarding_module_accounts, stage_need
 from app.services.decision_waits import holds_assignment
 from app.services.element_scope import assignment_run_scope
 from app.services.event_bus import (
@@ -162,7 +165,7 @@ from app.services.orchestration_engine import (
     notify_orchestration_wake,
     queued_deadline,
 )
-from app.services.tool_surface_refresh import IntegrationSurfaceRefresher
+from app.services.tool_surface_refresh import IntegrationSurfaceRefresher, rebuild_bound_builtin_groups
 from app.tools.base import FileContext, HumanInputRequestedError, ScopedToolExecutor
 from app.tools.wait_policy import WaitPolicy
 
@@ -2805,6 +2808,13 @@ async def _activation_check_executor(
     builtin_ids = set(
         runtime_builtin_tool_ids(agent.builtin_tool_ids or [], getattr(agent, "builtin_allowed_tools", None))
     )
+    # The person the run acts for is an administrator: the check reads past
+    # every governor's narrowing, as the run's own tools do (#2161).
+    acting_admin = False
+    if db is not None and effective_user_id and ("work_items" in builtin_ids or "shared_state" in builtin_ids):
+        from app.models.user import User as _CheckActingUser
+
+        acting_admin = bool(getattr(await db.get(_CheckActingUser, effective_user_id), "is_admin", False))
     if "work_items" in builtin_ids:
         from app.services.builtin_tools import build_work_item_tools
 
@@ -2815,6 +2825,9 @@ async def _activation_check_executor(
                 str(agent.id),
                 is_company_managed=run.is_company_managed,
                 company_managed_agent=agent.is_company_managed,
+                acting_admin=acting_admin,
+                run_person_id=str(run.user_id) if run.user_id else None,
+                run_person_chosen=_run_person_chosen(run, assignment),
             )
         )
     if "shared_state" in builtin_ids:
@@ -2828,6 +2841,7 @@ async def _activation_check_executor(
                 is_company_managed=run.is_company_managed,
                 company_managed_agent=agent.is_company_managed,
                 run_id=run.id,
+                acting_admin=acting_admin,
             )
         )
     if composite.resolve_canonical_name(tool) is not None:
@@ -3147,6 +3161,131 @@ async def _skip_by_any_of_checks(
         preview="\n\n".join(previews),
         live_holder=live_holder,
     )
+
+
+async def _skip_by_module_preflight(
+    db: AsyncSession,
+    *,
+    run: AssignmentRun,
+    agent,
+    assignment: Assignment,
+    effective_user_id,
+) -> bool:
+    """End a per-user CTEM stage run at zero tokens when the member has no module account.
+
+    ``True`` when the run was ended skipped with the reason ``no_module_account``.
+    Any agent other than a seeded CTEM stage agent, a run with no member, and a
+    preflight that cannot decide all let the run go ahead (#2042).
+    """
+    from app.services import ctem_module_preflight as preflight_mod
+
+    need = preflight_mod.stage_need(getattr(agent, "slug", None), is_builtin=bool(getattr(agent, "is_builtin", False)))
+    if need is None or not effective_user_id:
+        return False
+    user_id = str(effective_user_id)
+
+    async def _resolve(module: str) -> tuple[str, str, str] | None:
+        from app.services.ctem_metrics_collector import _user_creds
+
+        creds = await _user_creds(db, user_id, module)
+        if creds is None:
+            return None
+        base_url, headers = creds
+        token = str(headers.get("Authorization", "")).removeprefix("Bearer ")
+        return (base_url, base_url, token) if token else None
+
+    try:
+        verdict = await preflight_mod.preflight(need, user_id, _resolve)
+    except Exception as exc:  # the preflight never blocks a run
+        logger.warning(
+            "Assignment '%s': CTEM module preflight failed (%s) - the run proceeds",
+            assignment.name,
+            format_exception_message(exc),
+        )
+        return False
+    run.trigger_context = {
+        **(run.trigger_context or {}),
+        "module_accounts": dict(verdict.states),
+    }
+    if verdict.proceed:
+        return False
+    await ensure_single_writer()
+    now = datetime.now(UTC)
+    run.status = "skipped"
+    run.error = preflight_mod.NO_MODULE_ACCOUNT
+    run.result_summary = verdict.summary
+    run.total_input_tokens = 0
+    run.total_output_tokens = 0
+    run.started_at = run.started_at or now
+    run.completed_at = now
+    await db.commit()
+    await _release_run_work_item(run, agent, failed=False)
+    await _publish_run_status(
+        str(run.user_id),
+        str(run.id),
+        "skipped",
+        assignment.name,
+        run.result_summary,
+        is_company=run.is_company_managed,
+    )
+    logger.info("Assignment '%s' skipped by the CTEM module preflight: %s", assignment.name, verdict.summary)
+    return True
+
+
+async def _skip_by_case_start(
+    db: AsyncSession,
+    *,
+    run: AssignmentRun,
+    agent: Any,
+    assignment: Assignment,
+) -> bool:
+    """End a ``ctem_case.opened`` run at zero tokens when its case is gone or closed (#2289, #2320).
+
+    A case merged away while the run waited adds ``merged_into`` (the survivor)
+    to the trigger context and lets the run go ahead; a case deleted ends it
+    skipped with the reason ``case_gone``, a case no longer open with
+    ``case_not_open`` and its state in the summary. ``True`` when the run was ended. Any
+    other run, and a check that cannot decide, go ahead.
+    """
+    from app.services import ctem_case_run_start as case_start_mod
+
+    case_id = case_start_mod.case_of(getattr(run, "trigger_context", None))
+    if case_id is None:
+        return False
+    try:
+        verdict = await case_start_mod.case_start(db, case_id)
+    except Exception as exc:  # the check never blocks a run
+        logger.warning(
+            "Assignment '%s': case start check failed (%s) - the run proceeds",
+            assignment.name,
+            format_exception_message(exc),
+        )
+        return False
+    if verdict.context:
+        run.trigger_context = {**(run.trigger_context or {}), **verdict.context}
+    if verdict.proceed:
+        return False
+    await ensure_single_writer()
+    now = datetime.now(UTC)
+    run.status = "skipped"
+    run.error = verdict.error
+    run.result_summary = verdict.summary
+    run.total_input_tokens = 0
+    run.total_output_tokens = 0
+    run.started_at = run.started_at or now
+    run.completed_at = now
+    await db.commit()
+    await _release_run_work_item(run, agent, failed=False)
+    await _publish_run_status(
+        str(run.user_id),
+        str(run.id),
+        "skipped",
+        assignment.name,
+        run.result_summary,
+        is_company=run.is_company_managed,
+    )
+    logger.info("Assignment '%s' skipped at start: %s", assignment.name, verdict.summary)
+    return True
 
 
 async def _end_run_skipped_by_gate_check(
@@ -3617,6 +3756,21 @@ def _resolve_run_file_owner_id(run: AssignmentRun) -> str | None:
     if run.is_company_managed:
         return None
     return str(run.user_id) if run.user_id else None
+
+
+def _run_person_chosen(run: AssignmentRun, assignment: Assignment | None) -> bool:
+    """Whether ``run.user_id`` was chosen: its triggering user or the run-as user (#2422).
+
+    ``False`` when it is only the assignment owner standing in: a company-managed
+    assignment's owner is the seed account, never a decider by default, while a
+    run someone started or set to run as that account keeps it as the decider.
+    """
+    person = getattr(run, "user_id", None)
+    if person is None:
+        return False
+    return bool(
+        person == getattr(run, "triggered_by_user_id", None) or person == getattr(assignment, "run_as_user_id", None)
+    )
 
 
 def _inbox_release_reason(loop_result: Any, messages: Any, offered_tools: Any) -> str | None:
@@ -4457,6 +4611,39 @@ async def _report_refused_continuation(
         logger.warning("Could not report the refused %s of assignment %s", kind, assignment.id, exc_info=True)
 
 
+async def _add_run_trace_tools(
+    composite: Any,
+    db: AsyncSession,
+    agent: Agent,
+    agent_builtin_tool_ids: list[str],
+    acting_user_id: _uuid.UUID | None,
+) -> None:
+    """Wire the trace suites of a run: the chat turn's rule, for the user it acts as.
+
+    A trace suite reads every user's conversations with the agent, so a run
+    wires one, carried or implied by ``agent_builder``, only when the user it
+    acts as may read the agent's chats (``agent_chat._turn_trace_tool_ids``).
+    That user is whoever triggered the run, else its run-as user or owner
+    (``_execution_identity``), so a viewer who triggers a run reads no trace
+    their Chats tab hides.
+    """
+    from app.models.user import User
+    from app.services.agent_chat import _add_trace_tools, _turn_trace_tool_ids
+    from app.services.builtin_tools.traces import TRACE_SUITE_IDS
+
+    # Most runs carry no trace suite: they read no user for it.
+    if "agent_builder" not in agent_builtin_tool_ids and not TRACE_SUITE_IDS.intersection(agent_builtin_tool_ids):
+        return
+    acting_user =await db.get(User, acting_user_id) if acting_user_id else None
+    _add_trace_tools(
+        composite,
+        db,
+        str(acting_user_id) if acting_user_id else "",
+        agent,
+        await _turn_trace_tool_ids(db, acting_user, agent, agent_builtin_tool_ids),
+    )
+
+
 @company_managed_run_scoped
 @known_secrets_scoped("run_id")
 async def execute_assignment_run(
@@ -4853,6 +5040,24 @@ async def execute_assignment_run(
             effective_user_id=effective_user_id,
         ):
             return
+        # ── CTEM module account preflight (#2042) ───────────────────────
+        # A per-user CTEM stage run for a member with no account on the
+        # modules it reads ends here, before the charge and any model call.
+        if _gate_check_due(run, resuming=_resuming) and await _skip_by_module_preflight(
+            db,
+            run=run,
+            agent=agent,
+            assignment=assignment,
+            effective_user_id=effective_user_id,
+        ):
+            return
+        # ── CTEM case start check (#2289) ───────────────────────────────
+        # A queued ctem_case.opened run whose case was merged starts with the
+        # survivor in its context; one whose case was deleted ends here.
+        if _gate_check_due(run, resuming=_resuming) and await _skip_by_case_start(
+            db, run=run, agent=agent, assignment=assignment
+        ):
+            return None
         # Outcome of the quota enforcement, attached to the workflow trace
         # metadata below so the Trace Explorer can show the platform-action
         # consumption of this run.
@@ -5070,6 +5275,30 @@ async def execute_assignment_run(
                 replay=_run_replay,
                 taken_back_on_its_word=taken_back_on_its_word,
             )
+
+        # A coalescing event may have folded into this run since it was read
+        # (``event_coalescing.FOLDABLE_STATUSES``, #2117): its payload is read
+        # again under the row lock held until the "running" commit below, so a
+        # fold committed before is in the prompt and one waiting on the lock
+        # finds the run started and queues the next run.
+        if event_coalescing.context_key(getattr(run, "trigger_context", None)) is not None:
+            fresh_payload = (
+                await db.execute(
+                    select(AssignmentRun.trigger_payload)
+                    .where(AssignmentRun.id == run.id)
+                    .with_for_update()
+                    .execution_options(autoflush=False)
+                )
+            ).scalar_one_or_none()
+            if isinstance(fresh_payload, dict):
+                run.trigger_payload = fresh_payload
+
+        # A batch of a ``batch_split`` trigger is a dispatch bound only (#2379):
+        # this run works its first event in a context of its own, the rest
+        # waits as one queued run on its ordering key, committed with
+        # "running" below. A resume or a HITL resume finds the split done.
+        if not _resuming and run.status != "awaiting_human":
+            await _split_batch_run(db, assignment, run)
 
         # Save original status before overwriting (needed for HITL resume)
         original_status = run.status
@@ -5813,9 +6042,17 @@ async def execute_assignment_run(
                     )
                     if _fleet_autonomy is not None:
                         # The tools a gate of the run's fleet decides (#1480).
-                        from app.services.fleet_autonomy import FLEET_GATED_TOOLS_CONTEXT_KEY, gate_tool_names
+                        from app.services.fleet_autonomy import (
+                            FLEET_GATED_TOOLS_CONTEXT_KEY,
+                            FLEET_WAITING_GATES_CONTEXT_KEY,
+                            gate_tool_names,
+                            waiting_gate_keys,
+                        )
 
                         integration_context[FLEET_GATED_TOOLS_CONTEXT_KEY] = gate_tool_names(_fleet_autonomy[1])
+                        # The gates that wait at the level, read by a tool whose
+                        # safe use depends on one (#2102).
+                        integration_context[FLEET_WAITING_GATES_CONTEXT_KEY] = waiting_gate_keys(*_fleet_autonomy)
 
                     # Resolved bindings: a template-bound provider marked
                     # read-only narrows the integration resolved for it above.
@@ -6320,6 +6557,18 @@ async def execute_assignment_run(
                 if _skill_tools:
                     composite.add_tools(*_skill_tools)
 
+            # The person the run acts for is an administrator: its coordination
+            # tools read past every governor's narrowing (#2161).
+            _coord_acting_admin = False
+            if effective_user_id and (
+                "work_items" in agent_builtin_tool_ids or "shared_state" in agent_builtin_tool_ids
+            ):
+                from app.models.user import User as _CoordActingUser
+
+                _coord_acting_admin = bool(
+                    getattr(await db.get(_CoordActingUser, effective_user_id), "is_admin", False)
+                )
+
             # --- Work-item queue tools (built-in, opt-in) ---
             if "work_items" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import (
@@ -6340,6 +6589,11 @@ async def execute_assignment_run(
                     company_managed_agent=agent.is_company_managed,
                     peer_agents=wi_peers,
                     origin=WorkItemOrigin(run_id=run.id),
+                    acting_admin=_coord_acting_admin,
+                    # The run's person routes its decisions (#2422); the
+                    # file owner above stays empty for a company-managed run.
+                    run_person_id=str(run.user_id) if run.user_id else None,
+                    run_person_chosen=_run_person_chosen(run, assignment),
                 )
                 composite.add_tools(wi_defs, wi_exec)
 
@@ -6367,37 +6621,31 @@ async def execute_assignment_run(
                 # The person the run acts for scopes the enterprise knowledge passages (#11543).
                 composite.add_tools(*build_organization_context_tool(user_id=run.user_id, agent=agent))
 
+            # --- No CTEM tool for a run acting for a person with no CTEM right (#2441) ---
+            from app.services import ctem_access as _ctem_access
+
+            _ctem_ok = bool(run.user_id) and await _ctem_access.wires_ctem(run.user_id)
             # --- CTEM case tools (#11545): the CTEM remediation agents, XTM One only ---
             from app.services.builtin_tools import build_ctem_case_tools, offers_ctem_case_tools
 
-            if run.user_id and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_case_tools(user_id=str(run.user_id), agent_id=str(agent.id)))
             # --- CTEM signal tools (#826): the CTEM agents that see a trigger first ---
             from app.services.builtin_tools import build_ctem_signal_tools, offers_ctem_signal_tools
 
-            if run.user_id and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=str(run.user_id)))
-            # --- Read-only CTEM group (#1337): bound on any agent, as the run's user ---
-            from app.services.builtin_tools import ctem_read_tools_for
-
-            _ctem_read = (
-                ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
-            )
-            if _ctem_read is not None:
-                composite.add_tools(*_ctem_read)
             # --- CTEM group (#1748): signal and case tools on any agent, the run user's rights ---
             from app.services.builtin_tools import ctem_tools_for
 
-            _ctem_group = (
-                ctem_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
-            )
+            _ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
             if _ctem_group is not None:
                 composite.add_tools(*_ctem_group)
-            # --- CTEM administrator repairs (#1778): the CTEM case agents, or the group bound ---
+            # --- Attack surface passes read (#1778, #2443): the CTEM case agents not bound to ctem ---
             from app.services.builtin_tools import ctem_repair_tools_for
 
             _ctem_repair = (
-                ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
+                ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
             )
             if _ctem_repair is not None:
                 composite.add_tools(*_ctem_repair)
@@ -6466,12 +6714,20 @@ async def execute_assignment_run(
                     is_company_managed=run.is_company_managed,
                     company_managed_agent=agent.is_company_managed,
                     run_id=run.id,
+                    acting_admin=_coord_acting_admin,
                 )
                 composite.add_tools(cs_defs, cs_exec)
                 from app.services.builtin_tools import build_friction_tools
 
                 composite.add_tools(
-                    *build_friction_tools(str(run.user_id or _run_file_owner_id or ""), str(agent.id), run_id=run.id)
+                    *build_friction_tools(
+                        str(run.user_id or _run_file_owner_id or ""),
+                        str(agent.id),
+                        run_id=run.id,
+                        # The trace supervision grant reaches the supervised agents' frictions too (#1928).
+                        supervision_target_agent_ids=agent.trace_supervision_target_agent_ids,
+                        allow_cross_agent="inspect_agent_traces" in agent_builtin_tool_ids,
+                    )
                 )
                 # Per-object timers ride with shared state: a run arms a date and
                 # the platform raises timer.due then (services/platform_timers.py).
@@ -6598,25 +6854,8 @@ async def execute_assignment_run(
                 )
                 composite.add_tools(doc_defs, doc_exec)
 
-            if "inspect_my_traces" in agent_builtin_tool_ids or "inspect_agent_traces" in agent_builtin_tool_ids:
-                from app.services.builtin_tools import build_trace_tools
-
-                trace_defs, trace_exec = build_trace_tools(
-                    db,
-                    str(effective_user_id) if effective_user_id else "",
-                    str(agent.id),
-                    supervision_target_agent_ids=agent.trace_supervision_target_agent_ids,
-                    # Only the supervision grant lets an admin run identity's
-                    # privilege reach another agent's payloads; self-inspection
-                    # alone must not.
-                    allow_cross_agent="inspect_agent_traces" in agent_builtin_tool_ids,
-                )
-                if "inspect_my_traces" not in agent_builtin_tool_ids:
-                    trace_defs = [d for d in trace_defs if d.name != "inspect_my_traces"]
-                if "inspect_agent_traces" not in agent_builtin_tool_ids:
-                    trace_defs = [d for d in trace_defs if d.name != "inspect_agent_traces"]
-                if trace_defs:
-                    composite.add_tools(trace_defs, trace_exec)
+            # --- Trace inspection (self + supervision, and agent_builder's alias) ---
+            await _add_run_trace_tools(composite, db, agent, agent_builtin_tool_ids, effective_user_id)
 
             if "fimi_analytics" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import build_fimi_analytics_composite
@@ -6650,7 +6889,6 @@ async def execute_assignment_run(
                 from app.services.builtin_tools import (
                     build_agent_builder_tool,
                     build_evaluation_tools,
-                    build_trace_tools,
                 )
 
                 # The run acts as ``effective_user_id``: an admin-only
@@ -6669,41 +6907,6 @@ async def execute_assignment_run(
                 ab_defs = [d for d in ab_defs if caller_may_run(d.name, is_admin=_acting_is_admin)]
                 composite.add_tools(ab_defs, ab_exec)
 
-                # Platform built-in alias: agent_builder implies the full
-                # trace inspection surface. Legacy trace ids stay
-                # authoritative for the tools they already registered above;
-                # the alias only fills in the trace tools still missing.
-                _missing_trace_tools = {
-                    "inspect_my_traces",
-                    "inspect_agent_traces",
-                } - set(agent_builtin_tool_ids)
-                if _missing_trace_tools:
-                    from app.services.builtin_tools.traces import (
-                        TRACE_PAYLOAD_TOOL_NAME,
-                    )
-
-                    trace_defs, trace_exec = build_trace_tools(
-                        db,
-                        str(effective_user_id) if effective_user_id else "",
-                        str(agent.id),
-                        supervision_target_agent_ids=agent.trace_supervision_target_agent_ids,
-                        # This alias grants the full inspection surface,
-                        # supervision included, so the admin branch applies here.
-                        allow_cross_agent=True,
-                    )
-                    # ``get_trace_payload`` is not a selectable id — it is the
-                    # fetch that makes the inspection tools' bounded previews
-                    # readable in full, so it comes along with whichever of them
-                    # this alias adds. ``add_tools`` is last-write-wins by name,
-                    # so re-adding one already registered above is a no-op.
-                    trace_defs = [
-                        d
-                        for d in trace_defs
-                        if d.name in _missing_trace_tools
-                        or d.name == TRACE_PAYLOAD_TOOL_NAME
-                    ]
-                    if trace_defs:
-                        composite.add_tools(trace_defs, trace_exec)
 
                 ev_defs, ev_exec = build_evaluation_tools(
                     db,
@@ -6726,7 +6929,7 @@ async def execute_assignment_run(
                 composite.add_tools(pi_defs, pi_exec)
 
             # --- Memory Steward (#8258): refused to anyone but Platform Health ---
-            if "memory_steward" in agent_builtin_tool_ids:
+            if "health_specialists" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import build_memory_steward_tools
 
                 # The run's Platform Health cycle pays for the pass's model calls.
@@ -6795,14 +6998,14 @@ async def execute_assignment_run(
 
             # --- Platform Health sandbox (#8255): a Platform Health run has no user of its
             # own; the tools apply their own rule (Platform Health or an admin).
-            if "health_sandbox" in agent_builtin_tool_ids:
+            if "health_specialists" in agent_builtin_tool_ids:
                 from app.services.health.sandbox.tools import build_sandbox_tools
 
                 composite.add_tools(
                     *build_sandbox_tools(db, str(effective_user_id) if effective_user_id else None)
                 )
             # --- Platform Health evaluation (#8257): the same rule, the tools' own.
-            if "health_evaluation" in agent_builtin_tool_ids:
+            if "health_specialists" in agent_builtin_tool_ids:
                 from app.services.health.evaluation_tools import build_health_evaluation_tools
 
                 composite.add_tools(
@@ -6810,7 +7013,7 @@ async def execute_assignment_run(
                         db, str(effective_user_id) if effective_user_id else None, run_id=str(run.id)
                     )
                 )
-            if "improvement_proposals" in agent_builtin_tool_ids:
+            if "health_specialists" in agent_builtin_tool_ids:
                 from app.services.builtin_tools.improvements import build_improvement_tools
 
                 composite.add_tools(
@@ -6846,9 +7049,10 @@ async def execute_assignment_run(
             )
             if agent.handover_agent_ids:
                 try:
-                    from app.api.v1.helpers import (
-                        get_user_group_ids,
-                        user_visible_filter,
+                    from app.api.v1.helpers import get_user_group_ids
+                    from app.services.fleets import (
+                        configured_handover_reach,
+                        handover_peer_clause,
                     )
 
                     h_uuids = [_uuid.UUID(h) for h in agent.handover_agent_ids if h]
@@ -6857,11 +7061,15 @@ async def execute_assignment_run(
                         if run.user_id:
                             _user_group_ids = await get_user_group_ids(db, run.user_id)
 
+                        # The configured handover is the grant, the exposure
+                        # rule kept: a peer the run's person may not open is
+                        # still reached through the tool of its type.
+                        _granted = await configured_handover_reach(db, agent.id, h_uuids) if run.user_id else set()
                         _ho_query = (
                             select(Agent)
                             .where(Agent.id.in_(h_uuids), Agent.enabled.is_(True))
                             .where(
-                                user_visible_filter(Agent, run.user_id, _user_group_ids)
+                                handover_peer_clause(run.user_id, _user_group_ids, _granted)
                             )
                         )
                         from app.services.fleet_runs import active_handover_target_clause
@@ -8279,7 +8487,24 @@ async def execute_assignment_run(
                 # tool of the run changes an integration it is bound to (#1874).
                 if loop_kwargs["executor"] is not None and _rebuild_integration_tools is not None:
                     loop_kwargs["tool_surface_refresher"] = IntegrationSurfaceRefresher(
-                        composite, loop_kwargs["executor"], _rebuild_integration_tools, _narrow_tool_surface
+                        composite,
+                        loop_kwargs["executor"],
+                        _rebuild_integration_tools,
+                        _narrow_tool_surface,
+                        # update_agent on this run's own agent refreshes it too (#2205).
+                        agent_id=str(agent.id),
+                        # A built-in group granted in the run loads from the next step,
+                        # through its own gate for the person the run acts as (#2205).
+                        rebuild_builtins=(
+                            partial(
+                                rebuild_bound_builtin_groups,
+                                str(agent.id),
+                                str(effective_user_id),
+                                run_id=str(run.id),
+                            )
+                            if effective_user_id
+                            else None
+                        ),
                     )
                 # Tool groups the assignment declares are on the wire from the
                 # first request, so the cached prompt prefix holds all run.
@@ -8288,6 +8513,10 @@ async def execute_assignment_run(
                 )
                 if _preload_groups:
                     loop_kwargs["preload_tool_groups"] = _preload_groups
+                # An event-driven run works in a bounded window (#2430).
+                _work_window = assignment_dispatch.event_run_working_window(run.trigger_context)
+                if _work_window is not None:
+                    loop_kwargs["working_window_tokens"] = _work_window
                 # Pass agent-level temperature if configured
                 if agent.temperature is not None:
                     loop_kwargs["temperature"] = agent.temperature
@@ -8432,6 +8661,15 @@ async def execute_assignment_run(
                                 assignment_id=assignment.id,
                                 work_item_id=(getattr(run, "trigger_payload", None) or {}).get("work_item_id"),
                             )
+                        ),
+                        # A per-user CTEM stage run stops calling a module
+                        # that refused its member (#2042).
+                        guarding_module_accounts(
+                            stage_need(
+                                getattr(agent, "slug", None),
+                                is_builtin=bool(getattr(agent, "is_builtin", False)),
+                            )
+                            is not None
                         ),
                         turn_binding(_turn_session),
                     ):
@@ -9083,6 +9321,7 @@ async def execute_assignment_run(
                     _agent_medium: bool = agent.memory_medium_term_enabled,
                     _agent_company: bool = agent.is_company_managed,
                     _user_id: str | None = str(run.user_id) if run.user_id else None,
+                    _agent_scope: str | None = assignment_memory_scope(run.user_id, agent.user_id),
                     _user_enabled: bool = agent.memory_user_enabled,
                     _summary: str = loop_result.content,
                     _assignment_name: str = assignment.name,
@@ -9096,33 +9335,17 @@ async def execute_assignment_run(
                     # ``trigger_assignment(continues_run=...)`` enforces.
                     if _agent_short:
                         try:
-                            from app.services.agent_memory import (
-                                consolidate_memory,
-                                store_short_term_memory,
-                            )
-
-                            counter = await store_short_term_memory(
-                                _agent_id,
+                            await store_assignment_agent_memory(
+                                agent_id=_agent_id,
+                                scope_id=_agent_scope,
                                 source=_assignment_name,
                                 summary=_summary,
-                                source_type="assignment",
+                                consolidate=_agent_medium,
+                                llm=_llm,
+                                model=_model,
+                                is_company_managed=_agent_company,
+                                background_tasks=_background_tasks,
                             )
-                            if counter >= 5 and _agent_medium:
-                                # Keep a strong reference: asyncio only holds
-                                # weak refs, so a bare create_task can be GC'd
-                                # mid-run once the parent task completes.
-                                _consolidate_task = asyncio.create_task(
-                                    consolidate_memory(
-                                        _agent_id,
-                                        _llm,
-                                        is_company_managed=_agent_company,
-                                        model=_model,
-                                    )
-                                )
-                                _background_tasks.add(_consolidate_task)
-                                _consolidate_task.add_done_callback(
-                                    _background_tasks.discard
-                                )
                         except Exception as mem_err:
                             logger.warning(
                                 "Failed to store agent memory (agent=%s): %s",
@@ -10745,9 +10968,37 @@ class _SlotUsage:
     busy_keys: frozenset[str]
     held: bool = False
     exclusive: bool = False
+    #: A run in flight was handed back by its stopping worker, or resumed
+    #: after a hand-back or a lost attempt: with no ``max_concurrent_runs`` of
+    #: its own, the assignment waits for it (``resume_holds``).
+    resuming: bool = False
 
-    def has_room(self, cap: int) -> bool:
+    def has_room(self, cap: int, *, resume_holds: bool = False) -> bool:
+        if resume_holds and self.resuming:
+            return False
         return not self.held and not self.exclusive and self.active < cap
+
+
+def _resuming_run_clause() -> Any:
+    """A run handed back by its stopping worker, or resumed since (its trigger_context records it)."""
+    from app.services.background_checkpoint import HANDED_BACK_KEY, RESUMES_KEY
+
+    return or_(
+        AssignmentRun.trigger_context[HANDED_BACK_KEY].as_string().is_not(None),
+        AssignmentRun.trigger_context[RESUMES_KEY].as_string().is_not(None),
+    )
+
+
+def resume_holds_assignment(trigger_config: dict[str, Any] | None) -> bool:
+    """Whether a resuming run keeps the assignment to itself: its trigger sets no ``max_concurrent_runs``.
+
+    A delivery (a ``platform.release.deployed`` event during the rollout that
+    handed a run back) then queues behind the resuming run and starts once it
+    ended, instead of working the same object beside it (#2221). An author who
+    set a cap keeps it.
+    """
+    config = trigger_config if isinstance(trigger_config, dict) else {}
+    return config.get(assignment_dispatch.MAX_CONCURRENT_RUNS_KEY) is None
 
 
 async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage:
@@ -10756,6 +11007,7 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
             AssignmentRun.status,
             AssignmentRun.trigger_context[assignment_dispatch.ORDERING_KEY_CONTEXT].as_string(),
             AssignmentRun.trigger_context["type"].as_string(),
+            _resuming_run_clause(),
         ).where(
             AssignmentRun.assignment_id == assignment_id,
             holds_assignment(AssignmentRun, _queue_blocking_statuses()),
@@ -10767,6 +11019,7 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
         busy_keys=frozenset(row[1] for row in rows if row[1]),
         held=any(_holds_on_approval(row[0]) for row in rows),
         exclusive=any(not assignment_dispatch.shares_slots(row[2]) for row in rows),
+        resuming=any(bool(row[3]) for row in rows),
     )
 
 
@@ -11105,7 +11358,10 @@ async def trigger_or_queue_assignment(
 
     usage = await _slot_usage(db, assignment.id)
     depth = await count_queued_runs(db, assignment.id)
-    start_now = usage.has_room(cap) and ordering_key not in usage.busy_keys
+    start_now = (
+        usage.has_room(cap, resume_holds=resume_holds_assignment(assignment.trigger_config))
+        and ordering_key not in usage.busy_keys
+    )
     if start_now and depth:
         if queue:
             start_now = False
@@ -11221,17 +11477,20 @@ async def _fold_into_queued_run(
     coalesce_key: str,
     payload: dict[str, Any] | None,
 ) -> str | None:
-    """Fold a coalescing event into the queued run of the same key; its id, or ``None``.
+    """Fold a coalescing event into the waiting run of the same key; its id, or ``None``.
 
-    The oldest queued run of *assignment* whose trigger context carries
-    *coalesce_key* (``services/event_coalescing.py``), locked so two events
-    folding at once never lose one. Flushes, the caller commits.
+    The oldest run of *assignment* that has not started (queued, or pending
+    in a free slot: ``event_coalescing.FOLDABLE_STATUSES``, #2117) whose
+    trigger context carries *coalesce_key* (``services/event_coalescing.py``),
+    locked so two events folding at once never lose one; the executor re-reads
+    the payload under the same lock when it starts the run. Flushes, the
+    caller commits.
     """
     result = await db.execute(
         select(AssignmentRun)
         .where(
             AssignmentRun.assignment_id == assignment.id,
-            AssignmentRun.status == QUEUED_RUN_STATUS,
+            AssignmentRun.status.in_(event_coalescing.FOLDABLE_STATUSES),
             AssignmentRun.trigger_context[event_coalescing.CONTEXT_KEY].as_string() == coalesce_key,
         )
         .order_by(AssignmentRun.created_at.asc())
@@ -11244,6 +11503,64 @@ async def _fold_into_queued_run(
     run.trigger_payload = event_coalescing.merged_payload(run.trigger_payload or {}, payload or {})
     await db.flush()
     return str(run.id)
+
+
+async def _split_batch_run(db: AsyncSession, assignment: Assignment, run: AssignmentRun) -> str | None:
+    """Keep the first event of a ``batch_split`` batch run on *run*, queue the rest; the queued run's id.
+
+    The batch is read under the row lock, so an event joining at the same
+    moment is either in the list split here or opens a batch of its own. The
+    queued run keeps the ordering key of *run*: the drain starts it once *run*
+    ended, so the events are worked one at a time, in arrival order, each in
+    a fresh context (``event_batching.split_batch``). Flushes, the caller
+    commits. ``None`` when nothing is left over.
+    """
+    if not event_batching.splits(assignment.trigger_config):
+        return None
+    payload = (
+        await db.execute(
+            select(AssignmentRun.trigger_payload)
+            .where(AssignmentRun.id == run.id)
+            .with_for_update()
+            .execution_options(autoflush=False)
+        )
+    ).scalar_one_or_none()
+    first, remainder = event_batching.split_batch(payload if isinstance(payload, dict) else run.trigger_payload)
+    if remainder is None:
+        return None
+    # A batch payload resolves no ordering key of its own (the key path names
+    # one event's field): the batch run and its rest share one, so the drain
+    # starts the rest only once this run ended, one case at a time.
+    ordering = assignment_dispatch.ORDERING_KEY_CONTEXT
+    if not (run.trigger_context or {}).get(ordering):
+        run.trigger_context = {**(run.trigger_context or {}), ordering: event_batching.split_ordering_key(str(run.id))}
+    context = event_batching.remainder_context(run.trigger_context, remainder, str(run.id))
+    if not settings.assignment_queue_enabled:
+        # The drain promotes only these while the delivery queue is off.
+        context[QUEUE_ORIGIN_KEY] = INTEGRATION_EVENT_QUEUE_ORIGIN
+    rest = AssignmentRun(
+        assignment_id=run.assignment_id,
+        agent_id=run.agent_id,
+        user_id=run.user_id,
+        triggered_by_user_id=run.triggered_by_user_id,
+        is_company_managed=run.is_company_managed,
+        trigger_payload=remainder,
+        trigger_context=context,
+        status=QUEUED_RUN_STATUS,
+    )
+    db.add(rest)
+    await db.flush()
+    run.trigger_payload = first
+    run.trigger_context = {**(run.trigger_context or {}), event_batching.REMAINDER_CONTEXT: str(rest.id)}
+    logger.info(
+        "Assignment '%s' (%s): batch run %s works its first event alone, %d event(s) queued as run %s",
+        assignment.name,
+        assignment.id,
+        run.id,
+        len(event_batching.events_of(remainder)),
+        rest.id,
+    )
+    return str(rest.id)
 
 
 async def _join_waiting_batch(
@@ -11277,7 +11594,7 @@ async def _join_waiting_batch(
         return None
     if event_batching.carries(run.trigger_payload, payload):
         return str(run.id)
-    if not event_batching.can_join(run.trigger_payload):
+    if not event_batching.can_join(run.trigger_payload, event_batching.max_events(assignment.trigger_config)):
         return None
     if run.status != QUEUED_RUN_STATUS:
         run_at = (
@@ -11947,7 +12264,7 @@ async def _drain_one_assignment(
         if throttled:
             cap = assignment_dispatch.throttled_cap(cap)
         usage = await _slot_usage(db, assignment_id)
-        if not usage.has_room(cap):
+        if not usage.has_room(cap, resume_holds=resume_holds_assignment(assignment.trigger_config)):
             await db.commit()
             break
         candidates = await _queued_candidates(

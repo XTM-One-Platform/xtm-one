@@ -7,7 +7,7 @@
  * runs on: its console creates that provider from the integration's key, or
  * adopts one made in Settings, then picks the models it offers (OpenRouter
  * today, `services/openrouter_llm_provider.py`; LM Studio, reached
- * through the integration's relay group, `services/lmstudio_llm_provider.py`). Settings reads this table to
+ * on the integration's route, `services/lmstudio_llm_provider.py`). Settings reads this table to
  * send an admin adding such a provider to the integration rather than ask for
  * the key a second time. Pure, so `node --test` runs it
  * (`integration-fed-providers.test.ts`).
@@ -27,11 +27,16 @@ interface FeedingIntegration {
   onlyFromIntegration?: boolean;
 }
 
+function hasServerUrl(integration: Integration): boolean {
+  const url = integration.extra_config?.base_url;
+  return typeof url === "string" && url.trim() !== "";
+}
+
 /** LLM provider key → the integration that feeds it. */
 const INTEGRATION_FED_LLM_PROVIDERS: Readonly<Record<string, FeedingIntegration>> = {
   openrouter: { integrationProvider: "openrouter", tab: "models", ready: (i) => i.has_api_key },
-  // LM Studio is reached through the integration's relay group, its token optional.
-  lmstudio: { integrationProvider: "lmstudio", tab: "models", ready: (i) => !!i.relay_group_id, onlyFromIntegration: true },
+  // LM Studio needs its server URL (reached directly or through a relay group), its token optional.
+  lmstudio: { integrationProvider: "lmstudio", tab: "models", ready: hasServerUrl, onlyFromIntegration: true },
 };
 
 /** Whether Settings may add a `llmProvider` config by hand (false: only its integration creates one). */
@@ -42,7 +47,7 @@ export function addableByHand(llmProvider: string): boolean {
 /**
  * The integrations that could feed a new `llmProvider` config: of the
  * integration provider that feeds it, company-managed and ready to feed
- * (an API key for OpenRouter, a relay group for LM Studio), and not feeding a
+ * (an API key for OpenRouter, a server URL for LM Studio), and not feeding a
  * config yet (an integration feeds one at most). Empty for an LLM provider no
  * integration feeds.
  */

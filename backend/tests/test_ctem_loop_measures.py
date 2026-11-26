@@ -120,6 +120,11 @@ def api(monkeypatch):
     monkeypatch.setattr(api_module.view_of, "viewer_view", _view)
     monkeypatch.setattr(api_module.signal_store, "observed_by_case", _observed)
 
+    async def _view_right(_db, _user):
+        return "view"  # no CTEM without a right (#2441): the caller holds view
+
+    monkeypatch.setattr(api_module.ctem_access, "level", _view_right)
+
     app = FastAPI()
     app.include_router(api_module.router, prefix="/ctem-cases")
 
@@ -141,5 +146,5 @@ async def test_measures_cover_only_the_cases_the_caller_sees(api) -> None:
     assert body["case_count"] == 1
     assert body["signal_to_case"] == {"median_hours": 1.0, "count": 1}
     assert api.asked["events"] == [api.mine.id]
-    # A restricted user reads the observed time of their own signals only.
-    assert api.asked["observed"] == ([api.mine.id], str(api.user.id))
+    # A CTEM right reads the organization's signals (#2441): no recorded_by filter.
+    assert api.asked["observed"] == ([api.mine.id], None)

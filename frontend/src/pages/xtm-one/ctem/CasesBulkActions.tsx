@@ -37,6 +37,7 @@ import {
 } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import type { UserDirectoryItem } from "@/types";
+import { acceptanceMaxDay } from "./case-acceptance";
 import { BULK_CASE_ACTIONS, caseActionDef, type CaseActionId } from "./case-actions";
 
 type CaseActionDialog = "assign" | "due" | "accept" | "merge";
@@ -107,11 +108,14 @@ export function useCaseActionDialogs({
   cases,
   onDone,
   mergeTargets,
+  mergeTargetsLoading = false,
   onMerged,
 }: {
   cases: CtemCaseSummary[];
   onDone: () => void;
   mergeTargets?: CtemCaseSummary[];
+  /** The case page reads its merge targets when the dialog opens (#1986): true while that read runs. */
+  mergeTargetsLoading?: boolean;
   onMerged?: (targetId: string) => void;
 }) {
   const { t_i18n } = useFormatter();
@@ -123,7 +127,7 @@ export function useCaseActionDialogs({
   const [owner, setOwner] = useState<UserDirectoryItem | null>(null);
   const [due, setDue] = useState(inDays(30));
   const [reason, setReason] = useState("");
-  const [expiry, setExpiry] = useState(inDays(90));
+  const [expiry, setExpiry] = useState(acceptanceMaxDay);
   const [target, setTarget] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -132,7 +136,7 @@ export function useCaseActionDialogs({
     setOwner(null);
     setDue(inDays(30));
     setReason("");
-    setExpiry(inDays(90));
+    setExpiry(acceptanceMaxDay());
     setTarget(mergeTargets ? "" : (cases[0]?.id ?? ""));
     setFormError(null);
     setDialog(kind);
@@ -255,6 +259,7 @@ export function useCaseActionDialogs({
                   aria-labelledby={settingsFieldLabelId("bulk-expiry")}
                   aria-describedby={settingsFieldHintId("bulk-expiry")}
                   min={inDays(1)}
+                  max={acceptanceMaxDay()}
                   value={expiry}
                   onChange={setExpiry}
                 />
@@ -268,7 +273,9 @@ export function useCaseActionDialogs({
               helper={t_i18n("It keeps its state, owner and history, and takes the issues and history of this case.")}
               required
             >
-              {mergeTargets.length === 0 ? (
+              {mergeTargetsLoading ? (
+                <p role="status" className="content-compact text-default-secondary">{t_i18n("Loading…")}</p>
+              ) : mergeTargets.length === 0 ? (
                 <p className="content-compact text-default-secondary">{t_i18n("No other open case to merge into")}</p>
               ) : (
                 <SearchableSelect

@@ -25,8 +25,10 @@ decides what each signal becomes. No model call, no gate. Design:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -59,6 +61,8 @@ STATE_REASONS: dict[str, str] = {
 #: Risk scenarios one pass reads at most, and assets per scenario (OpenCRQ caps it at 500).
 MAX_SCENARIOS = 50
 ASSETS_PER_SCENARIO = 500
+#: New signals the scheduled pass commits at once: a cut pass loses one batch at most.
+COMMIT_BATCH = 25
 
 
 class EvidenceReadError(RuntimeError):
@@ -86,6 +90,18 @@ class EvidenceReader(Protocol):
     async def scenarios(self) -> list[dict[str, Any]]: ...
 
     async def evidence_health(self, scenario_id: str, max_age_days: int) -> dict[str, Any]: ...
+
+
+def _asset_link(reader: Any, gap: Gap) -> dict[str, str]:
+    """``{"link": <the asset's page in OpenCRQ>}`` when the reader can build it, else ``{}``.
+
+    The case row pivots to it (#1357): an OpenCRQ supporting asset has no id route XTM One
+    could build alone, its page lives under the tenant.
+    """
+    ids = gap.evidence.get("opencrq_asset_ids") or []
+    build = getattr(reader, "asset_link", None)
+    link = build(str(ids[0])) if ids and callable(build) else None
+    return {"link": link} if isinstance(link, str) and link else {}
 
 
 def _iso(value: Any) -> str:
@@ -186,11 +202,17 @@ async def run_pass(
     reader: EvidenceReader,
     max_age_days: int,
     now: datetime | None = None,
+    checkpoint: Callable[[Any], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     """Read every scenario's evidence health and record each gap; the caller commits.
 
     Answers the counts and the case events to publish once committed. A source
     sync seen in several scenarios is recorded once.
+
+    *checkpoint*, when given, is awaited with the case events of every
+    :data:`COMMIT_BATCH` new signals (then cleared): the scheduled pass commits
+    and publishes there, so a pass cut by a restart keeps what it recorded and
+    the next one skips it by dedupe key instead of redoing it from zero.
     """
     from app.services import ctem_case_loop, ctem_scope_gate_store, ctem_signals
 
@@ -210,6 +232,7 @@ async def run_pass(
     excluded = await excluded_sources(db, organization_id)
     pending = ctem_case_loop.PendingEvents()
     counts: dict[str, int] = {"scenarios": len(scenarios), "recorded": 0, "new": 0}
+    batch = 0
     for gap in gaps.values():
         if is_excluded(excluded, gap.trigger_path, PROVIDER, "pass"):
             counts["excluded"] = counts.get("excluded", 0) + 1
@@ -225,7 +248,13 @@ async def run_pass(
                 lens="inside",
                 subject_label=gap.subject_label,
                 observed_at=at,
-                evidence={**gap.evidence, "reason": gap.reason},
+                evidence={
+                    **gap.evidence,
+                    "reason": gap.reason,
+                    **_asset_link(reader, gap),
+                    # #2436: the source that recorded it, counted apart on the signal sources view.
+                    ctem_signals.SOURCE_KEY_EVIDENCE: f"{PROVIDER}:pass",
+                },
                 dedupe_key=gap.dedupe_key,
             ),
             recorded_via="listener",
@@ -238,10 +267,16 @@ async def run_pass(
         counts["new"] += 1
         counts[gap.event] = counts.get(gap.event, 0) + 1
         events = await ctem_scope_gate_store.evaluate_after_record(db, signal, created=created)
+        # Hand the loop back between signals: a pass of hundreds of gaps never holds it in one go.
+        await asyncio.sleep(0)
         if events:
             pending.items.extend(events.items)
             pending.verticals |= events.verticals
             pending.frames.extend(events.frames)
+        batch += 1
+        if checkpoint is not None and batch >= COMMIT_BATCH:
+            await checkpoint(pending)
+            pending, batch = ctem_case_loop.PendingEvents(), 0
     return {"counts": counts, "pending": pending}
 
 
@@ -275,6 +310,14 @@ class OpenCrqEvidenceReader:
             {"riskScenarioId": scenario_id, "maxAgeDays": max_age_days, "limit": ASSETS_PER_SCENARIO},
         )
         return data if isinstance(data, dict) else {}
+
+    def asset_link(self, asset_id: str) -> str | None:
+        """The supporting asset's overview page in OpenCRQ, or None when an id is not a plain path segment."""
+        from app.integrations.providers.opencrq._common import _plain_segments
+
+        if not self._base_url or not _plain_segments(self._tenant, asset_id):
+            return None
+        return f"{self._base_url.rstrip('/')}/{self._tenant}/assets/{asset_id}/overview"
 
 
 async def reader_for(db: AsyncSession, profile: Any) -> OpenCrqEvidenceReader | str:
@@ -423,8 +466,20 @@ async def scheduled_pass(db: AsyncSession) -> dict[str, Any] | None:
         if isinstance(reader, str):
             logger.info("CTEM evidence health pass skipped: %s", reader)
             return {"skipped": reader}
+
+        async def _checkpoint(pending: Any) -> None:
+            # A batch is committed and its case events raised at once (see run_pass).
+            await db.commit()
+            await ctem_case_loop.publish_pending(pending)
+
         try:
-            result = await run_pass(db, organization_id=primary.id, reader=reader, max_age_days=settings.max_age_days)
+            result = await run_pass(
+                db,
+                organization_id=primary.id,
+                reader=reader,
+                max_age_days=settings.max_age_days,
+                checkpoint=_checkpoint,
+            )
         except EvidenceReadError as exc:
             await db.rollback()
             logger.warning("CTEM evidence health pass: OpenCRQ read failed: %s", exc)

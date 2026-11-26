@@ -45,7 +45,7 @@ function kase(over: Partial<CtemCaseSummary>): CtemCaseSummary {
     state: "new",
     open_issue_count: 3,
     restricted_count: 0,
-    crown_jewel_count: 0,
+    primary_asset_count: 0,
     kev_count: 1,
     asset_count: 0,
     owner_user_id: null,

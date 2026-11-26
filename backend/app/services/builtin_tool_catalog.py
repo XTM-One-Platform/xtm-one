@@ -269,42 +269,40 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     ua_defs, _ = build_user_admin_tools(user_id=None, caller_is_admin=False)
     catalog["user_admin"] = _extract(ua_defs)
 
-    # Read-only CTEM signals and cases (#1337), from the real builder.
-    from app.services.builtin_tools import build_ctem_read_tools
-
-    cr_defs, _ = build_ctem_read_tools(user_id="", agent_id="")
-    catalog["ctem_read"] = _extract(cr_defs)
-
-    # CTEM administrator repairs (#1778), from the real builder.
-    from app.services.builtin_tools import build_ctem_repair_tools
-
-    crp_defs, _ = build_ctem_repair_tools(user_id="")
-    catalog["ctem_repair"] = _extract(crp_defs)
-
-    # CTEM signal and case tools on any agent (#1748), from the real builder.
+    # CTEM signal and case tools on any agent (#1748), from the real builder; the
+    # former ctem_read / ctem_repair groups are renamed into it (#2443).
     from app.services.builtin_tools import build_ctem_tools
 
     ctem_defs, _ = build_ctem_tools(user_id="", agent_id="")
     catalog["ctem"] = _extract(ctem_defs)
 
-    # Memory Steward (#8258): every call checks the work is Platform Health's.
-    from app.services.builtin_tools import build_memory_steward_tools
-
-    ms_defs, _ = build_memory_steward_tools()
-    catalog["memory_steward"] = _extract(ms_defs)
-    # Platform Health (#8259): every call opens its own session and resolves its caller.
-    from app.services.builtin_tools import build_health_diagnosis_tools, build_health_experiment_tools
-
-    catalog["health_diagnosis"] = _extract(build_health_diagnosis_tools("")[0])
-    catalog["health_experiments"] = _extract(build_health_experiment_tools("")[0])
-    # Flow Lab (#8260): same, one session per call.
-    from app.services.builtin_tools import build_flow_lab_tools
-
-    catalog["flow_lab"] = _extract(build_flow_lab_tools("")[0])
-    # Module Analyst (#101 S14a-2b): same, one session per call.
+    # Platform Health's one internal group (#1943): memory consolidation (#8258),
+    # diagnosis and experiments (#8259), Flow Lab (#8260), module checks (#101 S14),
+    # sandbox (#8255), evaluation (#8257) and improvement proposals (#8256). Every
+    # call opens its own session and applies its own access rule.
+    from app.services.builtin_tools import (
+        build_flow_lab_tools,
+        build_health_diagnosis_tools,
+        build_health_experiment_tools,
+        build_memory_steward_tools,
+    )
     from app.services.builtin_tools.health_modules import build_health_module_tools
+    from app.services.builtin_tools.improvements import build_improvement_tools
+    from app.services.health.evaluation_tools import build_health_evaluation_tools
+    from app.services.health.sandbox.tools import build_sandbox_tools
 
-    catalog["health_modules"] = _extract(build_health_module_tools("")[0])
+    catalog["health_specialists"] = _extract(
+        [
+            *build_memory_steward_tools()[0],
+            *build_sandbox_tools(None, None)[0],  # type: ignore[arg-type]
+            *build_health_evaluation_tools(None, None)[0],  # type: ignore[arg-type]
+            *build_improvement_tools(None, None)[0],  # type: ignore[arg-type]
+            *build_health_diagnosis_tools("")[0],
+            *build_health_experiment_tools("")[0],
+            *build_flow_lab_tools("")[0],
+            *build_health_module_tools("")[0],
+        ]
+    )
 
     # Fleets (#7030): every call opens its own session and loads the caller.
     from app.services.builtin_tools import build_fleet_tools
@@ -316,24 +314,6 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     from app.services.builtin_tools.roi import build_roi_tools
 
     catalog["roi"] = _extract(build_roi_tools("")[0])
-
-    # Platform Health sandbox (#8255): every call loads what it needs at execution.
-    from app.services.health.sandbox.tools import build_sandbox_tools
-
-    sandbox_defs, _ = build_sandbox_tools(None, None)  # type: ignore[arg-type]
-    catalog["health_sandbox"] = _extract(sandbox_defs)
-
-    # Platform Health evaluation (#8257): its own access rule at execution.
-    from app.services.health.evaluation_tools import build_health_evaluation_tools
-
-    evaluation_defs, _ = build_health_evaluation_tools(None, None)  # type: ignore[arg-type]
-    catalog["health_evaluation"] = _extract(evaluation_defs)
-
-    # Improvement proposals (#8256): every call loads what it needs at execution.
-    from app.services.builtin_tools.improvements import build_improvement_tools
-
-    proposal_defs, _ = build_improvement_tools(None, None)  # type: ignore[arg-type]
-    catalog["improvement_proposals"] = _extract(proposal_defs)
 
     # Platform Health orchestrator (#8261): every call opens its own session.
     from app.services.builtin_tools.health_orchestrator import build_health_orchestrator_tools

@@ -1207,6 +1207,9 @@ interface ExposureAudience {
 
 // Every resource a person lends through something shared (/exposure/*)
 export type LentResourceKind = "integration" | "mcp_server" | "custom_tool" | "channel_bot" | "variable";
+/** What a share confirmation can list: the lent resources, and the knowledge
+ *  bases, skills and prompts an agent, a flow or the General Assistant attaches. */
+type PreviewLentKind = LentResourceKind | "knowledge_base" | "skill" | "prompt";
 
 /** What a lent resource holds that its audience acts with (never the value). */
 type LentSecretKind =
@@ -1216,7 +1219,9 @@ type LentSecretKind =
   | "mcp_env"
   | "code"
   | "secret_value"
-  | "plain_value";
+  | "plain_value"
+  | "documents"
+  | "instructions";
 
 export type ResourceExposurePathKind = ExposurePathKind | "prompt" | "custom_tool";
 
@@ -1335,7 +1340,7 @@ export interface ResourcePreviewRequest {
 /** One resource the change lends to new people (`gained`) or takes from people
  *  who could use it (`lost`). */
 export interface ResourcePreviewItem {
-  resource: LentResourceRef;
+  resource: Omit<LentResourceRef, "kind"> & { kind: PreviewLentKind };
   secret: LentSecret;
   via: { type: ResourcePreviewEntityType; id: string | null; name: string | null } | null;
   gained: ResourceAudience;
@@ -1451,7 +1456,7 @@ interface ProviderEvent {
   event: string;
   label: string;
   description: string;
-  mechanism: "polling" | "webhook" | "hybrid";
+  mechanism: "polling" | "webhook" | "hybrid" | "stream";
   /** The `trigger_config.filter` keys the event takes, each with what it does. */
   filter_keys?: Record<string, string>;
 }
@@ -1493,8 +1498,8 @@ export interface BuiltinToolGroup {
   /** Only an administrator adds it to an agent: a picker shows it locked to anyone else. */
   bind_admin_only?: boolean;
   agent_keyed: boolean;
-  /** A Platform Health specialist's suite, carried by the Platform Health fleet's own agents: no session picker offers it. */
-  health_only: boolean;
+  /** Internal to Platform Health (#1943): carried by its fleet's own agents alone; no picker, Tools page or chat offers it. */
+  internal: boolean;
   named_after_platform: boolean;
   aliases: string[];
   /** False while this deployment withholds the suite (a flag off): its functions are then empty. */
@@ -1551,10 +1556,13 @@ export interface ProviderCatalogItem {
   /** When present, the UI shows an auth mode selector (e.g. ["api_key", "platform_managed"]). */
   supported_auth_types?: string[];
   fields: string[];
+  /** The credential fields of each mode of a provider with several auth types;
+   * `fields` holds those of the default mode. */
+  fields_by_auth_type?: Record<string, string[]> | null;
   /** A2A only: which directions this mechanism can serve. Absent for every
    * other provider. */
   a2a_directions?: ("inbound" | "outbound")[];
-  /** Reached only through a relay group (LM Studio): no "Direct" route, the server refuses a save without one. */
+  /** Reached only through a relay group: no "Direct" route, the server refuses a save without one. */
   requires_relay?: boolean;
   /** Created by an administrator as a company-managed integration only (Platform email): the switch is on and locked. */
   company_managed_only?: boolean;
@@ -2174,8 +2182,8 @@ export interface Agent {
    *  it is shared with (their chats with it only); null lends nothing.
    *  Written with `lent_integration_ids` on PUT /agents/{id}, owner only. */
   integration_lending?: { integration_ids: string[]; set_by: string; set_at: string } | null;
-  /** The owner's personal integrations this group-shared agent binds that
-   *  none of its groups gets otherwise, sent by GET /agents/{id} to a viewer
+  /** The owner's personal integrations this shared agent binds that not
+   *  every one of its groups and people gets otherwise, sent by GET /agents/{id} to a viewer
    *  who may edit it (an editor cannot read the owner's rows). */
   shared_personal_integrations?: { id: string; name: string; provider: string }[] | null;
   /** The integrations it binds that its owner can no longer see: its runs
@@ -2669,6 +2677,8 @@ export interface TriggerConfig {
   fired_at?: string;
   /** platform_event triggers: the subscription's deadline (ISO 8601 with its offset); an event after it starts nothing. */
   expires_at?: string;
+  /** platform_event triggers: "observer" watches the objects of its events without working them (never counted as a CTEM case worker). */
+  role?: "observer" | "worker";
   /** Evaluated before any run or gate; a dropped event is counted (`events_filtered_count`). */
   filter?: {
     channels?: string[];
@@ -5424,6 +5434,16 @@ export interface ObservabilityConfig {
   trace_storage_enabled: boolean;
   trace_retention_days: number;
   audit_log_retention_days: number;
+  /** Days the coordination tables keep a row (#2070); 0 keeps forever. */
+  coordination_retention?: {
+    work_item_resolved_days: number;
+    work_item_abandoned_days: number;
+    shared_state_resolved_days: number;
+    shared_state_archive_days: number;
+    workset_resolved_days: number;
+    /** Finished assignment runs (Operations > Executions), from their completion. */
+    assignment_run_days?: number;
+  } | null;
   trace_store_payloads: boolean;
   last_aggregation_at: string | null;
   aggregation_stale: boolean;
@@ -5807,6 +5827,13 @@ export interface CtemFunnelLayer {
   reason?: string | null;
   /** The reachability split of the profile assets, on the Exposed layer (`services/asset_reachability.py`). */
   reachability?: CtemFunnelReachability | null;
+  /** Business impact (#1980): the primary assets reached and the inventory assets supporting them. */
+  primary_assets?: number;
+  supporting_assets?: number;
+  /** Business impact: the linked group members were read in part (a very large group). */
+  truncated?: boolean;
+  /** After policy (#1980): the rules of the saved prioritization policy the layer applies. */
+  rules?: string[];
 }
 
 /** How many organization profile assets are reachable, proven unreachable or of unknown exposure. */
@@ -5911,7 +5938,8 @@ interface CtemStageAssessment {
 /** Status of a per-user CTEM AI artifact (briefing, stage assessment). The
  *  locked ones (ee_locked, ai_disabled, no_model) never start a run. */
 type CtemAiArtifactStatus =
-  | "ready" | "generating" | "pending" | "ee_locked" | "ai_disabled" | "no_model" | "unavailable";
+  | "ready" | "generating" | "pending" | "ee_locked" | "ai_disabled" | "no_model" | "unavailable"
+  | "not_assessable" | "no_module_account";
 
 export interface CtemStageAssessmentResponse {
   assessment: CtemStageAssessment | null;
@@ -5933,6 +5961,10 @@ export interface CtemStageAssessmentResponse {
    *  page regenerates it on visit and marks it stale meanwhile. */
   stale?: boolean;
   fresh_days?: number;
+  /** The newest run was skipped before any model call because the member has
+   *  no account on these modules (status no_module_account, #2042): the card
+   *  tells the member to sign in to them once. */
+  no_module_account?: string[] | null;
 }
 
 export interface CtemStage {
@@ -6484,6 +6516,10 @@ export interface WorkItemAskOption {
   key: string;
   label: string;
   effect?: string | null;
+  /** A terminal option (cancel, close): the card asks to confirm it before sending (#2150). */
+  confirm?: boolean;
+  /** Answering with it records the answer and leaves the item waiting, nothing dispatched (#1719, #2500). */
+  keeps_waiting?: boolean;
 }
 
 /** `work_items.ask` (#9437): the question a person answers, as the agent wrote it. */
@@ -6513,6 +6549,15 @@ interface WorkItemCardFallback {
   links: WorkItemAskLink[];
   /** The ask fields still missing, e.g. `ask.question`. */
   missing: string[];
+}
+
+/** The CTEM case a work item is about (#2370): derived from its gate key or `payload.case_id`. */
+export interface WorkItemCtemCase {
+  id: string;
+  title: string;
+  state: string | null;
+  /** The case page in the app, `/ctem/cases/<id>`. */
+  path: string;
 }
 
 export interface WorkItem {
@@ -6554,6 +6599,8 @@ export interface WorkItem {
   ask?: WorkItemAsk | null;
   /** Set when the item needs a person and its ask is missing or incomplete (#834). */
   card_fallback?: WorkItemCardFallback | null;
+  /** The CTEM case the item is about, when the reader may read it (#2370); only on the single-item read. */
+  ctem_case?: WorkItemCtemCase | null;
   /** `work_item_blocked_refs.blocked_why`: null when not blocked; `missing` for a blocked item that says nothing. */
   blocked_why?: { text: string; missing: boolean } | null;
   source: string;
@@ -7667,6 +7714,9 @@ export interface Group {
   ctem_access?: GroupCtemAccess | null;
   /** With `decide`: the members get a notification for each case gate. */
   ctem_notify?: boolean;
+  /** People who sign in through single sign-on join the group at every
+   *  sign-in (`services/group_auto_join.py`); admin routes only. */
+  auto_join?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -9290,6 +9340,10 @@ interface RunSearchResultItem {
   anomaly_count?: number;
   // Entries the platform could not run, left out of every headline.
   platform_error_count?: number;
+  // A placebo comparison's run: its arm and comparison; `real` and null elsewhere.
+  arm?: EvaluationArm;
+  placebo_target?: PlaceboTarget | null;
+  placebo_comparison_id?: string | null;
 }
 
 export interface RunSearchResponse {
@@ -12711,8 +12765,15 @@ export type NotificationDecisionSource = "run" | "flow_run" | "work_item";
 
 export interface NotificationFeed {
   items: NotificationItem[];
+  /** The unread entries of this page. */
   unread_count: number;
   read_at: string | null;
+  /** Every decision waiting on the person: the Home notice's count, not the page's (#2453). */
+  waiting_decision_total?: number;
+  /** What the badge counts: every waiting decision plus the other unread entries (#2453). */
+  unread_total?: number;
+  /** The `offset` of the next page of waiting decisions; null past the last (#2453). */
+  next_offset?: number | null;
 }
 
 /** A phone the person linked (`models/mobile_device.py`). */

@@ -36,7 +36,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.models.ctem_case import CASE_STATES, OPEN_STATES, RESOLUTION_KINDS
-from app.services.ctem_fixed_version import fold_by_platform, smallest_fixing_every
+from app.services.ctem_fixed_version import compare_versions, fold_by_platform, smallest_fixing_every
 
 #: Actor of the transitions recompute and the expiry sweep make.
 SYSTEM_ACTOR = "system"
@@ -46,8 +46,28 @@ DEFAULT_MAX_ACCEPTANCE = timedelta(days=90)
 CLOSED_AT_SOURCE = "every member issue closed at source"
 #: The evidence of an upgrade case the asset inventory shows fixed on every asset (#1252).
 FIXED_IN_INVENTORY = "every asset running the product runs the fixed version or later (asset inventory)"
+#: The evidence of one issue whose known fixed version is at or below every running version (#2047).
+FIXED_BELOW_RUNNING = "fixed version at or below every version the asset inventory shows running"
+#: The evidence of a case whose every issue is fixed below every running version (#2047).
+ALL_FIXED_BELOW_RUNNING = (
+    "every issue of the case is fixed in a version at or below every version running (asset inventory)"
+)
+
+#: The resolution of a case a person dropped at a gate (#2252): never an agent's own call.
+DISMISSED = "dismissed"
+#: The option key of a CTEM gate ask that rejects and closes the case as not relevant (#2252).
+CLOSE_OPTION = "reject_and_close"
+#: What the history says when the person who closed the case gave no reason (#2252).
+NO_REASON_GIVEN = "no reason given"
 
 _SPACES = re.compile(r"\s+")
+_OPTION_SEPARATORS = re.compile(r"[\s_-]+")
+
+
+def closes_case(option: str | None) -> bool:
+    """Whether a gate answer is the close option (#2252): its key, or its label as a person reads it."""
+    text = _OPTION_SEPARATORS.sub(" ", (option or "").strip().lower())
+    return text.startswith(CLOSE_OPTION.replace("_", " "))
 
 
 class CaseRuleError(ValueError):
@@ -59,6 +79,77 @@ VERSION_AFFECTED = "affected"
 VERSION_NOT_AFFECTED = "not_affected"
 #: No Software of that version in OpenCTI: "version not known to OpenCTI".
 VERSION_UNKNOWN = "unknown"
+VERSION_OUTCOMES: tuple[str, ...] = (VERSION_AFFECTED, VERSION_NOT_AFFECTED, VERSION_UNKNOWN)
+#: Where an installed version was read (#2038): the device inventory (``organization_asset_software``
+#: and the assets' OS fields), a Software entity of the asset store, or a row typed in the profile.
+VERSION_SOURCE_INVENTORY = "inventory"
+VERSION_SOURCE_SOFTWARE = "software"
+VERSION_SOURCE_PROFILE = "profile"
+VERSION_SOURCES: tuple[str, ...] = (VERSION_SOURCE_INVENTORY, VERSION_SOURCE_SOFTWARE, VERSION_SOURCE_PROFILE)
+#: Where a version's fixed version was read: an OpenCTI Software that ``remediates``, or a course of action.
+FIX_SOURCE_OPENCTI_SOFTWARE = "opencti_software"
+FIX_SOURCE_COURSE_OF_ACTION = "course_of_action"
+
+
+@dataclass(frozen=True)
+class VersionFact:
+    """One installed version of an issue's product and what OpenCTI says of it (#1783, typed by #2038).
+
+    ``outcome`` is one of :data:`VERSION_OUTCOMES` (``unknown``: no Software of that version in
+    OpenCTI, kept and to validate, never dropped); ``source`` one of :data:`VERSION_SOURCES`;
+    ``asset_count`` the assets the inventory reports on it (``None`` when not read from the
+    inventory); ``fixed_version`` the smallest fix above it OpenCTI holds, with ``fixed_source``
+    and the remediating Software ``fixed_by`` when one gave it.
+    """
+
+    version: str
+    outcome: str
+    source: str | None = None
+    asset_count: int | None = None
+    fixed_version: str | None = None
+    fixed_source: str | None = None
+    fixed_by: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "version": self.version,
+            "outcome": self.outcome,
+            "source": self.source,
+            "asset_count": self.asset_count,
+            "fixed_version": self.fixed_version,
+            "fixed_source": self.fixed_source,
+            "fixed_by": self.fixed_by,
+        }
+
+
+def version_fact(value: Any) -> VersionFact | None:
+    """*value* as a :class:`VersionFact` (pure, tolerant): a fact, a stored mapping, or the
+    ``(version, outcome)`` pair stored before #2038; ``None`` when it names no version."""
+    if isinstance(value, VersionFact):
+        return value
+    if isinstance(value, dict):
+        version = str(value.get("version") or "").strip()
+        if not version:
+            return None
+        count = value.get("asset_count")
+        return VersionFact(
+            version=version,
+            outcome=str(value.get("outcome") or VERSION_UNKNOWN),
+            source=(str(value["source"]) if value.get("source") else None),
+            asset_count=int(count) if isinstance(count, int | float) and not isinstance(count, bool) else None,
+            fixed_version=(str(value["fixed_version"]) if value.get("fixed_version") else None),
+            fixed_source=(str(value["fixed_source"]) if value.get("fixed_source") else None),
+            fixed_by=(str(value["fixed_by"]) if value.get("fixed_by") else None),
+        )
+    if isinstance(value, list | tuple) and len(value) >= 2:
+        version = str(value[0] or "").strip()
+        return VersionFact(version=version, outcome=str(value[1] or VERSION_UNKNOWN)) if version else None
+    return None
+
+
+def version_facts(values: Any) -> tuple[VersionFact, ...]:
+    """*values* as typed facts, the unreadable ones left out (a case stored before #2038 still reads)."""
+    return tuple(f for f in (version_fact(v) for v in values or ()) if f is not None)
 
 
 @dataclass(frozen=True)
@@ -76,9 +167,17 @@ class SourceIssue:
     course_of_action_name: str | None = None
     cvss: float | None = None
     epss: float | None = None
-    kev: bool = False
+    #: ``None`` on a signal member whose CVEs were not read from OpenCTI (#2225): unknown, never "not KEV".
+    kev: bool | None = False
+    #: A signal member (#2041): every CVE it names that OpenCTI marks KEV, upper case, else ``()``.
+    kev_cves: tuple[str, ...] = ()
+    #: A signal member (#2225): every CVE it names whose facts were not read (OpenCTI unread or silent on it).
+    unknown_cves: tuple[str, ...] = ()
     assets: tuple[str, ...] = ()
-    crown_jewels: tuple[str, ...] = ()
+    primary_assets: tuple[str, ...] = ()
+    #: The names of ``primary_assets`` reached only through an inferred link (#2396): a rule link, a name
+    #: match or a primary asset named in the evidence; the others a manual or OpenCRQ link proves.
+    inferred_primary_assets: tuple[str, ...] = ()
     first_seen_at: datetime | None = None
     #: The version the organization profile declares for the matched product (CTEM-11).
     installed_version: str | None = None
@@ -92,8 +191,8 @@ class SourceIssue:
     fixed_versions: tuple[tuple[str, str], ...] = ()
     #: With installed versions: whether OpenCTI holds a Software of one of them (#928); ``None`` when none is known.
     declared_version_known: bool | None = None
-    #: ``((version, outcome), ...)``: each installed version and what OpenCTI says of it (#1783), else ``()``.
-    version_outcomes: tuple[tuple[str, str], ...] = ()
+    #: Each installed version and what OpenCTI says of it (#1783), typed (#2038), else ``()``.
+    version_outcomes: tuple[VersionFact, ...] = ()
     #: OpenAEV finding lifecycle (CTEM-14-UI): ``open``, ``not_reproduced`` or ``resolved``;
     #: ``None`` when the source does not carry it (OpenCTI, an OpenAEV older than the lifecycle).
     retest_status: str | None = None
@@ -101,6 +200,14 @@ class SourceIssue:
     last_tested_at: str | None = None
     #: A re-test is queued on the finding and has not finished.
     retest_pending: bool = False
+    #: Every OpenCTI Software the vulnerability names is a language package (``pkg:pypi``, a ``java``
+    #: CPE target): the case's running versions then count repository packages too (#2223).
+    language_package: bool = False
+
+    def __post_init__(self) -> None:
+        # A stored pair or mapping (a view cached before #2038) is read as a typed fact.
+        if any(not isinstance(v, VersionFact) for v in self.version_outcomes):
+            object.__setattr__(self, "version_outcomes", version_facts(self.version_outcomes))
 
     @property
     def member_id(self) -> str:
@@ -118,6 +225,8 @@ class Remediation:
     fixed_version: str | None = None
     #: ``((platform, version), ...)``: the fix of each platform the remediation names (#1572), else ``()``.
     fixed_versions: tuple[tuple[str, str], ...] = ()
+    #: The product is a language package (#2223): see :attr:`SourceIssue.language_package`.
+    language_package: bool = False
 
 
 def _norm(value: str | None) -> str:
@@ -158,12 +267,14 @@ def remediation_of(issue: SourceIssue) -> Remediation | None:
                 product_label=label,
                 fixed_version=fixed,
                 fixed_versions=issue.fixed_versions,
+                language_package=issue.language_package,
             )
         return Remediation(
             key=f"upgrade:{vendor}/{product}@latest",
             kind="upgrade",
             title=f"Upgrade {label} to a fixed version",
             product_label=label,
+            language_package=issue.language_package,
         )
     return None
 
@@ -281,6 +392,9 @@ class CaseSnapshot:
     #: answered not exploitable, a passing re-test), ``None`` for a resolution recompute made (#1646): such
     #: a closure holds while the case's issues stay as they were, whatever their state at source.
     decided_closure: str | None = None
+    #: Every version of the case's product the asset inventory shows running (#2047), ``None`` when not read or
+    #: when no asset runs it. An issue whose known fixed version is at or below all of them leaves the case.
+    running_versions: tuple[str, ...] | None = None
 
 
 @dataclass
@@ -301,6 +415,29 @@ class CasePlan:
     evidence: str | None = None
     #: Keys an existing case takes over: a folded upgrade target that moved (CTEM-11).
     add_keys: list[str] = field(default_factory=list)
+    #: Members of ``resolve`` (or seen members not added) settled because their fix is below every running
+    #: version (#2047): their ``issue_closed`` event carries :data:`FIXED_BELOW_RUNNING`.
+    settled: list[str] = field(default_factory=list)
+
+
+def fixed_below_running(issue: SourceIssue, running: Iterable[str] | None) -> bool:
+    """Whether *issue* is fixed in a version at or below every running version (pure, #2047).
+
+    Known data only: ``False`` without a fixed version, without a running version, or when one
+    running version (or one per-platform fix) cannot be compared. Per-platform fixes count too: the
+    highest of them must be at or below every running version. An unknown is never read as fixed.
+    """
+    running = [str(v).strip() for v in running or ()]
+    fixes = [(issue.fixed_version or "").strip(), *(str(v).strip() for _p, v in issue.fixed_versions)]
+    fixes = [f for f in fixes if f]
+    if not running or not fixes or not (issue.fixed_version or "").strip():
+        return False
+    for fixed in fixes:
+        for version in running:
+            cmp = compare_versions(version, fixed)
+            if cmp is None or cmp < 0:
+                return False
+    return True
 
 
 def _upgrade_prefix(key: str) -> str | None:
@@ -308,6 +445,55 @@ def _upgrade_prefix(key: str) -> str | None:
     if not key.startswith("upgrade:") or "@" not in key:
         return None
     return key.rsplit("@", 1)[0] + "@"
+
+
+def _upgrade_parts(key: str) -> tuple[str, str, str] | None:
+    """``(vendor, product, version)`` of an upgrade key, lower-cased as keys are; ``None`` for another key."""
+    if not key.startswith("upgrade:") or "@" not in key or "/" not in key:
+        return None
+    head, version = key[len("upgrade:") :].rsplit("@", 1)
+    vendor, product = head.split("/", 1)
+    return vendor.strip().casefold(), product.strip().casefold(), version.strip().casefold()
+
+
+def same_product_key(left: str, right: str) -> bool:
+    """Whether two upgrade keys name one fix of one product under two spellings (#2037).
+
+    Same version, and the product named the same once the vendor is set apart:
+    ``-/minio`` and ``minio/minio``, ``-/windows``, ``-/microsoft windows`` and
+    ``microsoft/windows``. Two known vendors that differ never match; two
+    vendor-less names match only when equal (nothing tells their vendor).
+    """
+    if left == right:
+        return True
+    a, b = _upgrade_parts(left), _upgrade_parts(right)
+    if a is None or b is None or a[2] != b[2]:
+        return False
+    (va, pa, _), (vb, pb, _) = a, b
+    if va != "-" and vb != "-" and va != vb:
+        return False
+
+    def bare(vendor: str, product: str) -> str:
+        if vendor != "-" and product.startswith(vendor + " "):
+            return product[len(vendor) + 1 :].strip()
+        return product
+
+    def full(vendor: str, product: str) -> str:
+        if vendor == "-" or product == vendor or product.startswith(vendor + " "):
+            return product
+        return f"{vendor} {product}"
+
+    if va == "-" and vb == "-":
+        return pa == pb
+    return bare(va, pa) == bare(vb, pb) or full(va, pa) == full(vb, pb)
+
+
+def _alias_owner(key: str, cases: list[CaseSnapshot]) -> CaseSnapshot | None:
+    """The open case whose keys name the same fix of the same product under another spelling (#2037)."""
+    for case in cases:
+        if case.state in OPEN_STATES and any(same_product_key(key, k) for k in case.keys):
+            return case
+    return None
 
 
 def _holder_of(key: str, members: list[SourceIssue], cases: list[CaseSnapshot]) -> CaseSnapshot | None:
@@ -331,6 +517,17 @@ def _holder_of(key: str, members: list[SourceIssue], cases: list[CaseSnapshot]) 
         if count > best_count:
             best, best_count = case, count
     return best
+
+
+def _running_of_product(key: str, cases: list[CaseSnapshot]) -> tuple[str, ...] | None:
+    """The running versions read on an existing case of the same upgrade product as *key*, else ``None``."""
+    prefix = _upgrade_prefix(key)
+    if prefix is None:
+        return None
+    for case in cases:
+        if case.running_versions and any(k.startswith(prefix) for k in case.keys):
+            return case.running_versions
+    return None
 
 
 def plan_recompute(
@@ -378,6 +575,18 @@ def plan_recompute(
                 taken_keys.setdefault(owner.id, []).append(key)
                 retarget[owner.id] = grouping.remediations[key]
         if owner is None:
+            # The same fix of the same product under another spelling joins its open case (#2037).
+            owner = _alias_owner(key, cases)
+            if owner is not None:
+                key_owner[key] = owner
+                taken_keys.setdefault(owner.id, []).append(key)
+        if owner is None:
+            # #2047: a new upgrade group whose issues are all fixed below every version the product runs (read
+            # on a case of the same product) opens no case; the issues fixed below are left out of it.
+            running = _running_of_product(key, cases)
+            members = [m for m in members if not fixed_below_running(m, running)]
+            if not members:
+                continue
             plans.append(
                 CasePlan(
                     case_id=None,
@@ -388,21 +597,40 @@ def plan_recompute(
             continue
         seen_open[owner.id].update(m.member_id for m in members)
 
+    by_member = {i.member_id: i for i in issues}
     for case in cases:
         plan = CasePlan(case_id=case.id, remediation=retarget.get(case.id), add_keys=taken_keys.get(case.id, []))
-        for member_id in sorted(seen_open[case.id]):
+        # #2047: an issue whose known fix is at or below every running version leaves the active issues
+        # (kept in history); an unknown fix or an unknown running version keeps it, to validate.
+        settled = {
+            m for m in seen_open[case.id] if m in by_member and fixed_below_running(by_member[m], case.running_versions)
+        }
+        for member_id in sorted(seen_open[case.id] - settled):
             if member_id not in case.members:
                 plan.add.append(member_id)
             elif not case.members[member_id]:
                 plan.reopen.append(member_id)
+        plan.settled = sorted(m for m in settled if case.members.get(m))
         plan.resolve = sorted(
-            m for m, is_open in case.members.items() if is_open and m in closed_ids and m not in seen_open[case.id]
+            {
+                *(
+                    m
+                    for m, is_open in case.members.items()
+                    if is_open and m in closed_ids and m not in seen_open[case.id]
+                ),
+                *plan.settled,
+            }
         )
         after = dict(case.members)
         after.update({m: True for m in plan.add + plan.reopen})
         after.update({m: False for m in plan.resolve})
         any_open = any(after.values())
-        if case.fixed_in_inventory and case.id not in retarget:
+        # A member this read sees open with no known fixed version keeps the case open, to validate (#2047).
+        unknown_fix = any(
+            is_open and m in by_member and not (by_member[m].fixed_version or "").strip()
+            for m, is_open in after.items()
+        )
+        if case.fixed_in_inventory and case.id not in retarget and not unknown_fix:
             # No asset is left below the fix: the case resolves (a validation plan still needs its proof)
             # and is never reopened by issues that stay open at source on a version nobody runs.
             if case.state in OPEN_STATES and not case.validation_plan:
@@ -410,7 +638,7 @@ def plan_recompute(
                 plan.evidence = FIXED_IN_INVENTORY
         elif after and not any_open and case.state in OPEN_STATES and not case.validation_plan:
             plan.new_state = "resolved"
-            plan.evidence = CLOSED_AT_SOURCE
+            plan.evidence = ALL_FIXED_BELOW_RUNNING if plan.settled else CLOSED_AT_SOURCE
         elif any_open and case.state == "resolved":
             if case.decided_closure is None:
                 plan.new_state = "new"
@@ -473,6 +701,7 @@ def check_transition(
     validations: Iterable[dict[str, Any]] | None = None,
     resolution_kind: str | None = None,
     close_without_retest_answered: bool = False,
+    dismissal_answered: bool = False,
 ) -> None:
     """Raise :class:`CaseRuleError` when the transition is refused.
 
@@ -484,6 +713,10 @@ def check_transition(
     unless a person decided otherwise (#1675): a person's own move, or a
     ``ctem.close_without_retest`` decision answered on the case
     (*close_without_retest_answered*), lets it close without the re-test.
+    ``resolution_kind`` ``dismissed`` (#2252) is a person's decision: a
+    person's own move, or a gate of the case a person answered with the option
+    ``reject_and_close`` (*dismissal_answered*); it closes to ``resolved``
+    without evidence or re-test, and an agent never dismisses on its own.
     """
     if target not in CASE_STATES:
         raise CaseRuleError(f"unknown state {target!r}")
@@ -498,6 +731,14 @@ def check_transition(
         raise CaseRuleError("a person moving a case to remediating names its owner")
     if target == "waiting_decision" and actor_kind == "user" and not reason:
         raise CaseRuleError("waiting for decision needs what the case waits on (the reason)")
+    if resolution_kind == DISMISSED:
+        if target != "resolved":
+            raise CaseRuleError("a dismissed case is resolved: set state resolved with resolution_kind dismissed")
+        if actor_kind != "user" and not dismissal_answered:
+            raise CaseRuleError(
+                f"only a person dismisses a case: a gate of the case answered with the option {CLOSE_OPTION}"
+            )
+        return
     if target == "resolved" and not evidence:
         raise CaseRuleError("resolving a case needs evidence (a ticket, a change or a validation run)")
     proven = passing(latest_validation(validations))
@@ -517,7 +758,10 @@ def check_transition(
             raise CaseRuleError("accepting risk needs an expiry date")
         if accepted_until <= now:
             raise CaseRuleError("the expiry date must be in the future")
-        if accepted_until > now + max_acceptance:
+        if accepted_until.date() > (as_utc(now) + max_acceptance).date():
+            # The limit is a calendar day (UTC), its end included: the dialogs
+            # send the end of the picked day, so the default (today + 90) stays
+            # valid at any hour (#2490).
             raise CaseRuleError(f"the expiry date is at most {max_acceptance.days} days away")
     if (
         target in OPEN_STATES
@@ -559,14 +803,17 @@ def aggregates(members: Iterable[SourceIssue]) -> dict[str, object]:
     """The counts and maxima a case carries for its list row."""
     members = list(members)
     assets = {a for m in members for a in m.assets}
-    jewels = {j for m in members for j in m.crown_jewels}
+    # #2396: a primary asset is proven when one member reaches it through a recorded link, else inferred.
+    proven = {j for m in members for j in m.primary_assets if j not in m.inferred_primary_assets}
+    inferred = {j for m in members for j in m.primary_assets} - proven
     cvss = [m.cvss for m in members if m.cvss is not None]
     epss = [m.epss for m in members if m.epss is not None]
     seen = [m.first_seen_at for m in members if m.first_seen_at is not None]
     return {
         "issue_count": len(members),
         "asset_count": len(assets),
-        "crown_jewel_count": len(jewels),
+        "primary_asset_count": len(proven),
+        "inferred_primary_asset_count": len(inferred),
         "kev_count": sum(1 for m in members if m.kev),
         "max_cvss": max(cvss) if cvss else None,
         "max_epss": max(epss) if epss else None,

@@ -104,6 +104,11 @@ EXPECTED_TOOLS = {
     "delete_opencrq_supporting_assets",
     "reset_opencrq_supporting_asset_to_connectors",
     "list_opencrq_asset_dependencies",
+    "list_opencrq_dependency_rules",
+    "preview_opencrq_dependency_rule",
+    "create_opencrq_dependency_rule",
+    "update_opencrq_dependency_rule",
+    "delete_opencrq_dependency_rules",
     "create_opencrq_asset_dependency",
     "update_opencrq_asset_dependency_roles",
     "delete_opencrq_asset_dependencies",
@@ -1587,6 +1592,19 @@ async def test_jobs_list_sends_kinds_and_statuses_and_reads_the_envelope():
         "kinds": ["crq-simulation"], "statuses": ["dlq"], "limit": 10, "offset": 0,
     }
     assert "41, showing 1" in out and "crq-simulation: dlq" in out and "boom" in out
+
+
+async def test_jobs_list_filters_on_the_partial_status_opencrq_writes():
+    """OpenCRQ's terminal ``partial`` (a bounded run handed to a continuation) is a status filter."""
+    page = {"items": [{"id": "j-2", "kind": "nist-sync", "status": "partial"}], "total": 1}
+    with _recorded_trpc(opencrq_ops, {"jobs.listAllRuns": page}) as calls:
+        out = await _run("list_opencrq_jobs", statuses=["partial"])
+    assert calls[0]["input"]["statuses"] == ["partial"]
+    assert "nist-sync: partial" in out
+    schema = next(
+        d for d in opencrq_ops.register("https://crq", {}, CallableToolExecutor()) if d.name == "list_opencrq_jobs"
+    ).input_schema
+    assert "partial" in schema["properties"]["statuses"]["items"]["enum"]
 
 
 async def test_crq_settings_update_sends_every_setting_opencrq_accepts():

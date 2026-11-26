@@ -16,12 +16,11 @@ export const KINDS = {
 };
 export const TYPE_LABELS = ["feature", "bug", "documentation"];
 export const DEPRECATED_LABELS = ["enhancement", "feature-request", "feature request", "improvement", "nice-to-have"];
-const SECURITY_LABEL = "security";
 const AIKIDO_LABEL = "Aikido";
 // Every label whose addition or removal can change what the rules decide.
 // The workflow starts a run for these labels and no other; a test holds the
 // two lists together.
-export const WATCHED_LABELS = [...TYPE_LABELS, ...DEPRECATED_LABELS, SECURITY_LABEL, AIKIDO_LABEL];
+export const WATCHED_LABELS = [...TYPE_LABELS, ...DEPRECATED_LABELS, AIKIDO_LABEL];
 
 // A Type the organization adds later (an Epic, an Incident) is not ours to
 // overwrite: an issue carrying one is left alone.
@@ -62,11 +61,6 @@ function kindOfLabels(labels, type) {
   return present.find((label) => kindOfType(type, [label]) === label) ?? null;
 }
 
-// `security` is a label applied on top of the type, never a title type.
-function needsSecurityLabel({ title, labels }) {
-  return /^\s*security\b/i.test(title) || /^\s*[A-Za-z]+\(security\)!?\s*:/i.test(title) || labels.includes(AIKIDO_LABEL);
-}
-
 function decideKind(issue, event) {
   const { title, labels, type } = issue;
   const fromTitle = titleKind(title);
@@ -105,7 +99,6 @@ export function plan(issue, event = {}) {
     }
     if (issue.type !== target.type) type = target.type;
   }
-  if (needsSecurityLabel(issue) && !issue.labels.includes(SECURITY_LABEL)) add.push(SECURITY_LABEL);
   return { kind, reason, add, remove, type };
 }
 

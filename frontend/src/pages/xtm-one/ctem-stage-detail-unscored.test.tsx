@@ -29,7 +29,7 @@ vi.mock("@/hooks/api/useCtemMetricsApi", async (importOriginal) => ({
     isLoading: false,
     data: {
       posture_score: null, posture_band: "unknown", covered_stages: 1, total_stages: 5,
-      context: { state: "partial", missing_fields: ["tech_stack"] },
+      context: { state: "partial", missing_fields: ["software"] },
       products: state.products,
       stages: [{
         qualitative_score: state.score == null ? null : 50, qualitative_band: state.score == null ? "unknown" : "at_risk",

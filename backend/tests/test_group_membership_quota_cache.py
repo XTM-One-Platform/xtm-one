@@ -216,7 +216,8 @@ class _Rows:
 
 
 class _SyncDb:
-    """The user's memberships and the asserted groups, by the table queried."""
+    """The user's memberships and the asserted groups, by the table queried;
+    no agent is shared with a group the user leaves."""
 
     def __init__(self, memberships, groups):
         self.memberships = memberships
@@ -226,7 +227,14 @@ class _SyncDb:
 
     async def execute(self, stmt):
         rendered = str(stmt)
-        return _Rows(self.memberships if "FROM group_members" in rendered else self.groups)
+        if "FROM agents" in rendered:
+            return _Rows([])
+        if "FROM group_members" in rendered:
+            return _Rows(self.memberships)
+        if "groups.auto_join IS true" in rendered:
+            # The ids of the auto-join groups among the user's SAML memberships.
+            return _Rows([g.id for g in self.groups if g.auto_join])
+        return _Rows(self.groups)
 
     def add(self, obj):
         self.added.append(obj)
@@ -298,6 +306,22 @@ async def test_an_assertion_with_no_group_reports_what_it_removed(dana, source, 
     assert db.deleted == ([membership] if changed else [])
 
 
+@pytest.mark.parametrize("names", [[], ["Analysts"]])
+async def test_a_saml_membership_of_an_auto_join_group_is_never_removed_as_stale(
+    dana: SimpleNamespace, names: list[str]
+) -> None:
+    """Auto join turned on after the mapping wrote the row (#1901): the row
+    stays "saml" and the mapping keeps it whatever the assertion names."""
+    everyone = Group(id=uuid.uuid4(), name="Everyone", auto_join=True)
+    analysts = Group(id=uuid.uuid4(), name="Analysts")
+    membership = _membership(everyone, dana, "saml")
+    db = _SyncDb(memberships=[membership], groups=[everyone, analysts])
+
+    await _sync_user_groups(db, dana, names, auto_create=False)
+    assert db.deleted == []
+    assert membership.source == "saml"
+
+
 class _ScriptedDb:
     """Answers each query in turn, as ``_rename_uuid_groups`` asks them."""
 
@@ -319,7 +343,16 @@ class _ScriptedDb:
         return None
 
 
-async def test_a_merged_uuid_group_records_the_members_it_moved():
+async def test_a_merged_uuid_group_records_the_members_it_moved(monkeypatch):
+    pruned: list[uuid.UUID] = []
+
+    async def _prune(_db, group_id):
+        # Its grants go with it (``helpers.prune_group_grants``, against
+        # PostgreSQL in ``test_shared_agent_owner_fields_postgres.py``).
+        pruned.append(group_id)
+        return 0
+
+    monkeypatch.setattr(auth_sso, "prune_group_grants", _prune)
     entra_id = str(uuid.uuid4())
     uuid_group = Group(id=uuid.uuid4(), name=entra_id)
     target = Group(id=uuid.uuid4(), name="Security Team")
@@ -345,6 +378,7 @@ async def test_a_merged_uuid_group_records_the_members_it_moved():
     assert moved == {newcomer.id, already.id}
     assert [(m.group_id, m.user_id) for m in db.added] == [(target.id, newcomer.id)]
     assert db.deleted == [*members, uuid_group]
+    assert pruned == [uuid_group.id]
 
 
 async def test_a_renamed_uuid_group_moves_nobody():
@@ -367,6 +401,10 @@ class _Result:
 
     def scalar_one_or_none(self):
         return self._value
+
+    def all(self):
+        # No group has auto join on in this fake (#1901).
+        return []
 
 
 class _AcsDb:

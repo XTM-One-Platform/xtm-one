@@ -278,6 +278,65 @@ async def _record_skipped_fire(
         )
 
 
+async def _supersede_stale_fires(db: AsyncSession, assignment: Assignment, now: datetime) -> bool:
+    """Supersede the earlier fires of *assignment* still waiting for a worker (#2040); whether none is left active.
+
+    Every active run of the assignment must be a scheduled fire that never
+    started (:func:`schedule_overlap.supersede_never_started`): a run that
+    started, an event or manual run, or one a worker claimed meanwhile keeps
+    its place and the new fire is skipped as before. Committed when it
+    supersedes; best effort, a failure is logged and answers ``False``.
+    """
+    from app.services import schedule_overlap
+    from app.services.assignment_engine import ACTIVE_RUN_STATUSES
+    from app.services.decision_waits import holds_assignment
+
+    try:
+        active = list(
+            (
+                await db.execute(
+                    select(AssignmentRun).where(
+                        AssignmentRun.assignment_id == assignment.id,
+                        holds_assignment(AssignmentRun, ACTIVE_RUN_STATUSES),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not active or any(
+            (getattr(run, "trigger_context", None) or {}).get("type") != "schedule"
+            or getattr(run, "status", None) not in schedule_overlap.SUPERSEDABLE_STATUSES
+            or getattr(run, "started_at", None) is not None
+            for run in active
+        ):
+            return False
+        for run in active:
+            if not await schedule_overlap.supersede_never_started(db, run, now=now):
+                await db.rollback()
+                return False
+        await db.commit()
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            await db.rollback()
+        logger.warning(
+            "Scheduled assignment '%s' (%s): stale fire not superseded: %s",
+            assignment.name,
+            assignment.id,
+            format_exception_message(exc),
+        )
+        return False
+    for run in active:
+        logger.info(
+            "Scheduled assignment '%s' (%s): fire %s never started and is superseded by the fire of %s",
+            assignment.name,
+            assignment.id,
+            run.id,
+            now.isoformat(),
+        )
+    return True
+
+
 async def _flag_assignment_cron_misconfiguration(
     db: AsyncSession,
     assignment: Assignment,
@@ -1153,12 +1212,14 @@ async def _cleanup_resolved_shared_states(db: AsyncSession) -> int:
     setting is <= 0.
     """
     del db  # purge_resolved_states opens its own session, like the rest of the service
-    days = settings.shared_state_resolved_retention_days
+    from app.services.coordination_retention import effective_coordination_retention
+
+    days = (await effective_coordination_retention())["shared_state_resolved_days"]
     if not days or days <= 0:
         return 0
     from app.services.shared_state import purge_resolved_states
 
-    return await purge_resolved_states(older_than=timedelta(days=days), limit=500)
+    return await purge_resolved_states(older_than=timedelta(days=days), limit=COORDINATION_PURGE_BATCH)
 
 
 async def _cleanup_archived_shared_state_items() -> int:
@@ -1168,7 +1229,9 @@ async def _cleanup_archived_shared_state_items() -> int:
     without this sweep archiving only relocates a list's growth. Disabled
     when the setting is <= 0.
     """
-    days = settings.shared_state_archive_retention_days
+    from app.services.coordination_retention import effective_coordination_retention
+
+    days = (await effective_coordination_retention())["shared_state_archive_days"]
     if not days or days <= 0:
         return 0
     from app.services.shared_state import purge_archived_items
@@ -1185,9 +1248,63 @@ async def _cleanup_work_items(db: AsyncSession) -> dict:
     ``{"cancelled": N, "purged": M}``.
     """
     del db  # reap_work_items opens its own session, like the rest of the service
+    from app.services.coordination_retention import effective_coordination_retention
     from app.services.work_item import reap_work_items
 
-    return await reap_work_items()
+    windows = await effective_coordination_retention()
+    return await reap_work_items(
+        abandon_days=windows["work_item_abandoned_days"],
+        retain_days=windows["work_item_resolved_days"],
+    )
+
+
+#: Rows one coordination purge call deletes; a call that deletes this many may have left more.
+COORDINATION_PURGE_BATCH = 2000
+
+
+async def _drain_coordination_retention() -> tuple[dict, bool]:
+    """One bounded pass of the closed work-item and resolved shared-state purges (#2070).
+
+    Each purge deletes at most :data:`COORDINATION_PURGE_BATCH` rows; a purge
+    that reached it answers ``more``, which keeps
+    :data:`wall_clock_schedule.RETENTION_DRAIN` set so the next ticks run this
+    pass again until the backlog past retention is gone, instead of one batch an
+    hour. Answers the rows deleted per table and whether any purge may have more.
+    """
+    from app.services.coordination_retention import effective_coordination_retention
+    from app.services.shared_state import purge_resolved_states
+    from app.services.work_item import purge_terminal_work_items
+
+    windows = await effective_coordination_retention()
+    work_items = await purge_terminal_work_items(
+        older_than_days=windows["work_item_resolved_days"], limit=COORDINATION_PURGE_BATCH
+    )
+    days = windows["shared_state_resolved_days"]
+    states = (
+        await purge_resolved_states(older_than=timedelta(days=days), limit=COORDINATION_PURGE_BATCH)
+        if days and days > 0
+        else 0
+    )
+    more = work_items >= COORDINATION_PURGE_BATCH or states >= COORDINATION_PURGE_BATCH
+    return {"work_items": work_items, "shared_states": states}, more
+
+
+async def _drain_run_retention() -> tuple[int, bool]:
+    """One bounded pass of the assignment run retention (Operations > Executions).
+
+    Deletes at most :data:`run_retention.RUN_RETENTION_BATCH` finished runs past
+    the window (``services/run_retention.py``) and writes one platform audit entry
+    when it deleted any. Answers the runs deleted and whether more may be left,
+    which keeps :data:`wall_clock_schedule.RETENTION_DRAIN` set.
+    """
+    from app.services import run_retention
+    from app.services.coordination_retention import effective_coordination_retention
+
+    days = (await effective_coordination_retention())["assignment_run_days"]
+    deleted = await run_retention.purge_expired_runs(older_than_days=days)
+    if deleted:
+        await run_retention.audit_run_retention_pass(deleted, days)
+    return deleted, deleted >= run_retention.RUN_RETENTION_BATCH
 
 
 async def _cleanup_flow_events(db: AsyncSession) -> int:
@@ -1281,7 +1398,7 @@ async def _cleanup_retained_files(db: AsyncSession, *, also: dict[str, int] | No
 
 
 async def _run_retention_pass(db: AsyncSession) -> None:
-    """One bounded pass of the check file and file retention sweeps (#768).
+    """One bounded pass of the check file, file, coordination and run retention sweeps (#768, #2070).
 
     Each sweep is capped per tick; when one stops at its cap, the backlog flag
     of :data:`wall_clock_schedule.RETENTION_DRAIN` makes the next ticks run this
@@ -1312,7 +1429,28 @@ async def _run_retention_pass(db: AsyncSession) -> None:
     except Exception as e:
         logger.error("File retention error: %s", format_exception_message(e), exc_info=True)
         await db.rollback()
-    await wall_clock_schedule.set_backlog(wall_clock_schedule.RETENTION_DRAIN, more_checks or more_files)
+    more_coordination = False
+    try:
+        purged, more_coordination = await _drain_coordination_retention()
+        if purged["work_items"] or purged["shared_states"]:
+            logger.info(
+                "Coordination retention: deleted %d closed work item(s) and %d resolved shared-state entr%s",
+                purged["work_items"],
+                purged["shared_states"],
+                "y" if purged["shared_states"] == 1 else "ies",
+            )
+    except Exception as e:
+        logger.error("Coordination retention error: %s", format_exception_message(e), exc_info=True)
+    more_runs = False
+    try:
+        deleted_runs, more_runs = await _drain_run_retention()
+        if deleted_runs:
+            logger.info("Run retention: deleted %d finished assignment run(s)", deleted_runs)
+    except Exception as e:
+        logger.error("Run retention error: %s", format_exception_message(e), exc_info=True)
+    await wall_clock_schedule.set_backlog(
+        wall_clock_schedule.RETENTION_DRAIN, more_checks or more_files or more_coordination or more_runs
+    )
 
 
 async def _cleanup_kb_figure_sources(db: AsyncSession) -> int:
@@ -1377,9 +1515,10 @@ async def _cleanup_worksets(db: AsyncSession) -> dict:
     run start cold. Returns ``{"resolved": N, "expired": M}``.
     """
     del db  # sweep_worksets opens its own session, like the rest of the service
+    from app.services.coordination_retention import effective_coordination_retention
     from app.services.workset import sweep_worksets
 
-    days = settings.workset_resolved_retention_days
+    days = (await effective_coordination_retention())["workset_resolved_days"]
     return await sweep_worksets(
         resolved_after=timedelta(days=days) if days and days > 0 else None,
         limit=settings.workset_sweep_batch,
@@ -1580,6 +1719,11 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Scheduled assignments error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        # --- 3-bis. One admin alert per episode of assignment runs starved of workers (#2040) ---
+        from app.services.run_queue_starvation import check_queue_starvation
+
+        await check_queue_starvation(db)  # never raises
+
         # --- 3a-bis. Fire due flow schedules ---
         # Same tick, same Redis window lock as assignment crons — firing flow
         # crons from the worker's adapter.periodic too would double-trigger.
@@ -1659,6 +1803,11 @@ async def _run_autonomous_tick_inner() -> int:
                 from app.services.ctem_case_routing import catch_up
 
                 counts["caught_up"] = await catch_up()
+                # Per-case decisions of a groupable kind asked of one person, folded into one card (#2451).
+                from app.services import ctem_decision_groups
+
+                counts["decisions_grouped"] = await ctem_decision_groups.consolidate(db)
+                await db.commit()
                 if any(counts.values()):
                     logger.info("CTEM case sweep: %s", counts)
         except Exception as e:
@@ -1777,6 +1926,10 @@ async def _run_autonomous_tick_inner() -> int:
                 polled = await poll_blocked_on_refs()
                 if polled["released"]:
                     logger.info("Reopened %d work item(s) whose references closed", polled["released"])
+                # Items waiting for an outbound A2A task that ended (#2265).
+                from app.services.work_item_a2a_refs import release_ended_a2a_tasks
+
+                await release_ended_a2a_tasks()
                 # The class of defect: every reference met, the item still blocked.
                 await release_satisfied_blocks()
                 # Items waiting on each other through items or gated pull requests (#606).
@@ -1830,6 +1983,15 @@ async def _run_autonomous_tick_inner() -> int:
                 logger.info("Raised work_item.past_due for %d item(s)", past_due)
         except Exception as e:
             logger.error("Past-due raise error: %s", format_exception_message(e), exc_info=True)
+        # The decision gates nobody opened in time: the administrators told once (#2390).
+        try:
+            from app.services.work_item_decision_reach import raise_unseen_decisions
+
+            unseen = await raise_unseen_decisions()
+            if unseen:
+                logger.info("Raised work_item.needs_human_unseen for %d item(s)", unseen)
+        except Exception as e:
+            logger.error("Unseen decision raise error: %s", format_exception_message(e), exc_info=True)
         # The CI completions a trigger filter could not judge (their enriched
         # facts timed out or the provider failed): read again, and triggered on
         # a match, so the last check of a head is never lost to a slow read.
@@ -1867,6 +2029,18 @@ async def _run_autonomous_tick_inner() -> int:
                     logger.info("Lease hold: %d held event(s) delivered again", held)
         except Exception as e:
             logger.error("Lease hold error: %s", format_exception_message(e), exc_info=True)
+        # The platform event deliveries that errored (the DB pool exhausted, a
+        # dropped connection): delivered again with back-off, never lost (#2101).
+        try:
+            if _ai_on:
+                from app.services.platform_event_retry import process_due as process_platform_event_retries
+
+                redelivered = await process_platform_event_retries()
+                if redelivered:
+                    triggered += redelivered
+                    logger.info("Platform event retry: %d delivery(ies) made again", redelivered)
+        except Exception as e:
+            logger.error("Platform event retry error: %s", format_exception_message(e), exc_info=True)
 
         # --- 3b. Process work-item inbox assignments (autonomous pickup) ---
         # The consumer half of the work-item primitive: dispatch due,
@@ -2685,6 +2859,16 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Organization sync scheduler error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        # --- 9a'. The Intelligence policy's PIRs, read from every connected OpenCTI (#2435) ---
+        # No model call, no configuration: at most once an hour per process.
+        try:
+            from app.services.organization_pirs import refresh_if_due
+
+            await refresh_if_due(db)
+        except Exception as e:
+            logger.error("Intelligence policy refresh error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
+
         # --- 9b. Settle applied improvement proposals (#1044, #8256) ---
         # No model call: a verdict and, on a regression, a rollback. Runs with
         # AI, evaluation or Platform Health off too (#5503), so a change applied
@@ -2897,7 +3081,7 @@ async def _run_autonomous_tick_inner() -> int:
         logger.error("Platform registration heartbeat error: %s", format_exception_message(e), exc_info=True)
 
     # --- 14d. Keep the running build's last_seen_at current ---
-    # One row upserted at most every 15 minutes per process, on a session of
+    # One row upserted at most every TOUCH_INTERVAL_SECONDS per process, on a session of
     # its own: the release history tells a build still running from a replaced one.
     try:
         from app.services.platform_builds import touch_running_build_if_due
@@ -3874,7 +4058,7 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
             # This prevents overlapping executions — an assignment cannot re-run
             # while a previous run is still pending, delayed, running, or
             # awaiting human input.
-            if await has_active_run(db, assignment.id):
+            if await has_active_run(db, assignment.id) and not await _supersede_stale_fires(db, assignment, now):
                 # Never silent: the dropped fire is a ``skipped`` run
                 # naming the run in its way, so a run stuck across resumes
                 # shows in the run list instead of starving the schedule.

@@ -171,6 +171,10 @@ class ProviderCatalogItem(BaseModel):
         None  # When set (e.g. ["api_key", "platform_managed"]), the UI shows an auth mode selector
     )
     fields: list[str]
+    # The credential fields of each mode of a provider with several auth types
+    # (#2317): the creation form shows those of the mode picked. ``fields`` stays
+    # those of the default mode.
+    fields_by_auth_type: dict[str, list[str]] | None = None
     # A2A only, absent for every other provider: the directions the creation
     # form offers. Without it on the RESPONSE model Pydantic drops it and the
     # UI cannot offer a direction, which is how an outbound integration
@@ -341,6 +345,10 @@ class IntegrationResponse(BaseModel):
     #: Requested scopes the token was not granted (a declined consent box);
     #: None when the grant is unknown.
     missing_scopes: list[str] | None = None
+    #: Tool permissions the token lacks, ``Scope (tool, tool)`` (catalog
+    #: ``tool_scopes``, #2386): granted by an admin on the app, never a reason
+    #: to re-authorize. None when nothing is lacking or the grant is unknown.
+    missing_tool_permissions: list[str] | None = None
     # OAuth endpoints (public URLs, not secrets). Editable for integrations
     # that own them — OpenAPI ones pre-fill them from their spec.
     authorize_url: str | None = None

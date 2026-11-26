@@ -4,7 +4,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { syncFlowNodeCatalog } from "@/lib/flow-node-catalog";
 import type { FxRate, PirDetail } from "@/lib/organization-reference";
 import type {
   AssetIdentitySettings,
@@ -15,7 +14,7 @@ import type {
   TicketingSync,
 } from "@/lib/organization-profile";
 
-interface CrownJewel {
+interface PrimaryAsset {
   name: string;
   business_service: string;
   owner: string;
@@ -29,7 +28,7 @@ interface CrownJewel {
   sync_id?: string;
 }
 
-interface TechStackEntry {
+interface SoftwareEntry {
   product: string;
   vendor: string;
   cpe: string;
@@ -46,8 +45,8 @@ export interface OrganizationProfile {
   sub_sector: string;
   regions: string[];
   size: "" | "1-50" | "51-250" | "251-1000" | "1001-5000" | "5001-20000" | "20000+";
-  crown_jewels: CrownJewel[];
-  tech_stack: TechStackEntry[];
+  primary_assets: PrimaryAsset[];
+  software: SoftwareEntry[];
   /** What the organization ships, with its source repositories (#1432); absent when none is declared. */
   shipped_products?: { product: string; vendor: string; cpe: string; repositories: string[] }[];
   pir_ids: string[];
@@ -250,7 +249,7 @@ export interface OrganizationDraftResponse {
   missing_fields: string[];
 }
 
-/** "form" for a profile typed by hand, "draft" for one started from the platforms, "ai_draft" for accepted AI proposals. */
+/** "form" for a profile typed by hand, "draft" for one started from the platforms (kept for past versions), "ai_draft" for accepted AI proposals. */
 export type ProfileSource = "form" | "draft" | "ai_draft";
 
 interface SaveOrganizationContextBody {
@@ -300,7 +299,7 @@ export function usePatchOrganizationContext() {
 
 /** One per-field proposal of "Draft with AI" (#9484): nothing is saved until it is accepted. */
 export interface AiDraftProposal {
-  /** A contract path, such as "tech_stack" or "risk_appetite.approval_threshold". */
+  /** A contract path, such as "software" or "risk_appetite.approval_threshold". */
   field: string;
   value: unknown;
   /** "description", "document:<name>", "website:<url>", "opencti", "openaev" or "opencrq". */
@@ -367,6 +366,81 @@ export function useOrganizationPirs(enabled: boolean) {
   });
 }
 
+/** One PIR of the Intelligence policy (#2435): what OpenCTI says of it, and the organization's policy on it. */
+export interface IntelligencePolicyPir {
+  /** The stored row's id, the PATCH target. */
+  id: string;
+  /** The OpenCTI PIR id. */
+  pir_id: string;
+  integration_id: string | null;
+  name: string;
+  description: string;
+  pir_type: string;
+  criteria_summary: string;
+  question: string;
+  owner: string;
+  review_cadence: string;
+  primary_assets: string[];
+  min_score: number;
+  enabled: boolean;
+  last_seen_at: string | null;
+  /** Set when OpenCTI no longer lists the PIR: the row stays, shown as gone. */
+  gone_at: string | null;
+}
+
+/** One OpenCTI a refresh could not read, and why (its rows are kept as they were). */
+interface IntelligencePolicyReadError {
+  integration_id: string;
+  integration: string;
+  reason: string;
+}
+
+export interface IntelligencePolicyResponse {
+  pirs: IntelligencePolicyPir[];
+  total: number;
+  /** Set by a refresh only. */
+  errors?: IntelligencePolicyReadError[];
+}
+
+export type IntelligencePolicyPatch = Partial<
+  Pick<IntelligencePolicyPir, "question" | "owner" | "review_cadence" | "primary_assets" | "min_score" | "enabled">
+>;
+
+const INTELLIGENCE_POLICY_KEY = [...KEY, "intelligence-policy"] as const;
+
+/** The stored OpenCTI PIRs (#2435), filled by the hourly refresh: no sync to configure. Read by every user. */
+export function useIntelligencePolicy() {
+  return useQuery<IntelligencePolicyResponse>({
+    queryKey: INTELLIGENCE_POLICY_KEY,
+    queryFn: () => api.get("/organization-context/intelligence-policy?limit=200"),
+    staleTime: 60_000,
+  });
+}
+
+/** Write the policy of one PIR (administrators); the profile is read again, its pir_ids derive from the enabled PIRs. */
+export function usePatchIntelligencePolicyPir() {
+  const qc = useQueryClient();
+  return useMutation<IntelligencePolicyPir, Error, { id: string; patch: IntelligencePolicyPatch }>({
+    mutationFn: ({ id, patch }) => api.patch(`/organization-context/intelligence-policy/${id}`, patch),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+    },
+  });
+}
+
+/** Read the PIRs of every connected OpenCTI now (administrators); the background refresh does it hourly. */
+export function useRefreshIntelligencePolicy() {
+  const qc = useQueryClient();
+  return useMutation<IntelligencePolicyResponse, Error, void>({
+    mutationFn: () => api.post("/organization-context/intelligence-policy/refresh", {}),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+    },
+  });
+}
+
 /** One field change of a stored proposal (#9484 S-a2; CTEM-30 "propose scope"): nothing changes until an administrator accepts it. */
 export interface OrganizationContextFieldProposal {
   /** A contract path, such as "prioritization_policy.scope_min_criticality". */
@@ -414,7 +488,7 @@ export function useDraftOrganizationContext() {
 }
 
 /** A profile section the platform import fills (#11780); one run imports one section. */
-export type ImportSectionKey = "assets" | "asset_groups" | "software" | "crown_jewels" | "pirs";
+export type ImportSectionKey = "assets" | "asset_groups" | "software" | "primary_assets" | "pirs";
 /** The Filigran platforms, then the endpoint sources read through a Microsoft integration (#1251). */
 export type ImportSourceKey =
   | "openaev"
@@ -624,6 +698,36 @@ export function useCreateOrganizationSync() {
   });
 }
 
+/** What a sync's next run would do (#1982): rows that enter, are updated, leave (and are removed) or stay. */
+export interface SyncChangePreview {
+  direction: SyncDirection;
+  counts: { enter: number; update: number; leave: number; kept: number };
+  /** Inbound: rows the platform would add; outbound: platform rows the run would create (a sample). */
+  enter: string[];
+  update: string[];
+  /** Rows this sync wrote that the next run removes (outbound: the platform rows it deletes). */
+  leave: string[];
+  /** Inbound: rows that left the filters but stay, another writer wrote them. */
+  kept: string[];
+  error: string | null;
+}
+
+/** The first run of a new outbound sync, before it is saved (#1982 S4): nothing is written. */
+export function usePreviewNewOutboundSync() {
+  return useMutation<SyncChangePreview, Error, { section: ImportSectionKey; source: ImportSourceKey; filters: Record<string, string | string[]> }>({
+    mutationFn: (body) => api.post("/organization-context/syncs/outbound-preview", body),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** What saving new filters on a saved sync would do on its next run (#1982 S2 endpoint, S4 Edit dialog): nothing is written. */
+export function usePreviewOrganizationSyncChange() {
+  return useMutation<SyncChangePreview, Error, { id: string; body: { filters: Record<string, string | string[]>; batch_type: string; remove_gone: boolean } }>({
+    mutationFn: ({ id, body }) => api.post(`/organization-context/syncs/${id}/preview`, body),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
 export function useUpdateOrganizationSync() {
   const qc = useQueryClient();
   return useMutation<OrganizationSync, Error, { id: string; body: OrganizationSyncBody }>({
@@ -801,7 +905,7 @@ export interface AssetsImportResponse {
   assets: { name: string; type: string; environment: string; internet_facing: string; owner: string; group: string }[];
   links: Record<string, string[]>;
   errors: { line: number; name: string; message: string }[];
-  unknown_crown_jewels: string[];
+  unknown_primary_assets: string[];
   replaced: string[];
   version: number | null;
 }
@@ -823,32 +927,6 @@ export function useImportOrganizationAssets() {
   });
 }
 
-/** The fill agent of one connected integration (#11888): created once, its daily sync with `schedule`. */
-export interface FillAgentResponse {
-  agent_id: string;
-  agent_name: string;
-  created: boolean;
-  assignment_id: string | null;
-  /** The preview instruction the chat starts with. */
-  prompt: string;
-}
-
-export function useCreateOrganizationFillAgent() {
-  const qc = useQueryClient();
-  return useMutation<FillAgentResponse, Error, { integration_id: string; schedule: boolean; cron?: string; timezone?: string }>({
-    mutationFn: (body) => api.post("/organization-context/fill-agent", body),
-    // The chat picks its first agent from the cached agents list: refetch it (an unmounted list too)
-    // before the dialog navigates, else a new fill agent is missing and the chat opens on the default one.
-    onSuccess: () => {
-      // A new agent (and its sync assignment) is a node of the flow catalog too.
-      syncFlowNodeCatalog(qc);
-      return qc.invalidateQueries({ queryKey: ["agents"], refetchType: "all" });
-    },
-    // The dialog says the failure inline.
-    meta: { suppressGlobalErrorToast: true },
-  });
-}
-
 /** A saved version of the profile, as the history lists it (#1473, #1558). */
 export interface OrganizationContextVersionSummary {
   version: number;
@@ -857,7 +935,7 @@ export interface OrganizationContextVersionSummary {
   author_user_id: string | null;
   missing_fields: string[];
   /** The primary assets the version holds; absent from an older backend. */
-  crown_jewels?: number;
+  primary_assets?: number;
 }
 
 /** The saved versions, newest first (administrators); read only while the restore dialog is open. */

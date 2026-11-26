@@ -1,14 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""LM Studio integration - an LM Studio server reached through an XTM One Relay.
+"""LM Studio integration - an LM Studio server, reached directly or through an XTM One Relay.
 
-LM Studio (https://lmstudio.ai) runs models on a workstation or a GPU server
-inside the customer's network. The platform never connects to it: the
-integration is routed through a relay group, and every call leaves from the
-relay installed next to the server (``core/egress.py``). A call made with no
-route is refused here (``not_routed``), whoever the caller is, so a base URL
-naming a private address is only ever reached from the customer's network,
-where the relay checks its own allow-list.
+LM Studio (https://lmstudio.ai) runs models on a workstation or a GPU server.
+Like any integration, it is reached directly from the platform, or - when the
+platform cannot reach the server's network - routed through a relay group, so
+that every call leaves from the relay installed next to the server, which
+checks its own allow-list (``core/egress.py``). Every call follows the
+current egress route, set by the caller from the integration's relay group.
 
 What this module calls is LM Studio's native REST API v1 (LM Studio 0.4 and
 later, https://lmstudio.ai/docs/developer/rest):
@@ -94,10 +93,6 @@ class LMStudioError(Exception):
 
 
 PUBLIC_MESSAGES = {
-    "not_routed": (
-        "Route this integration through a relay group first: LM Studio is reached from the "
-        "relay installed in its network, never from the platform."
-    ),
     "no_base_url": "Set the LM Studio server URL in the Configuration tab.",
     "invalid_base_url": (
         "The LM Studio server URL must be an http or https URL with a host and no credentials "
@@ -113,8 +108,9 @@ PUBLIC_MESSAGES = {
     ),
     "invalid_request": "LM Studio refused the request.",
     "unavailable": (
-        "LM Studio could not be reached through the relay. Check that its server is started and "
-        "that the relay may reach the server URL."
+        "LM Studio could not be reached. Check that its server is started and that the server "
+        "URL is reachable from the platform, or from the relay when the integration is routed "
+        "through one."
     ),
     "invalid_response": "LM Studio sent an answer this page cannot read.",
 }
@@ -268,7 +264,7 @@ async def request(
     timeout: httpx.Timeout = _TIMEOUT,
     missing: str = "not_found",
 ) -> Any:
-    """Call ``base_url + path`` through the current relay route; the parsed JSON body.
+    """Call ``base_url + path`` on the current egress route; the parsed JSON body.
 
     ``path`` is always built by this module from validated parts. ``missing``
     is the kind a 404 is reported as (``unsupported`` for the listing, which
@@ -276,10 +272,6 @@ async def request(
     """
     if not path.startswith("/api/v1/") or "//" in path or ".." in path:
         raise ValueError(f"unexpected LM Studio path {path!r}")
-    if current_route() is None:
-        # Fail closed: the server is in the customer's network, never reached
-        # from the platform's own.
-        raise _error("not_routed", action)
     url = f"{connection.base_url}{path}"
     try:
         async with (
@@ -567,14 +559,16 @@ async def download_status(connection: Connection, job_id: str) -> dict:
 
 
 async def check_connectivity(ctx: Any) -> Any:
-    """``POST /integrations/{id}/test``: the model listing, through the integration's relay."""
+    """``POST /integrations/{id}/test``: the model listing, on the integration's route.
+
+    The test route sets the egress route of the integration around the probe:
+    its relay group, or a direct call.
+    """
     from app.integrations.connectivity import ProbeResult
 
     integration = ctx.integration
     if integration is None:
         return ProbeResult.failed(f"{ctx.name}: nothing to test without the integration.")
-    if getattr(integration, "relay_group_id", None) is None:
-        return ProbeResult.failed(PUBLIC_MESSAGES["not_routed"])
     try:
         connection = await integration_connection(integration)
         models = await list_models(connection)
@@ -583,7 +577,8 @@ async def check_connectivity(ctx: Any) -> Any:
         return ProbeResult.failed(f"{ctx.name}: {exc.public_message}")
     loaded = sum(1 for m in models if m["loaded_instances"])
     count = f"{len(models)} model{'' if len(models) == 1 else 's'}"
-    return ProbeResult.ok(f"{ctx.name} is connected through the relay: {count} on the server, {loaded} loaded.")
+    path = " through the relay" if current_route() is not None else ""
+    return ProbeResult.ok(f"{ctx.name} is connected{path}: {count} on the server, {loaded} loaded.")
 
 
 def _register() -> None:

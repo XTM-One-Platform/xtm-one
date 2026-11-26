@@ -1156,4 +1156,38 @@ describe("Work Items quick filters", () => {
       ITEMS = MIXED;
     }
   });
+
+  it("no longer flags or names the person on a row answered with a keeps_waiting option (#2500)", () => {
+    const ask = {
+      question: "Ship the patch now?",
+      options: [
+        { key: "ship", label: "Ship it" },
+        { key: "wait", label: "Keep waiting", keeps_waiting: true },
+      ],
+    };
+    ITEMS = [
+      base({
+        id: "kept",
+        title: "Answered, keeps waiting",
+        description: "Patch summary",
+        status: "blocked",
+        needs_human: true,
+        user_id: "u1",
+        ask,
+        payload: { answer: { option: "wait", label: "Keep waiting", answered_at: "2026-11-26T09:00:00Z" } },
+      }),
+      base({ id: "open-ask", title: "Still asking", status: "blocked", needs_human: true, user_id: "u1", ask }),
+    ];
+    try {
+      renderTab();
+      const kept = rowOf("Answered, keeps waiting");
+      expect(within(kept).queryByTestId("work-item-waiting-for-you")).toBeNull();
+      // Line 2 falls back to the summary: no bare "Waits for" with nothing after it.
+      expect(within(kept).queryByTestId("work-item-waits")).toBeNull();
+      expect(within(kept).getByTestId("work-item-summary").textContent).toContain("Patch summary");
+      expect(within(rowOf("Still asking")).queryByTestId("work-item-waiting-for-you")).not.toBeNull();
+    } finally {
+      ITEMS = MIXED;
+    }
+  });
 });

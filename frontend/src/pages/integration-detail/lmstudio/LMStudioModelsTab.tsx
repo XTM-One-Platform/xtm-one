@@ -104,7 +104,9 @@ function ServerCard({
           {t_i18n("LM Studio server")}
         </CardTitle>
         <CardDescription>
-          {t_i18n("Reached from the relay installed in its network: the platform never connects to it directly.")}
+          {relayGroupId
+            ? t_i18n("Reached from the relay installed in its network.")
+            : t_i18n("Reached directly from the platform.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center justify-between gap-3 content-base">
@@ -487,7 +489,7 @@ function ProviderCard({
           {t_i18n("Platform LLM provider")}
         </CardTitle>
         <CardDescription>
-          {t_i18n("The LM Studio provider every agent and the chat can run on, reached through this integration's relay group, with the models you offer below.")}
+          {t_i18n("The LM Studio provider every agent and the chat can run on, reached through this integration, with the models you offer below.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
@@ -500,7 +502,7 @@ function ProviderCard({
                 {provider.default_model ? ` · ${t_i18n("Default: {model}", { model: provider.default_model })}` : ""}
               </p>
               <p className="content-compact text-default-secondary">
-                {t_i18n("It holds no URL or token: it reads them, and the relay group, from this integration on every request.")}
+                {t_i18n("It holds no URL or token: it reads them, and the route, from this integration on every request.")}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -520,7 +522,7 @@ function ProviderCard({
         ) : canLink ? (
           <div className="space-y-3">
             <p className="content-compact text-default-secondary">
-              {t_i18n("Offer the models you want below, then create the provider. Its requests go through this integration's relay group.")}
+              {t_i18n("Offer the models you want below, then create the provider. Its requests follow this integration's route: its relay group, or a direct connection.")}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" className="gap-1.5" onClick={onCreate} disabled={busy || selectionSize === 0}>
@@ -657,7 +659,7 @@ export function LMStudioModelsTab({ integration }: { integration: Integration })
   const adopt = async (configId: string) => {
     const confirmed = await confirm({
       title: "Feed this provider from the integration?",
-      description: "Its requests then go to this integration's server, through its relay group. Its models are kept.",
+      description: "Its requests then go to this integration's server, through its relay group or directly. Its models are kept.",
       confirmLabel: "Link",
       variant: "warning",
     });

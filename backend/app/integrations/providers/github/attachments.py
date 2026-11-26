@@ -49,6 +49,16 @@ _TYPE_EXTENSIONS = {
     "text/markdown": ".md",
 }
 _UNSAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+#: Attempts of the attachments commit when another commit moved the branch tip meanwhile.
+ASSETS_COMMIT_ATTEMPTS = 3
+#: GitHub's refusal of ``createCommitOnBranch`` when ``expectedHeadOid`` is no longer the tip.
+_TIP_MOVED = re.compile(r"expected branch to point to|expectedHeadOid|is at .* but expected", re.IGNORECASE)
+
+
+def tip_moved(err: str | None) -> bool:
+    """Whether *err* is the refusal of a commit whose expected tip another commit moved. Pure."""
+    return bool(err) and bool(_TIP_MOVED.search(err or ""))
+
 
 #: The ``attachment_file_ids`` argument of a comment tool.
 SCHEMA = {
@@ -196,29 +206,38 @@ async def attach_files(
             f"Error: the attachments total {round(total / 1024 / 1024, 1)} MB, over the "
             f"{MAX_ATTACHMENT_BYTES // 1024 // 1024} MB of one comment. Nothing was posted."
         )
-    tip, err = await _assets_tip(client, headers, owner, name)
-    if err:
-        return [], f"{err} The attachments were not stored; nothing was posted."
-    commit_input = {
-        "branch": {"repositoryNameWithOwner": f"{owner}/{name}", "branchName": ASSETS_BRANCH},
-        "expectedHeadOid": tip,
-        "message": {"headline": f"chore(assets): attachments of {subject}"},
-        "fileChanges": {
-            "additions": [
-                {"path": path, "contents": base64.b64encode(data).decode("ascii")} for path, data in additions.items()
-            ]
-        },
+    file_changes = {
+        "additions": [
+            {"path": path, "contents": base64.b64encode(data).decode("ascii")} for path, data in additions.items()
+        ]
     }
-    answer, err = await _common.gh_graphql(
-        client,
-        headers,
-        _CREATE_COMMIT_MUTATION,
-        {"input": commit_input},
-        action=f"commit the attachments of {subject} to {ASSETS_BRANCH} of {repo}",
-    )
-    created = answer.get("createCommitOnBranch") if isinstance(answer, dict) else None
-    commit = created.get("commit") if isinstance(created, dict) else None
-    oid = _coerce_str(commit.get("oid")) if isinstance(commit, dict) else ""
+    oid, err = "", None
+    # Parallel comments race on the branch tip (gap comment-attachments-xtm-assets-race):
+    # a commit refused because another one moved the tip is retried on the new tip.
+    # ``expectedHeadOid`` keeps a retry from landing twice: a first attempt that
+    # landed moved the tip, and its files (named by their content hash) are the same.
+    for _attempt in range(ASSETS_COMMIT_ATTEMPTS):
+        tip, err = await _assets_tip(client, headers, owner, name)
+        if err:
+            return [], f"{err} The attachments were not stored; nothing was posted."
+        commit_input = {
+            "branch": {"repositoryNameWithOwner": f"{owner}/{name}", "branchName": ASSETS_BRANCH},
+            "expectedHeadOid": tip,
+            "message": {"headline": f"chore(assets): attachments of {subject}"},
+            "fileChanges": file_changes,
+        }
+        answer, err = await _common.gh_graphql(
+            client,
+            headers,
+            _CREATE_COMMIT_MUTATION,
+            {"input": commit_input},
+            action=f"commit the attachments of {subject} to {ASSETS_BRANCH} of {repo}",
+        )
+        created = answer.get("createCommitOnBranch") if isinstance(answer, dict) else None
+        commit = created.get("commit") if isinstance(created, dict) else None
+        oid = _coerce_str(commit.get("oid")) if isinstance(commit, dict) else ""
+        if _GIT_OBJECT_ID_RE.fullmatch(oid) or not tip_moved(err):
+            break
     if err or not _GIT_OBJECT_ID_RE.fullmatch(oid):
         why = err or f"Error: GitHub did not return the commit of the attachments on {ASSETS_BRANCH}."
         return [], f"{why} Nothing was posted."

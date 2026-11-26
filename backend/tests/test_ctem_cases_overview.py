@@ -41,8 +41,8 @@ def _case(state: str, *, title: str = "Upgrade Apache Tomcat", severity: str | N
     )
 
 
-def _issue(ext: str, *, jewels: tuple[str, ...] = ()) -> rules.SourceIssue:
-    return rules.SourceIssue(source="opencti", external_id=ext, name=ext, assets=("web-1",), crown_jewels=jewels)
+def _issue(ext: str, *, pa_rows: tuple[str, ...] = ()) -> rules.SourceIssue:
+    return rules.SourceIssue(source="opencti", external_id=ext, name=ext, assets=("web-1",), primary_assets=pa_rows)
 
 
 def _member(case: CtemCase, ext: str, *, source: str = "opencti", open_: bool = True) -> CtemCaseIssue:
@@ -81,7 +81,7 @@ def test_counts_follow_the_list_visibility_and_the_funnel_counts_distinct_vulner
         (resolved, [_member(resolved, "v3", open_=False)]),
         (old_resolved, [_member(old_resolved, "v4", open_=False)]),
     ]
-    view = _view(_issue("v1"), _issue("v2", jewels=("Payments",)), _issue("v3"), _issue("v4"))
+    view = _view(_issue("v1"), _issue("v2", pa_rows=("Payments",)), _issue("v3"), _issue("v4"))
     out = overview.build(cases, view, {}, now=NOW)
     assert out["counts"]["remediating"] == 1
     assert out["counts"]["waiting_decision"] == 1
@@ -102,10 +102,10 @@ def test_a_phase_counts_its_open_and_waiting_cases_and_lists_the_waiting_first(m
     second = _case("waiting_decision", severity="P3", since=NOW - timedelta(hours=1))
     third = _case("analyzing", severity="P1", since=NOW - timedelta(days=1))
     cases = [(c, [_member(c, f"v-{i}")]) for i, c in enumerate((first, second, third))]
-    view = _view(*(_issue(f"v-{i}", jewels=("Payments",) if i == 2 else ()) for i in range(3)))
+    view = _view(*(_issue(f"v-{i}", pa_rows=("Payments",) if i == 2 else ()) for i in range(3)))
     phase_of = {first.id: "remediation", second.id: "remediation", third.id: "prioritization"}
 
-    def _position(events, _view):
+    def _position(events, _view, _owner=None):
         case_id = events[0].case_id
         return {
             "phase": phase_of[case_id],
@@ -119,7 +119,7 @@ def test_a_phase_counts_its_open_and_waiting_cases_and_lists_the_waiting_first(m
     assert remediation["open"] == 2 and remediation["waiting"] == 1
     assert [row["id"] for row in remediation["top"]] == [str(second.id), str(first.id)]
     assert remediation["counts"]["waiting_decision"] == 1 and remediation["counts"]["remediating"] == 1
-    assert out["phases"]["prioritization"]["top"][0]["crown_jewel"] == "Payments"
+    assert out["phases"]["prioritization"]["top"][0]["primary_asset"] == "Payments"
     assert out["phases"]["prioritization"]["top"][0]["priority"] == "critical"
     # The gate the oldest waiting case waits on, falling back to its status time.
     assert out["waiting"]["oldest"]["gate"] == "approve_fix"
@@ -131,7 +131,7 @@ def test_a_phase_lists_five_cases_at_most(monkeypatch):
     cases = [_case("new", since=NOW - timedelta(hours=i)) for i in range(7)]
     pairs = [(c, [_member(c, f"v-{i}")]) for i, c in enumerate(cases)]
     view = _view(*(_issue(f"v-{i}") for i in range(7)))
-    monkeypatch.setattr(view_of, "case_position", lambda _e, _v: {"phase": "discovery", "waiting_on": None})
+    monkeypatch.setattr(view_of, "case_position", lambda _e, _v, _o=None: {"phase": "discovery", "waiting_on": None})
     out = overview.build(pairs, view, {c.id: [] for c in cases}, now=NOW)
     discovery = out["phases"]["discovery"]
     assert discovery["open"] == 7
@@ -142,7 +142,7 @@ def test_a_phase_lists_five_cases_at_most(monkeypatch):
 
 @pytest.fixture
 def client(monkeypatch):
-    user = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None)
+    user = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None, is_admin=False)
     case = _case("new")
     rows = [_member(case, "v1")]
     reads = {"events": 0}
@@ -153,7 +153,7 @@ def client(monkeypatch):
     async def _list(_db, *, organization_id, vertical):
         return [(case, rows)]
 
-    async def _viewer(_db, user_id, vertical, *, fresh=False):
+    async def _viewer(_db, user_id, vertical, *, fresh=False, members=None, stale_ok=False):
         return _view(_issue("v1"))
 
     async def _events_of(_db, case_ids):
@@ -165,6 +165,11 @@ def client(monkeypatch):
     monkeypatch.setattr(store, "events_of", _events_of)
     monkeypatch.setattr(view_of, "viewer_view", _viewer)
     monkeypatch.setattr(api_module, "_require_xtm_one", lambda: None)
+
+    async def _view_right(_db, _user_id):
+        return "view"  # no CTEM without a right (#2441)
+
+    monkeypatch.setattr(api_module.ctem_access, "group_right", _view_right)
     app = FastAPI()
     app.include_router(api_module.router, prefix="/api/v1/ctem-cases")
     app.dependency_overrides[deps.get_current_user] = lambda: user

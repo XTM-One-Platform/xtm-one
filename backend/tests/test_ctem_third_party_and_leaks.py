@@ -18,7 +18,7 @@ TODAY = date(2026, 11, 22)
 def _profile(**extra: Any) -> oc.OrganizationProfile:
     return oc.parse_profile(
         {
-            "crown_jewels": [
+            "primary_assets": [
                 {"name": "Customer SaaS", "criticality": "critical", "asset_names": ["Acme Hosting"]},
             ],
             "assets_exposure": [
@@ -43,20 +43,25 @@ def _facts(path: str, kind: str, ref: str, **evidence: Any) -> gate.SignalFacts:
 # ── path 11: third-party events ─────────────────────────────────────────
 
 
-def test_a_tracked_organization_a_crown_jewel_depends_on_opens_a_case() -> None:
+def test_a_tracked_organization_a_primary_asset_depends_on_opens_a_case() -> None:
     decision = gate.decide(_profile(), _facts("third_party_event", "third_party", "Acme Hosting"), today=TODAY)
     assert decision.outcome == "case"
     assert decision.record["scope"]["criticality"] == "critical"
-    assert {"from": "crown_jewel", "name": "Customer SaaS", "criticality": "critical"} in decision.record["scope"][
-        "sources"
-    ]
+    # Named in the evidence, never a recorded link: inferred (#2396).
+    assert {
+        "from": "primary_asset",
+        "name": "Customer SaaS",
+        "criticality": "critical",
+        "basis": "inferred",
+    } in decision.record["scope"]["sources"]
+    assert decision.record["scope"]["primary_asset_basis"] == "inferred"
 
 
-def test_a_crown_jewel_named_in_the_evidence_is_the_dependency() -> None:
-    profile = oc.parse_profile({"crown_jewels": [{"name": "Customer SaaS", "criticality": "critical"}]})
+def test_a_primary_asset_named_in_the_evidence_is_the_dependency() -> None:
+    profile = oc.parse_profile({"primary_assets": [{"name": "Customer SaaS", "criticality": "critical"}]})
     decision = gate.decide(
         profile,
-        _facts("third_party_event", "third_party", "Beta Mail", crown_jewels=["Customer SaaS"]),
+        _facts("third_party_event", "third_party", "Beta Mail", primary_assets=["Customer SaaS"]),
         today=TODAY,
     )
     assert decision.outcome == "case"

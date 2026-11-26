@@ -27,7 +27,9 @@ import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any
 
 from sqlalchemy import func, select
@@ -235,6 +237,132 @@ async def _primary_assets(db: AsyncSession, organization_id: uuid.UUID) -> Any:
         return ctem_primary_assets.PrimaryAssetIndex()
 
 
+#: Supporting assets one page of the loop trace lists at most (#1979).
+SUPPORTING_PAGE_MAX = 200
+#: Seconds a signal's supporting asset list is kept for the next page, search or sort (UX r1 B4 on #1995).
+SUPPORTING_CACHE_SECONDS = 300.0
+#: Lists kept at most (one per signal version and primary asset); the oldest goes first.
+SUPPORTING_CACHE_MAX = 64
+#: The columns the supporting asset table sorts on the server (UX r1 B3 on #1995).
+SUPPORTING_SORTS: tuple[str, ...] = ("asset", "through")
+
+#: (organization, signal, signal version, primary asset key) -> (read at, rows sorted by asset, truncated).
+_supporting_cache: dict[tuple[str, str, str, str], tuple[float, list[dict[str, Any]], bool]] = {}
+
+
+def _supporting_cached(cache_key: tuple[str, str, str, str]) -> tuple[list[dict[str, Any]], bool] | None:
+    hit = _supporting_cache.get(cache_key)
+    if hit is None or time.monotonic() - hit[0] > SUPPORTING_CACHE_SECONDS:
+        _supporting_cache.pop(cache_key, None)
+        return None
+    return hit[1], hit[2]
+
+
+def _supporting_keep(cache_key: tuple[str, str, str, str], rows: list[dict[str, Any]], truncated: bool) -> None:
+    while len(_supporting_cache) >= SUPPORTING_CACHE_MAX:
+        _supporting_cache.pop(min(_supporting_cache, key=lambda k: _supporting_cache[k][0]))
+    _supporting_cache[cache_key] = (time.monotonic(), rows, truncated)
+
+
+async def _supporting_index(db: AsyncSession, organization_id: uuid.UUID, key: str, refs: list[str]) -> Any:
+    """The link index narrowed to primary asset *key* and the products *refs* name (UX r2 B4 on #1995)."""
+    from app.services import ctem_primary_assets
+
+    try:
+        async with db.begin_nested():
+            return await ctem_primary_assets.load_index(db, organization_id, primary_asset_key=key, software=refs)
+    except Exception:
+        logger.warning("CTEM loop trace: supporting assets not read for %s", organization_id, exc_info=True)
+        return ctem_primary_assets.PrimaryAssetIndex()
+
+
+async def _reach_inputs(db: AsyncSession, row: CtemSignal) -> tuple[list[str], list[str]]:
+    """The software references and subject keys the gate followed for *row*.
+
+    Read from its decision record (UX r2 B4 on #1995: no profile read on the trace's
+    path); a record without them (older than #1591 S3) resolves them again.
+    """
+    decision = getattr(row, "decision", None)
+    reconcile = decision.get("reconcile") if isinstance(decision, dict) else None
+    if (
+        isinstance(reconcile, dict)
+        and isinstance(reconcile.get("software_refs"), list)
+        and isinstance(reconcile.get("keys"), list)
+    ):
+        products = reconcile.get("products") if isinstance(reconcile.get("products"), list) else []
+        refs = [str(r) for r in dict.fromkeys([*reconcile["software_refs"], *products]) if r]
+        return refs, [str(k) for k in reconcile["keys"] if k]
+    profile = await _profile(db, row.organization_id)
+    resolution = gate.resolve(profile, facts_of(row), None)
+    return list(dict.fromkeys([*resolution.software_refs, *resolution.products])), list(resolution.keys)
+
+
+async def _supporting_rows(db: AsyncSession, row: CtemSignal, key: str) -> tuple[list[dict[str, Any]], bool]:
+    """Every supporting asset of *row* for primary asset *key*, read once per signal version (UX r1 B4 on #1995).
+
+    The first read takes the signal's references from its decision record and reads
+    the link index of that primary asset alone, with only the installed software rows
+    of the products the signal names (UX r2 B4); the page, the search and the sort then
+    work on the list kept here for a few minutes, keyed on the signal's ``updated_at``
+    so a re-decided signal reads again.
+    """
+    version = str(getattr(row, "updated_at", "") or "")
+    cache_key = (str(row.organization_id), str(row.id), version, key)
+    hit = _supporting_cached(cache_key)
+    if hit is not None:
+        return hit
+    refs, keys = await _reach_inputs(db, row)
+    index = await _supporting_index(db, row.organization_id, key, refs)
+    rows = index.supporting(refs, keys, key)
+    truncated = bool(index.truncated)
+    _supporting_keep(cache_key, rows, truncated)
+    return rows, truncated
+
+
+async def supporting_assets(
+    db: AsyncSession,
+    row: CtemSignal,
+    primary_asset: str,
+    *,
+    query: str = "",
+    offset: int = 0,
+    limit: int = 50,
+    sort: str = "asset",
+    direction: str = "asc",
+) -> dict[str, Any]:
+    """The inventory assets through which *row* reaches *primary_asset*, paged (#1979).
+
+    Read live from the link index with the signal's own software and keys (the
+    same reach the gate ran), so a primary asset 10,000 workstations support
+    lists all of them, not the chains the decision record keeps. *query* filters
+    by asset or group name, case-insensitive; *sort* (``asset`` or ``through``) and
+    *direction* (``asc`` or ``desc``) order the whole list before the page is cut.
+    Answers ``{primary_asset, total, offset, limit, sort, direction, truncated,
+    assets}``; ``truncated`` says the index read itself was cut at its bounds.
+    """
+    key = " ".join(str(primary_asset).split()).casefold()[:200]
+    rows, truncated = await _supporting_rows(db, row, key)
+    needle = query.strip().casefold()
+    if needle:
+        rows = [r for r in rows if needle in r["asset"].casefold() or needle in str(r["through"]).casefold()]
+    sort = sort if sort in SUPPORTING_SORTS else "asset"
+    descending = direction == "desc"
+    if sort != "asset" or descending:
+        rows = sorted(rows, key=lambda r: (str(r[sort]).casefold(), r["asset"].casefold()), reverse=descending)
+    limit = max(1, min(int(limit), SUPPORTING_PAGE_MAX))
+    offset = max(0, int(offset))
+    return {
+        "primary_asset": key,
+        "total": len(rows),
+        "offset": offset,
+        "limit": limit,
+        "sort": sort,
+        "direction": "desc" if descending else "asc",
+        "truncated": truncated,
+        "assets": rows[offset : offset + limit],
+    }
+
+
 async def default_scenario_reader(db: AsyncSession) -> uuid.UUID | None:
     """#1591 S3: whose OpenCRQ read decides a ``system`` signal no administrator evaluates (the listener path).
 
@@ -248,7 +376,7 @@ async def default_scenario_reader(db: AsyncSession) -> uuid.UUID | None:
         await db.execute(
             select(sync.owner_user_id)
             .where(
-                sync.section == "crown_jewels",
+                sync.section == "primary_assets",
                 sync.source == "opencrq",
                 sync.enabled.is_(True),
                 sync.owner_user_id.is_not(None),
@@ -268,17 +396,25 @@ async def _session_cached(db: AsyncSession, key: tuple[Any, ...], load: Callable
     pass, not once per signal. A session without ``info`` (a test double) loads
     every time.
     """
-    info = getattr(db, "info", None)
-    cache = info.setdefault(_READ_CACHE_KEY, {}) if isinstance(info, dict) else None
+    hit = _session_hit(db, key)
+    if hit is not None:
+        return hit
     now = time.monotonic()
-    if cache is not None:
-        hit = cache.get(key)
-        if hit is not None and now - hit[0] < READ_CACHE_SECONDS:
-            return hit[1]
     value = await load()
-    if cache is not None:
-        cache[key] = (now, value)
+    info = getattr(db, "info", None)
+    if isinstance(info, dict):
+        info.setdefault(_READ_CACHE_KEY, {})[key] = (now, value)
     return value
+
+
+def _session_hit(db: AsyncSession, key: tuple[Any, ...]) -> Any:
+    """The value :func:`_session_cached` holds for *key* in this session, ``None`` when none is fresh."""
+    info = getattr(db, "info", None)
+    cache = info.get(_READ_CACHE_KEY) if isinstance(info, dict) else None
+    hit = cache.get(key) if isinstance(cache, dict) else None
+    if hit is not None and time.monotonic() - hit[0] < READ_CACHE_SECONDS:
+        return hit[1]
+    return None
 
 
 async def _scenarios_for(db: AsyncSession, row: Any) -> gate.ScenarioIndex:
@@ -291,6 +427,103 @@ async def _scenarios_for(db: AsyncSession, row: Any) -> gate.ScenarioIndex:
     except Exception:
         logger.warning("CTEM scope gate: OpenCRQ reader not resolved", exc_info=True)
         return gate.ScenarioIndex(note="OpenCRQ not read: no OpenCRQ connection to read with")
+
+
+async def prepare_system_reads(db: AsyncSession, organization_id: uuid.UUID) -> None:
+    """Take the gate's reads of a ``system`` signal now, before any signal row is written (#1953).
+
+    The OpenCRQ risk scenarios (a remote read), the fallback reader and the
+    inventory link index land in the session cache, so a recompute that gates
+    the signals it records reads nothing remote while it holds their row
+    locks. Never raises: an unread value is read again by :func:`evaluate`.
+    """
+    try:
+        async with db.begin_nested():
+            fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
+        await _session_cached(db, ("scenarios", fallback), lambda: read_scenarios(db, user_id=fallback))
+        await _session_cached(db, ("links", organization_id), lambda: _primary_assets(db, organization_id))
+    except Exception:
+        logger.warning("CTEM scope gate: reads not prepared for %s", organization_id, exc_info=True)
+
+
+async def _with_cve_software(
+    db: AsyncSession,
+    row: CtemSignal,
+    facts: gate.SignalFacts,
+    profile: Any,
+    primary_assets: Any,
+    *,
+    remote: bool = True,
+) -> gate.SignalFacts:
+    """*facts* with the software OpenCTI relates to the CVEs the signal names (#2171).
+
+    Read only when the signal names a CVE and resolves to nothing without it, with
+    the recorder's own OpenCTI access (a ``system`` signal: the OpenCRQ sync
+    owner's, as :func:`_scenarios_for`), once per session and CVE list. Never raises.
+    *remote* False reads nothing, remote or local: only what this session already
+    read (:func:`prepare_cve_reads`) is used, else *facts* are answered unchanged.
+    """
+    from app.services import ctem_cve_software
+
+    cves = gate.signal_cve_ids(facts.subject_ref, facts.subject_label, facts.evidence)
+    if not cves or gate.resolve(profile, facts, primary_assets).resolved:
+        return facts
+    if not remote:
+        fallback = _session_hit(db, ("fallback_reader",))
+        hit = _session_hit(db, ("cve_software", scenario_reader(row, fallback), tuple(cves)))
+        if hit is None:
+            return facts
+        found, how = hit
+        return replace(facts, cve_software=tuple(found), cve_lookup=how)
+    try:
+        async with db.begin_nested():
+            fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
+        reader = scenario_reader(row, fallback)
+        found, how = await _session_cached(
+            db, ("cve_software", reader, tuple(cves)), lambda: ctem_cve_software.cve_software(db, reader, cves)
+        )
+    except Exception:
+        logger.warning("CTEM scope gate: CVE software not read for %s", getattr(row, "id", "?"), exc_info=True)
+        found, how = (), ctem_cve_software.LOOKUP_FAILED
+    return replace(facts, cve_software=tuple(found), cve_lookup=how)
+
+
+async def prepare_cve_reads(
+    db: AsyncSession,
+    rows: list[CtemSignal],
+    *,
+    profiles: dict[uuid.UUID, Any] | None = None,
+    links: dict[uuid.UUID, Any] | None = None,
+) -> None:
+    """Take the OpenCTI CVE software reads of *rows* now, before any of them is written (#2171 review).
+
+    A bulk pass (:func:`evaluate_open`, :func:`recheck_parked`, :func:`recheck_held`,
+    :func:`triage`) decides many signals in one transaction; its earlier rows'
+    updates are flushed while it decides the next ones, so a remote read inside
+    the loop would hold their row locks (#1953). The reads land in the session
+    cache and the pass decides with ``remote_reads=False``. *profiles* and *links*
+    by organization spare a second build; a missing one is read once per session.
+    Never raises: a signal not read here is decided without its CVE software.
+    """
+    for row in rows:
+        if row.state not in GATED_STATES:
+            continue
+        try:
+            facts = facts_of(row)
+            if not isinstance(facts, gate.SignalFacts):
+                continue
+            org = row.organization_id
+            if profiles is not None and org in profiles:
+                profile = profiles[org]
+            else:
+                profile = await _session_cached(db, ("profile", org), partial(_profile, db, org))
+            if links is not None and org in links:
+                primary_assets = links[org]
+            else:
+                primary_assets = await _session_cached(db, ("links", org), partial(_primary_assets, db, org))
+            await _with_cve_software(db, row, facts, profile, primary_assets)
+        except Exception:
+            logger.warning("CTEM scope gate: CVE read not prepared for %s", getattr(row, "id", "?"), exc_info=True)
 
 
 def dismissed(row: CtemSignal) -> bool:
@@ -308,9 +541,14 @@ async def evaluate(
     now: datetime | None = None,
     events: Any = None,
     restore: bool = False,
+    remote_reads: bool = True,
 ) -> gate.Decision | None:
     """Decide *row* and write its state and decision; ``None`` when it opened a case or a person
     dismissed it (*restore* decides a dismissed one again). The caller commits.
+
+    *remote_reads* False (a pass that holds signal row locks, #1953) skips the
+    OpenCTI read of the software of the signal's CVEs (#2171) and uses only what
+    :func:`prepare_cve_reads` read before the pass.
 
     With *events* (``ctem_case_loop.PendingEvents``), a verdict that changes a
     verdict the signal already had adds ``ctem_signal.triaged`` (#1409); the first
@@ -320,7 +558,11 @@ async def evaluate(
         return None
     before = signals.verdict_of(row.state)
     at = now or datetime.now(UTC)
-    profile = profile if profile is not None else await _profile(db, row.organization_id)
+    if profile is None:
+        # Per-signal callers (a pass recording many signals) build the software profile once per
+        # session and organization: rebuilt per signal it held the web loop for seconds on a large store.
+        org = row.organization_id
+        profile = await _session_cached(db, ("profile", org), lambda: _profile(db, org))
     if primary_assets is None:
         # Per-signal callers (listeners) share one index per session and organization (#1591 S3 review).
         org_id = row.organization_id
@@ -328,9 +570,12 @@ async def evaluate(
     if scenarios is None:
         # #1591 S3: the same OpenCRQ read on every path; a system signal reads with the OpenCRQ sync owner's.
         scenarios = await _scenarios_for(db, row)
+    facts = facts_of(row)
+    if isinstance(facts, gate.SignalFacts):
+        facts = await _with_cve_software(db, row, facts, profile, primary_assets, remote=remote_reads)
     decision = gate.decide(
         profile,
-        facts_of(row),
+        facts,
         related=await related_signals(db, row),
         scenarios=scenarios,
         primary_assets=primary_assets,
@@ -390,8 +635,12 @@ async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: b
         return pending
     verdict = signals.verdict_of(row.state)
     try:
-        async with db.begin_nested():
-            await ctem_case_loop.open_from_signal(db, row, events=pending)
+        # #1951: nothing opens while an administrator paused case opening; the signal waits confirmed.
+        from app.services import ctem_case_opening
+
+        if await ctem_case_opening.is_on(db, "cyber"):
+            async with db.begin_nested():
+                await ctem_case_loop.open_from_signal(db, row, events=pending)
     except Exception:
         pending.items.clear()
         logger.warning("CTEM case not opened for signal %s; the sweep retries", getattr(row, "id", "?"), exc_info=True)
@@ -443,13 +692,21 @@ async def evaluate_open(
         .scalars()
         .all()
     )
+    await prepare_cve_reads(db, list(rows), profiles={organization_id: profile}, links={organization_id: links})
     counts: dict[str, int] = {}
     for row in rows:
         reader = scenario_reader(row, user_id)
         if reader not in by_reader:
             by_reader[reader] = await read_scenarios(db, user_id=reader)
         await evaluate(
-            db, row, profile=profile, scenarios=by_reader[reader], primary_assets=links, now=now, events=events
+            db,
+            row,
+            profile=profile,
+            scenarios=by_reader[reader],
+            primary_assets=links,
+            now=now,
+            events=events,
+            remote_reads=False,
         )
         counts[row.state] = counts.get(row.state, 0) + 1
     return counts
@@ -464,7 +721,7 @@ async def recheck_parked(
 ) -> dict[str, int]:
     """#1505: the unmatched signals decided before the organization's newest profile version, decided again.
 
-    A change to assets, groups, crown jewels, owned domains, software or
+    A change to assets, groups, primary assets, owned domains, software or
     shipped products writes a new profile version; every ``to_validate``
     signal last decided before it is decided again, *batch* per call, oldest
     first. Each is read with its recorder's OpenCRQ read. A signal the gate
@@ -507,6 +764,8 @@ async def _decide_again(db: AsyncSession, rows: list[CtemSignal], *, now: dateti
         if row.organization_id not in profiles:
             profiles[row.organization_id] = await _profile(db, row.organization_id)
             links[row.organization_id] = await _primary_assets(db, row.organization_id)
+    await prepare_cve_reads(db, rows, profiles=profiles, links=links)
+    for row in rows:
         reader = scenario_reader(row, fallback)
         if reader not in by_reader:
             by_reader[reader] = await read_scenarios(db, user_id=reader)
@@ -517,13 +776,14 @@ async def _decide_again(db: AsyncSession, rows: list[CtemSignal], *, now: dateti
             scenarios=by_reader[reader],
             primary_assets=links[row.organization_id],
             now=at,
+            remote_reads=False,
         )
         counts[row.state] = counts.get(row.state, 0) + 1
     return counts
 
 
 #: The watchlist reasons an inventory link or a software change can lift (#1591 S3).
-HELD_BY_SCOPE: tuple[str, ...] = ("crown_jewel_below_policy", "criticality_unknown", "below_scope_threshold")
+HELD_BY_SCOPE: tuple[str, ...] = ("primary_asset_below_policy", "criticality_unknown", "below_scope_threshold")
 
 
 async def recheck_held(
@@ -537,7 +797,7 @@ async def recheck_held(
     """#1591 S3: the watchlist signals held for scope, decided before *since*, decided again.
 
     Run after a primary-asset link sync or an endpoint software change completes:
-    a signal held by ``crown_jewel_below_policy``, ``criticality_unknown`` or
+    a signal held by ``primary_asset_below_policy``, ``criticality_unknown`` or
     ``below_scope_threshold`` whose decision predates the change is decided
     again, *batch* per call, oldest first. Idempotent: a decided signal's
     ``updated_at`` moves past *since*, so the next call skips it. A signal the
@@ -577,7 +837,7 @@ def inventory_additions(profile: Any, rows: list[Any]) -> dict[str, list[Any]]:
     signals count.
     """
     have_assets = {gate.stable_key(a.name) for a in profile.assets_exposure}
-    have_products = {e.product.strip().lower() for e in profile.tech_stack}
+    have_products = {e.product.strip().lower() for e in profile.software}
     have_domains = {d.lower() for d in profile.owned_domains}
     assets: list[str] = []
     products: list[str] = []
@@ -630,7 +890,7 @@ async def add_to_inventory(
             }
             for name in added["assets"]
         ]
-        data["tech_stack"] = list(data.get("tech_stack") or []) + [
+        data["software"] = list(data.get("software") or []) + [
             {"product": name, "source": INVENTORY_SOURCE} for name in added["products"]
         ]
         data["owned_domains"] = list(data.get("owned_domains") or []) + added["domains"]
@@ -638,7 +898,7 @@ async def add_to_inventory(
         basis = f"added from the CTEM Signals page by {actor}"[:500]
         touched = [
             f
-            for f, key in (("assets_exposure", "assets"), ("tech_stack", "products"), ("owned_domains", "domains"))
+            for f, key in (("assets_exposure", "assets"), ("software", "products"), ("owned_domains", "domains"))
             if added[key]
         ]
         saved = await org_context.save_version(
@@ -685,8 +945,12 @@ async def triage(
     actor: str,
     evaluator_id: uuid.UUID | None,
     now: datetime | None = None,
+    outcomes: list[dict[str, Any]] | None = None,
 ) -> dict[str, int]:
     """Dismiss, restore or re-check *rows* (#1505); counts ``changed``, ``skipped`` and by state after. The caller commits.
+
+    With *outcomes*, one entry per row is appended (id, state before and after,
+    ``changed``, ``skipped`` or ``unchanged``): a dry run reads them, then rolls back.
 
     ``dismiss`` moves a signal that opened no case to ``discarded`` with the
     actor's name; ``restore`` decides a dismissed one again; ``recheck`` runs the
@@ -700,11 +964,14 @@ async def triage(
     counts: dict[str, int] = {"changed": 0, "skipped": 0}
     profile: Any = None
     by_reader: dict[uuid.UUID | None, gate.ScenarioIndex] = {}
+    if action != "dismiss":
+        await prepare_cve_reads(db, [row for row in rows if (action == "restore") == dismissed(row)])
     for row in rows:
         before = row.state
         if action == "dismiss":
             if row.state not in GATED_STATES or dismissed(row):
                 counts["skipped"] += 1
+                _outcome(outcomes, row, before, "skipped")
                 continue
             row.decision = dismissal_record(row, by=actor, at=at)
             row.state = "discarded"
@@ -712,13 +979,24 @@ async def triage(
         else:
             if row.state not in GATED_STATES or (action == "restore") != dismissed(row):
                 counts["skipped"] += 1
+                _outcome(outcomes, row, before, "skipped")
                 continue
             if profile is None:
                 profile = await _profile(db, row.organization_id)
             reader = scenario_reader(row, evaluator_id)
             if reader not in by_reader:
                 by_reader[reader] = await read_scenarios(db, user_id=reader)
-            await evaluate(db, row, profile=profile, scenarios=by_reader[reader], now=at, restore=True)
-        counts["changed"] += int(row.state != before or action != "recheck")
+            await evaluate(
+                db, row, profile=profile, scenarios=by_reader[reader], now=at, restore=True, remote_reads=False
+            )
+        changed = row.state != before or action != "recheck"
+        counts["changed"] += int(changed)
         counts[row.state] = counts.get(row.state, 0) + 1
+        _outcome(outcomes, row, before, "changed" if changed else "unchanged")
     return counts
+
+
+def _outcome(outcomes: list[dict[str, Any]] | None, row: CtemSignal, before: str, outcome: str) -> None:
+    """One triage outcome of *row*, read before a dry run rolls the session back (#2341)."""
+    if outcomes is not None:
+        outcomes.append({"id": str(row.id), "before": before, "after": row.state, "outcome": outcome})

@@ -49,14 +49,23 @@ test("source keys map to modules, pre-rename identifiers included", () => {
   assert.equal(pivotModuleOf(undefined), null);
 });
 
-test("base URLs are read only for present modules", () => {
+test("base URLs are read only from active registrations with a URL (#1986)", () => {
   assert.deepEqual(
-    moduleBaseUrlsOf({
-      opencti: { present: true, url: "https://cti.example" },
-      openaev: { present: false, url: "https://aev.example" },
-      opencrq: { present: true, url: null },
-    }),
+    moduleBaseUrlsOf([
+      { platform_identifier: "opencti", platform_url: "https://cti.example", status: "active" },
+      { platform_identifier: "openaev", platform_url: "https://aev.example", status: "inactive" },
+      { platform_identifier: "opencrq", platform_url: null, status: "active" },
+      { platform_identifier: "xtm_hub", platform_url: "https://hub.example", status: "active" },
+    ]),
     { opencti: "https://cti.example" },
   );
   assert.deepEqual(moduleBaseUrlsOf(undefined), {});
+});
+
+test("the canonical registration wins over a legacy one, whatever the order (#1986)", () => {
+  const legacy = { platform_identifier: "openbas", platform_url: "https://bas.example", status: "active" };
+  const canonical = { platform_identifier: "openaev", platform_url: "https://aev.example", status: "active" };
+  assert.deepEqual(moduleBaseUrlsOf([legacy, canonical]), { openaev: "https://aev.example" });
+  assert.deepEqual(moduleBaseUrlsOf([canonical, legacy]), { openaev: "https://aev.example" });
+  assert.deepEqual(moduleBaseUrlsOf([legacy]), { openaev: "https://bas.example" });
 });

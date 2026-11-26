@@ -443,7 +443,7 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # Settings > Organization (#11533): the platform default of the organization
     # summary cascade; a stored switch reaching no model, editable with AI off.
     "save_organization_context_injection",
-    # The OpenCRQ crown-jewel sync of that profile (#8987): an administrator
+    # The OpenCRQ primary-asset sync of that profile (#8987): an administrator
     # reconciling stored assets with OpenCRQ, no model involved.
     "sync_organization_context_with_opencrq",
     # Assets and exposure from a CSV (#11543): an administrator previewing or
@@ -461,7 +461,16 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     "create_organization_sync",
     "update_organization_sync",
     "delete_organization_sync",
+    # The Edit dialog's preview of a filter change (#1982 S2): the next run planned, nothing written.
+    "preview_organization_sync_change",
+    # The "Add a sync" stepper's preview of a new outbound sync (#1982 S4): its first run planned, nothing written.
+    "preview_new_outbound_sync",
     "run_organization_sync",
+    # The Intelligence policy (#2435): an administrator editing a stored PIR's policy
+    # (question, owner, cadence, minimum score, enabled) or re-reading the PIRs from
+    # OpenCTI now; stored configuration, no model involved.
+    "patch_intelligence_policy_pir",
+    "refresh_intelligence_policy",
     # The rows a source wrote (#1276): an administrator purging them or handing them
     # to people, saved as a new version of the profile; no model involved.
     "apply_organization_source_rows",
@@ -479,7 +488,7 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     "delete_organization_software",
     "attach_organization_software",
     "detach_organization_software",
-    # The asset records, groups, crown-jewel links and change log (#1543): an administrator
+    # The asset records, groups, primary-asset links and change log (#1543): an administrator
     # or an API client writing stored rows one at a time or in a batch; no model involved.
     "create_asset_record",
     "upsert_asset_records",
@@ -489,7 +498,7 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     "create_asset_group",
     "update_asset_group",
     "delete_asset_group",
-    "set_crown_jewel_asset_links",
+    "set_primary_asset_asset_links",
     "restore_asset_changes",
     # A change proposed from chat for that profile (#9484 S-a2): an
     # administrator accepting or rejecting a stored proposal. Accepted fields are

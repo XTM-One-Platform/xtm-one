@@ -20,6 +20,8 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: false }) }));
 vi.mock("@/hooks/api/useWorkItemApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useWorkItemApi")>()),
   useWorkItems: (_filters: unknown, enabled: boolean) => ({ data: enabled ? state.items : undefined, isLoading: false, refetch: vi.fn() }),
+  // A gate card reads its decision by the record's work_item_id (#2464): the first open item stands for it.
+  useWorkItem: (id: string | null | undefined) => ({ data: id ? state.items[0] : undefined, isLoading: false, refetch: vi.fn() }),
 }));
 vi.mock("@/components/work-items/WorkItemDecisionCard", () => ({
   WorkItemDecisionCard: () => <div data-testid="unified-decision-card" />,
@@ -118,9 +120,36 @@ describe("gate record helpers", () => {
     expect(gateAnswererName({ key: "ctem.analyst_review", answered_by: null }, history, () => null)).toBe("Samuel Hassine");
     expect(gateAnswererName({ key: "ctem.analyst_review", answered_by: null }, [], () => null)).toBeNull();
   });
+
+  it("names the person an agent recorded, never the recording agent (#2256)", () => {
+    const recorded = (reason: string | null) => [
+      ev({ from: "ctem.analyst_review", to: "answered", reason, actor_type: "agent", actor_name: "CTEM loop orchestrator" }),
+    ];
+    const none = { key: "ctem.analyst_review", answered_by: null };
+    expect(gateAnswererName(none, recorded("Jane Doe"), () => null)).toBe("Jane Doe");
+    expect(gateAnswererName(none, recorded(USER), (id) => (id === USER ? "Samuel Hassine" : null))).toBe("Samuel Hassine");
+    expect(gateAnswererName(none, recorded(USER), () => null)).toBeNull();
+    expect(gateAnswererName(none, recorded(null), () => null)).toBeNull();
+    expect(gateAnswererName(none, recorded("a person"), () => null)).toBeNull();
+    expect(gateAnswererName(none, recorded("OpenCTI analyst mark"), () => null)).toBeNull();
+  });
 });
 
 describe("GateDecisionRecord", () => {
+  it("reads Decided by the person an agent recorded, else a person (#2256)", () => {
+    const recorded = (reason: string | null) => [
+      ev({ from: "ctem.analyst_review", to: "answered", reason, actor_type: "agent", actor_name: "CTEM loop orchestrator" }),
+    ];
+    const record = rec({ key: "ctem.analyst_review", answered_by: null });
+    const { unmount } = render(<GateDecisionRecord record={record} byLabel={gateAnswererName(record, recorded("Jane Doe"), () => null)} />);
+    expect(screen.getByTestId("ctem-gate-record").textContent).toContain("Jane Doe");
+    expect(screen.getByTestId("ctem-gate-record").textContent).not.toContain("CTEM loop orchestrator");
+    unmount();
+    render(<GateDecisionRecord record={record} byLabel={gateAnswererName(record, recorded(null), () => null)} />);
+    expect(screen.getByTestId("ctem-gate-record").textContent).toContain("a person");
+    expect(screen.getByTestId("ctem-gate-record").textContent).not.toContain("CTEM loop orchestrator");
+  });
+
   it("shows an answered decision as a structured record", () => {
     render(<GateDecisionRecord record={rec({})} />);
     expect(screen.getByTestId("ctem-gate-record-status").textContent).toBe("Answered");
@@ -311,6 +340,30 @@ describe("the gate cards read the record first", () => {
     expect(screen.getByTestId("ctem-case-remediation-record-option").querySelector("dd")?.textContent).toBe("Upgrade nginx");
     expect(screen.queryByTestId("ctem-case-remediation-outcome")).toBeNull();
     expect(screen.queryByTestId("ctem-case-remediation-elsewhere")).toBeNull();
+  });
+
+  it("a waiting gate with no decision filed says so on every card, never the Waiting for you list (#1954)", () => {
+    const lost = { status: "waiting" as const, asked_of: null, answered_at: null, answered_by: null, option: null, comment: null, surface: null, decision_id: null, work_item_id: null, next: null, decision_filed: false };
+    render(<CaseValidation caseId="c1" validations={[]} history={[ev({})]} gates={[rec(lost)]} />);
+    expect(screen.getByTestId("ctem-case-validation-not-filed").textContent).toContain("No validation decision was filed");
+    expect(screen.queryByTestId("ctem-case-validation-elsewhere")).toBeNull();
+    render(<CaseAnalystReview caseId="c1" pkg={null} history={[ev({ from: "ctem.analyst_review" })]} gates={[rec({ ...lost, key: "ctem.analyst_review" })]} />);
+    expect(screen.getByTestId("ctem-case-analyst-review-not-filed").textContent).toContain("No review decision was filed");
+    expect(screen.queryByTestId("ctem-case-analyst-review-elsewhere")).toBeNull();
+    render(<CaseRemediationDecision caseId="c1" history={[ev({ from: "ctem.remediation.decision" })]} gates={[rec({ ...lost, key: "ctem.remediation.decision" })]} />);
+    expect(screen.getByTestId("ctem-case-remediation-not-filed").textContent).toContain("No remediation decision was filed");
+    expect(screen.queryByTestId("ctem-case-remediation-elsewhere")).toBeNull();
+    expect(screen.queryByText(/Waiting for you list/)).toBeNull();
+    // Nothing to answer: no "Answer the decision" next step beside the not-filed line.
+    expect(screen.queryByText("Answer the decision to let the case go on.")).toBeNull();
+  });
+
+  it("a waiting gate whose decision exists but is not readable keeps the Waiting for you sentence", () => {
+    const filed = { status: "waiting" as const, answered_at: null, answered_by: null, option: null, comment: null, surface: null, next: null, decision_filed: true };
+    render(<CaseValidation caseId="c1" validations={[]} history={[ev({})]} gates={[rec(filed)]} />);
+    expect(screen.getByTestId("ctem-case-validation-elsewhere")).toBeTruthy();
+    expect(screen.queryByTestId("ctem-case-validation-not-filed")).toBeNull();
+    expect(screen.getByText("Answer the decision to let the case go on.")).toBeTruthy();
   });
 
   it("an older API without records keeps the event line", () => {

@@ -243,8 +243,8 @@ AI_SECURITY_ASSIGNMENTS: list[dict] = [
         "trigger_config": {"correlation_prefix": AI_TARGET_PREFIX},
         "prompt": (
             "An asset of category ai_target was added to the inventory (the work item names it). "
-            "Read it with get_organization_context (category assets_exposure, query "
-            "category:ai_target), map the ATLAS techniques its kind and exposure "
+            "Read it with get_asset (its name), or search_assets with category "
+            "ai_target for the others, map the ATLAS techniques its kind and exposure "
             "make reachable, and propose its baseline OpenAEV tests (prompt injection, jailbreak, "
             "excessive agency, tool misuse, MCP tool poisoning where it uses tools) behind approval "
             "work items. Answer with the case JSON."

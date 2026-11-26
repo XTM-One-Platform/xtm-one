@@ -301,7 +301,7 @@ export function TemplateGeneratorDialog({
                       disabled={busy}
                       onClick={() => (active ? setHints(hints.filter((h) => h !== preset)) : addHint(preset))}
                       className={cn(
-                        "rounded-full border px-2.5 py-0.5 text-[11px] transition-colors",
+                        "rounded-sm border px-2 py-0.5 text-[11px] transition-colors",
                         active
                           ? "border-accent/40 bg-accent/15 text-accent"
                           : "border-elevation-subtle text-default-secondary hover:border-accent/30 hover:text-default-primary",

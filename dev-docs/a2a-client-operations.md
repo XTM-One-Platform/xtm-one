@@ -452,6 +452,19 @@ The `mechanism` on each delegation says which one actually reported it:
 `called_back` for a partner's callback, `asked` for a collect — including one
 the floor made.
 
+**Ticket status pushes (#2276).** A partner XTM One also posts to the same
+callback when a ticket (a work item) filed by the task changes status: a body
+with `kind: work_item.status_changed`, `taskId`, `workItemId`, `status` and
+`previousStatus` (the sending half is `app/a2a/ticket_push.py`). The delegation
+has concluded by then, so this body takes its own path in the route: the
+delegation must exist (any outcome), the presented secret must be its own, the
+`taskId` must be its partner task and the status one the sender announces;
+anything else is the single 404. An accepted push resumes nothing: it raises the
+platform event `a2a.ticket.status_changed` (delegation, agent, run, partner,
+partner task, work item id, statuses; one event id per delegation, work item and
+status) for the delegating agent's `platform_event` assignments, which read the
+ticket from the partner with their own tool.
+
 ### The version decides the path; the binding decides the body
 
 Worth stating on its own, because getting it backwards produces a partner that

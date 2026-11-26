@@ -372,7 +372,7 @@ function StateAssessment({
             {state.transitions.map((tr) => (
               <span
                 key={tr.predicate}
-                className="animate-fade-in inline-flex items-center gap-1 rounded-full border border-elevation-subtle-soft px-1.5 py-0.5 text-[9px] text-default-secondary"
+                className="animate-fade-in inline-flex items-center gap-1 rounded-sm border border-elevation-subtle-soft px-2 py-0.5 text-[9px] text-default-secondary"
               >
                 {labelOf(tr.predicate)}
                 <code className="text-default-secondary">false</code>

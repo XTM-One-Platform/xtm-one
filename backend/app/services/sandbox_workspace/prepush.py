@@ -203,12 +203,33 @@ def recorded_guards(spec: CheckSpec, specs: Mapping[str, CheckSpec]) -> list[Che
     return kept
 
 
-async def record_run(session: Any, checkout: str, *, check: str, argv: Iterable[str], exit_code: int | None) -> bool:
+def _ran_whole(spec: CheckSpec, argv: tuple[str, ...], *, on_change: bool) -> bool:
+    """Whether *argv* is the whole run of *spec*: its declared argv with no args.
+
+    A check declared ``affected_by_default`` called without args (*on_change*) runs on the change: the files the
+    platform appends ARE its whole run (``backend-queue-tests`` runs the merge queue's selection of the change).
+    """
+    declared = command_argv(spec, [])
+    if argv == declared:
+        return True
+    return on_change and spec.affected_by_default and argv[: len(declared)] == declared
+
+
+async def record_run(
+    session: Any,
+    checkout: str,
+    *,
+    check: str,
+    argv: Iterable[str],
+    exit_code: int | None,
+    on_change: bool = False,
+) -> bool:
     """Keep the run of guard *check* when it ran whole (its declared argv, no args) and ended; whether it was kept.
 
     A check declaring ``stands_for`` (the same gate on another image) is kept as the run of each guard it names.
-    A guard run on some files (args, ``affected``) proves nothing about the tree: it is not kept. Never raises:
-    the check ran, so a state that cannot be written is logged, not thrown.
+    A guard run on some files (args, ``affected``) proves nothing about the tree: it is not kept, except the run
+    of a check declared ``affected_by_default`` called without args (*on_change*): it runs on the whole change.
+    Never raises: the check ran, so a state that cannot be written is logged, not thrown.
     """
     if not check or exit_code is None:
         return False
@@ -218,7 +239,7 @@ async def record_run(session: Any, checkout: str, *, check: str, argv: Iterable[
             return False
         record, specs = context
         spec = specs.get(check)
-        if spec is None or tuple(argv) != command_argv(spec, []):
+        if spec is None or not _ran_whole(spec, tuple(argv), on_change=on_change):
             return False
         kept = recorded_guards(spec, specs)
         if not kept:

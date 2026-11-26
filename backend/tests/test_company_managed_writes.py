@@ -264,6 +264,8 @@ _NOT_WRITER_GATED = {
         "existing_correlation_keys",
         "bulk_delete_work_items",
         "reap_work_items",
+        # The closed-item retention purge of the scheduler (#2070), a sweep.
+        "purge_terminal_work_items",
         # The platform's claim bookkeeping: the holder's state read, the
         # release of the claims of runs that ended and of claims no live run
         # holds (sweeps, like the reaper) and the dispatcher naming the run it
@@ -272,6 +274,10 @@ _NOT_WRITER_GATED = {
         "holding_runs",
         "release_ended_run_claims",
         "release_orphaned_legacy_claims",
+        # A finished background task noting (and, held by nothing alive,
+        # reopening) the item its spawning run was dispatched for (#2215):
+        # a system write of the platform, like the release sweep.
+        "wake_on_background_task",
         "record_claim_run",
         # The inbox run's finalizer parking the item it holds and could not
         # reach (#11900): bound to its own claim, like record_claim_run.

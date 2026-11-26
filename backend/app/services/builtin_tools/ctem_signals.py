@@ -39,6 +39,28 @@ CTEM_SIGNAL_TOOL_NAMES: tuple[str, ...] = ("record_ctem_signal", "record_ctem_si
 #: Rows one ``record_ctem_signals`` call takes; a sweep pages above it.
 MAX_BULK_SIGNALS = 100
 _SOURCE = "builtin:ctem_signals"
+#: #2171: what the gate reads of ``evidence``; any other key is stored but never reconciled.
+EVIDENCE_DESCRIPTION = (
+    "Facts and a link. Matched keys (string or list): assets, hostnames, urls, ips; "
+    "software, products, cpe (CPE 2.3); cve, cves. Other keys are kept, never matched."
+)
+
+
+def evidence_hint(evidence: Any, decision: Any) -> str | None:
+    """#2171: the line answered when the gate left the signal unresolved and *evidence* holds no key
+    it reads, else ``None``."""
+    from app.services.ctem_scope_gate import evidence_read_keys
+
+    code = decision.get("reason_code") if isinstance(decision, dict) else None
+    if code != "subject_unresolved" or evidence_read_keys(evidence if isinstance(evidence, dict) else {}):
+        return None
+    return (
+        "Recorded, but evidence holds no key the gate matches (assets, hostnames, urls, ips, software, "
+        "products, cpe, cve): hosts or products named only in free text are not reconciled. Record it "
+        "again with the same dedupe_key and those keys."
+    )
+
+
 #: The built-in agents that carry the tools.
 CTEM_SIGNAL_AGENT_SLUGS: frozenset[str] = frozenset(
     {
@@ -250,17 +272,19 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                         results.append({"index": index, "error": str(exc)})
                         continue
                     written.append(row)
-                    results.append(
-                        {
-                            "index": index,
-                            "created": created,
-                            "id": str(row.id),
-                            "dedupe_key": row.dedupe_key,
-                            "state": row.state,
-                            "seen_count": row.seen_count,
-                            "case_id": str(row.case_id) if row.case_id else None,
-                        }
-                    )
+                    result: dict[str, Any] = {
+                        "index": index,
+                        "created": created,
+                        "id": str(row.id),
+                        "dedupe_key": row.dedupe_key,
+                        "state": row.state,
+                        "seen_count": row.seen_count,
+                        "case_id": str(row.case_id) if row.case_id else None,
+                    }
+                    hint = evidence_hint(raw.get("evidence"), row.decision)
+                    if hint:
+                        result["hint"] = hint
+                    results.append(result)
                 await db.commit()
                 for pending in pendings:
                     await ctem_case_loop.publish_pending(pending)
@@ -331,7 +355,11 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                 await db.commit()
                 await ctem_case_loop.publish_pending(pending)
                 await publish_signal_update(db, row)
-                return _dump({"created": created, "signal": signals.to_dict(row)})
+                answer: dict[str, Any] = {"created": created, "signal": signals.to_dict(row)}
+                hint = evidence_hint(evidence, row.decision)
+                if hint:
+                    answer["hint"] = hint
+                return _dump(answer)
         except signals.SignalError as exc:
             return f"Refused: {exc}. Nothing was recorded."
         except Exception:
@@ -443,7 +471,7 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     "source_external_id": {"type": "string"},
                     "subject_label": {"type": "string"},
                     "observed_at": {"type": "string", "description": "ISO-8601."},
-                    "evidence": {"type": "object", "description": "Facts and a link."},
+                    "evidence": {"type": "object", "description": EVIDENCE_DESCRIPTION},
                     "dedupe_key": {"type": "string"},
                 },
                 "required": ["trigger_path", "source_provider", "subject_kind", "subject_ref"],

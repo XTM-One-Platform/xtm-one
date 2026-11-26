@@ -89,7 +89,7 @@ export interface Fleet {
 }
 
 /** What starts the Platform Health fleet (`FleetHealthStartsResponse`, #974): Settings schedules and signals. */
-interface FleetHealthStarts {
+export interface FleetHealthStarts {
   /** A signal pass is on: an investigation starts on an event. */
   events: boolean;
   /** The schedules switched on in Settings > Platform Health. */

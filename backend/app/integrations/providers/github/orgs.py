@@ -8,7 +8,7 @@ from app.core.egress import egress_client
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from . import _common
-from ._common import _BASE_URL, _PROVIDER, _coerce_str, _json_headers, login_error
+from ._common import _BASE_URL, _PROVIDER, _coerce_str, _json_headers, login_error, team_slug_error
 
 _SOURCE = "integration:github"
 
@@ -266,7 +266,7 @@ def register(
         """Get a team's details plus its members and repositories."""
         if e := login_error(org, "org"):
             return e
-        if e := login_error(team_slug, "team_slug"):
+        if e := team_slug_error(team_slug):
             return e
         async with egress_client(timeout=30) as client:
             resp, err = await _common.safe_request(
@@ -359,7 +359,7 @@ def register(
         """
         if e := login_error(org, "org"):
             return e
-        if e := login_error(team_slug, "team_slug"):
+        if e := team_slug_error(team_slug):
             return e
         action = (action or "").strip().lower()
         jheaders = _json_headers(headers)

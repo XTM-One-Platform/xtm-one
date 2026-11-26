@@ -641,6 +641,30 @@ async def publish_task_event(
         )
 
 
+async def _spawning_work_item(parent_run_id: object) -> str | None:
+    """The work item the inbox dispatched run *parent_run_id* for, else ``None``; never raises (#2215)."""
+    run_uuid = safe_uuid(str(parent_run_id or ""))
+    if run_uuid is None:
+        return None
+    try:
+        from app.core.database import async_session
+        from app.models.assignment import AssignmentRun
+        from app.services.assignment_engine import dispatched_work_item_id
+
+        async with async_session() as db:
+            row = (
+                await db.execute(
+                    select(AssignmentRun.trigger_context, AssignmentRun.trigger_payload).where(
+                        AssignmentRun.id == run_uuid
+                    )
+                )
+            ).first()
+        return dispatched_work_item_id(row[0], row[1]) if row is not None else None
+    except Exception as exc:
+        logger.debug("Work item of run %s not read: %s", parent_run_id, format_exception_message(exc))
+        return None
+
+
 async def _publish_platform_task_event(task_id: str, event: str) -> None:
     """Raise ``background_task.completed`` / ``background_task.failed``; never raises."""
     try:
@@ -653,17 +677,24 @@ async def _publish_platform_task_event(task_id: str, event: str) -> None:
         if task is None:
             return
         metadata = task.metadata_json if isinstance(task.metadata_json, dict) else {}
+        parent_run_id = metadata.get("parent_run_id") or metadata.get("assignment_run_id")
+        work_item_id = await _spawning_work_item(parent_run_id)
         await platform_events.publish(
             f"background_task.{event}",
             platform_events.background_task_data(
                 task_id=task.id,
                 agent_id=task.target_agent_id,
                 parent_agent_id=task.parent_agent_id,
-                parent_run_id=metadata.get("parent_run_id") or metadata.get("assignment_run_id"),
+                parent_run_id=parent_run_id,
                 outcome=task.result,
                 error=task.error,
+                work_item_id=work_item_id,
             ),
         )
+        if work_item_id:
+            from app.services.work_item import wake_on_background_task
+
+            await wake_on_background_task(work_item_id, task_id=task.id, outcome=event)
     except Exception as exc:
         logger.debug("Background task %s platform event not published: %s", task_id, format_exception_message(exc))
 
@@ -1806,8 +1837,13 @@ async def cancel_sub_agent_task(
     requester_id: str,
     *,
     is_admin: bool = False,
+    spawned_by: str | None = None,
 ) -> dict | None:
     """Cancel a single background sub-agent task (owner or admin).
+
+    ``spawned_by`` (an agent id) narrows the gate to the tasks that agent
+    spawned: the agent-facing ``cancel_background_task`` tool passes its own
+    id, so an agent stops only its own tasks of the acting user (#2217).
 
     Best-effort, durable cancellation:
       * The ``sub_agent`` orchestration execution is transitioned to the FSM
@@ -1862,6 +1898,8 @@ async def cancel_sub_agent_task(
         # Hide existence from non-owners (owner-or-admin gate).
         is_owner = task.user_id == requester_uuid
         if not (is_owner or is_admin):
+            return None
+        if spawned_by is not None and str(task.parent_agent_id) != str(spawned_by):
             return None
 
         if task.status in ("completed", "failed", "cancelled", "incomplete"):
@@ -3724,7 +3762,7 @@ async def _execute_sub_agent_task(
             # already resolved with `user_visible_filter`, so re-loading here with
             # a narrower two-tier `or_()` structurally broke delegation to any
             # group-shared peer agent (every run failed "not accessible").
-            from app.api.v1.helpers import get_user_group_ids, user_visible_filter
+            from app.api.v1.helpers import get_user_group_ids
 
             # Platform Health's delegated work sees what its run with no user saw
             # at spawn, never what the row's owner of record sees.
@@ -3732,11 +3770,23 @@ async def _execute_sub_agent_task(
             _target_group_ids = (
                 await get_user_group_ids(db, _target_user_uuid) if _target_user_uuid else []
             )
+            # The spawning agent's configured handover is the grant, as at
+            # spawn (services/fleets.py configured_handover_reach): a delegate
+            # peer the person may not open still starts.
+            from app.services.fleets import configured_handover_reach, handover_peer_clause
+
+            _parent_id = safe_uuid(getattr(task, "parent_agent_id", None))
+            _granted: set[uuid.UUID] = set()
+            if _target_user_uuid is not None and _parent_id is not None:
+                _parent_handovers = (
+                    await db.execute(select(Agent.handover_agent_ids).where(Agent.id == _parent_id))
+                ).scalar_one_or_none()
+                _granted = await configured_handover_reach(db, _parent_id, _parent_handovers)
             agent_result = await db.execute(
                 select(Agent).where(
                     Agent.id == uuid.UUID(target_agent_id),
                     Agent.enabled.is_(True),
-                    user_visible_filter(Agent, _target_user_uuid, _target_group_ids),
+                    handover_peer_clause(_target_user_uuid, _target_group_ids, _granted),
                 )
             )
             agent = agent_result.scalar_one_or_none()

@@ -17,6 +17,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from functools import partial
@@ -203,6 +204,53 @@ def _default_ordering(search: str | None) -> str:
     return "_score" if (search or "").strip() else "created_at"
 
 
+# A MITRE ATT&CK identifier OpenCTI stores in ``x_mitre_id``, by the entity
+# type that carries it: a technique or sub-technique (T1557, T1557.001) or a
+# mitigation (M1037). Groups, software and campaigns keep theirs in external
+# references only, so they are not matched here.
+_MITRE_ID_TYPES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^T\d{4}(?:\.\d{3})?$", re.IGNORECASE), "Attack-Pattern"),
+    (re.compile(r"^M\d{4}$", re.IGNORECASE), "Course-Of-Action"),
+)
+
+
+def _mitre_id_lookup(search: str | None, types: list[str] | None) -> tuple[str, str] | None:
+    """``(MITRE ID upper-cased, entity type)`` when *search* is one MITRE ID the *types* allow.
+
+    A full-text search ranks a MITRE ID as free text by ``_score``: T1557
+    returns the Mobile technique sharing its name first and the Enterprise
+    one outside the first page. The search tools look the ID up exactly
+    first; ``None`` when the keyword is no MITRE ID or the types exclude the
+    type that carries it.
+    """
+    keyword = (search or "").strip()
+    for pattern, entity_type in _MITRE_ID_TYPES:
+        if pattern.match(keyword):
+            if types and entity_type not in types:
+                return None
+            return keyword.upper(), entity_type
+    return None
+
+
+def _exact_first(exact: list[dict[str, Any]], ranked: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    """The exact MITRE ID hits, then the ranked hits not already listed, cut at *limit*."""
+    seen = {node.get("id") for node in exact}
+    merged = exact + [node for node in ranked if node.get("id") not in seen]
+    return merged[:limit]
+
+
+def _mitre_id_filter(mitre_id: str, entity_type: str) -> dict[str, Any]:
+    """The FilterGroup of an exact ``x_mitre_id`` lookup on one entity type."""
+    return {
+        "mode": "and",
+        "filters": [
+            {"key": "entity_type", "values": [entity_type], "operator": "eq", "mode": "or"},
+            {"key": "x_mitre_id", "values": [mitre_id], "operator": "eq", "mode": "or"},
+        ],
+        "filterGroups": [],
+    }
+
+
 def _resolve_ordering(
     order_by: str | None,
     valid: tuple[str, ...],
@@ -339,6 +387,308 @@ _STIX_METADATA_PROPS: dict[str, Any] = {
         "description": "External-reference IDs to attach.",
     },
 }
+
+
+# ── Instance-defined fields (schemaAttributes) ──
+# A create tool's own parameters are a fixed list, while an OpenCTI instance
+# makes more fields mandatory and adds its custom fields. The agent reads them
+# with ``get_opencti_schema_attributes`` and passes them in ``attributes``,
+# keyed by the name that tool returns.
+
+#: OpenCTI's prefix of a custom field name (``CUSTOM_FIELD_PREFIX``): such a
+#: field is no input field of the type, its value goes in ``customFieldValues``.
+_CUSTOM_FIELD_PREFIX = "x_opencti_cf_"
+
+#: Input fields that choose WHICH object a creation writes rather than what it
+#: holds: ``update`` force-merges every matching existing entity (an
+#: irreversible merge, guarded in ``merge_opencti_entities``), and the STIX ids
+#: and upsert operations pick the object an upsert lands on. Never taken from
+#: ``attributes``, even where ``schemaAttributes`` lists them.
+_WRITE_TARGET_FIELDS = frozenset({"update", "stix_id", "x_opencti_stix_ids", "upsertOperations"})
+
+#: A mandatory field OpenCTI fills itself at creation although
+#: ``schemaAttributes`` gives it no default: the creation applies the user's
+#: default markings (``objectMarking``'s default is a flag, not an id).
+_FILLED_AT_CREATION = frozenset({"objectMarking"})
+
+#: The capabilities that let OpenCTI create an object without its mandatory
+#: fields (``isAllowedToBypassMandatory``): the preflight refuses no holder.
+_MANDATORY_BYPASS_CAPABILITIES = frozenset({"BYPASS", "KNOWLEDGE_KNUPDATE_KNBYPASSFIELDS"})
+
+#: The stored key of a custom field's value, per ``field_type``
+#: (``getCustomFieldValueField``): an edit sends ``{field_name, <key>: value}``.
+_CUSTOM_VALUE_KEYS: dict[str, str] = {
+    "integer": "int_value",
+    "decimal": "float_value",
+    "string": "string_value",
+    "markdown": "string_value",
+    "boolean": "boolean_value",
+    "date": "date_value",
+    "select": "select_value",
+    "multi_select": "select_values",
+}
+
+#: How long a run keeps the fields of a type it read (seconds).
+_SCHEMA_CACHE_TTL_S = 60.0
+
+#: OpenCTI's ``int_value`` is a GraphQL Int: a 32-bit signed integer.
+_INT32 = (-(2**31), 2**31 - 1)
+
+#: The sentence the create tools' descriptions end with.
+_READ_FIELDS_FIRST = (
+    " When this instance's mandatory or custom fields for the type are not "
+    "known, call get_opencti_schema_attributes first and pass them in "
+    "'attributes': a creation missing a mandatory field is refused."
+)
+
+#: The sentence the update tools' descriptions end with.
+_CUSTOM_FIELD_EDIT_NOTE = (
+    " A custom field (x_opencti_cf_..., listed by get_opencti_schema_attributes) "
+    "is set by its name, the value checked against the field's type, bounds and "
+    "options; an empty value clears it."
+)
+
+#: JSON-schema fragment of the ``attributes`` argument of the create tools.
+_SCHEMA_ATTRIBUTES_PROPS: dict[str, Any] = {
+    "attributes": {
+        "type": "object",
+        "additionalProperties": True,
+        "description": (
+            "Other fields of the object, keyed by the field name "
+            "get_opencti_schema_attributes returns for the type: a field made "
+            "mandatory on this instance, a custom field (x_opencti_cf_...), or "
+            "another field of the type this tool has no parameter for. A ref "
+            "field takes IDs; a multiple field takes a list. A name that is no "
+            "field of the type, a field this tool already sets through its own "
+            "parameters, and a custom value of the wrong type are refused."
+        ),
+    },
+}
+
+
+def _attributes_shape_refusal(input_data: dict[str, Any], attributes: Any) -> str | None:
+    """Why ``attributes`` cannot be used whatever the type's fields, or ``None``."""
+    if not isinstance(attributes, dict):
+        return "Error: 'attributes' must be an object of field name to value."
+    if any(not isinstance(k, str) or not k.strip() for k in attributes):
+        return "Error: every key of 'attributes' must be a field name."
+    target = sorted(k for k in attributes if k in _WRITE_TARGET_FIELDS)
+    if target:
+        return (
+            f"Error: {', '.join(target)} cannot be given in 'attributes': they choose "
+            "which existing object the creation writes to (an upsert, a merge), not "
+            "a field of the new object."
+        )
+    clashes = sorted(k for k in attributes if k in input_data)
+    if clashes:
+        return (
+            f"Error: {', '.join(clashes)} already set by this tool's own "
+            "parameters; give each field once, outside 'attributes'."
+        )
+    return None
+
+
+def _coerce_custom_value(definition: dict[str, Any], value: Any) -> tuple[list[Any], str | None]:
+    """*value* as the list OpenCTI stores for the custom field *definition*, or why not.
+
+    OpenCTI drops a custom value of the wrong type with only a log line and
+    still creates the object, so the type is checked here, as its validator
+    does (``verifyAddInputValueType``): one value unless ``multi_select``,
+    an integer within 32 bits, a finite number, a boolean, an RFC 3339
+    date-time, a string, an option of a select. A string holding a number or
+    a boolean is read as one: an edit tool takes strings only. Bounds and
+    select options are checked too, so a refusal comes before the call.
+    """
+    name = definition.get("name") or "?"
+    kind = str(definition.get("field_type") or "")
+    values = value if isinstance(value, list) else [value]
+    if kind != "multi_select" and len(values) != 1:
+        return [], f"{name} takes a single value"
+    out: list[Any] = []
+    for v in values:
+        if kind == "integer":
+            if isinstance(v, str) and re.fullmatch(r"[+-]?\d+", v.strip()):
+                v = int(v)
+            if isinstance(v, bool) or not isinstance(v, int) or not _INT32[0] <= v <= _INT32[1]:
+                return [], f"{name} takes a 32-bit integer, got {v!r}"
+        elif kind == "decimal":
+            if isinstance(v, str):
+                try:
+                    v = float(v)
+                except ValueError:
+                    return [], f"{name} takes a number, got {v!r}"
+            if isinstance(v, bool) or not isinstance(v, int | float) or v != v or v in (float("inf"), float("-inf")):
+                return [], f"{name} takes a number, got {v!r}"
+        elif kind == "boolean":
+            if isinstance(v, str) and v.strip().lower() in ("true", "false"):
+                v = v.strip().lower() == "true"
+            if not isinstance(v, bool):
+                return [], f"{name} takes true or false, got {v!r}"
+        elif kind == "date":
+            if not isinstance(v, str) or "T" not in v:
+                return [], f"{name} takes an RFC 3339 date-time such as 2026-11-25T00:00:00Z, got {v!r}"
+            try:
+                datetime.fromisoformat(v.strip().replace("Z", "+00:00"))
+            except ValueError:
+                return [], f"{name} takes an RFC 3339 date-time such as 2026-11-25T00:00:00Z, got {v!r}"
+        elif kind in ("string", "markdown", "select", "multi_select") and not isinstance(v, str):
+            return [], f"{name} takes text, got {v!r}"
+        options = definition.get("select_options") or []
+        if kind in ("select", "multi_select") and options and v not in options:
+            return [], f"{name} takes one of {', '.join(map(str, options))}, got {v!r}"
+        if kind in ("integer", "decimal"):
+            low, high = definition.get("min_value"), definition.get("max_value")
+            if low is not None and v < low:
+                return [], f"{name} takes a value of at least {low}, got {v!r}"
+            if high is not None and v > high:
+                return [], f"{name} takes a value of at most {high}, got {v!r}"
+        out.append(v)
+    return out, None
+
+
+def _custom_field_edit_value(definition: dict[str, Any], values: list[Any]) -> dict[str, Any]:
+    """The stored-format entry an edit of ``custom_field_values`` sends."""
+    kind = str(definition.get("field_type") or "")
+    key = _CUSTOM_VALUE_KEYS.get(kind, "string_value")
+    return {"field_name": definition.get("name"), key: values if kind == "multi_select" else values[0]}
+
+
+def _definition_by_name(definitions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Custom field definitions by technical name and by alias, as OpenCTI resolves them."""
+    found: dict[str, dict[str, Any]] = {}
+    for d in definitions:
+        for n in [d.get("name"), *(d.get("aliases") or [])]:
+            if n:
+                found.setdefault(str(n), d)
+    return found
+
+
+#: The stored value keys of ``CustomFieldValue``, read with every entity.
+_CUSTOM_VALUES_SELECTION = (
+    "customFieldValues { field_name string_value int_value float_value"
+    " boolean_value date_value select_value select_values }"
+)
+
+
+def _custom_value_lines(values: list[dict[str, Any]], labels: dict[str, str]) -> list[str]:
+    """The custom field values of an object, one line each, labelled when the label is known."""
+    lines: list[str] = []
+    for v in values:
+        name = str(v.get("field_name") or "")
+        stored = next(
+            (v[k] for k in ("select_values", *dict.fromkeys(_CUSTOM_VALUE_KEYS.values())) if v.get(k) is not None),
+            None,
+        )
+        if stored is None:
+            continue
+        shown = ", ".join(map(str, stored)) if isinstance(stored, list) else str(stored)
+        label = labels.get(name)
+        lines.append(f"  - {name}" + (f" ({label})" if label and label != name else "") + f": {shown}")
+    return ["Custom fields:", *lines] if lines else []
+
+
+def _missing_mandatory(fields: dict[str, dict[str, Any]], input_data: dict[str, Any]) -> list[dict[str, Any]]:
+    """The fields this instance makes mandatory that the creation leaves empty, with no default."""
+    given = {k for k, v in input_data.items() if v not in (None, "", [])}
+    given |= {str(c.get("field_name")) for c in input_data.get("customFieldValues") or []}
+    return [
+        f
+        for name, f in fields.items()
+        if f.get("mandatory")
+        and name not in given
+        and name not in _FILLED_AT_CREATION
+        and not f.get("defaultValues")
+    ]
+
+
+def _is_legacy_schema_attributes(err: str | None) -> bool:
+    """An OpenCTI before 7.261124.0 refuses ``schemaAttributes(entityType: ...)``."""
+    return bool(err) and "Unknown argument" in str(err) and "entityType" in str(err)
+
+
+def _schema_attribute(raw: dict[str, Any]) -> dict[str, Any]:
+    """One ``TypeAttribute`` of ``schemaAttributes``, in the shape the tool answers."""
+    name = str(raw.get("name") or "")
+    return {
+        "name": name,
+        "type": raw.get("type") or "",
+        "label": raw.get("label") or "",
+        "description": raw.get("description") or "",
+        "mandatory": bool(raw.get("mandatory")),
+        "multiple": bool(raw.get("multiple")),
+        "default_values": [
+            {"id": d.get("id"), "name": d.get("name")}
+            for d in raw.get("defaultValues") or []
+            if isinstance(d, dict)
+        ],
+        "custom_field": name.startswith(_CUSTOM_FIELD_PREFIX),
+    }
+
+
+def _schema_attribute_line(attribute: dict[str, Any]) -> str:
+    kind = [k for k in (attribute["type"], "multiple" if attribute["multiple"] else "") if k]
+    if attribute["custom_field"]:
+        kind.append("custom field")
+    line = f"- {attribute['name']}" + (f" ({', '.join(kind)})" if kind else "")
+    label = attribute["label"]
+    if label and label != attribute["name"]:
+        line += f" — {label}"
+    if attribute["description"]:
+        line += f": {attribute['description']}"
+    defaults = [
+        d["name"] if not d["id"] or d["id"] == d["name"] else f"{d['name']} (id {d['id']})"
+        for d in attribute["default_values"]
+    ]
+    if defaults:
+        line += f" Default: {', '.join(str(d) for d in defaults)}."
+    return line
+
+
+def _schema_attributes_answer(
+    entity_type: str,
+    attributes: list[dict[str, Any]],
+    *,
+    mandatory_only: bool,
+    note: str = "",
+    stix_filter_keys: list[str] | None = None,
+) -> ToolResult:
+    """The answer of ``get_opencti_schema_attributes``: mandatory fields first.
+
+    *stix_filter_keys* are the custom-field keys STIX filters (playbooks, live
+    streams, triggers) take for the type, a list OpenCTI keeps apart.
+    """
+    mandatory = [a for a in attributes if a["mandatory"]]
+    optional = [] if mandatory_only else [a for a in attributes if not a["mandatory"]]
+    lines = [
+        f"Fields of {entity_type} on this OpenCTI: {len(attributes)}, "
+        f"{len(mandatory)} mandatory at creation."
+    ]
+    if note:
+        lines.append(note)
+    lines.append("Mandatory:" if mandatory else "Mandatory: none.")
+    lines.extend(_schema_attribute_line(a) for a in mandatory)
+    if optional:
+        lines.append("Optional:")
+        lines.extend(_schema_attribute_line(a) for a in optional)
+    lines.append(
+        "A field the create tool has no parameter for (a custom field included) goes in "
+        "its 'attributes' argument, keyed by the name above; a ref field takes IDs."
+    )
+    if stix_filter_keys:
+        lines.append(
+            "Custom-field keys of STIX filters (playbooks, live streams, triggers) for "
+            f"{entity_type}: {', '.join(stix_filter_keys)}."
+        )
+    shown = mandatory + optional
+    return ToolResult(
+        tool_call_id="",
+        content="\n".join(lines),
+        structured={
+            "entity_type": entity_type,
+            "attributes": shown,
+            "stix_filter_keys": list(stix_filter_keys or []),
+        },
+    )
 
 # STIX 2.1 ``standard_id`` pattern — ``<type>--<uuid>`` (e.g.
 # ``intrusion-set--7e3b...``). Widget ``id`` / ``layout.i`` are bare UUIDs
@@ -870,6 +1220,7 @@ def register_knowledge(
     persist_file_fn: Callable[[str, bytes, str], Awaitable[Any]] | None = None,
     live_writes: bool = False,
     gated_draft_validation: bool = False,
+    case_draft_fn: Callable[[str], Awaitable[bool]] | None = None,
 ) -> list[ToolDefinition]:
     """Build the OpenCTI STIX knowledge, draft, NLQ-filter and dev tools.
 
@@ -906,13 +1257,21 @@ def register_knowledge(
     writes off: the run's fleet declares a gate naming that tool (the CTEM
     loop's ``ctem.analyst_review``), so the validation of a draft the loop
     staged is a person's decision, or the fleet's policy, never the model's.
+
+    ``case_draft_fn`` (#2089) answers whether a draft id holds the threat
+    package a CTEM case records: with ``gated_draft_validation`` and Live
+    writes off, ``delete_opencti_draft`` may discard that draft (a refused
+    review) besides the drafts this build created, and no other.
     """
     _draft_id = draft_id
     _offer_apply = live_writes or gated_draft_validation
     # Drafts this build created (create_opencti_draft, the autonomous gate):
     # the only ones delete_opencti_draft may remove with the setting off.
     _created_drafts: set[str] = set()
-    _skip_gate = direct_mutations or live_writes
+    # A fleet gate deciding the draft validation (#2089) keeps the draft gate
+    # with Live writes on: what that gate reviews must sit in a draft until
+    # it is answered, never in the live graph.
+    _skip_gate = direct_mutations or (live_writes and not gated_draft_validation)
 
 
     async def validate_nlq_filter(
@@ -1546,7 +1905,23 @@ def register_knowledge(
             "  }"
             "}"
         )
+        first = min(limit, 50)
+        exact: list[dict[str, Any]] = []
         async with _client(headers, timeout=30) as client:
+            if mitre := _mitre_id_lookup(search, types):
+                exact_data, exact_err = await _graphql(
+                    client,
+                    base_url,
+                    headers,
+                    "query SearchByMitreId($filters: FilterGroup, $first: Int) {"
+                    "  stixCoreObjects(filters: $filters, first: $first) {"
+                    "    edges { node {" + _ENTITY_FIELDS + "} }"
+                    "  }"
+                    "}",
+                    {"filters": _mitre_id_filter(*mitre), "first": first},
+                )
+                if not exact_err:
+                    exact = _edges(exact_data, "stixCoreObjects")
             data, err = await _graphql(
                 client,
                 base_url,
@@ -1555,18 +1930,17 @@ def register_knowledge(
                 {
                     "search": search,
                     "types": types,
-                    "first": min(limit, 50),
+                    "first": first,
                     "orderBy": _default_ordering(search),
                     "orderMode": "desc",
                 },
             )
-        if err:
+        if err and not exact:
             return err
-        nodes = _edges(data, "stixCoreObjects")
-        total = (
-            data.get("stixCoreObjects", {})
-            .get("pageInfo", {})
-            .get("globalCount", len(nodes))
+        nodes = _exact_first(exact, _edges(data, "stixCoreObjects"), first)
+        total = max(
+            (data or {}).get("stixCoreObjects", {}).get("pageInfo", {}).get("globalCount", len(nodes)),
+            len(nodes),
         )
         return format_entity_list(
             nodes,
@@ -1578,51 +1952,63 @@ def register_knowledge(
 
     # ── 2. Get entity by ID ───────────────────────────────────────────
 
-    async def get_opencti_entity(entity_id: str) -> str:
-        """Get full details of a specific entity by its OpenCTI or STIX ID."""
-        query = (
-            "query GetEntity($id: String!) {  stixCoreObject(id: $id) {"
-            + _ENTITY_FIELDS
-            + "}}"
-        )
+    async def _read_with_custom_values(
+        root: str, fields: str, custom_selection: str, object_id: str
+    ) -> tuple[dict[str, Any] | None, list[str], str | None]:
+        """Read one object with its custom field values: ``(object, custom lines, error)``.
+
+        An OpenCTI without custom fields refuses ``customFieldValues``: the
+        object is then read again without them.
+        """
+        def query(selection: str) -> str:
+            # The operation names the tools always sent, which logs and errors cite.
+            operation = "GetEntity" if root == "stixCoreObject" else "GetRelationship"
+            return f"query {operation}($id: String!) {{  {root}(id: $id) {{{selection}}}}}"
+
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
-                client,
-                base_url,
-                headers,
-                query,
-                {"id": entity_id},
+                client, base_url, headers, query(fields + " " + custom_selection), {"id": object_id}
             )
+            if err and "customFieldValues" in err:
+                data, err = await _graphql(client, base_url, headers, query(fields), {"id": object_id})
+            if err:
+                return None, [], err
+            found = data.get(root)
+            if not found:
+                return None, [], None
+            values = found.get("customFieldValues") or []
+            labels: dict[str, str] = {}
+            if values and found.get("entity_type"):
+                definitions, _ = await _custom_field_definitions(client, str(found["entity_type"]))
+                labels = {n: str(d.get("label") or "") for n, d in definitions.items()}
+        return found, _custom_value_lines(values, labels), None
+
+    async def get_opencti_entity(entity_id: str) -> str:
+        """Get full details of a specific entity by its OpenCTI or STIX ID, custom fields included."""
+        entity, custom, err = await _read_with_custom_values(
+            "stixCoreObject",
+            _ENTITY_FIELDS,
+            "... on StixDomainObject { " + _CUSTOM_VALUES_SELECTION + " }",
+            entity_id,
+        )
         if err:
             return err
-        entity = data.get("stixCoreObject")
         if not entity:
             return f"Entity '{entity_id}' not found."
-        return _format_entity(entity, base_url, full_text=True)
+        return "\n".join([_format_entity(entity, base_url, full_text=True), *custom])
 
     # ── 3. Get relationship by ID ────────────────────────────────────
 
     async def get_opencti_relationship(relationship_id: str) -> str:
         """Get full details of a specific relationship by its OpenCTI or STIX ID."""
-        query = (
-            "query GetRelationship($id: String!) {  stixCoreRelationship(id: $id) {"
-            + _RELATIONSHIP_FIELDS
-            + "}}"
+        rel, custom, err = await _read_with_custom_values(
+            "stixCoreRelationship", _RELATIONSHIP_FIELDS, _CUSTOM_VALUES_SELECTION, relationship_id
         )
-        async with _client(headers, timeout=30) as client:
-            data, err = await _graphql(
-                client,
-                base_url,
-                headers,
-                query,
-                {"id": relationship_id},
-            )
         if err:
             return err
-        rel = data.get("stixCoreRelationship")
         if not rel:
             return f"Relationship '{relationship_id}' not found."
-        return _format_relationship(rel, base_url, full_text=True)
+        return "\n".join([_format_relationship(rel, base_url, full_text=True), *custom])
 
     # ── 4. List STIX domain objects ───────────────────────────────────
 
@@ -1680,15 +2066,29 @@ def register_knowledge(
                     return f"Error: {status_err}"
                 variables["filters"] = resolved_fg
                 status_note = describe_resolution(resolved_statuses)
+        exact: list[dict[str, Any]] = []
         async with _client(headers, timeout=30) as client:
+            if not filters and (mitre := _mitre_id_lookup(search, types)):
+                exact_data, exact_err = await _graphql(
+                    client,
+                    base_url,
+                    headers,
+                    "query ListSDOsByMitreId($filters: FilterGroup, $first: Int) {"
+                    "  stixDomainObjects(filters: $filters, first: $first) {"
+                    "    edges { node {" + _SDO_ENTITY_FIELDS + "} }"
+                    "  }"
+                    "}",
+                    {"filters": _mitre_id_filter(*mitre), "first": variables["first"]},
+                )
+                if not exact_err:
+                    exact = _edges(exact_data, "stixDomainObjects")
             data, err = await _graphql(client, base_url, headers, query, variables)
-        if err:
+        if err and not exact:
             return await _filter_key_hint(err, base_url, headers) if filters else err
-        nodes = _edges(data, "stixDomainObjects")
-        total = (
-            data.get("stixDomainObjects", {})
-            .get("pageInfo", {})
-            .get("globalCount", len(nodes))
+        nodes = _exact_first(exact, _edges(data, "stixDomainObjects"), variables["first"])
+        total = max(
+            (data or {}).get("stixDomainObjects", {}).get("pageInfo", {}).get("globalCount", len(nodes)),
+            len(nodes),
         )
         text = format_entity_list(
             nodes,
@@ -1830,6 +2230,7 @@ def register_knowledge(
         object_label: list[str] | None = None,
         external_references: list[str] | None = None,
         kill_chain_phases: list[str] | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> str:
         """Create a STIX core relationship between two entities."""
         # Note: from/to return StixObjectOrStixRelationshipOrCreator union.
@@ -1842,7 +2243,7 @@ def register_knowledge(
                 from {
                     ... on BasicObject { id entity_type }
                     ... on StixCyberObservable { observable_value }
-                    ... on AttackPattern { name }
+                    ... on AttackPattern { name x_mitre_id }
                     ... on Campaign { name }
                     ... on CourseOfAction { name }
                     ... on Individual { name }
@@ -1871,7 +2272,7 @@ def register_knowledge(
                 to {
                     ... on BasicObject { id entity_type }
                     ... on StixCyberObservable { observable_value }
-                    ... on AttackPattern { name }
+                    ... on AttackPattern { name x_mitre_id }
                     ... on Campaign { name }
                     ... on CourseOfAction { name }
                     ... on Individual { name }
@@ -1922,6 +2323,8 @@ def register_knowledge(
             object_label=object_label,
             external_references=external_references,
         )
+        if refused := await _prepare_create_input(relationship_type, input_data, attributes):
+            return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -1945,6 +2348,10 @@ def register_knowledge(
             or to_obj.get("observable_value")
             or to_obj.get("id", "?")
         )
+        if from_obj.get("x_mitre_id"):
+            fn = f"{fn} ({from_obj['x_mitre_id']})"
+        if to_obj.get("x_mitre_id"):
+            tn = f"{tn} ({to_obj['x_mitre_id']})"
         return (
             f"Relationship created: [{from_obj.get('entity_type', '?')}] {fn}"
             f" --{rel.get('relationship_type', relationship_type)}-->"
@@ -2043,6 +2450,7 @@ def register_knowledge(
         object_marking: list[str] | None = None,
         object_label: list[str] | None = None,
         external_references: list[str] | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> str:
         """Create an analyst note attached to one or more entities."""
         query = """
@@ -2068,6 +2476,8 @@ def register_knowledge(
             object_label=object_label,
             external_references=external_references,
         )
+        if refused := await _prepare_create_input("Note", input_data, attributes):
+            return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -2083,12 +2493,57 @@ def register_knowledge(
 
     # ── 10. Update SDO field(s) ───────────────────────────────────────
 
+    async def _field_edit(
+        root: str, object_id: str, key: str, value: Any
+    ) -> tuple[dict[str, Any], str | None]:
+        """The ``EditInput`` setting *key* to *value* on an object, or why it is refused.
+
+        A custom field (``x_opencti_cf_`` prefix) is no attribute OpenCTI edits
+        by its name: its value goes in ``custom_field_values`` in the stored
+        format (``{field_name, <type>_value}``), checked against the field's
+        definition for the object's type; an empty value clears it.
+        """
+        if not key.startswith(_CUSTOM_FIELD_PREFIX):
+            return {"key": key, "value": value if isinstance(value, list) else [value]}, None
+        async with _client(headers, timeout=30) as client:
+            data, err = await _graphql(
+                client,
+                base_url,
+                headers,
+                f"query ObjectType($id: String!) {{ {root}(id: $id) {{ entity_type }} }}",
+                {"id": object_id},
+            )
+            if err:
+                return {}, err
+            entity_type = str((data.get(root) or {}).get("entity_type") or "")
+            if not entity_type:
+                return {}, f"Error: '{object_id}' not found."
+            definitions, err = await _custom_field_definitions(client, entity_type)
+        if err:
+            return {}, f"Error: could not read the custom fields of {entity_type}: {err}"
+        definition = definitions.get(key)
+        if definition is None:
+            return {}, (
+                f"Error: {key} is no custom field of {entity_type} on this OpenCTI. "
+                f"get_opencti_schema_attributes(entity_type='{entity_type}') lists them."
+            )
+        if value is None or value == "" or value == []:
+            return {"key": "custom_field_values", "operation": "remove", "value": [{"field_name": definition.get("name")}]}, None
+        values, problem = _coerce_custom_value(definition, value)
+        if problem:
+            return {}, f"Error: {problem}. Nothing was changed."
+        return {
+            "key": "custom_field_values",
+            "operation": "add",
+            "value": [_custom_field_edit_value(definition, values)],
+        }, None
+
     async def update_opencti_field(
         entity_id: str,
         key: str,
         value: str | list[str],
     ) -> str:
-        """Update a field on a STIX domain object."""
+        """Update a field on a STIX domain object, a custom field (x_opencti_cf_...) included."""
         query = """
         mutation UpdateSDO($id: ID!, $input: [EditInput]!) {
             stixDomainObjectEdit(id: $id) {
@@ -2096,7 +2551,9 @@ def register_knowledge(
             }
         }
         """
-        input_val = value if isinstance(value, list) else [value]
+        edit, refused = await _field_edit("stixCoreObject", entity_id, key, value)
+        if refused:
+            return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -2105,7 +2562,7 @@ def register_knowledge(
                 query,
                 {
                     "id": entity_id,
-                    "input": [{"key": key, "value": input_val}],
+                    "input": [edit],
                 },
             )
         if err:
@@ -2120,7 +2577,7 @@ def register_knowledge(
         key: str,
         value: str | list[str],
     ) -> str:
-        """Update a field on a STIX core relationship."""
+        """Update a field on a STIX core relationship, a custom field (x_opencti_cf_...) included."""
         query = """
         mutation UpdateRel($id: ID!, $input: [EditInput]!) {
             stixCoreRelationshipEdit(id: $id) {
@@ -2128,7 +2585,9 @@ def register_knowledge(
             }
         }
         """
-        input_val = value if isinstance(value, list) else [value]
+        edit, refused = await _field_edit("stixCoreRelationship", relationship_id, key, value)
+        if refused:
+            return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -2137,7 +2596,7 @@ def register_knowledge(
                 query,
                 {
                     "id": relationship_id,
-                    "input": [{"key": key, "value": input_val}],
+                    "input": [edit],
                 },
             )
         if err:
@@ -3023,6 +3482,7 @@ def register_knowledge(
         external_references: list[str] | None = None,
         based_on: list[str] | None = None,
         create_observables: bool = False,
+        attributes: dict[str, Any] | None = None,
     ) -> str:
         """Create a STIX indicator in OpenCTI.
 
@@ -3153,6 +3613,8 @@ def register_knowledge(
             object_organization=object_organization,
             external_references=external_references,
         )
+        if refused := await _prepare_create_input("Indicator", input_data, attributes):
+            return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -3205,6 +3667,7 @@ def register_knowledge(
         object_label: list[str] | None = None,
         external_references: list[str] | None = None,
         case_types: list[str] | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> str | ToolResult:
         """Create a container (Report, Case-Incident, etc.) in OpenCTI.
 
@@ -3268,6 +3731,8 @@ def register_knowledge(
             object_label=object_label,
             external_references=external_references,
         )
+        if refused := await _prepare_create_input(container_type, input_data, attributes):
+            return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -3316,6 +3781,10 @@ def register_knowledge(
 
     # ── 21. Create STIX domain object ────────────────────────────────
 
+    x_opencti_aliases_types = {
+        t: "x_opencti_aliases" for t in ("Individual", "Organization", "Sector", "Course-Of-Action")
+    }
+
     async def create_opencti_entity(
         type: str,
         name: str,
@@ -3335,6 +3804,7 @@ def register_knowledge(
         object_marking: list[str] | None = None,
         object_label: list[str] | None = None,
         external_references: list[str] | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> str:
         """Create a generic STIX domain object in OpenCTI."""
         mutation_info = _SDO_MUTATIONS.get(type)
@@ -3362,7 +3832,9 @@ def register_knowledge(
         if confidence is not None:
             input_data["confidence"] = confidence
         if aliases:
-            input_data["aliases"] = aliases
+            # Identities and courses of action keep their aliases in x_opencti_aliases
+            # (OpenCTI's AddInput has no 'aliases' for them, the GraphQL call fails).
+            input_data[x_opencti_aliases_types.get(type, "aliases")] = aliases
         # Time-range fields (for types that support them)
         if first_seen:
             input_data["first_seen"] = first_seen
@@ -3390,6 +3862,8 @@ def register_knowledge(
             object_label=object_label,
             external_references=external_references,
         )
+        if refused := await _prepare_create_input(type, input_data, attributes):
+            return refused
         async with _client(headers, timeout=30) as client:
             data, err = await _graphql(
                 client,
@@ -3418,6 +3892,306 @@ def register_knowledge(
         if result.get("is_family") is not None:
             lines.append(f"  Is family: {result['is_family']}")
         return "\n".join(lines)
+
+    # ── 21c. Custom-field filter keys for the NLQ filter agent ───────
+
+    async def get_opencti_nlq_context(query: str) -> str:
+        """*query*, followed by the custom-field filter keys this OpenCTI defines.
+
+        The OpenCTI NLQ agent's PREPARE step: its skills list OpenCTI's own
+        filter keys, never an instance's custom fields, so a question about one
+        found no key. The keys come with the tool result instead of the prompt.
+        An OpenCTI without custom fields gets *query* back unchanged.
+        """
+        async with _client(headers, timeout=30) as client:
+            data, err = await _graphql(
+                client,
+                base_url,
+                headers,
+                "query CustomFieldFilterKeys { customFieldDefinitions(first: 500) { edges { node {"
+                "  name label field_type multiple entity_types select_options } } } }",
+            )
+        nodes = [] if err else _edges(data, "customFieldDefinitions")
+        if not nodes:
+            return query
+        lines = [
+            query,
+            "",
+            "Custom-field filter keys of this OpenCTI (a filter key like any other; "
+            "filter on the field's own values):",
+        ]
+        for n in nodes:
+            parts = [str(n.get("field_type") or "string") + (", multiple" if n.get("multiple") else "")]
+            if n.get("select_options"):
+                parts.append("values: " + ", ".join(map(str, n["select_options"])))
+            if n.get("entity_types"):
+                parts.append("on " + ", ".join(map(str, n["entity_types"])))
+            label = n.get("label")
+            lines.append(f"- {n.get('name')}" + (f" ({label})" if label else "") + f": {'; '.join(parts)}")
+        return "\n".join(lines)
+
+    # ── 21b. Fields of a type on this instance (schemaAttributes) ────
+
+    async def get_opencti_schema_attributes(
+        entity_type: str,
+        mandatory_only: bool = False,
+    ) -> str | ToolResult:
+        """List the fields of one entity type as this OpenCTI instance defines them.
+
+        ``schemaAttributes(entityType)`` (OpenCTI 7.261124.0) answers each field
+        with its description, whether this instance makes it mandatory, and its
+        default values, custom fields included. An older OpenCTI has no
+        ``entityType`` argument: its entity setting still names the mandatory
+        fields and their default values, which is what a creation needs.
+        """
+        entity_type = (entity_type or "").strip()
+        if not entity_type:
+            return "Error: entity_type is required (e.g. Report, Malware, Case-Incident)."
+        query = (
+            "query SchemaAttributes($t: String!) {"
+            "  schemaAttributes(entityType: $t) { type attributes {"
+            "    name type label description mandatory multiple"
+            "    defaultValues { id name } } } }"
+        )
+        async with _client(headers, timeout=30) as client:
+            data, err = await _graphql(client, base_url, headers, query, {"t": entity_type})
+            if _is_legacy_schema_attributes(err):
+                return await _legacy_schema_attributes(client, entity_type, mandatory_only)
+            if err:
+                return err
+            maps = data.get("schemaAttributes") or []
+            if not maps:
+                return f"Error: OpenCTI returned no fields for type '{entity_type}'."
+            found = maps[0]
+            canonical = str(found.get("type") or entity_type)
+            # Playbook, live stream and trigger filters are STIX filters, with
+            # their own custom-field key list: best effort, an OpenCTI without
+            # it lists the fields alone.
+            keys_data, keys_err = await _graphql(
+                client,
+                base_url,
+                headers,
+                "query CustomFieldStixFilterKeys($t: String) { customFieldStixFilterKeys(entityType: $t) }",
+                {"t": canonical},
+            )
+        stix_filter_keys = [] if keys_err else [str(k) for k in keys_data.get("customFieldStixFilterKeys") or []]
+        attributes = [_schema_attribute(a) for a in found.get("attributes") or []]
+        return _schema_attributes_answer(
+            canonical, attributes, mandatory_only=mandatory_only, stix_filter_keys=stix_filter_keys
+        )
+
+    # The fields and custom field definitions of a type, read once a minute
+    # per run: a creation checks against them, and a run creates in bursts.
+    _schema_cache: dict[tuple[str, str], tuple[float, Any]] = {}
+
+    async def _cached(key: tuple[str, str], read: Callable[[], Awaitable[Any]]) -> Any:
+        hit = _schema_cache.get(key)
+        if hit is not None and time.monotonic() - hit[0] < _SCHEMA_CACHE_TTL_S:
+            return hit[1]
+        value = await read()
+        if value[-1] is None:  # never keep an error
+            _schema_cache[key] = (time.monotonic(), value)
+        return value
+
+    async def _fields_of_type(
+        client: Any, entity_type: str
+    ) -> tuple[dict[str, dict[str, Any]], bool, str | None]:
+        """``(fields by name, legacy, error)`` of *entity_type* on this OpenCTI.
+
+        *legacy* is an OpenCTI before 7.261124.0: it answers ``schemaAttributes``
+        for every type at once, with the schema's mandatory flags rather than
+        this instance's and no default values, so the type is picked from that
+        list and only its field names and types are used.
+        """
+
+        async def read() -> tuple[dict[str, dict[str, Any]], bool, str | None]:
+            data, err = await _graphql(
+                client,
+                base_url,
+                headers,
+                "query SchemaAttributeTypes($t: String!) { schemaAttributes(entityType: $t) {"
+                "  type attributes { name type label description mandatory multiple"
+                "    defaultValues { id name } } } }",
+                {"t": entity_type},
+            )
+            maps = data.get("schemaAttributes") or []
+            legacy = _is_legacy_schema_attributes(err)
+            if legacy:
+                data, err = await _graphql(
+                    client,
+                    base_url,
+                    headers,
+                    "query SchemaAttributeTypesAll { schemaAttributes { type attributes { name type multiple } } }",
+                )
+                wanted = entity_type.lower()
+                maps = [m for m in data.get("schemaAttributes") or [] if str(m.get("type") or "").lower() == wanted]
+            if err:
+                return {}, legacy, err
+            if not maps:
+                return {}, legacy, f"Error: OpenCTI has no type '{entity_type}'."
+            fields = {str(a["name"]): a for a in maps[0].get("attributes") or [] if a.get("name")}
+            return fields, legacy, None
+
+        result: tuple[dict[str, dict[str, Any]], bool, str | None] = await _cached(("fields", entity_type.lower()), read)
+        return result
+
+    async def _custom_field_definitions(
+        client: Any, entity_type: str
+    ) -> tuple[dict[str, dict[str, Any]], str | None]:
+        """The custom field definitions of *entity_type*, by name and alias, or an error."""
+
+        async def read() -> tuple[dict[str, dict[str, Any]], str | None]:
+            data, err = await _graphql(
+                client,
+                base_url,
+                headers,
+                "query CustomFieldsOfType($t: String!) { customFieldDefinitionsForEntityType(entityType: $t) {"
+                "  edges { node { name label aliases field_type multiple min_value max_value"
+                "    select_options } } } }",
+                {"t": entity_type},
+            )
+            if err:
+                return {}, err
+            return _definition_by_name(_edges(data, "customFieldDefinitionsForEntityType")), None
+
+        result: tuple[dict[str, dict[str, Any]], str | None] = await _cached(("custom", entity_type.lower()), read)
+        return result
+
+    async def _bypasses_mandatory(client: Any) -> bool:
+        """Whether the acting user may create without mandatory fields (in the draft too)."""
+        data, err = await _graphql(client, base_url, headers, "query MeCapabilityNames { me { capabilities { name } } }")
+        names = {str(c.get("name")) for c in ((data.get("me") or {}).get("capabilities") or [])}
+        if headers.get(_DRAFT_HEADER):
+            draft, draft_err = await _graphql(
+                client, base_url, headers, "query MeDraftCapabilityNames { me { capabilitiesInDraft { name } } }"
+            )
+            if not draft_err:
+                names |= {str(c.get("name")) for c in ((draft.get("me") or {}).get("capabilitiesInDraft") or [])}
+        # Unknown capabilities send the creation: OpenCTI stays the judge.
+        return bool(err) or bool(names & _MANDATORY_BYPASS_CAPABILITIES)
+
+    async def _prepare_create_input(
+        entity_type: str, input_data: dict[str, Any], attributes: Any
+    ) -> str | None:
+        """Check a creation against the fields this OpenCTI gives *entity_type*, before sending.
+
+        Returns an error string, and adds nothing, when the creation would fail
+        or lose data:
+
+        * ``attributes``: only a field OpenCTI lists for the type is taken (an
+          input flag such as ``update`` never comes this way), and a custom
+          value must fit its definition, which OpenCTI would otherwise drop
+          silently while still creating;
+        * a field this instance makes mandatory, with no default, is missing:
+          the agent gets the list with each field's description instead of the
+          bare refusal, unless the user's role lets OpenCTI create without it.
+
+        A creation without ``attributes`` is sent as before when the fields
+        cannot be read (an older OpenCTI checks nothing here).
+        """
+        if attributes and (refused := _attributes_shape_refusal(input_data, attributes)):
+            return refused
+        async with _client(headers, timeout=30) as client:
+            fields, legacy, err = await _fields_of_type(client, entity_type)
+            if err:
+                if attributes:
+                    return f"Error: could not read the fields of {entity_type} to check 'attributes': {err}"
+                return None
+            if attributes and (
+                refused := await _apply_checked_attributes(client, entity_type, input_data, attributes, fields)
+            ):
+                return refused
+            missing = [] if legacy else _missing_mandatory(fields, input_data)
+            if missing and not await _bypasses_mandatory(client):
+                lines = [
+                    f"Error: this OpenCTI makes these fields of {entity_type} mandatory, "
+                    "and the creation gives none of them:"
+                ]
+                lines.extend(_schema_attribute_line(_schema_attribute(f)) for f in missing)
+                lines.append(
+                    "Pass each one (in 'attributes' when this tool has no parameter for it). "
+                    "Nothing was created."
+                )
+                return "\n".join(lines)
+        return None
+
+    async def _apply_checked_attributes(
+        client: Any,
+        entity_type: str,
+        input_data: dict[str, Any],
+        attributes: dict[str, Any],
+        fields: dict[str, dict[str, Any]],
+    ) -> str | None:
+        """Check ``attributes`` against the type's fields and custom field definitions, then add them."""
+        natives = {k: v for k, v in attributes.items() if not k.startswith(_CUSTOM_FIELD_PREFIX)}
+        customs = {k: v for k, v in attributes.items() if k.startswith(_CUSTOM_FIELD_PREFIX)}
+        unknown = sorted(k for k in natives if k not in fields)
+        definitions: dict[str, dict[str, Any]] = {}
+        if customs:
+            definitions, err = await _custom_field_definitions(client, entity_type)
+            if err:
+                return f"Error: could not read the custom fields of {entity_type}: {err}"
+            unknown += sorted(k for k in customs if k not in definitions)
+        if unknown:
+            return (
+                f"Error: not fields of {entity_type} on this OpenCTI: {', '.join(unknown)}. "
+                f"get_opencti_schema_attributes(entity_type='{entity_type}') lists them."
+            )
+        entries: list[dict[str, Any]] = []
+        problems: list[str] = []
+        for key, value in customs.items():
+            if value is None or value == "" or value == []:
+                continue
+            definition = definitions[key]
+            values, problem = _coerce_custom_value(definition, value)
+            if problem:
+                problems.append(problem)
+            else:
+                entries.append({"field_name": definition.get("name"), "value": values})
+        if problems:
+            return f"Error: {'; '.join(problems)}. Nothing was created."
+        input_data.update(natives)
+        if entries:
+            input_data["customFieldValues"] = [*(input_data.get("customFieldValues") or []), *entries]
+        return None
+
+    async def _legacy_schema_attributes(
+        client: Any, entity_type: str, mandatory_only: bool
+    ) -> str | ToolResult:
+        """The mandatory fields and default values of a type on an OpenCTI before 7.261124.0."""
+        query = (
+            "query EntitySettingFields($t: String!) {"
+            "  entitySettingByType(targetType: $t) { target_type mandatoryAttributes"
+            "    defaultValuesAttributes { name defaultValues { id name } } } }"
+        )
+        data, err = await _graphql(client, base_url, headers, query, {"t": entity_type})
+        if err:
+            return err
+        setting = data.get("entitySettingByType")
+        if not setting:
+            return f"Error: OpenCTI has no entity type '{entity_type}'."
+        defaults = {
+            d.get("name"): d.get("defaultValues") or []
+            for d in setting.get("defaultValuesAttributes") or []
+        }
+        names = list(dict.fromkeys([*(setting.get("mandatoryAttributes") or []), *defaults]))
+        mandatory = set(setting.get("mandatoryAttributes") or [])
+        attributes = [
+            _schema_attribute(
+                {"name": name, "mandatory": name in mandatory, "defaultValues": defaults.get(name)}
+            )
+            for name in names
+        ]
+        return _schema_attributes_answer(
+            setting.get("target_type") or entity_type,
+            attributes,
+            mandatory_only=mandatory_only,
+            note=(
+                "This OpenCTI predates the field list of schemaAttributes (7.261124.0): "
+                "only the fields it makes mandatory or gives a default value are listed, "
+                "without description."
+            ),
+        )
 
     # ── 22. Add entity/relationship to container ─────────────────────
 
@@ -4477,6 +5251,8 @@ def register_knowledge(
     executor.register("create_opencti_indicator", create_opencti_indicator)
     executor.register("create_opencti_container", create_opencti_container)
     executor.register("create_opencti_entity", create_opencti_entity)
+    executor.register("get_opencti_schema_attributes", get_opencti_schema_attributes)
+    executor.register("get_opencti_nlq_context", get_opencti_nlq_context)
     executor.register("add_opencti_to_container", add_opencti_to_container)
     executor.register(
         "remove_opencti_from_container",
@@ -4743,7 +5519,11 @@ def register_knowledge(
         did = (draft_id or "").strip()
         if not did:
             return "Error: `draft_id` is required."
-        if not live_writes and did not in _created_drafts:
+        if (
+            not live_writes
+            and did not in _created_drafts
+            and not (gated_draft_validation and case_draft_fn is not None and await case_draft_fn(did))
+        ):
             # Setting off: no wording names it or offers to turn it on.
             return (
                 f"Error: draft `{did}` was not created in this run, so it is not "
@@ -5240,6 +6020,9 @@ def register_knowledge(
                 + (
                     "Allowed on any draft. "
                     if live_writes
+                    else "Allowed on a draft created in this run, or the draft holding a case's "
+                    "recorded threat package that a refused review discards. "
+                    if gated_draft_validation
                     else "Allowed on a draft created in this run (create_opencti_draft). "
                 )
                 + "Answers the draft's name and confirms it no longer exists."
@@ -5612,6 +6395,7 @@ def register_knowledge(
                 "Create a STIX core relationship between two entities in OpenCTI. "
                 "The relationship connects a source entity (from) to a target entity (to) "
                 "with a specific relationship type (e.g. 'indicates', 'uses', 'targets')."
+                + _READ_FIELDS_FIRST
             ),
             input_schema={
                 "type": "object",
@@ -5657,6 +6441,7 @@ def register_knowledge(
                         "description": "Kill chain phase IDs to attach (optional).",
                     },
                     **_STIX_METADATA_PROPS,
+                    **_SCHEMA_ATTRIBUTES_PROPS,
                 },
                 "required": ["from_id", "to_id", "relationship_type"],
             },
@@ -5712,6 +6497,7 @@ def register_knowledge(
                 "Create an analyst note in OpenCTI attached to one or more entities. "
                 "Use this to annotate findings, add context, or record analysis results. "
                 "Markdown is supported in the content field."
+                + _READ_FIELDS_FIRST
             ),
             input_schema={
                 "type": "object",
@@ -5740,6 +6526,7 @@ def register_knowledge(
                         "description": "Confidence level 0-100 (optional)",
                     },
                     **_STIX_METADATA_PROPS,
+                    **_SCHEMA_ATTRIBUTES_PROPS,
                 },
                 "required": ["content", "object_ids"],
             },
@@ -5753,6 +6540,7 @@ def register_knowledge(
                 "Update a field on a STIX domain object in OpenCTI. Use this to change "
                 "name, description, confidence, aliases, severity, and other fields. "
                 "The value is always passed as a string or array of strings."
+                + _CUSTOM_FIELD_EDIT_NOTE
             ),
             input_schema={
                 "type": "object",
@@ -5787,6 +6575,7 @@ def register_knowledge(
             description=(
                 "Update a field on a STIX core relationship in OpenCTI. Use this to "
                 "change description, confidence, start_time, stop_time, etc."
+                + _CUSTOM_FIELD_EDIT_NOTE
             ),
             input_schema={
                 "type": "object",
@@ -6062,6 +6851,7 @@ def register_knowledge(
                 "via based_on, attach markings/labels/author, and set "
                 "create_observables=true to also create the corresponding "
                 "observable(s)."
+                + _READ_FIELDS_FIRST
             ),
             input_schema={
                 "type": "object",
@@ -6178,6 +6968,7 @@ def register_knowledge(
                         "description": "Organization IDs to restrict/share the indicator with.",
                     },
                     **_STIX_METADATA_PROPS,
+                    **_SCHEMA_ATTRIBUTES_PROPS,
                     "create_observables": {
                         "type": "boolean",
                         "description": "Also create corresponding STIX observable(s) from the pattern (default: false)",
@@ -6196,6 +6987,7 @@ def register_knowledge(
                 "(Request for Information), Case-Rft (Request for Takedown), or "
                 "Grouping. Containers hold references to other STIX objects. "
                 "Optionally pass object_ids to add entities/relationships at creation."
+                + _READ_FIELDS_FIRST
             ),
             input_schema={
                 "type": "object",
@@ -6264,6 +7056,7 @@ def register_knowledge(
                         ),
                     },
                     **_STIX_METADATA_PROPS,
+                    **_SCHEMA_ATTRIBUTES_PROPS,
                 },
                 "required": ["container_type", "name"],
             },
@@ -6278,6 +7071,7 @@ def register_knowledge(
                 + ", ".join(sorted(_SDO_MUTATIONS.keys()))
                 + ". Use this for threat actors, malware, campaigns, incidents, "
                 "vulnerabilities, attack patterns, tools, intrusion sets, etc."
+                + _READ_FIELDS_FIRST
             ),
             input_schema={
                 "type": "object",
@@ -6347,11 +7141,65 @@ def register_knowledge(
                         "description": "Infrastructure types (for Infrastructure): botnet, command-and-control, hosting-malware, etc.",
                     },
                     **_STIX_METADATA_PROPS,
+                    **_SCHEMA_ATTRIBUTES_PROPS,
                 },
                 "required": ["type", "name"],
             },
             source="integration:opencti",
             priority=1,
+        ),
+        # 21b. Fields of a type on this instance
+        ToolDefinition(
+            name="get_opencti_schema_attributes",
+            description=(
+                "List the fields of one OpenCTI entity or relationship type as this "
+                "instance defines them: each field's description (what to put, its "
+                "format, an example), whether this instance makes it mandatory at "
+                "creation, its default values, and the instance's custom fields "
+                "(x_opencti_cf_...) with the custom-field keys STIX filters "
+                "(playbooks, live streams, triggers) take for the type. Read it "
+                "before creating an object of a type "
+                "whose mandatory or custom fields you do not know, then pass the "
+                "fields the create tool has no parameter for in its 'attributes'."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "entity_type": {
+                        "type": "string",
+                        "description": (
+                            "The type, e.g. Report, Malware, Case-Incident, Indicator, "
+                            "Note, or a relationship type such as uses"
+                        ),
+                    },
+                    "mandatory_only": {
+                        "type": "boolean",
+                        "description": "List only the fields mandatory at creation (default: false)",
+                        "default": False,
+                    },
+                },
+                "required": ["entity_type"],
+            },
+            source="integration:opencti",
+            priority=1,
+        ),
+        # 21c. Custom-field filter keys for the NLQ filter agent
+        ToolDefinition(
+            name="get_opencti_nlq_context",
+            description=(
+                "Return a natural-language OpenCTI query followed by the custom-field "
+                "filter keys this OpenCTI defines (name, label, type, select values, "
+                "entity types), so a filter on a custom field uses its key. The "
+                "query comes back unchanged when the instance has no custom field."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The natural-language query"},
+                },
+                "required": ["query"],
+            },
+            source="integration:opencti",
         ),
         # 22. Add to container
         ToolDefinition(

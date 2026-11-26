@@ -25,7 +25,14 @@ on a schedule::
         "scope": "own",                        # "own" (default), "fleet" or "all"
         "once": False,                         # True: a one-off watch
         "expires_at": "2026-11-02T09:00:00Z",  # optional deadline
+        "role": "observer",                    # optional: watches, never works the object
     }
+
+**Role.** ``role = "observer"`` declares that the assignment watches the
+objects of its events (a supervisor reading a case lifecycle) without working
+them. Delivery is unchanged; readers that ask who works an object (the CTEM
+case page) leave observers out. Absent (or ``"worker"``), the assignment works
+what it hears.
 
 **One-off watch.** ``once = true`` makes the trigger a watch: the first event
 that matches starts one run, and the subscription ends there. The delivery
@@ -91,11 +98,16 @@ already holds is not a second run: a dated note goes on that item's
 ``services/work_item_pull_requests.py``).
 
 Everything here is best-effort: a failure is logged and never fails the
-write that raised the event.
+write that raised the event. A delivery to an assignment that errors (the
+database pool exhausted, a dropped connection), or subscriptions that cannot
+be read, is kept and delivered again with back-off by the scheduler tick
+(``services/platform_event_retry``, #2101), and counted on the assignment
+with its reason once abandoned: never lost without a trace.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Iterable, Mapping
@@ -127,6 +139,11 @@ FIRED_EVENT_KEY = "fired_event_id"
 FIRED_AT_KEY = "fired_at"
 #: ``trigger_config`` key of the subscription's deadline (ISO 8601 date-time with its offset).
 EXPIRES_AT_KEY = "expires_at"
+#: ``trigger_config`` key of the assignment's role on its events, and its values.
+ROLE_KEY = "role"
+ROLE_OBSERVER = "observer"
+ROLE_WORKER = "worker"
+TRIGGER_ROLES: frozenset[str] = frozenset({ROLE_OBSERVER, ROLE_WORKER})
 #: Dedupe window of a platform event's run (seconds).
 DEDUP_WINDOW_SECONDS = 24 * 3600
 #: Bound of a note text carried in a payload.
@@ -188,7 +205,7 @@ _RUN_KEYS = (
     "stop_reason",
     "partial",
 )
-_TASK_KEYS = ("task_id", "agent_id", "parent_run_id", "outcome_preview")
+_TASK_KEYS = ("task_id", "agent_id", "parent_run_id", "work_item_id", "outcome_preview")
 _A2A_DELEGATION_KEYS = (
     "delegation_id",
     "agent_id",
@@ -202,6 +219,18 @@ _A2A_DELEGATION_KEYS = (
 
 #: An A2A delegation whose calling run had ended got its answer (#12079).
 A2A_DELEGATION_COMPLETED = "a2a.delegation.completed"
+#: A partner told us a ticket a delegated task filed changed status (#2276).
+A2A_TICKET_STATUS_CHANGED = "a2a.ticket.status_changed"
+_A2A_TICKET_KEYS = (
+    "delegation_id",
+    "agent_id",
+    "run_id",
+    "partner",
+    "partner_task_id",
+    "work_item_id",
+    "status",
+    "previous_status",
+)
 _AGENT_ACCOUNT_KEYS = (
     "account_id",
     "provider",
@@ -237,6 +266,7 @@ _CTEM_SIGNAL_KEYS = (
     "verdict",
     "case_id",
     "pir_floor_met",
+    "facts",
 )
 _VIDEO_KEYS = (
     "job_kind",
@@ -318,6 +348,15 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _WORK_ITEM_KEYS,
     },
+    "work_item.needs_human_unseen": {
+        "description": (
+            "A decision gate (needs_human) waited work_item_decision_unseen_hours hours and nobody opened it "
+            "(services/work_item_decision_reach.py): its recipient was reminded in the bell, once per gate, and the "
+            "administrators only when nobody can answer it. The payload carries waiting_since, unseen_hours, "
+            "waits_for_user_id, waits_for_group_ids, reminded_user_ids, no_recipient_reason and notified_admin_ids."
+        ),
+        "filter_keys": (*_WORK_ITEM_KEYS, "unseen_hours"),
+    },
     "run.completed": {
         "description": (
             "A run completed: an assignment run, or a delegated child run (no assignment; parent_run_id "
@@ -359,6 +398,14 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "partner's tool, continue_task_id = partner_task_id and no message."
         ),
         "filter_keys": _A2A_DELEGATION_KEYS,
+    },
+    A2A_TICKET_STATUS_CHANGED: {
+        "description": (
+            "A partner pushed that a ticket (a work item on its side) filed by a task this agent delegated "
+            "changed status. Heard by the delegating agent's assignments (scope own) for the person it ran "
+            "for; ids and statuses only: read the ticket from the partner with its own tool."
+        ),
+        "filter_keys": _A2A_TICKET_KEYS,
     },
     "background_task.completed": {
         "description": "A background task completed.",
@@ -518,15 +565,23 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _CTEM_CASE_KEYS,
     },
+    "ctem_case.opening_changed": {
+        "description": (
+            "An administrator turned CTEM case opening on or off (#1951, services/ctem_case_opening.py). "
+            "Off: no confirmed signal opens a case, they wait; on: the waiting signals open their cases "
+            "at once. Payload: vertical, on, changed_by (user id), waiting (confirmed signals with no case)."
+        ),
+        "filter_keys": ("vertical", "on", "changed_by"),
+    },
     "ctem_signal.recorded": {
         "description": (
             "A CTEM signal was seen for the first time (services/ctem_signals.py), after the scope gate gave it "
             "its first verdict; a re-sighting raises nothing. Payload: signal_id, trigger_path, lens, "
             "source_provider, subject_kind, verdict (confirmed, to_validate, watchlist, discarded, or null when "
-            "the gate did not run), case_id, pir_floor_met (a relevant threat's PIR score reached the policy threshold); "
+            "the gate did not run), case_id, pir_floor_met (a PIR score reached the policy threshold), "
+            "facts (kev, epss_high, sighted, software_named, pir_flagged: yes/no); "
             "read the signal with list_ctem_signals signal_id. Heard only when the user the "
-            "subscription runs as reads the signal (an administrator, or its recorder; a listener's signal is "
-            "an administrator's only)."
+            "subscription runs as holds a CTEM view right or more (or is an administrator), read at delivery."
         ),
         "filter_keys": _CTEM_SIGNAL_KEYS,
     },
@@ -557,6 +612,7 @@ PLATFORM_WIDE_EVENTS: frozenset[str] = frozenset(
         "platform.release.deployed",
         "platform.default_model_route.changed",
         "integration.version.changed",
+        "ctem_case.opening_changed",
     }
 )
 
@@ -611,6 +667,9 @@ def trigger_config_error(trigger_type: object, trigger_config: object) -> str | 
         return "Invalid trigger_config: 'scope' must be 'own', 'fleet' or 'all'."
     if not isinstance(trigger_config.get(ONCE_KEY, False), bool):
         return "Invalid trigger_config: 'once' must be true or false."
+    role = trigger_config.get(ROLE_KEY)
+    if role is not None and not (isinstance(role, str) and role in TRIGGER_ROLES):
+        return "Invalid trigger_config: 'role' must be 'observer' or 'worker'."
     deadline = trigger_config.get(EXPIRES_AT_KEY)
     if deadline is not None and parse_deadline(deadline) is None:
         return (
@@ -681,12 +740,46 @@ def rearm_watch(config: Any) -> Any:
     return {k: v for k, v in config.items() if k not in (FIRED_EVENT_KEY, FIRED_AT_KEY)}
 
 
-def catalog() -> list[dict[str, Any]]:
-    """The platform events, sorted, each with its description and filter keys."""
+#: The platform events about CTEM signals and cases (#2441): offered and saved
+#: only for a person with a CTEM view right or more.
+CTEM_EVENT_PREFIXES: tuple[str, ...] = ("ctem_signal.", "ctem_case.")
+
+
+def is_ctem_event(name: object) -> bool:
+    """Whether *name* is a CTEM signal or case event (#2441)."""
+    return isinstance(name, str) and name.startswith(CTEM_EVENT_PREFIXES)
+
+
+def catalog(*, ctem: bool = True) -> list[dict[str, Any]]:
+    """The platform events, sorted, each with its description and filter keys.
+
+    *ctem* false leaves out the CTEM signal and case events (#2441): the catalog
+    of a person with no CTEM right.
+    """
     return [
         {"event": name, "description": spec["description"], "filter_keys": list(spec["filter_keys"])}
         for name, spec in sorted(PLATFORM_EVENTS.items())
+        if ctem or not is_ctem_event(name)
     ]
+
+
+async def ctem_event_error(trigger_type: object, trigger_config: object, user_id: object) -> str | None:
+    """The refusal for a trigger naming a CTEM event when *user_id* holds no CTEM right (#2441).
+
+    Judged on the trigger as it will be saved, after :func:`trigger_config_error`.
+    """
+    if trigger_type != TRIGGER_TYPE or not isinstance(trigger_config, dict):
+        return None
+    if not any(is_ctem_event(n) for n in event_names(trigger_config)):
+        return None
+    from app.services import ctem_access
+
+    if await ctem_access.wires_ctem(user_id):
+        return None
+    return (
+        "Invalid trigger_config: the CTEM signal and case events need a CTEM view right or more "
+        f"for the person the assignment runs for. {ctem_access.NO_ACCESS_MESSAGE}"
+    )
 
 
 # -- Payload builders ------------------------------------------------------------
@@ -933,6 +1026,39 @@ def a2a_delegation_data(
     }
 
 
+def a2a_ticket_status_data(
+    *,
+    delegation_id: object,
+    agent_id: object,
+    user_id: object,
+    run_id: object = None,
+    partner: str | None = None,
+    partner_task_id: str | None = None,
+    work_item_id: str,
+    status: str,
+    previous_status: str | None = None,
+) -> dict[str, Any]:
+    """The payload of ``a2a.ticket.status_changed``: ids and statuses, a personal object of the delegating person."""
+    agent = _str(agent_id)
+    return {
+        "delegation_id": _str(delegation_id),
+        "agent_id": agent,
+        "run_id": _str(run_id),
+        "partner": (partner or "")[:200] or None,
+        "partner_task_id": partner_task_id,
+        "work_item_id": work_item_id,
+        "status": status,
+        "previous_status": previous_status,
+        # Raised on the partner's behalf: the agent's own assignments must hear it.
+        "actor_agent_id": None,
+        "participant_agent_ids": [agent] if agent else [],
+        "object_type": "a2a_delegation",
+        "object_id": _str(delegation_id),
+        "user_id": _str(user_id),
+        "personal_owner_id": _str(user_id),
+    }
+
+
 def background_task_data(
     *,
     task_id: object,
@@ -941,14 +1067,20 @@ def background_task_data(
     parent_agent_id: object = None,
     outcome: str | None = None,
     error: str | None = None,
+    work_item_id: object = None,
 ) -> dict[str, Any]:
-    """The payload of a ``background_task.*`` event."""
+    """The payload of a ``background_task.*`` event.
+
+    *work_item_id* is the work item the spawning run was dispatched for, when
+    it was an inbox run (#2215): a listener filters on it.
+    """
     participants = {_str(agent_id), _str(parent_agent_id)}
     participants.discard(None)
     return {
         "task_id": _str(task_id),
         "agent_id": _str(agent_id),
         "parent_run_id": _str(parent_run_id),
+        "work_item_id": _str(work_item_id),
         "outcome_preview": (outcome or "")[:_PREVIEW_MAX_CHARS] or None,
         "error": (error or "")[:_PREVIEW_MAX_CHARS] or None,
         # The agent that ran the task raised the event (ignore_self_triggered_events).
@@ -983,7 +1115,9 @@ async def publish(name: str, data: Mapping[str, Any], *, event_id: str | None = 
         **dict(data),
         "event": name,
         "event_id": event_id,
-        "occurred_at": datetime.now(UTC).isoformat(),
+        # A publisher that raises an event after its commit may name when the fact happened (a case's
+        # creation, ctem_case_loop.case_data): that time wins over the time it is raised.
+        "occurred_at": str(data.get("occurred_at") or datetime.now(UTC).isoformat()),
     }
     try:
         await event_bus.emit(name, payload)
@@ -1290,7 +1424,7 @@ async def _note_live_holder(
 
 
 async def _lock_current(
-    db: Any, assignment_id: uuid.UUID, name: str, payload: Mapping[str, Any]
+    db: Any, assignment_id: uuid.UUID, name: str, payload: Mapping[str, Any], *, lock: bool = True
 ) -> tuple[Any, bool] | None:
     """Lock the subscriber's row and check it still takes event *name*; (row, once), ``None`` when it does not.
 
@@ -1302,16 +1436,23 @@ async def _lock_current(
     one-off watch is marked fired by this event; nothing is committed here:
     the caller commits the mark with the run (or with the live holder's note),
     and a failure rolls both back, so the watch stays armed.
+
+    *lock* False (a standing subscription) reads the row without ``FOR UPDATE``:
+    a burst of one event (a case-opening drain raising ``ctem_case.opened`` per
+    case) then never queues every delivery on one row lock. A row read that way
+    which turned into a one-off watch since the snapshot is read again locked.
     """
     from sqlalchemy import select
 
     from app.models.assignment import Assignment
     from app.services.integration_event_filters import payload_filter_reason
 
-    row = (
-        await db.execute(select(Assignment).where(Assignment.id == assignment_id).with_for_update())
-    ).scalar_one_or_none()
+    query = select(Assignment).where(Assignment.id == assignment_id)
+    row = (await db.execute(query if not lock else query.with_for_update())).scalar_one_or_none()
     config = row.trigger_config if row is not None and isinstance(row.trigger_config, dict) else None
+    if not lock and config is not None and config.get(ONCE_KEY) is True:
+        row = (await db.execute(query.with_for_update())).scalar_one_or_none()
+        config = row.trigger_config if row is not None and isinstance(row.trigger_config, dict) else None
     if (
         row is None
         or not row.enabled
@@ -1356,7 +1497,7 @@ async def _deliver(name: str, payload: Mapping[str, Any], sub: Subscription, ass
         # snapshot, decides. A one-off watch is consumed by its first matching
         # event, before the live-holder shortcut: in the same transaction as the
         # run it starts, or as the note told to the live run holding the object.
-        current = await _lock_current(db, sub.assignment_id, name, payload)
+        current = await _lock_current(db, sub.assignment_id, name, payload, lock=sub.once)
         if current is None:
             # Fired, past its deadline, disabled or edited since the snapshot.
             return "watch already fired or changed"
@@ -1380,21 +1521,73 @@ async def _deliver(name: str, payload: Mapping[str, Any], sub: Subscription, ass
 
 async def dispatch_event(name: str, payload: Mapping[str, Any]) -> list[str]:
     """Deliver event *name* to every subscribed assignment in scope; one outcome per delivery."""
-    from app.core.database import async_session
-
     if name not in PLATFORM_EVENTS:
         return []
+    outcomes = await _dispatch_assignments(name, payload)
+    # The one-off watches that wake a background task instead of a run.
+    from app.services import platform_event_task_watches
+
+    outcomes.extend(await platform_event_task_watches.dispatch_event(name, payload))
+    # The flows whose platform-event trigger takes it.
+    from app.services.flow_triggers import dispatch_flow_platform_event
+
+    outcomes.extend(await dispatch_flow_platform_event(name, dict(payload)))
+    if outcomes:
+        logger.info("Platform event %s %s: %s", name, payload.get("event_id"), outcomes)
+    return outcomes
+
+
+async def redeliver(name: str, payload: Mapping[str, Any], *, assignment_id: object, attempt: int) -> int:
+    """Deliver again an event whose delivery errored (``platform_event_retry``); the deliveries made.
+
+    *assignment_id* names the one subscriber whose delivery raised, ``None``
+    when the subscriptions were unreadable (every subscriber is tried again;
+    the run dedupe answers the ones already served). Through the same bounded
+    gate as a first dispatch (#2084).
+    """
+    if name not in PLATFORM_EVENTS:
+        return 0
+    async with _gate():
+        outcomes = await _dispatch_assignments(
+            name, payload, only=str(assignment_id) if assignment_id else None, attempt=attempt
+        )
+    if outcomes:
+        logger.info("Platform event %s %s delivered again: %s", name, payload.get("event_id"), outcomes)
+    return len(outcomes)
+
+
+async def _dispatch_assignments(
+    name: str, payload: Mapping[str, Any], *, only: str | None = None, attempt: int = 0
+) -> list[str]:
+    """Deliver *name* to the subscribed assignments in scope (*only*: that one); one outcome per delivery.
+
+    A delivery that raises, or subscriptions that cannot be read, is never
+    dropped: it is kept for a further try (``platform_event_retry``), *attempt*
+    being the tries already made, and counted on the assignment once abandoned.
+    """
+    from app.core.database import async_session
+    from app.services import platform_event_retry
+
     try:
         async with async_session() as db:
             subs = await _subscriptions(db, name)
     except Exception as exc:
         # The assignments only: the task watches and the flows read their own.
-        logger.warning("Platform event %s: subscriptions unreadable: %s", name, format_exception_message(exc))
-        subs = []
+        # Unreadable is not "no subscriber": the whole delivery is tried again.
+        await platform_event_retry.schedule(
+            name,
+            payload,
+            assignment_id=only,
+            attempt=attempt + 1,
+            error=f"subscriptions unreadable: {format_exception_message(exc)}",
+        )
+        return []
     outcomes: list[str] = []
     readable: dict[str, set[str]] = {}
     object_readers: dict[str, bool] = {}
     for sub, assignment, agent in subs:
+        if only is not None and str(sub.assignment_id) != only:
+            continue
         if mismatch_reason(sub, name, payload) is not None:
             continue
         if not await can_read_workspace(sub, payload, readable):
@@ -1413,22 +1606,15 @@ async def dispatch_event(name: str, payload: Mapping[str, Any]) -> list[str]:
         try:
             outcomes.append(await _deliver(name, payload, sub, assignment, agent))
         except Exception as exc:
-            logger.warning(
-                "Platform event %s not delivered to assignment %s: %s",
+            # Kept and tried again: the run dedupe makes a second delivery of
+            # an event that did get its run a duplicate, never a second run.
+            await platform_event_retry.schedule(
                 name,
-                sub.assignment_id,
-                format_exception_message(exc),
+                payload,
+                assignment_id=sub.assignment_id,
+                attempt=attempt + 1,
+                error=format_exception_message(exc),
             )
-    # The one-off watches that wake a background task instead of a run.
-    from app.services import platform_event_task_watches
-
-    outcomes.extend(await platform_event_task_watches.dispatch_event(name, payload))
-    # The flows whose platform-event trigger takes it.
-    from app.services.flow_triggers import dispatch_flow_platform_event
-
-    outcomes.extend(await dispatch_flow_platform_event(name, dict(payload)))
-    if outcomes:
-        logger.info("Platform event %s %s: %s", name, payload.get("event_id"), outcomes)
     return outcomes
 
 
@@ -1506,12 +1692,25 @@ async def user_reads_object(user_id: str, payload: Mapping[str, Any]) -> bool:
         return False
 
 
+def _dropped_counter() -> Any:
+    from app.core.metrics import get_or_create_counter
+
+    return get_or_create_counter(
+        "xtmone_platform_event_object_dropped_total",
+        "Viewer-checked platform event deliveries dropped because a user of the subscription "
+        "does not read the object (a CTEM right withdrawn included, #2441), by object type.",
+        ["object_type", "reason"],
+    )
+
+
 async def can_read_object(sub: Subscription, payload: Mapping[str, Any], cache: dict[str, bool]) -> bool:
     """Whether *sub* may hear a viewer-checked event (#933); any other event: yes.
 
     Each user of :func:`object_identities` must read the object, decided by
     the object's own per-viewer view; *cache* keeps one answer per user and
-    event across the subscriptions of one dispatch.
+    event across the subscriptions of one dispatch. The run-as user's CTEM
+    right is read at delivery time (#2441): a delivery dropped here is counted
+    with its reason and logged.
     """
     if not is_viewer_checked(payload):
         return True
@@ -1519,13 +1718,54 @@ async def can_read_object(sub: Subscription, payload: Mapping[str, Any], cache: 
         if user not in cache:
             cache[user] = await user_reads_object(user, payload)
         if not cache[user]:
+            kind = str(payload.get("object_type") or "unknown")
+            try:
+                _dropped_counter().labels(object_type=kind, reason="not_readable_by_run_as").inc()
+            except Exception:  # a metric never blocks a delivery decision
+                logger.debug("Platform event: the dropped-delivery counter is unavailable", exc_info=True)
+            logger.info(
+                "Platform event: %s delivery to subscription %s dropped: %s does not read the object",
+                kind,
+                getattr(sub, "assignment_id", None),
+                user,
+            )
             return False
     return True
 
 
+#: Most platform event dispatches one process runs at once (#2084); see :func:`dispatch_limit`.
+DISPATCH_LIMIT_MAX = 4
+#: One gate per event loop (a test runs several loops in one process).
+_dispatch_gates: dict[int, asyncio.Semaphore] = {}
+
+
+def dispatch_limit() -> int:
+    """How many platform events one process dispatches at once: a tenth of its DB pool, 1 to 4.
+
+    Every dispatch opens sessions (subscriptions, task watches, flows, the run it starts): a burst
+    of events (a case-opening drain raising ``ctem_case.opened`` for 500 cases) dispatched all at
+    once took every pooled connection and starved request handling (#2084). The rest wait their
+    turn in memory, holding no connection.
+    """
+    from app.core.config import settings
+
+    capacity = int(settings.db_pool_size) + int(settings.db_max_overflow)
+    return max(1, min(DISPATCH_LIMIT_MAX, capacity // 10))
+
+
+def _gate() -> asyncio.Semaphore:
+    loop_id = id(asyncio.get_running_loop())
+    gate = _dispatch_gates.get(loop_id)
+    if gate is None:
+        _dispatch_gates.clear()  # a process runs one loop at a time: an older loop's gate is dead
+        gate = _dispatch_gates[loop_id] = asyncio.Semaphore(dispatch_limit())
+    return gate
+
+
 async def dispatch(event: Any) -> None:
-    """Event-bus listener: deliver a platform event to its subscribers."""
-    await dispatch_event(event.name, event.data)
+    """Event-bus listener: deliver a platform event to its subscribers, a bounded few at a time."""
+    async with _gate():
+        await dispatch_event(event.name, event.data)
 
 
 _registered = False

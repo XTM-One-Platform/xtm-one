@@ -158,6 +158,10 @@ FAILED = TenantScope("", "HTTP 403")
         (RESOLVED, "/api/platform-roles/search", "/api/platform-roles/search"),
         (RESOLVED, "/api/platform-groups", "/api/platform-groups"),
         (RESOLVED, "/api/schemas/x?y=1", "/api/schemas/x?y=1"),
+        # the engine schema read has no tenant twin either: a prefixed read 404s
+        (RESOLVED, "/api/engine/schemas", "/api/engine/schemas"),
+        (RESOLVED, "/api/engine/schemas?classNames=asset", "/api/engine/schemas?classNames=asset"),
+        (RESOLVED, "/api/engine/other", "/api/tenants/t1/engine/other"),
         # identity endpoints: only GET /api/me has a twin (FR-010)
         (RESOLVED, "/api/me", "/api/me"),
         (RESOLVED, "/api/me/profile", "/api/me/profile"),
@@ -305,6 +309,7 @@ _READS = [
     ("dashboards", "manage_openaev_dashboard", {"action": "list"}, "post", "/custom-dashboards/search"),
     ("expectations", "manage_openaev_expectation", {"action": "simulation_results", "exercise_id": "e1"}, "get", "/exercises/e1/results"),
     ("findings", "manage_openaev_vulnerability", {"action": "list"}, "post", "/vulnerabilities/search"),
+    ("findings", "manage_openaev_finding", {"action": "summary", "finding_id": "f1"}, "get", "/findings/f1/summary"),
     ("injects", "manage_openaev_inject", {"action": "list", "scope": "scenario", "parent_id": "s1"}, "post", "/scenarios/s1/injects/simple"),
     ("lessons_reports", "manage_openaev_reporting", {"action": "list"}, "post", "/reportings/search"),
     ("notifications", "manage_openaev_notification", {"action": "list_triggers"}, "post", "/notification-triggers/search"),
@@ -322,7 +327,7 @@ _WRITES = [
     ("content", "manage_openaev_channel", {"action": "create", "channel_type": "email", "name": "n", "description": "d"}, "post", "/channels"),
     ("dashboards", "manage_openaev_dashboard", {"action": "create", "name": "D"}, "post", "/custom-dashboards"),
     ("expectations", "manage_openaev_expectation", {"action": "validate", "expectation_id": "x1", "score": 1}, "put", "/expectations/x1"),
-    ("findings", "manage_openaev_finding", {"action": "create", "field": "f", "finding_type": "text", "value": "v", "inject_id": "i1"}, "post", "/findings"),
+    ("findings", "manage_openaev_vulnerability", {"action": "create", "external_id": "CVE-2024-0001", "cvss": 5.0}, "post", "/vulnerabilities"),
     ("injects", "manage_openaev_inject", {"action": "create", "scope": "scenario", "parent_id": "s1", "title": "T", "injector_contract_id": "c1"}, "post", "/scenarios/s1/injects"),
     ("lessons_reports", "manage_openaev_reporting", {"action": "create", "name": "R", "context_type": "PLATFORM"}, "post", "/reportings"),
     ("notifications", "manage_openaev_notification", {"action": "create_notifier", "name": "N", "notifier_type": "UI"}, "post", "/notifiers"),

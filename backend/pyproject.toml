@@ -100,6 +100,10 @@ dependencies = [
   # Channel adapters (optional — only needed if the channel is used)
   "discord.py>=2.4.0",  # Discord Gateway bot
 
+  # Defender XDR Streaming API: the tenant's Azure Event Hub (AMQP over WebSockets)
+  "azure-eventhub==5.15.1",
+  "azure-identity==1.25.1",
+
   # News / RSS feed parsing
   "feedparser==6.0.12",
 
@@ -174,6 +178,9 @@ dev = [
   # Type checking (dev/CI only). Scoped strictly to app/services/evaluation/extraction
   # by [tool.mypy] below; the legacy backend is deliberately not checked.
   "mypy==1.19.1",
+  # PyYAML's typeshed stubs: without them mypy reports every `import yaml` as
+  # import-untyped on the lines the sandbox's backend-types check reads.
+  "types-PyYAML==6.0.12.20261122",
   # Parses the chat commands' Markdown in their tests, as a CommonMark
   # renderer would (dev/CI only).
   "markdown-it-py==4.0.0",

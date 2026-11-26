@@ -227,6 +227,7 @@ nav:
       - XTM One Desktop and runners: usage/resources/runners.md
     - Monitor activity:
       - Home dashboard: usage/home-dashboard.md
+      - CTEM signals: usage/ctem-signals.md
       - Operations: usage/work-history.md
       - Platform insights: usage/platform-insights.md
       - Platform Health: usage/health.md

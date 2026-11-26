@@ -506,31 +506,50 @@ async def test_the_running_build_is_recorded_once_per_version_and_commit(monkeyp
         assert await session.scalar(select(func.count(PlatformBuild.id)).where(PlatformBuild.version == "2.0.0")) == 2
 
 
-async def test_only_the_first_boot_of_a_build_raises_the_release_event(monkeypatch):
-    """The upsert that inserts the build publishes platform.release.deployed, with the build before it."""
+async def test_a_build_is_released_once_its_rollout_completes_never_at_first_boot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2214: the release event waits for the build to settle as the newest one; a build superseded before it
+    settled never raises it, and the next release names the last released build as the one before it."""
+    from datetime import UTC, datetime, timedelta
+
     from app.core.config import settings
-    from app.services import platform_events
-    from app.services.platform_builds import record_running_build, release_event_id
+    from app.services.platform_builds import DRAIN_GRACE, _upsert_running_build, release_event_id
 
-    published: list = []
-
-    async def publish(name, data, *, event_id=None):
-        published.append((name, dict(data), event_id))
-        return event_id
-
-    monkeypatch.setattr(platform_events, "publish", publish)
     async with _platform() as (sessions, _people, _groups), sessions() as session:
-        monkeypatch.setattr(settings, "app_version", "3.0.0")
-        monkeypatch.setattr(settings, "git_sha", "aaaaaaa1")
-        await record_running_build(session)
-        monkeypatch.setattr(settings, "git_sha", "bbbbbbb2")
-        await record_running_build(session)
-        await record_running_build(session)  # a second pod of the same build
-        assert [p[0] for p in published] == ["platform.release.deployed"] * 2
-        _name, data, event_id = published[1]
-        assert data["git_sha"] == "bbbbbbb2" and data["previous_git_sha"] == "aaaaaaa1"
-        assert data["version"] == "3.0.0" and data["previous_version"] == "3.0.0"
-        assert event_id == release_event_id("3.0.0", "bbbbbbb2")
+        start = datetime(2026, 11, 25, 8, 0, tzinfo=UTC)
+        tick = timedelta(seconds=45)
+
+        async def boot(sha: str, at: datetime) -> dict[str, object] | None:
+            monkeypatch.setattr(settings, "app_version", "3.0.0")
+            monkeypatch.setattr(settings, "git_sha", sha)
+            return await _upsert_running_build(session, now=at)
+
+        # A: first boot, nothing yet; once settled past the grace, released once.
+        assert await boot("aaaaaaa1", start) is None
+        released_a = await boot("aaaaaaa1", start + DRAIN_GRACE + tick)
+        assert released_a is not None and released_a["git_sha"] == "aaaaaaa1"
+        assert await boot("aaaaaaa1", start + DRAIN_GRACE + 2 * tick) is None  # another pod, same build
+
+        # B boots, C boots three minutes later: B never settles, no event for it.
+        t_b = start + timedelta(hours=1)
+        assert await boot("bbbbbbb2", t_b) is None
+        t_c = t_b + timedelta(minutes=3)
+        assert await boot("bbbbbbb2", t_c - tick) is None
+        assert await boot("ccccccc3", t_c) is None
+        # A pod of B still serves a minute after C booted: B is not the newest, nothing for it.
+        b_last = t_c + timedelta(minutes=1)
+        assert await boot("bbbbbbb2", b_last) is None
+        # While B's pods are still seen within the grace, C is not released.
+        assert await boot("ccccccc3", t_c + DRAIN_GRACE) is None
+        # B's pods gone past the grace: C is released, the build before it is A (the last released).
+        settled = b_last + DRAIN_GRACE
+        released_c = await boot("ccccccc3", settled)
+        assert released_c is not None and released_c["git_sha"] == "ccccccc3"
+        assert released_c["previous_git_sha"] == "aaaaaaa1"
+        # B, booting again behind C (a stale pod), is never released: it is not the newest.
+        assert await boot("bbbbbbb2", settled + 2 * DRAIN_GRACE) is None
+        assert release_event_id("3.0.0", "ccccccc3") != release_event_id("3.0.0", "bbbbbbb2")
 
 
 async def test_an_audit_log_read_is_audited_once_per_window(monkeypatch):

@@ -1,6 +1,6 @@
 # XTM One in OpenCRQ
 
-OpenCRQ is the governance, risk and compliance module of the XTM Platform. It owns frameworks, controls, assessments, risk scenarios and the financial quantification of cyber risk. XTM One brings its agents into OpenCRQ, gives your own agents OpenCRQ tools, and keeps the crown jewels of your organization profile in line with OpenCRQ's assets.
+OpenCRQ is the governance, risk and compliance module of the XTM Platform. It owns frameworks, controls, assessments, risk scenarios and the financial quantification of cyber risk. XTM One brings its agents into OpenCRQ, gives your own agents OpenCRQ tools, and keeps the primary assets of your organization profile in line with OpenCRQ's assets.
 
 ## The embedded assistant
 
@@ -11,11 +11,8 @@ Each request goes through the OpenCRQ backend to XTM One, under your own identit
 | Capability | What it does | Default agent |
 | --- | --- | --- |
 | `global.assistant` | The conversation behind `Ask Ariane` | `CTEM Assistant`, which hands the conversation over to the `OpenCRQ Assistant` |
-| `global.summarize`, `global.explain`, `global.make_it_shorter`, `global.make_it_longer`, `global.fix_spelling`, `global.change_tone` | Writing help on text content | `OpenCRQ Assistant` |
-| `crq.control_gap_analysis` | Analyze control capability gaps against a framework | `OpenCRQ Assistant` |
-| `crq.risk_scenario_generator` | Draft risk scenarios from business and threat context | `OpenCRQ Assistant` |
 
-OpenCRQ declares these capabilities when it registers. Which of them has a button in OpenCRQ depends on your OpenCRQ version, and an administrator can bind a different agent to any of them on the [`Intents`](../../administration/intents.md) page.
+OpenCRQ declares this capability when it registers, and an administrator can bind a different agent to it on the [`Intents`](../../administration/intents.md) page.
 
 ## OpenCRQ tools for your agents
 
@@ -49,4 +46,4 @@ The exposure lifecycle on the [home dashboard](../home-dashboard.md) has a `Gove
 
 ## Next step
 
-Administrators who want to fill in the crown jewels first should read [Organization profile](../../administration/organization.md). To connect an MCP client, continue with [`Platform MCP servers`](../resources/platform-mcp-servers.md).
+Administrators who want to fill in the primary assets first should read [Organization profile](../../administration/organization.md). To connect an MCP client, continue with [`Platform MCP servers`](../resources/platform-mcp-servers.md).

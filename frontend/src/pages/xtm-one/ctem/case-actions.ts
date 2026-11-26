@@ -53,6 +53,14 @@ export function caseActionDef(id: CaseActionId): CaseActionDef {
   return def;
 }
 
+/**
+ * Delete (#1723, #1950): administrators only, on both surfaces (the Cases list
+ * toolbar and rows, the case page's More actions menu, last, after a separator),
+ * whatever the case's state or origin. It is not a state action, so it stays out
+ * of `CASE_ACTIONS`; `CasesDeleteAction.tsx` draws it on both surfaces.
+ */
+export const CASE_DELETE = { label: "Delete", adminOnly: true, surfaces: ["bulk", "single"] } as const;
+
 /** Before remediation: Start is the next step. */
 const NOT_STARTED: readonly CtemCaseState[] = ["new", "analyzing", "waiting_decision"];
 /** In remediation or validation: Resolve is the next step. */
@@ -122,12 +130,14 @@ export function primaryCaseAction(state: CtemCaseState): "start" | "resolve" | "
  * other single-case action, disabled with its reason when the state refuses
  * it). `canDecide` is the one permission check: a viewer who may only read the
  * case gets no action at all once read and decide access are told apart.
+ * `canDelete` (an administrator) adds Delete as the menu's last row, at any state.
  */
 export function caseHeaderActions(
   state: CtemCaseState,
   canDecide = true,
-): { buttons: CaseActionId[]; menu: { id: CaseActionId; availability: CaseActionAvailability }[] } {
-  if (!canDecide) return { buttons: [], menu: [] };
+  canDelete = false,
+): { buttons: CaseActionId[]; menu: { id: CaseActionId; availability: CaseActionAvailability }[]; canDelete: boolean } {
+  if (!canDecide) return { buttons: [], menu: [], canDelete };
   const primary = primaryCaseAction(state);
   const buttons: CaseActionId[] = [];
   if (caseActionAvailability("accept", state).enabled) buttons.push("accept");
@@ -135,5 +145,5 @@ export function caseHeaderActions(
   const menu = SINGLE_CASE_ACTIONS.filter((id) => !buttons.includes(id))
     .map((id) => ({ id, availability: caseActionAvailability(id, state) }))
     .filter((row) => !row.availability.hidden);
-  return { buttons, menu };
+  return { buttons, menu, canDelete };
 }

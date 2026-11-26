@@ -173,6 +173,30 @@ async def children_of_live_parents(db: AsyncSession, due: list[OrchestrationExec
     return [e for e in due if parent_of.get(run_of.get(e.id)) in live]
 
 
+#: The platform events a person's answer or a work item's release raises: a run they start is a resume of
+#: work somebody waits on, never bulk event work (#2234).
+_INTERACTIVE_EVENTS = frozenset({"work_item.released"})
+
+
+def is_interactive_run(trigger_context: object, answered: object) -> bool:
+    """Whether a run resumes work somebody waits on (``ClaimCandidate.interactive``, #2234).
+
+    A work item dispatched to its owner's inbox (``trigger_context.type`` ``work_item``), a person's answer
+    to a decision (the ``work_item.status_changed`` event carrying ``answered``, the "Gate answered"
+    assignments), or a work item's release. Every other platform, integration or scheduled event is bulk.
+    ``answered`` is the payload's ``answered`` read as text (``->>``, never a SQL cast: a webhook payload may
+    carry any value under that key), so only the JSON literal ``true`` counts.
+    """
+    if not isinstance(trigger_context, dict):
+        return False
+    kind = trigger_context.get("type")
+    if kind == "work_item":
+        return True
+    if kind != "platform_event":
+        return False
+    return answered is True or answered == "true" or trigger_context.get("event") in _INTERACTIVE_EVENTS
+
+
 async def fair_share_deal(
     db: AsyncSession, due: list[OrchestrationExecution], worker_id: str
 ) -> list[OrchestrationExecution]:
@@ -197,16 +221,23 @@ async def fair_share_deal(
             run_of[execution.id] = run_id
     if not run_of:
         return list(due)
-    runs = {
-        row[0]: (row[1], row[2])
-        for row in (
-            await db.execute(
-                select(AssignmentRun.id, AssignmentRun.agent_id, AssignmentRun.parent_run_id).where(
-                    AssignmentRun.id.in_(list(run_of.values()))
-                )
-            )
-        ).all()
-    }
+    rows = (
+        await db.execute(
+            select(
+                AssignmentRun.id,
+                AssignmentRun.agent_id,
+                AssignmentRun.parent_run_id,
+                AssignmentRun.assignment_id,
+                AssignmentRun.trigger_context,
+                # Text, not a boolean cast: one non-boolean ``answered`` in a webhook payload would fail the
+                # whole read and stall every claim of the cycle.
+                AssignmentRun.trigger_payload["answered"].as_string(),
+            ).where(AssignmentRun.id.in_(list(run_of.values())))
+        )
+    ).all()
+    runs = {row[0]: (row[1], row[2]) for row in rows}
+    # What started each run (#2234): its assignment and whether a person's answer or a work item did.
+    origin = {row[0]: (row[3], is_interactive_run(row[4], row[5])) for row in rows}
     parents = {parent for _agent, parent in runs.values() if parent is not None}
     live_parents: set[uuid.UUID] = set()
     if parents:
@@ -261,6 +292,7 @@ async def fair_share_deal(
             unread.append(execution)
             continue
         agent, parent = str(run[0]), run[1]
+        assignment_id, interactive = origin.get(run_of.get(execution.id), (None, False))
         candidates.append(
             assignment_dispatch.ClaimCandidate(
                 key=execution,
@@ -268,6 +300,8 @@ async def fair_share_deal(
                 agent=agent,
                 run_at=execution.run_at,
                 child_of_live_parent=parent is not None and parent in live_parents,
+                interactive=interactive,
+                assignment=str(assignment_id or ""),
             )
         )
     ordered = assignment_dispatch.fair_share_order(

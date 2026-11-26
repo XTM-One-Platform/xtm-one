@@ -14,7 +14,7 @@
 """Assets and exposure from a CSV file (#11543): a preview with per-row errors, then the merge.
 
 The administrator uploads a CSV, reads the preview (every row parsed or
-refused with its reason, the crown jewel links it adds, the rows it would
+refused with its reason, the primary asset links it adds, the rows it would
 replace) and only then applies it: :func:`merge_assets` returns the next
 profile, which the API saves as a new version. Nothing is written by
 :func:`parse_assets_csv`.
@@ -22,8 +22,8 @@ profile, which the API saves as a new version. Nothing is written by
 Columns (header row, case-insensitive, any order; only ``name`` is required):
 ``name``, ``category`` and ``subcategory`` (OpenAEV's taxonomy, #11781),
 ``criticality``, ``environment``, ``internet_facing``, ``owner``,
-``group``, ``tech_stack`` and ``tags`` (separated by ``;`` or ``|``),
-``crown_jewels`` (crown jewel names the asset runs, ``;`` separated),
+``group``, ``products`` and ``tags`` (separated by ``;`` or ``|``),
+``primary_assets`` (primary asset names the asset runs, ``;`` separated),
 ``external_id``. The flat ``type`` of #11543 is still read, as its category
 and subcategory; a ``type`` of ``asset_group`` adds the row to ``asset_groups``.
 """
@@ -59,12 +59,12 @@ COLUMNS: tuple[str, ...] = (
     "internet_facing",
     "owner",
     "group",
-    "tech_stack",
+    "products",
     "tags",
-    "crown_jewels",
+    "primary_assets",
     "external_id",
 )
-_LIST_COLUMNS = ("tech_stack", "tags", "crown_jewels")
+_LIST_COLUMNS = ("products", "tags", "primary_assets")
 #: Words a spreadsheet writes for ``internet_facing``, read as the stored value.
 _YES_NO = {
     "yes": "yes",
@@ -92,11 +92,11 @@ class AssetsPreview:
     assets: list[AssetEntry] = field(default_factory=list)
     #: The groups the file declares (rows typed ``asset_group``), upserted by name.
     groups: list[AssetGroupEntry] = field(default_factory=list)
-    #: crown jewel name -> asset names the file links to it.
+    #: primary asset name -> asset names the file links to it.
     links: dict[str, list[str]] = field(default_factory=dict)
     errors: list[RowError] = field(default_factory=list)
-    #: Crown jewel names the file names that the profile does not hold.
-    unknown_crown_jewels: list[str] = field(default_factory=list)
+    #: Primary asset names the file names that the profile does not hold.
+    unknown_primary_assets: list[str] = field(default_factory=list)
     #: Asset names already in the profile that the file replaces.
     replaced: list[str] = field(default_factory=list)
 
@@ -127,11 +127,11 @@ def parse_assets_csv(data: bytes, profile: OrganizationProfile) -> AssetsPreview
     if unknown:
         raise ValueError(f"unknown column(s) {', '.join(unknown)}; the columns are {', '.join(COLUMNS)}")
     preview = AssetsPreview()
-    jewels = {jewel.name.lower(): jewel.name for jewel in profile.crown_jewels}
+    pa_rows = {pa_row.name.lower(): pa_row.name for pa_row in profile.primary_assets}
     existing = {asset.name.lower() for asset in profile.assets_exposure}
     existing_groups = {group.name.lower() for group in profile.asset_groups}
     seen: set[str] = set()
-    unknown_jewels: dict[str, None] = {}
+    unknown_pa_rows: dict[str, None] = {}
     for line, raw in enumerate(reader, start=2):
         if len(preview.assets) + len(preview.errors) >= MAX_ROWS:
             preview.errors.append(RowError(line, "", f"more than {MAX_ROWS} rows; the rest is not read"))
@@ -164,7 +164,7 @@ def parse_assets_csv(data: bytes, profile: OrganizationProfile) -> AssetsPreview
                 values[key] = values[key].lower().replace(" ", "_")
         values.update(
             internet_facing=facing,
-            tech_stack=_split(row.get("tech_stack", "")),
+            products=_split(row.get("products", "")),
             tags=_split(row.get("tags", "")),
             source="csv",
         )
@@ -193,20 +193,20 @@ def parse_assets_csv(data: bytes, profile: OrganizationProfile) -> AssetsPreview
             if asset.name.lower() in existing:
                 preview.replaced.append(asset.name)
             asset_name = asset.name
-        for jewel in _split(row.get("crown_jewels", "")):
-            known = jewels.get(jewel.lower())
+        for pa_row in _split(row.get("primary_assets", "")):
+            known = pa_rows.get(pa_row.lower())
             if known is None:
-                unknown_jewels[jewel] = None
+                unknown_pa_rows[pa_row] = None
                 continue
             preview.links.setdefault(known, [])
             if asset_name not in preview.links[known]:
                 preview.links[known].append(asset_name)
-    preview.unknown_crown_jewels = list(unknown_jewels)
+    preview.unknown_primary_assets = list(unknown_pa_rows)
     return preview
 
 
 def merge_assets(profile: OrganizationProfile, preview: AssetsPreview) -> OrganizationProfile:
-    """*profile* with the preview's assets upserted by name and its crown jewel links added.
+    """*profile* with the preview's assets upserted by name and its primary asset links added.
 
     Rows the file does not name are kept as they are (typed by hand or from
     another source); a row it names is replaced whole.
@@ -215,25 +215,25 @@ def merge_assets(profile: OrganizationProfile, preview: AssetsPreview) -> Organi
     kept = [asset for asset in profile.assets_exposure if asset.name.lower() not in incoming]
     incoming_groups = {group.name.lower() for group in preview.groups}
     kept_groups = [group for group in profile.asset_groups if group.name.lower() not in incoming_groups]
-    jewels = []
-    for jewel in profile.crown_jewels:
-        added = preview.links.get(jewel.name, [])
-        jewels.append(jewel.model_copy(update={"asset_names": list(dict.fromkeys([*jewel.asset_names, *added]))}))
+    pa_rows = []
+    for pa_row in profile.primary_assets:
+        added = preview.links.get(pa_row.name, [])
+        pa_rows.append(pa_row.model_copy(update={"asset_names": list(dict.fromkeys([*pa_row.asset_names, *added]))}))
     data = profile.model_dump(mode="json")
     data["assets_exposure"] = [a.model_dump(mode="json") for a in [*kept, *preview.assets]]
     data["asset_groups"] = [g.model_dump(mode="json") for g in [*kept_groups, *preview.groups]]
-    data["crown_jewels"] = [j.model_dump(mode="json") for j in jewels]
+    data["primary_assets"] = [j.model_dump(mode="json") for j in pa_rows]
     return OrganizationProfile.model_validate(data)
 
 
 def check_links(profile: OrganizationProfile) -> list[str]:
-    """The problems of *profile*'s asset links: a crown jewel or an asset naming an asset or group it lacks."""
+    """The problems of *profile*'s asset links: a primary asset or an asset naming an asset or group it lacks."""
     groups = {group.name.lower() for group in profile.asset_groups}
     names = {asset.name.lower() for asset in profile.assets_exposure} | groups
     problems = [
-        f"crown jewel {jewel.name!r} links {name!r}, which is not an asset"
-        for jewel in profile.crown_jewels
-        for name in jewel.asset_names
+        f"primary asset {pa_row.name!r} links {name!r}, which is not an asset"
+        for pa_row in profile.primary_assets
+        for name in pa_row.asset_names
         if name.lower() not in names
     ]
     problems += [

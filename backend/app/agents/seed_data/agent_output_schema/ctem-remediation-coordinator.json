@@ -15,7 +15,21 @@
           "owner_role": {"type": "string"},
           "loss_avoided": {"type": "number"},
           "detections": {"type": "array", "items": {"type": "string"}, "description": "The detection rules drafted for this action."},
-          "ticket_draft": {"type": "string", "description": "The ticket body for the ticketing target; proposed, never filed."},
+          "mode": {"type": "string", "enum": ["ticket", "applied_change", "both"], "description": "How the action is carried out: a ticket for a person, a change applied through a bound integration under the gate ctem.production_change, or both (applied now, ticket for tracking)."},
+          "ticket_draft": {"type": "string", "description": "The ticket body for the ticketing target. Only sync_ctem_case_ticket opens the case ticket, once the case passed Mobilize; this field never files one. Empty for an applied_change action."},
+          "applied_change": {
+            "type": "object",
+            "description": "For mode applied_change or both: the change applied through a bound integration under ctem.production_change.",
+            "properties": {
+              "integration": {"type": "string", "description": "The bound integration that carries it (the tool's provider and the integration name)."},
+              "kind": {"type": "string", "enum": ["ioc_prevention", "detection_rule", "configuration", "control_restored"]},
+              "pushed": {"type": "string", "description": "What is pushed: the indicators with their action (block, prevent), scope and expiry; the rule; the setting."},
+              "ids": {"type": "array", "items": {"type": "string"}, "description": "The ids the integration returned; empty while proposed."},
+              "rollback": {"type": "string", "description": "How to revert it: what to delete or set back, by id."}
+            },
+            "required": ["integration", "kind", "pushed", "rollback"],
+            "additionalProperties": false
+          },
           "retest": {"type": "string", "description": "The re-test that proves the action."},
           "version_match": {
             "type": "object",
@@ -30,7 +44,7 @@
             "additionalProperties": false
           }
         },
-        "required": ["title", "asset", "change", "evidence", "owner_role", "ticket_draft", "retest"],
+        "required": ["title", "asset", "change", "evidence", "owner_role", "mode", "ticket_draft", "retest"],
         "additionalProperties": false
       }
     }

@@ -47,6 +47,8 @@ _NOT_TOOLS = {
     "archive_key",
     "remove_json",
     "update_json",
+    # A ``manage_openaev_scenario`` action (the CTEM orchestrators set the repeat with it).
+    "schedule_recurrence",
 }
 
 
@@ -100,6 +102,7 @@ def _agent_loop_tool_names() -> set[str]:
         ORGANIZATION_CONTEXT_TOOL,
         SCHEDULING_TOOL_NAMES,
     )
+    from app.services.builtin_tools.inventory_query import INVENTORY_QUERY_TOOLS
     from app.services.evaluation import always_ask
     from app.tools.tool_gating import LOAD_TOOLS_TOOL_NAME
     from app.tools.wait_policy import CHECK_TASK_STATUS_TOOL_NAME, WAIT_TOOL_NAME
@@ -115,6 +118,8 @@ def _agent_loop_tool_names() -> set[str]:
         *always_ask._HANDOVER_TOOLS,
         *always_ask._SKILL_TOOLS,
         ORGANIZATION_CONTEXT_TOOL,
+        # The inventory query functions travel with ``get_organization_context`` (#2443).
+        *INVENTORY_QUERY_TOOLS,
         # Offered by agent slug to the seeded CTEM agents (``offers_ctem_case_tools``), outside the groups.
         *CTEM_CASE_TOOL_NAMES,
         *CTEM_SIGNAL_TOOL_NAMES,

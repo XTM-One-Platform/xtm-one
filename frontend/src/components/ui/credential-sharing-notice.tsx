@@ -5,13 +5,14 @@
  * lets other people use (or takes back from them), who they are, through what,
  * what they can do with it and how to avoid it: an integration's
  * credential, an MCP server and its secrets, a custom tool's code, a channel
- * bot's token, a variable's value. `CredentialSharingDialog` is the one
+ * bot's token, a variable's value, and the knowledge bases, skills and prompts
+ * an agent reads as its owner's for everyone it serves. `CredentialSharingDialog` is the one
  * confirmation around it, opened by `useCredentialSharingConfirm()`.
  */
 
 import { useState } from "react";
 import { Checkbox, Spinner } from "@filigran/design-system";
-import { KeyRound, MessageSquare, Plug, Server, UserMinus, Users, Variable, Wrench } from "lucide-react";
+import { Database, FileText, KeyRound, MessageSquare, Plug, Server, Sparkles, UserMinus, Users, Variable, Wrench } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +43,9 @@ const KIND_ICONS: Record<LentKindName, typeof Plug> = {
   custom_tool: Wrench,
   channel_bot: MessageSquare,
   variable: Variable,
+  knowledge_base: Database,
+  skill: Sparkles,
+  prompt: FileText,
 };
 
 function viaLabel(t: Translate, item: ResourcePreviewItem): string {
@@ -87,6 +91,12 @@ function whatTheyDo(t: Translate, item: ResourcePreviewItem): string {
       return t("Its code runs when they use it.");
     case "channel_bot":
       return t("They read and post through this bot.");
+    case "knowledge_base":
+      return t("The agent searches and reads its documents for them, and adds to it where it may write.");
+    case "skill":
+      return t("Its instructions and files guide the agent for them.");
+    case "prompt":
+      return t("Its text is added to what the agent is told for them.");
     default:
       return item.secret.kind === "secret_value"
         ? t("Its secret value is used in what they run; it is never shown to them.")

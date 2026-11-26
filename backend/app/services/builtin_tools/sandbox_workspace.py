@@ -1776,6 +1776,7 @@ def build_sandbox_workspace_tools(
         path: str = "",
         add_paths: list[str] | None = None,
         prune_clean_checkouts: bool = False,
+        exact_files: bool = False,
     ) -> str | ToolResult:
         try:
             destination = normalize(path or _default_destination(repository))
@@ -1790,7 +1791,11 @@ def build_sandbox_workspace_tools(
                     "nor ref with it (a new tree is a checkout at another path)."
                 )
             return await _grow_checkout(repository, destination, adds, prune=bool(prune_clean_checkouts))
-        fetched = await _archive_tree(provider, repository, ref, subs, operation="materialize_repository")
+        # exact_files (#2056): a sub_path naming a file is that file alone, as add_paths keeps it (#1919), so a
+        # read or a two-file edit never pays the whole directory a declared check runs from.
+        fetched = await _archive_tree(
+            provider, repository, ref, subs, operation="materialize_repository", exact_files=bool(exact_files)
+        )
         if isinstance(fetched, ToolResult):
             return fetched
         tree, tool_name = fetched
@@ -1877,6 +1882,7 @@ def build_sandbox_workspace_tools(
                 "ref": ref,
                 "sub_paths": subs,
                 "requested_sub_paths": requested,
+                "exact_files": bool(exact_files),
                 "path": destination,
                 "files": len(tree.files),
                 "companions": len(tree.companions),
@@ -2915,6 +2921,17 @@ def build_sandbox_workspace_tools(
             return _error(str(exc))
         except WorkspaceUnavailableError as exc:
             return _error(str(exc))
+        # A narrow checkout that lacks what the check reads (#2156): its directory (an exact_files checkout, a
+        # frontend/ checkout running a backend gate) or a declared need (LICENSE for the editions gate). The
+        # checkout is grown by them at its recorded commit first, as materialize_repository add_paths does, so the
+        # check never fails on a file the checkout left out and the record covers them for status and commits.
+        grow_note = ""
+        repository, missing = await commands.missing_requirements(session, command.cwd_root, command)
+        if missing:
+            grown = await _grow_checkout(repository, command.cwd_root, missing)
+            if isinstance(grown, ToolResult):
+                return grown
+            grow_note = f"{command.label} reads {', '.join(missing)}, which the checkout did not hold. {grown}"
         selection_text = ""
         # A formatter declared affected_by_default (backend-format) called without args runs on the change, never
         # the whole tree: a checkout has no .git, so the script alone cannot tell what changed.
@@ -2951,6 +2968,8 @@ def build_sandbox_workspace_tools(
             answer = f"{selection_text}\n\n{answer}"
         if command.env_unset and isinstance(answer, str):
             answer += "\n" + commands.unset_env_note(command.env_unset)
+        if grow_note and isinstance(answer, str):
+            answer = f"{grow_note}\n\n{answer}"
         if settle_note and isinstance(answer, str):
             answer = f"{settle_note}\n\n{answer}"
         return answer
@@ -3212,7 +3231,14 @@ def build_sandbox_workspace_tools(
             )
         ran = outcome.command or command
         if ran is not None and not outcome.stopped and not outcome.timed_out:
-            await prepush.record_run(session, checkout, check=ran.check, argv=ran.argv, exit_code=outcome.exit_code)
+            await prepush.record_run(
+                session,
+                checkout,
+                check=ran.check,
+                argv=ran.argv,
+                exit_code=outcome.exit_code,
+                on_change=ran.affected_by_default,
+            )
         return outcome.text + await _outside_checkout_note(outcome, checkout, ran)
 
     async def _outside_checkout_note(
@@ -4269,6 +4295,14 @@ def build_sandbox_workspace_tools(
                             "Grow the existing checkout at path instead of replacing it: these repository paths are "
                             "written at the commit its record names, nothing is removed, an edit is kept (a stale "
                             "file an earlier checkout left is rewritten), and the record covers them. Not with sub_paths or ref."
+                        ),
+                    },
+                    "exact_files": {
+                        "type": "boolean",
+                        "description": (
+                            "A sub_path naming a file is written as that file alone, never widened to the directory "
+                            "a declared check runs from nor to its package root (a directory still widens): for a "
+                            "read or a small edit; a check run on it may need a wider checkout. Default false."
                         ),
                     },
                     "prune_clean_checkouts": {

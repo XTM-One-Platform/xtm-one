@@ -770,6 +770,9 @@ def test_core_that_leaves_no_room_for_a_gated_tool_is_demoted_not_dropped():
     assert gate.min_visible_count == 2 and gate.required_budget == 3
     assert f'"{CORE_OVERFLOW_GROUP_ID}"' in gate.catalog_prompt
     assert "core_default, core_lo" in gate.catalog_prompt
+    # #2191: the demotion is told to the model, every tool named, with the call.
+    assert "Moved out of your always-on tools for this run" in gate.catalog_prompt
+    assert f'groups=["{CORE_OVERFLOW_GROUP_ID}"]' in gate.catalog_prompt
     enum = gate.load_tools_definition.input_schema["properties"]["groups"]["items"]["enum"]
     assert enum == [CORE_OVERFLOW_GROUP_ID, "integration:notion"]
     assert gate.gated_tool_count == 7
@@ -813,6 +816,25 @@ def test_the_budget_always_keeps_a_slot_for_a_gated_tool():
     assert "core_6" in _visible_names(gate)
     assert gate.groups_in_use(["core_6"]) == [CORE_OVERFLOW_GROUP_ID], "gated now"
     assert gate.groups_in_use(["core_0"]) == [], "still always-on: not a recency event"
+
+
+def test_demotion_notice_names_every_demoted_tool_up_to_the_bound() -> None:
+    """#2191: the overflow group's catalogue line samples a few names; the
+    demotion line names each always-on tool moved (bounded), so an agent never
+    finds one of its always-on tools silently missing."""
+    gate = _capped_gate(8, ("a", 5), core=12)
+    demoted = [t.name for t in gate.demoted_always_on]
+    assert len(demoted) == 6
+    notice = next(line for line in gate.catalog_prompt.splitlines() if line.startswith("Moved out of"))
+    for name in demoted:
+        assert name in notice
+    assert LOAD_TOOLS_TOOL_NAME in notice
+
+
+def test_no_demotion_notice_when_the_core_fits() -> None:
+    gate = _capped_gate(8, ("a", 5), core=6)
+    assert gate.demoted_always_on == []
+    assert "Moved out of your always-on tools" not in gate.catalog_prompt
 
 
 def test_core_exactly_two_below_the_cap_is_untouched():

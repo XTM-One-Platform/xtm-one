@@ -24,6 +24,12 @@ built-in fleet (the lab's own, ``seed_builtin_fleet.py``). Nothing resumes them:
 a pause is resumed only by the respond endpoints, which emit the resume outbox
 event, and the stale-run sweeps never touch ``awaiting_human``. No model call.
 
+Each row is given its id before the flush: the decisions dual write
+(``app.models.decision_hooks``, a ``before_flush`` hook) skips a source with no
+id, and the column default only runs at the INSERT, so a row created already
+paused would open no decision and the decisions read switch would stay off
+(dev:harness-gaps lab-decisions-backfill-misses-seeded-runs).
+
 dev-docs/reference/agentic-labs.md, "The xtm-one lab".
 """
 
@@ -87,6 +93,7 @@ def plan(fleet: str, agents: list[str], now: datetime) -> list[dict]:
             _proposal(f"{fleet[:8]}_{key}_{n}", *proposal) for n, proposal in enumerate(proposals)
         ] or None
         rows.append({
+            "id": str(uuid.uuid4()),
             "agent_id": agents[index % len(agents)], "status": "awaiting_human",
             "is_company_managed": company,
             "trigger_payload": {**SEEDED_BY, "case": key},
@@ -159,7 +166,10 @@ async def seed(user_id: str, corporate: str) -> list[dict]:
                 continue
             rows = plan(str(fleet.id), agents, now)
             runs = [
-                AssignmentRun(**{**row, "agent_id": uuid.UUID(row["agent_id"])}, user_id=user) for row in rows
+                AssignmentRun(
+                    **{**row, "id": uuid.UUID(row["id"]), "agent_id": uuid.UUID(row["agent_id"])}, user_id=user,
+                )
+                for row in rows
             ]
             db.add_all(runs)
             await db.flush()

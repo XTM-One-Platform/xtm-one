@@ -676,7 +676,7 @@ function ToggleChips<T extends string>({
               disabled={disabled}
               onClick={() => onChange(on ? value.filter((v) => v !== option.value) : [...value, option.value])}
               className={cn(
-                "rounded-full border px-2.5 py-1 text-[11px] transition-colors disabled:opacity-50",
+                "rounded-sm border px-2 py-1 text-[11px] transition-colors disabled:opacity-50",
                 on ? "border-accent/50 bg-accent/15 text-accent" : "border-elevation-subtle text-default-secondary hover:bg-elevation-hover",
               )}
             >

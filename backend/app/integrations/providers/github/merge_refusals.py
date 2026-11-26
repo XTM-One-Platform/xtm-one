@@ -13,12 +13,19 @@ GraphQL (draft, head, merge state, review decision, merge queue) and:
   ``enqueuePullRequest``, pinned to the head read before the merge), and
   answers "queued" with the position;
 - says the PR is already queued, with its position, and that no branch
-  update is needed;
-- says a queue entry will NOT merge when its required review is missing
-  (the queue applies no review bypass) or GitHub reads it UNMERGEABLE,
-  with the cause, instead of "the queue merges it" (#409);
-- otherwise names the cause (draft, behind, conflict, required review,
-  failing or pending check, a protection rule on a clean PR) with one fix.
+  update is needed, also when another run queued it between the read and
+  the enqueue (GitHub then refuses the mutation; #2018);
+- refuses to enqueue a head the merge queue ejected for failing checks with
+  no commit since: the queue would run the same tree and fail it again,
+  locking the branch for the fix meanwhile (#2010);
+- says a queue entry will NOT merge only when GitHub reads it UNMERGEABLE,
+  with the cause; a missing review alone is never read as a refusal: the
+  review decision says a rule is not met, not that the queue refuses the
+  entry or that the viewer cannot bypass it, and GitHub's own verdict (the
+  enqueue answer and the entry's state) wins (#2324, replaces #409);
+- otherwise names the cause (draft, behind, conflict, required review the
+  viewer cannot bypass as GitHub's ``viewerCanMergeAsAdmin`` says, failing or
+  pending check, a protection rule on a clean PR) with one fix.
 
 A head that moved names the expected and the current SHA, and that the
 green claim taken on the old head must be read again.
@@ -36,8 +43,11 @@ _FACTS_QUERY = (
     " repository(owner: $owner, name: $name) {"
     " mergeQueue(branch: $base) { id }"
     " pullRequest(number: $number) {"
-    " id isDraft headRefOid mergeStateStatus reviewDecision isInMergeQueue"
-    " mergeQueueEntry { position state } } } }"
+    " id isDraft headRefOid mergeStateStatus reviewDecision isInMergeQueue viewerCanMergeAsAdmin"
+    " mergeQueueEntry { position state }"
+    " timelineItems(last: 10, itemTypes: [PULL_REQUEST_COMMIT, HEAD_REF_FORCE_PUSHED_EVENT,"
+    " REMOVED_FROM_MERGE_QUEUE_EVENT]) {"
+    " nodes { __typename ... on RemovedFromMergeQueueEvent { createdAt reason } } } } } }"
 )
 
 _ENQUEUE_MUTATION = (
@@ -60,6 +70,31 @@ class MergeFacts:
     in_queue: bool
     queue_position: int | None
     queue_state: str
+    #: When the queue last ejected this head for failing checks with no commit
+    #: or force-push since ('' otherwise).
+    ejected_unchanged_at: str = ""
+    #: GitHub's ``viewerCanMergeAsAdmin``: whether this account may bypass the
+    #: base's requirements (a missing review included); None when not returned.
+    viewer_can_bypass: bool | None = None
+
+
+def _ejected_unchanged_at(pr: dict[str, Any]) -> str:
+    """The time of a failed-checks ejection that is the PR's latest head event, else ''.
+
+    The timeline holds commits, force-pushes and queue removals; when its last
+    node is a removal for failed checks, the head the queue failed is still the
+    head, and enqueueing it again re-runs the same failing tree.
+    """
+    timeline = pr.get("timelineItems")
+    nodes = timeline.get("nodes") if isinstance(timeline, dict) else None
+    if not isinstance(nodes, list) or not nodes:
+        return ""
+    last = nodes[-1]
+    if not isinstance(last, dict) or last.get("__typename") != "RemovedFromMergeQueueEvent":
+        return ""
+    if str(last.get("reason") or "").lower() != "failed_checks":
+        return ""
+    return str(last.get("createdAt") or "unknown time")
 
 
 async def read_facts(
@@ -86,6 +121,7 @@ async def read_facts(
     raw_entry = pr.get("mergeQueueEntry")
     entry: dict[str, Any] = raw_entry if isinstance(raw_entry, dict) else {}
     position = entry.get("position")
+    bypass = pr.get("viewerCanMergeAsAdmin")
     return MergeFacts(
         pr_id=str(pr.get("id")),
         is_draft=bool(pr.get("isDraft")),
@@ -96,6 +132,8 @@ async def read_facts(
         in_queue=bool(pr.get("isInMergeQueue")) or bool(entry),
         queue_position=position if isinstance(position, int) else None,
         queue_state=str(entry.get("state") or ""),
+        ejected_unchanged_at=_ejected_unchanged_at(pr),
+        viewer_can_bypass=bypass if isinstance(bypass, bool) else None,
     )
 
 
@@ -103,19 +141,13 @@ def _position(position: int | None) -> str:
     return f"position {position}" if position is not None else "position not returned"
 
 
-def _stuck_entry(queue_state: str, review_decision: str) -> str:
-    """Why a queue entry will not merge, or '' when nothing says so.
+def _stuck_entry(queue_state: str) -> str:
+    """Why a queue entry will not merge, or '' when GitHub does not say so.
 
-    A queue does not apply a review bypass: an entry whose required review is
-    missing reads UNMERGEABLE and stays in the queue without merging (#409).
+    Only GitHub's own verdict counts: an entry it reads UNMERGEABLE. The review
+    decision is never read as a refusal: GitHub accepted entries with
+    ``review_required`` into the queue and runs them (#2324).
     """
-    review = review_decision.upper()
-    if review in ("REVIEW_REQUIRED", "CHANGES_REQUESTED"):
-        decision = review.lower().replace("_", " ")
-        return (
-            f"a required review is missing (review decision: {decision}) and the merge queue does not "
-            f"bypass it. Get the approval; the queue then merges it"
-        )
     if queue_state.upper() == "UNMERGEABLE":
         return (
             "GitHub reads the entry UNMERGEABLE (a rule of the base is not satisfied). Read the rules "
@@ -151,21 +183,29 @@ async def refusal_answer(
     base: str,
     expected_head: str,
     github_msg: str,
+    *,
+    queue_only: bool = False,
 ) -> str | None:
     """The answer to a 405 merge refusal, or None to keep the generic one.
 
     Enqueues the PR when its base has a merge queue; otherwise names the
-    cause GitHub reports and the one fix.
+    cause GitHub reports and the one fix. With ``queue_only`` (a 'Base branch
+    was modified' refusal) a base without a merge queue answers None, so the
+    caller keeps its own wait-and-retry: on a queue-protected base the queue
+    takes the PR whatever the base did meanwhile, and no branch update or
+    second PUT is needed.
     """
     repo = f"{owner}/{name}"
     facts = await read_facts(client, headers, owner, name, number, base)
     if facts is None:
         return None
+    if queue_only and not (facts.base_has_queue or facts.in_queue):
+        return None
     said = f" GitHub answered: {github_msg}" if github_msg else ""
     if expected_head and facts.head and facts.head != expected_head:
         return head_moved_line(repo, number, expected_head, facts.head) + said
     if facts.in_queue:
-        stuck = _stuck_entry(facts.queue_state, facts.review_decision)
+        stuck = _stuck_entry(facts.queue_state)
         where = (
             f"It is in the merge queue of {base} "
             f"({_position(facts.queue_position)}{', ' + facts.queue_state.lower() if facts.queue_state else ''})."
@@ -182,6 +222,15 @@ async def refusal_answer(
             f"Error: Cannot merge PR #{number} in {repo}: it is a draft. Call `manage_github_pr` with "
             f"action='ready_for_review', then merge again.{said}"
         )
+    if facts.base_has_queue and facts.ejected_unchanged_at:
+        return (
+            f"Error: PR #{number} in {repo} is NOT merged and was NOT added to the merge queue: the queue "
+            f"ejected head {facts.head[:12]} for failing checks at {facts.ejected_unchanged_at} and no commit "
+            f"was pushed since, so it would fail the same way and lock the branch meanwhile. Read the failed "
+            f"merge_group run (`list_github_workflow_runs` event='merge_group'), push the fix (or merge the base "
+            f"with `manage_github_pr` action='update_branch' when a sibling of its group caused it), then merge "
+            f"again on the new head.{said}"
+        )
     if facts.base_has_queue:
         variables: dict[str, Any] = {"id": facts.pr_id}
         if expected_head:
@@ -190,6 +239,17 @@ async def refusal_answer(
             client, headers, _ENQUEUE_MUTATION, variables, action=f"add PR #{number} in {repo} to the merge queue"
         )
         if err:
+            # Another run may have queued it between the read and the mutation:
+            # GitHub then refuses the enqueue, yet the PR is queued (#2018).
+            again = await read_facts(client, headers, owner, name, number, base)
+            if again is not None and again.in_queue:
+                return (
+                    f"PR #{number} in {repo} is already in the merge queue of {base} "
+                    f"({_position(again.queue_position)}"
+                    f"{', ' + again.queue_state.lower() if again.queue_state else ''}): it was queued meanwhile, "
+                    f"so the enqueue was refused. Nothing else was done: the queue merges it. No branch update "
+                    f"is needed."
+                )
             return (
                 f"Error: PR #{number} in {repo} is NOT merged: {base} is protected by a merge queue, so a "
                 f"direct merge is refused, and adding it to the queue failed: {err.removeprefix('Error: ')}"
@@ -197,7 +257,7 @@ async def refusal_answer(
         entry = ((data or {}).get("enqueuePullRequest") or {}).get("mergeQueueEntry") or {}
         position = entry.get("position") if isinstance(entry, dict) else None
         state = str(entry.get("state") or "").lower() if isinstance(entry, dict) else ""
-        stuck = _stuck_entry(state, facts.review_decision)
+        stuck = _stuck_entry(state)
         if stuck:
             where = (
                 f"It was added to the merge queue of {base} "
@@ -229,11 +289,20 @@ def _cause_line(repo: str, number: int, facts: MergeFacts, said: str) -> str | N
             f"{lead}: it conflicts with its base. Call `manage_github_pr` with action='update_branch' "
             f"(it answers the conflicting hunks), resolve them, then merge again.{said}"
         )
-    if state == "BLOCKED" and facts.review_decision in ("REVIEW_REQUIRED", "CHANGES_REQUESTED"):
+    if (
+        state == "BLOCKED"
+        and facts.review_decision in ("REVIEW_REQUIRED", "CHANGES_REQUESTED")
+        and facts.viewer_can_bypass is not True
+    ):
         decision = facts.review_decision.lower().replace("_", " ")
+        bypass = (
+            "GitHub says this account cannot bypass it"
+            if facts.viewer_can_bypass is False
+            else "GitHub did not say whether this account can bypass it"
+        )
         return (
-            f"{lead}: a required review is missing (review decision: {decision}) and this account "
-            f"cannot bypass it. No branch update helps: get the approval, then merge again.{said}"
+            f"{lead}: a required review is missing (review decision: {decision}) and {bypass}. "
+            f"No branch update helps: get the approval, then merge again.{said}"
         )
     if state == "BLOCKED":
         return (

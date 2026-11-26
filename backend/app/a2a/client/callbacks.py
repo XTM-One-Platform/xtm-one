@@ -38,6 +38,7 @@ import secrets
 import uuid
 
 from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.a2a.client.destinations import assert_allowed_async
 from app.core.config import settings as app_settings
@@ -603,7 +604,7 @@ class _Unreachable:
     detail = "The partner this was sent to is no longer registered."
 
 
-async def _target_of(db, target_id):
+async def _target_of(db: AsyncSession, target_id: uuid.UUID | None) -> object | None:
     from app.models.a2a import A2AClientTarget
 
     if target_id is None:
@@ -730,3 +731,99 @@ async def _publish_delegation_completed(
 def _declared_name(target) -> str:
     """What the partner's card called it, for the wake the caller reads."""
     return getattr(target, "declared_name", None) or "an external partner"
+
+
+# --- Ticket status pushes (#2276) -------------------------------------------
+#
+# A partner XTM One tells every callback of the task that filed a ticket when
+# that ticket changes status (``app.a2a.ticket_push``, the sending half). The
+# delegation that filed it has long concluded by then, so the delegation path
+# above refuses it. This half authenticates the push against the same
+# per-delegation secret, checks it names that delegation's partner task, and
+# raises a platform event: ids and statuses only, never acted on as an answer.
+
+#: The discriminator the sending half writes; a task push carries none.
+TICKET_PUSH_KIND = "work_item.status_changed"
+
+#: The statuses a ticket push may announce (the sender's ``NOTIFIED_STATUSES``).
+TICKET_STATUSES = frozenset({"open", "in_progress", "blocked", "done", "cancelled"})
+
+
+def is_ticket_push(body: object) -> bool:
+    """Whether *body* is a ticket status push rather than a task callback. Pure."""
+    return isinstance(body, dict) and body.get("kind") == TICKET_PUSH_KIND
+
+
+def ticket_push_fields(body: object, row: A2ADelegation) -> dict[str, str | None] | None:
+    """The work item id and statuses of a ticket push for *row*, else ``None``. Pure.
+
+    Nothing in the body is trusted beyond what is checked: the task it names
+    must be the partner task this delegation submitted, the work item id must
+    parse as one, and the status must be one the sender announces.
+    """
+    if not isinstance(body, dict) or not is_ticket_push(body) or not row.partner_task_id:
+        return None
+    if str(body.get("taskId") or "") != str(row.partner_task_id):
+        return None
+    try:
+        work_item_id = str(uuid.UUID(str(body.get("workItemId"))))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    status = body.get("status")
+    previous = body.get("previousStatus")
+    if status not in TICKET_STATUSES:
+        return None
+    if previous not in TICKET_STATUSES and previous != "claimed":
+        previous = None
+    return {"work_item_id": work_item_id, "status": status, "previous_status": previous}
+
+
+async def ticket_push_delegation(db: AsyncSession, delegation_id: str) -> A2ADelegation | None:
+    """The delegation a ticket push may name, whatever its outcome, or ``None``.
+
+    Unlike :func:`addressed_delegation`, a concluded delegation is admitted:
+    a ticket outlives the task that filed it. The secret check that follows is
+    the same, and nothing is resumed, so the one-shot property the delegation
+    path protects is not at stake: a replayed push raises the same deduped
+    event and discloses nothing.
+    """
+    try:
+        parsed = uuid.UUID(str(delegation_id))
+    except (ValueError, AttributeError, TypeError):
+        return None
+    found: A2ADelegation | None = (
+        await db.execute(select(A2ADelegation).where(A2ADelegation.id == parsed))
+    ).scalar_one_or_none()
+    return found
+
+
+async def publish_ticket_status(db: AsyncSession, row: A2ADelegation, fields: dict[str, str | None]) -> str | None:
+    """Raise ``a2a.ticket.status_changed`` for an authenticated push. Never raises."""
+    from app.services import platform_events
+
+    try:
+        partner = _declared_name(await _target_of(db, row.target_id))
+        return await platform_events.publish(
+            platform_events.A2A_TICKET_STATUS_CHANGED,
+            platform_events.a2a_ticket_status_data(
+                delegation_id=row.id,
+                agent_id=row.agent_id,
+                user_id=row.user_id,
+                run_id=row.run_ref,
+                partner=partner,
+                partner_task_id=row.partner_task_id,
+                work_item_id=str(fields["work_item_id"]),
+                status=str(fields["status"]),
+                previous_status=fields.get("previous_status"),
+            ),
+            # The sender pushes once per change; a retry or a replay of the same
+            # change starts one run.
+            event_id=f"a2a-ticket:{row.id}:{fields['work_item_id']}:{fields['status']}",
+        )
+    except Exception:
+        logger.warning(
+            "a2a.client: could not raise a2a.ticket.status_changed for delegation %s",
+            row.id,
+            exc_info=True,
+        )
+        return None

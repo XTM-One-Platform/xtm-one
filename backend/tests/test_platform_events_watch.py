@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -81,6 +82,42 @@ async def test_a_standing_row_is_locked_and_never_marked():
     db = _Db(row)
     assert await pe._lock_current(db, uuid.uuid4(), "run.failed", {"event_id": "e7"}) == (row, False)
     assert row.trigger_config == {"event": "run.failed"} and not db.rolled_back
+
+
+class _RecordingDb:
+    """A session that records, per read, whether it locked the row (``FOR UPDATE``)."""
+
+    def __init__(self, row: Any) -> None:
+        self.row = row
+        self.rolled_back = False
+        self.locked: list[bool] = []
+
+    async def execute(self, stmt: Any) -> Any:
+        self.locked.append(stmt._for_update_arg is not None)
+        return SimpleNamespace(scalar_one_or_none=lambda: self.row)
+
+    async def rollback(self) -> None:
+        self.rolled_back = True
+
+
+@pytest.mark.asyncio
+async def test_a_standing_subscription_is_read_without_a_row_lock() -> None:
+    # A burst of one event (ctem_case.opened per case of a drain) never queues on one assignments row.
+    row = SimpleNamespace(enabled=True, trigger_type="platform_event", trigger_config={"event": "run.failed"})
+    db = _RecordingDb(row)
+    assert await pe._lock_current(db, uuid.uuid4(), "run.failed", {"event_id": "e7"}, lock=False) == (row, False)
+    assert db.locked == [False]
+
+
+@pytest.mark.asyncio
+async def test_a_row_that_became_a_watch_is_read_again_locked() -> None:
+    row = SimpleNamespace(
+        enabled=True, trigger_type="platform_event", trigger_config={"event": "run.failed", "once": True}
+    )
+    db = _RecordingDb(row)
+    assert await pe._lock_current(db, uuid.uuid4(), "run.failed", {"event_id": "e7"}, lock=False) == (row, True)
+    assert db.locked == [False, True]
+    assert row.trigger_config["fired_event_id"] == "e7"
 
 
 @pytest.mark.asyncio
@@ -168,12 +205,32 @@ async def test_a_watch_starts_one_run_then_ends(watch_world):
 
 
 @pytest.mark.asyncio
-async def test_the_trigger_picker_reads_the_builder_catalog():
+async def test_the_trigger_picker_reads_the_builder_catalog(monkeypatch: pytest.MonkeyPatch):
     from app.api.v1.assignments import list_platform_events
+    from app.services import ctem_access
 
+    async def _wires(_user_id: object) -> bool:
+        return True
+
+    monkeypatch.setattr(ctem_access, "wires_ctem", _wires)
     served = await list_platform_events(user=SimpleNamespace(id=uuid.uuid4()))
     assert served == pe.catalog()
     assert {e["event"] for e in served} == set(pe.PLATFORM_EVENTS)
+
+
+@pytest.mark.asyncio
+async def test_the_trigger_picker_hides_the_ctem_events_without_a_right(monkeypatch: pytest.MonkeyPatch):
+    """#2441: a person with no CTEM right is offered no ctem_signal.* or case event."""
+    from app.api.v1.assignments import list_platform_events
+    from app.services import ctem_access
+
+    async def _wires(_user_id: object) -> bool:
+        return False
+
+    monkeypatch.setattr(ctem_access, "wires_ctem", _wires)
+    served = await list_platform_events(user=SimpleNamespace(id=uuid.uuid4()))
+    assert served == pe.catalog(ctem=False)
+    assert not any(pe.is_ctem_event(e["event"]) for e in served)
 
 
 @pytest.mark.asyncio

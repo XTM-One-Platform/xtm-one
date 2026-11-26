@@ -15,7 +15,7 @@
 
 A ``core`` tool (``ToolDefinition.core``) built for every agent run and
 turn, whatever the agent's built-in selection and deny list: an analyst ranks
-by the crown jewels, the regions and the risk appetite it reads here, and
+by the primary assets, the regions and the risk appetite it reads here, and
 names the fields that are not filled instead of guessing them (#8987). The
 one thing that removes it is an explicit ``organization_context_mode`` off on
 the agent or the assignment (``organization_context_injection.tools_enabled``,
@@ -25,8 +25,8 @@ the agent or the assignment (``organization_context_injection.tools_enabled``,
 One tool rather than a sibling (#11533): the categories the prompt announces
 are read with the same call the agent already knows. ``category`` names one
 (``organization_context_categories.CATEGORIES``, generated from the model),
-``query`` keeps the rows holding a text (a vendor, a product, a CPE, a crown
-jewel), ``offset`` and ``limit`` page it so a list of any length is read
+``query`` keeps the rows holding a text (a vendor, a product, a CPE, a primary
+asset), ``offset`` and ``limit`` page it so a list of any length is read
 whole; ``category="*"`` lists the categories with their sizes.
 
 ``category="enterprise_knowledge"`` (#11543) is the organization's own
@@ -92,7 +92,7 @@ def build_organization_context_tool(
         from app.core.database import async_session
         from app.services import organization_context_categories as cats
         from app.services import organizations as orgs
-        from app.services.organization_context import asset_list_counts, current_version, hydrated_profile
+        from app.services.organization_context import agent_list_counts, current_version, hydrated_profile
         from app.services.organization_context_injection import category_counts
 
         ref = str(organization or "").strip()
@@ -112,7 +112,7 @@ def build_organization_context_tool(
                             category_counts(
                                 profile,
                                 tracked_count=len(tracked),
-                                asset_counts=await asset_list_counts(db, getattr(row, "organization_id", None)),
+                                asset_counts=await agent_list_counts(db, getattr(row, "organization_id", None)),
                             )
                         )
                     found_category = cats.get(wanted)
@@ -134,7 +134,9 @@ def build_organization_context_tool(
                         if merged is not None:
                             return merged
                     if found_category.name == cats.SOFTWARE and isinstance(org_id, uuid.UUID):
-                        rows = await _software_rows(db, org_id) or rows
+                        paged = await _software_page(db, org_id, str(query or ""), _int(offset), _int(limit))
+                        if paged is not None:
+                            return paged
                     return cats.render_page(
                         found_category,
                         rows,
@@ -164,7 +166,7 @@ def build_organization_context_tool(
     async def _primary_block(db: AsyncSession) -> str:
         """The primary profile as an agent reads it, its asset and group counts from the records (#1543)."""
         from app.services.organization_context import (
-            asset_list_counts,
+            agent_list_counts,
             ctem_work_for,
             current_version,
             render_for_agent,
@@ -174,7 +176,7 @@ def build_organization_context_tool(
         return render_for_agent(
             primary,
             ctem_work=await ctem_work_for(db, run_agent),
-            asset_counts=await asset_list_counts(db, primary.organization_id if primary else None),
+            asset_counts=await agent_list_counts(db, primary.organization_id if primary else None),
         )
 
     async def _inventory_assets(
@@ -195,32 +197,40 @@ def build_organization_context_tool(
             filters, text = cats.split_asset_query(query)
             size = max(1, min(limit or cats.DEFAULT_PAGE, cats.MAX_PAGE))
             page = await store.list_assets(db, built, q=text, offset=offset, limit=size, filters=filters)
+            held = await store.held_values(db, built, filters) if not page.total else None
         except Exception:
             logger.warning("Inventory asset read failed", exc_info=True)
             return None
-        return cats.render_asset_page(list(page.items), total=page.total, query=query, offset=offset, limit=size)
+        return cats.render_asset_page(
+            list(page.items), total=page.total, query=query, offset=offset, limit=size, held=held
+        )
 
-    async def _software_rows(db: AsyncSession, organization_id: uuid.UUID) -> list[dict[str, object]]:
-        """The organization's Software entities (#1495), synced and hand-typed; ``[]`` when it has none."""
+    async def _software_page(
+        db: AsyncSession, organization_id: uuid.UUID, query: str, offset: int, limit: int
+    ) -> str | None:
+        """One SQL page of the Software entities (#1495, #2443: never the whole list loaded).
+
+        ``None`` (the profile's typed rows answer) while the organization holds no Software entity.
+        """
         from app.services import organization_asset_store as store
+        from app.services import organization_context_categories as cats
         from app.services import organization_software_store as software_store
 
         try:
             async with db.begin_nested():
                 await store.ensure_built(db, organization_id)
-            page = await software_store.list_software(db, organization_id, limit=software_store.MAX_PAGE)
-            items = list(page.items)
-            while len(items) < page.total:
-                more = await software_store.list_software(
-                    db, organization_id, offset=len(items), limit=software_store.MAX_PAGE
-                )
-                if not more.items:
-                    break
-                items += more.items
-            return [_software_row(item) for item in items]
+            size = max(1, min(limit or cats.DEFAULT_PAGE, cats.MAX_PAGE))
+            page = await software_store.list_software(db, organization_id, q=query, offset=offset, limit=size)
+            if not page.total and not query.strip():
+                return None
         except Exception:  # the profile's typed rows still answer
             logger.warning("Software read failed", exc_info=True)
-            return []
+            return None
+        rows = [_software_row(item) for item in page.items]
+        found = cats.get(cats.SOFTWARE)
+        if found is None:
+            return None
+        return cats.render_rows_page(found, rows, total=page.total, query=query, offset=offset, limit=size)
 
     def _software_row(item: dict[str, object]) -> dict[str, object]:
         """One Software as an agent reads it: what identifies it and where it runs, no internal field."""
@@ -256,8 +266,7 @@ def build_organization_context_tool(
             "currency, ticketing target, and the fields not filled. Read it before ranking, "
             "scoping or estimating; cite the fields you used and name the missing ones, never guess them. "
             'Long lists are categories: category="*" lists them with their sizes; category="software" (any listed name) '
-            "reads one by page (query filters the rows, offset/limit page it, so a list of any length is read whole). "
-            'category="crown_jewels" is a deprecated alias of "primary_assets".'
+            "reads one by page (query filters the rows, offset/limit page it, so a list of any length is read whole)."
         ),
         input_schema={
             "type": "object",
@@ -289,7 +298,16 @@ def build_organization_context_tool(
         priority=0,
         core=True,
     )
-    return [definition], executor
+    # The inventory query functions ride with the profile read (#2443): wherever an agent reads
+    # the profile it queries the assets and software, never a list preloaded into its prompt.
+    from .inventory_query import build_inventory_query_tools
+
+    inventory_defs, inventory_exec = build_inventory_query_tools()
+    for inventory_def in inventory_defs:
+        inventory_handler = inventory_exec.handler(inventory_def.name)
+        if inventory_handler is not None:
+            executor.register(inventory_def.name, inventory_handler)
+    return [definition, *inventory_defs], executor
 
 
 def _uuid(value: object) -> uuid.UUID | None:

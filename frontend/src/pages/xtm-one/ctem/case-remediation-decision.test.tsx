@@ -21,8 +21,8 @@ vi.mock("@/hooks/api/useWorkItemApi", async (importOriginal) => ({
   },
 }));
 vi.mock("@/components/work-items/WorkItemDecisionCard", () => ({
-  WorkItemDecisionCard: ({ item }: { item: { ask: { options: { label: string; effect: string }[] } } }) => (
-    <div data-testid="unified-decision-card">
+  WorkItemDecisionCard: ({ item, inCase }: { item: { ask: { options: { label: string; effect: string }[] } }; inCase?: boolean }) => (
+    <div data-testid="unified-decision-card" data-in-case={String(Boolean(inCase))}>
       {item.ask.options.map((o) => (
         <span key={o.label}>{`${o.label}: ${o.effect}`}</span>
       ))}
@@ -72,13 +72,15 @@ describe("CaseRemediationDecision", () => {
         needs_human: true,
         is_company_managed: false,
         correlation_key: "ctem:remediation:c1",
+        // Even an item that names its case: inside the case, the card never offers "Open the case" (#2370).
+        ctem_case: { id: "c1", title: "Case", state: "remediating", path: "/ctem/cases/c1" },
         ask: { options: [{ key: "A", label: "Upgrade nginx", effect: "cost 4,000; expected loss 120,000 before, 8,000 after" }] },
       },
     ];
     const history = [NOTE, ev({ kind: "gate", from: "ctem.remediation.decision", to: "waited", reason: "pinned to wait" })];
     renderWithProviders(<CaseRemediationDecision caseId="c1" history={history} />);
     expect(screen.getByText("Waiting for a person")).toBeTruthy();
-    expect(screen.getByTestId("unified-decision-card")).toBeTruthy();
+    expect(screen.getByTestId("unified-decision-card").getAttribute("data-in-case")).toBe("true");
     expect(screen.getByText(/expected loss 120,000 before/)).toBeTruthy();
     expect(state.calls).toContainEqual({ filters: { correlation_key: "ctem:remediation:c1", open_only: true, limit: 1 }, enabled: true });
   });
@@ -120,6 +122,8 @@ describe("CaseRemediationDecision", () => {
   it("says so when the case is not decided yet", () => {
     renderWithProviders(<CaseRemediationDecision caseId="c1" history={[]} />);
     expect(screen.getByText(/once the case is validated|once the case is prioritized|writes in OpenCRQ/)).toBeTruthy();
+    // The section's icon before the sentence: it has no product logo (#1679, point 5).
+    expect(screen.getByTestId("ctem-case-remediation-empty").querySelector("svg")).not.toBeNull();
   });
 });
 

@@ -9,7 +9,7 @@ sync writing a new version rebuilt every user's posture on their next visit
 (20 to 30 s of "Syncing..."). The stamp is now a fingerprint of what the build
 actually reads, declared here and nowhere else:
 
-* the typed software rows of the profile (``tech_stack``: :data:`TYPED_SOFTWARE_FIELDS`)
+* the typed software rows of the profile (``software``: :data:`TYPED_SOFTWARE_FIELDS`)
   and the Software entities of the store (``organization_software_store.matcher_software``),
   read by ``ctem_metrics_collector._organization_software`` for the CVE matcher;
 * the asset rows and asset groups (``assets_exposure``, ``asset_groups``), read by
@@ -46,7 +46,7 @@ from app.core.utils import format_exception_message
 logger = logging.getLogger(__name__)
 
 #: The profile fields the posture build reads (``OrganizationProfile`` attributes).
-PROFILE_FIELDS: tuple[str, ...] = ("tech_stack", "assets_exposure", "asset_groups")
+PROFILE_FIELDS: tuple[str, ...] = ("software", "assets_exposure", "asset_groups")
 #: The fields of a typed software row the CVE matcher reads.
 TYPED_SOFTWARE_FIELDS: tuple[str, ...] = ("vendor", "product", "cpe", "version")
 #: The fields of an asset row the reachability rules read (``asset_reachability``).
@@ -171,7 +171,7 @@ async def posture_inputs_stamp(db: AsyncSession | None) -> str | None:
         return None
     return fingerprint(
         organization_id or "",
-        typed_software=list(raw.get("tech_stack") or []),
+        typed_software=list(raw.get("software") or []),
         software=software,
         assets=assets,
         groups=groups,

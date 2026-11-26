@@ -29,16 +29,22 @@ export interface CtemDecisionRecord {
   inputs?: { lens?: string; source_provider?: string; cves?: string[] } & Record<string, unknown>;
   reconcile?: {
     assets?: string[];
-    crown_jewels_named?: string[];
-    tech_stack?: string[];
+    /** UX r2 B7 on #1995: the profile asset list was cut at its cap, so `assets` is a floor, not the total. */
+    assets_capped?: boolean;
+    primary_assets_named?: string[];
+    products?: string[];
     lenses?: string[];
     confidence?: string;
   } & Record<string, unknown>;
   scope?: {
     criticality?: string | null;
     threshold?: string;
-    /** What gave the criticality: an asset, a primary asset, an owned domain (CTEM-29), a risk scenario. */
-    sources?: { from: string; name: string; criticality?: string }[];
+    /**
+     * What gave the criticality: an asset, a primary asset, an owned domain (CTEM-29), a risk scenario.
+     * A primary asset source carries its first chains (`chain`), how many there are (`chain_total`)
+     * and how many inventory assets reach it (`assets_total`, #1979); older records carry none.
+     */
+    sources?: { from: string; name: string; criticality?: string; chain?: unknown; chain_total?: number; assets_total?: number }[];
     risk_scenarios?: { id: string; name: string }[];
   } | null;
   policy_checks?: { rule: string; value?: unknown; threshold?: unknown; passed: boolean }[];
@@ -125,10 +131,12 @@ export function useCtemCaseSignals(caseId: string | undefined) {
 }
 
 /**
- * Connected (a bound source), off (a pass whose provider is connected but which does not run, #1344),
- * not connected (a source exists, no integration of it is connected) or agents and API only (no source).
+ * Connected (a bound source), error (a source XTM One provisions is in error, #2434), not set up (a source
+ * XTM One provisions, its provider connected, switched on nowhere), off (a pass whose provider is connected
+ * but which does not run, #1344), not connected (no integration of a source's provider is connected) or
+ * agents and API only (no source).
  */
-export type CtemSignalPathStatus = "connected" | "off" | "not_connected" | "agents_api";
+export type CtemSignalPathStatus = "enabled" | "partly_enabled" | "error" | "not_set_up" | "off" | "not_connected" | "agents_api";
 
 /** One way a trigger path is fired (#1189): an integration listener, a scheduled pass or the OpenCTI PIR playbook. */
 export interface CtemSignalPathSource {
@@ -140,12 +148,25 @@ export interface CtemSignalPathSource {
   bound: boolean;
   /** A pass whose provider is connected but which does not run: turned off, or no integration it can pick (#1344). */
   off?: boolean;
+  /** A source XTM One provisions, its provider connected, switched on on none of its integrations (#2434). */
+  not_set_up?: boolean;
+  /** The integrations on which this source XTM One provisions is in error (#2434). */
+  error_count?: number;
   /** Taken off this path by an administrator (#1445): never bound here, it still feeds its other paths. */
   excluded?: boolean;
   /** Bound before the exclusion: the source is connected and would feed the path if not excluded (#1445). */
   available?: boolean;
   /** The other trigger paths this source feeds (a pass is organization-wide: one switch feeds them all). */
   also_feeds?: string[];
+  /** The key the profile names it by: `provider:kind`, `provider:kind:name` when named (#2436). */
+  key?: string;
+  /** Tells apart two sources of one provider and kind on one path (#2436). */
+  name?: string;
+  /** False: the source records nothing until an administrator switches it on for the path (#2436). */
+  default_on?: boolean;
+  /** Signals this source recorded on the path in the last 30 days, and the last one (#2436). */
+  count_30d?: number;
+  last_signal_at?: string | null;
 }
 
 /** One trigger path with the signals the caller sees on it (`GET /ctem-signals/paths`, CTEM-30). */
@@ -166,6 +187,71 @@ export interface CtemSignalPath {
   /** Signals the caller sees, last seen in the last 30 days. */
   count_30d?: number;
   last_signal_at?: string | null;
+}
+
+/** A source XTM One provisions in its platform: off, connected, or in error with its reason (#2434). */
+export type CtemPlatformSourceStatus = "off" | "connected" | "error";
+
+/** Why a platform source cannot run, as data: the UI renders the code, never the English `reason` (#2434). */
+export type CtemPlatformSourceReasonCode =
+  | "no_run_as"
+  | "run_as_inactive"
+  | "run_as_no_integration"
+  | "no_webhook_secret"
+  | "no_token"
+  | "integration_not_found"
+  | "organization_context_missing"
+  | "objects_not_removed"
+  | "not_provisioned_yet"
+  | "provider_error";
+
+/** One platform signal source on one integration (`GET /ctem-signals/sources`, dev-docs/ctem-signals.md 4bis). */
+export interface CtemPlatformSource {
+  /** `null` until it is switched on once. */
+  id: string | null;
+  provider: string;
+  kind: "listener" | "pir_playbook";
+  integration_id: string;
+  integration_name: string;
+  integration_connected: boolean;
+  enabled: boolean;
+  run_as_user_id: string | null;
+  status: CtemPlatformSourceStatus;
+  reason: string | null;
+  reason_code: CtemPlatformSourceReasonCode | null;
+  reason_params: Record<string, string>;
+  checked_at: string | null;
+}
+
+/** The platform signal sources, administrators only (the API answers 403 to anyone else). */
+export function useCtemPlatformSources(enabled = true) {
+  return useQuery<{ sources: CtemPlatformSource[] }>({
+    queryKey: ["ctem-signals", "platform-sources"],
+    queryFn: () => api.get("/ctem-signals/sources"),
+    enabled,
+    retry: false,
+    throwOnError: false,
+  });
+}
+
+/** Switch a source on as a run-as user: provisioned at once, or refused with `detail: {code, params, message}`. */
+export function useEnableCtemPlatformSource() {
+  const qc = useQueryClient();
+  return useMutation<CtemPlatformSource, Error, { provider: string; kind: string; integration_id: string; run_as_user_id: string }>({
+    mutationFn: (body) => api.post("/ctem-signals/sources/enable", body),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** Switch a source off: what it provisioned in the source platform is removed. */
+export function useDisableCtemPlatformSource() {
+  const qc = useQueryClient();
+  return useMutation<CtemPlatformSource, Error, string>({
+    mutationFn: (id) => api.post(`/ctem-signals/sources/${encodeURIComponent(id)}/disable`, {}),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
 }
 
 /** The 12 trigger paths with their counts, for the Discovery stage's signals card. */
@@ -269,6 +355,58 @@ export function useRecordCtemSignal() {
   return useMutation<{ created: boolean; signal: CtemSignal }, Error, CtemSignalCreate>({
     mutationFn: (body) => api.post("/ctem-signals", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+  });
+}
+
+/** One inventory asset through which a signal reaches a primary asset (#1979). */
+export interface CtemSupportingAsset {
+  asset: string;
+  software: string;
+  through: string;
+  through_kind: "asset" | "asset_group" | string;
+  source: string;
+  roles: string[];
+}
+
+export interface CtemSupportingAssetPage {
+  primary_asset: string;
+  total: number;
+  offset: number;
+  limit: number;
+  /** The order the server applied before cutting the page. */
+  sort?: "asset" | "through";
+  direction?: "asc" | "desc";
+  /** The inventory read was cut at its bounds: the total is a floor. */
+  truncated: boolean;
+  assets: CtemSupportingAsset[];
+}
+
+/** The columns the supporting-assets endpoint orders by (UX r1 B3 on #1995). */
+export type CtemSupportingAssetSort = "asset" | "through";
+
+/** One page of the supporting assets of one primary asset a signal reaches, searched by name and sorted on the server (#1979). */
+export function useCtemSupportingAssets(
+  signalId: string,
+  primaryAsset: string,
+  page: { search: string; offset: number; limit: number; sort?: CtemSupportingAssetSort; direction?: "asc" | "desc" },
+  enabled = true,
+) {
+  const params = new URLSearchParams({ offset: String(page.offset), limit: String(page.limit) });
+  if (page.search) params.set("q", page.search);
+  const sort = page.sort ?? "asset";
+  const direction = page.direction ?? "asc";
+  if (sort !== "asset" || direction !== "asc") {
+    params.set("sort", sort);
+    params.set("direction", direction);
+  }
+  return useQuery<CtemSupportingAssetPage>({
+    queryKey: ["ctem-signals", "supporting-assets", signalId, primaryAsset, page.search, page.offset, page.limit, sort, direction],
+    queryFn: () =>
+      api.get(`/ctem-signals/${encodeURIComponent(signalId)}/primary-assets/${encodeURIComponent(primaryAsset)}/supporting-assets?${params}`),
+    enabled: enabled && Boolean(signalId && primaryAsset),
+    placeholderData: (previous) => previous,
+    retry: ctemCasesRetry,
+    throwOnError: false,
   });
 }
 

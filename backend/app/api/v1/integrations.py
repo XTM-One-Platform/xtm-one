@@ -84,6 +84,7 @@ from app.api.v1.integration_catalog import (
     PROVIDER_CATALOG,
     build_dummy_token,
     build_provider_tools,
+    credential_fields_by_auth_type,
     integration_owns_oauth_scopes,
     invalid_extra_fields,
     is_certified_provider,
@@ -140,7 +141,7 @@ from app.core.security import decrypt_json, decrypt_stored_value, decrypt_value,
 from app.core.utils import build_content_disposition, format_exception_message, safe_uuid
 from app.integrations.base_url_policy import base_url_keys, probe_transport
 from app.integrations.connectivity import has_connectivity_probe
-from app.integrations.granted_scopes import missing_scopes, split_scopes
+from app.integrations.granted_scopes import missing_scopes, missing_tool_scopes, split_scopes
 from app.integrations.http import PLATFORM_USER_AGENT
 from app.integrations.lifecycle import (
     IntegrationUpdate,
@@ -187,6 +188,7 @@ from app.services.integration_user_credentials import (
     connected_user_counts,
     credential_connected,
     delete_user_credentials,
+    holder_ref,
     integration_of,
     is_per_user,
     is_user_credential,
@@ -391,7 +393,9 @@ def _is_sensitive_setting_name(key: str) -> bool:
     # `type` of "secret".
     if lowered.endswith(("_id", "_url", "_urls")):
         return False
-    return any(token in lowered for token in ("secret", "token", "key", "password"))
+    # A connection string (``event_hub_connection_string``) embeds its shared
+    # access key: ``Endpoint=...;SharedAccessKey=...``.
+    return any(token in lowered for token in ("secret", "token", "key", "password", "connection_string"))
 
 
 # Placeholder returned instead of secret extra_config values in API responses.
@@ -991,6 +995,7 @@ async def list_provider_catalog(
                 auth_type=val["auth_type"],
                 supported_auth_types=val.get("supported_auth_types"),
                 fields=val["fields"],
+                fields_by_auth_type=credential_fields_by_auth_type(val),
                 # A2A only. Absent from this list, the catalog endpoint drops
                 # them and the creation form cannot offer a direction — which
                 # makes every integration an operator creates inbound and the
@@ -2945,6 +2950,14 @@ async def update_integration(
         # old configuration and is simply never looked up again (the cache
         # key covers every part of it).
         integration.status = _token_grant_status(integration)
+    if integration.provider in ("defender", "sentinel", "purview") and (
+        body.client_id is not None or body.client_secret is not None or body.scopes is not None
+    ):
+        # The delegated per-audience tokens are keyed by the integration alone,
+        # not by its credentials: drop them with the old configuration (#2386).
+        from app.services.integration_tools import forget_azure_delegated_tokens
+
+        await forget_azure_delegated_tokens(str(integration.id))
 
     # Read before the auth-type switch and the share consent below, both of
     # which can reset the acknowledgement; compared again after them.
@@ -4128,10 +4141,13 @@ async def _test_integration(
                 ),
             }
         if integration.provider == "defender":
-            from app.integrations.providers.defender import _GRAPH_SCOPE, _get_token
+            # Each audience has its own admin consent: report both (#2386).
+            from app.api.v1.integration_testing import defender_audience_report
+            from app.integrations.providers.defender import app_only_audience_check
 
-            az_token = await _get_token(
-                az_tenant, az_client_id, az_client_secret, _GRAPH_SCOPE
+            return defender_audience_report(
+                integration.name,
+                await app_only_audience_check(az_tenant, az_client_id, az_client_secret),
             )
         else:
             from app.integrations.providers.sentinel import _get_mgmt_token
@@ -4568,6 +4584,7 @@ async def _test_integration(
             integration=integration_of(integration),
             caller_can_manage=can_manage(user, integration_of(integration), user_group_ids),
             acting_user_id=str(user.id),
+            token_holder=holder_ref(integration),
         )
     # Self-heal: a credential-less integration that just proved its data
     # source reachable IS connected — persist it so the UI badge and the
@@ -4591,6 +4608,45 @@ async def _test_integration(
     return {
         "status": result.get("status", "error"),
         "message": result.get("message", "Connection test completed."),
+    }
+
+
+@router.get("/{integration_id}/notion-webhook")
+async def get_notion_webhook_setup(
+    integration_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    """The Notion webhook setup of an integration: the URL to subscribe and the verification token.
+
+    Notion sends the token once, to the URL, when the admin creates the
+    subscription; the receiver keeps it (``notion_webhooks``) and the admin
+    pastes it in Notion's Verify form. Only a user who may edit the integration
+    reads the token.
+    """
+    from app.services import notion_webhooks
+
+    user_group_ids = await get_user_group_ids(db, user.id)
+    integration = await get_user_integration(db, user.id, integration_id, user_group_ids, is_admin=user.is_admin)
+    if integration.provider != notion_webhooks.PROVIDER:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a Notion integration.")
+    if not can_manage(user, integration, user_group_ids):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to edit this integration.",
+        )
+    extra = decrypt_json(integration.extra_config_enc) if integration.extra_config_enc else {}
+    token = notion_webhooks.stored_token(extra if isinstance(extra, dict) else {})
+    return {
+        "webhook_url": f"{settings.base_url}/api/hooks/integrations/{integration.id}",
+        "verification_token": token,
+        "events": list(notion_webhooks.EVENTS),
+        "next_step": (
+            "Paste the token in the Verify form of the subscription in Notion."
+            if token
+            else "Create the subscription in the connection's Webhooks tab of Notion with this URL; "
+            "Notion then sends the verification token here."
+        ),
     }
 
 
@@ -4923,7 +4979,12 @@ def _to_response(
     granted = getattr(r, "granted_scopes", None) if has_access_token else None
     granted_scopes = None if granted is None else split_scopes(granted)
     missing = missing_scopes(scopes or required_scopes, granted, catalog.get("optional_scopes"))
+    # Tool permissions not asked at sign-in (#2386): a field of their own, so
+    # they never turn the status to "Re-authorize" (an admin grant fixes them).
+    tool_scopes = catalog.get("tool_scopes") if isinstance(catalog, dict) else None
+    missing_tool_permissions = missing_tool_scopes(tool_scopes, granted) or None
     if uses_own_credential:
+        missing_tool_permissions = None
         status = own_account_status or "configured"
         has_access_token = bool(my_credential and my_credential.has_access_token)
         scopes = required_scopes = None
@@ -4956,6 +5017,7 @@ def _to_response(
         is_registration_only=is_registration_only_provider(r.provider),
         a2a_direction=a2a_direction,
         tags=r.tags or [],
+        missing_tool_permissions=missing_tool_permissions,
         requires_approval=requires_approval,
         approval_managed_by_platform=managed_by_platform,
         signature=_signature_setting(r),

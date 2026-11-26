@@ -120,9 +120,9 @@ export function AssetGroupsTab({ add }: { add: AddRequest }) {
       key: "tech",
       header: "Software",
       align: "right",
-      cell: (g) => formatCount(intl.locale, g.tech_stack.length),
-      csv: (g) => g.tech_stack.join(" "),
-      sortValue: (g) => g.tech_stack.length,
+      cell: (g) => formatCount(intl.locale, g.products.length),
+      csv: (g) => g.products.join(" "),
+      sortValue: (g) => g.products.length,
       hideable: true,
     },
     {
