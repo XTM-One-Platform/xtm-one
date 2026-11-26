@@ -32,7 +32,7 @@ import {
 } from "./platform-sources";
 
 /** The key of one platform source on one integration. */
-export function platformSourceKey(source: Pick<CtemPlatformSource, "provider" | "kind" | "integration_id">): string {
+function platformSourceKey(source: Pick<CtemPlatformSource, "provider" | "kind" | "integration_id">): string {
   return `${source.provider}:${source.kind}:${source.integration_id}`;
 }
 

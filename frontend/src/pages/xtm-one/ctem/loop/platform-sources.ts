@@ -13,19 +13,11 @@ import type {
 } from "@/hooks/api/useCtemSignalsApi";
 
 /** The `provider:kind` sources XTM One provisions on enable (`ctem_platform_sources.PROVISIONED`). */
-export const PROVISIONED_SOURCES: ReadonlySet<string> = new Set(["openaev:listener", "opencti:listener", "opencti:pir_playbook"]);
+const PROVISIONED_SOURCES: ReadonlySet<string> = new Set(["openaev:listener", "opencti:listener", "opencti:pir_playbook"]);
 
 /** Whether a source of a path is switched on, with a run-as, as a platform source. */
 export function isProvisioned(source: Pick<CtemSignalPathSource, "provider" | "kind">): boolean {
   return PROVISIONED_SOURCES.has(`${source.provider}:${source.kind}`);
-}
-
-/** The platform sources of one path source: one per integration of its provider. */
-export function platformSourcesOf(
-  source: Pick<CtemSignalPathSource, "provider" | "kind">,
-  all: readonly CtemPlatformSource[],
-): CtemPlatformSource[] {
-  return all.filter((s) => s.provider === source.provider && s.kind === source.kind);
 }
 
 /** The status in words. @i18n-keys */
