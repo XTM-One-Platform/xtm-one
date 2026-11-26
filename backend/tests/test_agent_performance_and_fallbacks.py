@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -647,6 +648,7 @@ async def test_load_memory_context_truncates_combined_oversized_memory(
 
     agent = Agent(
         name="BigMemory",
+        user_id=uuid.uuid4(),
         memory_short_term_enabled=True,
         memory_medium_term_enabled=True,
         memory_persistent_enabled=False,
@@ -693,8 +695,8 @@ async def test_load_memory_context_truncates_combined_oversized_memory(
             await _aio.gather(*_self_heal_tasks)
 
     # The cap breach must schedule the automatic self-heal instead
-    # of relying on operators reading worker logs.
-    mock_heal.assert_awaited_once()
+    # of relying on operators reading worker logs, on the lane the run reads.
+    mock_heal.assert_awaited_once_with(str(agent.id), scope_id=str(agent.user_id))
 
     # Strict upper bound: the truncation notice is carved out of the cap,
     # never appended on top of it.

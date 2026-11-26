@@ -58,7 +58,8 @@ async def test_a_keep_waiting_answer_records_it_and_leaves_the_item_waiting() ->
             person = await _make_user(session, email="keep@example.com")
             agent = await _make_agent(session)
             item = _asked(person, agent, "keep")
-            session.add(item)
+            unanswered = _asked(person, agent, "unanswered")
+            session.add_all([item, unanswered])
             await session.commit()
             item_id = str(item.id)
 
@@ -67,17 +68,26 @@ async def test_a_keep_waiting_answer_records_it_and_leaves_the_item_waiting() ->
             kept = await wi_service.answer_work_item(
                 item_id, user_id=uid, option="WAIT", answered_by="Person", writer=writer
             )
+            # The same answer again (#2500): no second note, the first answer kept.
+            again = await wi_service.answer_work_item(
+                item_id, user_id=uid, option="wait", answered_by="Other", writer=writer
+            )
             waiting = await wi_service.work_items_waiting_for_person(user_id=uid)
             shipped = await wi_service.answer_work_item(item_id, user_id=uid, option="ship", writer=writer)
 
-    assert kept is not None and shipped is not None
+    assert kept is not None and shipped is not None and again is not None
+    assert again["description"] == kept["description"]
+    assert again["payload"]["answer"] == kept["payload"]["answer"]
+    assert again["needs_human"] is True
     assert kept["status"] == "blocked"
     assert kept["needs_human"] is True
     assert kept["ask"]["question"] == "Ship the patch now?"
     assert kept["blocked_reason"] == "ship decision"
     assert kept["payload"]["answer"]["option"] == "wait"
     assert "ANSWERED by Person: [wait] Keep waiting (keeps waiting)" in kept["description"].splitlines()[0]
+    # The answered item waits for its agent now (#2500): only the unanswered one counts.
     assert waiting["count"] == 1
+    assert waiting["oldest"]["title"] == "unanswered"
     # A later answer that decides still releases it to the owner.
     assert shipped["status"] == "open"
     assert shipped["needs_human"] is False

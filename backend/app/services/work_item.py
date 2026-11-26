@@ -50,8 +50,9 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import String, and_, case, cast, delete, false, func, not_, or_, select, true, update
+from sqlalchemy import String, and_, case, cast, delete, false, func, literal, not_, or_, select, true, update
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.config import settings
 from app.core.json_sql import when_json_parseable
@@ -5198,6 +5199,20 @@ async def _refuse_decided_for_group_member(
     raise WorkItemNotWaitingError(_not_waiting_message(decided))
 
 
+def _repeats_kept_answer(payload: object, key: str | None, words: str) -> bool:
+    """Whether *key* and *words* repeat the answer already stored on the item (#2500). Pure.
+
+    A keep-waiting answer leaves the card open on its recorded answer; the
+    same option with the same words sent again is the person confirming what
+    the card shows, never a new answer.
+    """
+    stored = payload.get("answer") if isinstance(payload, dict) else None
+    if not isinstance(stored, dict) or not key:
+        return False
+    same_option = str(stored.get("option") or "").casefold() == key.casefold()
+    return same_option and (stored.get("text") or "") == words
+
+
 async def answer_work_item(
     work_item_id: str,
     *,
@@ -5217,7 +5232,9 @@ async def answer_work_item(
     cleared and the item goes back to ``open``, unclaimed, so its owner
     agent's inbox takes it at once with the answer in its context. An option
     marked ``keeps_waiting`` records the answer and the note alone: the item
-    stays blocked on the person with its ask, nothing is dispatched (#1719).
+    stays blocked on the person with its ask, nothing is dispatched (#1719);
+    the same keep-waiting answer sent again (same option, same words) writes
+    nothing, so a second click never stacks a second note (#2500).
 
     Raises :class:`WorkItemNotWaitingError` when the item does not wait for
     a person (not ``needs_human``, or finished) and ``ValueError`` for an
@@ -5277,6 +5294,12 @@ async def answer_work_item(
             answer["text"] = words
         if answered_by:
             answer["answered_by"] = answered_by
+        from app.services.decision_ask import keeps_waiting
+
+        if keeps_waiting(chosen) and _repeats_kept_answer(item.payload, key, words):
+            # The card already shows this answer (#2500): nothing new to record.
+            await db.rollback()
+            return await _read_back(work_item_id, user_id=user_id, writer=writer)
         payload = dict(item.payload or {})
         payload.pop("_dispatch_attempts", None)
         payload["answer"] = answer
@@ -5290,8 +5313,6 @@ async def answer_work_item(
                 db, uid, item, action="answer", summary=f"Answered work item {item.title}: {said}"
             )
         who = f" by {answered_by}" if answered_by else ""
-        from app.services.decision_ask import keeps_waiting
-
         if keeps_waiting(chosen):
             # "Keep waiting" (#1719): the answer is recorded, the item stays as it
             # is, still waiting with its ask and blockers, and nothing dispatches it.
@@ -6467,6 +6488,25 @@ async def _resolved_recipients(
     )
 
 
+def _answered_keeps_waiting_clause() -> ColumnElement[bool]:
+    """SQL: the item's ``payload.answer.option`` is a ``keeps_waiting`` option of its ask (#2500).
+
+    The frontend's ``answeredKeepsWaiting`` in SQL: the answer is recorded and
+    the item keeps waiting for its agent, so the person owes nothing more.
+    The stored option is the ask option's own key (:func:`answer_work_item`),
+    so a containment test matches it. Never NULL: a row without an ask or an
+    answer, or whose JSON PostgreSQL cannot parse, reads false.
+    """
+    option = cast(WorkItem.payload, JSONB)["answer"]["option"]
+    kept = cast(WorkItem.ask, JSONB)["options"].contains(
+        func.jsonb_build_array(
+            func.jsonb_build_object(literal("key", String), option, literal("keeps_waiting", String), true())
+        )
+    )
+    guarded = when_json_parseable(WorkItem.payload, when_json_parseable(WorkItem.ask, kept))
+    return func.coalesce(guarded, false())
+
+
 def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):
     """SQL: a non-terminal item of *user_uuid* that waits for that person.
 
@@ -6478,14 +6518,20 @@ def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):
 
     A ``needs_human`` item waits for its recipient (``waits_for_user_id``),
     else its user, else every administrator when it names nobody (#11893,
-    :func:`app.services.work_item_recipient.recipient_clause`).
+    :func:`app.services.work_item_recipient.recipient_clause`). One the
+    person already answered with a ``keeps_waiting`` option waits for its
+    agent, not for them (#2500, :func:`_answered_keeps_waiting_clause`).
     """
     from app.services.work_item_recipient import recipient_clause
 
     return and_(
         WorkItem.action_mode.is_(None),
         or_(
-            and_(WorkItem.needs_human.is_(True), recipient_clause(user_uuid)),
+            and_(
+                WorkItem.needs_human.is_(True),
+                not_(_answered_keeps_waiting_clause()),
+                recipient_clause(user_uuid),
+            ),
             and_(
                 WorkItem.user_id == user_uuid,
                 WorkItem.owner_agent_id.is_(None),

@@ -38,7 +38,7 @@ Memory hygiene (added for long-running agents):
       dimensions no longer match the platform embedding target.
   13. ``run_memory_maintenance()`` – orchestrates all hygiene tasks for all agents.
   14. ``get_memory_health()`` – per-agent memory statistics for the health endpoint.
-  15. ``auto_heal_agent_memory()`` – reactive, throttled per-agent self-heal
+  15. ``auto_heal_agent_memory()`` – reactive, throttled (per agent and lane) self-heal
       (persistent-tier hygiene + Redis medium-term compression) triggered
       when an agent's combined memory block exceeds the assignment prompt
       memory budget.
@@ -1457,23 +1457,23 @@ class MemoryRetirement(NamedTuple):
 async def may_manage_shared_memory(db: AsyncSession, *, agent_id: str, user_id: str | None) -> bool:
     """Whether *user_id* may retire the agent-level pool of *agent_id*.
 
-    The rule of the memory screen (``api/v1/agent_memory._can_manage_memory``):
-    the owner of a private agent, an administrator for a company-managed one
-    (an administrator for any agent). Everyone else retires only their own pool.
+    The people who manage the agent (``helpers.can_manage_as``), the same as
+    the memory screen's write routes. Everyone else retires only their own pool.
     """
+    from app.api.v1.helpers import can_manage_as, get_user_group_ids
     from app.models.agent import Agent
     from app.models.user import User
 
     aid, uid = safe_uuid(agent_id), safe_uuid(user_id)
     if aid is None or uid is None:
         return False
-    row = (await db.execute(select(Agent.user_id, Agent.is_company_managed).where(Agent.id == aid))).one_or_none()
-    if row is None:
+    agent = await db.get(Agent, aid)
+    if agent is None:
         return False
     role = (await db.execute(select(User.role).where(User.id == uid))).scalar_one_or_none()
-    if role == "admin":
-        return True
-    return not row.is_company_managed and row.user_id == uid
+    if role is None:
+        return False
+    return can_manage_as(uid, role == "admin", agent, await get_user_group_ids(db, uid))
 
 
 async def retire_memories(
@@ -4136,28 +4136,26 @@ async def auto_heal_agent_memory(agent_id: str, *, scope_id: str | None = None) 
     1. The same persistent-tier hygiene as the hourly scheduler for this
        agent only: prune, cap enforcement, fact consolidation, re-embedding.
     2. A compression pass on the Redis medium-term summary for *scope_id*
-       (``None`` = the agent-level scope used by assignment runs) when it
-       exceeds the prompt cap.
+       (an assignment run passes the lane it reads; ``None`` is the
+       agent-level lane) when it exceeds the prompt cap.
 
-    Throttled per agent via Redis (``_AUTO_HEAL_THROTTLE_SECONDS``) so a
-    burst of runs on a bloated agent cannot stack LLM calls.  Opens its own
-    DB session — safe to schedule from any context.
+    Two throttles via Redis (``_AUTO_HEAL_THROTTLE_SECONDS``): the
+    agent-wide hygiene of step 1 runs once per window whichever lane fires
+    it, and each lane's compression once per window, so one user's heal
+    never holds another user's lane truncated and a burst of runs cannot
+    stack LLM calls.  Opens its own DB session — safe to schedule from any
+    context.
 
-    Returns ``True`` when a maintenance pass actually ran (throttle acquired).
+    Returns ``True`` when either step ran (its throttle acquired).
     """
     from app.core.redis import redis_client
 
-    throttle_key = f"agent_mem_autoheal:{agent_id}"
+    agent_key = f"agent_mem_autoheal:{agent_id}"
+    lane_key = f"{agent_key}:scope:{scope_id or 'agent'}"
     try:
         redis = await redis_client()
-        acquired = await redis.set(
-            throttle_key,
-            "1",
-            nx=True,
-            ex=_AUTO_HEAL_THROTTLE_SECONDS,
-        )
-        if not acquired:
-            return False
+        hygiene = bool(await redis.set(agent_key, "1", nx=True, ex=_AUTO_HEAL_THROTTLE_SECONDS))
+        compress = bool(await redis.set(lane_key, "1", nx=True, ex=_AUTO_HEAL_THROTTLE_SECONDS))
     except Exception as e:
         # Redis being unavailable must not turn into an unthrottled LLM
         # storm — skip the pass, the hourly scheduler still covers hygiene.
@@ -4167,43 +4165,49 @@ async def auto_heal_agent_memory(agent_id: str, *, scope_id: str | None = None) 
             format_exception_message(e),
         )
         return False
+    if not (hygiene or compress):
+        return False
+    acquired = [k for k, held in ((agent_key, hygiene), (lane_key, compress)) if held]
 
     logger.info("Running automatic memory self-heal for agent %s", agent_id)
 
     from app.core.database import async_session as _session_factory
 
     try:
+        pruned = evicted = consolidated = reembedded = 0
         async with _session_factory() as db:
-            pruned = await prune_old_memories(db, agent_id=agent_id)
-            evicted = await enforce_memory_cap(db, agent_id=agent_id)
-            consolidated = await consolidate_agent_facts(db, agent_id=agent_id)
-            reembedded = await reembed_stale_memories(db, agent_id=agent_id)
+            if hygiene:
+                pruned = await prune_old_memories(db, agent_id=agent_id)
+                evicted = await enforce_memory_cap(db, agent_id=agent_id)
+                consolidated = await consolidate_agent_facts(db, agent_id=agent_id)
+                reembedded = await reembed_stale_memories(db, agent_id=agent_id)
 
             # Redis medium-term compression needs an LLM — resolve it via the
             # standard chain (platform default) while the session is open.
             compressed = False
-            try:
-                from app.llm.router import get_llm_for_user
-                from app.services.agent_memory import compress_medium_term_memory
+            if compress:
+                try:
+                    from app.llm.router import get_llm_for_user
+                    from app.services.agent_memory import compress_medium_term_memory
 
-                # For the scope's own person - no one for the agent-level
-                # scope - never for whichever run triggered the self-heal
-                # (inherited through ``create_task``): that person's LLM
-                # provider exclusions must neither route nor block shared
-                # maintenance. Facts and re-embedding above scope
-                # themselves the same way.
-                with acting_for(scope_id):
-                    llm, model = await get_llm_for_user(db, None)
-                    compressed = await compress_medium_term_memory(
-                        agent_id, llm, scope_id=scope_id, model=model
+                    # For the scope's own person - no one for the agent-level
+                    # scope - never for whichever run triggered the self-heal
+                    # (inherited through ``create_task``): that person's LLM
+                    # provider exclusions must neither route nor block shared
+                    # maintenance. Facts and re-embedding above scope
+                    # themselves the same way.
+                    with acting_for(scope_id):
+                        llm, model = await get_llm_for_user(db, None)
+                        compressed = await compress_medium_term_memory(
+                            agent_id, llm, scope_id=scope_id, model=model
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "Medium-term compression skipped during self-heal for "
+                        "agent %s: %s",
+                        agent_id,
+                        format_exception_message(e),
                     )
-            except Exception as e:
-                logger.warning(
-                    "Medium-term compression skipped during self-heal for "
-                    "agent %s: %s",
-                    agent_id,
-                    format_exception_message(e),
-                )
 
             await db.commit()
 
@@ -4224,16 +4228,17 @@ async def auto_heal_agent_memory(agent_id: str, *, scope_id: str | None = None) 
             agent_id,
             format_exception_message(e),
         )
-        # The throttle was acquired but remediation did not happen — shorten
-        # the key's TTL so a transient failure can retry soon instead of
-        # leaving the agent truncating memory for the full 6h window.
-        try:
-            await redis.expire(throttle_key, _AUTO_HEAL_FAILURE_RETRY_SECONDS)
-        except Exception:
-            logger.debug(
-                "Could not shorten self-heal throttle TTL for agent %s",
-                agent_id,
-            )
+        # A throttle was acquired but remediation did not happen — shorten
+        # its TTL so a transient failure can retry soon instead of leaving
+        # the lane truncating memory for the full 6h window.
+        for key in acquired:
+            try:
+                await redis.expire(key, _AUTO_HEAL_FAILURE_RETRY_SECONDS)
+            except Exception:
+                logger.debug(
+                    "Could not shorten self-heal throttle TTL for agent %s",
+                    agent_id,
+                )
         return False
 
 
