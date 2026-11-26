@@ -17739,7 +17739,7 @@
   "A short summary of the organization profile at the top of the prompt. In effect: {effective}.": "プロンプトの先頭に組織プロファイルの短い要約を入れます。現在の状態: {effective}。",
   "Edit organization context in agents": "エージェントの組織コンテキストを編集",
   "On: every agent whose organization context is Inherit starts each chat and run with a short block: the organization's name, sector, regions, size and risk appetite, then one line with the inventory size (assets, software, groups, primary assets) and the functions that query it, never its rows. An agent or an assignment set to Always or Off overrides it; Off also removes the tools. Off here: no block unless an agent or an assignment asks for it.": "オン: 組織コンテキストが「継承」のエージェントは、各チャットと実行の冒頭に短いブロックを受け取ります: 組織の名前、業種、地域、規模、リスク許容度、続いてインベントリの規模（資産、ソフトウェア、グループ、主要資産）とそれを照会する関数を示す 1 行（行そのものは含みません）。「常に」または「オフ」のエージェントやアサインメントはこれを上書きし、「オフ」はツールも外します。ここでオフ: エージェントやアサインメントが求めない限りブロックはありません。",
-  "The agent knows your organization: a short profile in its prompt and a tool to read the rest.": "エージェントは組織を把握します: プロンプトに短いプロファイル、残りを読むためのツール。",
+  "The agent knows your organization: a short profile in its prompt and tools to read the rest.": "エージェントは組織を把握します: プロンプトに短いプロファイル、残りを読むためのツール群。",
   "A short block at the top of the prompt: the organization's identity and one line with the inventory size and the functions that query it, never its rows. Inherit follows the agent, then the platform setting in Settings > Organization; Always forces it on; Off removes the block and the organization tools.": "プロンプト冒頭の短いブロック: 組織の基本情報と、インベントリの規模とそれを照会する関数を示す1行（行そのものは含みません）。継承はエージェント、次に 設定 > 組織 のプラットフォーム設定に従います。常に は有効にし、オフ はブロックと組織ツールを削除します。",
   "Let the assistant suggest": "アシスタントに提案を任せる",
   "No music": "音楽なし",
