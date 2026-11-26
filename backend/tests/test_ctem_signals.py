@@ -110,6 +110,8 @@ def test_listeners_cover_the_paths_whose_events_exist_today():
         "credential_leak",
         "stale_asset",
         "new_exposure",
+        # #2436: the OpenAEV new asset source (off by default).
+        "surface_drift",
     }
     assert all(row.trigger_path in TRIGGER_PATHS for row in listeners.LISTENERS)
 
@@ -706,6 +708,7 @@ async def test_the_paths_endpoint_names_the_listened_paths(client):
         "credential_leak",
         "stale_asset",
         "new_exposure",
+        "surface_drift",
     }
 
 
@@ -724,7 +727,7 @@ async def test_the_paths_count_only_the_signals_the_caller_reads_and_say_not_con
     assert alice["stale_asset"]["total"] == 1 and alice["stale_asset"]["counts"]["new"] == 1
     assert admin["stale_asset"]["total"] == 2
     assert alice["stale_asset"]["configured"] is True
-    assert alice["surface_drift"] == {**alice["surface_drift"], "total": 0, "configured": False}
+    assert alice["blind_spot"] == {**alice["blind_spot"], "total": 0, "configured": False}
     assert alice["new_vulnerability"]["configured"] is True and alice["new_vulnerability"]["total"] == 0
 
 

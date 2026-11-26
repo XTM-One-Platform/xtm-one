@@ -33,6 +33,13 @@ off for the others (#1445): ``signal_sources.excluded`` of the organization
 profile names, per path, the excluded ``provider:kind`` keys. An excluded source
 is not bound on that path (its status and the connected count follow) and the
 recording points (:func:`excluded_sources`) record nothing from it there.
+
+A path may hold several sources of one provider and kind (#2436): such a source
+carries a ``name`` and its key is ``provider:kind:name``. A source added after
+#2436 is off by default (``default_on`` false): it records nothing until an
+administrator lists its key in ``signal_sources.included`` for that path, and
+:func:`parse_excluded` folds every default-off source not included into the
+excluded map, so each recording point keeps reading one map.
 """
 
 from __future__ import annotations
@@ -59,25 +66,39 @@ class BoundSources(set[tuple[str, str]]):
         super().__init__(*args)
         self.off: set[tuple[str, str]] = set()
         #: Per trigger path, the ``(provider, kind)`` an administrator excluded from it (#1445).
-        self.excluded: dict[str, set[tuple[str, str]]] = {}
+        self.excluded: dict[str, set[tuple[str, ...]]] = {}
         #: The sources XTM One provisions whose provider is connected but which feed nothing yet (#2434).
         self.not_set_up: set[tuple[str, str]] = set()
         #: Per provisioned source, the integrations on which it is in error (#2434, UX round 1 on #2442).
         self.error: dict[tuple[str, str], int] = {}
 
 
-def source_key(provider: str, kind: str) -> str:
-    """The key of one source in ``signal_sources.excluded``: ``provider:kind``."""
-    return f"{provider}:{kind}"
+def source_key(provider: str, kind: str, name: str = "") -> str:
+    """The key of one source in ``signal_sources.excluded``: ``provider:kind``, ``provider:kind:name`` when named."""
+    return f"{provider}:{kind}:{name}" if name else f"{provider}:{kind}"
+
+
+def _key_tuple(key: str) -> tuple[str, ...]:
+    return tuple(key.split(":", 2))
 
 
 @dataclass(frozen=True)
 class Source:
-    """One way a trigger path is fired; ``event`` is the English line the UI translates."""
+    """One way a trigger path is fired; ``event`` is the English line the UI translates.
+
+    ``name`` tells apart two sources of one provider and kind on one path (#2436);
+    ``default_on`` false: the source records nothing until an administrator includes it.
+    """
 
     provider: str
     kind: str
     event: str
+    name: str = ""
+    default_on: bool = True
+
+    @property
+    def key(self) -> str:
+        return source_key(self.provider, self.kind, self.name)
 
 
 #: One plain sentence per path: what fires it, as the dialog says it.
@@ -116,16 +137,37 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
     "relevant_threat": (
         Source("opencti", "listener", "An intrusion set, threat actor, campaign or malware is created or updated"),
         Source("opencti", "pir_playbook", "The PIR playbook flags a threat in one of your PIRs"),
+        Source(
+            "opencti",
+            "listener",
+            "An indicator is sighted in your data",
+            name="indicator_sighting",
+            default_on=False,
+        ),
     ),
     "code_flaw": (
         Source("aikido", "listener", "A new issue, an SLA breach, a failed CI gate or an image scan with issues"),
         Source("github", "listener", "A Dependabot alert is opened or reopened on one of your repositories"),
+        Source(
+            "github",
+            "listener",
+            "A code scanning alert is opened or reopened on one of your repositories",
+            name="code_scanning",
+            default_on=False,
+        ),
     ),
     "proven_exploitable": (
         Source("openaev", "listener", "A finished simulation reached a high or very high criticality asset"),
     ),
     "new_exposure": (
         Source("openaev", "listener", "A reachability assertion failed: a target that should not answer answers"),
+        Source(
+            "openaev",
+            "listener",
+            "A finding is created on one of your assets",
+            name="finding_created",
+            default_on=False,
+        ),
         *(
             Source(p, k, "The attack-surface pass sees a declared asset answer on a new port")
             for p, k in _ATTACK_SURFACE
@@ -138,8 +180,15 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
             for p, k in _ATTACK_SURFACE
         ),
     ),
-    "surface_drift": tuple(
-        Source(p, k, "The attack-surface pass sees an undeclared host or a new port") for p, k in _ATTACK_SURFACE
+    "surface_drift": (
+        *(Source(p, k, "The attack-surface pass sees an undeclared host or a new port") for p, k in _ATTACK_SURFACE),
+        Source(
+            "openaev",
+            "listener",
+            "An OpenAEV scan finds a new asset",
+            name="asset_created",
+            default_on=False,
+        ),
     ),
     "mitigation_regression": (Source("openaev", "listener", "A scenario's score degraded"),),
     "control_decay": tuple(
@@ -149,6 +198,13 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
     "credential_leak": (
         Source("aikido", "listener", "A leaked secret issue"),
         Source("opencti", "listener", "An account or an email address of your domains is written by a leak source"),
+        Source(
+            "github",
+            "listener",
+            "A secret scanning alert is opened or reopened on one of your repositories",
+            name="secret_scanning",
+            default_on=False,
+        ),
     ),
     "third_party_event": (
         Source("opencti", "listener", "A report or incident names one of your tracked organizations"),
@@ -186,44 +242,59 @@ def path_sources(path: str, bound: set[tuple[str, str]] | None) -> list[dict[str
     out: list[dict[str, Any]] = []
     for s in PATH_SOURCES.get(path, ()):
         pair = (s.provider, s.kind)
+        own = _key_tuple(s.key)
         out.append(
             {
                 "provider": s.provider,
                 "kind": s.kind,
+                # #2436: the key the profile names it by, its stable name and whether it is on by default.
+                "key": s.key,
+                "name": s.name,
+                "default_on": s.default_on,
                 "event": s.event,
-                "bound": pair in known and pair not in excluded,
+                "bound": pair in known and own not in excluded,
                 "off": pair not in known and pair in off,
                 # A source XTM One provisions, its provider connected, switched on nowhere yet (#2434).
                 "not_set_up": pair not in known and pair in not_set_up,
                 # The integrations on which this provisioned source is in error (#2434).
                 "error_count": int(errors.get(pair, 0)),
-                "excluded": pair in excluded,
+                "excluded": own in excluded,
                 # Bound before the exclusion: an excluded source of a connected provider still reads connected.
                 "available": pair in known,
                 # The paths this source also feeds (a pass is organization-wide: one switch feeds them all).
                 "also_feeds": [
                     other
                     for other, sources in PATH_SOURCES.items()
-                    if other != path and any((o.provider, o.kind) == pair for o in sources)
+                    if other != path and any(o.key == s.key for o in sources)
                 ],
             }
         )
     return out
 
 
-def parse_excluded(profile: Any) -> dict[str, set[tuple[str, str]]]:
-    """``signal_sources.excluded`` of a parsed profile as ``{path: {(provider, kind)}}``."""
+def parse_excluded(profile: Any) -> dict[str, set[tuple[str, ...]]]:
+    """The sources that record nothing per path: ``{path: {(provider, kind) or (provider, kind, name)}}``.
+
+    ``signal_sources.excluded`` of a parsed profile, plus every default-off source (#2436)
+    its ``signal_sources.included`` does not name for that path.
+    """
     settings = getattr(profile, "signal_sources", None)
     raw = getattr(settings, "excluded", None) or {}
-    out: dict[str, set[tuple[str, str]]] = {}
+    included = getattr(settings, "included", None) or {}
+    out: dict[str, set[tuple[str, ...]]] = {}
     for path, keys in raw.items():
-        pairs = {tuple(k.split(":", 1)) for k in keys if ":" in k}
-        if pairs:
-            out[path] = {(p, k) for p, k in pairs}
+        tuples = {_key_tuple(k) for k in keys if ":" in k}
+        if tuples:
+            out[path] = tuples
+    for path, sources in PATH_SOURCES.items():
+        on = set(included.get(path) or ())
+        off = {_key_tuple(s.key) for s in sources if not s.default_on and s.key not in on}
+        if off:
+            out.setdefault(path, set()).update(off)
     return out
 
 
-async def excluded_sources(db: AsyncSession, organization_id: Any) -> dict[str, set[tuple[str, str]]]:
+async def excluded_sources(db: AsyncSession, organization_id: Any) -> dict[str, set[tuple[str, ...]]]:
     """The sources excluded per path in the organization's current profile; ``{}`` on any read failure.
 
     Read by every system recording point (listeners, PIR playbook, the scheduled
@@ -234,13 +305,13 @@ async def excluded_sources(db: AsyncSession, organization_id: Any) -> dict[str, 
     try:
         version = await org_context.current_version(db, organization_id)
         return parse_excluded(org_context.parse_profile(version.profile if version else {}))
-    except Exception:  # a profile that cannot be read never stops a signal
-        return {}
+    except Exception:  # a profile that cannot be read never stops a signal; a default-off source stays off
+        return parse_excluded(None)
 
 
-def is_excluded(excluded: dict[str, set[tuple[str, str]]], path: str, provider: str, kind: str) -> bool:
-    """Whether ``provider:kind`` is excluded from *path*."""
-    return (provider, kind) in excluded.get(path, set())
+def is_excluded(excluded: dict[str, set[tuple[str, ...]]], path: str, provider: str, kind: str, name: str = "") -> bool:
+    """Whether ``provider:kind`` (``provider:kind:name`` for a named source, #2436) is excluded from *path*."""
+    return _key_tuple(source_key(provider, kind, name)) in excluded.get(path, set())
 
 
 def _connected_ids(rows: list[tuple[Any, str]]) -> dict[str, set[str]]:

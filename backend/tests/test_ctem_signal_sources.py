@@ -70,6 +70,9 @@ def test_the_catalog_carries_sources_status_and_activity() -> None:
     assert rows["code_flaw"]["sources"][0] == {
         "provider": "aikido",
         "kind": "listener",
+        "key": "aikido:listener",
+        "name": "",
+        "default_on": True,
         "event": sources.PATH_SOURCES["code_flaw"][0].event,
         "bound": False,
         "off": False,
