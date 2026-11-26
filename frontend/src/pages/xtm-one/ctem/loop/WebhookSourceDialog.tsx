@@ -24,18 +24,10 @@ import {
   useUpdateCtemWebhookSource,
 } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
+import { signedRequestExample } from "./signal-sources";
 
 /** The sample the mapping test starts from: the default mapping reads it. */
 const SAMPLE = '{\n  "event": {\n    "id": "evt-1",\n    "host": "vpn.example.com",\n    "severity": "high"\n  }\n}';
-
-/** The signed request a tool sends, with the secret left as a placeholder (never the real one in a copied command). */
-export function signedRequestExample(url: string, header: string): string {
-  return [
-    `BODY='{"event":{"id":"evt-1","host":"vpn.example.com","severity":"high"}}'`,
-    `SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | sed 's/^.* //')`,
-    `curl -X POST '${url}' -H 'Content-Type: application/json' -H "${header}: sha256=$SIG" -d "$BODY"`,
-  ].join("\n");
-}
 
 export function WebhookSourceDialog({
   open,
@@ -166,7 +158,7 @@ export function WebhookSourceDialog({
         </DialogHeader>
         <DialogBody className="flex flex-col gap-4">
           <SettingsField id={ids.name} label={t_i18n("Name")} required error={error ?? undefined}>
-            <Input id={ids.name} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} data-testid="ctem-webhook-source-name" />
+            <Input id={ids.name} aria-label={t_i18n("Name")} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} data-testid="ctem-webhook-source-name" />
           </SettingsField>
           <SettingsField
             id={ids.id}
@@ -176,6 +168,7 @@ export function WebhookSourceDialog({
           >
             <Input
               id={ids.id}
+              aria-label={t_i18n("Path of the event id")}
               value={idPath}
               aria-describedby={settingsFieldHintId(ids.id)}
               onChange={(e) => setIdPath(e.target.value)}
@@ -184,10 +177,10 @@ export function WebhookSourceDialog({
           </SettingsField>
           <div className="grid grid-cols-2 gap-4">
             <SettingsField id={ids.label} label={t_i18n("Path of the label")}>
-              <Input id={ids.label} value={labelPath} onChange={(e) => setLabelPath(e.target.value)} data-testid="ctem-webhook-source-map-label" />
+              <Input id={ids.label} aria-label={t_i18n("Path of the label")} value={labelPath} onChange={(e) => setLabelPath(e.target.value)} data-testid="ctem-webhook-source-map-label" />
             </SettingsField>
             <SettingsField id={ids.severity} label={t_i18n("Path of the severity")}>
-              <Input id={ids.severity} value={severityPath} onChange={(e) => setSeverityPath(e.target.value)} data-testid="ctem-webhook-source-map-severity" />
+              <Input id={ids.severity} aria-label={t_i18n("Path of the severity")} value={severityPath} onChange={(e) => setSeverityPath(e.target.value)} data-testid="ctem-webhook-source-map-severity" />
             </SettingsField>
           </div>
 
@@ -233,7 +226,7 @@ export function WebhookSourceDialog({
           {current && (
             <div className="flex flex-col gap-2 border-t border-elevation-subtle pt-4 content-compact" data-testid="ctem-webhook-source-test">
               <SettingsField id={ids.sample} label={t_i18n("Test the mapping on a sample")} helper={t_i18n("Reads the saved mapping. Nothing is recorded.")}>
-                <Textarea id={ids.sample} rows={6} value={sample} onChange={(e) => setSample(e.target.value)} className="font-mono" />
+                <Textarea id={ids.sample} aria-label={t_i18n("Test the mapping on a sample")} rows={6} value={sample} onChange={(e) => setSample(e.target.value)} className="font-mono" />
               </SettingsField>
               <span className="flex items-center gap-3">
                 <Button variant="secondary" size="sm" onClick={runTest} disabled={test.isPending} data-testid="ctem-webhook-source-run-test">

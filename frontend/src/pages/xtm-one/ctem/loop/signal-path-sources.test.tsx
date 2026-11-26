@@ -58,11 +58,25 @@ const OTHERS: CtemSignalPath[] = [
 
 function open(path: CtemSignalPath = EXPOSURE) {
   const paths = [path, ...OTHERS];
-  return renderWithProviders(
+  const view = renderWithProviders(
     <MemoryRouter>
       <SignalPathSourcesSheet path={path} paths={paths} connected={connectedProviders(paths)} onClose={() => undefined} />
     </MemoryRouter>,
   );
+  // #2506: the panel is a table; each row opens its configuration from its Configure button.
+  for (const button of screen.queryAllByTestId("ctem-path-source-configure")) fireEvent.click(button);
+  return view;
+}
+
+/** The rows of the table by provider, in the order of the path's sources. */
+function rowsBy(path: CtemSignalPath = EXPOSURE) {
+  const rows = screen.getAllByTestId("ctem-path-source-row");
+  return (path.sources ?? []).map((s) => rows.find((r) => r.getAttribute("data-provider") === s.provider) as HTMLElement);
+}
+
+/** The opened configuration of one source, by provider. */
+function configOf(provider: string): HTMLElement {
+  return screen.getAllByTestId("ctem-path-source").find((c) => c.getAttribute("data-provider") === provider) as HTMLElement;
 }
 
 beforeEach(() => {
@@ -95,9 +109,8 @@ describe("per path exclusion rules (#1445)", () => {
 describe("the sources side panel (#1445)", () => {
   it("lists every source with its state and the control that exists for it", () => {
     open();
-    const rows = screen.getAllByTestId("ctem-path-source");
-    expect(rows.map((r) => r.getAttribute("data-state"))).toEqual(["bound", "excluded", "not_connected"]);
-    const [shodan, gti, censys] = rows;
+    expect(rowsBy().map((r) => r.getAttribute("data-state"))).toEqual(["bound", "excluded", "not_connected"]);
+    const [shodan, gti, censys] = [configOf("shodan"), configOf("gti"), configOf("censys")];
     expect(within(shodan).getByTestId("ctem-path-source-runs-on").textContent).toContain("Shodan prod");
     expect(within(shodan).getByTestId("ctem-path-source-shared").textContent).toContain("Stale or orphaned asset, Attack-surface drift");
     expect(within(gti).getByTestId("ctem-path-source-use").getAttribute("aria-checked")).toBe("false");
@@ -107,7 +120,7 @@ describe("the sources side panel (#1445)", () => {
 
   it("puts an excluded source back on the path through the organization profile", () => {
     open();
-    const gti = screen.getAllByTestId("ctem-path-source")[1];
+    const gti = configOf("gti");
     fireEvent.click(within(gti).getByTestId("ctem-path-source-use"));
     expect(state.saved).toHaveLength(1);
     const body = state.saved[0] as { fields: Record<string, unknown> };
@@ -118,7 +131,7 @@ describe("the sources side panel (#1445)", () => {
 
   it("takes one source off this path without turning its pass off", () => {
     open();
-    const shodan = screen.getAllByTestId("ctem-path-source")[0];
+    const shodan = configOf("shodan");
     fireEvent.click(within(shodan).getByTestId("ctem-path-source-use"));
     const body = state.saved[0] as { fields: { signal_sources: { excluded: Record<string, string[]> }; attack_surface?: unknown } };
     expect(body.fields.signal_sources.excluded.new_exposure).toEqual(["gti:pass", "shodan:pass"]);
@@ -167,7 +180,7 @@ describe("the sources side panel (#1445)", () => {
       ],
     };
     open(path);
-    const [gti, censys] = screen.getAllByTestId("ctem-path-source");
+    const [gti, censys] = [configOf("gti"), configOf("censys")];
     expect(gti.getAttribute("data-state")).toBe("not_connected");
     expect(within(gti).queryByTestId("ctem-path-source-connect")).toBeNull();
     expect(within(censys).getByTestId("ctem-path-source-connect")).toBeTruthy();

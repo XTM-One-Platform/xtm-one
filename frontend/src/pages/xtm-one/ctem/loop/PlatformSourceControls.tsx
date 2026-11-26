@@ -38,13 +38,24 @@ function platformSourceKey(source: Pick<CtemPlatformSource, "provider" | "kind" 
 }
 
 /** The run-as user of a source at rest: the name, else the email, else a plain "Not set". */
-export function useRunAsLabel(userId: string | null): string {
+function useRunAsLabel(userId: string | null): string {
   const { t_i18n } = useFormatter();
   const { data: users } = useUsers(Boolean(userId));
   if (!userId) return t_i18n("Not set");
   const user = users?.find((u) => u.id === userId);
   if (!user) return t_i18n("A specific user");
   return user.full_name?.trim() || user.email;
+}
+
+/** The run-as users of a path table row (#2506), by name: one, or the first and how many more. */
+export function RunAsName({ ids }: { ids: string }) {
+  const [first, ...rest] = ids.split(",");
+  const name = useRunAsLabel(first);
+  return (
+    <span className="truncate" data-testid="ctem-path-source-run-as">
+      {rest.length > 0 ? `${name} +${rest.length}` : name}
+    </span>
+  );
 }
 
 /** The enable dialog of one source on one integration: the run-as user, then Turn on. */

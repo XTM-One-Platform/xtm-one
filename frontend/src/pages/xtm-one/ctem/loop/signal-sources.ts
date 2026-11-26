@@ -91,7 +91,7 @@ export function connectedProviders(paths: readonly Pick<CtemSignalPath, "sources
  * up (its provider is connected, the source itself is not, e.g. the PIR playbook of a connected
  * OpenCTI), or not connected (no integration of its provider here).
  */
-type SourceState = "error" | "bound" | "excluded" | "off" | "not_set_up" | "not_connected";
+export type SourceState = "error" | "bound" | "excluded" | "off" | "not_set_up" | "not_connected";
 
 export function sourceState(source: CtemSignalPathSource, connected: ReadonlySet<string>): SourceState {
   // A source XTM One provisions in error on one of its integrations reads Error, as its platform line does (#2442 UX r1 B1).
@@ -120,6 +120,15 @@ export function sourceDisplayState(
   if (own.some((s) => s.status === "error")) return "error";
   if (own.some((s) => s.status === "connected")) return "bound";
   return state;
+}
+
+/** The signed request a tool sends to a webhook source (#2506), the secret left as $SECRET: never the real one in a copied command. */
+export function signedRequestExample(url: string, header: string): string {
+  return [
+    `BODY='{"event":{"id":"evt-1","host":"vpn.example.com","severity":"high"}}'`,
+    `SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | sed 's/^.* //')`,
+    `curl -X POST '${url}' -H 'Content-Type: application/json' -H "${header}: sha256=$SIG" -d "$BODY"`,
+  ].join("\n");
 }
 
 /** The display name of a source: a webhook source by its own name, any other by its provider (#2506). */
