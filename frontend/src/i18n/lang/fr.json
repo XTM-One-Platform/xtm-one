@@ -21912,5 +21912,8 @@
   "Type a whole number from 0 to 100.": "Saisissez un nombre entier de 0 à 100.",
   "The PIR policy was not saved: {reason}": "La politique du PIR n'a pas été enregistrée : {reason}",
   "In OpenCTI": "Dans OpenCTI",
-  "Listed": "Listé"
+  "Listed": "Listé",
+  "Open scenario": "Ouvrir le scénario",
+  "{total, plural, one {Not playable: {missing} of # technique has no payload} other {Not playable: {missing} of # techniques have no payload}}": "{total, plural, one {Non jouable : {missing} sur # technique n’a pas de charge utile} other {Non jouable : {missing} sur # techniques n’ont pas de charge utile}}",
+  "Recorded the validation scenario": "A enregistré le scénario de validation"
 }

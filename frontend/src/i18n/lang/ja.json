@@ -21912,5 +21912,8 @@
   "Type a whole number from 0 to 100.": "0〜100 の整数を入力してください。",
   "The PIR policy was not saved: {reason}": "PIR ポリシーは保存されませんでした: {reason}",
   "In OpenCTI": "OpenCTI 内",
-  "Listed": "掲載中"
+  "Listed": "掲載中",
+  "Open scenario": "シナリオを開く",
+  "{total, plural, one {Not playable: {missing} of # technique has no payload} other {Not playable: {missing} of # techniques have no payload}}": "{total, plural, other {実行不可: # 件のテクニックのうち {missing} 件にペイロードがありません}}",
+  "Recorded the validation scenario": "検証シナリオを記録しました"
 }
