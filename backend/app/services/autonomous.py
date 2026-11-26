@@ -1803,6 +1803,11 @@ async def _run_autonomous_tick_inner() -> int:
                 from app.services.ctem_case_routing import catch_up
 
                 counts["caught_up"] = await catch_up()
+                # Per-case decisions of a groupable kind asked of one person, folded into one card (#2451).
+                from app.services import ctem_decision_groups
+
+                counts["decisions_grouped"] = await ctem_decision_groups.consolidate(db)
+                await db.commit()
                 if any(counts.values()):
                     logger.info("CTEM case sweep: %s", counts)
         except Exception as e:

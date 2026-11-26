@@ -333,6 +333,71 @@ async def join_group(
     return group, created
 
 
+#: Most open per-case decisions one consolidation pass folds into groups.
+CONSOLIDATE_BATCH = 500
+
+
+async def consolidate(db: AsyncSession, *, now: datetime | None = None, limit: int = CONSOLIDATE_BATCH) -> int:
+    """Fold the open per-case decisions of a groupable kind into their recipient's group; how many. Idempotent.
+
+    A case's item that joins a group stops waiting for the person (its own card
+    is closed, no notification) and waits on the group, blocked; a re-run finds
+    no such item left and changes nothing. The caller commits.
+    """
+    from sqlalchemy import or_
+
+    from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
+
+    now = now or datetime.now(UTC)
+    rows = (
+        (
+            await db.execute(
+                select(WorkItem)
+                .where(
+                    WorkItem.needs_human.is_(True),
+                    WorkItem.status.not_in(WORK_ITEM_TERMINAL_STATUSES),
+                    or_(*(WorkItem.correlation_key.like(f"{p}%") for p in GROUPABLE_PREFIXES)),
+                )
+                .order_by(WorkItem.created_at)
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    folded = 0
+    for item in rows:
+        joined = await join_group(
+            db,
+            member_id=item.id,
+            correlation_key=str(item.correlation_key),
+            title=str(item.title or ""),
+            priority=str(item.priority or "medium"),
+            due_at=item.due_at,
+            owner_agent_id=item.owner_agent_id,
+            created_by_agent_id=item.created_by_agent_id,
+            user_id=item.user_id,
+            workspace_id=item.workspace_id,
+            is_company_managed=bool(item.is_company_managed),
+            waits_for_user_id=item.waits_for_user_id,
+            waits_for_group_ids=item.waits_for_group_ids,
+            now=now,
+        )
+        if joined is None:
+            continue
+        group = joined[0]
+        item.needs_human = None
+        item.ask = None
+        item.waits_for_user_id = None
+        item.waits_for_group_ids = None
+        item.status = "blocked"
+        item.blocked_on = [str(group.id)]
+        item.blocked_reason = f"{GROUPED_REASON_LEAD}{group.id}"
+        item.last_activity_at = now
+        folded += 1
+    return folded
+
+
 _PRIORITY_RANK = {"urgent": 0, "high": 1, "medium": 2, "low": 3}
 
 

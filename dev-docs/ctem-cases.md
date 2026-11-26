@@ -1256,6 +1256,17 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 
 **Screens.** `CaseOpeningSwitch` is a discreet control for administrators only (Sam, 24 Nov 2026); anyone else sees nothing in every state. On Cases it sits in the table toolbar beside Group by and Views, a 32 px control with their border, padding and label, drawn disabled until the setting is read so the toolbar never shifts; on the Signal sources header it is the same control. Its tooltip is one line, with the waiting count while it is off. While it is off the empty Cases list keeps its usual sentence and adds one muted line, "Case opening is off" (`CaseOpeningOffEmptyState`). Turning it on or off toasts one line, "Case opening on" or "Case opening off"; the opening read is polled every 3 s while signals wait.
 
+### 9bis.2 Same-kind decisions asked once per person (#2451)
+
+A reconcile burst opens hundreds of cases at once; one card per case for one person cannot be answered. `services/ctem_decision_groups.py` folds them:
+
+- **Groupable.** The validation gate (`ctem:validation:<case>`, `ctem:f2:validate:<case>`) of a `control_decay` case whose title says "for the first time" (kind `first_measure`, an asset with no test evidence yet). Every other gate keeps its own card.
+- **Stays individual.** A P1 case whose SLA ends within 72 hours (`NEAR_SLA`), so an urgent decision is never buried in a list.
+- **On write.** `work_item.create_work_item` of a groupable `needs_human` item joins the open group of its recipient and kind, `ctem:group:<kind>:<recipient>` (created on first use, owned by the same agent): the case's item is written blocked on the group (`blocked_reason` "Grouped into <id>"), with no card of its own. The group's card states the count, the priority mix and the numbered list of cases, links to the cases list, and offers approve all, approve selected (the numbers named in the answer, ranges allowed), decline all and later (keeps waiting). Its due date is the earliest due of its members, its priority the highest.
+- **On answer.** `work_item.answer_work_item` on a group fans out: each answered case's item reopens with `payload.answer` (`approve` or `decline`, the person's text, `via_group`) and raises its own answered `work_item.status_changed`, so the fleet's "Gate answered" listener applies it on the case as for an individual card. A whole answer completes the group; approve selected rewrites it with the rest.
+- **Consolidation.** The scheduled case sweep folds the open per-case items of a groupable kind into their groups (`consolidate`, 500 per pass): their cards are closed without a notification. A re-run finds none left and changes nothing.
+- **Waits on someone.** The stall sweep and the case page's "decision filed" count a grouped item as a filed decision.
+
 ## 10. Slices
 
 | Slice | Content | Gate |
