@@ -72,7 +72,7 @@ export function hasUnreadApproval(items: ReadonlyArray<Pick<NotificationItem, "u
 }
 
 /** Past it the badge reads `99+`; the exact count stays in its name and the menu header. */
-export const BADGE_DISPLAY_CAP = 99;
+const BADGE_DISPLAY_CAP = 99;
 
 /**
  * The bell badge's count (#2453): the server's `unread_total`, every decision

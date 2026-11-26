@@ -33,14 +33,13 @@ def notifications_definition() -> ToolDefinition:
         name=TOOL_NAME,
         description=(
             "Read the notification bell of the person you act for, as they see it: waiting "
-            "decisions first, then the newest, each read or unread. Nothing is marked read."
+            "decisions first, then the newest. Nothing is marked read."
         ),
         input_schema={
             "type": "object",
             "properties": {
                 "limit": {"type": "integer", "description": f"1 to {MAX_LIMIT} (default 20)"},
-                "offset": {"type": "integer", "description": "Waiting decisions to skip: the next offset named"},
-                "decisions_only": {"type": "boolean", "description": "Only the decisions waiting on the person"},
+                "offset": {"type": "integer", "description": "The next page's offset"},
             },
         },
         source="builtin:coordination",
@@ -50,7 +49,7 @@ def notifications_definition() -> ToolDefinition:
 def build_list_my_notifications(user_id: str | None) -> Callable[..., Awaitable[str]]:
     """The handler of ``list_my_notifications`` acting for *user_id*."""
 
-    async def _list(limit: int = 20, offset: int = 0, decisions_only: bool = False) -> str:
+    async def _list(limit: int = 20, offset: int = 0) -> str:
         from app.core.database import async_session
         from app.models.user import User
         from app.services.content_safety import wrap_untrusted
@@ -73,14 +72,19 @@ def build_list_my_notifications(user_id: str | None) -> Callable[..., Awaitable[
                 user = await db.get(User, uid)
                 if user is None or not user.is_active:
                     return "This run acts for nobody, so there is no notification bell to read."
-                feed = await build_feed(db, user, limit=bounded, offset=skip, decisions_only=bool(decisions_only))
+                # Past the first page only the waiting decisions are paged (#2453).
+                feed = await build_feed(db, user, limit=bounded, offset=skip, decisions_only=skip > 0)
         except Exception as exc:
             logger.error("list_my_notifications failed: %s", format_exception_message(exc), exc_info=True)
             return "Error: the notifications could not be read. Please try again."
         items = feed.get("items") or []
         total = int(feed.get("waiting_decision_total") or 0)
         if not items:
-            return "The notification bell is empty." if not total else f"No entry past offset {skip}; {total} decision(s) wait."
+            return (
+                "The notification bell is empty."
+                if not total
+                else f"No entry past offset {skip}; {total} decision(s) wait."
+            )
         # The totals are the whole bell's, never the page's (#2453).
         head = (
             f"{len(items)} notification(s) on this page, {total} decision(s) waiting in all, "

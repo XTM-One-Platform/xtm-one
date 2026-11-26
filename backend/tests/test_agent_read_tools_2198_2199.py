@@ -67,7 +67,7 @@ async def test_the_bell_answers_the_acting_person_feed_and_nobody_else(monkeypat
     # #2453: the totals are the whole bell's, the next page is named.
     assert "Answer it" in answer and "551 decision(s) waiting in all" in answer
     assert "552 unread in all" in answer and "offset=50" in answer
-    await bell.build_list_my_notifications(str(me.id))(limit=50, offset=50, decisions_only=True)
+    await bell.build_list_my_notifications(str(me.id))(limit=50, offset=50)
     assert seen[-1] == (me.id, 50, 50, True)
 
 
