@@ -167,33 +167,7 @@ def test_the_basic_block_cap_holds_whatever_the_list_lengths() -> None:
     assert len(text) - len(small) < 400, "only the counts and the name grew"
 
 
-# -- The category cascade -----------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("platform", "agent", "assignment", "expected"),
-    [
-        ([], None, None, []),
-        (["pirs"], None, None, ["pirs"]),
-        (["pirs"], ["software"], None, ["software"]),
-        (["pirs"], ["software"], [], []),
-        # #1495: tech_stack is retired with no alias (Sam, 24 Nov 2026): a stored selection naming it drops it.
-        (["pirs"], ["tech_stack"], None, []),
-        # #1591: a stored selection naming the deprecated primary_assets reads as primary_assets.
-        (["pirs"], [], ["primary_assets"], ["primary_assets"]),
-        (["primary_assets", "primary_assets"], None, None, ["primary_assets"]),
-        ([], ["software", "gone_from_the_model", "software"], None, ["software"]),
-    ],
-)
-def test_categories_most_specific_explicit_list_wins(
-    platform: list[str], agent: list[str] | None, assignment: list[str] | None, expected: list[str]
-) -> None:
-    from app.services.organization_context_categories import resolve_categories
-
-    assert (
-        resolve_categories(platform_categories=platform, agent_categories=agent, assignment_categories=assignment)
-        == expected
-    )
+# -- The stored category selection (kept one release, never preloaded, #2443) --
 
 
 def test_check_categories_reads_lists_strings_and_refuses_unknown_names() -> None:
@@ -231,6 +205,7 @@ async def _with(
     platform: bool,
     profile: dict[str, Any] | None = PROFILE,
     categories: list[str] | None = None,
+    sizes: dict[str, int] | None = None,
 ) -> None:
     async def _platform(_db: object) -> bool:
         return platform
@@ -244,6 +219,10 @@ async def _with(
     async def _tracked(_db: object) -> list[Any]:
         return []
 
+    async def _sizes(_db: object, _row: object) -> dict[str, int] | None:
+        return dict(sizes) if sizes is not None else None
+
+    monkeypatch.setattr(inj, "_inventory_sizes", _sizes)
     monkeypatch.setattr(inj, "platform_enabled", _platform)
     monkeypatch.setattr(inj, "platform_categories", _categories)
     monkeypatch.setattr(inj, "_tracked", _tracked)
@@ -256,25 +235,36 @@ BIG_STACK = {
 }
 
 
-async def test_an_agent_with_software_selected_gets_it_preloaded_capped_with_the_rest_named(
+async def test_a_stored_category_selection_is_ignored_no_row_reaches_the_prompt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import organization_context_categories as cats
+    """#2443: the selection is kept for one release and ignored; the prompt names sizes and functions."""
+    from app.services.builtin_tools.inventory_query import INVENTORY_QUERY_TOOLS
 
-    await _with(monkeypatch, platform=True, profile=BIG_STACK)
+    sizes = {"assets": 10_000, "software": 2_000, "asset_groups": 12, "primary_assets": 7}
+    await _with(monkeypatch, platform=True, profile=BIG_STACK, categories=["software"], sizes=sizes)
     agent = SimpleNamespace(
         id=uuid.uuid4(), organization_context_mode="inherit", organization_context_categories=["software"]
     )
-    text = await inj.organization_summary_for(_NO_DB, agent=agent)
-    preloaded = "Preloaded software" + text.split("Preloaded software", 1)[1]
-    assert "Product 0" in preloaded
-    assert "Product 499" not in preloaded
-    assert 'get_organization_context(category="software", offset=' in preloaded
-    assert len(preloaded) <= cats.PRELOAD_MAX_CHARS
-    # An assignment's own empty list preloads nothing, for that assignment only.
-    assignment = SimpleNamespace(organization_context_mode="inherit", organization_context_categories=[])
-    assert "Preloaded" not in await inj.organization_summary_for(_NO_DB, agent=agent, assignment=assignment)
-    assert "Preloaded software" in await inj.organization_summary_for(_NO_DB, agent=agent)
+    assignment = SimpleNamespace(organization_context_mode="inherit", organization_context_categories=["software"])
+    for text in (
+        await inj.organization_summary_for(_NO_DB, agent=agent),
+        await inj.organization_summary_for(_NO_DB, agent=agent, assignment=assignment),
+    ):
+        assert "Preloaded" not in text
+        assert "Product 0" not in text and "Product 499" not in text, "no row in the prompt"
+        assert "Inventory: 10000 assets, 2000 software, 12 asset groups, 7 primary assets." in text
+        for name in INVENTORY_QUERY_TOOLS:
+            assert name in text
+        assert len(text) <= inj.SUMMARY_MAX_CHARS + 1 + inj.INVENTORY_LINE_MAX_CHARS
+
+
+def test_the_inventory_line_is_bounded_and_empty_without_sizes() -> None:
+    assert inj.render_inventory_line(None) == ""
+    assert inj.render_inventory_line({}) == ""
+    line = inj.render_inventory_line({"assets": 10**12, "software": 10**12})
+    assert line.startswith("Inventory: ") and len(line) <= inj.INVENTORY_LINE_MAX_CHARS
+    assert "0 asset groups, 0 primary assets" in line
 
 
 async def test_global_default_preloads_nothing(monkeypatch: pytest.MonkeyPatch) -> None:

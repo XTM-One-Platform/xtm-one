@@ -655,12 +655,15 @@ generated from `OrganizationProfile`: every list field but `regions` and
 `tracked_organizations`; a list added to the model is a category without a
 change there. `get_organization_context(category, query, offset, limit)`
 reads one by page (at most 200 rows, `query` a case-insensitive substring
-over the row's values); `category="*"` lists them with their sizes. The
-categories preloaded after the block come from the same cascade on
-`organization_context_categories` (platform JSON list, default `[]`; agent
-and assignment NULL = inherit, a list, empty included, wins;
-`resolve_categories`), each capped at `PRELOAD_MAX_CHARS` = 6,000 characters
-with the call that reads the rest. The brief notice of an incomplete
+over the row's values); `category="*"` lists them with their sizes. No
+list is preloaded into a prompt (#2443): after the block comes one
+inventory line (`render_inventory_line`, at most `INVENTORY_LINE_MAX_CHARS`
+= 400 characters) with the asset, software, group and primary asset counts
+(`organization_inventory_query.inventory_sizes`) and the names of the query
+functions (`inventory_query.INVENTORY_QUERY_TOOLS`), never a row; Copilot
+mode leaves it out. `organization_context_categories` (platform, agent,
+assignment) is still stored and accepted by the API for one release, and
+ignored. The brief notice of an incomplete
 profile ("Organization context incomplete: missing ...", #11586) and the
 CTEM-only fields (`CTEM_ONLY_FIELDS`: PIRs, risk appetite thresholds,
 loaded hourly rate, ticketing target) are CTEM-scoped (#1384): the summary,
@@ -679,9 +682,7 @@ set in the agent and assignment forms, `PUT /api/v1/agents/{id}`,
 defaults are `GET|PUT /api/v1/organization-context/injection` (`enabled`,
 `categories`, `available_categories` read-only). Every seeded agent
 inherits (the seed never writes the mode, so a person's opt-out survives a
-refresh); the CTEM vulnerability orchestrator, triage analyst and
-remediation coordinator preload `tech_stack`, `primary_assets`,
-`assets_exposure` and `prioritization_policy` (#11543).
+refresh).
 
 The #11543 categories ride the same registry: `assets_exposure` and
 `enterprise_knowledge` are list fields (generated), `prioritization_policy`

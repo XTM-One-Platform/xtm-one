@@ -68,8 +68,6 @@ _LABELS: dict[str, str] = {
 #: Rows a page answers by default, and at most.
 DEFAULT_PAGE = 50
 MAX_PAGE = 200
-#: Cap of ONE preloaded category in the prompt, in characters (about 1,500 tokens).
-PRELOAD_MAX_CHARS = 6000
 
 
 @dataclass(frozen=True)
@@ -180,22 +178,6 @@ def checked_for_api(value: object) -> list[str] | None:
         return check_categories(value)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
-
-
-def resolve_categories(
-    *,
-    platform_categories: object,
-    agent_categories: object = None,
-    assignment_categories: object = None,
-) -> list[str]:
-    """The preloaded categories: assignment > agent > platform, the most specific explicit list wins.
-
-    ``None`` inherits; an explicit empty list preloads nothing.
-    """
-    for value in (assignment_categories, agent_categories):
-        if value is not None:
-            return normalize_categories(value)
-    return normalize_categories(platform_categories)
 
 
 def rows_of(profile: OrganizationProfile, category: Category) -> list[Any]:
@@ -422,30 +404,3 @@ def render_categories(counts: dict[str, int]) -> str:
         )
     lines += [index_line(category, counts.get(category.name, 0)) for category in available()]
     return "\n".join(lines)
-
-
-def render_preloaded(category: Category, rows: list[Any]) -> str:
-    """A category preloaded into the prompt, at most :data:`PRELOAD_MAX_CHARS`, the rest named with its call."""
-    from app.services.content_safety import wrap_untrusted
-
-    if not rows:
-        return f"Preloaded {category.name} ({category.label}): not filled. Do not guess it."
-    kept = list(rows)
-    while True:
-        shown = len(kept)
-        rest = (
-            f" Showing {shown} of {len(rows)}; the rest: "
-            f'get_organization_context(category="{category.name}", offset={shown}).'
-            if shown < len(rows)
-            else ""
-        )
-        text = "\n".join(
-            [
-                f"Preloaded {category.name} ({category.label}), {len(rows)} rows.{rest}",
-                wrap_untrusted(json.dumps(kept, ensure_ascii=False), "organization profile", stable=True),
-            ]
-        )
-        if len(text) <= PRELOAD_MAX_CHARS or shown <= 1:
-            return text if len(text) <= PRELOAD_MAX_CHARS else text[: PRELOAD_MAX_CHARS - 3] + "..."
-        # Halve while far over, then one row at a time, so a 500-row list stays cheap.
-        kept = kept[: max(1, shown // 2)] if len(text) > 2 * PRELOAD_MAX_CHARS else kept[:-1]
