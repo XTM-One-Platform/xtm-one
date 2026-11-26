@@ -123,7 +123,8 @@ async def test_the_job_deletes_signals_and_their_cases_with_no_orphan() -> None:
     async with _database() as sessions, sessions() as session:
         world = await _world(session)
         admin = await session.get(User, world["admin"])
-        status = purge.new_status("job", admin, resync=False)
+        # The job id is a UUID in production (start_job): the audit row stores it as entity_id.
+        status = purge.new_status(str(uuid.uuid4()), admin, resync=False)
         done = await purge.run_job(status, world["admin"], sessions=sessions)
         assert done["state"] == "done", done["error"]
         assert done["steps"]["purge"]["counts"] == {
@@ -190,7 +191,9 @@ async def test_after_a_purge_the_same_pass_raises_the_same_outside_signals_again
         assert again["counts"]["recorded"] == 0  # two identical passes record nothing
 
         admin = await session.get(User, world["admin"])
-        done = await purge.run_job(purge.new_status("job", admin, resync=False), world["admin"], sessions=sessions)
+        done = await purge.run_job(
+            purge.new_status(str(uuid.uuid4()), admin, resync=False), world["admin"], sessions=sessions
+        )
         assert done["state"] == "done", done["error"]
         session.expire_all()
 
