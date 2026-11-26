@@ -287,7 +287,7 @@ async def apply_recompute(
             if signal is not None:
                 from app.services import ctem_case_loop as loop
 
-                loop.join_case(db, signal, case, events=events, now=now)
+                await loop.join_case(db, signal, case, events=events, now=now)
         if platform_maps:
             # The fix of each platform follows what the members' source names now (#1572).
             platforms = fold_by_platform(platform_maps)

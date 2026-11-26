@@ -386,10 +386,18 @@ async def open_from_signal(
 ) -> CtemCase | None:
     """Open (or join) the case of a confirmed, in-scope signal; ``None`` when the signal opens none.
 
+    While an administrator paused case opening for *vertical* (#1951) it opens and joins nothing:
+    the signal stays confirmed with ``case_id`` null. The switch is read here, fresh, whatever the
+    caller checked before (#2536): the single choke point no automatic path can pass.
+
     The caller commits, then calls :func:`publish_pending` with *events*.
     """
     decision = signal.decision or {}
     if signal.state != "confirmed" or decision.get("outcome") != "case" or signal.case_id is not None:
+        return None
+    from app.services import ctem_case_opening as case_opening
+
+    if not await case_opening.is_on(db, vertical):
         return None
     now = now or datetime.now(UTC)
     fix = fix_of(signal)
@@ -484,7 +492,7 @@ async def _resolved_on_inventory(
     return True
 
 
-def join_case(
+async def join_case(
     db: AsyncSession,
     signal: CtemSignal,
     case: CtemCase,
@@ -495,10 +503,15 @@ def join_case(
     """Join a confirmed, in-scope signal to the case that already holds its fix, whatever the case's state (#1529).
 
     A source reader's signal about an issue a case already groups joins that
-    case instead of opening a second one; ``False`` when the signal opens no case.
+    case instead of opening a second one; ``False`` when the signal opens no case,
+    and while case opening is paused for the case's vertical (#2536).
     """
     decision = signal.decision or {}
     if signal.state != "confirmed" or decision.get("outcome") != "case" or signal.case_id is not None:
+        return False
+    from app.services import ctem_case_opening as case_opening
+
+    if not await case_opening.is_on(db, case.vertical):
         return False
     _link(db, signal, case, vertical=case.vertical, events=events, now=now or datetime.now(UTC), created=False)
     return True
@@ -1445,8 +1458,12 @@ async def open_waiting(
 ) -> None:
     """Open the cases of up to ``SWEEP_BATCH`` waiting confirmed signals, oldest sighting first; adds to *counts*.
 
-    The caller checked :func:`ctem_case_opening.may_open_waiting` and commits.
+    The caller checked :func:`ctem_case_opening.may_open_waiting` and commits. The switch is read
+    again before every signal: an administrator who pauses case opening mid-pass stops the pass at
+    the next signal, not after the batch (#2536).
     """
+    from app.services import ctem_case_opening as case_opening
+
     waiting = (
         (
             await db.execute(
@@ -1460,6 +1477,9 @@ async def open_waiting(
         .all()
     )
     for signal in waiting:
+        if not await case_opening.is_on(db, vertical):
+            logger.info("CTEM case opening paused for %s mid-pass; the rest of the batch waits", vertical)
+            break
         before = len(events.items) if events is not None else 0
         frames_before = len(events.frames) if events is not None else 0
         # Read before the savepoint: its rollback expires the signal, and a lazy refresh on an

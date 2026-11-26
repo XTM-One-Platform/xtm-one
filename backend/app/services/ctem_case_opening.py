@@ -11,6 +11,13 @@ of them opens a case: the signal stays ``confirmed`` with ``case_id`` null and
 waits. The rest of the sweep (SLA breaches, announce, stall) keeps running; a
 manual split still creates a case.
 
+The pause is enforced at the single choke point too (#2536):
+``open_from_signal`` and ``join_case`` read the switch fresh from the database
+before they link a signal, ``open_waiting`` re-reads it before every signal and
+stops at once, and turning it off cancels the drains this process runs. A drain
+or a sweep already in flight when an administrator turns case opening off
+opens nothing after that commit.
+
 The switch is one persisted platform setting,
 ``platform_settings.ctem_case_opening`` (``{vertical: false}`` pauses it; NULL
 or a missing vertical is on, the behaviour before the switch). Turning it on
@@ -58,11 +65,16 @@ async def paused_verticals(db: AsyncSession) -> set[str]:
 
 async def read_paused_verticals(db: AsyncSession) -> set[str]:
     """The stored read behind :func:`paused_verticals` (the unit suite stubs that one; tests/conftest.py)."""
-    from app.api.v1.platform_settings_helpers import peek_platform_settings
+    from app.models.platform_settings import PlatformSettings
 
-    settings_row = await peek_platform_settings(db)
-    stored = (settings_row.ctem_case_opening if settings_row is not None else None) or {}
-    return {str(vertical) for vertical, on in stored.items() if on is False}
+    # A column read, never the session's identity-map copy of the row: a drain or a sweep that holds
+    # its transaction for seconds sees the switch an administrator committed meanwhile (#2536).
+    stored = await db.scalar(
+        select(PlatformSettings.ctem_case_opening)
+        .order_by(PlatformSettings.created_at.asc(), PlatformSettings.id.asc())
+        .limit(1)
+    )
+    return {str(vertical) for vertical, on in (stored or {}).items() if on is False}
 
 
 async def is_on(db: AsyncSession, vertical: str) -> bool:
@@ -107,6 +119,8 @@ async def set_opening(db: AsyncSession, *, vertical: str, on: bool, actor: User)
         stored.pop(vertical, None)
     else:
         stored[vertical] = False
+        # #2536: a drain started by an earlier "on" stops now; its pass in flight rolls back.
+        stop_drains(vertical)
     settings_row.ctem_case_opening = stored or None
     flag_modified(settings_row, "ctem_case_opening")
     await log_audit(
@@ -181,9 +195,29 @@ async def drain(vertical: str, *, session_factory: Any = None, max_passes: int =
     return totals
 
 
+def _drain_name(vertical: str) -> str:
+    return f"ctem-case-opening-drain:{vertical}"
+
+
+def stop_drains(vertical: str) -> int:
+    """Cancel the drains of *vertical* this process runs; answers how many (#2536).
+
+    A cancelled pass rolls back with its session, so the cases it was opening never land. A drain
+    of another worker stops at its next signal: ``open_waiting`` re-reads the switch before each.
+    """
+    stopped = 0
+    for task in list(_DRAINS):
+        if task.get_name() == _drain_name(vertical) and not task.done():
+            task.cancel()
+            stopped += 1
+    if stopped:
+        logger.info("CTEM case opening paused for %s: %s drain(s) stopped", vertical, stopped)
+    return stopped
+
+
 def start_drain(vertical: str) -> asyncio.Task[Any]:
     """Run :func:`drain` in the background (the PUT answers at once)."""
-    task = asyncio.create_task(drain(vertical), name=f"ctem-case-opening-drain:{vertical}")
+    task = asyncio.create_task(drain(vertical), name=_drain_name(vertical))
     _DRAINS.add(task)
     task.add_done_callback(_DRAINS.discard)
     return task
