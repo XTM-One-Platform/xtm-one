@@ -132,6 +132,8 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
   const [openId, setOpenId] = useState<string | null>(null);
 
   const rows = policy.data?.pirs ?? [];
+  /** The OpenCTIs the last Refresh now could not read: said in the section, never left as an empty table (#2459). */
+  const readErrors = refresh.data?.errors ?? [];
   const open = rows.find((pir) => pir.id === openId) ?? null;
   const sourceOf = (pir: IntelligencePolicyPir) =>
     pir.integration_id ? (integrations.find((integration) => integration.id === pir.integration_id)?.name ?? t_i18n("Integration not found")) : "";
@@ -290,6 +292,13 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
         </p>
       ) : (
         <div className="space-y-2">
+          {readErrors.length > 0 && (
+            <ul role="alert" className="content-compact space-y-1 text-feedback-error-primary" data-testid="settings.organization.intelligence-policy.read-errors">
+              {readErrors.map((error) => (
+                <li key={error.integration_id}>{t_i18n("{integration}: the PIRs could not be read. {reason}", { integration: error.integration, reason: error.reason })}</li>
+              ))}
+            </ul>
+          )}
           {rows.length > 0 && (
             <p className="content-compact text-default-secondary" data-testid="settings.organization.intelligence-policy.count">
               {t_i18n("{enabled, plural, one {# PIR enabled in signals} other {# PIRs enabled in signals}} of {total}", { enabled: enabledCount, total: rows.length })}

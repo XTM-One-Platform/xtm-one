@@ -169,7 +169,7 @@ async def test_an_unknown_action_is_refused(fake_io):
 
 
 async def test_the_triage_route_reads_with_the_callers_rights(monkeypatch):
-    """A non-administrator triages the signals recorded for them; ids or a filter, never both."""
+    """A person with a CTEM decide right triages the organization's signals; ids or a filter, never both (#2441)."""
     import uuid
 
     import httpx
@@ -179,6 +179,7 @@ async def test_the_triage_route_reads_with_the_callers_rights(monkeypatch):
     from app.api.v1 import ctem_signals as api_module
     from app.core.config import settings
     from app.core.database import get_db
+    from app.services import ctem_access
     from app.services import ctem_signals as signals
 
     alice = uuid.uuid4()
@@ -194,6 +195,11 @@ async def test_the_triage_route_reads_with_the_callers_rights(monkeypatch):
 
     monkeypatch.setattr(api_module, "get_primary", _primary)
     monkeypatch.setattr(signals, "select_signals", _select)
+
+    async def _decide(_db, _user):
+        return "decide"
+
+    monkeypatch.setattr(ctem_access, "level", _decide)
 
     class _Db:
         async def commit(self):
@@ -221,7 +227,7 @@ async def test_the_triage_route_reads_with_the_callers_rights(monkeypatch):
         unknown = await http.post("/api/v1/ctem-signals/triage", json={"action": "delete", "ids": [str(uuid.uuid4())]})
     assert ok.status_code == 200, ok.text
     assert ok.json() == {"matched": 150, "counts": {"changed": 150, "skipped": 0, "discarded": 150}}
-    assert seen["recorded_by"] == str(alice) and seen["state"] == "to_validate"
+    assert seen["recorded_by"] is None and seen["state"] == "to_validate"
     assert both.status_code == 422 and unknown.status_code == 422
 
 

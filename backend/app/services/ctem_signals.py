@@ -515,10 +515,10 @@ def signal_event_id(name: str, signal: CtemSignal, marker: str) -> str:
 
 
 async def user_reads_signal(db: AsyncSession, user_id: str, signal_id: Any) -> bool:
-    """Whether *user_id* reads the signal *signal_id*: an administrator, a CTEM view or decide
-    right (``services/ctem_access.py``), or the signal's own recorder.
+    """Whether *user_id* reads the signal *signal_id*: an administrator or a CTEM view or decide
+    right (``services/ctem_access.py``), re-read at delivery time.
 
-    The signal API's rule: a listener's signal (``system``) is read only with one of those rights.
+    The signal API's rule (#2441): no CTEM without a right, a person's own signals included.
     """
     from app.models.user import User
     from app.services import ctem_access
@@ -531,8 +531,6 @@ async def user_reads_signal(db: AsyncSession, user_id: str, signal_id: Any) -> b
     recorded_by = (await db.execute(select(CtemSignal.recorded_by).where(CtemSignal.id == sid))).scalar_one_or_none()
     if recorded_by is None:
         return False
-    if recorded_by == str(uid):
-        return True
     user = await db.get(User, uid)
     if bool(getattr(user, "is_admin", False)):
         return True

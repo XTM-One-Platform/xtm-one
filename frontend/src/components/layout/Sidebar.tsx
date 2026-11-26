@@ -53,6 +53,7 @@ import { AiDisabledTip } from "@/components/ui/ai-disabled";
 import { useFormatter } from "@/i18n";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useAuth } from "@/hooks/useAuth";
+import { ctemMayView } from "@/lib/ctem-access";
 import { useColorMode } from "@/hooks/useColorMode";
 import {
   useIsXtmOne, usePlatformConfig, usePlatformEmblemUrl, usePlatformLogoUrl, usePlatformName,
@@ -377,9 +378,11 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
   const mobileOpen = mobileOpenOn === pathname;
   const setMobileOpen = (open: boolean) => setMobileOpenOn(open ? pathname : null);
   const { t_i18n } = useFormatter();
-  const { isAdmin, isGroupManager } = useAuth();
+  const { user, isAdmin, isGroupManager } = useAuth();
   const platformConfig = usePlatformConfig();
   const isXtm = useIsXtmOne();
+  // CTEM only with a right (#2441): an administrator or a CTEM view or decide group.
+  const ctemVisible = isXtm && ctemMayView(user, isAdmin);
   const platformName = usePlatformName();
   const logoSrc = usePlatformLogoUrl();
   const emblemSrc = usePlatformEmblemUrl();
@@ -431,9 +434,9 @@ export function Sidebar({ impersonating = false }: { impersonating?: boolean }) 
     evaluation: evaluationOn,
     /* Intents are XTM One domain content: no row in Copilot mode (#445). */
     intents: isXtm,
-    /* The CTEM cases list is XTM One domain content too: no row in Copilot mode (#1135). */
-    ctemCases: isXtm,
-  }), [chatEnabled, customVariablesEnabled, relaysEnabled, isXtm, platformConfig?.features.ai_adoption, aiEnabled, aiLicensed, deepInvestigationEnabled, videoStudioEnabled, dashboardStudioEnabled, evaluationOn]);
+    /* The CTEM section is XTM One domain content (#1135), for a person with a CTEM right only (#2441). */
+    ctemCases: ctemVisible,
+  }), [chatEnabled, customVariablesEnabled, relaysEnabled, isXtm, platformConfig?.features.ai_adoption, aiEnabled, aiLicensed, deepInvestigationEnabled, videoStudioEnabled, dashboardStudioEnabled, evaluationOn, ctemVisible]);
 
   const sections = useMemo(() => resolveNav(flags, isAdmin, isGroupManager), [flags, isAdmin, isGroupManager]);
   const activePath = useMemo(() => activeNavPath(sections, pathname), [sections, pathname]);

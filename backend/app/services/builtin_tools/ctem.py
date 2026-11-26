@@ -137,9 +137,10 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
                 primary = await get_primary(db)
                 if primary is None:
                     return "No organization is set up yet: there are no signals."
-                if await ctem_access.level(db, scope) == "view":
-                    # A CTEM view right is strictly read only (#1748), as the route.
-                    return f"Refused: {ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
+                reason = await ctem_access.refusal(db, scope, write=True)
+                if reason is not None:
+                    # Checked at call time for the person the turn or run acts for (#1748, #2441).
+                    return f"Refused: {reason} Nothing was changed."
                 from app.models.user import User
 
                 user = await db.get(User, scope)

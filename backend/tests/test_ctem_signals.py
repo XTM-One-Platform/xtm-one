@@ -560,6 +560,7 @@ class _Db:
 ADMIN = str(uuid.uuid4())
 ALICE = str(uuid.uuid4())
 BOB = str(uuid.uuid4())
+CAROL = str(uuid.uuid4())  # no CTEM right (#2441)
 
 
 @pytest.fixture
@@ -600,6 +601,11 @@ def client(store, monkeypatch):
 
     app.dependency_overrides[get_db] = _db
     app.dependency_overrides[get_current_user] = _user
+
+    async def _right(_db: Any, user_id: Any) -> str | None:
+        return "decide" if str(user_id) in (ALICE, BOB) else None  # no CTEM without a right (#2441)
+
+    monkeypatch.setattr("app.services.ctem_access.group_right", _right)
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
 
@@ -660,7 +666,8 @@ async def test_list_filters_by_state_path_and_lens(client, store):
     assert refused.status_code == 422
 
 
-async def test_a_user_reads_only_their_signals_and_an_admin_reads_the_organization(client):
+async def test_a_right_reads_the_organization_and_no_right_reads_nothing(client):
+    """#2441: a CTEM right (or an administrator) reads every signal; without one, even their own is refused."""
     async with client as http:
         mine = (await http.post("/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "a"))).json()
         await http.post(
@@ -671,9 +678,14 @@ async def test_a_user_reads_only_their_signals_and_an_admin_reads_the_organizati
         alice = (await http.get("/api/v1/ctem-signals")).json()
         bob_reads_alice = await http.get(f"/api/v1/ctem-signals/{mine['signal']['id']}", headers={"X-User": BOB})
         admin = (await http.get("/api/v1/ctem-signals", headers={"X-User": ADMIN})).json()
-    assert [s["subject"]["ref"] for s in alice["signals"]] == ["a"]
-    assert bob_reads_alice.status_code == 404
+        carol = await http.get("/api/v1/ctem-signals", headers={"X-User": CAROL})
+        carol_records = await http.post(
+            "/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "c"), headers={"X-User": CAROL}
+        )
+    assert sorted(s["subject"]["ref"] for s in alice["signals"]) == ["a", "b"]
+    assert bob_reads_alice.status_code == 200
     assert admin["total"] == 2
+    assert carol.status_code == 403 and carol_records.status_code == 403
 
 
 async def test_another_users_dedupe_key_never_returns_or_touches_their_signal(client, store):
@@ -721,7 +733,8 @@ async def test_the_paths_count_only_the_signals_the_caller_reads_and_say_not_con
             p["id"]: p
             for p in (await http.get("/api/v1/ctem-signals/paths", headers={"X-User": ADMIN})).json()["paths"]
         }
-    assert alice["stale_asset"]["total"] == 1 and alice["stale_asset"]["counts"]["new"] == 1
+    # A CTEM right reads the organization's signals (#2441).
+    assert alice["stale_asset"]["total"] == 2 and alice["stale_asset"]["counts"]["new"] == 2
     assert admin["stale_asset"]["total"] == 2
     assert alice["stale_asset"]["configured"] is True
     assert alice["surface_drift"] == {**alice["surface_drift"], "total": 0, "configured": False}
@@ -772,7 +785,7 @@ async def test_propose_scope_stores_a_proposal_for_a_readable_watchlisted_signal
         mine = _watchlisted(store, ALICE)
         bobs = _watchlisted(store, BOB)
         ok = await http.post(f"/api/v1/ctem-signals/{mine.id}/propose-scope")
-        other = await http.post(f"/api/v1/ctem-signals/{bobs.id}/propose-scope")
+        other = await http.post(f"/api/v1/ctem-signals/{bobs.id}/propose-scope", headers={"X-User": CAROL})
         mine.decision = {"reason_code": "criticality_unknown", "scope": {"criticality": None}}
         unknown = await http.post(f"/api/v1/ctem-signals/{mine.id}/propose-scope")
     assert ok.status_code == 200
@@ -789,7 +802,7 @@ async def test_propose_scope_stores_a_proposal_for_a_readable_watchlisted_signal
             ],
         }
     ]
-    assert other.status_code == 404
+    assert other.status_code == 403  # no CTEM right (#2441)
     assert unknown.status_code == 409
 
 

@@ -94,7 +94,7 @@ def build(
         row = view_of.summary(case, members, view)
         if row is None:
             continue
-        row.update(view_of.case_position(history.get(case.id, []), view))
+        row.update(view_of.case_position(history.get(case.id, []), view, case.owner_user_id))
         state = row["state"]
         by_state[state] = by_state.get(state, 0) + 1
         is_open = state in OPEN_STATES

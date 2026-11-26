@@ -4501,6 +4501,11 @@ def build_agent_builder_tool(
                 fleet_err = await fleet_scope_error(trigger_type, trig_config, agent.id)
                 if fleet_err is not None:
                     return fleet_err
+                from app.services.platform_events import ctem_event_error
+
+                ctem_err = await ctem_event_error(trigger_type, trig_config, user_id)
+                if ctem_err is not None:
+                    return ctem_err
                 from app.services.trigger_provisioning import provision_spec_error
 
                 provision_err = provision_spec_error(trigger_type, trig_config)
@@ -8246,6 +8251,15 @@ def build_agent_builder_tool(
                 )
                 if fleet_err is not None:
                     return f"{fleet_err} Nothing was saved."
+                from app.services.platform_events import ctem_event_error
+
+                ctem_err = await ctem_event_error(
+                    trigger_type or assignment.trigger_type,
+                    assignment.trigger_config if parsed_config is None else parsed_config,
+                    getattr(assignment, "user_id", None) or user_id,
+                )
+                if ctem_err is not None:
+                    return f"{ctem_err} Nothing was saved."
                 if parsed_config is not None:
                     from app.services.trigger_provisioning import provision_spec_error
 
@@ -12364,12 +12378,13 @@ def build_agent_builder_tool(
 
     async def _list_platform_events(search: str = "") -> str:
         """The platform events a ``platform_event`` trigger subscribes to."""
+        from app.services import ctem_access
         from app.services.platform_events import catalog
 
         needle = (search or "").strip().lower()
-        rows = [
-            e for e in catalog() if not needle or needle in e["event"] or needle in e["description"].lower()
-        ]
+        # The CTEM signal and case events only for a person with a CTEM right (#2441).
+        offered = catalog(ctem=await ctem_access.wires_ctem(user_id))
+        rows = [e for e in offered if not needle or needle in e["event"] or needle in e["description"].lower()]
         if not rows:
             return "No platform event matches."
         lines = [

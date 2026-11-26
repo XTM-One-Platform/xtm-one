@@ -4682,34 +4682,39 @@ async def run_agent_chat(
                 composite.add_tools(
                     *build_user_admin_tools(user_id=user_id, caller_is_admin=_caller_admin, agent_name=agent.name)
                 )
+            # No CTEM tool of any kind for a person with no CTEM right (#2441): the
+            # built-in CTEM agents' tools and the ctem / ctem_read / ctem_repair groups.
+            from app.services import ctem_access as _ctem_access
+
+            _ctem_ok = await _ctem_access.wires_ctem(user_id)
             # The CTEM case tools (#11545): the Remediation Coordinator and
             # the Mobilization Analyst, as the person asking, XTM One only.
             from app.services.builtin_tools import build_ctem_case_tools, offers_ctem_case_tools
 
-            if offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_case_tools(user_id=user_id, agent_id=str(agent.id)))
             # The CTEM signal tools (#826): the CTEM agents that see a trigger first.
             from app.services.builtin_tools import build_ctem_signal_tools, offers_ctem_signal_tools
 
-            if offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=user_id))
             # The read-only CTEM group (#1337): bound on any agent, the reads the
             # CTEM agents above do not already carry.
             from app.services.builtin_tools import ctem_read_tools_for
 
-            ctem_read = ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            ctem_read = ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=user_id) if _ctem_ok else None
             if ctem_read is not None:
                 composite.add_tools(*ctem_read)
             # The CTEM group (#1748): the signal and case tools on any agent, the owner's rights.
             from app.services.builtin_tools import ctem_tools_for
 
-            ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=user_id) if _ctem_ok else None
             if ctem_group is not None:
                 composite.add_tools(*ctem_group)
             # The CTEM administrator repairs (#1778): the CTEM case agents, or the group bound.
             from app.services.builtin_tools import ctem_repair_tools_for
 
-            ctem_repair = ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            ctem_repair = ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=user_id) if _ctem_ok else None
             if ctem_repair is not None:
                 composite.add_tools(*ctem_repair)
             # The learned skill (#914): a built-in agent records durable lessons.

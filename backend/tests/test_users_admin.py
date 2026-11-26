@@ -34,6 +34,11 @@ def _make_db(ctem_id: uuid.UUID | None):
     3. Anything else — return ``None``. The route doesn't run any other
        SELECT before ``db.flush()``.
 
+    After ``db.flush()`` the route joins the new account to "CTEM Viewers"
+    (#2441): those statements are counted apart in ``post_flush_count`` and
+    answer ``None`` (the group is not seeded), so ``execute_count`` keeps
+    pinning the SELECTs that run before the flush.
+
     The stub captures (a) the ``User`` object passed to ``db.add`` so
     the test can assert on its fields, (b) whether ``db.flush()`` and
     ``db.commit()`` were awaited, and (c) the live ``execute_count`` so
@@ -48,17 +53,22 @@ def _make_db(ctem_id: uuid.UUID | None):
         "flush_called": False,
         "commit_called": False,
         "execute_count": 0,
+        "post_flush_count": 0,
     }
 
     class _Result:
-        def __init__(self, value):
+        def __init__(self, value: object) -> None:
             self._value = value
 
-        def scalar_one_or_none(self):
+        def scalar_one_or_none(self) -> object:
             return self._value
 
     class _DB:
         async def execute(self, _stmt):
+            if captured["flush_called"]:
+                # CTEM Viewers join (#2441): the group is not seeded here.
+                captured["post_flush_count"] += 1  # type: ignore[operator]
+                return _Result(None)
             captured["execute_count"] += 1  # type: ignore[operator]
             call = captured["execute_count"]
             if call == 1:
@@ -137,6 +147,10 @@ async def test_create_user_assigns_ctem_assistant_in_xtm_one_mode(monkeypatch, a
         f"CTEM slug lookup); got {captured['execute_count']}"
     )
     assert resp.email == "alice@example.com"
+    # The new account is offered to "CTEM Viewers" once, after the flush.
+    assert captured["post_flush_count"] == 1, (
+        f"the CTEM Viewers group lookup must run once after the flush; got {captured['post_flush_count']}"
+    )
 
 
 async def test_create_user_skips_ctem_assignment_in_copilot_mode(monkeypatch, admin):
