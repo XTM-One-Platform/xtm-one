@@ -229,9 +229,11 @@ describe("SignalSourcesPanel", () => {
     );
 
     // A source of a connected provider not set up is listed with its own words, never folded as "Not connected".
+    // The wide cell keeps one line: the first source, the second folded into "+1 more" (UX round 1 on #2509, B1).
     const vulnSources = within(row("new_vulnerability")).getAllByTestId("ctem-signal-source");
-    expect(vulnSources.map((s) => s.getAttribute("data-state"))).toEqual(["bound", "not_set_up"]);
-    expect(vulnSources[1].textContent).toContain("Not set up");
+    expect(vulnSources.map((s) => s.getAttribute("data-state"))).toEqual(["bound"]);
+    expect(within(row("new_vulnerability")).getByTestId("ctem-signal-sources-more").textContent).toBe("+1 more");
+    expect(within(row("new_vulnerability")).getByTestId("ctem-signal-sources-compact").textContent).toContain("Not set up");
 
     // Nothing on: the empty state, and Connect on the first source still offered as the row's action.
     expect(within(row("code_flaw")).queryByTestId("ctem-signal-source")).toBeNull();
@@ -240,7 +242,7 @@ describe("SignalSourcesPanel", () => {
     expect(within(row("code_flaw")).getByRole("button", { name: "Connect" })).toBeTruthy();
   });
 
-  it("keeps a path with many sources to one line: the first ones, then +N more (UX round 1 on #2509, B1)", async () => {
+  it("keeps a path with many sources to one line: the first one, then +N more (UX round 1 on #2509, B1)", async () => {
     const many = path({
       id: "new_exposure",
       label: "New exposure",
@@ -259,9 +261,9 @@ describe("SignalSourcesPanel", () => {
     );
     const rows = await screen.findAllByTestId("ctem-signal-sources-path");
     const row = rows.find((r) => r.getAttribute("data-path") === "new_exposure") as HTMLElement;
-    expect(within(row).getAllByTestId("ctem-signal-source")).toHaveLength(2);
-    expect(within(row).getByTestId("ctem-signal-sources-more").textContent).toBe("+3 more");
-    // A folded source is not drawn on the row: it is in the tooltip of "+3 more".
+    expect(within(row).getAllByTestId("ctem-signal-source")).toHaveLength(1);
+    expect(within(row).getByTestId("ctem-signal-sources-more").textContent).toBe("+4 more");
+    // A folded source is not drawn on the row: it is in the tooltip of "+4 more".
     expect(within(row).queryByText("Hook 4")).toBeNull();
   });
 

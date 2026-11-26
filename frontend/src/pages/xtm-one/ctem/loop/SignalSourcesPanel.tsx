@@ -148,7 +148,7 @@ function SourceItem({
     <Tip content={tip}>
       <span
         tabIndex={tabIndex}
-        className="inline-flex min-w-0 items-center gap-1.5 rounded-sm"
+        className="inline-flex min-w-0 items-center gap-1.5 overflow-hidden rounded-sm"
         data-testid="ctem-signal-source"
         data-provider={source.provider}
         data-kind={source.kind}
@@ -195,7 +195,7 @@ function UnusedSources({ sources }: { sources: CtemSignalPathSource[] }) {
 }
 
 /** How many sources a wide row lists before "+N more" (UX round 1 on #2509, B1). */
-const INLINE_SOURCES = 2;
+const INLINE_SOURCES = 1;
 
 /** The sources past the first ones of a wide row: one muted item, the list with each state in its tooltip. */
 function MoreSources({
@@ -309,8 +309,8 @@ function SourceList({
   const notUsed = (s: CtemSignalPathSource) => sourceState(s, connected) === "excluded";
   const unused = shown.some((s) => !notUsed(s)) ? shown.filter(notUsed) : [];
   const listed = unused.length > 0 ? shown.filter((s) => !notUsed(s)) : shown;
-  // One line, never a third row height (UX round 1 on #2509, B1): the first sources, then "+N more" with the
-  // whole list in the DS tooltip, as the folded variant does.
+  // One line, never a third row height (UX round 1 on #2509, B1): the first source, then "+N more" with the
+  // rest in the DS tooltip, as the folded variant does. Two sources with their kind and state never fit the cell.
   const inline = listed.slice(0, INLINE_SOURCES);
   const more = listed.slice(INLINE_SOURCES);
   return (

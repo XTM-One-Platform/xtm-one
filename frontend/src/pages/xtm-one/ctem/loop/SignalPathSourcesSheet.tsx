@@ -419,7 +419,7 @@ export function SignalPathSourcesSheet({
     {
       key: "status",
       header: "Status",
-      width: 136,
+      width: 120,
       sortValue: (row) => STATE_RANK[row.state],
       csv: (row) => t_i18n(stateLabel(row.state)),
       cell: (row) => <SourceStatus row={row} platformSources={platformSources} />,
@@ -428,7 +428,8 @@ export function SignalPathSourcesSheet({
       key: "count_30d",
       header: "Signals (30 days)",
       align: "right",
-      width: 136,
+      // Wide enough for the header and its sort mark (UX A3 of #2436).
+      width: 168,
       hideable: true,
       firstSort: "desc",
       sortValue: (row) => row.source.count_30d ?? 0,
@@ -440,7 +441,7 @@ export function SignalPathSourcesSheet({
       header: "Last signal",
       hideable: true,
       hideBelow: "4xl",
-      width: 136,
+      width: 128,
       sortValue: (row) => row.source.last_signal_at ?? "",
       csv: (row) => row.source.last_signal_at ?? "",
       cell: (row) =>
