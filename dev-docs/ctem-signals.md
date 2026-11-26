@@ -534,7 +534,17 @@ order:
    finds its difference again (a raised port leaves the host's baseline ports, a
    raised new host leaves the baseline). No other source keeps raised state
    outside the signal row.
-3. **Resync**, only when the administrator ticked it (unchecked by default).
+3. **Resync**, only when the administrator ticked it (unchecked by default),
+   `app.services.ctem_signal_resync`, recording through the paused intake for this
+   step only: the OpenCTI entities of the live listener's types (paths 1, 2, 10)
+   created or updated in the last 30 days, from every enabled OpenCTI source as
+   its run-as, each fed to `ctem_signal_listeners.note_event` as an `update`
+   delivery (same extractor, exclusions, internal-id dedupe and scope gate as
+   live); then the attack surface (5, 6, 7) and evidence health (9, 12) passes,
+   once each. Not resynced, named in the job's `skipped` counts: PIR scores
+   (OpenCTI attaches them on its playbook delivery only), path 11 (needs a live
+   delivery's organization annotation), and the open findings of paths 3, 4, 8
+   (Aikido, GitHub and OpenAEV deliver them by event; no listing is wired).
 4. **Resume intake**, always, also after a failure, which the job status and the
    audit row report.
 
