@@ -119,7 +119,7 @@ def shares_slots(run_type: object) -> bool:
     return run_type in SHARED_SLOT_TRIGGER_TYPES
 
 
-def event_run_working_window(trigger_context: dict | None) -> int | None:
+def event_run_working_window(trigger_context: dict[str, Any] | None) -> int | None:
     """The working window, in tokens, of an event-driven run (#2430).
 
     A run of a platform event, an integration event or a webhook

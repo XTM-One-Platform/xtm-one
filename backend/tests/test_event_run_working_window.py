@@ -17,8 +17,11 @@ keep the model's window.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
+from app.core.config import settings
 from app.llm.base import ChatMessage, ChatResponse
 from app.services import assignment_dispatch
 from app.tools import agent_loop as al
@@ -44,13 +47,13 @@ class _BigWindowLLM(_ScriptedLLM):
         self.request_chars: list[int] = []
         self.request_tools: list[dict[str, str]] = []
 
-    async def chat(self, messages, model=None, tools=None, **kwargs):
+    async def chat(self, messages: Any, model: Any = None, tools: Any = None, **kwargs: Any) -> Any:  # type: ignore[override]
         self.request_chars.append(sum(len(m.content or "") for m in messages))
-        self.request_tools.append({m.tool_call_id: m.content or "" for m in messages if m.role == "tool"})
-        return await super().chat(messages, model=model, tools=tools, **kwargs)
+        self.request_tools.append({m.tool_call_id or "": m.content or "" for m in messages if m.role == "tool"})
+        return await super().chat(messages, model=model, tools=tools, **kwargs)  # type: ignore[no-untyped-call]
 
 
-async def _single_case_loop(**kwargs) -> _BigWindowLLM:
+async def _single_case_loop(**kwargs: Any) -> _BigWindowLLM:
     """46 tool-call-only steps of one 12,000-character read each, then the answer."""
     script = [_tool_call_response(_call(f"c{i}", i)) for i in range(_CALLS)]
     script.append(ChatResponse(content="Case worked: owner, validation and ticket written.", model="stub"))
@@ -69,14 +72,14 @@ async def _single_case_loop(**kwargs) -> _BigWindowLLM:
     return llm
 
 
-def test_the_working_window_is_the_smaller_of_the_two():
+def test_the_working_window_is_the_smaller_of_the_two() -> None:
     assert al._working_window(1_000_000, 128_000) == 128_000
     assert al._working_window(64_000, 128_000) == 64_000, "never larger than the model's"
     assert al._working_window(1_000_000, None) == 1_000_000
     assert al._working_window(1_000_000, 0) == 1_000_000
 
 
-def test_the_turn_protection_holds_one_live_budget_under_a_working_window():
+def test_the_turn_protection_holds_one_live_budget_under_a_working_window() -> None:
     live = al._compute_live_tool_result_budget(_WORKING_WINDOW)
     assert al._turn_protection_budget(1_000_000, _WORKING_WINDOW) == live
     # Unchanged without one: four live budgets of the model's window.
@@ -85,7 +88,7 @@ def test_the_turn_protection_holds_one_live_budget_under_a_working_window():
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("_quiet_langfuse")
-async def test_a_long_tool_call_only_loop_on_a_1m_window_keeps_its_requests_bounded():
+async def test_a_long_tool_call_only_loop_on_a_1m_window_keeps_its_requests_bounded() -> None:
     """The acceptance test of #2430: after the first calls, no request of a
     46-call loop carries more than the working window's live budget of tool
     results plus the batch it shows and the stubs of the cleared ones."""
@@ -120,12 +123,14 @@ async def test_a_long_tool_call_only_loop_on_a_1m_window_keeps_its_requests_boun
         ("manual", None),
     ],
 )
-def test_only_event_driven_runs_get_the_working_window(monkeypatch, trigger_type, expected):
-    monkeypatch.setattr(assignment_dispatch.settings, "agent_loop_event_run_working_window_tokens", 128_000)
+def test_only_event_driven_runs_get_the_working_window(
+    monkeypatch: pytest.MonkeyPatch, trigger_type: str, expected: int | None
+) -> None:
+    monkeypatch.setattr(settings, "agent_loop_event_run_working_window_tokens", 128_000)
     assert assignment_dispatch.event_run_working_window({"type": trigger_type}) == expected
 
 
-def test_zero_switches_the_working_window_off(monkeypatch):
-    monkeypatch.setattr(assignment_dispatch.settings, "agent_loop_event_run_working_window_tokens", 0)
+def test_zero_switches_the_working_window_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "agent_loop_event_run_working_window_tokens", 0)
     assert assignment_dispatch.event_run_working_window({"type": "platform_event"}) is None
     assert assignment_dispatch.event_run_working_window(None) is None
