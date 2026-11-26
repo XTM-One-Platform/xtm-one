@@ -258,14 +258,27 @@ def _now() -> str:
 INTERRUPTED_ERROR = "interrupted: the job stopped before its end (its process restarted); start a new purge"
 
 
-def _interrupted(status: dict[str, Any]) -> dict[str, Any]:
-    """*status* read back as a failed job (#2539): the step it reached is failed, its counts kept."""
+def _interrupted(status: dict[str, Any], *, paused: bool) -> dict[str, Any]:
+    """*status* read back as a failed job (#2539): the step it reached is failed, its counts kept.
+
+    *paused* is whether signal intake is still paused (``PAUSE_KEY`` present). Its steps say
+    what is true now: with the pause gone, intake runs again, so ``resume`` is ``done`` and a
+    ``resync`` that never started is ``skipped``; with the pause still there, ``resume`` stays
+    ``pending`` and ``intake_paused`` is true so the dialog says intake is still paused.
+    """
     status = json.loads(json.dumps(status))
+    steps = status.get("steps", {})
     step = status.get("step") or "pause"
-    if step in status.get("steps", {}):
-        status["steps"][step]["state"] = "failed"
+    if step in steps:
+        steps[step]["state"] = "failed"
+    if not paused:
+        if "resume" in steps:
+            steps["resume"]["state"] = "done"
+        if steps.get("resync", {}).get("state") == "pending":
+            steps["resync"]["state"] = "skipped"
     status["state"] = "failed"
     status["interrupted"] = True
+    status["intake_paused"] = paused
     status["error"] = status.get("error") or INTERRUPTED_ERROR
     return status
 
@@ -284,13 +297,13 @@ async def read_status() -> dict[str, Any] | None:
         if raw:
             stored: dict[str, Any] = json.loads(raw)
             if stored.get("state") == "running" and not await client.exists(JOB_LOCK_KEY):
-                return _interrupted(stored)
+                return _interrupted(stored, paused=_LOCAL["paused"] or bool(await client.exists(PAUSE_KEY)))
             return stored
     except Exception:
         logger.info("CTEM signal purge: status read from this process only", exc_info=True)
     local: dict[str, Any] | None = _LOCAL["status"]
     if local and local.get("state") == "running" and not any(not t.done() for t in _JOBS):
-        return _interrupted(local)
+        return _interrupted(local, paused=bool(_LOCAL["paused"]))
     return local
 
 

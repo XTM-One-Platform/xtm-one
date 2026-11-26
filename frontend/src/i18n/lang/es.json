@@ -22013,6 +22013,7 @@
   "The purge stopped before its end because its process restarted. You can start a new purge.": "La purga se detuvo antes de terminar porque su proceso se reinició. Puede iniciar una nueva purga.",
   "You can close this dialog: the purge goes on.": "Puede cerrar este diálogo: la purga continúa.",
   "Signal intake is running again.": "La recepción de señales vuelve a funcionar.",
+  "Signal intake is still paused.": "La recepción de señales sigue en pausa.",
   "Pause signal intake": "Pausar la recepción de señales",
   "Delete the signals and their cases": "Eliminar las señales y sus casos",
   "Resync from the sources": "Resincronizar desde las fuentes",

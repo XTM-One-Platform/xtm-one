@@ -571,8 +571,12 @@ A job whose process restarts mid-job never writes its end: its status stays
 `running` while the job lock and the intake pause expire (2 h). `read_status`
 reports such a status (`running` with no job lock) as interrupted (#2539):
 `state` `failed`, `interrupted` true, a reason in `error`, the step it reached
-failed and the counts reached kept. The progress dialog stops polling and the
-purge button opens the confirm dialog again.
+failed and the counts reached kept. Its steps say what is true now:
+`intake_paused` reads `PAUSE_KEY`; once the pause is gone, intake runs again, so
+`resume` reads `done` and a `resync` that never started reads `skipped`; while
+the pause is still there, `resume` stays `pending` and the dialog says intake is
+still paused. The progress dialog stops polling and the purge button opens the
+confirm dialog again.
 
 ## 7. Tests
 

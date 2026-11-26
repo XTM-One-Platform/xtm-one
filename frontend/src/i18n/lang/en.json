@@ -22013,6 +22013,7 @@
   "The purge stopped before its end because its process restarted. You can start a new purge.": "The purge stopped before its end because its process restarted. You can start a new purge.",
   "You can close this dialog: the purge goes on.": "You can close this dialog: the purge goes on.",
   "Signal intake is running again.": "Signal intake is running again.",
+  "Signal intake is still paused.": "Signal intake is still paused.",
   "Pause signal intake": "Pause signal intake",
   "Delete the signals and their cases": "Delete the signals and their cases",
   "Resync from the sources": "Resync from the sources",

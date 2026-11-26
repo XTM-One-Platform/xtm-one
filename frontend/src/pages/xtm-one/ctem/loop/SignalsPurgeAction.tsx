@@ -164,7 +164,9 @@ export function SignalsPurgeAction() {
               {running || !job
                 ? t_i18n("You can close this dialog: the purge goes on.")
                 : job.interrupted
-                  ? t_i18n("The purge stopped before its end because its process restarted. You can start a new purge.")
+                  ? `${t_i18n("The purge stopped before its end because its process restarted. You can start a new purge.")} ${
+                      job.intake_paused ? t_i18n("Signal intake is still paused.") : t_i18n("Signal intake is running again.")
+                    }`
                   : (job.error ?? t_i18n("Signal intake is running again."))}
             </DialogDescription>
           </DialogHeader>
