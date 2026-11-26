@@ -38,6 +38,10 @@ class _Db:
     def add(self, row):
         self.added.append(row)
 
+    async def execute(self, _query: object) -> SimpleNamespace:
+        # A close reads the case's open items and timers (#2494): none in this fake session.
+        return SimpleNamespace(scalars=lambda: [])
+
 
 def _case(**kw) -> CtemCase:
     base = {
@@ -488,6 +492,58 @@ async def test_a_bulk_accept_risk_without_a_reason_writes_nothing(api):
     body = response.json()
     assert body["updated"] == [] and "reason" in body["failed"][0]["reason"]
     assert api.case.state == "new" and api.db.added == []
+
+
+@pytest.fixture
+def closes(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, str]]:
+    """Records each close's cancel of the case's open work (#2494), as the store calls it."""
+    from app.services import ctem_case_delete
+
+    seen: list[tuple[Any, str]] = []
+
+    async def _cancel(_db: object, case: Any, *, item_result: str, **_kw: object) -> tuple[list[Any], list[Any]]:
+        seen.append((case.id, item_result))
+        return [], []
+
+    monkeypatch.setattr(ctem_case_delete, "cancel_case_work", _cancel)
+    return seen
+
+
+async def test_a_patch_accepting_risk_cancels_the_open_work_of_the_case(
+    api: SimpleNamespace, closes: list[tuple[Any, str]]
+) -> None:
+    """#2494: the single PATCH into a closed state cancels the case's gates, loop items and timers."""
+    async with api.client as client:
+        response = await client.patch(
+            f"/api/v1/ctem-cases/{api.case.id}",
+            json={
+                "state": "accepted_risk",
+                "owner_user_id": str(api.user.id),
+                "reason": "WAF rule in place",
+                "accepted_until": (NOW + timedelta(days=30)).isoformat(),
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert [case_id for case_id, _ in closes] == [api.case.id]
+    assert "moved to accepted_risk" in closes[0][1] and str(api.user.id) in closes[0][1]
+
+
+async def test_a_bulk_resolve_cancels_the_open_work_and_a_bulk_start_does_not(
+    api: SimpleNamespace, closes: list[tuple[Any, str]]
+) -> None:
+    """#2494: the bulk endpoint closes through the same path; a move between open states cancels nothing."""
+    async with api.client as client:
+        started = await client.post(
+            "/api/v1/ctem-cases/bulk",
+            json={"case_ids": [str(api.case.id)], "state": "remediating", "owner_user_id": str(api.user.id)},
+        )
+        assert started.status_code == 200 and closes == []
+        resolved = await client.post(
+            "/api/v1/ctem-cases/bulk",
+            json={"case_ids": [str(api.case.id)], "state": "resolved", "evidence": "CHG-1234 deployed"},
+        )
+    assert resolved.status_code == 200 and resolved.json()["updated"] == [str(api.case.id)]
+    assert [case_id for case_id, _ in closes] == [api.case.id] and "moved to resolved" in closes[0][1]
 
 
 async def test_a_merge_needs_every_case_visible_to_the_caller(api, monkeypatch):
