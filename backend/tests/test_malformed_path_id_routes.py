@@ -501,6 +501,7 @@ _WEBHOOK_RECEIVERS = frozenset(
         "api/v1/webhooks.py:receive_direct_assignment_webhook",
         "api/v1/webhooks.py:receive_flow_webhook",
         "api/v1/webhooks.py:receive_integration_webhook",
+        "api/v1/webhooks.py:receive_signal_source_webhook",
         "api/v1/webhooks.py:receive_webhook",
     }
 )

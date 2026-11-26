@@ -55,7 +55,10 @@ def test_linear_on_a_large_inventory():
 async def test_a_cached_answer_skips_the_inventory_read() -> None:
     """The cases list reuses the organization's answer for 120 s instead of re-reading the store (#2072)."""
     org = uuid.uuid4()
-    cv._INVENTORY_CACHE[(org, ("Google Chrome",))] = (time.monotonic(), {"Google Chrome": {"1.0": 2}})
+    cv._INVENTORY_CACHE[(org, ("Google Chrome",))] = (
+        time.monotonic(),
+        ({"Google Chrome": {"1.0": 2}}, {"Google Chrome": {"1.0": 2, "7.2.20": 1}}),
+    )
 
     class _NoDb:
         def begin_nested(self) -> Any:
@@ -63,6 +66,9 @@ async def test_a_cached_answer_skips_the_inventory_read() -> None:
 
     try:
         answer = await cv.inventory_versions(_NoDb(), org, ["Google Chrome"])  # type: ignore[arg-type]
+        packages = await cv.inventory_versions(_NoDb(), org, ["Google Chrome"], language_packages=True)  # type: ignore[arg-type]
     finally:
         cv._INVENTORY_CACHE.pop((org, ("Google Chrome",)), None)
     assert answer == {"Google Chrome": {"1.0": 2}}
+    # Both answers of one read are cached together (#2375).
+    assert packages == {"Google Chrome": {"1.0": 2, "7.2.20": 1}}

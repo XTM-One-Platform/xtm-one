@@ -258,7 +258,7 @@ def _stored_sync(**overrides):
         "id": uuid.uuid4(),
         "section": "assets",
         "source": "opencti",
-        "filters": {"label": ["crown-jewel"]},
+        "filters": {"label": ["primary-asset"]},
         "batch_type": "servers",
         "remove_gone": True,
         "excluded_external_ids": ["x-1"],
@@ -304,7 +304,7 @@ async def test_update_sync_changes_only_the_fields_passed_and_keeps_the_rest(mon
     assert answer["notice"] == module.SHARED_CONTEXT_NOTICE
     assert stored.remove_gone is False
     # Every field not passed keeps its stored value.
-    assert stored.filters == {"label": ["crown-jewel"]}
+    assert stored.filters == {"label": ["primary-asset"]}
     assert stored.batch_type == "servers"
     assert stored.excluded_external_ids == ["x-1"]
     assert (stored.section, stored.source, stored.direction) == ("assets", "opencti", "inbound")

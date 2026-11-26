@@ -59,7 +59,10 @@ async def _waiting(person: Any) -> tuple[int, list[str]]:
 
 
 @pytest.mark.asyncio
-async def test_a_company_managed_decision_with_no_acting_user_reaches_the_agents_owner() -> None:
+async def test_a_company_managed_decision_with_no_acting_user_and_no_admin_reaches_the_agents_owner() -> None:
+    # With an administrator the item waits for the administrators instead (#2367,
+    # tests/test_work_item_company_recipient_2367_postgres.py): the owner of a
+    # company-managed agent is the seed account, reached only when nobody else is.
     async with _temp_database() as sessions:
         async with sessions() as session:
             owner = await _make_user(session, email="owner@example.com")

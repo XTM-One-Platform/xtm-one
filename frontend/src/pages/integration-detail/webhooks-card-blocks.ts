@@ -7,10 +7,11 @@ import { isWhatsAppGateway } from "./whatsapp-gateway";
 /**
  * Whether at least one event of the provider can arrive by webhook (mechanism
  * webhook or hybrid). A provider whose events are all polled (NetSuite,
- * OpenCRQ) never calls the integration webhook URL, so no screen shows it.
+ * OpenCRQ) or read from a stream the platform consumes (Defender XDR through
+ * its Event Hub) never calls the integration webhook URL, so no screen shows it.
  */
 export function hasWebhookDeliveredEvents(catalogEntry: ProviderCatalogItem | undefined): boolean {
-  return !!catalogEntry?.available_events.some((e) => e.mechanism !== "polling");
+  return !!catalogEntry?.available_events.some((e) => e.mechanism === "webhook" || e.mechanism === "hybrid");
 }
 
 /** Which blocks the Webhooks card of the Configuration tab renders. */
@@ -23,6 +24,8 @@ interface WebhooksCardBlocks {
   adminEvents: boolean;
   /** The integration webhook URL, for events that can arrive by webhook. */
   webhookUrl: boolean;
+  /** Notion's own setup for its managers: the URL, the verification token and the next step. */
+  notionSetup: boolean;
   /** The provider callback URL of a developer app with no events. */
   callback: boolean;
   /** The GitHub repository webhook manager. */
@@ -55,11 +58,16 @@ export function webhooksCardBlocks(
   // provider hooks key them as a plain message. So the Slack block never depends
   // on which OAuth app the integration uses.
   const hasOwnEventsBlock = isMicrosoft || isSlack;
+  // A Notion manager gets Notion's own setup block (URL, verification token,
+  // next step) in place of the generic URL block, whose content-type line does
+  // not apply to Notion; anyone else keeps the generic URL block.
+  const notionSetup = provider === "notion" && webhookEvents && !!canManage;
   return {
     microsoft: isMicrosoft,
     slack: isSlack,
-    adminEvents: hasEvents && isAdminProvisioned && !hasOwnEventsBlock,
-    webhookUrl: webhookEvents && !isAdminProvisioned && !hasOwnEventsBlock,
+    adminEvents: hasEvents && isAdminProvisioned && !hasOwnEventsBlock && !notionSetup,
+    webhookUrl: webhookEvents && !isAdminProvisioned && !hasOwnEventsBlock && !notionSetup,
+    notionSetup,
     callback: hasWebhookPath && !hasEvents && !isMicrosoft,
     webhookManager: !!catalogEntry?.supports_webhook_management && integration.status === "connected" && !!canManage,
   };

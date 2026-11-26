@@ -25,6 +25,9 @@ The provider is split by domain:
                          answer 404 when their flag is off.
 * ``testing``          - atomic testing + payload management.
 * ``assets``           - endpoints, asset groups, security platforms (writes).
+* ``asset_coverage``   - what already targets one asset: its groups, the
+                         scenarios (recurrence), simulations and atomic
+                         testings, the latest result (read-only).
 * ``teams``            - teams + players (writes).
 * ``access``           - organizations, users/groups/roles (tenant + platform
                          EE) and the authenticated user profile.
@@ -65,6 +68,7 @@ from ._common import (
     _headers,
 )
 from .access import register as register_access
+from .asset_coverage import register as register_asset_coverage
 from .assets import register as register_assets
 from .autonomous import register as register_autonomous
 from .content import register as register_content
@@ -168,6 +172,7 @@ def build_tools(
     tools += register_expectations(base_url, headers, executor)
     tools += register_testing(base_url, headers, executor)
     tools += register_assets(base_url, headers, executor)
+    tools += register_asset_coverage(base_url, headers, executor)
     tools += register_teams(base_url, headers, executor)
     tools += register_access(base_url, headers, executor)
     tools += register_content(base_url, headers, executor, persist_file_fn=persist_file_fn)

@@ -471,7 +471,7 @@ _NEEDS_OPENAEV = _prereq("integration:openaev", "OpenAEV connected for you", _IN
 _NEEDS_OPENCRQ = _prereq("integration:opencrq", "OpenCRQ connected for you", _INTEGRATIONS)
 _NEEDS_SECTOR = _prereq("profile:sector", "Sector in the organization profile", profile_fix_route("sector"))
 _NEEDS_REGIONS = _prereq("profile:regions", "Regions in the organization profile", profile_fix_route("regions"))
-_NEEDS_JEWELS = _prereq(
+_NEEDS_PRIMARY_ASSETS = _prereq(
     "profile:primary_assets", "Primary assets in the organization profile", profile_fix_route("primary_assets")
 )
 _NEEDS_TECH = _prereq("profile:software", "Technology in the organization profile", profile_fix_route("software"))
@@ -650,7 +650,7 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         _NEEDS_OPENCRQ,
         _NEEDS_SECTOR,
         _NEEDS_REGIONS,
-        _NEEDS_JEWELS,
+        _NEEDS_PRIMARY_ASSETS,
         _SWITCHED_ON,
     ],
     "quota": [
@@ -730,7 +730,7 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
         {"module": "opencrq", "objects": ["Finding scores"]},
         {"module": "platform", "objects": ["Approval work items", "Remediation tickets (after approval)"]},
     ],
-    "prerequisites": [_NEEDS_OPENCTI, _NEEDS_OPENAEV, _NEEDS_OPENCRQ, _NEEDS_JEWELS, _NEEDS_TECH, _SWITCHED_ON],
+    "prerequisites": [_NEEDS_OPENCTI, _NEEDS_OPENAEV, _NEEDS_OPENCRQ, _NEEDS_PRIMARY_ASSETS, _NEEDS_TECH, _SWITCHED_ON],
     "quota": [
         {
             "trigger": "New KEV or EPSS jump",
@@ -988,7 +988,7 @@ OPENAEV_DETECTION_DESK_STRUCTURED: dict[str, Any] = {
     ],
     "prerequisites": [
         _NEEDS_OPENAEV,
-        _NEEDS_JEWELS,
+        _NEEDS_PRIMARY_ASSETS,
         _NEEDS_TECH,
         _SWITCHED_ON,
     ],
@@ -1225,7 +1225,7 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
         _NEEDS_OPENCRQ,
         _NEEDS_SECTOR,
         _NEEDS_REGIONS,
-        _NEEDS_JEWELS,
+        _NEEDS_PRIMARY_ASSETS,
         _SWITCHED_ON,
     ],
     "quota": [

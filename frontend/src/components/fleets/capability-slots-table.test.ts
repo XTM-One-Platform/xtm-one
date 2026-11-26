@@ -15,7 +15,6 @@ import {
   FALLBACK_CAPABILITY_ICON,
   FLEET_DEFAULTS_OPEN_BY_DEFAULT,
   CAPABILITY_CELL_CHROME,
-  NO_INTEGRATION_VALUE,
   SECONDARY_COLUMNS_HIDE_BELOW_PX,
   STATUS_COLUMN_WIDTH,
   STATUS_LABEL_MAX_CHARS,
@@ -26,17 +25,14 @@ import {
   firstBlocked,
   flexibleColumnWidth,
   customMembers,
-  idsForPick,
   isBuiltinValue,
   multiChannelSelection,
   instructionSummaryKey,
   integrationIds,
   overwritableCustomMembers,
-  pickerValue,
   toggledIds,
   typeCounts,
   typeEditable,
-  typePickerValue,
   typeSearchFields,
   typeStateRank,
   unsetMembers,
@@ -118,16 +114,23 @@ describe("capability types table (#1201)", () => {
     const row = type("asset_inventory", "connected", { builtin: INVENTORY });
     expect(builtinValue(row)).toBe("builtin:xtm_one_inventory");
     expect(builtinValue(type("ticketing", "connected"))).toBe("");
-    expect(idsForPick("builtin:xtm_one_inventory")).toEqual([]);
-    expect(idsForPick("")).toEqual([]);
-    expect(idsForPick("i1")).toEqual(["i1"]);
+    expect(toggledIds(["i1"], "builtin:xtm_one_inventory")).toEqual(["i1"]);
   });
 
-  it("shows the bound integration, else the built-in option, in a single-choice picker", () => {
+  it("shows the built-in option locked first, then every bound integration, on asset inventory (#2424)", () => {
     const row = type("asset_inventory", "connected", { builtin: INVENTORY });
-    expect(pickerValue(row, [SNOW])).toBe("i2");
-    expect(pickerValue(row, [])).toBe("builtin:xtm_one_inventory");
-    expect(pickerValue(type("ticketing", "not_bound"), [])).toBe("");
+    expect(multiChannelSelection(row, [SNOW])).toEqual(["builtin:xtm_one_inventory", "i2"]);
+    expect(multiChannelSelection(row, [])).toEqual(["builtin:xtm_one_inventory"]);
+    expect(multiChannelSelection(type("ticketing", "not_bound"), [])).toEqual([]);
+  });
+
+  it("adds a second integration to a non-notification capability and removes one of two (#2424)", () => {
+    const ticketing = type("ticketing", "connected", { choice: [JIRA], candidates: [JIRA, SNOW] });
+    const two = toggledIds(integrationIds(ticketing.choice), "i2");
+    expect(two).toEqual(["i1", "i2"]);
+    expect(multiChannelSelection(ticketing, [JIRA, SNOW])).toEqual(["i1", "i2"]);
+    expect(toggledIds(two, "i1")).toEqual(["i2"]);
+    expect(toggledIds(["i2"], "i2")).toEqual([]);
   });
 
   it("toggles a channel of a multi-channel capability and keeps the built-in option on", () => {
@@ -206,16 +209,10 @@ describe("capability types table (#1201)", () => {
     expect(widest).toBeLessThanOrEqual(flexibleColumnWidth(SECONDARY_COLUMNS_HIDE_BELOW_PX) - 24);
   });
 
-  it("names the members a Partial type leaves unset and shows no picker value for it (UX r1 B2 of #1209)", () => {
+  it("names the members a Partial type leaves unset (UX r1 B2 of #1209)", () => {
     const partial = type("ticketing", "partial", { choice: [JIRA], members: [member("a", { bound: [JIRA] }), member("b")] });
     expect(unsetMembers(partial).map((m) => m.member_id)).toEqual(["b"]);
-    expect(typePickerValue(partial)).toBe("");
-    expect(typePickerValue({ ...partial, state: "connected", members: [member("a", { bound: [JIRA] })] })).toBe("i1");
     expect(unsetMembers(type("asset_inventory", "connected", { builtin: INVENTORY }))).toEqual([]);
-  });
-
-  it("writes no integration for the member's No integration option (UX r1 B1 of #1209)", () => {
-    expect(idsForPick(NO_INTEGRATION_VALUE)).toEqual([]);
   });
 
   it("reads a blank collaboration instruction as none in the folded summary", () => {

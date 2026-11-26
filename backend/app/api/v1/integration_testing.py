@@ -55,6 +55,57 @@ logger = logging.getLogger(__name__)
 CONNECTIVITY_TIMEOUT = 15  # seconds
 
 
+def defender_audience_report(name: str, results: list[tuple[str, bool, str]]) -> dict[str, str]:
+    """One verdict over the Defender audiences, each reported on its own (#2386).
+
+    *results* holds (audience, ok, detail). All ok: ok. Some ok: error naming
+    the failing audience, the working one said to work (its tools are usable).
+    """
+    lines = [f"{audience}: {'OK' if ok else detail}" for audience, ok, detail in results]
+    if all(ok for _, ok, _ in results):
+        return {"status": "ok", "message": f"{name} is connected. " + " | ".join(lines)}
+    return {"status": "error", "message": f"{name}: " + " | ".join(lines)}
+
+
+async def _defender_delegated_test(check: tuple[str, dict[str, str]], holder: str, name: str) -> dict[str, str]:
+    """Delegated Defender: the Graph token on the incidents endpoint, then a
+    fresh token for the Defender for Endpoint audience (#2386).
+
+    The MDE audience has its own admin consent; a grant that covers Graph only
+    used to pass this test and fail every MDE tool with "re-authorize".
+    """
+    import httpx
+
+    from app.integrations.providers.defender import _MDE_SCOPE, token_failure_message
+    from app.services.integration_tools import redeem_azure_delegated_audience
+
+    url, headers = check
+    try:
+        async with egress_client(timeout=CONNECTIVITY_TIMEOUT) as client:
+            resp = await client.get(url, headers=headers)
+        if resp.status_code == 200:
+            graph = ("Microsoft Graph", True, "")
+        elif resp.status_code == 401:
+            graph = ("Microsoft Graph", False, "authentication failed, the token may be expired or revoked")
+        elif resp.status_code == 403:
+            graph = (
+                "Microsoft Graph",
+                False,
+                "access denied, SecurityIncident.Read.All (or ReadWrite) is not granted",
+            )
+        else:
+            graph = ("Microsoft Graph", False, f"HTTP {resp.status_code}")
+    except httpx.HTTPError as exc:
+        graph = ("Microsoft Graph", False, f"unreachable ({format_exception_message(exc)})")
+    mde_token, failure = await redeem_azure_delegated_audience(holder, _MDE_SCOPE)
+    if mde_token:
+        mde = ("Defender for Endpoint", True, "")
+    else:
+        detail = token_failure_message(_MDE_SCOPE, failure, delegated=True).removeprefix("Error: ")
+        mde = ("Defender for Endpoint", False, detail)
+    return defender_audience_report(name, [graph, mde])
+
+
 async def test_provider_connectivity(
     provider: str,
     # None only for a probe-backed provider, which short-circuits every code
@@ -67,6 +118,7 @@ async def test_provider_connectivity(
     integration: Integration | None = None,
     caller_can_manage: bool = False,
     acting_user_id: str | None = None,
+    token_holder: str | None = None,
 ) -> dict:
     """Verify an integration and report what was actually checked.
 
@@ -1605,6 +1657,9 @@ async def test_provider_connectivity(
             f"{base_url}/services/server/info?output_mode=json",
             build_splunk_headers(username, secret),
         )
+
+    if provider == "defender" and integration is not None and provider in checks:
+        return await _defender_delegated_test(checks[provider], token_holder or str(integration.id), name)
 
     check = checks.get(provider)
     if not check:

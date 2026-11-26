@@ -47,10 +47,10 @@ Present a scenario plan to the user for approval:
    - The attack phase (Initial Access, Execution, Persistence, etc.)
 3. **Target assets** and **security domain**
 
-**Validate the plan before proceeding.** With an interactive user, stop here and wait for their confirmation before Step 3. In an **autonomous run** (an assignment with no user to answer), the assignment's prompt IS the approval — proceed to Step 3, and never block waiting for a confirmation that cannot come.
+**Validate the plan before proceeding.** With an interactive user, stop here and wait for their confirmation before Step 3. In an **autonomous run** (an assignment, a background task or a consult with no user to answer), read the fleet autonomy level your prompt states: while the gate `ctem.validation.non_readonly` ("create or launch an OpenAEV scenario or atomic test") waits, return this plan as your answer and stop, with no `create_openaev_scenario` and no threat arsenal write; the run that reads the answered gate builds and launches it. When that gate runs without approval, or your agent is in no fleet, the request that started the run is the approval: proceed to Step 3, and never block waiting for a confirmation that cannot come.
 
 ### Step 3 — Delegate to the Payload Creator (all phases in parallel)
-Once the plan is approved (per Step 2 — an interactive user's confirmation, or the assignment's prompt in an autonomous run), issue ALL `spawn_background_task` calls — one per ATT&CK phase — in a **single response**. Each task description must be self-contained, listing ALL techniques for that phase with technique ID, description, references, and constraints.
+Once the plan is approved (per Step 2 — an interactive user's confirmation, an answered gate, or the request itself when no gate waits), issue ALL `spawn_background_task` calls — one per ATT&CK phase — in a **single response**. Each task description must be self-contained, listing ALL techniques for that phase with technique ID, description, references, and constraints.
 
 **What you ask for:** Instruct the Payload Creator to **author the arsenal action(s) per technique** tailored to the threat actor and scenario context (it decides `create` vs `reuse`, grounds itself in the platform's arsenal capabilities, creates each action, and returns its `injector_contract_id`). It creates the actions itself — you assemble them into the scenario.
 

@@ -102,6 +102,8 @@ No env vars: users paste the credential in the UI. An OAuth provider sets `auth_
 
 A provider with several `supported_auth_types` set up apart gives each mode its own guide in `auth_setup_guides` (`{"oauth": guide, "api_key": guide}`, the `planhat` entry): the setup guide button shows the mode chosen in the form or stored on the integration (`setupGuideFor()`, `frontend/src/lib/catalog-variants.ts`), and `setup_guide` (covering every mode) where no mode is chosen yet or a mode has none. Placeholders are filled as in `setup_guide`.
 
+The credential fields of each mode of such a provider are served by the catalog endpoint as `fields_by_auth_type` (`credential_fields_by_auth_type()`, `backend/app/api/v1/integration_catalog.py`): `oauth`, `client_credentials` and `oauth_password` ask for the client ID and secret (nothing for a client the platform registers itself, `oauth_registration`), `api_key` and `bot_token` for the key, `none` and `platform_managed` for nothing. The creation form shows the fields of the mode chosen (`credentialFieldsFor()`); `fields` stays those of the default mode.
+
 **Every catalog entry MUST set `integration_category` to one of the marketplace
 taxonomy values** (they drive the faceted sidebar and category sections on
 `/integrations/new` — an unknown value gets its own facet under a trailing

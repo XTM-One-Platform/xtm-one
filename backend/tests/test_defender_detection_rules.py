@@ -310,7 +310,8 @@ async def test_delete_then_get_says_not_found(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_403_names_the_permission_to_grant(monkeypatch):
-    graph = _Graph((403, {}), (403, {}))
+    # Each tool retries once after a 403 with a fresh token (#2386): two calls each.
+    graph = _Graph((403, {}), (403, {}), (403, {}), (403, {}))
     executor = _executor(monkeypatch, graph)
 
     write = await _call(
@@ -321,6 +322,54 @@ async def test_a_403_names_the_permission_to_grant(monkeypatch):
     assert "CustomDetection.ReadWrite.All" in write
     assert "CustomDetection.Read.All" in read
     assert "admin consent" in write
+    assert len(graph.calls) == 4
+
+
+def _jwt(claims: dict[str, Any]) -> str:
+    import base64
+    import json
+
+    body = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+    return f"e30.{body}.sig"
+
+
+@pytest.mark.asyncio
+async def test_a_403_carries_the_graph_error_and_the_token_verdict(monkeypatch):
+    """#2386: status, Graph code and message, request id, and whether the token
+    carried the permission (it did: the app permission is not the cause)."""
+    error = {
+        "error": {"code": "Forbidden", "message": "Insufficient privileges", "innerError": {"request-id": "rq-42"}}
+    }
+    graph = _Graph((403, error), (403, error))
+    monkeypatch.setattr(df, "safe_request", graph)
+
+    async def _scoped_token(*_a, **_k) -> str:
+        return _jwt({"roles": ["CustomDetection.ReadWrite.All"]})
+
+    monkeypatch.setattr(df, "_get_token", _scoped_token)
+    executor = CallableToolExecutor()
+    df.build_tools(token="tenant||client||secret", executor=executor)
+
+    answer = await _call(executor, "list_defender_detection_rules")
+
+    assert "HTTP 403" in answer and "Forbidden" in answer and "Insufficient privileges" in answer
+    assert "request-id rq-42" in answer
+    assert "not the cause" in answer
+
+
+@pytest.mark.asyncio
+async def test_a_403_then_a_fresh_token_succeeds(monkeypatch):
+    """#2386: a token minted before the admin consent is dropped and the call retried."""
+    graph = _Graph((403, {}), (200, {"value": []}))
+    executor = _executor(monkeypatch, graph)
+    dropped: list[str] = []
+    monkeypatch.setattr(df, "drop_cached_app_token", lambda key: dropped.append(key))
+
+    answer = await _call(executor, "list_defender_detection_rules")
+
+    assert not answer.startswith("Error")
+    assert len(graph.calls) == 2
+    assert len(dropped) == 1
 
 
 @pytest.mark.asyncio

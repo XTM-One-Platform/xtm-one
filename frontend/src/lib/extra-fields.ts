@@ -202,8 +202,9 @@ export function maskedStoredSecrets(storedSecretKeys: readonly string[] | undefi
 /**
  * Whether an extra-config key holds a secret. Mirrors the backend's
  * `_is_sensitive_setting_name`, so a form masks exactly what the API redacts:
- * secret / token / key / password names, except identifiers (`*_id`) and
- * endpoints (`*_url`, `*_urls`), plus `service_account_json`. A custom bundle
+ * secret / token / key / password / connection_string names (a connection
+ * string embeds its access key), except identifiers (`*_id`) and endpoints
+ * (`*_url`, `*_urls`), plus `service_account_json`. A custom bundle
  * forces any key with `type: "secret"`.
  */
 export function isSecretExtraKey(key: string, schemaType?: string | null): boolean {
@@ -211,7 +212,7 @@ export function isSecretExtraKey(key: string, schemaType?: string | null): boole
   const lowered = key.toLowerCase();
   if (lowered === "service_account_json") return true;
   if (/_(id|urls?)$/.test(lowered)) return false;
-  return /secret|key|token|password/.test(lowered);
+  return /secret|key|token|password|connection_string/.test(lowered);
 }
 
 /** A catalog label read as a form field: its name, its explanation and whether it may stay empty. */

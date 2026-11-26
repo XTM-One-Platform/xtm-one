@@ -11,6 +11,7 @@
 openaev:export_openaev_scenario
 openaev:full_text_search_openaev
 openaev:get_openaev_asset
+openaev:get_openaev_asset_coverage
 openaev:get_openaev_asset_group
 openaev:get_openaev_attack_pattern
 openaev:get_openaev_data_health
@@ -123,6 +124,7 @@ opencrq:list_opencrq_threats
 opencrq:list_opencrq_treatment_plans
 opencrq:list_opencrq_unique_findings
 opencrq:list_opencrq_users
+opencrq:preview_opencrq_dependency_rule
 opencrq:search_opencrq_cves
 opencrq:search_opencrq_mitre_techniques
 opencti:get_opencti_container_full
@@ -134,9 +136,11 @@ opencti:get_opencti_entity_stats
 opencti:get_opencti_error_rate
 opencti:get_opencti_licence
 opencti:get_opencti_managers
+opencti:get_opencti_nlq_context
 opencti:get_opencti_platform_queues
 opencti:get_opencti_platform_version
 opencti:get_opencti_relationship
+opencti:get_opencti_schema_attributes
 opencti:get_opencti_top_related
 opencti:list_opencti_background_tasks
 opencti:list_opencti_capabilities

@@ -286,9 +286,10 @@ async def reconcile(
     stamp = (now or datetime.now(UTC)).isoformat()
     name = object_name(spec)
     held = state.get("trigger_ids") if isinstance(state.get("trigger_ids"), dict) else {}
+    notifier_id: str | None = None
+    trigger_ids: dict[str, str] = {}
     try:
         notifier_id = await _ensure_notifier(api, state.get("notifier_id"), notifier_body(name, url, secret))
-        trigger_ids: dict[str, str] = {}
         unsupported: list[str] = []
         for event in spec["events"]:
             try:
@@ -301,7 +302,14 @@ async def reconcile(
             if event not in trigger_ids and stale_id:
                 await api("delete", f"/api/notification-triggers/{stale_id}", None)
     except Exception as exc:  # one assignment never breaks the pass
-        return {**state, "status": "error", "error": str(exc)[:500], "checked_at": stamp}
+        # The objects created before the failure stay named, so the next pass reuses
+        # them and a removal deletes them, never an orphan in OpenAEV (#2434).
+        partial: dict[str, Any] = {}
+        if notifier_id:
+            partial["notifier_id"] = notifier_id
+        if trigger_ids:
+            partial["trigger_ids"] = {**held, **trigger_ids}
+        return {**state, **partial, "status": "error", "error": str(exc)[:500], "checked_at": stamp}
     out: dict[str, Any] = {
         "status": "provisioned",
         "error": None,
@@ -372,15 +380,35 @@ async def openaev_integration_id(db: Any, assignment: Any, agent: Any) -> tuple[
 
 async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Api, str, str] | str:
     """``(api, integration_id, secret)`` or the reason it cannot be built."""
+    integration_id, reason = await openaev_integration_id(db, assignment, agent)
+    if not integration_id:
+        return reason
+    from app.services.fleet_run_as import NO_RUN_AS_REASON, provisioning_user_id
+
+    # A fleet automation never provisions as the seed owner (#9188).
+    user_id = provisioning_user_id(assignment, agent)
+    if user_id is None:
+        logger.warning("OpenAEV provisioning of assignment %s skipped: %s", assignment.id, NO_RUN_AS_REASON)
+        return NO_RUN_AS_REASON
+    return await integration_connection(db, integration_id, user_id)
+
+
+async def integration_connection(db: Any, integration_id: str, user_id: Any) -> tuple[Api, str, str] | str:
+    """``(api, integration_id, secret)`` on one OpenAEV integration as *user_id*, or the reason it cannot be built.
+
+    Shared by the assignment provisioning above and the platform signal sources
+    (``services/ctem_platform_sources.py``, #2434), which name their integration
+    and run-as themselves.
+    """
     from app.integrations.providers.openaev._common import _api, _headers, is_not_found_error
     from app.models.integration import Integration
     from app.services.integration_tools import _get_token
     from app.services.trigger_provisioning import receiver_secret
 
-    integration_id, reason = await openaev_integration_id(db, assignment, agent)
-    if not integration_id:
-        return reason
-    integration = await db.get(Integration, uuid.UUID(integration_id))
+    try:
+        integration = await db.get(Integration, uuid.UUID(str(integration_id)))
+    except ValueError:
+        integration = None
     if integration is None or integration.provider != PROVIDER:
         return f"OpenAEV integration {integration_id} not found"
     # The receiver checks X-OpenAEV-Token against this reading, a vault reference resolved (#6080).
@@ -391,13 +419,7 @@ async def _connection(db: Any, assignment: Any, agent: Any) -> tuple[Api, str, s
         return f"the OpenAEV integration's webhook_secret cannot be read: {type(exc).__name__}"
     if not secret:
         return "the OpenAEV integration has no webhook_secret: set one so the receiver authenticates OpenAEV"
-    from app.services.fleet_run_as import NO_RUN_AS_REASON, provisioning_user_id
-
-    # A fleet automation never provisions as the seed owner (#9188).
-    user_id = provisioning_user_id(assignment, agent)
-    if user_id is None:
-        logger.warning("OpenAEV provisioning of assignment %s skipped: %s", assignment.id, NO_RUN_AS_REASON)
-        return NO_RUN_AS_REASON
+    integration_id = str(integration.id)
     token = await _get_token(db, integration_id, PROVIDER, user_id=str(user_id) if user_id else None, integ=integration)
     if not token or "||" not in token:
         return "no OpenAEV token could be resolved for the integration"

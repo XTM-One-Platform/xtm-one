@@ -36,7 +36,7 @@ DATA = {
          "with your team."),
     ],
     "capabilities": {
-        "Scoping": "The attack surface and threat landscape that matter to you: sectors, regions, crown jewels, "
+        "Scoping": "The attack surface and threat landscape that matter to you: sectors, regions, primary assets, "
                    "tech stack and priority intelligence requirements, read by every CTEM agent.",
         "Discovery": "The vulnerabilities, assets and threat activity in that scope, the attacker techniques "
                      "never tested, and the blind spots where a connected source returns no data.",
@@ -44,7 +44,7 @@ DATA = {
                           "exploitable and open, ranked by exploitation, targeting adversaries and expected loss.",
         "Validation": "Proof of whether prevention and detection hold against the techniques that matter, from "
                       "OpenAEV simulations, failed expectations and detection coverage.",
-        "Mobilization": "Remediation cases grouped by fix, with their assets, crown jewels and known "
+        "Mobilization": "Remediation cases grouped by fix, with their assets, primary assets and known "
                         "exploitation, followed to closure and re-test by agents and fleets.",
     },
     "gallery": [
@@ -54,8 +54,8 @@ DATA = {
         ("Prioritization", "Read which of thousands of known vulnerabilities are exploited and open on the assets that matter.",
          "The CTEM Prioritization stage: the AI assessment of the open vulnerabilities and the stage metrics, "
          "known-exploited and critical CVEs"),
-        ("Remediation cases", "One case per fix, ranked, with the crown jewels and exploitation it touches.",
-         "CTEM remediation cases: one row per fix with its priority, issue count, crown jewels, known "
+        ("Remediation cases", "One case per fix, ranked, with the primary assets and exploitation it touches.",
+         "CTEM remediation cases: one row per fix with its priority, issue count, primary assets, known "
          "exploitation and state"),
         ("Case detail", "Every issue behind a fix, from intelligence and validation, with the assets at stake.",
          "A remediation case with its open issues from OpenCTI and OpenAEV, known exploited vulnerabilities, "

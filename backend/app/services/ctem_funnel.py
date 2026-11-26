@@ -171,7 +171,7 @@ def funnel_scope(
     business: dict[str, Any] = {"configured": bool(reachers)}
     if reachers:
         business |= {
-            "primary_assets": len({link.jewel_key for r in reachers for link, _k, _t in r.links}),
+            "primary_assets": len({link.primary_asset_key for r in reachers for link, _k, _t in r.links}),
             "supporting_assets": len(reachers),
             "truncated": bool(getattr(index, "truncated", False)),
         }
@@ -195,7 +195,7 @@ def funnel_scope(
                 if not (kind == "asset_group" and _norm(through) in excluded_groups)
                 and (
                     not floor
-                    or _CRITICALITY.index(getattr(primaries.get(link.jewel_key), "criticality", "high"))
+                    or _CRITICALITY.index(getattr(primaries.get(link.primary_asset_key), "criticality", "high"))
                     >= _CRITICALITY.index(floor)
                 )
             ]

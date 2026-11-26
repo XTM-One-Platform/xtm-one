@@ -603,23 +603,92 @@ def inventory_version_counts(
     return out
 
 
-#: Product labels per grouped inventory read of :func:`inventory_versions` (bounded bind parameters).
-_INVENTORY_LABELS_CHUNK = 100
+#: Product keys per grouped inventory read of :func:`inventory_versions` (bounded bind parameters).
+_INVENTORY_KEYS_CHUNK = 500
+
+
+def matching_product_keys(stored: Iterable[str], labels: Iterable[str]) -> list[str]:
+    """The stored product keys a grouped inventory read of *labels* covers (pure, #2232).
+
+    A key is covered when it is one of a label's :func:`product_keys`, or ends with ``" " +`` the
+    label's whole key (a publisher-prefixed product, ``google llc google chrome``): the rule the
+    unanchored ``LIKE '% key'`` of the read applied in the database, which no index serves.
+    Each stored key is indexed by its word suffixes once, so the cost is linear in keys plus labels.
+    """
+    stored = list(dict.fromkeys(k for k in stored if k))
+    present = set(stored)
+    by_suffix: dict[str, list[str]] = {}
+    for key in stored:
+        rest = key
+        while " " in rest:
+            rest = rest.split(" ", 1)[1]
+            by_suffix.setdefault(rest, []).append(key)
+    out: dict[str, None] = {}
+    for label in dict.fromkeys(labels):
+        keys = product_keys(label)
+        if not keys:
+            continue
+        for key in keys:
+            if key in present:
+                out[key] = None
+        for key in by_suffix.get(keys[0], ()):
+            out[key] = None
+    return sorted(out)
+
+
+async def _covered_product_keys(db: AsyncSession, organization_id: uuid.UUID, labels: list[str]) -> list[str]:
+    """The organization's stored product keys *labels* cover (:func:`matching_product_keys`).
+
+    One distinct read on ``ix_organization_asset_software_org_product``, then the match in a thread.
+    """
+    soft = OrganizationAssetSoftware
+    stored = (
+        (await db.execute(select(soft.product_key).where(soft.organization_id == organization_id).distinct()))
+        .scalars()
+        .all()
+    )
+    return await asyncio.to_thread(matching_product_keys, [str(k) for k in stored], labels)
+
+
 #: Seconds an :func:`inventory_versions` answer is reused for the same organization and labels, so
 #: the cases list does not re-read and re-count the inventory on every read (#2072).
 INVENTORY_CACHE_TTL_SECONDS = 120.0
 _INVENTORY_CACHE_SIZE = 64
-_INVENTORY_CACHE: dict[tuple[uuid.UUID, tuple[str, ...]], tuple[float, dict[str, dict[str, int]]]] = {}
+#: Per (organization, labels): when it was read, then the answer without the language package rows
+#: and the answer with them (#2375).
+_INVENTORY_CACHE: dict[
+    tuple[uuid.UUID, tuple[str, ...]], tuple[float, tuple[dict[str, dict[str, int]], dict[str, dict[str, int]]]]
+] = {}
+
+
+def inventory_version_answers(
+    rows: Iterable[Any], os_assets: Mapping[str, list[dict[str, Any]]], labels: Iterable[str]
+) -> tuple[dict[str, dict[str, int]], dict[str, dict[str, int]]]:
+    """The :func:`inventory_version_counts` answers without and with the language package rows (pure, #2375).
+
+    *rows* are ``(vendor, product, version, asset_ids, language_package)`` groups: a row whose purl
+    names a language ecosystem (:func:`language_package_row`, the MinIO SDK of a repository) is
+    left out of the first answer, which a CVE of a server or OS product reads, and kept in the
+    second, which a CVE of a language package reads: the rule :func:`package_case_rows` applies
+    to a case's running versions (#2223), so the issue and the case count the same rows.
+    """
+    labels = list(labels)
+    every = [tuple(row[:4]) for row in rows]
+    server = [tuple(row[:4]) for row in rows if not row[4]]
+    return inventory_version_counts(server, os_assets, labels), inventory_version_counts(every, os_assets, labels)
 
 
 async def inventory_versions(
-    db: AsyncSession, organization_id: uuid.UUID, labels: Iterable[str]
+    db: AsyncSession, organization_id: uuid.UUID, labels: Iterable[str], *, language_packages: bool = False
 ) -> dict[str, dict[str, int]]:
     """Per product label, the known versions the device inventory reports with their asset counts (#2038).
 
     The same rows :func:`read_running_versions` reads for a case, so the CVE matcher checks every
-    version a case shows as running. ``{}`` when the store cannot be read (the matcher then keeps
-    the versions of the software entities and the profile).
+    version a case shows as running: language package rows (``pkg:pypi/minio`` of a repository)
+    count only with *language_packages*, the answer a CVE of a language package reads (#2375, the
+    rule of :func:`package_case_rows`). Both answers come from one read and are cached together.
+    ``{}`` when the store cannot be read (the matcher then keeps the versions of the software
+    entities and the profile).
     """
     wanted = [label for label in dict.fromkeys(labels) if product_keys(label)]
     if not wanted:
@@ -627,18 +696,16 @@ async def inventory_versions(
     cache_key = (organization_id, tuple(sorted(wanted)))
     cached = _INVENTORY_CACHE.get(cache_key)
     if cached is not None and time.monotonic() - cached[0] < INVENTORY_CACHE_TTL_SECONDS:
-        return cached[1]
+        return cached[1][1 if language_packages else 0]
     soft = OrganizationAssetSoftware
+    package = language_package_row(soft)
     rows: list[Any] = []
     os_assets: dict[str, list[dict[str, Any]]] = {}
     try:
         async with db.begin_nested():
-            for start in range(0, len(wanted), _INVENTORY_LABELS_CHUNK):
-                chunk = wanted[start : start + _INVENTORY_LABELS_CHUNK]
-                keys = sorted({k for label in chunk for k in product_keys(label)})
-                like = [
-                    soft.product_key.like("% " + _like_escape(product_keys(label)[0]), escape="\\") for label in chunk
-                ]
+            covered = await _covered_product_keys(db, organization_id, wanted)
+            for start in range(0, len(covered), _INVENTORY_KEYS_CHUNK):
+                keys = covered[start : start + _INVENTORY_KEYS_CHUNK]
                 rows.extend(
                     (
                         await db.execute(
@@ -647,9 +714,10 @@ async def inventory_versions(
                                 func.min(soft.product),
                                 soft.version,
                                 func.array_agg(func.distinct(soft.asset_id)),
+                                package,
                             )
-                            .where(soft.organization_id == organization_id, or_(soft.product_key.in_(keys), *like))
-                            .group_by(soft.vendor_key, soft.product_key, soft.version)
+                            .where(soft.organization_id == organization_id, soft.product_key.in_(keys))
+                            .group_by(soft.vendor_key, soft.product_key, soft.version, package)
                         )
                     ).all()
                 )
@@ -659,11 +727,11 @@ async def inventory_versions(
         logger.info("CTEM inventory versions unavailable", exc_info=True)
         return {}
     # Pure and CPU-bound on a large inventory: off the event loop so no request waits on it.
-    answer = await asyncio.to_thread(inventory_version_counts, rows, os_assets, wanted)
-    _INVENTORY_CACHE[cache_key] = (time.monotonic(), answer)
+    answers = await asyncio.to_thread(inventory_version_answers, rows, os_assets, wanted)
+    _INVENTORY_CACHE[cache_key] = (time.monotonic(), answers)
     while len(_INVENTORY_CACHE) > _INVENTORY_CACHE_SIZE:
         _INVENTORY_CACHE.pop(next(iter(_INVENTORY_CACHE)))
-    return answer
+    return answers[1 if language_packages else 0]
 
 
 def inventory_platform_sets(rows: Iterable[Any], labels: Iterable[str]) -> dict[str, tuple[str, ...]]:
@@ -702,9 +770,11 @@ async def inventory_platforms(
 ) -> dict[str, tuple[str, ...]]:
     """Per product label, the platforms of every asset running it, when all are known (#2152).
 
-    One grouped read per chunk of labels, joined on the asset row (bind parameters are the
-    organization and the product keys). ``{}`` when the store cannot be read: the CVE matcher then
-    evaluates no platform, as before.
+    One grouped read per chunk of the stored product keys the labels cover
+    (:func:`matching_product_keys`), joined on the asset row (bind parameters are the
+    organization and the product keys). A language package row (the SDK of a repository) is not
+    the product running on an asset and gives no platform (#2375). ``{}`` when the store cannot be
+    read: the CVE matcher then evaluates no platform, as before.
     """
     wanted = [label for label in dict.fromkeys(labels) if product_keys(label)]
     if not wanted:
@@ -714,12 +784,9 @@ async def inventory_platforms(
     rows: list[Any] = []
     try:
         async with db.begin_nested():
-            for start in range(0, len(wanted), _INVENTORY_LABELS_CHUNK):
-                chunk = wanted[start : start + _INVENTORY_LABELS_CHUNK]
-                keys = sorted({k for label in chunk for k in product_keys(label)})
-                like = [
-                    soft.product_key.like("% " + _like_escape(product_keys(label)[0]), escape="\\") for label in chunk
-                ]
+            covered = await _covered_product_keys(db, organization_id, wanted)
+            for start in range(0, len(covered), _INVENTORY_KEYS_CHUNK):
+                keys = covered[start : start + _INVENTORY_KEYS_CHUNK]
                 rows.extend(
                     (
                         await db.execute(
@@ -733,7 +800,8 @@ async def inventory_platforms(
                             .where(
                                 soft.organization_id == organization_id,
                                 asset.organization_id == organization_id,
-                                or_(soft.product_key.in_(keys), *like),
+                                soft.product_key.in_(keys),
+                                ~language_package_row(soft),
                             )
                             .group_by(soft.vendor_key, soft.product_key)
                         )

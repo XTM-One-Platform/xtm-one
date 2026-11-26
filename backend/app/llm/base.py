@@ -2182,7 +2182,7 @@ class BaseLLMProvider(ABC):
     only_capability: str | None = None
 
     #: A provider that runs on what an integration holds and nothing of its
-    #: own (LM Studio, reached through the integration's relay group). Settings
+    #: own (LM Studio, reached on the integration's route). Settings
     #: never creates one by hand (``settings._ensure_new_provider_allowed``):
     #: the integration's console does, and the instance is built with its
     #: config's id (``router.provider_instance``) to read the integration through it.

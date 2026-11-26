@@ -97,6 +97,7 @@ from app.services.work_item_blocked_refs import (
     refuse_unbound_reference_reason,
     refuse_unobserved_deployment_refs,
 )
+from app.services.work_item_decision_reach import carry_decision_marks, clear_decision_marks
 from app.services.work_item_notify import normalize_notify_payload
 from app.services.work_item_past_due import carry_past_due_mark, clear_past_due_mark
 
@@ -886,6 +887,8 @@ def _visible_clause(
         tiers.append(_owner_agent_clause(actor))
         # An item another person handed to this agent (#858).
         tiers.append(_handed_to_clause(actor))
+        # An item filed in the workspace of a fleet this agent works in (#2381).
+        tiers.append(_fleet_member_read_clause(actor))
     return or_(*tiers)
 
 
@@ -1074,6 +1077,36 @@ def _owner_agent_clause(actor: CompanyManagedWriter | None) -> Any:
             and_(assignee, filed_by_its_creator),
         ),
     )
+
+
+def _fleet_member_read_clause(actor: CompanyManagedWriter | None) -> Any:
+    """Items filed in the workspace of a fleet *actor* works in: a READ tier (#2381).
+
+    A company-managed agent's run acts with no person
+    (``_resolve_run_file_owner_id`` keeps file stamping personless), so a
+    person's workspace tier never applies to it, and an item another member
+    filed in the fleet's own coordination workspace matched no tier: a fleet
+    orchestrator could not read the gates its loop parks.
+
+    This tier admits, to a company-managed agent's own reads only, the items
+    filed in the coordination workspace of a live fleet the agent is a member
+    of (home or connected) or orchestrates. It never widens a write:
+    ``_writable_clause`` does not call it. A person's read, a personal agent
+    (its runs carry its person's workspace tiers) and a writer without an
+    agent get ``false()``. The creators' ``coordination_access`` narrowing
+    still applies on top.
+    """
+    if actor is None or actor.agent_id is None or not actor.may_write:
+        return false()
+    agent_id = actor.agent_id
+    from app.models.fleet import Fleet, FleetMember
+
+    member_of = select(FleetMember.fleet_id).where(FleetMember.agent_id == agent_id)
+    fleet_workspaces = select(Fleet.workspace_id).where(
+        Fleet.is_archived.is_(False),
+        or_(Fleet.id.in_(member_of), Fleet.orchestrator_agent_id == agent_id),
+    )
+    return and_(WorkItem.workspace_id.is_not(None), WorkItem.workspace_id.in_(fleet_workspaces))
 
 
 def _handed_to_clause(actor: CompanyManagedWriter | None) -> Any:
@@ -2398,6 +2431,8 @@ async def create_work_item(
             item_user_id=user_uuid,
             is_company_managed=is_company_managed,
             workspace_id=workspace_id,
+            run_person_id=getattr(writer, "run_person_id", None),
+            run_person_chosen=bool(getattr(writer, "run_person_chosen", False)),
         )
         item = WorkItem(
             user_id=user_uuid,
@@ -2851,6 +2886,8 @@ async def update_work_item(
                 item_user_id=item.user_id,
                 is_company_managed=bool(item.is_company_managed),
                 workspace_id=item.workspace_id,
+                run_person_id=getattr(writer, "run_person_id", None),
+                run_person_chosen=bool(getattr(writer, "run_person_chosen", False)),
             )
         previous_status = item.status
         if title is not None:
@@ -2893,12 +2930,16 @@ async def update_work_item(
             # The notify delivery state is the platform's: kept as stored.
             # A test item may only notify a test recipient.
             # The work_item.past_due mark is the platform's too (#1662).
-            item.payload = carry_past_due_mark(
-                normalize_notify_payload(
-                    payload,
+            # So are the decision marks: opened, unseen alert (#2390).
+            item.payload = carry_decision_marks(
+                carry_past_due_mark(
+                    normalize_notify_payload(
+                        payload,
+                        item.payload,
+                        correlation_key=item.correlation_key,
+                        title=item.title,
+                    ),
                     item.payload,
-                    correlation_key=item.correlation_key,
-                    title=item.title,
                 ),
                 item.payload,
             )
@@ -2953,6 +2994,9 @@ async def update_work_item(
         if blocked_reason is not None:
             item.blocked_reason = reason
         if needs_human is not None:
+            if human and not stored_human:
+                # A new decision gate: watched afresh for being opened (#2390).
+                clear_decision_marks(item)
             item.needs_human = human
             if not human and ask is None:
                 # The card goes with the decision it asked for (#762).
@@ -5813,8 +5857,12 @@ async def list_work_items(
         # predicate, and a disabled staleness window yields no clause rather
         # than an early return.
         readable, _ = await _workspace_tiers(db, user_id)
-        # An agent's listing also reads the items handed to it (#858).
-        query = select(WorkItem).where(or_(_visible_clause(uid, readable), _handed_to_clause(reader)), *clauses)
+        # An agent's listing also reads the items handed to it (#858) and the
+        # items filed in its fleets' workspaces (#2381).
+        query = select(WorkItem).where(
+            or_(_visible_clause(uid, readable), _handed_to_clause(reader), _fleet_member_read_clause(reader)),
+            *clauses,
+        )
 
         if column_order is not None:
             query = query.order_by(*column_order)
@@ -6244,6 +6292,8 @@ async def _resolved_recipient(
     item_user_id: uuid.UUID | None,
     is_company_managed: bool,
     workspace_id: uuid.UUID | None,
+    run_person_id: uuid.UUID | None = None,
+    run_person_chosen: bool = False,
 ) -> uuid.UUID | None:
     """The ``waits_for_user_id`` a write stores (#11893): ``None`` when the item
     needs nobody, waits for its own user, or for the administrators.
@@ -6255,6 +6305,41 @@ async def _resolved_recipient(
         if recipient and recipient.strip():
             raise ValueError("recipient names who a needs_human item waits for: set needs_human too")
         return None
+    person, _groups = await _resolved_recipient_and_groups(
+        db,
+        needs_human=needs_human,
+        recipient=recipient,
+        acting_user_id=acting_user_id,
+        agent_id=agent_id,
+        item_user_id=item_user_id,
+        is_company_managed=is_company_managed,
+        workspace_id=workspace_id,
+        run_person_id=run_person_id,
+        run_person_chosen=run_person_chosen,
+    )
+    return person
+
+
+async def _resolved_recipient_and_groups(
+    db: Any,
+    *,
+    needs_human: bool,
+    recipient: str | None,
+    acting_user_id: uuid.UUID | None,
+    agent_id: uuid.UUID | None,
+    item_user_id: uuid.UUID | None,
+    is_company_managed: bool,
+    workspace_id: uuid.UUID | None,
+    run_person_id: uuid.UUID | None = None,
+    run_person_chosen: bool = False,
+) -> tuple[uuid.UUID | None, list[str] | None]:
+    """The person and the groups :func:`resolve_recipient` names, as stored.
+
+    The groups also come from the routing of a company-managed agent with
+    nobody named (the CTEM ``decide`` groups, #2367).
+    """
+    if not needs_human:
+        return None, None
     from app.services.work_item_recipient import resolve_recipient
 
     found = await resolve_recipient(
@@ -6265,8 +6350,12 @@ async def _resolved_recipient(
         item_user_id=item_user_id,
         is_company_managed=is_company_managed,
         workspace_id=workspace_id,
+        run_person_id=run_person_id,
+        run_person_chosen=run_person_chosen,
     )
-    return found.user_id if found.user_id != item_user_id else None
+    if found.group_ids:
+        return None, list(found.group_ids)
+    return (found.user_id if found.user_id != item_user_id else None), None
 
 
 async def _resolved_recipients(
@@ -6279,6 +6368,8 @@ async def _resolved_recipients(
     item_user_id: uuid.UUID | None,
     is_company_managed: bool,
     workspace_id: uuid.UUID | None,
+    run_person_id: uuid.UUID | None = None,
+    run_person_chosen: bool = False,
 ) -> tuple[uuid.UUID | None, list[str] | None]:
     """``(waits_for_user_id, waits_for_group_ids)`` a write stores (#11893, #1748).
 
@@ -6291,7 +6382,22 @@ async def _resolved_recipients(
     if groups:
         found = await _resolve_groups(db, groups)
         return None, list(found.group_ids)
-    person = await _resolved_recipient(
+    if not needs_human:
+        # Refuses a recipient on an item that needs nobody.
+        await _resolved_recipient(
+            db,
+            needs_human=False,
+            recipient=recipient,
+            acting_user_id=acting_user_id,
+            agent_id=agent_id,
+            item_user_id=item_user_id,
+            is_company_managed=is_company_managed,
+            workspace_id=workspace_id,
+            run_person_id=run_person_id,
+            run_person_chosen=run_person_chosen,
+        )
+        return None, None
+    return await _resolved_recipient_and_groups(
         db,
         needs_human=needs_human,
         recipient=recipient,
@@ -6300,8 +6406,9 @@ async def _resolved_recipients(
         item_user_id=item_user_id,
         is_company_managed=is_company_managed,
         workspace_id=workspace_id,
+        run_person_id=run_person_id,
+        run_person_chosen=run_person_chosen,
     )
-    return person, None
 
 
 def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):
@@ -7254,14 +7361,22 @@ async def _complete_case_ask(db: Any, correlation_key: object, ask: Any) -> Any:
 
     The card states the running version, the affected range and the fixed
     version, or that the proposal is blind, whatever the agent wrote: the
-    platform builds the line from the case (``ctem_version_match``). Any other
-    item's ask is returned as given.
+    platform builds the line from the case (``ctem_version_match``). The
+    validation card of a ``control_decay`` case states what the run measures
+    in OpenCRQ and its recurrence (``ctem_control_measurement``, #2369). A
+    remediation or mobilize card names the hosts its case's validations ran on
+    and how each was chosen (``ctem_case_assets``, #2395). Any other item's ask
+    is returned as given.
     """
     if not ask:
         return ask
+    from app.services import ctem_case_assets, ctem_control_measurement
     from app.services.ctem_version_match import complete_gate_ask
 
-    return await complete_gate_ask(db, correlation_key, ask)
+    # The assets line goes first, then the version match above it: the version match leads the card.
+    ask = await ctem_case_assets.complete_gate_ask(db, correlation_key, ask)
+    ask = await complete_gate_ask(db, correlation_key, ask)
+    return await ctem_control_measurement.complete_gate_ask(db, correlation_key, ask)
 
 
 def _ux_review_of(correlation_key: object, title: object) -> dict[str, Any] | None:

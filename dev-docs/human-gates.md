@@ -81,7 +81,20 @@ What diverges, read on main:
   `flow_hitl` urgent, not `work_item_waiting`.
 - Three recipient rules: the run owner (admins for a company-managed run), the
   flow owner or the whole company (company-managed flow), the work item
-  recipient (explicit, acting user, agent owner, then administrators).
+  recipient (explicit, acting user, agent owner, then administrators). For a
+  company-managed agent the owner is the seed account, never a decider (#2367):
+  its decision goes to the CTEM `decide` groups (notify on) for CTEM work, else
+  to the person its run acts for (triggering user, else run-as user, carried on
+  the agent writer apart from the file owner a company-managed run leaves
+  empty), else to the owner of its home fleet when a person owns it, else to the
+  administrators; the seed owner only on a platform with no administrator. A
+  recipient such an agent names is kept only when it is a decider (run person,
+  acting user, administrator, home fleet owner, CTEM `decide` member for CTEM
+  work); the seed account or anyone else is dropped and this routing applies.
+  The seed account (`ADMIN_EMAIL`) is the platform administrator: when it is
+  the run's chosen person (it triggered the run, or the assignment runs as it)
+  it stays the decider, routed to alone and accepted as an explicit recipient;
+  it is excluded only as the assignment owner standing in (the fallback).
 - An `awaiting_human` run counts in the assignment's blocking statuses
   (`assignment_dispatch`), so a routinely pausing scheduled run holds its
   assignment's queue while it waits.

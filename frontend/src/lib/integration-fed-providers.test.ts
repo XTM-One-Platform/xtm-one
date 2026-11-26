@@ -46,11 +46,16 @@ test("the feeding page is the integration's Models tab", () => {
   assert.equal(feedingPagePath("i-1", "anthropic"), null);
 });
 
-test("a routed company-managed LM Studio integration is offered, its token optional", () => {
+test("a company-managed LM Studio integration with a server URL is offered, routed or not, its token optional", () => {
   const lmstudio = (overrides: Partial<Integration>) =>
-    integration({ provider: "lmstudio", has_api_key: false, relay_group_id: "g-1", ...overrides });
+    integration({
+      provider: "lmstudio", has_api_key: false, relay_group_id: "g-1",
+      extra_config: { base_url: "http://gpu-host:1234" }, ...overrides,
+    });
   assert.deepEqual(integrationsToFeed("lmstudio", [lmstudio({})], []).map((i) => i.id), ["i-1"]);
-  assert.deepEqual(integrationsToFeed("lmstudio", [lmstudio({ relay_group_id: null })], []), []);
+  assert.deepEqual(integrationsToFeed("lmstudio", [lmstudio({ relay_group_id: null })], []).map((i) => i.id), ["i-1"]);
+  assert.deepEqual(integrationsToFeed("lmstudio", [lmstudio({ extra_config: null })], []), []);
+  assert.deepEqual(integrationsToFeed("lmstudio", [lmstudio({ extra_config: { base_url: " " } })], []), []);
   assert.deepEqual(integrationsToFeed("lmstudio", [lmstudio({ is_company_managed: false })], []), []);
   assert.equal(feedingPagePath("i-1", "lmstudio"), "/integrations/i-1/models");
 });

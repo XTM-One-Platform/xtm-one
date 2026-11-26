@@ -710,21 +710,21 @@ the plan, `true` writes it) and the primary assets are reconciled with the
 company-managed OpenCRQ's supporting assets, read with a token minted for
 that administrator:
 
-- a jewel with no `opencrq_asset_id` whose name matches exactly one asset
+- a primary asset with no `opencrq_asset_id` whose name matches exactly one asset
   (case-insensitive) is linked to it; several matches are reported as
   `ambiguous`, never picked;
-- profile to OpenCRQ: a linked jewel's criticality is written to the asset
+- profile to OpenCRQ: a linked primary asset's criticality is written to the asset
   (`low`, `medium`, `high`, `critical` -> `very_high`) when they differ;
-- OpenCRQ to profile: a `very_high` asset no jewel names joins the profile
+- OpenCRQ to profile: a `very_high` asset no primary asset names joins the profile
   as a `critical` primary asset linked to it;
-- a jewel whose asset OpenCRQ no longer holds is reported
+- a primary asset whose asset OpenCRQ no longer holds is reported
   (`not_in_opencrq`) and kept;
-- a link never makes a typed jewel an OpenCRQ row: it stays `manual` with
+- a link never makes a typed primary asset an OpenCRQ row: it stays `manual` with
   `opencrq_asset_id` as a link (only a row with no `source` at all, saved
   before provenance, reads as an OpenCRQ row);
-- a synced jewel whose pushed criticality falls below the primary-asset sync's
+- a synced primary asset whose pushed criticality falls below the primary-asset sync's
   `min_criticality` becomes a typed row linked to its asset
-  (`kept_below_sync_threshold`), so the sync never removes a jewel for a
+  (`kept_below_sync_threshold`), so the sync never removes a primary asset for a
   criticality the reconcile wrote. A sync with `remove_gone` removes only the
   rows stamped with its own `sync_id`; the others are reported (`gone_kept`).
 
@@ -735,8 +735,8 @@ an administrator calls `POST /api/v1/organization-context/draft` and gets a
 proposed profile, nothing saved, read with a token minted for that
 administrator. OpenCTI gives the platform organization's name and first
 sector and the PIR ids; OpenAEV gives its security platforms as tech stack
-entries; OpenCRQ gives its `high` and `very_high` supporting assets as crown
-jewels linked to their asset (`very_high` -> `critical`). Only an empty field
+entries; OpenCRQ gives its `high` and `very_high` supporting assets as primary
+assets linked to their asset (`very_high` -> `critical`). Only an empty field
 of the current profile is filled, each filled field names its platform
 (`filled`), and a platform not connected or unreadable is listed in
 `unavailable`, never guessed and never a failure. No model is involved. The

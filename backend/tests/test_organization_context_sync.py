@@ -194,8 +194,8 @@ async def test_a_run_that_only_drops_superseded_rows_saves_the_profile(monkeypat
     # #1591 review: an older build's supporting-asset primary asset is dropped even when OpenCRQ
     # has no primary asset yet; the run saves that cleanup and reports it as removed.
     async def current(_db):
-        jewel = {"name": "Mail server", "source": "opencrq", "external_id": "s1"}
-        return SimpleNamespace(profile={"primary_assets": [jewel]}, version=7)
+        pa_row = {"name": "Mail server", "source": "opencrq", "external_id": "s1"}
+        return SimpleNamespace(profile={"primary_assets": [pa_row]}, version=7)
 
     async def read(_db, _user, _filters):
         return imp.ReadResult(rows=[], total=0, superseded={"s1"})

@@ -81,7 +81,7 @@ def env(monkeypatch):
         assert organization_id == ORG
         return [(seen.case, rows)]
 
-    async def _get(_db, case_id, *, organization_id):
+    async def _get(_db: object, case_id: object, *, organization_id: object, **_options: object) -> object:
         if organization_id != ORG:
             return None
         if case_id in seen.created:
@@ -639,6 +639,18 @@ async def test_a_merge_rule_refusal_writes_nothing(env: SimpleNamespace, monkeyp
     monkeypatch.setattr(store, "merge_cases", _merge)
     answer = await env.call("merge_ctem_cases", target_id=str(env.case.id), case_ids=[str(env.case.id)])
     assert answer.startswith("Refused: the surviving case") and env.db.commits == 0
+
+
+def test_a_case_names_the_simulations_its_derived_items_are_matched_on() -> None:
+    """#2389: the delete cascade reads the case's validation references and attack-path hops."""
+    from app.services import ctem_case_delete as case_delete
+
+    case = _case(
+        validations=[{"provider": "openaev", "ref": "sim-1"}, {"provider": "openaev", "ref": "sim-1"}, {"ref": ""}],
+        attack_path={"hops": [{"simulation": "sim-2"}, {"simulation": None}]},
+    )
+    assert case_delete.case_simulations(case) == ["sim-1", "sim-2"]
+    assert case_delete.case_simulations(_case()) == []
 
 
 def test_delete_points_to_merge_for_duplicates(env: SimpleNamespace) -> None:

@@ -305,6 +305,14 @@ _STAGE_ASSESSMENT_SCHEMA: dict = {
             "type": "string",
             "description": "The single most important next action for this stage.",
         },
+        "caveats": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Optional: each metric read as suspect (for example a 0% detection "
+                "a collector may not have matched) and why, in one short line."
+            ),
+        },
         "coverage": {
             "type": "object",
             "properties": {
@@ -326,7 +334,7 @@ _STAGE_DEFS: list[dict] = [
         "name": "CTEM Scoping Analyst",
         "icon": "Crosshair",
         "focus": "how completely the exposure surface is defined and in scope",
-        "cyber": "asset coverage of the attack surface - the share of endpoints carrying an active OpenAEV agent (target >90%) and the count of UNPROTECTED endpoints to close (below ~85% coverage validation is unreliable); OpenCTI observables/CVEs are the intel-side surface. Call out primary assets lacking coverage",
+        "cyber": "asset coverage of the attack surface - the share of endpoints carrying an active OpenAEV agent (target >90%) and the count of UNPROTECTED endpoints to close (below ~85% coverage validation is unreliable). Count them with search_openaev_assets filter_group and limit=1 (its total), hosts only (asset_category eq HOST; an agentless non-host asset is not a protection gap): total hosts; covered = hosts with asset_status eq ACTIVE; unprotected = hosts with asset_status in INACTIVE, AGENTLESS, STALE; coverage = covered / total. asset_status is not an analytics engine key; OpenCTI observables/CVEs are the intel-side surface. Call out primary assets lacking coverage",
         "fimi": "information-space coverage - narratives, channels, languages and events (especially elections) tracked in OpenCTI",
         "fraud": "brand & asset coverage - monitored brands/organizations, watched domains, and impersonation personas",
     },
@@ -356,7 +364,7 @@ _STAGE_DEFS: list[dict] = [
         "name": "CTEM Validation Analyst",
         "icon": "ShieldCheck",
         "focus": "whether prioritized exposures are proven, not assumed",
-        "cyber": "OpenAEV BAS efficacy - prevention vs detection success, per-technique ATT&CK results, and the DEPTH of the detection stack (security platforms / active collectors) that actually caught the attacks; name techniques exercised but not detected. OpenCTI detection-rule coverage is the fallback proxy",
+        "cyber": "OpenAEV BAS efficacy - prevention vs detection success, per-technique ATT&CK results, and the DEPTH of the detection stack (security platforms / active collectors) that actually caught the attacks; name techniques exercised but not detected. A detection result depends on the collector having matched the security platform's alerts: a uniform 0% detection with a live EDR / SIEM collector is suspect until its traces are read (rule 6). OpenCTI detection-rule coverage is the fallback proxy",
         "fimi": "corroboration - the share of channels with mapped infrastructure (publishing to domains/URLs) evidencing real operations",
         "fraud": "confirmation - validated-malicious share of fraud indicators, proven by OpenAEV phishing simulations (human response) when connected",
     },
@@ -371,6 +379,37 @@ _STAGE_DEFS: list[dict] = [
         "fraud": "phishing / brand-abuse takedown closure (Case-RFT) and open takedowns",
     },
 ]
+
+
+# A uniform 0% detection read while a collector is alive is far more often a
+# collector that did not match the security platform's alerts than a total
+# detection failure (#2402): the validation analyst reads the collector traces
+# before scoring it, and never recommends new detections on that zero.
+_SUSPECT_ZERO_RULE = (
+    "6. A suspect zero is not a finding. A detection rate of 0% (or every "
+    "DETECTION expectation Not Detected) while at least one EDR / SIEM "
+    "collector is registered and alive is SUSPECT: the collector may not have "
+    "matched the security platform's alerts. Before scoring it, read the "
+    "collector traces of one or two of those expectations with "
+    "manage_openaev_expectation action=traces (at most two traces calls per "
+    "assessment). If the traces show alerts the collector did not match to the "
+    "expectation, or the collector wrote no trace for them, write: detection "
+    "result not assessable, the collector did not match the security "
+    "platform's alerts; set score_read to unknown (never critical on that "
+    "zero), add the reason to `caveats`, and make the recommended_action: "
+    "check the collector's matching against the security platform's own "
+    "alerts, not new detections. If the traces show the collector searched "
+    "and the platform raised no alert, the miss is real: report those "
+    "techniques as not detected.\n"
+)
+_SUSPECT_ZERO_PROMPT = (
+    " A 0% detection read while an EDR / SIEM collector is alive is suspect, "
+    "not a finding: read the traces of one or two of those expectations "
+    "(manage_openaev_expectation action=traces, at most two calls) before "
+    "scoring it; when the collector did not match the platform's alerts, say "
+    "the detection result is not assessable, set score_read to unknown, record "
+    "it in `caveats` and recommend checking the collector's matching."
+)
 
 
 def _stage_persona(d: dict) -> str:
@@ -397,7 +436,11 @@ def _stage_persona(d: dict) -> str:
         "that does not see everything: a zero there is not assessable (coverage "
         "unknown), never no activity. Set score_read to unknown for the OpenAEV "
         "part, coverage.openaev to false, and write: OpenAEV not readable with "
-        "full scope for this user.\n\n"
+        "full scope for this user.\n"
+        "5. Every count you write in the headline or the assessment equals the "
+        "number of items you list (six techniques written, six named).\n"
+        + (_SUSPECT_ZERO_RULE if d["key"] == "validation" else "")
+        + "\n"
         "Lead with what the organization HAS: the headline and the start of the "
         "assessment must surface the strongest finding from the CONNECTED "
         "product's data. A product that is not connected is a coverage gap, not "
@@ -431,7 +474,10 @@ def _stage_prompt(d: dict) -> str:
         "score_read, the 1-3 key_metrics that matter (with real values), and ONE "
         "specific, prioritized recommended_action a team can act on this week "
         "(name the asset / CVE / actor / narrative where possible). Set "
-        "`coverage` to which products returned data. Output only the JSON object."
+        "`coverage` to which products returned data. Every count written in "
+        "the headline or the assessment equals the number of items listed."
+        + (_SUSPECT_ZERO_PROMPT if d["key"] == "validation" else "")
+        + " Output only the JSON object."
     )
 
 
@@ -644,6 +690,13 @@ BUILTIN_AGENTS: list[dict] = [
         "memory_medium_term_enabled": False,
         "memory_persistent_enabled": False,
         "memory_user_enabled": False,
+        # PREPARE grounds the query in this OpenCTI's custom-field filter keys,
+        # which the filter schema skill cannot list (a tool result, not prompt).
+        "prepare_tool_ref": {
+            "source": "integration",
+            "provider": "opencti",
+            "tool_name": "get_opencti_nlq_context",
+        },
         "finalize_tool_ref": {
             "source": "integration",
             "provider": "opencti",
@@ -2214,6 +2267,9 @@ CTEM_FLEET_AGENTS: list[dict] = [
         # The blackboard (ctem:f1:state) and the approval / re-test queue
         # (ctem:f1:<id> work items, needs_human for every environment write).
         "builtin_tool_ids": ["shared_state", "work_items", "generate_file"],
+        # A control_decay case reads EDR and device-management coverage from the
+        # organization inventory those sources sync into (#2354), never through a
+        # template binding here: an unconnected one would be announced as missing.
         "integration_template_bindings": ["opencti", "openaev", "opencrq"],
         "memory_user_enabled": False,
     },
@@ -2793,15 +2849,24 @@ _CTEM_F2_COMMON: dict = {
     "timeout_seconds": 900,
 }
 _CTEM_F2_TRIAGE_PROMPT = (
-    "A vulnerability signal arrived from OpenCTI (the event is in the trigger "
-    "payload: the Vulnerability or the sighting of one). Run the fleet loop on "
-    "it: read the organization context, hand the CVE to the Vulnerability "
-    "Triage Analyst, stop with the reason when nothing the organization runs "
-    "is affected, else record it with record_ctem_signal (trigger_path "
-    "new_vulnerability, the CVE and the matched assets as subject, the OpenCTI "
-    "id as source). The scope gate opens or joins its case, and the case "
-    "event runs the loop: do not start it here. " + CTEM_CASE_NEVER_WRITES_COUNTERS + " {priority}"
+    "A vulnerability signal from OpenCTI was recorded (signal_id and verdict are in the trigger "
+    "payload). Read it with list_ctem_signals signal_id, then the vulnerability it names in "
+    "OpenCTI. Run the fleet loop on it: read the organization context, hand the CVE to the "
+    "Vulnerability Triage Analyst and stop with the reason when nothing the organization runs "
+    "is affected. The signal is already recorded and the scope gate already opened or joined "
+    "its case: never record it again, and the case event runs the loop, so do not start it "
+    "here. " + CTEM_CASE_NEVER_WRITES_COUNTERS + " {priority}"
 )
+#: The signal the F2 triage runs hear (#2434): a vulnerability OpenCTI delivered to a platform
+#: signal source, never a trigger an assignment provisions; each run adds its own routing fact.
+_CTEM_F2_SIGNAL_FILTER: dict[str, Any] = {"trigger_path": "new_vulnerability", "source_provider": "opencti"}
+
+
+def _ctem_f2_on_signal(facts: dict[str, Any]) -> dict[str, Any]:
+    """The ``ctem_signal.recorded`` subscription of one F2 triage run, *facts* its routing filter."""
+    return {"event": "ctem_signal.recorded", "filter": {**_CTEM_F2_SIGNAL_FILTER, **facts}, "scope": "all"}
+
+
 CTEM_F2_ASSIGNMENTS: list[dict] = [
     {
         **_CTEM_F2_COMMON,
@@ -2810,18 +2875,8 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "Triages a vulnerability that enters the CISA KEV list or whose EPSS "
             "score crosses 0.5, against the organization's software inventory."
         ),
-        "trigger_type": "integration_event",
-        "trigger_config": {
-            "provider": "opencti",
-            "provision": {
-                "fleet": _CTEM_F2_FLEET,
-                "purpose": "KEV or EPSS jump",
-                "entity_types": ["Vulnerability"],
-                "cisa_kev": True,
-                "min_epss_score": 0.5,
-                "event_types": ["create", "update"],
-            },
-        },
+        "trigger_type": "platform_event",
+        "trigger_config": _ctem_f2_on_signal({"any": [{"facts.kev": True}, {"facts.epss_high": True}]}),
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(priority=""),
     },
     {
@@ -2832,19 +2887,10 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "System the organization runs, whatever its KEV or EPSS: the source must name a "
             "software product or an asset of the profile, checked before any model call."
         ),
-        "trigger_type": "integration_event",
-        "trigger_config": {
-            "provider": "opencti",
-            "runs_in_profile": "source",
-            "provision": {
-                "fleet": _CTEM_F2_FLEET,
-                "purpose": "Vulnerability on software we run",
-                "relationship_types": ["has"],
-                "from_types": ["Software", "Infrastructure", "System"],
-                "to_types": ["Vulnerability"],
-                "event_types": ["create"],
-            },
-        },
+        "trigger_type": "platform_event",
+        # The scope gate already read the software against the inventory: a discarded signal
+        # names nothing the organization runs, so it starts no run (the former runs_in_profile).
+        "trigger_config": _ctem_f2_on_signal({"facts.software_named": True, "verdict": {"not_in": ["discarded"]}}),
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
             priority=(
                 "The relationship's source is in the organization's software inventory or assets (checked "
@@ -2860,19 +2906,9 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "live PIR score reaches the prioritization policy's threshold for vulnerabilities "
             "(70 by default, editable in Settings), checked before any model call."
         ),
-        "trigger_type": "integration_event",
-        "trigger_config": {
-            "provider": "opencti",
-            "pir_min_score": "policy",
-            "provision": {
-                "fleet": _CTEM_F2_FLEET,
-                "purpose": "Vulnerability flagged in a PIR",
-                "mode": "pir_playbook",
-                "entity_types": ["Vulnerability"],
-                "organization_context": ["pir_ids"],
-                "pir_min_score": 1,
-            },
-        },
+        "trigger_type": "platform_event",
+        # The policy threshold is read when the signal is recorded (pir_floor_met, #1678).
+        "trigger_config": _ctem_f2_on_signal({"facts.pir_flagged": True, "pir_floor_met": True}),
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
             priority=(
                 "The vulnerability is flagged in an organization PIR at or above the policy's threshold "
@@ -2884,17 +2920,8 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
         **_CTEM_F2_COMMON,
         "name": "Vulnerability sighted",
         "description": "Triages, at higher priority, a vulnerability sighted in the organization's data.",
-        "trigger_type": "integration_event",
-        "trigger_config": {
-            "provider": "opencti",
-            "provision": {
-                "fleet": _CTEM_F2_FLEET,
-                "purpose": "Vulnerability sighted",
-                "entity_types": ["stix-sighting-relationship"],
-                "from_types": ["Vulnerability"],
-                "event_types": ["create"],
-            },
-        },
+        "trigger_type": "platform_event",
+        "trigger_config": _ctem_f2_on_signal({"facts.sighted": True}),
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
             priority="A sighting is evidence of presence: rank it above an unsighted CVE of the same score."
         ),
@@ -2961,6 +2988,9 @@ CTEM_CASE_ORDERING_KEY = "case_id"
 #: A burst of ``ctem_case.opened`` (a reconcile opening 500 cases) is batched (#2286): the
 #: events of this window join one run, at most ``CTEM_CASE_BATCH_MAX_EVENTS`` cases each, so
 #: the burst starts a bounded number of Loop runs. Every other case event runs alone, at once.
+#: The batch is a dispatch bound only (#2379, ``batch_split``): each case of a batch is
+#: worked in a run and a context of its own, one after the other, never in one conversation
+#: that re-sends every earlier case's tool results.
 CTEM_CASE_BATCH_WINDOW_SECONDS = 60
 CTEM_CASE_BATCH_MAX_EVENTS = 5
 CTEM_CASE_BATCHED_EVENTS: tuple[str, ...] = ("ctem_case.opened",)
@@ -3013,6 +3043,55 @@ CTEM_GATE_ANSWERED = GATE_ANSWERED
 CTEM_KEY_PREFIX = "ctem:"
 
 
+#: What measures a control in OpenCRQ (#2369): chosen from the asset type and the tenant's live
+#: integrations, a permanent control first, a recurring OpenAEV scenario next, a one-off last; a
+#: port-only scan reaches OpenCRQ as nothing, and a one-off result expires after
+#: evidence_health.max_age_days (path 9 opens again).
+CTEM_CONTROL_MEASUREMENT_RULE = (
+    "Choose the measurement like an analyst, from the asset type and the integrations the tenant has "
+    "connected, read at decision time (the integrations and tools you hold, get_organization_context "
+    "category software and assets_exposure), never from a fixed recipe, in this order: (1) a permanent "
+    "control an integration already offers for this kind of asset (a repository with Aikido connected: "
+    "enable Aikido scanning on it; an IP or host with a vulnerability scanner such as Tenable, Qualys, "
+    "Rapid7 or Wiz: permanent scanning of the asset in it; an endpoint with an EDR: the policy or "
+    "coverage that measures the control); (2) a recurring OpenAEV scenario at a period below "
+    "evidence_health.max_age_days, on the recurring scenario or asset group already targeting the asset "
+    "when one exists: injects with DETECTION or PREVENTION expectations on a technique the control "
+    "covers (read from OpenCRQ), or OpenAEV generic vulnerability scanning (CVE output, which OpenCRQ "
+    "books); (3) a one-off test only when (1) and (2) are impossible, the decision saying why no "
+    "permanent control fits. A port-only scan with no expectation and no CVE output is exposure, never "
+    "the measurement, and never counted as reusable evidence. Several options may be offered, the "
+    "recommended one first; each says whether it is permanent or one-off, what it measures, and what "
+    "OpenCRQ will update (the technique test result, or CVE findings) and will not (other controls; "
+    "nothing from a port-only scan). Nothing applies at all (no integration and no OpenAEV path): the "
+    "decision says no measuring source connected, names it as the root cause and the integration to "
+    "connect, no scan."
+)
+
+#: The reconciliation step of a ``control_decay`` case (#2354): "no current evidence in OpenCRQ"
+#: is not "no control", so the existing control sources are read before any scan is proposed.
+CTEM_CONTROL_DECAY_RECONCILE = (
+    "A case whose trigger_path is control_decay (never_measured, attested_only or expired) is "
+    "reconciled before any validation, scan or new control is proposed: read, read-only, the "
+    "control sources you hold for its asset (the OpenAEV results on the asset, the EDR and "
+    "device-management coverage in the organization inventory, get_organization_context category "
+    "assets_exposure, and in any such integration you hold) and what OpenCRQ holds for the control "
+    "(get_opencrq_control_validation). In OpenAEV read what already targets the asset with "
+    "get_openaev_asset_coverage: its asset groups, static and dynamic, and the scenarios (with "
+    "their recurrence), simulations and atomic testings that target it directly or through those "
+    "groups, with the latest result on the asset; a scenario search by name is not this read. "
+    "The decision cites each covering scenario: its usable latest result is the evidence, an "
+    "unusable one is named with why and the decision proposes re-running that scenario, and a "
+    "new one-off scan is proposed only when nothing covers the asset. A control found that "
+    "OpenCRQ lacks or "
+    "under-rates gets one decision keyed `ctem:remediation:` followed by the case id proposing to "
+    "record it in OpenCRQ (update_opencrq_control_capability_assessment or "
+    "manage_opencrq_scope_control_posture, the source as justification), never a scan; none found "
+    "gets the decision to put a control in place and measure it; the decision lists every source "
+    "checked and what it returned (found, not found, not readable). " + CTEM_CONTROL_MEASUREMENT_RULE
+)
+
+
 def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: dict[str, Any]) -> dict[str, Any]:
     """The "Case opened or reopened" listener; *owner_filter* is its whole payload filter on ``owner_fleet``."""
     return {
@@ -3035,13 +3114,13 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "batch_window_seconds": CTEM_CASE_BATCH_WINDOW_SECONDS,
             "batch_events": list(CTEM_CASE_BATCHED_EVENTS),
             "batch_max_events": CTEM_CASE_BATCH_MAX_EVENTS,
+            "batch_split": True,
         },
         "prompt": (
             "A CTEM case event is in the trigger below (event name, case_id, trigger_path, "
-            "state, owner_fleet: the fleet the platform routed this case to, yours). Opened cases "
-            "arrive batched: when the trigger is a batch (batch true, an events list), work each "
-            "event of the list in order, one case at a time, exactly as below, each case under its "
-            "own work item and its own gates; never merge two cases' loops into one item. The case "
+            "state, owner_fleet: the fleet the platform routed this case to, yours). Each run works "
+            "one case: work it exactly as below, under its own work item and its own gates; never "
+            "merge two cases' loops into one item. The case "
             "is the record of this loop: read it first with "
             "get_ctem_case. On ctem_case.opened or ctem_case.reopened: own the case's loop "
             f"under the work item keyed `{fleet_key}:case:` followed by the case_id (create "
@@ -3051,7 +3130,8 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "record_ctem_case_validation, the ticket with sync_ctem_case_ticket, notes "
             "with update_ctem_case. A second open case for the same fix (the same product under another "
             "name, the same CVEs and assets) is merged with merge_ctem_cases into the case a person holds, "
-            "else the oldest one, never deleted. On ctem_case.sla_breached: add a note to that work item "
+            "else the oldest one, never deleted. " + CTEM_CONTROL_DECAY_RECONCILE + " "
+            "On ctem_case.sla_breached: add a note to that work item "
             "and to the case naming the breach and the next step, raise its priority, and file one "
             "needs_human decision keyed `ctem:remediation:` followed by the case id (unless one is "
             "already open for the case) with the options left (act now, defer with a new date, "

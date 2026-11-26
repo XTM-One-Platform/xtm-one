@@ -1833,9 +1833,9 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     their exact text for a profile that never filled the new parts.
     """
     dumped = profile.model_dump(mode="json", exclude=set(EXPOSURE_FIELDS) | set(PAGE_ONLY_FIELDS))
-    for jewel in dumped.get("primary_assets") or []:
-        if not jewel.get("asset_names"):
-            jewel.pop("asset_names", None)
+    for pa_row in dumped.get("primary_assets") or []:
+        if not pa_row.get("asset_names"):
+            pa_row.pop("asset_names", None)
     for entry in dumped.get("software") or []:
         if not entry.get("version"):
             entry.pop("version", None)

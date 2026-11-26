@@ -2714,6 +2714,8 @@ async def _activation_check_executor(
                 is_company_managed=run.is_company_managed,
                 company_managed_agent=agent.is_company_managed,
                 acting_admin=acting_admin,
+                run_person_id=str(run.user_id) if run.user_id else None,
+                run_person_chosen=_run_person_chosen(run, assignment),
             )
         )
     if "shared_state" in builtin_ids:
@@ -3651,6 +3653,21 @@ def _resolve_run_file_owner_id(run: AssignmentRun) -> str | None:
     if run.is_company_managed:
         return None
     return str(run.user_id) if run.user_id else None
+
+
+def _run_person_chosen(run: AssignmentRun, assignment: Assignment | None) -> bool:
+    """Whether ``run.user_id`` was chosen: its triggering user or the run-as user (#2422).
+
+    ``False`` when it is only the assignment owner standing in: a company-managed
+    assignment's owner is the seed account, never a decider by default, while a
+    run someone started or set to run as that account keeps it as the decider.
+    """
+    person = getattr(run, "user_id", None)
+    if person is None:
+        return False
+    return bool(
+        person == getattr(run, "triggered_by_user_id", None) or person == getattr(assignment, "run_as_user_id", None)
+    )
 
 
 def _inbox_release_reason(loop_result: Any, messages: Any, offered_tools: Any) -> str | None:
@@ -5140,6 +5157,13 @@ async def execute_assignment_run(
             if isinstance(fresh_payload, dict):
                 run.trigger_payload = fresh_payload
 
+        # A batch of a ``batch_split`` trigger is a dispatch bound only (#2379):
+        # this run works its first event in a context of its own, the rest
+        # waits as one queued run on its ordering key, committed with
+        # "running" below. A resume or a HITL resume finds the split done.
+        if not _resuming and run.status != "awaiting_human":
+            await _split_batch_run(db, assignment, run)
+
         # Save original status before overwriting (needed for HITL resume)
         original_status = run.status
 
@@ -6621,6 +6645,10 @@ async def execute_assignment_run(
                     peer_agents=wi_peers,
                     origin=WorkItemOrigin(run_id=run.id),
                     acting_admin=_coord_acting_admin,
+                    # The run's person routes its decisions (#2422); the
+                    # file owner above stays empty for a company-managed run.
+                    run_person_id=str(run.user_id) if run.user_id else None,
+                    run_person_chosen=_run_person_chosen(run, assignment),
                 )
                 composite.add_tools(wi_defs, wi_exec)
 
@@ -8599,6 +8627,10 @@ async def execute_assignment_run(
                 )
                 if _preload_groups:
                     loop_kwargs["preload_tool_groups"] = _preload_groups
+                # An event-driven run works in a bounded window (#2430).
+                _work_window = assignment_dispatch.event_run_working_window(run.trigger_context)
+                if _work_window is not None:
+                    loop_kwargs["working_window_tokens"] = _work_window
                 # Pass agent-level temperature if configured
                 if agent.temperature is not None:
                     loop_kwargs["temperature"] = agent.temperature
@@ -11606,6 +11638,64 @@ async def _fold_into_queued_run(
     run.trigger_payload = event_coalescing.merged_payload(run.trigger_payload or {}, payload or {})
     await db.flush()
     return str(run.id)
+
+
+async def _split_batch_run(db: AsyncSession, assignment: Assignment, run: AssignmentRun) -> str | None:
+    """Keep the first event of a ``batch_split`` batch run on *run*, queue the rest; the queued run's id.
+
+    The batch is read under the row lock, so an event joining at the same
+    moment is either in the list split here or opens a batch of its own. The
+    queued run keeps the ordering key of *run*: the drain starts it once *run*
+    ended, so the events are worked one at a time, in arrival order, each in
+    a fresh context (``event_batching.split_batch``). Flushes, the caller
+    commits. ``None`` when nothing is left over.
+    """
+    if not event_batching.splits(assignment.trigger_config):
+        return None
+    payload = (
+        await db.execute(
+            select(AssignmentRun.trigger_payload)
+            .where(AssignmentRun.id == run.id)
+            .with_for_update()
+            .execution_options(autoflush=False)
+        )
+    ).scalar_one_or_none()
+    first, remainder = event_batching.split_batch(payload if isinstance(payload, dict) else run.trigger_payload)
+    if remainder is None:
+        return None
+    # A batch payload resolves no ordering key of its own (the key path names
+    # one event's field): the batch run and its rest share one, so the drain
+    # starts the rest only once this run ended, one case at a time.
+    ordering = assignment_dispatch.ORDERING_KEY_CONTEXT
+    if not (run.trigger_context or {}).get(ordering):
+        run.trigger_context = {**(run.trigger_context or {}), ordering: event_batching.split_ordering_key(str(run.id))}
+    context = event_batching.remainder_context(run.trigger_context, remainder, str(run.id))
+    if not settings.assignment_queue_enabled:
+        # The drain promotes only these while the delivery queue is off.
+        context[QUEUE_ORIGIN_KEY] = INTEGRATION_EVENT_QUEUE_ORIGIN
+    rest = AssignmentRun(
+        assignment_id=run.assignment_id,
+        agent_id=run.agent_id,
+        user_id=run.user_id,
+        triggered_by_user_id=run.triggered_by_user_id,
+        is_company_managed=run.is_company_managed,
+        trigger_payload=remainder,
+        trigger_context=context,
+        status=QUEUED_RUN_STATUS,
+    )
+    db.add(rest)
+    await db.flush()
+    run.trigger_payload = first
+    run.trigger_context = {**(run.trigger_context or {}), event_batching.REMAINDER_CONTEXT: str(rest.id)}
+    logger.info(
+        "Assignment '%s' (%s): batch run %s works its first event alone, %d event(s) queued as run %s",
+        assignment.name,
+        assignment.id,
+        run.id,
+        len(event_batching.events_of(remainder)),
+        rest.id,
+    )
+    return str(rest.id)
 
 
 async def _join_waiting_batch(

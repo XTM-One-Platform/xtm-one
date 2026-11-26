@@ -34,7 +34,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import pytest
 
 from app.core import totp
-from app.models.browser_profile import BrowserProfile
+from app.models.browser_profile import SESSION_AWAITING_MFA, BrowserProfile
 from app.services import web_fetch
 from app.services.browser_profiles import browser, profiles, signin
 
@@ -74,6 +74,11 @@ class Sites:
     bridge_by_path: bool = True
     #: The credential picker offers an authenticator-code method (else only a push).
     code_method: bool = True
+    #: A two-step sign-in: the username, then a "Choose a way to sign in" method picker (a passkey row and "Use my
+    #: password"), the password, then the one-time-code page.
+    method_picker: bool = False
+    #: The method picker offers "Use my password" (else only the passkey row).
+    picker_password: bool = True
     codes: list[str] = field(default_factory=list)
     stay: list[dict] = field(default_factory=list)
     tokens: set[str] = field(default_factory=set)
@@ -182,6 +187,35 @@ class _Handler(BaseHTTPRequestHandler):
             "<button type='submit'>Sign in</button></form></main>",
         )
 
+    def _username(self) -> bytes:
+        return _page(
+            "Sign in to your account",
+            "<main><form method='post' action='/login'>"
+            "<input type='email' name='loginfmt' autocomplete='username'>"
+            "<button type='submit'>Next</button></form></main>",
+        )
+
+    def _methods(self) -> bytes:
+        rows = [
+            "<div role='button' data-value='FidoKey' onclick=\"location.href='/bridge/fido'\" "
+            "style='padding:12px'>Face, fingerprint, PIN or security key</div>"
+        ]
+        if self.sites.picker_password:
+            rows.append(
+                "<div role='button' tabindex='0' onclick=\"location.href='/password'\" "
+                "style='padding:12px'>Use my password</div>"
+            )
+        return _page("Sign in", "<main><h1>Choose a way to sign in</h1>" + "".join(rows) + "</main>")
+
+    def _password(self) -> bytes:
+        return _page(
+            "Enter password",
+            "<main><form method='post' action='/login'>"
+            f"<input type='hidden' name='loginfmt' value='{USERNAME}'>"
+            "<input type='password' name='passwd' autocomplete='current-password'>"
+            "<button type='submit'>Sign in</button></form></main>",
+        )
+
     def _bridge(self) -> bytes:
         # A WebAuthn ceremony headless Chromium cannot run, plus a "Sign in another way" link.
         return _page(
@@ -242,7 +276,11 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._send(200, self._relay())
             return self._send(302, location="/login")
         if path == "/login":
-            return self._send(200, self._login())
+            return self._send(200, self._username() if s.method_picker else self._login())
+        if path == "/methods":
+            return self._send(200, self._methods())
+        if path == "/password":
+            return self._send(200, self._password())
         if path in ("/bridge/fido", "/passkey"):
             return self._send(200, self._bridge())
         if path == "/picker":
@@ -265,9 +303,13 @@ class _Handler(BaseHTTPRequestHandler):
     def _idp_post(self, path: str, form: dict[str, str]) -> None:
         s = self.sites
         if path == "/login":
+            if s.method_picker and "passwd" not in form:
+                if form.get("loginfmt") != USERNAME:
+                    return self._send(200, self._username())
+                return self._send(302, location="/methods")
             if form.get("loginfmt") != USERNAME or form.get("passwd") != PASSWORD:
                 return self._send(200, self._login(error=True))
-            return self._send(302, location=self._bridge_location())
+            return self._send(302, location="/otc" if s.method_picker else self._bridge_location())
         if path == "/otc":
             code = form.get("otc", "")
             s.codes.append(code)
@@ -461,6 +503,75 @@ async def test_a_picker_without_a_code_method_falls_to_a_push_challenge(sites, u
     # The picker chose the only method it had - the push - and said so in the trace.
     live = signin._local_states.get(outcome.challenge_id or "")
     assert live is not None
+
+
+# ── A "Choose a way to sign in" picker: the password, then a code the person types ──
+
+
+async def test_the_method_picker_takes_the_password_then_asks_the_person_for_the_code(
+    sites: Sites, updates: list[dict[str, object]]
+) -> None:
+    sites.method_picker = True
+
+    outcome = await signin.start_sign_in(_profile(sites, totp_secret=None), user_id=None, wait_seconds=90)
+
+    assert outcome.status == signin.STATUS_MFA_REQUIRED and outcome.kind == signin.KIND_CODE, outcome
+    cid = outcome.challenge_id
+    assert cid is not None
+    code = totp.code_for_counter(SECRET, totp.current_counter(SECRET))
+    answered = await signin.submit_code(cid, code, wait_seconds=60)
+    final = answered if answered.status != signin.STATUS_RUNNING else await _final(cid)
+
+    assert final.status == signin.STATUS_ACTIVE, final
+    assert sites.codes == [code]
+    decisions = _decisions(final)
+    assert "picker_choice=password" in decisions
+    assert "password_submitted" in decisions
+    assert "fido_bridge_detected" not in decisions  # the passkey row was never chosen
+
+
+async def test_a_method_picker_without_a_usable_method_fails_naming_it_never_a_push(
+    sites: Sites, updates: list[dict[str, object]]
+) -> None:
+    sites.method_picker = True
+    sites.picker_password = False
+
+    outcome = await signin.start_sign_in(_profile(sites, totp_secret=None), user_id=None, wait_seconds=90)
+    if outcome.status == signin.STATUS_RUNNING:
+        assert outcome.challenge_id is not None
+        outcome = await _final(outcome.challenge_id)
+
+    assert outcome.status == signin.STATUS_FAILED, outcome
+    assert outcome.stage == signin.STAGE_MFA
+    assert "method picker" in outcome.message
+    assert "unusable_method_picker" in _decisions(outcome)
+
+
+async def test_a_waiting_challenge_is_answered_as_it_stands_unless_restarted(
+    sites: Sites, updates: list[dict[str, object]]
+) -> None:
+    sites.method_picker = True
+    profile = _profile(sites, totp_secret=None)
+
+    first = await signin.start_sign_in(profile, user_id=None, wait_seconds=90)
+    assert first.status == signin.STATUS_MFA_REQUIRED and first.kind == signin.KIND_CODE, first
+    profile.mfa_challenge_id = first.challenge_id
+    profile.session_status = SESSION_AWAITING_MFA
+
+    again = await signin.start_sign_in(profile, user_id=None, wait_seconds=5)
+    assert again.challenge_id == first.challenge_id
+
+    restarted = await signin.start_sign_in(profile, user_id=None, wait_seconds=90, restart=True)
+    assert first.challenge_id is not None and restarted.challenge_id != first.challenge_id, restarted
+    assert first.challenge_id not in signin._running
+    closed = await signin.read_state(first.challenge_id)
+    assert closed is not None and closed.status == signin.STATUS_FAILED
+
+    # A login setting changed since the challenge opened restarts it too.
+    profile.mfa_challenge_id = restarted.challenge_id
+    profile.login_config = {"confirm_selector": "#idSIButton9"}
+    changed = await signin.start_sign_in(profile, user_id=None, wait_seconds=90)
+    assert changed.challenge_id not in (first.challenge_id, restarted.challenge_id), changed
 
 
 # ── The password detector only cries "refused" on the error banner ────────

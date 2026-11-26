@@ -32,6 +32,7 @@ from app.core.redis import redis_client
 from app.models.ctem_case import CASE_STATES
 from app.models.user import User
 from app.services import ctem_access
+from app.services import ctem_case_assets as case_assets
 from app.services import ctem_case_audit_view as case_audit_view
 from app.services import ctem_case_gate_records_view as case_gates_view
 from app.services import ctem_case_loop as case_loop
@@ -138,15 +139,22 @@ def _with_history(running: dict[str, Any] | None, events: list[Any]) -> dict[str
 
 
 async def visible_case(
-    db: AsyncSession, case_id: uuid.UUID, user_id: str, vertical: str, *, read_only: bool = False
+    db: AsyncSession,
+    case_id: uuid.UUID,
+    user_id: str,
+    vertical: str,
+    *,
+    read_only: bool = False,
+    for_update: bool = False,
 ) -> tuple[Any, dict[str, Any]] | None:
     """The stored case and its rendering for *user_id*, ``None`` when they see none of its issues.
 
     *read_only* (the case page's read, #1986) lets a view retired by a generation bump
     answer for this case's members while the new one builds; a change always reads the
-    view of the current generation.
+    view of the current generation. *for_update* (#2373): a change locks the case row
+    until its commit, so concurrent writes of one case are serialized.
     """
-    found = await store.get_case(db, case_id, organization_id=await _organization_id(db))
+    found = await store.get_case(db, case_id, organization_id=await _organization_id(db), for_update=for_update)
     if found is None:
         return None
     case, rows, events = found
@@ -319,7 +327,7 @@ async def bulk_update_ctem_cases(
     updated: list[str] = []
     failed: list[dict[str, str]] = []
     for case_id in dict.fromkeys(body.case_ids):
-        shown = await visible_case(db, case_id, str(user.id), vertical)
+        shown = await visible_case(db, case_id, str(user.id), vertical, for_update=True)
         if shown is None:
             failed.append({"id": str(case_id), "reason": "Case not found"})
             continue
@@ -723,7 +731,11 @@ async def _inventory_of(case: Any, rendered: dict[str, Any], events: list[Any]) 
             # The versions the case's product runs on the assets (#1252), never a typed software version.
             "running_versions": _with_history(running, events),
             # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
-            "affected_assets": await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
+            # The hosts a validation ran on, with their provenance, after the issues' own (#2395).
+            "affected_assets": case_assets.with_attached(
+                await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
+                case_assets.attached_assets(case.validations),
+            ),
         }
 
 
@@ -765,7 +777,7 @@ async def update_ctem_case(
     """Change the owner, due date, a note or the state; 422 with the rule when it is refused."""
     _require_xtm_one()
     vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
-    shown = await visible_case(db, case_id, str(user.id), vertical)
+    shown = await visible_case(db, case_id, str(user.id), vertical, for_update=True)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
     (case, rows, _), _ = shown
@@ -795,7 +807,7 @@ async def record_ctem_case_validation(
     """
     _require_xtm_one()
     vertical = normalize_vertical(getattr(user, "ctem_vertical", None))
-    shown = await visible_case(db, case_id, str(user.id), vertical)
+    shown = await visible_case(db, case_id, str(user.id), vertical, for_update=True)
     if shown is None:
         raise HTTPException(status_code=404, detail="Case not found")
     (case, rows, _), _ = shown

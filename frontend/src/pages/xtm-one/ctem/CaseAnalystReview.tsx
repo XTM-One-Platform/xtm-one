@@ -151,7 +151,7 @@ export function CaseAnalystReview({
           </div>
         )}
         {waiting && item && (
-          <WorkItemDecisionCard item={item} canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
+          <WorkItemDecisionCard item={item} inCase canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
               readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
               onAnswered={() => items.refetch()}
             />

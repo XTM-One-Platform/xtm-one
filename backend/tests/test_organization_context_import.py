@@ -319,8 +319,6 @@ def test_opencrq_threshold_keeps_that_level_and_above():
     assert [j.name for j in (imp.opencrq_primary_asset(a, "medium") for a in assets) if j] == ["B", "C", "D"]
     assert [j.criticality for j in (imp.opencrq_primary_asset(a, "high") for a in assets) if j] == ["critical", "high"]
     assert [j.name for j in (imp.opencrq_primary_asset(a) for a in assets) if j] == ["A", "B", "C", "D"]
-    # The alias kept for one release reads primary assets too.
-    assert imp.opencrq_jewel(assets[2], "low") == imp.opencrq_primary_asset(assets[2], "low")
 
 
 def test_a_row_of_the_superseded_supporting_asset_layer_is_removed_and_a_typed_row_kept() -> None:
@@ -410,7 +408,7 @@ def test_the_same_import_twice_is_unchanged_the_second_time():
     assert first.new == ["web-01"] and second.unchanged == ["web-01"] and not second.new
 
 
-def test_primary_assets_merge_keeps_links_and_hand_jewels():
+def test_primary_assets_merge_keeps_links_and_typed_rows() -> None:
     profile = _profile(
         primary_assets=[
             oc.PrimaryAsset(name="Billing", criticality="high", opencrq_asset_id="1", asset_names=["db-01"]),

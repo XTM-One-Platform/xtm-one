@@ -207,6 +207,7 @@ def _issue_json(issue: rules.SourceIssue) -> dict[str, Any]:
     out = asdict(issue)
     out["assets"] = list(issue.assets)
     out["primary_assets"] = list(issue.primary_assets)
+    out["inferred_primary_assets"] = list(issue.inferred_primary_assets)
     out["first_seen_at"] = issue.first_seen_at.isoformat() if issue.first_seen_at else None
     return out
 
@@ -215,6 +216,7 @@ def _issue_from_json(data: dict[str, Any]) -> rules.SourceIssue:
     data = dict(data)
     data["assets"] = tuple(data.get("assets") or ())
     data["primary_assets"] = tuple(data.get("primary_assets") or ())
+    data["inferred_primary_assets"] = tuple(data.get("inferred_primary_assets") or ())
     seen = data.get("first_seen_at")
     data["first_seen_at"] = datetime.fromisoformat(seen) if seen else None
     # Typed facts (#2038); a view cached before it holds (version, outcome) pairs, read the same way.
@@ -803,7 +805,11 @@ def _visible_issue(
     row: CtemCaseIssue, issue: rules.SourceIssue | None, signal: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     if row.source == SIGNAL_SOURCE:  # the signal that opened or joined the case: what it is, by name (#1936)
-        return {"source": row.source, "external_id": row.external_id, "open": row.open, **(signal or {})}
+        out = {"source": row.source, "external_id": row.external_id, "open": row.open, **(signal or {})}
+        if issue is not None:  # #2396: the primary assets its gate decision reached, which the case counts
+            out["primary_assets"] = list(issue.primary_assets)
+            out["primary_asset_links"] = primary_asset_links(issue)
+        return out
     if issue is None:  # seen before, its product does not answer now
         return {"source": row.source, "external_id": row.external_id, "open": row.open, "details_unavailable": True}
     return {
@@ -816,6 +822,8 @@ def _visible_issue(
         "kev": issue.kev,
         "assets": list(issue.assets),
         "primary_assets": list(issue.primary_assets),
+        # #2396: each primary asset with its link basis, proven (manual or OpenCRQ link) or inferred.
+        "primary_asset_links": primary_asset_links(issue),
         "first_seen_at": issue.first_seen_at.isoformat() if issue.first_seen_at else None,
         "open": row.open,
         # The version knowledge of this viewer's own OpenCTI read (CTEM-11, #946; shown by #928).
@@ -841,6 +849,20 @@ def _visible_issue(
     }
 
 
+def primary_asset_links(issue: rules.SourceIssue) -> list[dict[str, str]]:
+    """``[{name, basis}]`` of the primary assets *issue* reaches, ``proven`` or ``inferred`` (#2396)."""
+    inferred = set(issue.inferred_primary_assets)
+    return [{"name": j, "basis": "inferred" if j in inferred else "proven"} for j in issue.primary_assets]
+
+
+#: How a case counts its primary assets (#2396): the reader repeats it beside the counts.
+PRIMARY_ASSET_BASIS = (
+    "primary_asset_count counts the primary assets a manual or OpenCRQ link proves; "
+    "inferred_primary_asset_count those reached only through an inventory rule, a name match "
+    "or the evidence; each issue row lists its primary assets with their basis"
+)
+
+
 def _member_label(member: str, view: ViewerView) -> str | None:
     signal = view.signal_details.get(member)
     if signal is not None:
@@ -856,7 +878,14 @@ def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCas
 SEVERITY_PRIORITY: dict[str, str] = {"P1": "critical", "P2": "high", "P3": "medium"}
 
 #: The aggregates computed from member details: null for a viewer missing the details of an open member.
-DETAIL_AGGREGATES: tuple[str, ...] = ("asset_count", "primary_asset_count", "kev_count", "max_cvss", "max_epss")
+DETAIL_AGGREGATES: tuple[str, ...] = (
+    "asset_count",
+    "primary_asset_count",
+    "inferred_primary_asset_count",
+    "kev_count",
+    "max_cvss",
+    "max_epss",
+)
 #: Why they are null: the reader repeats it instead of reading "none".
 AGGREGATES_RESTRICTED_REASON = (
     "unknown for this reader: some open issues of the case are not readable with their details "
@@ -965,6 +994,8 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "facts_reason": FACTS_UNREAD_REASON if unread else None,
         "asset_count": agg["asset_count"],
         "primary_asset_count": agg["primary_asset_count"],
+        "inferred_primary_asset_count": agg["inferred_primary_asset_count"],
+        "primary_asset_basis": PRIMARY_ASSET_BASIS,
         "kev_count": agg["kev_count"],
         "max_cvss": agg["max_cvss"],
         "max_epss": agg["max_epss"],
@@ -1009,7 +1040,15 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     # A treatment plan's name and OpenCRQ link go to a viewer who reads OpenCRQ only (#1068).
     # A threat package's Grouping and coverage go to a viewer who reads OpenCTI only (#1115).
     hidden = (row.kind == "treatment_plan" and not view.opencrq) or (row.kind == "threat_package" and not view.opencti)
+    named: dict[str, Any] = {}
+    if row.kind == "threat_package":
+        # ``from`` holds the coverage id, never a previous value (#2429): named alongside.
+        named = {
+            "grouping_id": None if hidden else row.to_value,
+            "coverage_id": None if hidden else row.from_value,
+        }
     return {
+        **named,
         "at": row.at.isoformat() if row.at else None,
         "actor": row.actor,
         "kind": row.kind,
@@ -1037,6 +1076,48 @@ def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, An
         "waiting_on": audit.open_wait(served),
         "stalled_since": audit.stalled_since(served),
     }
+
+
+#: A detection gap the detection desk proposed on the case (#2393): from the gap key
+#: ``<inject>:<asset>``, to the root cause (or ``answered:<outcome>``), reason the remediation,
+#: evidence ``{technique, simulation_id, evidence, rule_draft, rule_language, item_id}`` as JSON.
+DETECTION_GAP_KIND = "detection_gap"
+
+
+def detection_gaps_of(events: list[CtemCaseEvent]) -> list[dict[str, Any]]:
+    """The detection gaps proposed on the case, one per gap key, oldest first (#2393).
+
+    Each carries its proposal (root cause, remediation, drafted rule, decision item)
+    and its answer once given; a gap proposed again replaces its proposal.
+    """
+    gaps: dict[str, dict[str, Any]] = {}
+    rows = [e for e in events if e.kind == DETECTION_GAP_KIND and e.from_value]
+    for row in sorted(rows, key=lambda e: e.at or datetime.min.replace(tzinfo=UTC)):
+        key = str(row.from_value)
+        at = row.at.isoformat() if row.at else None
+        to = row.to_value or ""
+        if to.startswith("answered:"):
+            if key in gaps:
+                gaps[key]["answer"] = {"outcome": to.split(":", 1)[1], "by": row.reason, "at": at}
+            continue
+        try:
+            detail = json.loads(row.evidence or "{}")
+        except ValueError:
+            detail = {}
+        gaps[key] = {
+            "key": key,
+            "root_cause": to,
+            "remediation": row.reason,
+            "technique": detail.get("technique"),
+            "simulation_id": detail.get("simulation_id"),
+            "evidence": detail.get("evidence"),
+            "rule_draft": detail.get("rule_draft"),
+            "rule_language": detail.get("rule_language"),
+            "decision_item_id": detail.get("item_id"),
+            "proposed_at": at,
+            "answer": None,
+        }
+    return list(gaps.values())
 
 
 def treatment_plan_of(events: list[CtemCaseEvent]) -> dict[str, Any] | None:
@@ -1226,6 +1307,12 @@ def threat_package_for(
     return {**package, **status, "restricted": False}
 
 
+def _served_history(events: list[CtemCaseEvent], page: int | None = None) -> list[CtemCaseEvent]:
+    """The history rows a case read serves: the versions record left out, then the newest *page* (#2429)."""
+    rows = [e for e in events if e.kind != VERSIONS_KIND]
+    return rows if page is None else rows[:page]
+
+
 def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
@@ -1238,27 +1325,39 @@ def _rank(row: CtemCaseIssue, view: ViewerView) -> tuple:
 
 
 def hydrate(
-    case: CtemCase, rows: list[CtemCaseIssue], events: list[CtemCaseEvent], view: ViewerView
+    case: CtemCase,
+    rows: list[CtemCaseIssue],
+    events: list[CtemCaseEvent],
+    view: ViewerView,
+    *,
+    history_page: int | None = None,
 ) -> dict[str, Any] | None:
     """One case for this viewer, ``None`` when they see none of its issues.
 
     A member they cannot see is ``{"restricted": true}`` and nothing else: no
-    id, source, name, score, asset or link.
+    id, source, name, score, asset or link. *events* is the case's whole history,
+    newest first: the treatment plan, the threat package and its review state are
+    derived from all of it, and only the served ``history`` is cut to the newest
+    *history_page* entries (#2429), so a package older than the page still reads.
     """
     head = summary(case, rows, view)
     if head is None:
         return None
     visible = [r for r in sorted(rows, key=lambda r: _rank(r, view)) if view.sees(_member_id(r))]
     restricted = len(rows) - len(visible)
+    issues = [
+        _visible_issue(r, view.issues.get(_member_id(r)), view.signal_details.get(_member_id(r))) for r in visible
+    ] + [{"restricted": True} for _ in range(restricted)]
+    from app.services import ctem_case_assets as case_assets
+
     return {
         **head,
         "keys": list(case.keys or []),
-        "issues": [
-            _visible_issue(r, view.issues.get(_member_id(r)), view.signal_details.get(_member_id(r))) for r in visible
-        ]
-        + [{"restricted": True} for _ in range(restricted)],
+        "issues": issues,
+        # The issues' assets, then the hosts a validation ran on, each with its provenance (#2395).
+        "assets": case_assets.merged_assets(issues, case_assets.attached_assets(case.validations)),
         # The running-versions record (#1694) is served by the case read's ``running_versions.history``.
-        "history": [_event(e, view) for e in events if e.kind != VERSIONS_KIND],
+        "history": [_event(e, view) for e in _served_history(events, history_page)],
         "exploitation": exploitation_for(case, view),
         "attack_path": attack_path_for(case, view),
         "treatment_plan": treatment_plan_for(events, view),

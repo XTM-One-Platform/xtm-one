@@ -312,7 +312,11 @@ def _build_assignment_run_stubs():
         trigger_context=None,
     )
     assignment = SimpleNamespace(
-        enabled=True, name="Test Assignment", user_id=None, is_company_managed=False
+        enabled=True,
+        name="Test Assignment",
+        user_id=None,
+        is_company_managed=False,
+        trigger_config={},
     )
     agent = SimpleNamespace(enabled=True, user_id=None)
     return run, assignment, agent

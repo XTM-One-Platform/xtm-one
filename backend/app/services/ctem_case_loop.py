@@ -91,8 +91,10 @@ _TITLES: dict[str, str] = {
 
 #: The action a ``control_decay`` signal asks for, by its evidence state (#2069): a control never
 #: measured has nothing to restore. Titled on the asset name; the reason stays on the signal.
+#: ``never_measured`` says nothing about a missing control, only that no test evidence exists yet:
+#: the action is a first measurement of the asset (#2352).
 _CONTROL_DECAY_TITLES: dict[str, str] = {
-    "never_measured": "Put in place and measure the control on {asset}",
+    "never_measured": "Measure {asset} for the first time (no test evidence yet)",
     "attested_only": "Measure the control on {asset} (attested only)",
     "expired": "Re-test the control on {asset}",
 }
@@ -530,6 +532,17 @@ def _product_label(signal: CtemSignal) -> str | None:
     return label[:200] or None
 
 
+async def locked_case(db: AsyncSession, case_id: uuid.UUID) -> CtemCase | None:
+    """The case row read locked until the caller's commit (#2373), its attributes refreshed.
+
+    Every write of a case reads it this way before it decides from its state:
+    a concurrent write of the same case (a tool call, the API, a loop pass)
+    waits for this one's commit, then reads the state it left, so a ``state``
+    event never carries a ``from`` the case had already left.
+    """
+    return await db.get(CtemCase, case_id, with_for_update=True, populate_existing=True)
+
+
 def _transition(
     case: CtemCase,
     target: str,
@@ -610,7 +623,9 @@ async def record_validation(
     was), ``failed`` (still exposed) or ``pending``. ``mitigation_only``: the
     pass proves a mitigation, not the permanent fix, so the case goes to
     ``mitigated_watching`` and the re-test stays on. ``run_order``: the target
-    asset groups in the order they were tested (at most 20 names). ``conclusive``
+    asset groups in the order they were tested (at most 20 names); a name that
+    resolves to one canonical asset attaches it to the case (``assets``, provenance
+    ``name_match_inferred``), one that does not is kept in ``unresolved`` (#2395). ``conclusive``
     (#1458), set by the agent that read the check: false when a pass proves
     nothing (the case stays open with its remediation), true when the check
     proves the exposure gone, None when the writer did not say (a scanner
@@ -664,6 +679,12 @@ async def record_validation(
     order = [str(name).strip()[:120] for name in (run_order or []) if str(name).strip()][:RUN_ORDER_MAX]
     if order:
         entry["run_order"] = order
+        from app.services import ctem_case_assets as case_assets
+
+        # The hosts the validation ran on become case assets with their provenance (#2395).
+        resolved = await case_assets.resolve_names(db, getattr(case, "organization_id", None), order)
+        if resolved is not None:
+            case_assets.attach_run_order(entry, order, resolved, actor=actor, at=at)
     if result in rules.PASSING_RESULTS and conclusive is False:
         # A pass that proves nothing is stored, shown and measured as inconclusive (#1692).
         entry["result"] = INCONCLUSIVE_RESULT
@@ -1317,7 +1338,7 @@ async def close_signal_members(
             )
         )
         await db.flush()
-        case = await db.get(CtemCase, case_id)
+        case = await locked_case(db, case_id)
         if case is None or case.state not in OPEN_STATES:
             continue
         still_open = (

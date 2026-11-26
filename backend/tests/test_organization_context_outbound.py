@@ -18,8 +18,8 @@ from app.services import organization_context_sync as osync
 OK: dict[str, Any] = {"frequency": "daily", "hour": 6, "minute": 0, "weekday": 0, "timezone": "UTC"}
 
 
-def _profile(*jewels: dict) -> oc.OrganizationProfile:
-    return oc.parse_profile({"name": "Acme", "primary_assets": list(jewels)})
+def _profile(*pa_rows: dict[str, Any]) -> oc.OrganizationProfile:
+    return oc.parse_profile({"name": "Acme", "primary_assets": list(pa_rows)})
 
 
 def test_every_import_pairing_names_its_directions_and_inbound_is_always_offered():
@@ -96,7 +96,7 @@ def test_plan_never_pushes_a_platform_row_back_and_keeps_a_linked_asset_name():
     assert plan.skipped == ["Other"] and plan.create == []
 
 
-def test_a_linked_jewel_whose_asset_is_gone_is_not_recreated():
+def test_a_linked_primary_asset_whose_asset_is_gone_is_not_recreated() -> None:
     plan = outbound.plan_outbound(_profile({"name": "CRM", "opencrq_asset_id": "gone"}), [], {})
     assert plan.create == [] and plan.update == [] and plan.delete == []
 

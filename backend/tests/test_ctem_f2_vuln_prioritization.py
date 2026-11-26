@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from croniter import croniter
 
 from app.agents.builtin_agents import BUILTIN_AGENTS, BUILTIN_ASSIGNMENTS, CTEM_F2_ASSIGNMENTS
@@ -92,47 +90,88 @@ def test_the_assignments_are_on_the_orchestrator() -> None:
     assert by_name["Re-test due"]["trigger_config"] == {"correlation_prefix": "ctem:f2:retest:"}
 
 
-def test_kev_or_epss_trigger_provisions_one_or_group():
-    config = next(a for a in CTEM_F2_ASSIGNMENTS if a["name"] == "New KEV or EPSS jump")["trigger_config"]
-    spec = prov.read_provision_spec(config)
-    assert spec["entity_types"] == ["Vulnerability"]
-    filters = json.loads(prov.trigger_filters(spec, []))
-    assert {f["key"][0] for f in filters["filters"]} == {"entity_type"}
-    (group,) = filters["filterGroups"]
-    assert group["mode"] == "or"
-    assert {f["key"][0]: f["values"] for f in group["filters"]} == {
-        "x_opencti_cisa_kev": ["true"],
-        "x_opencti_epss_score": ["0.5"],
+def _f2(name: str) -> dict:
+    return next(a for a in CTEM_F2_ASSIGNMENTS if a["name"] == name)
+
+
+_TRIAGE_NAMES = (
+    "New KEV or EPSS jump",
+    "Vulnerability on software we run",
+    "Vulnerability flagged in a PIR",
+    "Vulnerability sighted",
+)
+
+
+def test_the_triage_runs_hear_the_signal_event_and_provision_nothing():
+    """#2434: the signal is the platform source's; a fleet only subscribes to ctem_signal.recorded."""
+    for name in _TRIAGE_NAMES:
+        a = _f2(name)
+        assert a["trigger_type"] == "platform_event", name
+        config = a["trigger_config"]
+        assert config["event"] == "ctem_signal.recorded" and config["scope"] == "all", name
+        assert {"trigger_path": "new_vulnerability", "source_provider": "opencti"}.items() <= config["filter"].items()
+        assert "provision" not in config and prov.read_provision_spec(config) is None, name
+        assert "record it with record_ctem_signal" not in a["prompt"], name
+        assert "list_ctem_signals signal_id" in a["prompt"], name
+
+
+def _takes(name: str, facts: dict, **fields) -> bool:
+    from app.services import platform_events as pe
+    from app.services.integration_event_filters import payload_filter_reason
+
+    payload = {
+        "trigger_path": "new_vulnerability",
+        "source_provider": "opencti",
+        "verdict": "confirmed",
+        "pir_floor_met": False,
+        "facts": {"kev": False, "epss_high": False, "sighted": False, "software_named": False, "pir_flagged": False}
+        | facts,
+        **fields,
     }
-
-
-def test_sighting_trigger_filters_on_the_sighted_type():
-    config = next(a for a in CTEM_F2_ASSIGNMENTS if a["name"] == "Vulnerability sighted")["trigger_config"]
-    spec = prov.read_provision_spec(config)
-    keys = {f["key"][0]: f for f in json.loads(prov.trigger_filters(spec, []))["filters"]}
-    assert keys["entity_type"]["values"] == ["stix-sighting-relationship"]
-    assert keys["fromTypes"]["values"] == ["Vulnerability"]
-
-
-def test_software_we_run_trigger_filters_has_to_a_vulnerability_and_reads_the_profile():
-    a = next(a for a in CTEM_F2_ASSIGNMENTS if a["name"] == "Vulnerability on software we run")
-    assert a["trigger_config"]["runs_in_profile"] == "source"
-    spec = prov.read_provision_spec(a["trigger_config"])
-    filters = json.loads(prov.trigger_filters(spec, []))
-    keys = {f["key"][0]: f["values"] for f in filters["filters"]}
-    assert keys == {
-        "entity_type": ["has"],
-        "fromTypes": ["Infrastructure", "Software", "System"],
-        "toTypes": ["Vulnerability"],
+    assert set(_f2(name)["trigger_config"]["filter"]) - {"any"} <= {
+        *pe.PLATFORM_EVENTS["ctem_signal.recorded"]["filter_keys"],
+        *(f"facts.{k}" for k in payload["facts"]),
     }
-    assert filters["filterGroups"] == []
+    return payload_filter_reason(payload, _f2(name)["trigger_config"]["filter"]) is None
 
 
-def test_pir_flag_listener_is_a_pir_playbook_held_to_the_policy_threshold() -> None:
-    a = next(a for a in CTEM_F2_ASSIGNMENTS if a["name"] == "Vulnerability flagged in a PIR")
-    assert a["trigger_config"]["pir_min_score"] == "policy"
-    spec = prov.read_provision_spec(a["trigger_config"])
-    assert spec is not None
-    assert spec["mode"] == "pir_playbook"
-    assert spec["organization_context"] == ["pir_ids"]
-    assert spec["entity_types"] == ["Vulnerability"]
+def test_kev_or_epss_takes_either_fact():
+    assert _takes("New KEV or EPSS jump", {"kev": True})
+    assert _takes("New KEV or EPSS jump", {"epss_high": True})
+    assert not _takes("New KEV or EPSS jump", {})
+
+
+def test_sighted_takes_a_sighting_only():
+    assert _takes("Vulnerability sighted", {"sighted": True})
+    assert not _takes("Vulnerability sighted", {"kev": True})
+
+
+def test_software_we_run_needs_a_named_source_the_gate_did_not_discard():
+    assert _takes("Vulnerability on software we run", {"software_named": True})
+    assert not _takes("Vulnerability on software we run", {"software_named": True}, verdict="discarded")
+    assert not _takes("Vulnerability on software we run", {})
+
+
+def test_pir_flag_run_is_held_to_the_policy_floor():
+    assert _takes("Vulnerability flagged in a PIR", {"pir_flagged": True}, pir_floor_met=True)
+    assert not _takes("Vulnerability flagged in a PIR", {"pir_flagged": True})
+
+
+def test_routing_facts_carry_no_value():
+    from app.services.ctem_signals import routing_facts
+
+    assert routing_facts({"cisa_kev": True, "epss_score": 0.5, "stix_type": "sighting", "software": ["x"]}) == {
+        "kev": True,
+        "epss_high": True,
+        "sighted": True,
+        "software_named": True,
+        "pir_flagged": False,
+    }
+    assert routing_facts({"cisa_kev": "false", "epss_score": 0.49, "pir": [{"pir_id": "p"}]}) == {
+        "kev": False,
+        "epss_high": False,
+        "sighted": False,
+        "software_named": False,
+        "pir_flagged": True,
+    }
+    assert routing_facts(None)["epss_high"] is False and routing_facts({"epss_score": True})["epss_high"] is False

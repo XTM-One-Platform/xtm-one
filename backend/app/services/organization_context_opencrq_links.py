@@ -187,7 +187,7 @@ def _match(
 
 
 def plan_links(
-    jewel_names: dict[str, str],
+    pa_row_names: dict[str, str],
     links: list[dict[str, Any]],
     records_by_opencrq_id: dict[str, uuid.UUID],
     records_by_name: dict[str, list[uuid.UUID]],
@@ -198,7 +198,7 @@ def plan_links(
 ) -> LinkPlan:
     """Plan the synced links (no I/O).
 
-    *jewel_names* maps an OpenCRQ primary asset id to the profile row's name;
+    *pa_row_names* maps an OpenCRQ primary asset id to the profile row's name;
     *links* are OpenCRQ ``support_to_primary`` links (``id``,
     ``primaryAssetId``, ``supportingAssetId``, ``supportingAssetName``,
     ``roles``); *stored* the organization's links of source ``opencrq``
@@ -215,8 +215,8 @@ def plan_links(
     for link in links:
         link_id = str(link.get("id") or "")
         primary_id = str(link.get("primaryAssetId") or "")
-        jewel = jewel_names.get(primary_id)
-        if not link_id or not jewel or link_id in seen:
+        pa_row = pa_row_names.get(primary_id)
+        if not link_id or not pa_row or link_id in seen:
             continue
         seen.add(link_id)
         supporting_id = str(link.get("supportingAssetId") or "")
@@ -229,14 +229,14 @@ def plan_links(
             if record_id is None and not ambiguous:
                 record_id, ambiguous = _match([loose_key(supporting_name)], loose, assets)
             if ambiguous:
-                plan.ambiguous.append((jewel, label))
+                plan.ambiguous.append((pa_row, label))
                 continue
         if record_id is None:
-            plan.unmatched.append((jewel, label))
+            plan.unmatched.append((pa_row, label))
             continue
         roles = canonical_roles(link.get("roles"))
         source = "rule" if str(link.get("source") or "") == "rule" or link.get("ruleId") else "opencrq"
-        wanted = WantedLink(link_id, _key(jewel)[:200], record_id, roles, inherited_needs(roles), source)
+        wanted = WantedLink(link_id, _key(pa_row)[:200], record_id, roles, inherited_needs(roles), source)
         current = by_external.get(link_id)
         # Another record of the same merged asset already carries the link: kept, no churn.
         if (
@@ -249,7 +249,7 @@ def plan_links(
         if current is None:
             plan.add.append(wanted)
         elif current.removed:
-            plan.kept_removed.append((jewel, label))
+            plan.kept_removed.append((pa_row, label))
         elif (
             current.record_id != record_id
             or current.primary_asset_key != wanted.primary_asset_key
@@ -332,18 +332,18 @@ async def _read_links(
 
 
 async def sync_links(
-    db: AsyncSession, organization_id: uuid.UUID, *, base_url: str, headers: Any, tenant: str, jewels: list[Any]
+    db: AsyncSession, organization_id: uuid.UUID, *, base_url: str, headers: Any, tenant: str, pa_rows: list[Any]
 ) -> tuple[LinkPlan | None, str | None]:
     """Read the links of the profile's OpenCRQ primary assets and write them; ``(plan, error)``.
 
     A failed read writes nothing: a link is removed only when OpenCRQ answered.
     """
-    jewel_names = {
-        str(j.external_id): j.name for j in jewels if getattr(j, "source", "") == "opencrq" and j.external_id
+    pa_row_names = {
+        str(j.external_id): j.name for j in pa_rows if getattr(j, "source", "") == "opencrq" and j.external_id
     }
-    if not jewel_names:
+    if not pa_row_names:
         return LinkPlan(), None
-    links, err = await _read_links(base_url, headers, tenant, list(jewel_names))
+    links, err = await _read_links(base_url, headers, tenant, list(pa_row_names))
     if err:
         return None, err
     rows = (
@@ -387,16 +387,16 @@ async def sync_links(
         ).scalars()
     )
     plan = plan_links(
-        jewel_names, links, by_opencrq, by_name, stored, records_by_loose_name=by_loose, asset_of=asset_of
+        pa_row_names, links, by_opencrq, by_name, stored, records_by_loose_name=by_loose, asset_of=asset_of
     )
     await apply_links(db, organization_id, plan)
     return plan, None
 
 
 async def sync_links_for(
-    db: AsyncSession, *, user_id: Any, filters: dict[str, Any] | None, jewels: list[Any]
+    db: AsyncSession, *, user_id: Any, filters: dict[str, Any] | None, pa_rows: list[Any]
 ) -> dict[str, Any] | None:
-    """After an OpenCRQ primary-asset sync saved *jewels*: the link import, when its option is on.
+    """After an OpenCRQ primary-asset sync saved *pa_rows*: the link import, when its option is on.
 
     Answers the plan summary (``None`` when the option is off), ``error`` set
     when OpenCRQ or the organization could not be read; never raises.
@@ -417,7 +417,9 @@ async def sync_links_for(
     tenant, err = await _resolve_tenant(base_url, headers, str((filters or {}).get("tenant_id") or ""))
     if err:
         return {"error": f"OpenCRQ: {err}"[:500]}
-    plan, err = await sync_links(db, primary.id, base_url=base_url, headers=headers, tenant=tenant or "", jewels=jewels)
+    plan, err = await sync_links(
+        db, primary.id, base_url=base_url, headers=headers, tenant=tenant or "", pa_rows=pa_rows
+    )
     if err or plan is None:
         return {"error": f"OpenCRQ links: {err}"[:500]}
     return plan.summary()

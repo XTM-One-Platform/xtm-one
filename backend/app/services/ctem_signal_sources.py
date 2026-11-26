@@ -16,8 +16,14 @@ each is bound for the caller. Three kinds of source:
   evidence health pass runs by default on the single connected OpenCRQ
   integration, ``ctem_evidence_health.resolve_pass``).
 - ``pir_playbook``: the OpenCTI PIR playbook (CTEM-05) delivering flagged
-  entities through the OpenCTI listener. Bound when an enabled assignment holds
-  a provisioned playbook.
+  entities through the OpenCTI listener.
+
+A source XTM One provisions in its platform (:data:`PROVISIONED_PAIRS`: the
+OpenCTI and OpenAEV listeners, the PIR playbook) is bound only when its objects
+exist and the last check passed (#2434): an enabled platform signal source
+(``services/ctem_platform_sources.py``) or, until the migration moves it, an
+enabled assignment holding a provisioned trigger on that integration. A
+connected integration alone never reads connected.
 
 A path with no source at all is recorded by agents and the API only: it never
 reads connected. No model call; read-only.
@@ -32,6 +38,7 @@ recording points (:func:`excluded_sources`) record nothing from it there.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import select
@@ -42,7 +49,7 @@ ATTACK_SURFACE_PROVIDERS: tuple[str, ...] = ("shodan", "gti")
 EVIDENCE_HEALTH_PROVIDERS: tuple[str, ...] = ("opencrq",)
 
 SOURCE_KINDS: tuple[str, ...] = ("listener", "pass", "pir_playbook")
-PATH_STATUSES: tuple[str, ...] = ("connected", "off", "not_connected", "agents_api")
+PATH_STATUSES: tuple[str, ...] = ("connected", "error", "not_set_up", "off", "not_connected", "agents_api")
 
 
 class BoundSources(set[tuple[str, str]]):
@@ -53,6 +60,10 @@ class BoundSources(set[tuple[str, str]]):
         self.off: set[tuple[str, str]] = set()
         #: Per trigger path, the ``(provider, kind)`` an administrator excluded from it (#1445).
         self.excluded: dict[str, set[tuple[str, str]]] = {}
+        #: The sources XTM One provisions whose provider is connected but which feed nothing yet (#2434).
+        self.not_set_up: set[tuple[str, str]] = set()
+        #: Per provisioned source, the integrations on which it is in error (#2434, UX round 1 on #2442).
+        self.error: dict[tuple[str, str], int] = {}
 
 
 def source_key(provider: str, kind: str) -> str:
@@ -150,11 +161,17 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
 
 
 def path_status(sources: list[dict[str, Any]]) -> str:
-    """``agents_api`` with no source, ``connected`` when one is bound, ``off`` when one is off, else ``not_connected``."""
+    """``agents_api`` with no source; ``error`` when a source is in error; ``connected`` when one is bound;
+    ``not_set_up`` when a source of a connected provider is not set up; ``off`` when one is off; else
+    ``not_connected``. One status per path, the one its sources say (UX round 1 on #2442, B1)."""
     if not sources:
         return "agents_api"
+    if any(s.get("error_count") for s in sources):
+        return "error"
     if any(s.get("bound") for s in sources):
         return "connected"
+    if any(s.get("not_set_up") for s in sources):
+        return "not_set_up"
     return "off" if any(s.get("off") for s in sources) else "not_connected"
 
 
@@ -164,6 +181,8 @@ def path_sources(path: str, bound: set[tuple[str, str]] | None) -> list[dict[str
     known = bound or set()
     off = getattr(bound, "off", None) or set()
     excluded = (getattr(bound, "excluded", None) or {}).get(path, set())
+    not_set_up = getattr(bound, "not_set_up", None) or set()
+    errors = getattr(bound, "error", None) or {}
     out: list[dict[str, Any]] = []
     for s in PATH_SOURCES.get(path, ()):
         pair = (s.provider, s.kind)
@@ -174,6 +193,10 @@ def path_sources(path: str, bound: set[tuple[str, str]] | None) -> list[dict[str
                 "event": s.event,
                 "bound": pair in known and pair not in excluded,
                 "off": pair not in known and pair in off,
+                # A source XTM One provisions, its provider connected, switched on nowhere yet (#2434).
+                "not_set_up": pair not in known and pair in not_set_up,
+                # The integrations on which this provisioned source is in error (#2434).
+                "error_count": int(errors.get(pair, 0)),
                 "excluded": pair in excluded,
                 # Bound before the exclusion: an excluded source of a connected provider still reads connected.
                 "available": pair in known,
@@ -254,11 +277,9 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
     every role reads the same status for an organization-wide pass.
     """
     from app.api.v1.helpers import integration_visible_filter
-    from app.models.assignment import Assignment
     from app.models.integration import Integration
     from app.services import ctem_evidence_health as evidence_health
     from app.services import organization_context as org_context
-    from app.services.opencti_trigger_provisioning import STATE_KEY
     from app.services.organizations import get_primary
 
     providers = {s.provider for sources in PATH_SOURCES.values() for s in sources}
@@ -297,17 +318,91 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
             elif state != evidence_health.PASS_NONE and platform.get(provider):
                 bound.off.add((provider, "pass"))
 
-    if "opencti" in connected:
-        configs = (
-            await db.execute(
-                select(Assignment.trigger_config).where(
-                    Assignment.trigger_type == "integration_event", Assignment.enabled.is_(True)
-                )
-            )
-        ).scalars()
-        for config in configs:
-            state = config.get(STATE_KEY) if isinstance(config, dict) else None
-            if isinstance(state, dict) and state.get("playbook_id") and state.get("status") != "error":
-                bound.add(("opencti", "pir_playbook"))
-                break
+    # A source XTM One provisions in its platform reads connected only when its objects
+    # exist and the last check passed (#2434): a connected integration alone feeds nothing.
+    for pair in PROVISIONED_PAIRS:
+        bound.discard(pair)
+    provisioned = await provisioned_pairs(db, connected, errors=bound.error)
+    bound.update(provisioned)
+    # A connected provider whose provisioned source feeds nothing and is in no error: Not set up, never Not connected.
+    bound.not_set_up = {
+        pair for pair in PROVISIONED_PAIRS if connected.get(pair[0]) and pair not in bound and pair not in bound.error
+    }
     return bound
+
+
+#: The ``(provider, kind)`` sources XTM One must provision in the source platform before they deliver.
+PROVISIONED_PAIRS: tuple[tuple[str, str], ...] = (
+    ("opencti", "listener"),
+    ("opencti", "pir_playbook"),
+    ("openaev", "listener"),
+)
+
+
+def provisioned_pair(provider: str, state: Any) -> tuple[str, str] | None:
+    """The source a provisioning *state* feeds when it is provisioned and its last check passed, else ``None``."""
+    from app.services.ctem_platform_sources import is_connected
+
+    if not is_connected(state):
+        return None
+    if provider == "opencti":
+        return ("opencti", "pir_playbook" if state.get("playbook_id") else "listener")
+    if provider == "openaev":
+        return ("openaev", "listener")
+    return None
+
+
+async def provisioned_pairs(
+    db: AsyncSession, connected: dict[str, set[str]], *, errors: dict[tuple[str, str], int] | None = None
+) -> set[tuple[str, str]]:
+    """The provisioned sources on the caller's connected integrations: platform sources, then the
+    assignments that still hold a provisioned trigger until the migration moves them (#2434).
+
+    *errors*, when given, receives per source the number of its integrations whose platform source
+    reads ``error`` (``ctem_platform_sources.status_of``: enabled and not provisioned, or a refused enable)."""
+    from app.models.assignment import Assignment
+    from app.models.ctem_signal_source import CtemSignalSource
+    from app.services.ctem_platform_sources import is_connected, status_of
+    from app.services.openaev_trigger_provisioning import STATE_KEY as OPENAEV_STATE_KEY
+    from app.services.opencti_trigger_provisioning import STATE_KEY as OPENCTI_STATE_KEY
+
+    out: set[tuple[str, str]] = set()
+    if not ({provider for provider, _ in PROVISIONED_PAIRS} & set(connected)):
+        return out
+    rows = (
+        await db.execute(
+            select(
+                CtemSignalSource.provider,
+                CtemSignalSource.kind,
+                CtemSignalSource.integration_id,
+                CtemSignalSource.state,
+                CtemSignalSource.enabled,
+            )
+        )
+    ).all()
+    for provider, kind, integration_id, state, enabled in rows:
+        if str(integration_id) not in connected.get(provider, set()):
+            continue
+        if enabled and is_connected(state):
+            out.add((provider, kind))
+        elif errors is not None and status_of(SimpleNamespace(enabled=enabled, state=state))[0] == "error":
+            errors[(provider, kind)] = errors.get((provider, kind), 0) + 1
+    configs = (
+        await db.execute(
+            select(Assignment.trigger_config).where(
+                Assignment.trigger_type == "integration_event", Assignment.enabled.is_(True)
+            )
+        )
+    ).scalars()
+    keys = {"opencti": OPENCTI_STATE_KEY, "openaev": OPENAEV_STATE_KEY}
+    for config in configs:
+        if not isinstance(config, dict):
+            continue
+        provider = config.get("provider")
+        if provider not in keys:
+            continue
+        state = config.get(keys[provider])
+        pair = provisioned_pair(provider, state)
+        if pair and str((state or {}).get("integration_id") or "") in connected.get(provider, set()):
+            out.add(pair)
+    return out

@@ -58,6 +58,7 @@ import httpx
 
 from app.core.egress import egress_client
 from app.core.utils import format_exception_message
+from app.integrations import entra_token_errors
 from app.integrations.file_content import (
     keep_file,
     kept_file_line,
@@ -67,6 +68,7 @@ from app.integrations.file_content import (
 from app.integrations.file_delivery import FetchError
 from app.integrations.http import (
     app_token_cache_key,
+    drop_cached_app_token,
     format_entity_list,
     get_cached_app_token,
     parse_compound_token,
@@ -132,14 +134,6 @@ _MAX_LISTED_ENTRY_NAME = 160
 _GRAPH_SCOPE = "https://graph.microsoft.com/.default"
 _MDE_SCOPE = "https://api.securitycenter.microsoft.com/.default"
 
-_AUTH_ERROR = (
-    "Error: Failed to authenticate with Azure AD. In OAuth (sign-in) mode, "
-    "re-authorize this integration — its refresh token may be missing or "
-    "expired. In app-only (API key) mode, check the tenant ID, client ID, and "
-    "client secret, and ensure admin consent was granted for the required "
-    "Microsoft Graph / Defender for Endpoint permissions."
-)
-
 _SEVERITY_ICONS: dict[str, str] = {
     "high": "🔴",
     "medium": "🟠",
@@ -203,15 +197,99 @@ async def _get_token(
                 access = data.get("access_token")
                 if access:
                     set_cached_app_token(cache_key, access, data.get("expires_in"))
+                    entra_token_errors.remember(entra_token_errors.app_key(cache_key), None)
                 return access
             logger.warning(
                 "Azure AD token request failed (scope=%s): %s",
                 scope,
                 resp.text[:300],
             )
+            # Kept for the tool that asked (#2386): the error and AADSTS codes
+            # say whether consent, the credentials or something else is wrong.
+            entra_token_errors.remember(
+                entra_token_errors.app_key(cache_key),
+                entra_token_errors.classify(resp.status_code, resp.text),
+            )
     except httpx.HTTPError as exc:
         logger.warning("Azure AD token request error (scope=%s): %s", scope, format_exception_message(exc))
     return None
+
+
+def _app_token_failure(
+    tenant_id: str, client_id: str, client_secret: str, scope: str
+) -> entra_token_errors.EntraTokenFailure | None:
+    """Why the last app-only token request for *scope* failed, if it did."""
+    return entra_token_errors.recall(
+        entra_token_errors.app_key(app_token_cache_key("defender", tenant_id, client_id, client_secret, scope))
+    )
+
+
+async def app_only_audience_check(tenant_id: str, client_id: str, client_secret: str) -> list[tuple[str, bool, str]]:
+    """Mint a fresh app-only token per audience: (audience, ok, why not) (#2386)."""
+    results: list[tuple[str, bool, str]] = []
+    for scope, label in ((_GRAPH_SCOPE, "Microsoft Graph"), (_MDE_SCOPE, "Defender for Endpoint")):
+        _forget_app_token(tenant_id, client_id, client_secret, scope)
+        if await _get_token(tenant_id, client_id, client_secret, scope):
+            results.append((label, True, ""))
+            continue
+        failure = _app_token_failure(tenant_id, client_id, client_secret, scope)
+        message = token_failure_message(scope, failure, delegated=False).removeprefix("Error: ")
+        results.append((label, False, message))
+    return results
+
+
+def _forget_app_token(tenant_id: str, client_id: str, client_secret: str, scope: str) -> None:
+    """Drop the cached app-only token of *scope* (refused by the API)."""
+    drop_cached_app_token(app_token_cache_key("defender", tenant_id, client_id, client_secret, scope))
+
+
+_AUDIENCES: dict[str, tuple[str, str]] = {
+    # scope: (audience named to the reader, where its permissions are added)
+    _GRAPH_SCOPE: ("Microsoft Graph", "'Microsoft Graph'"),
+    _MDE_SCOPE: (
+        "Defender for Endpoint (api.securitycenter.microsoft.com)",
+        "'APIs my organization uses' > 'WindowsDefenderATP'",
+    ),
+}
+
+
+def token_failure_message(scope: str, failure: entra_token_errors.EntraTokenFailure | None, *, delegated: bool) -> str:
+    """The tool error for a token Microsoft Entra ID did not issue, by cause (#2386).
+
+    A missing admin consent names the audience and says re-authorizing alone
+    does not help; an expired or revoked refresh token asks to re-authorize;
+    wrong app credentials name the tenant, client ID and secret. Never echoes
+    a secret: only the Entra error and AADSTS codes.
+    """
+    audience, where = _AUDIENCES.get(scope, (scope, "the API's permissions"))
+    kind = "Delegated" if delegated else "Application"
+    code = f" ({failure.code()})" if failure is not None and failure.code() else ""
+    if failure is not None and failure.kind == "consent":
+        return (
+            f"Error: Microsoft Entra ID refused a token for the {audience} audience{code}: "
+            "the integration's Entra app has no admin consent for that API. Re-authorizing "
+            "the integration alone will not help: a tenant administrator must add the "
+            f"{kind} permissions under 'API permissions' > 'Add a permission' > {where} "
+            "and click 'Grant admin consent', then retry. Tools on the other Defender "
+            "audience are not affected."
+        )
+    if failure is not None and failure.kind == "client":
+        return (
+            f"Error: Microsoft Entra ID refused the integration's app credentials for the "
+            f"{audience} audience{code}: check the tenant ID, the client ID and the client "
+            "secret (expired or rotated) of the integration."
+        )
+    if delegated and (failure is None or failure.kind == "grant"):
+        return (
+            f"Error: no {audience} token could be redeemed{code}. Re-authorize this "
+            "integration: its refresh token may be missing, expired or revoked."
+        )
+    return (
+        f"Error: Failed to authenticate with Azure AD for the {audience} audience{code}. "
+        "In OAuth (sign-in) mode, re-authorize this integration; in app-only (API key) "
+        "mode, check the tenant ID, client ID and client secret, and ensure admin consent "
+        "was granted for the required Microsoft Graph / Defender for Endpoint permissions."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -269,15 +347,69 @@ def _package_contents(data: bytes) -> str:
     return "\n".join(lines)
 
 
-def _detection_permission_error(action: str, *, write: bool) -> str:
-    """The answer to a 403 on the custom detection rules API, naming the permission."""
+def _graph_error_fields(resp: Any) -> tuple[str, str, str]:
+    """The Graph ``error.code``, ``error.message`` and request id of a refused call."""
+    code = message = ""
+    try:
+        body = resp.json()
+    except Exception:
+        body = None
+    error = body.get("error") if isinstance(body, dict) else None
+    if isinstance(error, dict):
+        code = str(error.get("code") or "")[:80]
+        message = " ".join(str(error.get("message") or "").split())[:300]
+        inner = error.get("innerError") or error.get("innererror")
+        request_id = str((inner or {}).get("request-id") or "") if isinstance(inner, dict) else ""
+    else:
+        request_id = ""
+    headers = getattr(resp, "headers", None) or {}
+    with_header = ""
+    try:
+        with_header = str(headers.get("request-id") or headers.get("client-request-id") or "")
+    except Exception:
+        with_header = ""
+    return code, message, (request_id or with_header)[:80]
+
+
+def _detection_permission_error(action: str, *, write: bool, resp: Any = None, granted: set[str] | None = None) -> str:
+    """The answer to a 403 on the custom detection rules API (#2386).
+
+    It carries what Graph said (status, ``error.code`` / ``error.message``,
+    request id) and, from the token's own ``scp`` / ``roles`` claims, whether
+    the CustomDetection permission was in the token: when it was, the app's
+    permission is not the cause (the signed-in user's Defender role or the
+    tenant's licensing is); when it was not, the permission or its consent is.
+    """
     permission = _DETECTION_WRITE_PERMISSION if write else _DETECTION_READ_PERMISSION
+    accepted = {_DETECTION_WRITE_PERMISSION.lower()} | (set() if write else {_DETECTION_READ_PERMISSION.lower()})
     reads = "" if write else f" (or {_DETECTION_WRITE_PERMISSION})"
+    detail = ""
+    if resp is not None:
+        code, message, request_id = _graph_error_fields(resp)
+        parts = [f"HTTP {getattr(resp, 'status_code', 403)}"]
+        if code:
+            parts.append(code)
+        if message:
+            parts.append(message)
+        if request_id:
+            parts.append(f"request-id {request_id}")
+        detail = f" (Graph: {'; '.join(parts)})"
+    if granted is not None and granted & accepted:
+        return (
+            f"Error: {_PROVIDER} refused to {action}{detail}. The token carries "
+            f"{permission}{reads}, so the app's permission is not the cause: the "
+            "signed-in user (OAuth sign-in mode) needs a Defender role allowed to "
+            "manage custom detections (e.g. Security Administrator, or a Defender "
+            "unified RBAC role with detection tuning), or the tenant lacks the "
+            "Defender licence for custom detections."
+        )
+    in_token = f" The token does not carry {permission}{reads}." if granted is not None else ""
     return (
-        f"Error: {_PROVIDER} refused to {action}: the integration's Entra app lacks "
-        f"the Microsoft Graph permission {permission}{reads}. Grant it on the app "
+        f"Error: {_PROVIDER} refused to {action}{detail}.{in_token} Grant the Microsoft "
+        f"Graph permission {permission}{reads} on the integration's Entra app "
         "(Application permission in app-only API Key mode, Delegated in OAuth "
-        "sign-in mode) and grant admin consent, then retry."
+        "sign-in mode) and grant admin consent, then retry; a token minted before "
+        "the consent is dropped by this tool, so no wait is needed."
     )
 
 
@@ -381,12 +513,25 @@ def build_tools(
     # (injected by integration_tools; None keeps it in memory for the run).
     persist_file_fn = _kwargs.get("persist_file_fn")
     if token_acquirer is not None:
+        acquirer = token_acquirer
 
         async def _graph_token() -> str | None:
-            return await token_acquirer(_GRAPH_SCOPE)
+            return await acquirer(_GRAPH_SCOPE)
 
         async def _mde_token() -> str | None:
-            return await token_acquirer(_MDE_SCOPE)
+            return await acquirer(_MDE_SCOPE)
+
+        def _auth_error(scope: str) -> str:
+            # The acquirer of integration_tools keeps why Entra refused (#2386);
+            # a plain callable (a test fake) gives no reason.
+            failure_of = getattr(acquirer, "failure", None)
+            failure = failure_of(scope) if callable(failure_of) else None
+            return token_failure_message(scope, failure, delegated=True)
+
+        async def _forget_token(scope: str) -> None:
+            forget = getattr(acquirer, "forget", None)
+            if callable(forget):
+                await forget(scope)
     else:
         tenant_id, client_id, client_secret = _parse_token(token)
 
@@ -395,6 +540,13 @@ def build_tools(
 
         async def _mde_token() -> str | None:
             return await _get_token(tenant_id, client_id, client_secret, _MDE_SCOPE)
+
+        def _auth_error(scope: str) -> str:
+            failure = _app_token_failure(tenant_id, client_id, client_secret, scope)
+            return token_failure_message(scope, failure, delegated=False)
+
+        async def _forget_token(scope: str) -> None:
+            _forget_app_token(tenant_id, client_id, client_secret, scope)
 
     async def _read_after_write(client: Any, access_token: str, url: str) -> dict[str, Any] | None:
         """The resource as stored now, read once after a write whose outcome is unknown; None when unreadable."""
@@ -441,7 +593,7 @@ def build_tools(
         """List Defender XDR incidents with optional filters."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         params: dict[str, Any] = {
             "$top": min(count, 50),
@@ -491,7 +643,7 @@ def build_tools(
         """Get full details of a Defender XDR incident, optionally with alerts."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         params: dict[str, Any] = {}
         if include_alerts:
@@ -566,7 +718,7 @@ def build_tools(
         """Update a Defender XDR incident. Only provided fields are changed."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         payload: dict[str, Any] = {}
         if status:
@@ -610,7 +762,7 @@ def build_tools(
         """Add a comment to a Defender XDR incident for the investigation trail."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         async with egress_client(timeout=30) as client:
             _, err = await safe_request(
@@ -651,7 +803,7 @@ def build_tools(
         """List Defender XDR alerts (alerts_v2) with optional filters."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         params: dict[str, Any] = {
             "$top": min(count, 50),
@@ -700,7 +852,7 @@ def build_tools(
         """Get full details of a Defender XDR alert including evidence (IOCs)."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -769,7 +921,7 @@ def build_tools(
         """Update a Defender XDR alert. Only provided fields are changed."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         payload: dict[str, Any] = {}
         if status:
@@ -805,7 +957,7 @@ def build_tools(
         """Add a comment to a Defender XDR alert."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         async with egress_client(timeout=30) as client:
             _, err = await safe_request(
@@ -841,7 +993,7 @@ def build_tools(
         """Run a KQL advanced hunting query across Defender XDR tables."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         payload: dict[str, Any] = {"Query": query}
         if timespan:
@@ -900,7 +1052,7 @@ def build_tools(
         """List Microsoft Defender Threat Intelligence articles (finished intel)."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -932,7 +1084,7 @@ def build_tools(
         """Get the full content of a Defender Threat Intelligence article."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -964,7 +1116,7 @@ def build_tools(
         """List Defender TI intel profiles (threat actors and tools)."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         params: dict[str, Any] = {"$top": min(count, 50)}
         if kind:
@@ -1001,7 +1153,7 @@ def build_tools(
         """Get a Defender TI intel profile (threat actor) with tradecraft details."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -1046,7 +1198,7 @@ def build_tools(
         """Enrich a host/domain/IP with Defender TI (registrar, first/last seen)."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -1076,7 +1228,7 @@ def build_tools(
         """Get the Defender TI reputation verdict and scoring rules for a host."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -1110,7 +1262,7 @@ def build_tools(
         """Get passive DNS resolutions for a host from Defender TI."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -1141,7 +1293,7 @@ def build_tools(
         """Get Defender TI intelligence about a vulnerability (CVE)."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -1183,7 +1335,7 @@ def build_tools(
         """List custom threat indicators (IOCs) in Defender for Endpoint."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -1226,7 +1378,7 @@ def build_tools(
         """Create a custom threat indicator (IOC) in Defender for Endpoint."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         # ``description`` is surfaced in Defender alerts when the indicator
         # fires, so default it to a branded, self-documenting note when the
@@ -1268,7 +1420,7 @@ def build_tools(
         """Delete a custom threat indicator (IOC) from Defender for Endpoint."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             _, err = await safe_request(
@@ -1290,26 +1442,38 @@ def build_tools(
     async def _detection_request(
         method: str, url: str, action: str, *, write: bool, **kwargs: Any
     ) -> tuple[httpx.Response | None, str | None]:
-        """One call to the detection rules API; a 403 names the permission to grant."""
-        access_token = await _graph_token()
-        if not access_token:
-            return None, _AUTH_ERROR
-        async with egress_client(timeout=30) as client:
-            resp, err = await safe_request(
-                client,
-                method,
-                url,
-                _PROVIDER,
-                action,
-                headers=_headers(access_token),
-                expected_statuses={403},
-                **kwargs,
-            )
-        if err:
-            if resp is not None and resp.status_code == 403:
-                return None, _detection_permission_error(action, write=write)
-            return None, err
-        return resp, None
+        """One call to the detection rules API; a 403 says why (#2386).
+
+        A 403 drops the cached Graph token and retries once with a fresh one
+        (a token minted before an admin consent lacks the new permission); a
+        second 403 answers what Graph said and whether the token carried the
+        CustomDetection permission.
+        """
+        resp: Any = None
+        access_token: str | None = None
+        for attempt in range(2):
+            access_token = await _graph_token()
+            if not access_token:
+                return None, _auth_error(_GRAPH_SCOPE)
+            async with egress_client(timeout=30) as client:
+                resp, err = await safe_request(
+                    client,
+                    method,
+                    url,
+                    _PROVIDER,
+                    action,
+                    headers=_headers(access_token),
+                    expected_statuses={403},
+                    **kwargs,
+                )
+            if not err:
+                return resp, None
+            if resp is None or resp.status_code != 403:
+                return None, err
+            if attempt == 0:
+                await _forget_token(_GRAPH_SCOPE)
+        granted = entra_token_errors.token_permissions(access_token or "")
+        return None, _detection_permission_error(action, write=write, resp=resp, granted=granted)
 
     async def list_defender_detection_rules(odata_filter: str = "", count: int = 50) -> str:
         """List the custom detection rules of the tenant."""
@@ -1561,7 +1725,7 @@ def build_tools(
         """List onboarded devices (machines) in Defender for Endpoint."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         params: dict[str, Any] = {"$top": min(count, 100)}
         filters: list[str] = []
@@ -1595,7 +1759,7 @@ def build_tools(
         """Get full details of a Defender for Endpoint device."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -1636,7 +1800,7 @@ def build_tools(
         """List vulnerabilities (CVEs) discovered on a specific device."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -1665,7 +1829,7 @@ def build_tools(
         """List users that logged on to a specific device."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -1704,7 +1868,7 @@ def build_tools(
     ) -> str:
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
         async with egress_client(timeout=60) as client:
             resp, err = await safe_request(
                 client,
@@ -1827,7 +1991,7 @@ def build_tools(
         """List the scripts of the tenant's Live Response library."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
                 client,
@@ -1854,7 +2018,7 @@ def build_tools(
             return "Error: action_id is required (the id run_defender_live_response_script returned)."
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
         action_url = f"{_MDE_BASE}/machineactions/{_url_encode(aid, safe='')}"
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -1917,7 +2081,7 @@ def build_tools(
         """List recent response/machine actions across Defender for Endpoint."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -1948,7 +2112,7 @@ def build_tools(
         """Get the status and details of a specific machine action."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -1990,7 +2154,7 @@ def build_tools(
             )
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
         action_url = f"{_MDE_BASE}/machineactions/{_url_encode(aid, safe='')}"
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -2085,7 +2249,7 @@ def build_tools(
         """Cancel a pending/in-progress machine action."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             _, err = await safe_request(
@@ -2111,7 +2275,7 @@ def build_tools(
         """List vulnerabilities (CVEs) known across the organization (TVM)."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         params: dict[str, Any] = {"$top": min(count, 100)}
         if odata_filter:
@@ -2146,7 +2310,7 @@ def build_tools(
         """Get TVM details for a specific vulnerability (CVE)."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -2177,7 +2341,7 @@ def build_tools(
         """List devices affected by a specific vulnerability (CVE)."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -2204,7 +2368,7 @@ def build_tools(
         """List software inventory across the organization (TVM)."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         params: dict[str, Any] = {"$top": min(count, 100)}
         if odata_filter:
@@ -2242,7 +2406,7 @@ def build_tools(
         """List security recommendations from Defender Vulnerability Management."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         params: dict[str, Any] = {"$top": min(count, 100)}
         if odata_filter:
@@ -2280,7 +2444,7 @@ def build_tools(
         """Get full details of a security recommendation."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -2316,7 +2480,7 @@ def build_tools(
         """Get the organization's TVM exposure score."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -2339,7 +2503,7 @@ def build_tools(
         """Get the organization's Microsoft Secure Score for Devices (config score)."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -2366,7 +2530,7 @@ def build_tools(
         """Get file reputation/metadata by SHA1 or SHA256 (Defender for Endpoint)."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -2401,7 +2565,7 @@ def build_tools(
         """Get organization + global prevalence stats for a file (by SHA1)."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -2431,7 +2595,7 @@ def build_tools(
         """Get organization prevalence stats for an IP address."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -2456,7 +2620,7 @@ def build_tools(
         """Get organization prevalence stats for a domain."""
         access_token = await _mde_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_MDE_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -2485,7 +2649,7 @@ def build_tools(
         """Get the most recent Microsoft Secure Score snapshots for the tenant."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(
@@ -2522,7 +2686,7 @@ def build_tools(
         """List Secure Score control profiles (improvement actions)."""
         access_token = await _graph_token()
         if not access_token:
-            return _AUTH_ERROR
+            return _auth_error(_GRAPH_SCOPE)
 
         async with egress_client(timeout=30) as client:
             resp, err = await safe_request(

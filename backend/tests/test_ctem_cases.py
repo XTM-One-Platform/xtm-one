@@ -382,6 +382,7 @@ def test_aggregates_count_distinct_assets_and_primary_assets():
         "issue_count": 2,
         "asset_count": 2,
         "primary_asset_count": 1,
+        "inferred_primary_asset_count": 0,
         "kev_count": 1,
         "max_cvss": 9.8,
         "max_epss": 0.9,

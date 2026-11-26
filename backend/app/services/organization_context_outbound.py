@@ -11,7 +11,7 @@ A sync has one direction and one master, never a free two-way merge:
   deleted to match). ``OrganizationContextSync.outbound_ids`` holds them,
   keyed on the XTM One row; a platform row the sync did not create is never
   touched, except the criticality of a primary asset already linked to it by
-  ``opencrq_asset_id`` (the existing jewel -> OpenCRQ criticality push).
+  ``opencrq_asset_id`` (the existing pa_row -> OpenCRQ criticality push).
 
 :data:`DIRECTIONS` is the support matrix read from the platform APIs the
 providers call today; a pair without ``outbound`` names why. :func:`plan_outbound`
@@ -204,25 +204,25 @@ def plan_outbound(
 ) -> OutboundPlan:
     """Primary assets -> OpenCRQ supporting assets, the profile the master (no I/O).
 
-    A jewel whose source is a platform (``opencrq`` included) is the platform's
-    row: never pushed back, listed in ``skipped``. A jewel linked by
+    A primary asset whose source is a platform (``opencrq`` included) is the platform's
+    row: never pushed back, listed in ``skipped``. A primary asset linked by
     ``opencrq_asset_id`` keeps its asset's criticality equal to its own. A
-    jewel neither linked nor created yet is created; an asset this sync created
-    whose jewel is gone is deleted.
+    primary asset neither linked nor created yet is created; an asset this sync created
+    whose primary asset is gone is deleted.
     """
     from app.services.organization_context_opencrq import TO_OPENCRQ, _asset_name
 
     by_id = {str(a.get("id")): a for a in assets if a.get("id")}
     plan = OutboundPlan()
     wanted: set[str] = set()
-    for jewel in profile.primary_assets:
-        key = _key(jewel.name)
-        criticality = TO_OPENCRQ[jewel.criticality]
-        linked = (jewel.opencrq_asset_id or "").strip()
-        if is_platform_source(jewel.source) and not linked:
-            plan.skipped.append(jewel.name)
+    for pa_row in profile.primary_assets:
+        key = _key(pa_row.name)
+        criticality = TO_OPENCRQ[pa_row.criticality]
+        linked = (pa_row.opencrq_asset_id or "").strip()
+        if is_platform_source(pa_row.source) and not linked:
+            plan.skipped.append(pa_row.name)
             continue
-        # A linked jewel (an OpenCRQ row or a typed jewel linked by name) keeps the asset's own name:
+        # A linked primary asset (an OpenCRQ row or a typed primary asset linked by name) keeps the asset's own name:
         # only its criticality is the profile's.
         asset_id = linked or outbound_ids.get(key, "")
         wanted.add(key)
@@ -230,12 +230,12 @@ def plan_outbound(
         if asset is None:
             if linked:
                 continue  # linked to an asset OpenCRQ no longer holds: reported by the reconcile, never recreated
-            plan.create.append((jewel.name, criticality))
+            plan.create.append((pa_row.name, criticality))
             continue
         if str(asset.get("criticality") or "").lower() != criticality or (
-            not linked and _asset_name(asset) != jewel.name
+            not linked and _asset_name(asset) != pa_row.name
         ):
-            plan.update.append((asset_id, jewel.name if not linked else _asset_name(asset), criticality))
+            plan.update.append((asset_id, pa_row.name if not linked else _asset_name(asset), criticality))
     for key, asset_id in outbound_ids.items():
         if key not in wanted and asset_id in by_id:
             plan.delete.append((key, asset_id))

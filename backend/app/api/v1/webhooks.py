@@ -4001,6 +4001,58 @@ def _verify_rydoo_webhook_token(extra_config_enc: str | None, request: Request, 
         raise HTTPException(status_code=401, detail="Missing or invalid Rydoo webhook token")
 
 
+async def _store_notion_verification_token(integration_id: str, token: str) -> bool:
+    """Keep a Notion handshake's token on the integration when none is stored; ``True`` when kept."""
+    from app.core.security import encrypt_value
+    from app.services import notion_webhooks
+
+    async with async_session() as db:
+        integration = await db.get(Integration, _uuid_mod.UUID(integration_id), with_for_update=True)
+        if integration is None or integration.provider != notion_webhooks.PROVIDER:
+            return False
+        extra = decrypt_webhook_config(integration.extra_config_enc)
+        if notion_webhooks.stored_token(extra):
+            return False
+        extra[notion_webhooks.TOKEN_FIELD] = token
+        integration.extra_config_enc = encrypt_value(json.dumps(extra))
+        await db.commit()
+    return True
+
+
+async def _handle_notion_webhook(
+    integration_id: str,
+    extra_config_enc: str | None,
+    body: bytes,
+    payload: object,
+    request: Request,
+) -> dict[str, object]:
+    """A Notion webhook delivery on the integration's webhook URL.
+
+    The subscription handshake (``{"verification_token": ...}``) is kept when
+    the integration holds no token yet, so the admin reads it on the
+    integration page and pastes it in Notion's Verify form; a handshake while
+    one is stored is refused (401). An event is refused (401) unless
+    ``X-Notion-Signature`` is the HMAC-SHA256 of the raw body with the stored
+    token. Then ``notion_webhooks.dispatch_delivery``.
+    """
+    from app.services import notion_webhooks
+
+    context = f"integration={integration_id}"
+    extra = _read_webhook_config(extra_config_enc, context=context)
+    handshake = notion_webhooks.handshake_token(payload)
+    if handshake is not None:
+        if not await _store_notion_verification_token(integration_id, handshake):
+            logger.warning("Notion handshake refused (%s): a verification token is already stored", context)
+            raise HTTPException(status_code=401, detail="A Notion verification token is already stored")
+        logger.info("Notion subscription handshake stored (%s)", context)
+        return {"status": "ok", "reason": "verification token stored: paste it in Notion's Verify form"}
+    token = notion_webhooks.stored_token(extra)
+    if not notion_webhooks.verify_signature(body, request.headers.get(notion_webhooks.SIGNATURE_HEADER), token):
+        logger.warning("Notion webhook delivery refused (%s): missing or invalid signature", context)
+        raise HTTPException(status_code=401, detail="Missing or invalid Notion signature")
+    return await notion_webhooks.dispatch_delivery(integration_id, payload)
+
+
 async def _handle_dealhub_webhook(
     integration_id: str,
     extra_config_enc: str | None,
@@ -4025,6 +4077,35 @@ async def _handle_dealhub_webhook(
     if not dealhub_events.verify_bearer(request.headers.get("authorization"), tokens):
         raise HTTPException(status_code=401, detail="Missing or invalid DealHub webhook token")
     return await dealhub_events.dispatch_delivery(integration_id, payload)
+
+
+async def _handle_drata_webhook(
+    integration_id: str,
+    extra_config_enc: str | None,
+    payload: object,
+    request: Request,
+) -> dict[str, object]:
+    """A Drata workflow webhook delivery on the integration's webhook URL.
+
+    Refused (401) unless ``Authorization: Bearer <token>`` (the custom header of
+    the workflow's Send webhook step) names one of the integration's webhook
+    tokens: no token configured refuses every delivery. Then
+    ``drata_webhooks.dispatch_delivery``, deduplicated on Svix's ``svix-id``.
+    """
+    from app.services import drata_webhooks
+
+    context = f"integration={integration_id}"
+    extra = _read_webhook_config(extra_config_enc, context=context)
+    tokens = drata_webhooks.webhook_tokens(extra)
+    if not tokens:
+        logger.warning("Drata webhook delivery refused (%s): no webhook token configured", context)
+        raise HTTPException(status_code=401, detail="Missing or invalid Drata webhook token")
+    if not drata_webhooks.verify_bearer(request.headers.get("authorization"), tokens):
+        logger.warning("Drata webhook delivery refused (%s): missing or invalid bearer token", context)
+        raise HTTPException(status_code=401, detail="Missing or invalid Drata webhook token")
+    return await drata_webhooks.dispatch_delivery(
+        integration_id, payload, request.headers.get(drata_webhooks.MESSAGE_ID_HEADER)
+    )
 
 
 @router.post("/integrations/{integration_id}")
@@ -4090,6 +4171,10 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
         # on the integration), then deduplicated per quote change in the seen set
         # the poll shares.
         return await _handle_dealhub_webhook(integration_id, integ_pre.extra_config_enc, payload_raw, request)
+    if integ_pre and integ_pre.provider == "drata":
+        # Drata workflow webhook (Send webhook step, delivered by Svix): the
+        # bearer token of its custom header, then deduplicated per svix-id.
+        return await _handle_drata_webhook(integration_id, integ_pre.extra_config_enc, payload_raw, request)
     if integ_pre and integ_pre.provider == "jira":
         # Jira dynamic webhook: a bearer JWT signed with the OAuth app's client
         # secret, then deduplicated per change in the seen set the poll shares.
@@ -4107,6 +4192,11 @@ async def receive_integration_webhook(integration_id: str, request: Request) -> 
             payload_raw,
             callback_token=str(request.query_params.get(wordsmith_webhooks.CALLBACK_PARAM) or ""),
         )
+    if integ_pre and integ_pre.provider == "notion":
+        # Notion native webhook: the subscription handshake stores its
+        # verification token; every event is signed with it (X-Notion-Signature),
+        # then deduplicated per event id.
+        return await _handle_notion_webhook(integration_id, integ_pre.extra_config_enc, body, payload_raw, request)
     if integ_pre and integ_pre.provider == "rydoo":
         # Rydoo expense webhook: unsigned, so the integration's webhook token
         # in the URL gates it before the dedup cache; refused without one.
@@ -4663,6 +4753,86 @@ async def _handle_hubspot_assignment_webhook(
         await _count_filtered(filtered, reasons)
 
     return {"status": "ok", "triggered": triggered, "count": len(triggered)}
+
+
+@router.post("/integrations/{integration_id}/signal-sources/{source_id}")
+async def receive_signal_source_webhook(
+    integration_id: str,
+    source_id: str,
+    request: Request,
+) -> dict:
+    """Receive a delivery of a platform signal source (#2434): records the signal, starts no run.
+
+    The OpenCTI and OpenAEV objects an enabled source provisions
+    (``services/ctem_platform_sources.py``) post here, never to an assignment.
+    The same gates as the per-assignment receiver: the integration's
+    ``webhook_secret`` (``X-OpenCTI-Token`` / ``X-OpenAEV-Token``), a
+    per-source throttle and the delivery de-duplication. A verified delivery
+    records its signal (``ctem_signal_listeners.note_event``) and moves the CTEM
+    cases an OpenAEV result concerns (``ctem_openaev_events.note_event``);
+    fleets subscribe through ``ctem_signal.recorded``. A source that is off or
+    unknown is ignored, so disabling it stops its deliveries at once.
+    """
+    source_uuid = safe_uuid(source_id)
+    if not is_valid_uuid(integration_id) or source_uuid is None:
+        return {"status": "ignored", "reason": "invalid integration or source id"}
+    await enforce_rate_limit(
+        request,
+        "webhook-signal-source",
+        limit=_webhook_requests_per_minute(),
+        window_seconds=60,
+        bucket=str(source_uuid),
+    )
+    body = await request.body()
+    from app.models.ctem_signal_source import CtemSignalSource
+
+    async with async_session() as db:
+        integration = (
+            await db.execute(
+                select(Integration)
+                .options(load_only(Integration.id, Integration.provider, Integration.extra_config_enc))
+                .where(Integration.id == integration_id)
+            )
+        ).scalar_one_or_none()
+        source = await db.get(CtemSignalSource, source_uuid)
+    if integration is None or source is None or str(source.integration_id) != str(integration.id):
+        return {"status": "ignored", "reason": "signal source not found"}
+    context = f"integration={integration_id} signal_source={source_id}"
+    _try_verify_webhook_signature(body, integration.extra_config_enc, request, context=context)
+    _verify_opencti_token_header(integration.extra_config_enc, request, context=context)
+    if not source.enabled:
+        return {"status": "ignored", "reason": "signal source is off"}
+    is_duplicate, cached_response, dedup_key = await _claim_webhook_dedup_slot(
+        request, body, scope=f"integrations:{integration_id}:signal-sources:{source_id}"
+    )
+    if is_duplicate:
+        return cached_response or {"status": "duplicate", "deduplicated": True, "recorded": False}
+    try:
+        try:
+            payload_raw = json.loads(body)
+        except ValueError:
+            payload_raw = {"raw_body": body.decode("utf-8", errors="replace")}
+        payload = payload_raw if isinstance(payload_raw, dict) else {"raw_body": str(payload_raw)}
+        provider = integration.provider
+        event_key = _extract_event_key(request, payload)
+        if provider == "opencti":
+            _normalize_opencti_payload(payload)
+        elif provider == "openaev":
+            event_key = _normalize_openaev_payload(payload) or event_key
+        verified = _signed_with_webhook_secret(integration.extra_config_enc)
+        if provider == "openaev":
+            await ctem_openaev_events.stamp_reachability_assertion(
+                event_key, payload, integration_id=str(integration_id), verified=verified
+            )
+        recorded = await ctem_signal_listeners.note_event(provider, event_key, payload, verified=verified)
+        if provider == "opencti":
+            await ctem_analyst_mark.note_event(provider, payload, verified=verified)
+        if provider == "openaev":
+            await ctem_openaev_events.note_event(event_key, payload, verified=verified)
+    except Exception:
+        await _release_webhook_dedup_slot(dedup_key)
+        raise
+    return await _finalize_dedup(dedup_key, {"status": "ok", "event_key": event_key, "recorded": bool(recorded)})
 
 
 @router.post("/integrations/{integration_id}/assignments/{assignment_id}")

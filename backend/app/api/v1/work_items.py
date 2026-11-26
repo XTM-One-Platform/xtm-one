@@ -55,7 +55,7 @@ from app.api.v1.helpers import (
 from app.models.user import User
 from app.services import scheduled_work_items as scheduled_service
 from app.services import work_item as work_item_service
-from app.services import work_item_context
+from app.services import work_item_context, work_item_ctem_case
 from app.services.company_managed_writes import (
     CompanyManagedWriteRefusedError,
     person_writer,
@@ -690,6 +690,11 @@ async def get_work_item(
     item = await work_item_service.get_work_item(work_item_id, user_id=str(user.id))
     if item is None:
         raise HTTPException(status_code=404, detail="Work item not found")
+    if item.get("needs_human"):
+        # A person opened the decision: it is no longer unseen (#2390).
+        from app.services.work_item_decision_reach import mark_opened
+
+        await mark_opened(work_item_id)
     described = (await work_item_context.describe_work_items([item], viewer=user))[0]
     access = await work_item_service.person_write_access(work_item_id, user_id=str(user.id))
     can_write, read_only_reason = access if access is not None else (False, None)
@@ -705,6 +710,9 @@ async def get_work_item(
         "roi": await _roi_block(described, user),
         "attachments": await _attachments_block(described),
         "note_runs": await _note_runs_block(described, user),
+        # The CTEM case the item is about, when the reader may read it (#2370):
+        # the decision card leads with "Open the case".
+        "ctem_case": await work_item_ctem_case.readable_case(described, user),
     }
 
 

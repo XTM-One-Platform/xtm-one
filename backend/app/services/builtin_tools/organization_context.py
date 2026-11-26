@@ -25,8 +25,8 @@ the agent or the assignment (``organization_context_injection.tools_enabled``,
 One tool rather than a sibling (#11533): the categories the prompt announces
 are read with the same call the agent already knows. ``category`` names one
 (``organization_context_categories.CATEGORIES``, generated from the model),
-``query`` keeps the rows holding a text (a vendor, a product, a CPE, a crown
-jewel), ``offset`` and ``limit`` page it so a list of any length is read
+``query`` keeps the rows holding a text (a vendor, a product, a CPE, a primary
+asset), ``offset`` and ``limit`` page it so a list of any length is read
 whole; ``category="*"`` lists the categories with their sizes.
 
 ``category="enterprise_knowledge"`` (#11543) is the organization's own

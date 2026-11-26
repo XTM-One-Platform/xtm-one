@@ -17,8 +17,8 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Awaitable, Callable
-from contextlib import AsyncExitStack
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, unquote
@@ -1672,10 +1672,18 @@ class Finding:
     assets: tuple[tuple[str, str], ...]
     #: The inject of the latest occurrence.
     inject_id: str | None
+    #: Row times: creation and last write. Any write moves ``updated_at`` (a status, an asset link,
+    #: the #9233 identity migration), so it is not a detection (OpenAEV #9846).
     created_at: str | None
     updated_at: str | None
     last_tested: str | None
     retest_inject_id: str | None
+    #: Detection times: ``finding_first_seen`` / ``finding_last_seen`` when OpenAEV answers them
+    #: (OpenAEV #9846), else the creation and update times of an older OpenAEV.
+    first_seen: str | None = None
+    last_seen: str | None = None
+    #: True when ``last_seen`` is OpenAEV's detection time, False when it is the update time.
+    seen_reported: bool = False
 
     @property
     def closed(self) -> bool:
@@ -1722,6 +1730,10 @@ def parse_finding(raw: Any) -> Finding | None:
         value = raw.get(key)
         return str(value) if value else None
 
+    created_at = _text("finding_created_at")
+    updated_at = _text("finding_updated_at")
+    first_seen = _text("finding_first_seen")
+    last_seen = _text("finding_last_seen")
     return Finding(
         id=fid,
         type=str(raw.get("finding_type") or "").strip().lower(),
@@ -1729,11 +1741,38 @@ def parse_finding(raw: Any) -> Finding | None:
         status=status,
         assets=_finding_assets(raw.get("finding_assets")),
         inject_id=str(inject_id) if inject_id else None,
-        created_at=_text("finding_created_at"),
-        updated_at=_text("finding_updated_at"),
+        created_at=created_at,
+        updated_at=updated_at,
         last_tested=_text("finding_last_tested"),
         retest_inject_id=_text("finding_retest_inject_id"),
+        first_seen=first_seen or created_at,
+        last_seen=last_seen or updated_at,
+        seen_reported=last_seen is not None,
     )
+
+
+@asynccontextmanager
+async def tool_client(
+    headers: dict[str, str], *, timeout: int = 30
+) -> AsyncIterator[httpx.AsyncClient | AutoRefreshClient]:
+    """The client every OpenAEV tool opens for its own requests (#2372).
+
+    With a re-mint callback on *headers* (a platform-managed integration's
+    short-lived cross-platform JWT), the token is re-minted before it expires
+    (:func:`ensure_fresh_token`) and the client is an :class:`AutoRefreshClient`,
+    so a 401/403 re-mints once and retries, as :func:`_api` does. Without one
+    (a static API key) it is the plain egress client, as before. A tool that
+    opened ``egress_client`` directly sent an expired JWT about 10 minutes into
+    a run and turned one expiry into a run-wide auth refusal.
+    """
+    refresh_fn = getattr(headers, "refresh_fn", None)
+    if refresh_fn is None:
+        async with egress_client(timeout=timeout) as plain:
+            yield plain
+        return
+    await _ensure_fresh_token(headers, refresh_fn)
+    async with AutoRefreshClient(headers, refresh_fn, timeout=timeout) as refreshing:
+        yield refreshing
 
 
 async def scoped_safe_request(
@@ -2037,7 +2076,12 @@ class PlatformCapabilities:
 # ---------------------------------------------------------------------------
 
 
-def _fmt_asset(a: dict, base_url: str = "") -> str:
+def _fmt_asset(a: dict[str, Any], base_url: str = "", tag_names: dict[str, str] | None = None) -> str:
+    """Format one OpenAEV asset for the read tools.
+
+    *tag_names* maps tag ids to names (one ``/api/tags`` read per tool call,
+    :func:`_openaev_tag_names`); an id it does not know is printed alone.
+    """
     name = a.get("asset_name") or a.get("endpoint_name") or a.get("asset_id", "?")
     asset_id = a.get("asset_id") or a.get("endpoint_id", "N/A")
     lines = [f"[Asset] {name}"]
@@ -2062,13 +2106,63 @@ def _fmt_asset(a: dict, base_url: str = "") -> str:
         value = a.get(key)
         if value is not None and value != "":
             lines.append(f"  {label}: {value}")
+    if "asset_internet_facing" in a and a["asset_internet_facing"] is None:
+        # Present but null: say so, so "not set" is never read as "not returned".
+        lines.append("  Internet-facing: unset")
     if a.get("asset_description"):
         lines.append(f"  Description: {a['asset_description'][:300]}")
-    tags = [t.get("tag_id") if isinstance(t, dict) else t for t in a.get("asset_tags") or []]
-    tags = [str(t) for t in tags if t]
+    raw_tags = [t.get("tag_id") if isinstance(t, dict) else t for t in a.get("asset_tags") or []]
+    tags: list[str] = [str(t) for t in raw_tags if t]
     if tags:
-        lines.append(f"  Tags: {', '.join(tags)}")
+        names = tag_names or {}
+        lines.append(f"  Tags: {', '.join(f'{names[t]} ({t})' if names.get(t) else t for t in tags)}")
+    lines.extend(_fmt_asset_metadata(a.get("asset_metadata")))
     return "\n".join(lines)
+
+
+#: Bounds of the ``asset_metadata`` block (the free-form map collectors write).
+_ASSET_METADATA_MAX_KEYS = 30
+_ASSET_METADATA_VALUE_CHARS = 200
+
+
+def _fmt_asset_metadata(metadata: Any) -> list[str]:
+    """One ``key: value`` line per metadata entry, sorted and bounded."""
+    if not isinstance(metadata, dict) or not metadata:
+        return []
+    keys = sorted(metadata, key=str)
+    lines = ["  Metadata:"]
+    for key in keys[:_ASSET_METADATA_MAX_KEYS]:
+        value = metadata[key]
+        text = value if isinstance(value, str) else json.dumps(value, default=str)
+        if len(text) > _ASSET_METADATA_VALUE_CHARS:
+            text = text[:_ASSET_METADATA_VALUE_CHARS] + "..."
+        lines.append(f"    {key}: {text}")
+    if len(keys) > _ASSET_METADATA_MAX_KEYS:
+        lines.append(f"    +{len(keys) - _ASSET_METADATA_MAX_KEYS} more")
+    return lines
+
+
+def _assets_carry_tags(assets: list[dict[str, Any]]) -> bool:
+    """Whether any of *assets* carries a tag (a tag lookup is then worth one read)."""
+    return any(a.get("asset_tags") for a in assets if isinstance(a, dict))
+
+
+async def _openaev_tag_names(base_url: str, headers: dict[str, str]) -> dict[str, str]:
+    """Tag id to name, read once per tool call; empty on failure (ids are kept)."""
+    resp, err = await _api(base_url, headers, "get", "/api/tags", "list tags", retry_transient=True)
+    if err or resp is None:
+        return {}
+    try:
+        data = resp.json()
+    except ValueError:
+        return {}
+    if not isinstance(data, list):
+        return {}
+    return {
+        str(t["tag_id"]): str(t["tag_name"])
+        for t in data
+        if isinstance(t, dict) and t.get("tag_id") and t.get("tag_name")
+    }
 
 
 #: The fields manage_openaev_asset writes, printed so a write can be read back
@@ -2417,8 +2511,12 @@ def _fmt_finding(f: dict, base_url: str = "") -> str:
         lines.append(f"  Inject: {finding.inject_id}")
     if finding.asset_labels:
         lines.append(f"  Assets: {', '.join(finding.asset_labels)}")
-    if finding.updated_at:
-        lines.append(f"  Last seen: {finding.updated_at}")
+    # Only OpenAEV's detection time is a "last seen"; an older OpenAEV answers the row's update
+    # time, which any write moves, so it is labelled as what it is (OpenAEV #9846).
+    if finding.seen_reported:
+        lines.append(f"  Last seen: {finding.last_seen}")
+    elif finding.updated_at:
+        lines.append(f"  Updated: {finding.updated_at}")
     return "\n".join(lines)
 
 
@@ -3108,6 +3206,7 @@ __all__ = [
     "_RefreshableHeaders",
     "_aev_link",
     "_annotate_not_found",
+    "_assets_carry_tags",
     "_bearer_seconds_remaining",
     "_contains_filter",
     "_ensure_fresh_token",
@@ -3128,6 +3227,7 @@ __all__ = [
     "_fmt_vulnerability",
     "_headers",
     "_multi_contains_filter",
+    "_openaev_tag_names",
     "_require_response",
     "_scope_path",
     "_search_body",

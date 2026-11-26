@@ -35,7 +35,7 @@ def _case(state: str = "new") -> CtemCase:
     )
 
 
-def _issue(external_id: str, *, assets: tuple[str, ...], jewels: tuple[str, ...]) -> rules.SourceIssue:
+def _issue(external_id: str, *, assets: tuple[str, ...], pa_rows: tuple[str, ...]) -> rules.SourceIssue:
     return rules.SourceIssue(
         source="opencti",
         external_id=external_id,
@@ -45,7 +45,7 @@ def _issue(external_id: str, *, assets: tuple[str, ...], jewels: tuple[str, ...]
         epss=0.2,
         kev=True,
         assets=assets,
-        primary_assets=jewels,
+        primary_assets=pa_rows,
         first_seen_at=NOW,
     )
 
@@ -60,8 +60,8 @@ def _members(case: CtemCase, signal: str) -> list[CtemCaseIssue]:
 
 def _admin_view(signal: str) -> view_of.ViewerView:
     issues = {
-        "opencti:1": _issue("1", assets=("srv-a", "srv-b"), jewels=("srv-a",)),
-        "opencti:2": _issue("2", assets=("srv-c",), jewels=("srv-c",)),
+        "opencti:1": _issue("1", assets=("srv-a", "srv-b"), pa_rows=("srv-a",)),
+        "opencti:2": _issue("2", assets=("srv-c",), pa_rows=("srv-c",)),
     }
     return view_of.ViewerView(issues=issues, open_ids=set(issues), signals={f"signal:{signal}"})
 
@@ -105,7 +105,7 @@ def test_an_unavailable_member_restricts_the_aggregates_too() -> None:
 def test_a_fully_read_case_with_no_primary_asset_is_a_real_zero() -> None:
     case = _case()
     rows = [CtemCaseIssue(case_id=case.id, source="opencti", external_id="1", open=True)]
-    view = view_of.ViewerView(issues={"opencti:1": _issue("1", assets=("srv-a",), jewels=())}, open_ids={"opencti:1"})
+    view = view_of.ViewerView(issues={"opencti:1": _issue("1", assets=("srv-a",), pa_rows=())}, open_ids={"opencti:1"})
     row = view_of.summary(case, rows, view)
     assert row is not None
     assert row["primary_asset_count"] == 0 and row["asset_count"] == 1

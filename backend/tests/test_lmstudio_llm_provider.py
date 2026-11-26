@@ -1,8 +1,9 @@
-"""The platform LM Studio LLM provider: every request through its integration's relay, or refused.
+"""The platform LM Studio LLM provider: every request on its integration's route, or refused.
 
 ``resolve_target`` (what the integration says: server URL, token, relay group)
-is replaced by a stand-in whose route's transport is an ``httpx.MockTransport``,
-so the provider's real OpenAI client, its real transport and the rewriting run
+is replaced by a stand-in whose route's transport is an ``httpx.MockTransport``
+- or, for an integration with no relay group, whose direct client is one - so
+the provider's real OpenAI client, its real transport and the rewriting run
 as in production and nothing leaves the process. The resolution itself, on
 real rows, is in ``test_lmstudio_console_postgres.py``.
 """
@@ -45,7 +46,7 @@ class _Route:
         return httpx.MockTransport(_record)
 
 
-def _target(route: _Route, *, base_url: str = "http://gpu-host:1234/lmstudio", token: str | None = "lm-token"):  # noqa: S107 - a test token
+def _target(route: _Route | None, *, base_url: str = "http://gpu-host:1234/lmstudio", token: str | None = "lm-token"):  # noqa: S107 - a test token
     return llm_link.Target(
         integration_id=_INTEGRATION_ID,
         route=route,  # type: ignore[arg-type]
@@ -76,6 +77,39 @@ def served(monkeypatch):
         return route
 
     _install.resolved = resolved  # type: ignore[attr-defined]
+    return _install
+
+
+@pytest.fixture
+def direct(monkeypatch):
+    """The provider of config ``_CONFIG_ID``, its integration routed nowhere: direct clients answer."""
+    real_egress_client = llm_link.egress_client
+
+    def _install(handler, **target):
+        sent: list[httpx.Request] = []
+        clients: list[httpx.AsyncClient] = []
+
+        async def _record(request: httpx.Request) -> httpx.Response:
+            await request.aread()
+            sent.append(request)
+            return handler(request)
+
+        def _egress_client(**kwargs):
+            if "transport" in kwargs:
+                # The provider's own client, on the placeholder host.
+                return real_egress_client(**kwargs)
+            assert kwargs.pop("route") is None
+            made = httpx.AsyncClient(transport=httpx.MockTransport(_record), **kwargs)
+            clients.append(made)
+            return made
+
+        async def _resolve(config_id):
+            return _target(None, **target)
+
+        monkeypatch.setattr(llm_link, "egress_client", _egress_client)
+        monkeypatch.setattr(llm_link, "resolve_target", _resolve)
+        return sent, clients
+
     return _install
 
 
@@ -117,6 +151,37 @@ async def test_a_chat_goes_to_the_integration_s_server_through_its_relay(served)
     assert request.headers.get_list("authorization") == ["Bearer lm-token"]
     assert "lmstudio.integration.invalid" not in request.headers.get("host", "")
     assert json.loads(request.content)["model"] == "openai/gpt-oss-20b"
+
+
+async def test_without_a_relay_group_a_chat_goes_to_the_server_directly(direct):
+    sent, clients = direct(lambda request: _completion("Bonjour"))
+    response = await _provider().chat([ChatMessage(role="user", content="Hi")], model="openai/gpt-oss-20b")
+
+    assert response.content == "Bonjour"
+    [request] = sent
+    assert str(request.url) == "http://gpu-host:1234/lmstudio/v1/chat/completions"
+    assert request.headers.get_list("authorization") == ["Bearer lm-token"]
+    assert json.loads(request.content)["model"] == "openai/gpt-oss-20b"
+    # One client per request, closed with its answer.
+    assert [c.is_closed for c in clients] == [True]
+
+
+async def test_without_a_relay_group_a_stream_is_carried_directly(direct):
+    def _sse(request):
+        body = "".join(
+            f"data: {json.dumps({'id': 'c', 'object': 'chat.completion.chunk', 'created': 1, 'model': 'm', **c})}\n\n"
+            for c in (
+                {"choices": [{"index": 0, "delta": {"role": "assistant", "content": "Bon"}, "finish_reason": None}]},
+                {"choices": [{"index": 0, "delta": {"content": "jour"}, "finish_reason": "stop"}]},
+            )
+        ) + "data: [DONE]\n\n"
+        return httpx.Response(200, content=body.encode(), headers={"content-type": "text/event-stream"})
+
+    sent, clients = direct(_sse)
+    text = "".join([part async for part in _provider().chat_stream([ChatMessage(role="user", content="Hi")], model="m")])
+    assert text == "Bonjour"
+    assert [r.url.path for r in sent] == ["/lmstudio/v1/chat/completions"]
+    assert all(c.is_closed for c in clients)
 
 
 async def test_a_server_without_a_token_gets_no_authorization(served):
@@ -163,7 +228,7 @@ async def test_the_listings_read_the_native_api_types(served):
 
 
 # ---------------------------------------------------------------------------
-# Refusals: a 424 the SDK and the platform never retry, never a direct request
+# Refusals: a 424 the SDK and the platform never retry
 # ---------------------------------------------------------------------------
 
 
@@ -182,7 +247,7 @@ async def test_a_provider_with_no_config_refuses_without_reading_anything(monkey
 
 @pytest.mark.parametrize(
     "reason",
-    [client.PUBLIC_MESSAGES["not_routed"], "Make this integration company-managed first: ..."],
+    [client.PUBLIC_MESSAGES["no_base_url"], "Make this integration company-managed first: ..."],
 )
 async def test_an_integration_that_cannot_carry_the_request_refuses_it_once(monkeypatch, reason):
     calls: list = []
@@ -202,17 +267,17 @@ async def test_an_integration_that_cannot_carry_the_request_refuses_it_once(monk
 
 async def test_a_refused_listing_says_why(monkeypatch):
     async def _refuse(config_id):
-        raise llm_link.TargetRefusedError(client.PUBLIC_MESSAGES["not_routed"])
+        raise llm_link.TargetRefusedError(client.PUBLIC_MESSAGES["no_base_url"])
 
     monkeypatch.setattr(llm_link, "resolve_target", _refuse)
     with pytest.raises(httpx.HTTPStatusError) as refused:
         await _provider().list_models()
-    assert str(refused.value) == client.PUBLIC_MESSAGES["not_routed"]
+    assert str(refused.value) == client.PUBLIC_MESSAGES["no_base_url"]
 
 
 async def test_the_transport_answers_only_its_own_host(served):
     route = served(lambda request: _completion())
-    transport = llm_link.IntegrationRelayTransport(_CONFIG_ID)
+    transport = llm_link.IntegrationTransport(_CONFIG_ID)
     response = await transport.handle_async_request(httpx.Request("GET", "http://169.254.169.254/latest/meta-data"))
     assert response.status_code == 424
     assert route.seen == []
@@ -265,7 +330,7 @@ async def test_a_target_is_reused_then_read_again_after_an_edit(monkeypatch):
 
 
 async def test_a_refusal_is_not_remembered(monkeypatch):
-    answers = iter([llm_link.TargetRefusedError("no relay"), _target(_Route(lambda r: _completion()))])
+    answers = iter([llm_link.TargetRefusedError("no server URL"), _target(_Route(lambda r: _completion()))])
 
     async def _read(db, config_id):
         answer = next(answers)
@@ -308,12 +373,13 @@ def _integration(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**values)
 
 
-def test_only_a_company_managed_routed_integration_with_a_server_url_feeds_the_platform():
+def test_only_a_company_managed_integration_with_a_server_url_feeds_the_platform():
     from app.core.security import encrypt_value
 
     assert llm_link.link_refusal(_integration()) is None
     assert llm_link.link_refusal(_integration(is_company_managed=False)).startswith("Make this integration company-managed")
-    assert llm_link.link_refusal(_integration(relay_group_id=None)) == client.PUBLIC_MESSAGES["not_routed"]
+    # Routed or not: without a relay group, its requests go to the server directly.
+    assert llm_link.link_refusal(_integration(relay_group_id=None)) is None
     assert llm_link.link_refusal(_integration(extra_config_enc=encrypt_value("{}"))) == client.PUBLIC_MESSAGES["no_base_url"]
     assert llm_link.link_refusal(
         _integration(extra_config_enc=encrypt_value(json.dumps({"base_url": "ftp://x"})))

@@ -146,9 +146,9 @@ export function OrganizationAssetsImportDialog({ open, onOpenChange }: Props) {
                 <div className="space-y-1">
                   <p className="content-compact font-semibold text-default-primary">{t_i18n("Primary asset links")}</p>
                   <ul className="list-disc space-y-0.5 pl-5 content-compact text-default-secondary">
-                    {Object.entries(preview.links).map(([jewel, assets]) => (
-                      <li key={jewel}>
-                        {jewel}: {assets.join(", ")}
+                    {Object.entries(preview.links).map(([pa, assets]) => (
+                      <li key={pa}>
+                        {pa}: {assets.join(", ")}
                       </li>
                     ))}
                   </ul>
