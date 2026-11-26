@@ -53,6 +53,8 @@ RESOLUTION = "not_exposed"
 PASS_BATCH = 2000
 #: The result written on a decision item this pass cancelled.
 CANCELLED_ITEM_RESULT = "Cancelled: CTEM case {case_id} resolved, {evidence} ({subject}): nothing is left to decide."
+#: The outcome written on a timer this pass cancelled.
+CANCELLED_TIMER_OUTCOME = "cancelled: CTEM case {case_id} resolved, {evidence}"
 
 
 def subject_key(value: Any) -> str:
@@ -132,26 +134,17 @@ async def _retired(db: AsyncSession, organization_id: uuid.UUID, keys: list[str]
     return retired_of(keys, [(str(a or ""), str(b or ""), str(c or "")) for a, b, c in records], deleted)
 
 
-async def _cancel_decisions(db: AsyncSession, case_id: uuid.UUID, *, evidence: str, subject: str, now: datetime) -> int:
-    from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
+async def _cancel_decisions(db: AsyncSession, case: CtemCase, *, evidence: str, subject: str, now: datetime) -> int:
+    """Cancel the case's open items and armed timers, as a delete and a person's close do (#2494)."""
+    from app.services.ctem_case_delete import cancel_case_work
 
-    items = (
-        (
-            await db.execute(
-                select(WorkItem).where(
-                    WorkItem.correlation_key.like("ctem:%" + str(case_id)),
-                    WorkItem.status.not_in(WORK_ITEM_TERMINAL_STATUSES),
-                )
-            )
-        )
-        .scalars()
-        .all()
+    items, _ = await cancel_case_work(
+        db,
+        case,
+        item_result=CANCELLED_ITEM_RESULT.format(case_id=case.id, evidence=evidence, subject=subject[:200]),
+        timer_outcome=CANCELLED_TIMER_OUTCOME.format(case_id=case.id, evidence=evidence),
+        now=now,
     )
-    for item in items:
-        item.status = "cancelled"
-        item.needs_human = False
-        item.completed_at = now
-        item.result = CANCELLED_ITEM_RESULT.format(case_id=case_id, evidence=evidence, subject=subject[:200])
     return len(items)
 
 
@@ -205,7 +198,7 @@ async def close_retired_asset_cases(db: AsyncSession, *, events: Any = None, now
         )
         if not members or any(m.source != loop.SIGNAL_SOURCE or m.external_id not in retired_signal for m in members):
             continue
-        case = await db.get(CtemCase, case_id)
+        case = await loop.locked_case(db, case_id)
         if case is None or case.state not in OPEN_STATES:
             continue
         found = [retired_signal[m.external_id] for m in members]
@@ -226,7 +219,7 @@ async def close_retired_asset_cases(db: AsyncSession, *, events: Any = None, now
             )
         db.add(loop._transition(case, "resolved", now, reason=f"{evidence}: {subject}"[:300], evidence=evidence))
         case.resolution_kind = RESOLUTION
-        cancelled = await _cancel_decisions(db, case.id, evidence=evidence, subject=subject, now=now)
+        cancelled = await _cancel_decisions(db, case, evidence=evidence, subject=subject, now=now)
         resolved += 1
         logger.info("CTEM case %s resolved: %s (%s), %d decision(s) cancelled", case.id, evidence, subject, cancelled)
         if events is not None:

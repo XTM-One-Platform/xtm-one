@@ -39,7 +39,7 @@ export const REVIEW_CADENCE_LABELS: Record<ReviewCadence, string> = {
 };
 
 /** The server's bounds (FxRate, PirDetail, OrganizationProfile). */
-export const REFERENCE_BOUNDS = { rates: 50, source: 200, question: 1000, owner: 200, jewels: 50 } as const;
+export const REFERENCE_BOUNDS = { rates: 50, source: 200, question: 1000, owner: 200, primary_assets: 50 } as const;
 
 /** A rate row as the form edits it: every value as typed. */
 export interface FxRateRow {
@@ -112,10 +112,6 @@ export function missingRateInto(currency: string, rates: readonly FxRate[]): boo
   return Boolean(currency) && !rates.some((rate) => rate.to_currency === currency);
 }
 
-export function emptyPirDetail(): PirDetail {
-  return { question: "", owner: "", review_cadence: "", primary_assets: [] };
-}
-
 /** Whether *detail* says nothing (the save leaves it out). */
 function pirDetailEmpty(detail: PirDetail): boolean {
   return !detail.question.trim() && !detail.owner.trim() && !detail.review_cadence && detail.primary_assets.length === 0;
@@ -141,9 +137,6 @@ export function pirDetailsOf(pirIds: readonly string[], details: Record<string, 
   return kept;
 }
 
-/** The fields of a PIR detail, in the order the details dialog shows them. */
-export const PIR_DETAIL_FIELDS = 4;
-
 /** How many of the four fields of *detail* are set (question, owner, review cadence, primary assets served). */
 export function pirDetailFilled(detail: PirDetail | undefined): number {
   if (!detail) return 0;
@@ -154,7 +147,7 @@ export function pirDetailFilled(detail: PirDetail | undefined): number {
 export function pirDetailProblem(detail: PirDetail): string | null {
   if (detail.question.trim().length > REFERENCE_BOUNDS.question) return "The question is 1,000 characters at most.";
   if (detail.owner.trim().length > REFERENCE_BOUNDS.owner) return "The owner is 200 characters at most.";
-  if (detail.primary_assets.length > REFERENCE_BOUNDS.jewels) return "50 primary assets at most.";
+  if (detail.primary_assets.length > REFERENCE_BOUNDS.primary_assets) return "50 primary assets at most.";
   return null;
 }
 

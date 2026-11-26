@@ -174,6 +174,23 @@ EXPECTED_REASONS: frozenset[str] = frozenset({"created_disabled", "system_seed"}
 CREATED_DISABLED_REASON = "created_disabled"
 
 
+#: The stamps of a switch-off a person decided: from the UI, or by an agent
+#: acting as them (``created_disabled`` when it had never run). The seed keeps
+#: such a pause on a built-in assignment instead of reverting it at boot (#2192).
+PERSON_PAUSE_REASONS: frozenset[str] = frozenset({"user_toggle", "agent_tool", CREATED_DISABLED_REASON})
+
+
+def is_paused_by_person(assignment: Assignment) -> bool:
+    """Whether *assignment* is off because a person switched it off.
+
+    A ``created_disabled`` stamp counts only with a person on it: the seed and
+    copies stamp it with nobody.
+    """
+    if assignment.enabled or assignment.paused_reason not in PERSON_PAUSE_REASONS:
+        return False
+    return assignment.paused_by_user_id is not None
+
+
 def has_never_run(assignment: Assignment) -> bool:
     """Whether *assignment* has never been triggered: no run counted, no trigger time.
 

@@ -258,6 +258,11 @@ def _receipt(tool_name: str, split: Any, outcomes: list[Any], coverage: str, per
             f"{len(refused)} item(s) were NOT stored ({_one_line(refused[0], 300)}): "
             "the workset does not hold the whole result."
         )
+    # A stored item the automatic pass cannot summarise yet (#2206): stored and
+    # searchable, its summary pending; the warning says until when and how.
+    warnings = [outcome.warning for outcome in outcomes if outcome.ok and getattr(outcome, "warning", None)]
+    if warnings:
+        lines.append(f"{len(warnings)} stored item(s) wait for a summary: {_one_line(warnings[0], 300)}")
     if split.skipped:
         left_out = "; ".join(_one_line(reason, 200) for reason in split.skipped[:5])
         lines.append(f"Left out: {left_out}" + (" ..." if len(split.skipped) > 5 else "") + ".")

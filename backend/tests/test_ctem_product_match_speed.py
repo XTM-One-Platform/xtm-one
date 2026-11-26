@@ -103,7 +103,7 @@ def _inventory(seed: int, products: int, stack: int) -> tuple[list[pa.Reacher], 
         pa.Reacher(
             name=f"host-{i}",
             products={f"k{i}-{j}": name() for j in range(rng.randint(5, 30))},
-            links=[(pa.Link(jewel_key="crown", source="manual"), "asset", f"host-{i}")],
+            links=[(pa.Link(primary_asset_key="crown", source="manual"), "asset", f"host-{i}")],
         )
         for i in range(products)
     ]

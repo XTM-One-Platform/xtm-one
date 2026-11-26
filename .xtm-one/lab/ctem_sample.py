@@ -396,9 +396,12 @@ SCREENS_ISSUES: tuple[dict, ...] = (
         "source": "openaev", "external_id": "finding-lab-0001", "name": "CVE-2024-21762", "cve": "CVE-2024-21762",
         "cvss": 9.8, "assets": ("fw-paris-01", "fw-lyon-02"), "primary_assets": ("Customer SaaS hosting",),
         "days_ago": 2,
+        # The case's Re-test column (#2316, gap lab-seed-openaev-finding-lifecycle): tested, still open, re-test queued.
+        "retest_status": "open", "last_tested_at": "2026-11-20T09:00:00+00:00", "retest_pending": True,
     },
     {"source": "openaev", "external_id": "finding-lab-0002", "name": "Weak TLS cipher on the VPN gateway",
-     "cvss": 5.3, "assets": ("vpn-gw-01",), "days_ago": 1},
+     "cvss": 5.3, "assets": ("vpn-gw-01",), "days_ago": 1,
+     "retest_status": "open", "last_tested_at": "2026-11-22T15:30:00+00:00"},
 )
 #: The cases a recompute of :data:`SCREENS_ISSUES` creates (one per remediation key).
 SCREENS_CASES = 4
@@ -432,3 +435,8 @@ SCREENS_ASSETS: tuple[dict, ...] = (
     {"name": "fs-paris-01", "category": "host", "criticality": "very_high", "internet_facing": "no",
      "products": ["Windows Server"], "source": "lab", "external_id": "lab-screens-fs-paris-01"},
 )
+#: Primary asset -> the asset records that support it (``PUT /organization-context/primary-assets/{name}/links``,
+#: #2316, gap lab-seed-primary-asset-links). The primary asset is added to the profile when it is missing.
+SCREENS_PRIMARY_ASSET_LINKS: dict[str, tuple[str, ...]] = {
+    "Customer SaaS hosting": ("fw-paris-01", "vpn-gw-01", "app-portal-01"),
+}

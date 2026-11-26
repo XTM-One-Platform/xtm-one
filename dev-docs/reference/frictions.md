@@ -75,6 +75,19 @@ The coordination allow-lists, `dispose_friction` and `list_frictions` are
 unchanged; a call without the declaration behaves as before. The
 `record_friction` description names the declaration for the model.
 
+Two errors the platform already reports are filed the same way, with no
+declaration (`agent_loop._log_tool_result`):
+
+- a per-user CTEM stage refused by a module the member has no account on:
+  ref `no_module_account: <module>` (#2042, see `dev-docs/ctem-fleets.md`);
+- an integration 401 / 403 the run's `IntegrationAuthGuard` recorded on
+  `AssignmentRun.integration_auth_failures` and the coverage notice, and every
+  call the guard refuses after it: `AuthGuardedExecutor` sets
+  `ToolResult.auth_failure_recorded` (`"<integration> <status>"`), and the
+  record's ref is `integration auth failure recorded on the run: <integration>
+  <status>` (`AUTH_FAILURE_RECORDED_REF`, #2204). An auth error outside a
+  guarded integration stays a `tool_error`.
+
 The assignment engine also records, under the run's own scope
 (`run_scope(run)`):
 

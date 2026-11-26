@@ -1648,6 +1648,84 @@ async def test_instance_get_tells_the_requested_intent_from_the_state(monkeypatc
     assert "configurations" not in result.content
 
 
+async def test_instance_get_shows_the_configuration_with_secrets_hidden(monkeypatch):
+    # Gap oaev-connector-instance-config-not-readable (xtm-one #2284): 'get' reads
+    # GET .../configurations and prints each key, a secret one as set and hidden.
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1": {
+                "connector_instance_id": "ci1",
+                "connector_instance_current_status": "started",
+                "connector_instance_requested_status": "starting",
+            },
+            "/api/connector-instances/ci1/configurations": [
+                {
+                    "connector_instance_configuration_key": "GITHUB_ORG",
+                    "connector_instance_configuration_value": "filigran",
+                },
+                {
+                    "connector_instance_configuration_key": "COLLECTOR_PERIOD",
+                    "connector_instance_configuration_value": 3600,
+                },
+                {
+                    "connector_instance_configuration_key": "GITHUB_TOKEN",
+                    "connector_instance_configuration_value": "",
+                    "connector_instance_configuration_is_encrypted": True,
+                },
+            ],
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {"action": "get", "connector_instance_id": "ci1"},
+    )
+    assert not result.is_error, result.content
+    assert "    GITHUB_ORG: filigran" in result.content
+    assert "    COLLECTOR_PERIOD: 3600" in result.content
+    assert "    GITHUB_TOKEN: set (hidden)" in result.content
+
+
+async def test_instance_update_config_says_merge_and_reads_back(monkeypatch):
+    from app.integrations.providers.openaev import platform
+
+    executor, _ = _build()
+    fake = _PathApi(
+        {
+            "/api/connector-instances/ci1/configurations": [
+                {
+                    "connector_instance_configuration_key": "GITHUB_ORG",
+                    "connector_instance_configuration_value": "filigran",
+                },
+                {
+                    "connector_instance_configuration_key": "COLLECTOR_PERIOD",
+                    "connector_instance_configuration_value": "600",
+                },
+            ],
+        }
+    )
+    monkeypatch.setattr(platform, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_connector_instance",
+        {
+            "action": "update_config",
+            "connector_instance_id": "ci1",
+            "catalog_connector_id": "cat1",
+            "config": '{"COLLECTOR_PERIOD": 600}',
+        },
+    )
+    assert not result.is_error, result.content
+    assert "COLLECTOR_PERIOD written; keys not sent keep their value" in result.content
+    assert "    GITHUB_ORG: filigran" in result.content
+    assert "    COLLECTOR_PERIOD: 600" in result.content
+    assert [c["method"] for c in fake.calls] == ["put", "get"]
+
+
 async def test_instance_get_says_a_request_is_not_reached_yet(monkeypatch):
     from app.integrations.providers.openaev import platform
 
@@ -2703,6 +2781,60 @@ def test_threat_arsenal_schema_constrains_expectation_keys():
     tool = next(t for t in tools if t.name == "manage_openaev_threat_arsenal")
     esp = tool.input_schema["properties"]["expected_security_platforms"]
     assert esp["propertyNames"]["enum"] == ["PREVENTION", "DETECTION", "VULNERABILITY"]
+
+
+def test_threat_arsenal_schema_offers_payload_expectation_types_only():
+    # A payload accepts PREVENTION / DETECTION / VULNERABILITY only (OpenAEV
+    # PayloadService answers 400 on the human types), so the enum never offers them.
+    _, tools = _build()
+    tool = next(t for t in tools if t.name == "manage_openaev_threat_arsenal")
+    enum = tool.input_schema["properties"]["expectations"]["items"]["enum"]
+    assert enum == ["PREVENTION", "DETECTION", "VULNERABILITY"]
+
+
+@pytest.mark.parametrize("human_type", ["MANUAL", "article", "Challenge"])
+async def test_threat_arsenal_create_refuses_human_expectation_locally(monkeypatch, human_type):
+    from app.integrations.providers.openaev import threat_arsenal
+
+    executor, _ = _build()
+    fake = _RecordingApi({"injector_contract_id": "a1"})
+    monkeypatch.setattr(threat_arsenal, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_threat_arsenal",
+        {**_ARSENAL_CREATE_BASE, "expectations": [human_type]},
+    )
+    assert human_type.upper() in result.content
+    assert "PREVENTION, DETECTION, VULNERABILITY" in result.content
+    assert "manual inject" in result.content
+    assert not fake.calls  # refused before any request left
+
+
+@pytest.mark.parametrize("action", ["update", "fork"])
+async def test_threat_arsenal_update_and_fork_refuse_human_expectation_locally(monkeypatch, action):
+    from app.integrations.providers.openaev import threat_arsenal
+
+    executor, _ = _build()
+    fake = _RecordingApi({"injector_contract_id": "a1"})
+    monkeypatch.setattr(threat_arsenal, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_threat_arsenal",
+        {"action": action, "action_id": "a1", "expectations": ["MANUAL"]},
+    )
+    assert "PREVENTION, DETECTION, VULNERABILITY" in result.content
+    assert not fake.calls
+
+
+async def test_threat_arsenal_create_with_detection_is_unchanged(monkeypatch):
+    from app.integrations.providers.openaev import threat_arsenal
+
+    executor, _ = _build()
+    fake = _RecordingApi({"injector_contract_id": "a1", "action_name": "Recon sweep"})
+    monkeypatch.setattr(threat_arsenal, "_api", fake)
+    result = await _run(executor, "manage_openaev_threat_arsenal", dict(_ARSENAL_CREATE_BASE))
+    assert not result.is_error, result.content
+    assert fake.last_json()["action_expectations"] == ["DETECTION"]
 
 
 async def test_threat_arsenal_create_sends_empty_association_lists(monkeypatch):

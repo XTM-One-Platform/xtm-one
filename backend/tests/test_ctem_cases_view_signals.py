@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.models.ctem_signal import CtemSignal
 from app.services import ctem_cases_view as view_of
@@ -99,6 +101,33 @@ def test_a_signal_about_an_asset_names_it_as_its_asset() -> None:
     assert detail["name"] == "portal-edge-01" and detail["assets"] == ["portal-edge-01"]
 
 
+def test_a_signal_member_carries_what_its_module_pivot_needs() -> None:
+    """A signal row opens its object in OpenCTI, OpenAEV or OpenCRQ (#1357, lost by #1945)."""
+    cti = view_of.signal_detail(_signal(source_external_id="vulnerability--1"))
+    assert cti["source_external_id"] == "vulnerability--1" and cti["source_link"] is None
+    # An OpenAEV signal read from an OpenAEV issue names the finding; a listener delivery its page.
+    finding = view_of.signal_detail(
+        _signal(source_provider="openaev", source_external_id="f-1", evidence={"source_issue": "openaev:f-1"})
+    )
+    assert finding["source_external_id"] == "f-1"
+    run = view_of.signal_detail(
+        _signal(
+            source_provider="openaev", source_external_id="s-1", evidence={"platform_url": "https://aev.example/s/1"}
+        )
+    )
+    assert run["source_external_id"] is None and run["source_link"] == "https://aev.example/s/1"
+    # OpenCRQ: the asset page the pass wrote; no id route is guessed.
+    crq = view_of.signal_detail(
+        _signal(source_provider="opencrq", evidence={"link": "https://crq.example/t1/assets/a1/overview"})
+    )
+    assert crq["source_link"] == "https://crq.example/t1/assets/a1/overview" and crq["source_external_id"] is None
+    # A non-http link and a non-module source give nothing to pivot to.
+    unsafe = view_of.signal_detail(_signal(evidence={"link": "javascript:alert(1)"}, source_external_id=None))
+    assert unsafe["source_link"] is None and unsafe["source_external_id"] is None
+    manual = view_of.signal_detail(_signal(source_provider="manual", source_external_id="x-1"))
+    assert manual["source_external_id"] is None and manual["source_link"] is None
+
+
 def test_a_hidden_signal_member_stays_restricted_with_nothing_of_it() -> None:
     case = _case()
     seen, hidden = _signal(), _signal(subject_label="secret campaign")
@@ -121,13 +150,16 @@ async def test_signal_details_reads_only_the_members_given() -> None:
     class _Db:
         async def execute(self, query: Any) -> Any:
             seen.append(str(query))
-            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [signal]))
+            # Column rows (#2232): the detail read selects the columns a row names, never the ORM object.
+            return SimpleNamespace(all=lambda: [signal])
 
     assert await view_of.signal_details(_Db(), set()) == {}
     assert seen == []
     details = await view_of.signal_details(_Db(), {f"signal:{signal.id}", "signal:not-a-uuid"})
     assert list(details) == [f"signal:{signal.id}"]
     assert details[f"signal:{signal.id}"]["name"] == "O365 Device Code Phishing Campaign"
+    # Only the columns signal_detail reads, never the whole row.
+    assert "ctem_signals.trigger_path" in seen[0] and "ctem_signals.state" not in seen[0]
 
 
 def test_a_case_row_carries_its_dates_and_signal_count() -> None:
@@ -159,9 +191,20 @@ def test_a_signal_only_case_stays_hidden_from_who_cannot_see_the_signal() -> Non
     assert listed == [] and counts == {}
 
 
-async def test_signal_members_reads_the_callers_own_signals_unless_admin() -> None:
+async def test_signal_members_reads_every_case_signal_with_a_right_and_none_without(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2441: no own-signals fallback; an administrator or a view/decide right reads them all."""
+    from app.services import ctem_access
+
     seen: list[str] = []
     member = uuid.uuid4()
+    rights: dict[str, str | None] = {}
+
+    async def group_right(_db: Any, user_id: object) -> str | None:
+        return rights.get(str(user_id))
+
+    monkeypatch.setattr(ctem_access, "group_right", group_right)
 
     class _Db:
         def __init__(self, user: Any) -> None:
@@ -174,10 +217,15 @@ async def test_signal_members_reads_the_callers_own_signals_unless_admin() -> No
             seen.append(str(query))
             return SimpleNamespace(scalars=lambda: [member])
 
-    caller = uuid.uuid4()
-    assert await view_of.signal_members(_Db(SimpleNamespace(role="user", is_admin=False)), str(caller)) == {
+    no_right, viewer = uuid.uuid4(), uuid.uuid4()
+    rights[str(viewer)] = "view"
+    assert await view_of.signal_members(_Db(SimpleNamespace(role="user", is_admin=False)), str(no_right)) == set()
+    assert seen == []
+    assert await view_of.signal_members(_Db(SimpleNamespace(role="user", is_admin=False)), str(viewer)) == {
         f"signal:{member}"
     }
-    assert "recorded_by" in seen[-1]
-    await view_of.signal_members(_Db(SimpleNamespace(role="admin", is_admin=True)), str(caller))
+    assert "recorded_by" not in seen[-1]
+    assert await view_of.signal_members(_Db(SimpleNamespace(role="admin", is_admin=True)), str(no_right)) == {
+        f"signal:{member}"
+    }
     assert "recorded_by" not in seen[-1]

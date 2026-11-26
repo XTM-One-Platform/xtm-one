@@ -77,7 +77,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -116,6 +116,8 @@ MIN_GATED_BUDGET = 2
 #: ``overflow``.
 CORE_OVERFLOW_GROUP_ID = "builtin:overflow"
 _CORE_OVERFLOW_LABEL = "Built-in tools beyond the always-on budget"
+#: Demoted always-on tools named one by one in the catalogue (#2191).
+_DEMOTED_NOTICE_MAX_NAMES = 30
 
 #: Built-in groups made loadable on demand: built-in group id (the
 #: part after ``builtin:`` in a tool's ``source``) -> (catalogue label, the
@@ -356,8 +358,14 @@ def build_catalog_prompt(
     *,
     max_visible: int | None = None,
     core_count: int = 0,
+    demoted: Sequence[str] = (),
 ) -> str:
     """Build the compact catalogue system message for the gated *groups*.
+
+    *demoted* names the always-on tools ``ToolGate._fit_core`` moved into
+    ``CORE_OVERFLOW_GROUP_ID``: one line names each of them (bounded) with the
+    exact ``load_tools`` call, so an agent that expects one of its always-on
+    tools is told where it went instead of finding it silently missing (#2191).
 
     When the provider's tool budget (``max_visible``) cannot hold the core plus
     every gated tool at once, one extra paragraph tells the model how the
@@ -389,6 +397,15 @@ def build_catalog_prompt(
             "larger than the free room is loaded partially, most important "
             "tools first; the result names the rest, which you can load "
             f"individually with the `tools` argument of `{LOAD_TOOLS_TOOL_NAME}`."
+        )
+    if demoted:
+        shown = list(demoted[:_DEMOTED_NOTICE_MAX_NAMES])
+        extra = len(demoted) - len(shown)
+        names = ", ".join(shown) + (f", +{extra} more" if extra > 0 else "")
+        lines.append(
+            f"Moved out of your always-on tools for this run (provider tool budget): {names}. "
+            f'They are not lost: load them with `{LOAD_TOOLS_TOOL_NAME}` groups=["{CORE_OVERFLOW_GROUP_ID}"], '
+            "or one by name with its `tools` argument."
         )
     lines.append("")
     lines.extend(group.catalog_line() for group in groups.values())
@@ -640,6 +657,7 @@ class ToolGate:
             self._groups,
             max_visible=self._max_visible,
             core_count=len(self._always_on),
+            demoted=[tool.name for tool in self.demoted_always_on],
         )
 
     # ── Persistence across turns ──────────────────────────────

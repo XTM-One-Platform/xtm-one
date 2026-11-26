@@ -1451,7 +1451,7 @@ interface ProviderEvent {
   event: string;
   label: string;
   description: string;
-  mechanism: "polling" | "webhook" | "hybrid";
+  mechanism: "polling" | "webhook" | "hybrid" | "stream";
   /** The `trigger_config.filter` keys the event takes, each with what it does. */
   filter_keys?: Record<string, string>;
 }
@@ -1551,10 +1551,13 @@ export interface ProviderCatalogItem {
   /** When present, the UI shows an auth mode selector (e.g. ["api_key", "platform_managed"]). */
   supported_auth_types?: string[];
   fields: string[];
+  /** The credential fields of each mode of a provider with several auth types;
+   * `fields` holds those of the default mode. */
+  fields_by_auth_type?: Record<string, string[]> | null;
   /** A2A only: which directions this mechanism can serve. Absent for every
    * other provider. */
   a2a_directions?: ("inbound" | "outbound")[];
-  /** Reached only through a relay group (LM Studio): no "Direct" route, the server refuses a save without one. */
+  /** Reached only through a relay group: no "Direct" route, the server refuses a save without one. */
   requires_relay?: boolean;
   /** Created by an administrator as a company-managed integration only (Platform email): the switch is on and locked. */
   company_managed_only?: boolean;
@@ -5433,6 +5436,8 @@ export interface ObservabilityConfig {
     shared_state_resolved_days: number;
     shared_state_archive_days: number;
     workset_resolved_days: number;
+    /** Finished assignment runs (Operations > Executions), from their completion. */
+    assignment_run_days?: number;
   } | null;
   trace_store_payloads: boolean;
   last_aggregation_at: string | null;
@@ -6539,6 +6544,15 @@ interface WorkItemCardFallback {
   missing: string[];
 }
 
+/** The CTEM case a work item is about (#2370): derived from its gate key or `payload.case_id`. */
+export interface WorkItemCtemCase {
+  id: string;
+  title: string;
+  state: string | null;
+  /** The case page in the app, `/ctem/cases/<id>`. */
+  path: string;
+}
+
 export interface WorkItem {
   id: string;
   user_id: string | null;
@@ -6578,6 +6592,8 @@ export interface WorkItem {
   ask?: WorkItemAsk | null;
   /** Set when the item needs a person and its ask is missing or incomplete (#834). */
   card_fallback?: WorkItemCardFallback | null;
+  /** The CTEM case the item is about, when the reader may read it (#2370); only on the single-item read. */
+  ctem_case?: WorkItemCtemCase | null;
   /** `work_item_blocked_refs.blocked_why`: null when not blocked; `missing` for a blocked item that says nothing. */
   blocked_why?: { text: string; missing: boolean } | null;
   source: string;
@@ -12742,8 +12758,15 @@ export type NotificationDecisionSource = "run" | "flow_run" | "work_item";
 
 export interface NotificationFeed {
   items: NotificationItem[];
+  /** The unread entries of this page. */
   unread_count: number;
   read_at: string | null;
+  /** Every decision waiting on the person: the Home notice's count, not the page's (#2453). */
+  waiting_decision_total?: number;
+  /** What the badge counts: every waiting decision plus the other unread entries (#2453). */
+  unread_total?: number;
+  /** The `offset` of the next page of waiting decisions; null past the last (#2453). */
+  next_offset?: number | null;
 }
 
 /** A phone the person linked (`models/mobile_device.py`). */

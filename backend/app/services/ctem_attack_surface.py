@@ -601,7 +601,12 @@ async def run_pass(
                 lens="outside",
                 subject_label=f"{finding.host}: {finding.reason}",
                 observed_at=at,
-                evidence={**finding.evidence, "reason": finding.reason},
+                # #2436: the pass that recorded it, counted apart on the signal sources view.
+                evidence={
+                    **finding.evidence,
+                    "reason": finding.reason,
+                    ctem_signals.SOURCE_KEY_EVIDENCE: f"{reader.provider}:pass",
+                },
                 dedupe_key=finding.dedupe_key,
             ),
             recorded_via="listener",
@@ -667,6 +672,45 @@ async def list_passes(db: AsyncSession, organization_id: uuid.UUID, *, limit: in
     return list(rows.scalars().all())
 
 
+async def why_no_pass(db: AsyncSession, organization_id: uuid.UUID) -> str:
+    """Why the organization has no pass record, read from the profile as the scheduled pass reads it.
+
+    A pass record is written only by a pass that completes (#1512); nothing deletes one. The
+    reason names the first step the schedule stops at (off, no scope, no provider, no reader),
+    else says that no pass has completed yet, with what makes one write nothing (#2331).
+    """
+    from app.services import organization_context as org_context
+
+    _row, profile = await org_context.current_profile(db, organization_id)
+    surface = profile.attack_surface
+    if not surface.enabled:
+        return "the attack surface pass is turned off in the organization profile (attack_surface.enabled)"
+    if not (profile.owned_domains or profile.address_ranges):
+        return "the organization profile declares no owned domains and no address ranges to read"
+    reader = await reader_for(db, profile)
+    if isinstance(reader, str):
+        return reader
+    return (
+        "no pass has completed yet: a pass is recorded only when it completes (records exist since #1512, "
+        "none is deleted); a pass whose provider read failed records nothing and retries at the next tick"
+    )
+
+
+def _signal_dates(row: Any) -> dict[str, Any]:
+    """One repaired signal with the dates an operator checks it against (#2331)."""
+
+    def _iso(value: Any) -> str | None:
+        return value.isoformat() if value else None
+
+    return {
+        "id": str(row.id),
+        "host": row.subject_ref,
+        "first_seen_at": _iso(getattr(row, "first_seen_at", None)),
+        "observed_at": _iso(getattr(row, "observed_at", None)),
+        "state": row.state,
+    }
+
+
 #: The states a repaired signal may be in: the gate's open states, never a case.
 _REPAIRABLE_STATES: tuple[str, ...] = ("new", "confirmed", "to_validate", "watchlist")
 #: The verdict a repair writes: the scope gate reads it as contradicting (``CONTRADICTING_VERDICTS``).
@@ -716,7 +760,8 @@ async def repair_partial_read_new_hosts(
             }
             row.updated_at = at
         await db.flush()
-    return {"dry_run": dry_run, "discarded": len(chosen), "hosts": hosts[:200]}
+    signals = [_signal_dates(r) for r in sorted(chosen, key=lambda r: (r.first_seen_at or at, str(r.id)))]
+    return {"dry_run": dry_run, "discarded": len(chosen), "hosts": hosts[:200], "signals": signals[:200]}
 
 
 # ── the provider reader: Shodan ─────────────────────────────────────────

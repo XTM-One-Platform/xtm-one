@@ -131,6 +131,8 @@ OTHER_COLUMN_READS: dict[str, str] = {
     "api/v1/integrations.py:_test_integration": _PENDING_EXTRA_CONFIG,
     "api/v1/integrations.py:_to_response": _PENDING_EXTRA_CONFIG,
     "api/v1/integrations.py:_update_repoints_integration": _PENDING_EXTRA_CONFIG,
+    # Shows the Notion verification token the receiver stored (#2185) to a manager.
+    "api/v1/integrations.py:get_notion_webhook_setup": _PENDING_EXTRA_CONFIG,
     "api/v1/integrations.py:masked_stored_extra_config": _PENDING_EXTRA_CONFIG,
     "api/v1/integrations.py:required_extra_refusal": _PENDING_EXTRA_CONFIG,
     "api/v1/integrations.py:start_oauth": _PENDING_EXTRA_CONFIG,
@@ -142,9 +144,14 @@ OTHER_COLUMN_READS: dict[str, str] = {
     "api/v1/webhooks.py:_admin_app_integrations": _PENDING_EXTRA_CONFIG,
     "api/v1/webhooks.py:_handle_hubspot_assignment_webhook": _PENDING_EXTRA_CONFIG,
     "api/v1/webhooks.py:_handle_hubspot_webhook": _PENDING_EXTRA_CONFIG,
+    # Rewrites the stored document with the Notion handshake token added (#2185): a
+    # revealed copy must never be stored.
+    "api/v1/webhooks.py:_store_notion_verification_token": _PENDING_EXTRA_CONFIG,
     "api/v1/webhooks.py:provider_webhook_unverified_reason": _PENDING_EXTRA_CONFIG,
     "api/v1/webhooks.py:receive_assignment_webhook": _PENDING_EXTRA_CONFIG,
     "api/v1/webhooks.py:receive_integration_webhook": _PENDING_EXTRA_CONFIG,
+    # The platform signal source receiver (#2434): the assignment receiver's verification, unchanged.
+    "api/v1/webhooks.py:receive_signal_source_webhook": _PENDING_EXTRA_CONFIG,
     "integrations/providers/openapi.py:decrypt_extra": _PENDING_EXTRA_CONFIG,
     "services/builtin_tools/agent_builder.py:build_agent_builder_tool._update_integration": _PENDING_EXTRA_CONFIG,
     "services/integration_notification_auth.py:load_slack_signing_secrets": _PENDING_EXTRA_CONFIG,

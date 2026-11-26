@@ -64,8 +64,8 @@ On issues, also set the GitHub **Type** field to match (`feat:` → `Feature`,
 
 `chore:`, `style:`, `ci:`, `build:`, `perf:`, `refactor:`, `test:` and `revert:`
 are valid types; they do not each require a dedicated label (use a repository
-area/scope label where useful). `security` is a **label** (applied on top of the
-type, e.g. a `fix:` that closes a vulnerability), not a title type.
+area/scope label where useful). `security` is neither a title type nor a label:
+see §5.
 
 > **Pull request labels are restricted to a small allowed set.** A pull request
 > carries only:
@@ -90,7 +90,6 @@ type, e.g. a `fix:` that closes a vulnerability), not a title type.
   `breaking-change`.
 - **Ownership**: `filigran team`, `community`, `community support`,
   `filigran support`, `partner support`, `enterprise edition`.
-- **Security**: `security`.
 - **PR review**: `vibe-coded` (an AI-assisted pull request the author reviews
   before requesting others' review).
 - **CLA**: `cla:pending`, `cla:signed`, `cla:exempt`.
@@ -116,6 +115,14 @@ taxonomy stands out consistently across every Filigran repository.
 - `enhancement` — use `feature`.
 - `feature request` / `feature-request` — use `feature` (+ `needs triage`).
 - `improvement` / `nice-to-have` — use `feature` + area labels.
+
+> **`security` is retired and never goes on a public issue or pull request.** The
+> repository is public: the label would list every unfixed weakness in one
+> search. A vulnerability is reported with a private GitHub security advisory
+> (see [`SECURITY.md`](../SECURITY.md) and
+> `dev-docs/reference/security-reporting.md`); a plain hardening task is worded
+> neutrally and carries an area label. `security-label-guard.yml` removes the
+> label when it appears, and `security` is refused as a title scope.
 
 ## 6. Quick checklist for a new issue / PR
 

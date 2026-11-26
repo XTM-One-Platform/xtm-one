@@ -85,7 +85,9 @@ def plan(fleets: dict[str, list[tuple[str, bool]]]) -> dict[str, str]:
     trackable automation (a preferred slug first), the PARTIAL one at least two automations, the
     PAUSED, STALE and FAILING ones at least one; STALE then FAILING take the next fleets with an
     automation, the rest stay not set up (none with five fleets: ``lab.py`` forks one for that state,
-    #9689). The order is the slugs', so a restarted lab plans the same states.
+    #9689). The order is the slugs', so a restarted lab plans the same states. Only the ON fleet is
+    required: with fewer fleets than states (the single seeded CTEM loop of #2105) a state with no
+    fleet left is not planned, and ``lab.py`` logs it as not seeded (#2261).
     """
     slugs = sorted(fleets)
     candidates = [s for s in ON_PREFERRED if s in fleets] + slugs
@@ -94,13 +96,13 @@ def plan(fleets: dict[str, list[tuple[str, bool]]]) -> dict[str, str]:
         raise RuntimeError(f"no CTEM fleet has an OpenCTI automation that serves tracked organizations: {slugs}")
     rest = [s for s in slugs if s != on]
     partial = next((s for s in rest if len(fleets[s]) >= 2), None)
-    if partial is None:
-        raise RuntimeError("no other CTEM fleet has two automations to read as partially on")
     paused = next((s for s in rest if s != partial and fleets[s]), None)
-    if paused is None:
-        raise RuntimeError("no third CTEM fleet with an automation to pause")
     states = dict.fromkeys(slugs, "not_set_up")
-    states.update({on: "on", partial: "partial", paused: "paused"})
+    states[on] = "on"
+    if partial is not None:
+        states[partial] = "partial"
+    if paused is not None:
+        states[paused] = "paused"
     for state in ("stale", "failing"):
         left = [s for s in rest if states[s] == "not_set_up"]
         chosen = next((s for s in left if fleets[s]), None)
@@ -234,8 +236,8 @@ async def seed(admin_id: str, tracked: list[str]) -> dict:
                 )
             ).all()
             automations[fleet.slug] = [a for a, slug in rows if (slug, a.name) in FLEET_OPT_IN_ASSIGNMENTS]
-        if len(automations) < 3:
-            raise RuntimeError(f"{len(automations)} built-in CTEM fleet(s): three are needed")
+        if not automations:
+            raise RuntimeError("no built-in CTEM fleet is seeded")
         states = plan({s: [(str(a.id), trackable(a.trigger_config)) for a in rows] for s, rows in automations.items()})
         carried = extras(states)
         by_slug = {f.slug: f for f in fleets}

@@ -15,7 +15,6 @@ import pytest
 
 from app.services import organization_asset_store as store
 from app.services import organization_context_categories as cats
-from app.services.builtin_tools.ctem_read import asset_page
 from tests.test_organization_asset_store_postgres import _database, _org, _save
 
 WIN = {
@@ -49,15 +48,6 @@ def test_an_empty_page_names_the_values_the_filtered_field_holds() -> None:
     assert "os_family holds: Linux, Windows." in page
     assert page.endswith("Do not guess it.")
     assert cats.held_values_line({"os_family": []}) == "os_family holds: no value."
-
-
-def test_list_ctem_assets_names_the_held_values_only_when_empty() -> None:
-    held = {"os_family": ["Linux", "Windows"]}
-    empty = asset_page({"items": [], "total": 0, "offset": 0, "limit": 50}, {}, held=held)
-    assert empty["held_values"] == held
-    assert empty["note"] == "no row. os_family holds: Linux, Windows."
-    full = asset_page({"items": [{"name": "x"}], "total": 1, "offset": 0, "limit": 50}, {}, held=held)
-    assert "held_values" not in full and "note" not in full
 
 
 # ── the store on PostgreSQL ──────────────────────────────────────────────

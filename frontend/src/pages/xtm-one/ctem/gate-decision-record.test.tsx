@@ -20,6 +20,8 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: false }) }));
 vi.mock("@/hooks/api/useWorkItemApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useWorkItemApi")>()),
   useWorkItems: (_filters: unknown, enabled: boolean) => ({ data: enabled ? state.items : undefined, isLoading: false, refetch: vi.fn() }),
+  // A gate card reads its decision by the record's work_item_id (#2464): the first open item stands for it.
+  useWorkItem: (id: string | null | undefined) => ({ data: id ? state.items[0] : undefined, isLoading: false, refetch: vi.fn() }),
 }));
 vi.mock("@/components/work-items/WorkItemDecisionCard", () => ({
   WorkItemDecisionCard: () => <div data-testid="unified-decision-card" />,
@@ -118,9 +120,36 @@ describe("gate record helpers", () => {
     expect(gateAnswererName({ key: "ctem.analyst_review", answered_by: null }, history, () => null)).toBe("Samuel Hassine");
     expect(gateAnswererName({ key: "ctem.analyst_review", answered_by: null }, [], () => null)).toBeNull();
   });
+
+  it("names the person an agent recorded, never the recording agent (#2256)", () => {
+    const recorded = (reason: string | null) => [
+      ev({ from: "ctem.analyst_review", to: "answered", reason, actor_type: "agent", actor_name: "CTEM loop orchestrator" }),
+    ];
+    const none = { key: "ctem.analyst_review", answered_by: null };
+    expect(gateAnswererName(none, recorded("Jane Doe"), () => null)).toBe("Jane Doe");
+    expect(gateAnswererName(none, recorded(USER), (id) => (id === USER ? "Samuel Hassine" : null))).toBe("Samuel Hassine");
+    expect(gateAnswererName(none, recorded(USER), () => null)).toBeNull();
+    expect(gateAnswererName(none, recorded(null), () => null)).toBeNull();
+    expect(gateAnswererName(none, recorded("a person"), () => null)).toBeNull();
+    expect(gateAnswererName(none, recorded("OpenCTI analyst mark"), () => null)).toBeNull();
+  });
 });
 
 describe("GateDecisionRecord", () => {
+  it("reads Decided by the person an agent recorded, else a person (#2256)", () => {
+    const recorded = (reason: string | null) => [
+      ev({ from: "ctem.analyst_review", to: "answered", reason, actor_type: "agent", actor_name: "CTEM loop orchestrator" }),
+    ];
+    const record = rec({ key: "ctem.analyst_review", answered_by: null });
+    const { unmount } = render(<GateDecisionRecord record={record} byLabel={gateAnswererName(record, recorded("Jane Doe"), () => null)} />);
+    expect(screen.getByTestId("ctem-gate-record").textContent).toContain("Jane Doe");
+    expect(screen.getByTestId("ctem-gate-record").textContent).not.toContain("CTEM loop orchestrator");
+    unmount();
+    render(<GateDecisionRecord record={record} byLabel={gateAnswererName(record, recorded(null), () => null)} />);
+    expect(screen.getByTestId("ctem-gate-record").textContent).toContain("a person");
+    expect(screen.getByTestId("ctem-gate-record").textContent).not.toContain("CTEM loop orchestrator");
+  });
+
   it("shows an answered decision as a structured record", () => {
     render(<GateDecisionRecord record={rec({})} />);
     expect(screen.getByTestId("ctem-gate-record-status").textContent).toBe("Answered");

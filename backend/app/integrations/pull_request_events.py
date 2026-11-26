@@ -32,7 +32,9 @@ logger = logging.getLogger(__name__)
 #: releases the work items blocked on it; ``dequeued``: the code host removed
 #: the pull request from its merge queue without merging it (failed queue
 #: checks, a conflict in the group, a manual removal), ``conclusion`` naming why.
-PullRequestEventKind = Literal["ci", "closed", "head", "issue_closed", "dequeued"]
+#: ``tag_created``: a tag was pushed (its name in ``extra["tag"]``); it only hints the
+#: ``tag`` references of blocked work items, read back before any release (#2209).
+PullRequestEventKind = Literal["ci", "closed", "head", "issue_closed", "dequeued", "tag_created"]
 
 
 @dataclass(frozen=True)
@@ -79,6 +81,9 @@ class PullRequestEvent:
     #: delivery does not say. A draft is not waiting on its merge yet.
     draft: bool | None = None
     url: str | None = None
+    #: Provider-specific facts the generic layer may quote verbatim. ``dequeued``:
+    #: ``queue_run_hint``, where the failing merge queue run is read (a removal on
+    #: failed checks), quoted in the wake and the surfaced note.
     extra: dict = field(default_factory=dict, hash=False, compare=False)
 
 

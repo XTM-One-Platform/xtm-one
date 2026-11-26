@@ -46,7 +46,10 @@ GATE_KEY_PREFIXES: tuple[str, ...] = (
 #: The line every completed card carries, first in its context.
 LINE_LEAD = "Version match:"
 BLIND_LEAD = "Proposed without version matching:"
-BLIND_ACTION = "Verify the running version, then upgrade: the hosts are not known to be vulnerable."
+#: Never prescribes an upgrade: the card's recommended option may be another treatment (#2174).
+BLIND_ACTION = "Verify the running version before acting: the hosts are not known to be vulnerable."
+#: The wording before #2174, still recognised in an agent's context so it is never stated twice.
+_LEGACY_BLIND_ACTION = "Verify the running version, then upgrade: the hosts are not known to be vulnerable."
 NO_AFFECTED = "unknown: OpenCTI holds no affected versions"
 UNKNOWN = "unknown"
 #: The most running versions named on the line; the rest are counted.
@@ -232,7 +235,10 @@ def complete_ask(ask: Mapping[str, Any], match: Mapping[str, Any]) -> dict[str, 
 def _states_blindness(line: str) -> bool:
     """Whether a context line repeats the blind statement or the blind action of :func:`card_lines`."""
     text = _clean(line).casefold()
-    return text.startswith(BLIND_LEAD.casefold()) or text == BLIND_ACTION.casefold()
+    return text.startswith(BLIND_LEAD.casefold()) or text in (
+        BLIND_ACTION.casefold(),
+        _LEGACY_BLIND_ACTION.casefold(),
+    )
 
 
 def case_id_of(correlation_key: object) -> uuid.UUID | None:

@@ -23,6 +23,13 @@ acts on the organization's signals and cases, a ``view`` right reads them and
 every write is refused, anyone else reads and acts on the signals they recorded
 and the cases their own read shows. An agent that already carries a function
 keeps its own, so the group never offers the same function twice.
+
+One CTEM group (#2443): the former ``ctem_read`` (#1337) and ``ctem_repair``
+(#1778) groups are renamed into this one (``RENAMED_BUILTIN_GROUPS``). It serves
+the enriched ``get_ctem_case`` read (who opened it, why each empty section is
+empty) and the administrator read ``list_ctem_attack_surface_passes``. The
+inventory is read with the organization inventory functions (``search_assets``),
+not here.
 """
 
 from __future__ import annotations
@@ -43,9 +50,10 @@ _SOURCE = f"builtin:{CTEM_GROUP}"
 
 def _names() -> tuple[str, ...]:
     from .ctem_cases import CTEM_CASE_TOOL_NAMES
+    from .ctem_repair import PASSES_TOOL
     from .ctem_signals import CTEM_SIGNAL_TOOL_NAMES
 
-    return (*CTEM_SIGNAL_TOOL_NAMES, TRIAGE_TOOL, *CTEM_CASE_TOOL_NAMES)
+    return (*CTEM_SIGNAL_TOOL_NAMES, TRIAGE_TOOL, *CTEM_CASE_TOOL_NAMES, PASSES_TOOL)
 
 
 def offers_ctem_tools(builtin_tool_ids: Any) -> bool:
@@ -58,9 +66,8 @@ def offers_ctem_tools(builtin_tool_ids: Any) -> bool:
 
 
 def _carried(agent: Any, builtin_tool_ids: Any) -> set[str]:
-    """The functions the agent already holds by its slug or through the read group."""
+    """The functions the agent already holds by its slug."""
     from .ctem_cases import CTEM_CASE_TOOL_NAMES, offers_ctem_case_tools
-    from .ctem_read import CTEM_READ_TOOL_NAMES, offers_ctem_read_tools
     from .ctem_signals import CTEM_SIGNAL_TOOL_NAMES, offers_ctem_signal_tools
 
     slug, builtin = getattr(agent, "slug", None), bool(getattr(agent, "is_builtin", False))
@@ -69,18 +76,13 @@ def _carried(agent: Any, builtin_tool_ids: Any) -> set[str]:
         carried.update(CTEM_SIGNAL_TOOL_NAMES)
     if offers_ctem_case_tools(slug, is_builtin=builtin):
         carried.update(CTEM_CASE_TOOL_NAMES)
-    if offers_ctem_read_tools(builtin_tool_ids):
-        carried.update(CTEM_READ_TOOL_NAMES)
     return carried
 
 
 def ctem_tools_for(
     agent: Any, builtin_tool_ids: Any, *, user_id: str | None
 ) -> tuple[list[ToolDefinition], CallableToolExecutor] | None:
-    """The group's tools for one turn or run, ``None`` when not wired or nothing is left to add.
-
-    ``ctem_read`` is wired before this group, so the reads it carries stay its own.
-    """
+    """The group's tools for one turn or run, ``None`` when not wired or nothing is left to add."""
     if not user_id or not offers_ctem_tools(builtin_tool_ids):
         return None
     carried = _carried(agent, builtin_tool_ids) & set(_names())
@@ -108,7 +110,9 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
     except ValueError:
         scope = None
 
-    async def _triage(action: str = "", ids: list[str] | None = None, state: str = "", trigger_path: str = "") -> str:
+    async def _triage(
+        action: str = "", ids: list[str] | None = None, state: str = "", trigger_path: str = "", dry_run: bool = False
+    ) -> str:
         """Dismiss, restore or re-check signals, as ``POST /ctem-signals/triage`` (#1505), for the acting person."""
         from app.core.database import async_session
         from app.services import ctem_access
@@ -135,9 +139,10 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
                 primary = await get_primary(db)
                 if primary is None:
                     return "No organization is set up yet: there are no signals."
-                if await ctem_access.level(db, scope) == "view":
-                    # A CTEM view right is strictly read only (#1748), as the route.
-                    return f"Refused: {ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
+                reason = await ctem_access.refusal(db, scope, write=True)
+                if reason is not None:
+                    # Checked at call time for the person the turn or run acts for (#1748, #2441).
+                    return f"Refused: {reason} Nothing was changed."
                 from app.models.user import User
 
                 user = await db.get(User, scope)
@@ -158,6 +163,14 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
                     limit=scope_gate.MAX_BULK,
                 )
                 actor = (getattr(user, "name", None) or getattr(user, "email", None) or str(user.id))[:200]
+                if dry_run:
+                    # Same selection and decisions, nothing written (#2341).
+                    outcomes: list[dict[str, Any]] = []
+                    counts = await scope_gate.triage(
+                        db, rows, action=action, actor=actor, evaluator_id=user.id, outcomes=outcomes
+                    )
+                    await db.rollback()
+                    return _dump({"dry_run": True, "matched": len(rows), "counts": counts, "signals": outcomes})
                 counts = await scope_gate.triage(db, rows, action=action, actor=actor, evaluator_id=user.id)
                 await db.commit()
                 return _dump({"matched": len(rows), "counts": counts})
@@ -172,14 +185,25 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
     for name in (d.name for d in case_defs):
         executor.register(name, case_exec.handler(name))  # type: ignore[arg-type]
 
+    # The enriched case read of the former read group, and the attack surface passes (#2443).
+    from .ctem_read import build_case_read
+    from .ctem_repair import PASSES_TOOL, build_ctem_repair_tools
+
+    get_def, get_handler = build_case_read(user_id=user_id, agent_id=agent_id)
+    executor.register(get_def.name, get_handler)
+    case_defs = [get_def if d.name == get_def.name else d for d in case_defs]
+    repair_defs, repair_exec = build_ctem_repair_tools(user_id=user_id)
+    passes = next(d for d in repair_defs if d.name == PASSES_TOOL)
+    executor.register(PASSES_TOOL, repair_exec.handler(PASSES_TOOL))  # type: ignore[arg-type]
+
     from app.models.ctem_signal import SIGNAL_STATES, TRIGGER_PATHS
     from app.services.ctem_scope_gate_store import TRIAGE_ACTIONS
 
     triage = ToolDefinition(
         name=TRIAGE_TOOL,
         description=(
-            "Dismiss, restore or re-check CTEM signals by ids or by a filter (state, trigger_path); "
-            "a signal that opened a case is skipped. Answers matched and counts."
+            "Dismiss, restore or re-check CTEM signals by ids or filter; case-opening signals "
+            "are skipped. dry_run: preview only."
         ),
         input_schema={
             "type": "object",
@@ -188,6 +212,7 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
                 "ids": {"type": "array", "items": {"type": "string"}},
                 "state": {"type": "string", "enum": list(SIGNAL_STATES)},
                 "trigger_path": {"type": "string", "enum": list(TRIGGER_PATHS)},
+                "dry_run": {"type": "boolean"},
             },
             "required": ["action"],
         },
@@ -197,6 +222,7 @@ def build_ctem_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinitio
         *(dataclasses.replace(d, source=_SOURCE) for d in signal_defs),
         triage,
         *(dataclasses.replace(d, source=_SOURCE) for d in case_defs),
+        dataclasses.replace(passes, source=_SOURCE),
     ]
     return definitions, executor
 

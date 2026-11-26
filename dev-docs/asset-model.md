@@ -86,9 +86,12 @@ rule is normative:
 The layer is live when the counted vulnerabilities can be joined to the profile assets (an asset reference
 matches a row on `source` and `external_id`, else on its name). The join (`_exposed_join` in
 `ctem_metrics_collector.py`) reads OpenAEV's CVE findings (`/api/findings/search`, `finding_type` `cve`,
-at most 2,000): each names the endpoints a CVE was found on. A CVE whose every endpoint is proven unreachable
-(`unreachable_keys`) is counted once in the last live layer through OpenCTI (its name under that layer's
-filter) and taken off; every other vulnerability of the layer stays in. When the join cannot be made
+at most 2,000): each names the assets a CVE was found on. Exposed counts, through OpenCTI (the names under
+the last live layer's filter), the layer's CVEs found on at least one asset not proven unreachable
+(`unreachable_keys` gives the others); a CVE found on no asset is not exposed (#2268): rule 1 is about the
+assets a vulnerability sits on, never a pass-through for one seen on none. The layer also carries
+`observed`, the layer's CVEs found on any asset, so "on unreachable assets only" (observed minus exposed)
+reads apart from "not observed on any asset" (the rest of the drop). When the join cannot be made
 (OpenCTI or OpenAEV not connected, findings past the cap, a tailored layer too wide to carry a filter), the
 layer is `not_available` with the reason `assets_not_linked` and the reachability split of the assets read
 (`reachable`, `unreachable`, `unknown`, `endpoints`); it is `not_configured`, with the "Add your assets and

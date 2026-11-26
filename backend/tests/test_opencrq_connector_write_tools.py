@@ -186,15 +186,16 @@ async def test_configure_answers_a_wrong_argument_without_writing(arguments: dic
         ("nist", "sync_now", "connectors.syncNow"),
         ("opencti", "reconnect_stream", "connectors.reconnectStream"),
         ("drata", "reset_state", "connectors.resetState"),
+        ("openaev", "run_inventory_now", "connectors.runInventoryNow"),
     ],
 )
 @pytest.mark.asyncio
 async def test_run_sends_the_action_procedure(source: str, action: str, procedure: str) -> None:
-    with _recorded({procedure: {"jobId": "job-7"} if action == "sync_now" else None}) as calls:
+    with _recorded({procedure: {"jobId": "job-7"} if action in ("sync_now", "run_inventory_now") else None}) as calls:
         out = await _run("run_opencrq_connector", source=source, action=action)
     assert _writes(calls) == [(procedure, {"source": source})]
     assert "done" in out
-    if action == "sync_now":
+    if action in ("sync_now", "run_inventory_now"):
         assert "Run id: job-7" in out
 
 
@@ -204,6 +205,7 @@ async def test_run_sends_the_action_procedure(source: str, action: str, procedur
         ({"source": "nist", "action": "explode"}, "action must be"),
         ({"source": "opencti", "action": "sync_now"}, "live stream"),
         ({"source": "nist", "action": "reconnect_stream"}, "holds no stream"),
+        ({"source": "nist", "action": "run_inventory_now"}, "applies to: openaev"),
     ],
 )
 @pytest.mark.asyncio
@@ -212,3 +214,35 @@ async def test_run_answers_a_wrong_argument_without_writing(arguments: dict[str,
         out = await _run("run_opencrq_connector", **arguments)
     assert expected in out
     assert _writes(calls) == []
+
+
+@pytest.mark.asyncio
+async def test_openaev_syncs_show_the_inventory_state() -> None:
+    # Gap opencrq-tools-no-run-inventory-now (xtm-one #2285): the full inventory read
+    # of the openaev connector (getConnector.inventory) is readable next to its runs.
+    with _recorded(
+        {
+            "connectors.listRuns": {"inProgress": [], "completed": [{"id": "r1", "status": "succeeded"}]},
+            "connectors.getConnector": {
+                "inventory": {
+                    "lastCompletedAt": "2026-11-25T10:00:00Z",
+                    "requestedAt": "2026-11-25T11:56:00Z",
+                    "nextDueAt": None,
+                }
+            },
+        }
+    ):
+        out = await _run("list_opencrq_connector_syncs", source="openaev")
+    assert (
+        "Inventory: last completed 2026-11-25T10:00:00Z, requested 2026-11-25T11:56:00Z (the next run reads it)" in out
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_connector_without_inventory_reads_no_detail() -> None:
+    with _recorded(
+        {"connectors.listRuns": {"inProgress": [], "completed": [{"id": "r1", "status": "succeeded"}]}}
+    ) as calls:
+        out = await _run("list_opencrq_connector_syncs", source="nist")
+    assert "Inventory" not in out
+    assert "connectors.getConnector" not in [c["procedure"] for c in calls]

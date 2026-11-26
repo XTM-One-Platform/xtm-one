@@ -458,14 +458,14 @@ async def _flush_langfuse(context: str) -> None:
     """Flush the Langfuse span buffer after an evaluation run (off the loop).
 
     ``flush_langfuse()`` (no-op when Langfuse is disabled, never raises) is a
-    synchronous call that blocks on the OTEL exporter, so it runs in a worker
-    thread: a slow Langfuse host must never stall the event loop, and with it
-    the reconciler and every concurrent run.
+    synchronous call that blocks on the OTEL exporter, so it runs on the
+    Langfuse pool: a slow Langfuse host must never stall the event loop, and
+    with it the reconciler and every concurrent run.
     """
     try:
-        from app.services.langfuse_tracing import flush_langfuse
+        from app.services.langfuse_tracing import flush_langfuse, run_langfuse_blocking
 
-        await asyncio.to_thread(flush_langfuse)
+        await run_langfuse_blocking(flush_langfuse)
     except Exception as exc:
         logger.warning(
             "Langfuse flush failed after %s: %s",

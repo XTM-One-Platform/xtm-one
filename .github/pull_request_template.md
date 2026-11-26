@@ -22,6 +22,7 @@ Closes #
 - [ ] All my commits are signed
 - [ ] New files and directories have the right edition: agentic is Enterprise Edition (`make edition P=<path>`)
 - [ ] External contributor: I signed the Contributor License Agreement, or will when the CLA bot asks; it is required for every external contribution (`CONTRIBUTING.md`)
+- [ ] This change discloses no unpatched vulnerability: a security fix is developed in a private security advisory, never in a public pull request (`SECURITY.md`)
 - [ ] Tests cover the change, and the user docs (`docs/`) and `dev-docs/` it affects are updated
 
 ## Staging

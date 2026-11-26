@@ -332,6 +332,11 @@ def _client(monkeypatch, user):
         return uuid.uuid4()
 
     monkeypatch.setattr(api_module, "_organization_id", _org)
+
+    async def _decide(_db, _user):
+        return "decide"  # no CTEM without a right (#2441): the caller holds one
+
+    monkeypatch.setattr(api_module.ctem_access, "level", _decide)
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t")
 
 

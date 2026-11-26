@@ -223,13 +223,17 @@ async def resolve_coordination_scope(
     agent_id: str | None,
     user_id: str | None,
     requested: str | None,
+    *,
+    acting_admin: bool = False,
 ) -> CoordinationScope | str:
     """The scope a coordination read runs in, or the error to answer.
 
     *requested* empty is the default: ``fleet`` for an agent with a home fleet
     (archived fleets included: their members still read their own work), else
     ``all`` (unchanged for an agent in no fleet). ``all`` named explicitly by an
-    agent with a fleet needs an administrator's agent.
+    agent with a fleet needs an administrator's agent: *user_id* is one, or
+    *acting_admin* says the run acts for one (a company-managed run carries no
+    person in *user_id*, #2381).
     """
     name = (requested or "").strip().lower()
     if name and name not in COORDINATION_SCOPES:
@@ -245,7 +249,7 @@ async def resolve_coordination_scope(
         if fleet_id is None:
             return "Error: scope fleet needs an agent with a home fleet; this agent is in none (use own or omit scope)."
         return CoordinationScope(SCOPE_FLEET, aid, fleet_id, fleet_name, tuple(members), workspace_id)
-    if fleet_id is not None and not await user_is_admin(user_id):
+    if fleet_id is not None and not acting_admin and not await user_is_admin(user_id):
         return "Error: scope all is for an administrator's agent; use fleet (the default) or own."
     return CoordinationScope(SCOPE_ALL, aid, fleet_id, fleet_name)
 

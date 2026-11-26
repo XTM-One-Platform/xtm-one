@@ -26,7 +26,11 @@ in the UI, which is exactly the drift migration ``a2a2intmodel1`` had to clean
 up once already.
 
 What is left is the read the agent configuration needs: the card URL to hand a
-partner, and the identity external work runs as. Authority is
+partner, and the identity external work runs as. One write sits beside it, and
+it does not expose anything: ``PUT .../partner-fleet-reads`` sets the opt-in of
+#2202 on the LIVE exposure (off by default), which lends a partner's task the
+reads of the exposed agent's home fleet. It answers 404 when nothing is
+exposed, so it can never create the state the bindings own. Authority is
 ``writable_agent_error()`` — the same predicate that decides who may edit the
 agent — so owner / administrator / config-tier-group-member / company-managed
 distinctions are inherited rather than re-invented.
@@ -78,6 +82,10 @@ class ExposureStatus(BaseModel):
     # has no field here at all: nothing on this router can mint one.
     client_id: str | None = None
     token_url: str | None = None
+    # The opt-in of #2202: a partner's task on this exposure also reads the
+    # exposed agent's home fleet, its health, its work items and the running
+    # build. Off by default; read at each partner call.
+    partner_fleet_reads: bool = False
     # Entra federation state is deliberately NOT part of this status: the
     # opt-in is an ``entra_a2a`` integration bound through the agent's
     # ordinary integration_bindings (Tools tab), so the agent configuration
@@ -117,6 +125,7 @@ async def _status_of(
         run_as_user_id=exposure.run_as_user_id,
         client_id=client_id,
         token_url=token_url(external_base(request)),
+        partner_fleet_reads=bool(getattr(exposure, "partner_fleet_reads", False)),
     )
 
 
@@ -140,4 +149,35 @@ async def get_exposure_status(
     exposure = await get_live_exposure(db, agent.id)
     if exposure is None:
         return ExposureStatus(exposed=False)
+    return await _status_of(request, db, exposure)
+
+
+class PartnerFleetReadsUpdate(BaseModel):
+    enabled: bool
+
+
+@router.put("/partner-fleet-reads", response_model=ExposureStatus)
+async def set_partner_fleet_reads(
+    agent_id: uuid.UUID,
+    body: PartnerFleetReadsUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ExposureStatus:
+    """Switch the #2202 opt-in on the agent's live exposure.
+
+    Same authority and the same 404 as the status read. No live exposure is a
+    404 too: the opt-in belongs to an exposure, and exposing stays the
+    bindings' job. Switching it off narrows the next call of a running task,
+    since the partner tools read it at each call.
+    """
+    agent = await _load_agent(db, agent_id)
+    if not await user_can_expose(db, user, agent):
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    exposure = await get_live_exposure(db, agent.id)
+    if exposure is None:
+        raise HTTPException(status_code=404, detail="Agent not exposed")
+    exposure.partner_fleet_reads = body.enabled
+    await db.commit()
     return await _status_of(request, db, exposure)

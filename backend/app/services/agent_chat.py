@@ -38,6 +38,7 @@ the same tree-of-runs visibility that assignment-originated handovers have.
 import asyncio
 import contextlib
 import dataclasses
+import functools
 import json
 import logging
 import re
@@ -113,7 +114,7 @@ from app.services.run_ledger import (
     record_helper_ledger,
     tool_ledger_call,
 )
-from app.services.tool_surface_refresh import IntegrationSurfaceRefresher
+from app.services.tool_surface_refresh import IntegrationSurfaceRefresher, rebuild_bound_builtin_groups
 from app.tools.agent_loop import (
     CONTINUATION_COMPOSING_REASONS,
     SLOW_TURN_WARN_SECONDS,
@@ -1407,6 +1408,22 @@ def _platform_builder_actor(user_id: str) -> tuple[str, bool]:
     return user_id, False
 
 
+def _add_partner_fleet_tools(composite: CompositeToolExecutor, user_id: str, *, agent_id: str | None) -> None:
+    """Wire the partner fleet reads of #2202 in a partner task that names its partner.
+
+    Acting as the run-as identity, but scoped by ``a2a.partner_fleet`` to the
+    exposed agent's home fleet and to its exposure's opt-in, read at each call.
+    """
+    from app.a2a.partner_scope import current_partner
+
+    if current_partner() is None or not is_valid_uuid(user_id):
+        return
+    from app.a2a.partner_fleet import scope_fleet_tools_to_partner
+    from app.services.builtin_tools import build_fleet_tools
+
+    composite.add_tools(*scope_fleet_tools_to_partner(*build_fleet_tools(user_id, agent_id=agent_id)))
+
+
 def _add_trace_tools(
     composite: CompositeToolExecutor,
     db: AsyncSession,
@@ -1511,6 +1528,7 @@ def _add_platform_builder_tools(
         # The conversation is where export_fleet_spec keeps the full spec file.
         fl_defs, fl_exec = build_fleet_tools(actor_id, conversation_id=conversation_id, agent_id=agent_id)
         composite.add_tools(fl_defs, fl_exec)
+    _add_partner_fleet_tools(composite, user_id, agent_id=agent_id)
     if "roi" in agent_builtin_tool_ids and not read_only:
         from app.services.builtin_tools.roi import build_roi_tools
 
@@ -3823,6 +3841,18 @@ async def run_agent_chat(
 
             _call_parts.extend(format_handover_context_prompt(handover_context))
 
+        # ── Fleet autonomy level (#2376) ──────────────────────────────────
+        # The block an assignment run of the fleet carries, stated once on
+        # every other turn of a member too (chat, channel thread, consult,
+        # background task, work-item turn, transfer), and on a connected agent
+        # reached by a member's delegation (the nearest fleet of the chain).
+        # An agent in no fleet, reached by no member, gets nothing.
+        from app.services.fleet_autonomy import turn_fleet_autonomy_block
+
+        _fleet_block = await turn_fleet_autonomy_block(db, agent, _visited_agents)
+        if _fleet_block:
+            _call_parts.append(_fleet_block)
+
         # ── Element bindings (target element scoping) ─────────────────────
         # When the agent has target elements configured (e.g. specific Slack
         # channels, Teams channels, GitHub repos), inject them so the LLM
@@ -4652,34 +4682,32 @@ async def run_agent_chat(
                 composite.add_tools(
                     *build_user_admin_tools(user_id=user_id, caller_is_admin=_caller_admin, agent_name=agent.name)
                 )
+            # No CTEM tool of any kind for a person with no CTEM right (#2441): the
+            # built-in CTEM agents' tools and the ctem group (former ctem_read / ctem_repair ids, #2443).
+            from app.services import ctem_access as _ctem_access
+
+            _ctem_ok = await _ctem_access.wires_ctem(user_id)
             # The CTEM case tools (#11545): the Remediation Coordinator and
             # the Mobilization Analyst, as the person asking, XTM One only.
             from app.services.builtin_tools import build_ctem_case_tools, offers_ctem_case_tools
 
-            if offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_case_tools(user_id=user_id, agent_id=str(agent.id)))
             # The CTEM signal tools (#826): the CTEM agents that see a trigger first.
             from app.services.builtin_tools import build_ctem_signal_tools, offers_ctem_signal_tools
 
-            if offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=user_id))
-            # The read-only CTEM group (#1337): bound on any agent, the reads the
-            # CTEM agents above do not already carry.
-            from app.services.builtin_tools import ctem_read_tools_for
-
-            ctem_read = ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
-            if ctem_read is not None:
-                composite.add_tools(*ctem_read)
             # The CTEM group (#1748): the signal and case tools on any agent, the owner's rights.
             from app.services.builtin_tools import ctem_tools_for
 
-            ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=user_id) if _ctem_ok else None
             if ctem_group is not None:
                 composite.add_tools(*ctem_group)
-            # The CTEM administrator repairs (#1778): the CTEM case agents, or the group bound.
+            # The attack surface passes read (#1778, #2443): the CTEM case agents not bound to ctem.
             from app.services.builtin_tools import ctem_repair_tools_for
 
-            ctem_repair = ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            ctem_repair = ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=user_id) if _ctem_ok else None
             if ctem_repair is not None:
                 composite.add_tools(*ctem_repair)
             # The learned skill (#914): a built-in agent records durable lessons.
@@ -5065,6 +5093,8 @@ async def run_agent_chat(
                     run_id=parent_run_id,
                     flow_run_id=flow_run_id,
                 ),
+                # An administrator's turn reads past every creator narrowing (#2161).
+                acting_admin=bool(getattr(user_record, "is_admin", False)),
             )
             composite.add_tools(wi_defs, wi_exec)
 
@@ -5081,6 +5111,8 @@ async def run_agent_chat(
                 key_namespace=shared_state_namespace,
                 workspace_id=_workspace_scope_id,
                 run_id=parent_run_id,
+                # An administrator's turn reads past every owner narrowing (#2161).
+                acting_admin=bool(getattr(user_record, "is_admin", False)),
             )
             composite.add_tools(cs_defs, cs_exec)
             from app.services.builtin_tools import build_friction_tools
@@ -7971,7 +8003,24 @@ async def run_agent_chat(
             # of the turn changes an integration it is bound to (#1874).
             if loop_kwargs["executor"] is not None and _rebuild_integration_tools is not None:
                 loop_kwargs["tool_surface_refresher"] = IntegrationSurfaceRefresher(
-                    composite, loop_kwargs["executor"], _rebuild_integration_tools, _narrow_tool_surface
+                    composite,
+                    loop_kwargs["executor"],
+                    _rebuild_integration_tools,
+                    _narrow_tool_surface,
+                    # update_agent on this turn's own agent refreshes it too (#2205).
+                    agent_id=str(agent.id),
+                    # A built-in group granted in the turn loads from the next step,
+                    # through its own gate for the person asking (#2205).
+                    rebuild_builtins=(
+                        None
+                        if is_anonymous_user or not user_id
+                        else functools.partial(
+                            rebuild_bound_builtin_groups,
+                            str(agent.id),
+                            str(user_id),
+                            conversation_id=str(conversation_id) if conversation_id else None,
+                        )
+                    ),
                 )
             # Fast-path: when the agent config declares a finalize_on_builtin_tool,
             # pass it to the loop so it can short-circuit after a successful tool

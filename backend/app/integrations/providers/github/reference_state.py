@@ -16,6 +16,9 @@ reference keeps its item blocked, it never releases it.
 workflow created after a time (a release run deploying an infrastructure change):
 ``GET /repos/{repo}/actions/workflows/{workflow}/runs?status=success&created=>=<after>``.
 
+:func:`read_tag_carrying` answers the newest tag matching a pattern that carries a
+commit (a release cut from a merge, #2209).
+
 :func:`read_pull_request_ci` answers the head of an open pull request and the
 verdict of its checks (:func:`head_ci_verdict`), for a work item parked on it
 whose CI delivery never came.
@@ -23,6 +26,7 @@ whose CI delivery never came.
 
 from __future__ import annotations
 
+import fnmatch
 import re
 from datetime import datetime
 from typing import Any
@@ -178,7 +182,135 @@ async def read_successful_workflow_run(
         data = resp.json()
     except ValueError:
         return None
-    return first_successful_run(data, after, title_contains)
+    found = first_successful_run(data, after, title_contains)
+    # A workflow with no run at all may be a reusable one: it never runs on its own,
+    # so the reference would wait forever (#2211). A read failure, told on the item.
+    if (
+        found is None
+        and _no_runs(data)
+        and _WORKFLOW_FILE_RE.match(workflow)
+        and await _call_only_workflow(owner, name, workflow, branch, token)
+    ):
+        raise LookupError(
+            f"workflow {workflow} in {repo} only runs on workflow_call: it never has a run of its own; "
+            "name the workflow that calls it instead"
+        )
+    return found
+
+
+_WORKFLOW_FILE_RE = re.compile(r"^[A-Za-z0-9_.-]+\.ya?ml$")
+
+#: A tag name pattern (a glob such as ``*.*.*``) a ``tag`` reference may give (#2209).
+_TAG_PATTERN_RE = re.compile(r"^[A-Za-z0-9._*?/-]{1,200}$")
+#: Tags compared with the carried commit in one read, newest version first.
+MAX_TAG_COMPARES = 3
+
+
+def _version_key(name: str) -> tuple[tuple[int, int | str], ...]:
+    """*name* as a sortable version: ``1.10.0`` after ``1.9.2``, a number before a word. Pure."""
+    return tuple((0, int(p)) if p.isdigit() else (1, p) for p in re.split(r"[.+-]", name.removeprefix("v")))
+
+
+def matching_tags(data: Any, pattern: str) -> list[dict[str, str]]:
+    """The tags of GitHub's tags answer *data* whose name matches *pattern*, newest version first. Pure."""
+    out: list[dict[str, str]] = []
+    for tag in data if isinstance(data, list) else []:
+        if not isinstance(tag, dict):
+            continue
+        name = _text(tag.get("name"))
+        commit = tag.get("commit")
+        sha = _commitish(str(commit.get("sha") or "")) if isinstance(commit, dict) else None
+        if name and sha and fnmatch.fnmatchcase(name, pattern):
+            out.append({"tag": name, "commit": sha})
+    out.sort(key=lambda t: _version_key(t["tag"]), reverse=True)
+    return out
+
+
+async def read_tag_carrying(repo: str, pattern: str, carries_sha: str, token: str) -> dict[str, str] | None:
+    """The newest tag of *repo* matching *pattern* that carries *carries_sha* (#2209).
+
+    ``GET /repos/{repo}/tags`` (its first 100), then the compare of the commit and
+    each matching tag, newest version first, :data:`MAX_TAG_COMPARES` at most: a
+    tag that is the commit or a descendant of it answers ``{"tag", "commit"}``.
+    ``None`` when no tag carries it yet or a read fails (the item stays blocked).
+    """
+    owner, name, err = parse_repo(repo)
+    sha = _commitish(carries_sha)
+    if err or sha is None or not _TAG_PATTERN_RE.match(pattern or ""):
+        return None
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/tags",
+            "GitHub",
+            f"read the tags of {repo}",
+            headers=_headers(token),
+            params={"per_page": "100"},
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+    if err or resp is None:
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        return None
+    for tag in matching_tags(data, pattern)[:MAX_TAG_COMPARES]:
+        carried = await read_commit_containment(repo, sha, tag["commit"], token)
+        if carried:
+            return tag
+        if carried is None:
+            return None
+    return None
+
+
+def _no_runs(data: Any) -> bool:
+    """Whether GitHub's runs answer *data* lists no run at all. Pure."""
+    runs = data.get("workflow_runs") if isinstance(data, dict) else None
+    return isinstance(runs, list) and not runs
+
+
+def workflow_call_only(text: str) -> bool:
+    """Whether the workflow file *text* is triggered by ``workflow_call`` alone (#2211). Pure.
+
+    ``on`` reads as a string, a list or a mapping; YAML 1.1 loads the bare key
+    ``on`` as ``True``, read too. Unparseable text answers ``False``.
+    """
+    import yaml
+
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return False
+    if not isinstance(data, dict):
+        return False
+    on = data.get("on", data.get(True))
+    if isinstance(on, str):
+        events = {on}
+    elif isinstance(on, list | dict):
+        events = {str(e) for e in on}
+    else:
+        return False
+    return events == {"workflow_call"}
+
+
+async def _call_only_workflow(owner: str, name: str, workflow: str, branch: str | None, token: str) -> bool:
+    """Whether ``.github/workflows/<workflow>`` of *owner/name* only runs on ``workflow_call``; ``False`` when unreadable."""
+    params = {"ref": branch} if branch else None
+    async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        resp, err = await _common.safe_request(
+            client,
+            "get",
+            f"{_BASE_URL}/repos/{owner}/{name}/contents/.github/workflows/{workflow}",
+            "GitHub",
+            f"read the triggers of {workflow} in {owner}/{name}",
+            headers={**_headers(token), "Accept": "application/vnd.github.raw+json"},
+            params=params,
+            max_total_seconds=MAX_TOTAL_SECONDS,
+        )
+    if err or resp is None:
+        return False
+    return workflow_call_only(getattr(resp, "text", "") or "")
 
 
 #: Check run conclusions that do not fail a head (the webhook path's rule).
@@ -548,9 +680,12 @@ async def read_pull_request_ci(repo: str, number: int, token: str) -> dict | Non
     listed = checks.get("check_runs") if isinstance(checks, dict) else None
     full_ci = None
     merge_queue = False
+    review_decision = None
+    queue_base = False
+    can_bypass = False
     if conclusion == "success" and draft is False and base_ref and _BRANCH_RE.match(base_ref):
         full_ci = await _full_ci_state(owner, name, base_ref, sha, token)
-        merge_queue = await _in_merge_queue(owner, name, number, token)
+        merge_queue, review_decision, queue_base, can_bypass = await _merge_gates(owner, name, number, base_ref, token)
     return {
         "head_sha": sha,
         "head_branch": _text(head.get("ref")),
@@ -567,30 +702,53 @@ async def read_pull_request_ci(repo: str, number: int, token: str) -> dict | Non
         **({"full_ci": full_ci} if full_ci else {}),
         # In the base's merge queue: its merge (or its removal) is a wake still to come (#404).
         **({"merge_queue": True} if merge_queue else {}),
+        # Waiting on a review: the review event, not a green hand-off, is its next wake (#2213).
+        **({"review_decision": review_decision} if review_decision else {}),
+        # A base with a merge queue, or an account GitHub lets bypass the base's
+        # requirements: a missing review is not a block, GitHub decides (#2324).
+        **({"queue_base": True} if queue_base else {}),
+        **({"can_bypass": True} if can_bypass else {}),
     }
 
 
 _IN_MERGE_QUEUE_QUERY = (
-    "query($owner: String!, $name: String!, $number: Int!) {"
-    " repository(owner: $owner, name: $name) { pullRequest(number: $number) { isInMergeQueue } } }"
+    "query($owner: String!, $name: String!, $number: Int!, $base: String!) {"
+    " repository(owner: $owner, name: $name) { mergeQueue(branch: $base) { id }"
+    " pullRequest(number: $number) { isInMergeQueue reviewDecision viewerCanMergeAsAdmin } } }"
 )
 
 
-async def _in_merge_queue(owner: str, name: str, number: int, token: str) -> bool:
-    """Whether pull request *number* waits in its base's merge queue (#404); ``False`` when unreadable."""
+async def _merge_gates(
+    owner: str, name: str, number: int, base: str, token: str
+) -> tuple[bool, str | None, bool, bool]:
+    """The merge gates of pull request *number*, read from GitHub in one query.
+
+    Whether it is in its base's merge queue (#404), its review decision (#2213),
+    whether its base *base* has a merge queue and whether GitHub lets this
+    account bypass the base's requirements (``viewerCanMergeAsAdmin``, #2324).
+    ``(False, None, False, False)`` when unreadable.
+    """
     async with egress_client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
         data, err = await _common.gh_graphql(
             client,
             _headers(token),
             _IN_MERGE_QUEUE_QUERY,
-            {"owner": owner, "name": name, "number": number},
+            {"owner": owner, "name": name, "number": number, "base": base},
             action=f"read whether {owner}/{name}#{number} is in the merge queue",
         )
     if err or not isinstance(data, dict):
-        return False
-    repo = data.get("repository") if isinstance(data.get("repository"), dict) else {}
-    pull = repo.get("pullRequest") if isinstance(repo.get("pullRequest"), dict) else {}
-    return pull.get("isInMergeQueue") is True
+        return False, None, False, False
+    repo_raw = data.get("repository")
+    repo: dict[str, Any] = repo_raw if isinstance(repo_raw, dict) else {}
+    pull_raw = repo.get("pullRequest")
+    pull: dict[str, Any] = pull_raw if isinstance(pull_raw, dict) else {}
+    decision = pull.get("reviewDecision")
+    return (
+        pull.get("isInMergeQueue") is True,
+        decision if isinstance(decision, str) and decision else None,
+        isinstance(repo.get("mergeQueue"), dict),
+        pull.get("viewerCanMergeAsAdmin") is True,
+    )
 
 
 async def _full_ci_state(owner: str, name: str, base_ref: str, sha: str, token: str) -> str | None:
@@ -725,6 +883,9 @@ def dequeued_from_timeline(repo: str, number: int, data: Any) -> PullRequestEven
     if not when:
         return None
     reason = (_text(removal.get("reason")) or "unknown").lower()
+    from .pr_events import queue_run_hint
+
+    hint = queue_run_hint(repo.lower(), reason, when)
     return PullRequestEvent(
         kind="dequeued",
         repo=repo.lower(),
@@ -734,6 +895,7 @@ def dequeued_from_timeline(repo: str, number: int, data: Any) -> PullRequestEven
         conclusion=reason,
         url=_text(pull.get("url")),
         closed_at=when,
+        extra={"queue_run_hint": hint} if hint else {},
     )
 
 

@@ -17,6 +17,7 @@ import {
   fieldNameInSentence,
   hasInvalidExtraField,
   isFieldName,
+  isSecretExtraKey,
   maskedStoredSecrets,
   splitExtraFieldLabel,
 } from "./extra-fields.ts";
@@ -37,6 +38,28 @@ test("a catalog label splits into its name, its explanation and whether it is op
   assert.deepEqual(splitExtraFieldLabel("Base URL"), { name: "Base URL", detail: null, optional: false });
   assert.deepEqual(splitExtraFieldLabel("Region (optional)"), { name: "Region", detail: null, optional: true });
   assert.deepEqual(splitExtraFieldLabel("Azure AD Tenant ID (required)"), { name: "Azure AD Tenant ID", detail: null, optional: false });
+});
+
+test("a connection string is masked like a key, the Event Hub coordinates are not", () => {
+  assert.equal(isSecretExtraKey("event_hub_connection_string"), true);
+  assert.equal(isSecretExtraKey("event_hub_namespace"), false);
+  assert.equal(isSecretExtraKey("event_hub_name"), false);
+  assert.equal(isSecretExtraKey("event_hub_consumer_group"), false);
+});
+
+test("the Defender Event Hub labels split into one name each", () => {
+  const labels = extraFieldLabels({
+    event_hub_namespace: "Event Hub namespace: the <name>.servicebus.windows.net host the Defender XDR Streaming API sends alert events to",
+    event_hub_name: "Event Hub name: the hub of that namespace the Streaming API writes to",
+    event_hub_consumer_group: "Event Hub consumer group: optional, $Default when empty",
+    event_hub_connection_string: "Event Hub connection string: optional, used instead of the Entra app's Azure Event Hubs Data Receiver role",
+  });
+  assert.equal(labels.event_hub_namespace.name, "Event Hub namespace");
+  assert.equal(labels.event_hub_name.name, "Event Hub name");
+  assert.equal(labels.event_hub_consumer_group.name, "Event Hub consumer group");
+  assert.equal(labels.event_hub_consumer_group.optional, true);
+  assert.equal(labels.event_hub_connection_string.name, "Event Hub connection string");
+  assert.equal(labels.event_hub_connection_string.optional, true);
 });
 
 test("a label that does not open with a name is named off its key and kept whole in the bubble", () => {

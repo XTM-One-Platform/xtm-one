@@ -323,6 +323,23 @@ def test_a_newer_build_booted_while_an_older_one_answers_is_a_rollout_in_progres
     assert payload["previous_release"] == "1.0.0 (aaaaaaa)"
 
 
+def test_an_answering_build_no_row_names_is_the_one_rolling_out_not_an_old_one_still_serving() -> None:
+    """#2219: a row is written at a build's first boot, so an answering build that no row names is newer than every
+    recorded build: the newest row is never told 'in progress' with the new build as the old one still serving."""
+    from app.services.platform_builds import ROLLOUT_IN_PROGRESS, ROLLOUT_UNRECORDED, rollout
+
+    windows = _windows()  # type: ignore[no-untyped-call]
+    new = windows[1].first_seen_at
+    found = rollout(windows, ("1.2.0", "ccccccc3"), now=new + timedelta(minutes=3))
+    assert found.state == ROLLOUT_UNRECORDED and found.state != ROLLOUT_IN_PROGRESS
+    words = found.words()
+    assert "still serving" not in words
+    assert words.startswith("rollout in progress: 1.2.0 (ccccccc) answers and is newer than every recorded build")
+    assert found.payload()["answered_by"] == "1.2.0 (ccccccc)" and found.payload()["release"] == "1.1.0 (bbbbbbb)"
+    # A recorded older build answering is still a rollout in progress of the newest.
+    assert rollout(windows, ("1.0.0", "aaaaaaa1"), now=new + timedelta(minutes=3)).state == ROLLOUT_IN_PROGRESS
+
+
 def test_a_rollout_is_complete_once_the_newest_build_answers_and_the_previous_one_is_gone():
     from app.services.platform_builds import (
         DRAIN_GRACE,

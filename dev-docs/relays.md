@@ -91,12 +91,13 @@ exchange. The flow `action.http_request` node: its request.
 
 The LM Studio LLM provider (`llm/lmstudio_provider.py`), fed by an LM Studio
 integration: its OpenAI client's one transport
-(`services/lmstudio_llm_provider.IntegrationRelayTransport`) reads the server
+(`services/lmstudio_llm_provider.IntegrationTransport`) reads the server
 URL, token and relay group of the integration feeding its config on every
 request (kept 30 s per process, dropped on an edit or an unlink) and sends the
-request on that route; an integration that cannot carry it answers a 424 the
-SDK never retries. The integration's console and connection test refuse to run
-without a relay group.
+request on that route - directly when the integration has no relay group; an
+integration that cannot carry it answers a 424 the SDK never retries. Like any
+integration, an LM Studio integration without a relay group is reached directly
+by its console and its connection test.
 
 Not routed (platform-internal by design): every other LLM provider, channel
 bot webhooks, the platform's own registration calls. Later phases may route
@@ -224,4 +225,4 @@ is refused (HTTP 426 / WebSocket close 4426) with `update_required`.
 - **stdio MCP servers on the relay host** (`open` kind `process`), limited to
   commands the relay's configuration allows.
 - **Other targets**: registered OpenCTI / OpenAEV reached through a relay, other
-  on-prem LLM endpoints (LM Studio already is, through its integration).
+  on-prem LLM endpoints (LM Studio already can be, through its integration).

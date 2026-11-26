@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from app.services.ctem_primary_assets import PrimaryAssetIndex, contains_word
+from app.services.ctem_primary_assets import PrimaryAssetIndex, contains_word, link_basis
 from app.services.organization_context import (
     PROFILE_ASSET_CAP,
     AssetEntry,
@@ -87,6 +87,30 @@ class SignalFacts:
     source_external_id: str | None = None
     subject_label: str | None = None
     evidence: dict[str, Any] = field(default_factory=dict)
+    #: #2171: the software (name or CPE) OpenCTI relates by ``has`` to the CVEs the signal names, read
+    #: by the store with the recorder's own access when the evidence names no software.
+    cve_software: tuple[str, ...] = ()
+    #: #2171: how that read went: ``""`` not attempted, ``"read"``, else why it could not answer.
+    cve_lookup: str = ""
+
+
+#: #2171: the evidence keys the gate reads; any other key is kept on the signal but never reconciled.
+ASSET_EVIDENCE_KEYS: tuple[str, ...] = ("assets", "asset", "hostnames", "urls", "ips")
+SOFTWARE_EVIDENCE_KEYS: tuple[str, ...] = ("software", "products", "cpe")
+READ_EVIDENCE_KEYS: tuple[str, ...] = (
+    *ASSET_EVIDENCE_KEYS,
+    *SOFTWARE_EVIDENCE_KEYS,
+    "cve",
+    "cves",
+    "primary_assets",
+)
+
+
+def evidence_read_keys(evidence: Any) -> list[str]:
+    """The keys of *evidence* the gate reads that hold a value (#2171)."""
+    if not isinstance(evidence, dict):
+        return []
+    return [k for k in READ_EVIDENCE_KEYS if _evidence_list(evidence, k)]
 
 
 @dataclass(frozen=True)
@@ -396,7 +420,7 @@ def resolve(
     """
     out = Resolution()
     keys = [stable_key(facts.subject_ref), stable_key(facts.source_external_id)]
-    keys += [stable_key(v) for v in _evidence_list(facts.evidence, "assets", "asset", "hostnames", "urls", "ips")]
+    keys += [stable_key(v) for v in _evidence_list(facts.evidence, *ASSET_EVIDENCE_KEYS)]
     keys = [k for k in dict.fromkeys(keys) if k]
     out.keys = keys
     wanted = set(keys)
@@ -408,9 +432,9 @@ def resolve(
             out.groups.append(group.name)
     # CTEM-29: the primary assets a tracked organization's services support, named in the evidence.
     named = {n.strip().lower() for n in _evidence_list(facts.evidence, "primary_assets")}
-    for jewel in profile.primary_assets:
-        if {stable_key(jewel.name), stable_key(jewel.opencrq_asset_id)} & wanted - {""} or jewel.name.lower() in named:
-            out.named_primary_assets.append(jewel.name)
+    for pa in profile.primary_assets:
+        if {stable_key(pa.name), stable_key(pa.opencrq_asset_id)} & wanted - {""} or pa.name.lower() in named:
+            out.named_primary_assets.append(pa.name)
     if facts.subject_kind == "identity":
         owned = owned_domain_of(profile, facts.subject_ref)
         if owned:
@@ -419,11 +443,13 @@ def resolve(
         hosted = host_owned_domain(profile, facts.subject_ref)
         if hosted:
             out.hosted_domains.append(hosted)
-    software = _evidence_list(facts.evidence, "software", "products", "cpe")
+    software = _evidence_list(facts.evidence, *SOFTWARE_EVIDENCE_KEYS)
     if facts.subject_kind == "software":
         software.insert(0, facts.subject_ref)
     if facts.subject_kind == "threat":
         software += threat_software(facts.evidence)
+    # #2171: the software OpenCTI says has the CVEs the signal names.
+    software += [s for s in facts.cve_software if str(s or "").strip()]
     software = list(dict.fromkeys(software))
     out.software_refs = software
     for entry in profile.software:
@@ -526,7 +552,7 @@ def _confidence(facts: SignalFacts, related: list[RelatedSignal]) -> tuple[str, 
 # ── scope gate ─────────────────────────────────────────────────────────
 
 
-def _jewels_of(profile: OrganizationProfile, resolution: Resolution) -> list[tuple[str, str]]:
+def _primary_assets_of(profile: OrganizationProfile, resolution: Resolution) -> list[tuple[str, str]]:
     """``(name, criticality)`` of the primary assets the resolved assets and groups run."""
     names = {a.name.lower() for a in resolution.assets} | {a.group.lower() for a in resolution.assets if a.group}
     # #1773: the groups an asset joins by rule count as its groups too.
@@ -535,14 +561,29 @@ def _jewels_of(profile: OrganizationProfile, resolution: Resolution) -> list[tup
     named = {n.lower() for n in resolution.named_primary_assets}
     linked = {str(h["primary_asset_key"]) for h in resolution.primary_assets}
     out: list[tuple[str, str]] = []
-    for jewel in profile.primary_assets:
+    for pa_row in profile.primary_assets:
         if (
-            jewel.name.lower() in named
-            or names & {n.lower() for n in jewel.asset_names}
-            or " ".join(jewel.name.split()).casefold()[:200] in linked
+            pa_row.name.lower() in named
+            or names & {n.lower() for n in pa_row.asset_names}
+            or " ".join(pa_row.name.split()).casefold()[:200] in linked
         ):
-            out.append((jewel.name, jewel.criticality))
+            out.append((pa_row.name, pa_row.criticality))
     return out
+
+
+def _primary_asset_basis(sources: list[dict[str, Any]], criticality: str | None) -> str | None:
+    """``proven`` or ``inferred``: the link of the primary asset sources at *criticality*, else ``None`` (#2396).
+
+    Several primary assets at that criticality: ``proven`` when one of them is.
+    """
+    bases = {
+        s.get("basis") or "inferred"
+        for s in sources
+        if s.get("from") == "primary_asset" and criticality and s.get("criticality") == criticality
+    }
+    if not bases:
+        return None
+    return "proven" if "proven" in bases else "inferred"
 
 
 def signal_cve_ids(subject_ref: str | None, subject_label: str | None, evidence: Any) -> list[str]:
@@ -643,6 +684,9 @@ def decide(
             "shipped_products": resolution.shipped,
             "repositories": resolution.repositories,
             "software_refs": resolution.software_refs,
+            # #2171: the software read from OpenCTI for the signal's CVEs, and how that read went.
+            "cve_software": list(facts.cve_software),
+            "cve_lookup": facts.cve_lookup or None,
             "hosted_under": resolution.hosted_domains,
             "primary_assets": resolution.primary_assets,
             "inventory_links_read": bool(primary_assets is not None and primary_assets.loaded),
@@ -716,14 +760,16 @@ def decide(
         inherited = effective_criticality(profile, asset)
         if inherited in ASSET_TO_SCOPE:
             sources.append({"from": "asset_group", "name": asset.name, "criticality": ASSET_TO_SCOPE[inherited]})
-    jewels = _jewels_of(profile, resolution)
+    pa_rows = _primary_assets_of(profile, resolution)
     chains: dict[str, list[dict[str, Any]]] = {}
     for hit in resolution.primary_assets:
         chains.setdefault(str(hit["primary_asset_key"]), []).append(hit)
-    for n, c in jewels:
+    for n, c in pa_rows:
         source: dict[str, Any] = {"from": "primary_asset", "name": n, "criticality": c}
         key = " ".join(n.split()).casefold()[:200]
         chain = chains.get(key)
+        # #2396: whether a recorded link (manual, OpenCRQ) supports it, read on every chain before the cut.
+        source["basis"] = link_basis(chain)
         if chain:
             source["chain"] = chain[:CHAINS_KEPT]
             # #1979: the record keeps the first chains and says how many there are, never a silent cut.
@@ -733,10 +779,10 @@ def decide(
     sources += [
         {"from": "owned_domain", "name": d, "criticality": policy.identity_criticality} for d in resolution.domains
     ]
-    jewel_ids = [
-        j.opencrq_asset_id for j in profile.primary_assets if j.name in {n for n, _ in jewels} and j.opencrq_asset_id
+    pa_row_ids = [
+        j.opencrq_asset_id for j in profile.primary_assets if j.name in {n for n, _ in pa_rows} and j.opencrq_asset_id
     ]
-    asset_ids = [a.external_id for a in resolution.assets if a.source == "opencrq" and a.external_id] + jewel_ids
+    asset_ids = [a.external_id for a in resolution.assets if a.source == "opencrq" and a.external_id] + pa_row_ids
     # CTEM-29: the OpenCRQ supporting assets a tracked organization's services are.
     asset_ids += _evidence_list(facts.evidence, "opencrq_asset_ids")
     held = scenarios.for_keys(asset_ids, [a.name.lower() for a in resolution.assets]) if scenarios.connected else []
@@ -745,6 +791,8 @@ def decide(
     threshold = policy.scope_min_criticality
     record["scope"] = {
         "criticality": criticality or None,
+        # #2396: when a primary asset sets the scope criticality, whether its link is proven or inferred.
+        "primary_asset_basis": _primary_asset_basis(sources, criticality),
         "sources": sources,
         "threshold": threshold,
         # #1591 S3: where the threshold comes from (the policy's scope field, else its default).
@@ -800,12 +848,14 @@ def decide(
                 code="internet_exposure_required",
             )
     if policy.min_primary_asset_criticality:
-        best = _highest([c for _, c in jewels])
+        best = _highest([c for _, c in pa_rows])
         passed = _rank(best) >= _rank(policy.min_primary_asset_criticality)
         checks.append(
             {
                 "rule": "min_primary_asset_criticality",
                 "value": best or None,
+                # #2396: proven or inferred, the link of the primary asset that gives the value.
+                "basis": _primary_asset_basis(sources, best),
                 "threshold": policy.min_primary_asset_criticality,
                 "passed": passed,
             }

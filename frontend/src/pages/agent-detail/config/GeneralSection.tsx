@@ -70,13 +70,9 @@ import { BUTTON_ROLE_FOCUS_RING } from "@/lib/button-role";
 import { FIELD_FOCUS_RING } from "@/lib/field-focus-ring";
 import { useRoutingModelLabel } from "@/hooks/useRoutingModelLabel";
 import { ICON_MAP, OUTPUT_FORMATS, OUTPUT_FORMAT_CONFIG, REASONING_EFFORT_LEVELS, REASONING_EFFORT_CONFIG, ORGANIZATION_CONTEXT_MODE_LABELS, INTEGRATION_PROVIDER_NAMES, DEFAULT_HITL_PROMPT, HANDOVER_TYPES, HANDOVER_TYPE_CONFIG, ALL_HANDOVER_TYPES_CONFIG, MAX_ITERATIONS_CEILING, clampMaxIterations, handoverTypeConfig } from "@/lib/constants";
-import { ALL_HANDOVER_TYPES, consultsBackgroundDelegator, shownHandoverType } from "@/lib/handover-types";
+import { ALL_HANDOVER_TYPES, consultsBackgroundDelegator, editedHandoverType, handoverTypeParts, shownHandoverType } from "@/lib/handover-types";
 import type { Agent, AvailableModel, Integration, LLMProvider, OrganizationContextMode, ProviderCatalogItem, ToolRef } from "@/types";
 import { OrganizationContextModeSelect, useOrganizationContextEffectiveLabel } from "@/components/organization-context-mode-select";
-import {
-  OrganizationContextCategoriesSelect,
-  useOrganizationContextCategoriesLabel,
-} from "@/components/organization-context-categories-select";
 import { useUpdateAgent, usePipelineTools, useAgentPersonaVersions } from "@/hooks/api/useAgentApi";
 import { useCredentialSharingConfirm } from "@/hooks/useCredentialSharingConfirm";
 import { useToast } from "@/components/ui/toast";
@@ -99,6 +95,14 @@ const TAGS_FIELD_ID = "agent-general-tags";
 const MODEL_FIELD_ID = "agent-general-model";
 const PERSONA_FIELD_ID = "agent-general-persona";
 const COMMIT_MESSAGE_FIELD_ID = "agent-general-commit-message";
+
+/** The sharing card's read-only wording where the viewer cannot manage the agent (#2203), translated by the card. @i18n-keys */
+const READ_ONLY_RESTRICTION_COPY = {
+  title: "Restrict access",
+  restricted: "Only the people and groups below can see this. Access to a built-in agent cannot be changed.",
+  open: "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.",
+  empty: "No one is listed yet, so only admins and the owner can reach this.",
+} as const;
 
 /* ── Searchable Tool Picker ──────────────────────────────────────────── */
 type ToolOption = { id: string; name: string; group: string; ref: { source: string; tool_id?: string; server_id?: string; provider?: string; tool_name: string } };
@@ -316,8 +320,6 @@ type GeneralSectionProps = {
   setReasoningEffort: (v: string | null) => void;
   organizationContextMode: OrganizationContextMode;
   setOrganizationContextMode: (v: OrganizationContextMode) => void;
-  organizationContextCategories: string[] | null;
-  setOrganizationContextCategories: (v: string[] | null) => void;
   maxIterations: number | null;
   setMaxIterations: (v: number | null) => void;
   persona: string;
@@ -419,8 +421,6 @@ export function GeneralSection({
   setReasoningEffort,
   organizationContextMode,
   setOrganizationContextMode,
-  organizationContextCategories,
-  setOrganizationContextCategories,
   maxIterations,
   setMaxIterations,
   persona,
@@ -490,7 +490,6 @@ export function GeneralSection({
   const { t_i18n, intl } = useFormatter();
   const routingModel = useRoutingModelLabel();
   const organizationContextInEffect = useOrganizationContextEffectiveLabel("agent", agent.organization_context_mode ?? "inherit");
-  const organizationCategoriesInEffect = useOrganizationContextCategoriesLabel("agent", agent.organization_context_categories ?? null);
   const navigate = useNavigate();
   const personaRef = useRef<HTMLTextAreaElement>(null);
   const guardrailsRef = useRef<HTMLTextAreaElement>(null);
@@ -726,7 +725,7 @@ export function GeneralSection({
                 </div>
               </SettingsField>
               </div>
-              <div className="grid items-start gap-4 sm:grid-cols-3" data-testid="agent-general-selects">
+              <div className="grid items-start gap-4 sm:grid-cols-2" data-testid="agent-general-selects">
               {/* Reasoning Effort */}
               <SettingsField
                 id={REASONING_EFFORT_FIELD_ID}
@@ -740,7 +739,7 @@ export function GeneralSection({
                 )}
               >
                 <Select value={reasoningEffort || "__default__"} onValueChange={(v) => setReasoningEffort(v === "__default__" ? null : v)}>
-                  <SelectTrigger id={REASONING_EFFORT_FIELD_ID} aria-describedby={settingsFieldHintId(REASONING_EFFORT_FIELD_ID)}>
+                  <SelectTrigger id={REASONING_EFFORT_FIELD_ID} className="w-full" aria-describedby={settingsFieldHintId(REASONING_EFFORT_FIELD_ID)}>
                     <SelectValue placeholder={t_i18n("Platform default")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -757,15 +756,6 @@ export function GeneralSection({
               <div className="min-w-0">
                 <OrganizationContextModeSelect scope="agent" value={organizationContextMode} onChange={setOrganizationContextMode} />
               </div>
-              {organizationContextMode !== "off" && (
-                <div className="min-w-0">
-                  <OrganizationContextCategoriesSelect
-                    scope="agent"
-                    value={organizationContextCategories}
-                    onChange={setOrganizationContextCategories}
-                  />
-                </div>
-              )}
               </div>
 
               <SettingsField
@@ -932,9 +922,6 @@ export function GeneralSection({
                 </OverviewTile>
                 <OverviewTile label={t_i18n("Organization context")} span={AGENT_OVERVIEW_SPANS.organizationContext} hint={organizationContextInEffect} testId="agent.organization-context-read">
                   {t_i18n(ORGANIZATION_CONTEXT_MODE_LABELS[agent.organization_context_mode ?? "inherit"])}
-                </OverviewTile>
-                <OverviewTile label={t_i18n("Preloaded organization categories")} span={AGENT_OVERVIEW_SPANS.organizationCategories} hint={organizationCategoriesInEffect} testId="agent.organization-categories-read">
-                  {agent.organization_context_categories == null ? t_i18n("Inherit") : t_i18n("Set on this agent")}
                 </OverviewTile>
                 <OverviewTile label={t_i18n("Max Iterations")} span={AGENT_OVERVIEW_SPANS.maxIterations}>
                   {agent.max_iterations !== null && agent.max_iterations !== undefined ? <span className="content-base font-mono-plex">{agent.max_iterations}</span> : <TruncatedText text={t_i18n("Default ({value})", { value: platformMaxIterations })} className="content-base text-default-secondary italic" />}
@@ -1193,8 +1180,19 @@ export function GeneralSection({
                   {handoverCandidates.map((ha) => {
                     const HaIcon = ICON_MAP[ha.icon] ?? Bot;
                     const isSelected = handoverIds.includes(ha.id);
-                    const currentType = handoverLegacy ? ALL_HANDOVER_TYPES : (handoverTypes[ha.id] || "delegate");
+                    // Read as the read view reads it (#2207): a stored "all" is All types,
+                    // an entry of several types is kept whole and named by its types.
+                    const currentType = handoverLegacy ? ALL_HANDOVER_TYPES : editedHandoverType(handoverTypes, ha.id);
+                    const currentParts = handoverTypeParts(currentType);
                     const typeCfg = handoverTypeConfig(currentType);
+                    const currentLabel = currentParts.length > 0
+                      ? currentParts.map((part) => t_i18n(HANDOVER_TYPE_CONFIG[part]?.label ?? part)).join(" + ")
+                      : t_i18n(handoverTypeConfig(currentType).label);
+                    const currentHelper = currentType === ALL_HANDOVER_TYPES && !handoverLegacy
+                      ? t_i18n("Delegate, consult or transfer")
+                      : currentParts.length > 0
+                        ? currentParts.map((part) => t_i18n(HANDOVER_TYPE_CONFIG[part]?.description ?? "").split(".")[0]).join(". ")
+                        : t_i18n(typeCfg.description);
                     // A company-managed agent can only hand over to other
                     // company-managed agents. The current user's own private
                     // agents are surfaced here so they can be promoted inline;
@@ -1264,26 +1262,28 @@ export function GeneralSection({
                             <Select
                               value={currentType}
                               onValueChange={(v) => {
-                                if (v !== ALL_HANDOVER_TYPES) onUpdateHandoverType(ha.id, v);
+                                // Picking the entry it holds (All types, a multi-type entry) keeps it as stored.
+                                if (v !== currentType && v !== ALL_HANDOVER_TYPES) onUpdateHandoverType(ha.id, v);
                               }}
                             >
                               <Tip content={consultsBackgroundDelegator(currentType, ha) ? t_i18n("{name} delegates in the background: a consult may answer before its delegated tasks finish.", { name: ha.name }) : undefined}>
                                 <SelectTrigger className="w-full" aria-label={t_i18n("Handover type")}>
                                   {/* The type label alone: its description is printed below (as GAHandoverPicker, #10876). */}
                                   <SelectValue>
-                                    {currentType === ALL_HANDOVER_TYPES ? (
-                                      <span className={cn("font-medium", ALL_HANDOVER_TYPES_CONFIG.color)}>{t_i18n(ALL_HANDOVER_TYPES_CONFIG.label)}</span>
-                                    ) : (
-                                      <span className={cn("font-medium", HANDOVER_TYPE_CONFIG[currentType]?.color)}>{t_i18n(HANDOVER_TYPE_CONFIG[currentType]?.label ?? currentType)}</span>
-                                    )}
+                                    <span className={cn("font-medium", handoverTypeConfig(currentParts[0] ?? currentType).color)}>{currentLabel}</span>
                                   </SelectValue>
                                 </SelectTrigger>
                               </Tip>
                               <SelectContent>
-                                {handoverLegacy && (
+                                {(handoverLegacy || currentType === ALL_HANDOVER_TYPES) && (
                                   <SelectItem value={ALL_HANDOVER_TYPES}>
                                     <span className={cn("font-medium", ALL_HANDOVER_TYPES_CONFIG.color)}>{t_i18n(ALL_HANDOVER_TYPES_CONFIG.label)}</span>
                                     <span className="ml-1.5 text-default-secondary">{t_i18n("Delegate, consult or transfer")}</span>
+                                  </SelectItem>
+                                )}
+                                {currentParts.length > 0 && (
+                                  <SelectItem value={currentType}>
+                                    <span className={cn("font-medium", handoverTypeConfig(currentParts[0]).color)}>{currentLabel}</span>
                                   </SelectItem>
                                 )}
                                 {HANDOVER_TYPES.map((t) => (
@@ -1294,7 +1294,7 @@ export function GeneralSection({
                                 ))}
                               </SelectContent>
                             </Select>
-                            <p className="text-[9px] text-default-secondary">{t_i18n(typeCfg.description)}</p>
+                            <p className="text-[9px] text-default-secondary">{currentHelper}</p>
                             {currentType === "mandatory_transfer" && (
                               <div className="mt-1">
                                 <label className="content-caption text-default-secondary block mb-1">
@@ -1524,7 +1524,10 @@ export function GeneralSection({
             )}
             {/* Sharing — visible to any user who can manage. Rendered for
                 company-managed agents too: there the picker names the
-                audience an access restriction narrows the agent down to. */}
+                audience an access restriction narrows the agent down to.
+                Read-only where the viewer cannot manage the agent (a
+                built-in in XTM One mode, administrators included): the
+                server answers 403 to the write (#2203). */}
             <PrincipalSharingCard
               sharedGroupIds={sharedGroupIds}
               onChange={onSaveSharedGroups}
@@ -1533,7 +1536,8 @@ export function GeneralSection({
               userSharing={userSharing}
               entityType="agent"
               isCompanyManaged={companyManaged}
-              disabled={isPending}
+              disabled={isPending || !canManage}
+              restrictionCopy={canManage ? undefined : READ_ONLY_RESTRICTION_COPY}
             />
             {!companyManaged && (
               <PersonalIntegrationsBanner

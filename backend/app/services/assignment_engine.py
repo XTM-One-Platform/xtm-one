@@ -163,7 +163,7 @@ from app.services.orchestration_engine import (
     notify_orchestration_wake,
     queued_deadline,
 )
-from app.services.tool_surface_refresh import IntegrationSurfaceRefresher
+from app.services.tool_surface_refresh import IntegrationSurfaceRefresher, rebuild_bound_builtin_groups
 from app.tools.base import FileContext, HumanInputRequestedError, ScopedToolExecutor
 from app.tools.wait_policy import WaitPolicy
 
@@ -2696,6 +2696,13 @@ async def _activation_check_executor(
     builtin_ids = set(
         runtime_builtin_tool_ids(agent.builtin_tool_ids or [], getattr(agent, "builtin_allowed_tools", None))
     )
+    # The person the run acts for is an administrator: the check reads past
+    # every governor's narrowing, as the run's own tools do (#2161).
+    acting_admin = False
+    if db is not None and effective_user_id and ("work_items" in builtin_ids or "shared_state" in builtin_ids):
+        from app.models.user import User as _CheckActingUser
+
+        acting_admin = bool(getattr(await db.get(_CheckActingUser, effective_user_id), "is_admin", False))
     if "work_items" in builtin_ids:
         from app.services.builtin_tools import build_work_item_tools
 
@@ -2706,6 +2713,9 @@ async def _activation_check_executor(
                 str(agent.id),
                 is_company_managed=run.is_company_managed,
                 company_managed_agent=agent.is_company_managed,
+                acting_admin=acting_admin,
+                run_person_id=str(run.user_id) if run.user_id else None,
+                run_person_chosen=_run_person_chosen(run, assignment),
             )
         )
     if "shared_state" in builtin_ids:
@@ -2719,6 +2729,7 @@ async def _activation_check_executor(
                 is_company_managed=run.is_company_managed,
                 company_managed_agent=agent.is_company_managed,
                 run_id=run.id,
+                acting_admin=acting_admin,
             )
         )
     if composite.resolve_canonical_name(tool) is not None:
@@ -3115,6 +3126,62 @@ async def _skip_by_module_preflight(
         is_company=run.is_company_managed,
     )
     logger.info("Assignment '%s' skipped by the CTEM module preflight: %s", assignment.name, verdict.summary)
+    return True
+
+
+async def _skip_by_case_start(
+    db: AsyncSession,
+    *,
+    run: AssignmentRun,
+    agent: Any,
+    assignment: Assignment,
+) -> bool:
+    """End a ``ctem_case.opened`` run at zero tokens when its case is gone or closed (#2289, #2320).
+
+    A case merged away while the run waited adds ``merged_into`` (the survivor)
+    to the trigger context and lets the run go ahead; a case deleted ends it
+    skipped with the reason ``case_gone``, a case no longer open with
+    ``case_not_open`` and its state in the summary. ``True`` when the run was ended. Any
+    other run, and a check that cannot decide, go ahead.
+    """
+    from app.services import ctem_case_run_start as case_start_mod
+
+    case_id = case_start_mod.case_of(getattr(run, "trigger_context", None))
+    if case_id is None:
+        return False
+    try:
+        verdict = await case_start_mod.case_start(db, case_id)
+    except Exception as exc:  # the check never blocks a run
+        logger.warning(
+            "Assignment '%s': case start check failed (%s) - the run proceeds",
+            assignment.name,
+            format_exception_message(exc),
+        )
+        return False
+    if verdict.context:
+        run.trigger_context = {**(run.trigger_context or {}), **verdict.context}
+    if verdict.proceed:
+        return False
+    await ensure_single_writer()
+    now = datetime.now(UTC)
+    run.status = "skipped"
+    run.error = verdict.error
+    run.result_summary = verdict.summary
+    run.total_input_tokens = 0
+    run.total_output_tokens = 0
+    run.started_at = run.started_at or now
+    run.completed_at = now
+    await db.commit()
+    await _release_run_work_item(run, agent, failed=False)
+    await _publish_run_status(
+        str(run.user_id),
+        str(run.id),
+        "skipped",
+        assignment.name,
+        run.result_summary,
+        is_company=run.is_company_managed,
+    )
+    logger.info("Assignment '%s' skipped at start: %s", assignment.name, verdict.summary)
     return True
 
 
@@ -3586,6 +3653,21 @@ def _resolve_run_file_owner_id(run: AssignmentRun) -> str | None:
     if run.is_company_managed:
         return None
     return str(run.user_id) if run.user_id else None
+
+
+def _run_person_chosen(run: AssignmentRun, assignment: Assignment | None) -> bool:
+    """Whether ``run.user_id`` was chosen: its triggering user or the run-as user (#2422).
+
+    ``False`` when it is only the assignment owner standing in: a company-managed
+    assignment's owner is the seed account, never a decider by default, while a
+    run someone started or set to run as that account keeps it as the decider.
+    """
+    person = getattr(run, "user_id", None)
+    if person is None:
+        return False
+    return bool(
+        person == getattr(run, "triggered_by_user_id", None) or person == getattr(assignment, "run_as_user_id", None)
+    )
 
 
 def _inbox_release_reason(loop_result: Any, messages: Any, offered_tools: Any) -> str | None:
@@ -4833,6 +4915,13 @@ async def execute_assignment_run(
             effective_user_id=effective_user_id,
         ):
             return
+        # ── CTEM case start check (#2289) ───────────────────────────────
+        # A queued ctem_case.opened run whose case was merged starts with the
+        # survivor in its context; one whose case was deleted ends here.
+        if _gate_check_due(run, resuming=_resuming) and await _skip_by_case_start(
+            db, run=run, agent=agent, assignment=assignment
+        ):
+            return None
         # Outcome of the quota enforcement, attached to the workflow trace
         # metadata below so the Trace Explorer can show the platform-action
         # consumption of this run.
@@ -5067,6 +5156,13 @@ async def execute_assignment_run(
             ).scalar_one_or_none()
             if isinstance(fresh_payload, dict):
                 run.trigger_payload = fresh_payload
+
+        # A batch of a ``batch_split`` trigger is a dispatch bound only (#2379):
+        # this run works its first event in a context of its own, the rest
+        # waits as one queued run on its ordering key, committed with
+        # "running" below. A resume or a HITL resume finds the split done.
+        if not _resuming and run.status != "awaiting_human":
+            await _split_batch_run(db, assignment, run)
 
         # Save original status before overwriting (needed for HITL resume)
         original_status = run.status
@@ -6522,6 +6618,18 @@ async def execute_assignment_run(
                 if _skill_tools:
                     composite.add_tools(*_skill_tools)
 
+            # The person the run acts for is an administrator: its coordination
+            # tools read past every governor's narrowing (#2161).
+            _coord_acting_admin = False
+            if effective_user_id and (
+                "work_items" in agent_builtin_tool_ids or "shared_state" in agent_builtin_tool_ids
+            ):
+                from app.models.user import User as _CoordActingUser
+
+                _coord_acting_admin = bool(
+                    getattr(await db.get(_CoordActingUser, effective_user_id), "is_admin", False)
+                )
+
             # --- Work-item queue tools (built-in, opt-in) ---
             if "work_items" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import (
@@ -6542,6 +6650,11 @@ async def execute_assignment_run(
                     company_managed_agent=agent.is_company_managed,
                     peer_agents=wi_peers,
                     origin=WorkItemOrigin(run_id=run.id),
+                    acting_admin=_coord_acting_admin,
+                    # The run's person routes its decisions (#2422); the
+                    # file owner above stays empty for a company-managed run.
+                    run_person_id=str(run.user_id) if run.user_id else None,
+                    run_person_chosen=_run_person_chosen(run, assignment),
                 )
                 composite.add_tools(wi_defs, wi_exec)
 
@@ -6569,37 +6682,31 @@ async def execute_assignment_run(
                 # The person the run acts for scopes the enterprise knowledge passages (#11543).
                 composite.add_tools(*build_organization_context_tool(user_id=run.user_id, agent=agent))
 
+            # --- No CTEM tool for a run acting for a person with no CTEM right (#2441) ---
+            from app.services import ctem_access as _ctem_access
+
+            _ctem_ok = bool(run.user_id) and await _ctem_access.wires_ctem(run.user_id)
             # --- CTEM case tools (#11545): the CTEM remediation agents, XTM One only ---
             from app.services.builtin_tools import build_ctem_case_tools, offers_ctem_case_tools
 
-            if run.user_id and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_case_tools(user_id=str(run.user_id), agent_id=str(agent.id)))
             # --- CTEM signal tools (#826): the CTEM agents that see a trigger first ---
             from app.services.builtin_tools import build_ctem_signal_tools, offers_ctem_signal_tools
 
-            if run.user_id and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=str(run.user_id)))
-            # --- Read-only CTEM group (#1337): bound on any agent, as the run's user ---
-            from app.services.builtin_tools import ctem_read_tools_for
-
-            _ctem_read = (
-                ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
-            )
-            if _ctem_read is not None:
-                composite.add_tools(*_ctem_read)
             # --- CTEM group (#1748): signal and case tools on any agent, the run user's rights ---
             from app.services.builtin_tools import ctem_tools_for
 
-            _ctem_group = (
-                ctem_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
-            )
+            _ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
             if _ctem_group is not None:
                 composite.add_tools(*_ctem_group)
-            # --- CTEM administrator repairs (#1778): the CTEM case agents, or the group bound ---
+            # --- Attack surface passes read (#1778, #2443): the CTEM case agents not bound to ctem ---
             from app.services.builtin_tools import ctem_repair_tools_for
 
             _ctem_repair = (
-                ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
+                ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
             )
             if _ctem_repair is not None:
                 composite.add_tools(*_ctem_repair)
@@ -6668,6 +6775,7 @@ async def execute_assignment_run(
                     is_company_managed=run.is_company_managed,
                     company_managed_agent=agent.is_company_managed,
                     run_id=run.id,
+                    acting_admin=_coord_acting_admin,
                 )
                 composite.add_tools(cs_defs, cs_exec)
                 from app.services.builtin_tools import build_friction_tools
@@ -8493,7 +8601,24 @@ async def execute_assignment_run(
                 # tool of the run changes an integration it is bound to (#1874).
                 if loop_kwargs["executor"] is not None and _rebuild_integration_tools is not None:
                     loop_kwargs["tool_surface_refresher"] = IntegrationSurfaceRefresher(
-                        composite, loop_kwargs["executor"], _rebuild_integration_tools, _narrow_tool_surface
+                        composite,
+                        loop_kwargs["executor"],
+                        _rebuild_integration_tools,
+                        _narrow_tool_surface,
+                        # update_agent on this run's own agent refreshes it too (#2205).
+                        agent_id=str(agent.id),
+                        # A built-in group granted in the run loads from the next step,
+                        # through its own gate for the person the run acts as (#2205).
+                        rebuild_builtins=(
+                            partial(
+                                rebuild_bound_builtin_groups,
+                                str(agent.id),
+                                str(effective_user_id),
+                                run_id=str(run.id),
+                            )
+                            if effective_user_id
+                            else None
+                        ),
                     )
                 # Tool groups the assignment declares are on the wire from the
                 # first request, so the cached prompt prefix holds all run.
@@ -8502,6 +8627,10 @@ async def execute_assignment_run(
                 )
                 if _preload_groups:
                     loop_kwargs["preload_tool_groups"] = _preload_groups
+                # An event-driven run works in a bounded window (#2430).
+                _work_window = assignment_dispatch.event_run_working_window(run.trigger_context)
+                if _work_window is not None:
+                    loop_kwargs["working_window_tokens"] = _work_window
                 # Pass agent-level temperature if configured
                 if agent.temperature is not None:
                     loop_kwargs["temperature"] = agent.temperature
@@ -10979,9 +11108,37 @@ class _SlotUsage:
     busy_keys: frozenset[str]
     held: bool = False
     exclusive: bool = False
+    #: A run in flight was handed back by its stopping worker, or resumed
+    #: after a hand-back or a lost attempt: with no ``max_concurrent_runs`` of
+    #: its own, the assignment waits for it (``resume_holds``).
+    resuming: bool = False
 
-    def has_room(self, cap: int) -> bool:
+    def has_room(self, cap: int, *, resume_holds: bool = False) -> bool:
+        if resume_holds and self.resuming:
+            return False
         return not self.held and not self.exclusive and self.active < cap
+
+
+def _resuming_run_clause() -> Any:
+    """A run handed back by its stopping worker, or resumed since (its trigger_context records it)."""
+    from app.services.background_checkpoint import HANDED_BACK_KEY, RESUMES_KEY
+
+    return or_(
+        AssignmentRun.trigger_context[HANDED_BACK_KEY].as_string().is_not(None),
+        AssignmentRun.trigger_context[RESUMES_KEY].as_string().is_not(None),
+    )
+
+
+def resume_holds_assignment(trigger_config: dict[str, Any] | None) -> bool:
+    """Whether a resuming run keeps the assignment to itself: its trigger sets no ``max_concurrent_runs``.
+
+    A delivery (a ``platform.release.deployed`` event during the rollout that
+    handed a run back) then queues behind the resuming run and starts once it
+    ended, instead of working the same object beside it (#2221). An author who
+    set a cap keeps it.
+    """
+    config = trigger_config if isinstance(trigger_config, dict) else {}
+    return config.get(assignment_dispatch.MAX_CONCURRENT_RUNS_KEY) is None
 
 
 async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage:
@@ -10990,6 +11147,7 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
             AssignmentRun.status,
             AssignmentRun.trigger_context[assignment_dispatch.ORDERING_KEY_CONTEXT].as_string(),
             AssignmentRun.trigger_context["type"].as_string(),
+            _resuming_run_clause(),
         ).where(
             AssignmentRun.assignment_id == assignment_id,
             holds_assignment(AssignmentRun, _queue_blocking_statuses()),
@@ -11001,6 +11159,7 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
         busy_keys=frozenset(row[1] for row in rows if row[1]),
         held=any(_holds_on_approval(row[0]) for row in rows),
         exclusive=any(not assignment_dispatch.shares_slots(row[2]) for row in rows),
+        resuming=any(bool(row[3]) for row in rows),
     )
 
 
@@ -11341,7 +11500,10 @@ async def trigger_or_queue_assignment(
 
     usage = await _slot_usage(db, assignment.id)
     depth = await count_queued_runs(db, assignment.id)
-    start_now = usage.has_room(cap) and ordering_key not in usage.busy_keys
+    start_now = (
+        usage.has_room(cap, resume_holds=resume_holds_assignment(assignment.trigger_config))
+        and ordering_key not in usage.busy_keys
+    )
     if start_now and depth:
         if queue:
             start_now = False
@@ -11485,6 +11647,64 @@ async def _fold_into_queued_run(
     return str(run.id)
 
 
+async def _split_batch_run(db: AsyncSession, assignment: Assignment, run: AssignmentRun) -> str | None:
+    """Keep the first event of a ``batch_split`` batch run on *run*, queue the rest; the queued run's id.
+
+    The batch is read under the row lock, so an event joining at the same
+    moment is either in the list split here or opens a batch of its own. The
+    queued run keeps the ordering key of *run*: the drain starts it once *run*
+    ended, so the events are worked one at a time, in arrival order, each in
+    a fresh context (``event_batching.split_batch``). Flushes, the caller
+    commits. ``None`` when nothing is left over.
+    """
+    if not event_batching.splits(assignment.trigger_config):
+        return None
+    payload = (
+        await db.execute(
+            select(AssignmentRun.trigger_payload)
+            .where(AssignmentRun.id == run.id)
+            .with_for_update()
+            .execution_options(autoflush=False)
+        )
+    ).scalar_one_or_none()
+    first, remainder = event_batching.split_batch(payload if isinstance(payload, dict) else run.trigger_payload)
+    if remainder is None:
+        return None
+    # A batch payload resolves no ordering key of its own (the key path names
+    # one event's field): the batch run and its rest share one, so the drain
+    # starts the rest only once this run ended, one case at a time.
+    ordering = assignment_dispatch.ORDERING_KEY_CONTEXT
+    if not (run.trigger_context or {}).get(ordering):
+        run.trigger_context = {**(run.trigger_context or {}), ordering: event_batching.split_ordering_key(str(run.id))}
+    context = event_batching.remainder_context(run.trigger_context, remainder, str(run.id))
+    if not settings.assignment_queue_enabled:
+        # The drain promotes only these while the delivery queue is off.
+        context[QUEUE_ORIGIN_KEY] = INTEGRATION_EVENT_QUEUE_ORIGIN
+    rest = AssignmentRun(
+        assignment_id=run.assignment_id,
+        agent_id=run.agent_id,
+        user_id=run.user_id,
+        triggered_by_user_id=run.triggered_by_user_id,
+        is_company_managed=run.is_company_managed,
+        trigger_payload=remainder,
+        trigger_context=context,
+        status=QUEUED_RUN_STATUS,
+    )
+    db.add(rest)
+    await db.flush()
+    run.trigger_payload = first
+    run.trigger_context = {**(run.trigger_context or {}), event_batching.REMAINDER_CONTEXT: str(rest.id)}
+    logger.info(
+        "Assignment '%s' (%s): batch run %s works its first event alone, %d event(s) queued as run %s",
+        assignment.name,
+        assignment.id,
+        run.id,
+        len(event_batching.events_of(remainder)),
+        rest.id,
+    )
+    return str(rest.id)
+
+
 async def _join_waiting_batch(
     db: AsyncSession,
     assignment: Assignment,
@@ -11516,7 +11736,7 @@ async def _join_waiting_batch(
         return None
     if event_batching.carries(run.trigger_payload, payload):
         return str(run.id)
-    if not event_batching.can_join(run.trigger_payload):
+    if not event_batching.can_join(run.trigger_payload, event_batching.max_events(assignment.trigger_config)):
         return None
     if run.status != QUEUED_RUN_STATUS:
         run_at = (
@@ -12187,7 +12407,7 @@ async def _drain_one_assignment(
         if throttled:
             cap = assignment_dispatch.throttled_cap(cap)
         usage = await _slot_usage(db, assignment_id)
-        if not usage.has_room(cap):
+        if not usage.has_room(cap, resume_holds=resume_holds_assignment(assignment.trigger_config)):
             await db.commit()
             break
         candidates = await _queued_candidates(

@@ -205,7 +205,7 @@ _RUN_KEYS = (
     "stop_reason",
     "partial",
 )
-_TASK_KEYS = ("task_id", "agent_id", "parent_run_id", "outcome_preview")
+_TASK_KEYS = ("task_id", "agent_id", "parent_run_id", "work_item_id", "outcome_preview")
 _A2A_DELEGATION_KEYS = (
     "delegation_id",
     "agent_id",
@@ -219,6 +219,18 @@ _A2A_DELEGATION_KEYS = (
 
 #: An A2A delegation whose calling run had ended got its answer (#12079).
 A2A_DELEGATION_COMPLETED = "a2a.delegation.completed"
+#: A partner told us a ticket a delegated task filed changed status (#2276).
+A2A_TICKET_STATUS_CHANGED = "a2a.ticket.status_changed"
+_A2A_TICKET_KEYS = (
+    "delegation_id",
+    "agent_id",
+    "run_id",
+    "partner",
+    "partner_task_id",
+    "work_item_id",
+    "status",
+    "previous_status",
+)
 _AGENT_ACCOUNT_KEYS = (
     "account_id",
     "provider",
@@ -254,6 +266,7 @@ _CTEM_SIGNAL_KEYS = (
     "verdict",
     "case_id",
     "pir_floor_met",
+    "facts",
 )
 _VIDEO_KEYS = (
     "job_kind",
@@ -335,6 +348,15 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
         ),
         "filter_keys": _WORK_ITEM_KEYS,
     },
+    "work_item.needs_human_unseen": {
+        "description": (
+            "A decision gate (needs_human) waited work_item_decision_unseen_hours hours and nobody opened it "
+            "(services/work_item_decision_reach.py): its recipient was reminded in the bell, once per gate, and the "
+            "administrators only when nobody can answer it. The payload carries waiting_since, unseen_hours, "
+            "waits_for_user_id, waits_for_group_ids, reminded_user_ids, no_recipient_reason and notified_admin_ids."
+        ),
+        "filter_keys": (*_WORK_ITEM_KEYS, "unseen_hours"),
+    },
     "run.completed": {
         "description": (
             "A run completed: an assignment run, or a delegated child run (no assignment; parent_run_id "
@@ -376,6 +398,14 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "partner's tool, continue_task_id = partner_task_id and no message."
         ),
         "filter_keys": _A2A_DELEGATION_KEYS,
+    },
+    A2A_TICKET_STATUS_CHANGED: {
+        "description": (
+            "A partner pushed that a ticket (a work item on its side) filed by a task this agent delegated "
+            "changed status. Heard by the delegating agent's assignments (scope own) for the person it ran "
+            "for; ids and statuses only: read the ticket from the partner with its own tool."
+        ),
+        "filter_keys": _A2A_TICKET_KEYS,
     },
     "background_task.completed": {
         "description": "A background task completed.",
@@ -548,10 +578,10 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "A CTEM signal was seen for the first time (services/ctem_signals.py), after the scope gate gave it "
             "its first verdict; a re-sighting raises nothing. Payload: signal_id, trigger_path, lens, "
             "source_provider, subject_kind, verdict (confirmed, to_validate, watchlist, discarded, or null when "
-            "the gate did not run), case_id, pir_floor_met (a relevant threat's PIR score reached the policy threshold); "
+            "the gate did not run), case_id, pir_floor_met (a PIR score reached the policy threshold), "
+            "facts (kev, epss_high, sighted, software_named, pir_flagged: yes/no); "
             "read the signal with list_ctem_signals signal_id. Heard only when the user the "
-            "subscription runs as reads the signal (an administrator, or its recorder; a listener's signal is "
-            "an administrator's only)."
+            "subscription runs as holds a CTEM view right or more (or is an administrator), read at delivery."
         ),
         "filter_keys": _CTEM_SIGNAL_KEYS,
     },
@@ -710,12 +740,46 @@ def rearm_watch(config: Any) -> Any:
     return {k: v for k, v in config.items() if k not in (FIRED_EVENT_KEY, FIRED_AT_KEY)}
 
 
-def catalog() -> list[dict[str, Any]]:
-    """The platform events, sorted, each with its description and filter keys."""
+#: The platform events about CTEM signals and cases (#2441): offered and saved
+#: only for a person with a CTEM view right or more.
+CTEM_EVENT_PREFIXES: tuple[str, ...] = ("ctem_signal.", "ctem_case.")
+
+
+def is_ctem_event(name: object) -> bool:
+    """Whether *name* is a CTEM signal or case event (#2441)."""
+    return isinstance(name, str) and name.startswith(CTEM_EVENT_PREFIXES)
+
+
+def catalog(*, ctem: bool = True) -> list[dict[str, Any]]:
+    """The platform events, sorted, each with its description and filter keys.
+
+    *ctem* false leaves out the CTEM signal and case events (#2441): the catalog
+    of a person with no CTEM right.
+    """
     return [
         {"event": name, "description": spec["description"], "filter_keys": list(spec["filter_keys"])}
         for name, spec in sorted(PLATFORM_EVENTS.items())
+        if ctem or not is_ctem_event(name)
     ]
+
+
+async def ctem_event_error(trigger_type: object, trigger_config: object, user_id: object) -> str | None:
+    """The refusal for a trigger naming a CTEM event when *user_id* holds no CTEM right (#2441).
+
+    Judged on the trigger as it will be saved, after :func:`trigger_config_error`.
+    """
+    if trigger_type != TRIGGER_TYPE or not isinstance(trigger_config, dict):
+        return None
+    if not any(is_ctem_event(n) for n in event_names(trigger_config)):
+        return None
+    from app.services import ctem_access
+
+    if await ctem_access.wires_ctem(user_id):
+        return None
+    return (
+        "Invalid trigger_config: the CTEM signal and case events need a CTEM view right or more "
+        f"for the person the assignment runs for. {ctem_access.NO_ACCESS_MESSAGE}"
+    )
 
 
 # -- Payload builders ------------------------------------------------------------
@@ -962,6 +1026,39 @@ def a2a_delegation_data(
     }
 
 
+def a2a_ticket_status_data(
+    *,
+    delegation_id: object,
+    agent_id: object,
+    user_id: object,
+    run_id: object = None,
+    partner: str | None = None,
+    partner_task_id: str | None = None,
+    work_item_id: str,
+    status: str,
+    previous_status: str | None = None,
+) -> dict[str, Any]:
+    """The payload of ``a2a.ticket.status_changed``: ids and statuses, a personal object of the delegating person."""
+    agent = _str(agent_id)
+    return {
+        "delegation_id": _str(delegation_id),
+        "agent_id": agent,
+        "run_id": _str(run_id),
+        "partner": (partner or "")[:200] or None,
+        "partner_task_id": partner_task_id,
+        "work_item_id": work_item_id,
+        "status": status,
+        "previous_status": previous_status,
+        # Raised on the partner's behalf: the agent's own assignments must hear it.
+        "actor_agent_id": None,
+        "participant_agent_ids": [agent] if agent else [],
+        "object_type": "a2a_delegation",
+        "object_id": _str(delegation_id),
+        "user_id": _str(user_id),
+        "personal_owner_id": _str(user_id),
+    }
+
+
 def background_task_data(
     *,
     task_id: object,
@@ -970,14 +1067,20 @@ def background_task_data(
     parent_agent_id: object = None,
     outcome: str | None = None,
     error: str | None = None,
+    work_item_id: object = None,
 ) -> dict[str, Any]:
-    """The payload of a ``background_task.*`` event."""
+    """The payload of a ``background_task.*`` event.
+
+    *work_item_id* is the work item the spawning run was dispatched for, when
+    it was an inbox run (#2215): a listener filters on it.
+    """
     participants = {_str(agent_id), _str(parent_agent_id)}
     participants.discard(None)
     return {
         "task_id": _str(task_id),
         "agent_id": _str(agent_id),
         "parent_run_id": _str(parent_run_id),
+        "work_item_id": _str(work_item_id),
         "outcome_preview": (outcome or "")[:_PREVIEW_MAX_CHARS] or None,
         "error": (error or "")[:_PREVIEW_MAX_CHARS] or None,
         # The agent that ran the task raised the event (ignore_self_triggered_events).
@@ -1589,12 +1692,25 @@ async def user_reads_object(user_id: str, payload: Mapping[str, Any]) -> bool:
         return False
 
 
+def _dropped_counter() -> Any:
+    from app.core.metrics import get_or_create_counter
+
+    return get_or_create_counter(
+        "xtmone_platform_event_object_dropped_total",
+        "Viewer-checked platform event deliveries dropped because a user of the subscription "
+        "does not read the object (a CTEM right withdrawn included, #2441), by object type.",
+        ["object_type", "reason"],
+    )
+
+
 async def can_read_object(sub: Subscription, payload: Mapping[str, Any], cache: dict[str, bool]) -> bool:
     """Whether *sub* may hear a viewer-checked event (#933); any other event: yes.
 
     Each user of :func:`object_identities` must read the object, decided by
     the object's own per-viewer view; *cache* keeps one answer per user and
-    event across the subscriptions of one dispatch.
+    event across the subscriptions of one dispatch. The run-as user's CTEM
+    right is read at delivery time (#2441): a delivery dropped here is counted
+    with its reason and logged.
     """
     if not is_viewer_checked(payload):
         return True
@@ -1602,6 +1718,17 @@ async def can_read_object(sub: Subscription, payload: Mapping[str, Any], cache: 
         if user not in cache:
             cache[user] = await user_reads_object(user, payload)
         if not cache[user]:
+            kind = str(payload.get("object_type") or "unknown")
+            try:
+                _dropped_counter().labels(object_type=kind, reason="not_readable_by_run_as").inc()
+            except Exception:  # a metric never blocks a delivery decision
+                logger.debug("Platform event: the dropped-delivery counter is unavailable", exc_info=True)
+            logger.info(
+                "Platform event: %s delivery to subscription %s dropped: %s does not read the object",
+                kind,
+                getattr(sub, "assignment_id", None),
+                user,
+            )
             return False
     return True
 

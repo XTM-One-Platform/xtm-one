@@ -36,7 +36,7 @@ export function LMStudioPlatformProviderCard({ integration }: { integration: Int
           {t_i18n("Platform LLM provider")}
         </CardTitle>
         <CardDescription>
-          {t_i18n("The LM Studio provider every agent and the chat can run on, reached through this integration's relay group.")}
+          {t_i18n("The LM Studio provider every agent and the chat can run on, reached through this integration.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center justify-between gap-3 content-base">

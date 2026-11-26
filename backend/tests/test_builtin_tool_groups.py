@@ -64,8 +64,9 @@ def test_one_group_per_catalog_id():
     # 27 with user administration (#250), 28 with the Module Analyst's (#101 S14),
     # 29 with the read-only CTEM signals and cases (#1337), 30 with the CTEM repairs (#1778),
     # 31 with the CTEM signal and case tools on any agent (#1748); 24 once Platform Health's
-    # eight specialist groups merged into one internal group (#1943).
-    assert len(_IDS) == len(set(_IDS)) == 24
+    # eight specialist groups merged into one internal group (#1943); 22 once ctem_read and
+    # ctem_repair merged into ctem (#2443).
+    assert len(_IDS) == len(set(_IDS)) == 22
     assert set(_IDS) == set(catalog)
 
 

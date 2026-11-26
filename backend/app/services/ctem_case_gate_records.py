@@ -21,6 +21,7 @@ does the reads with the viewer's visibility.
 from __future__ import annotations
 
 import re
+import uuid
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -52,6 +53,10 @@ GATE_ITEM_PREFIXES: dict[str, tuple[str, ...]] = {
     "ctem.validation.non_readonly": ("ctem:validation:", "ctem:f2:validate:"),
     "ctem.remediation.decision": ("ctem:remediation:",),
     "ctem.mobilize": ("ctem:f1:case-mobilize:", "ctem:f2:mobilize:"),
+    # #2464: every gate of the catalog has its own key, so its record names its item and the page answers it.
+    "ctem.production_change": ("ctem:production-change:",),
+    "ctem.accept_risk": ("ctem:accept-risk:",),
+    "ctem.close_without_retest": ("ctem:close-without-retest:",),
 }
 
 _DECISION_STATUS = {"open": WAITING, "answered": ANSWERED, "expired": EXPIRED, "cancelled": CANCELLED}
@@ -111,11 +116,33 @@ def option_label(ask: Mapping[str, Any] | None, key: str | None) -> str | None:
     return None
 
 
+#: An answer the case names by a word, not by a person: the analyst's mark in
+#: OpenCTI (``ctem_analyst_mark``) and the tool's default ``by`` ("a person").
+_NOT_A_NAME = re.compile(r"analyst'?s? mark|^\s*a person\s*$", re.I)
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
 def _person(raw: Any, names: Mapping[str, str]) -> dict[str, Any] | None:
+    """``{id, name}`` of who answered; a free-text ``by`` (a person's name, #2256) is its own name.
+
+    The CTEM case tools record a gate answer with ``by`` = the person's name as
+    text when the agent knows no user id, so the name is kept rather than left
+    as an id nobody resolves (the card then fell back to the recording agent).
+    """
     if not raw:
         return None
     ident = str(raw)
-    return {"id": ident, "name": names.get(ident)}
+    name = names.get(ident)
+    if name is None and not _is_uuid(ident) and not _NOT_A_NAME.search(ident):
+        name = ident.strip() or None
+    return {"id": ident, "name": name}
 
 
 def _recipient(raw: str | None, names: Mapping[str, str]) -> dict[str, Any] | None:

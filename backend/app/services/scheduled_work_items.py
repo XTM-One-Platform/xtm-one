@@ -59,7 +59,7 @@ import json
 import logging
 import re
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -662,8 +662,18 @@ def append_markers(text: str, item_ids: list[str]) -> str:
 # ── Reads and writes ─────────────────────────────────────────────────────────
 
 
-def _owner_clause(user_uuid: uuid.UUID, agent_uuid: uuid.UUID | None, owner_scope=None):
-    clauses = [WorkItem.user_id == user_uuid, WorkItem.action_mode.is_not(None)]
+def _owner_clause(
+    user_uuid: uuid.UUID,
+    agent_uuid: uuid.UUID | None,
+    owner_scope: Any = None,
+    cross_person_agents: Sequence[uuid.UUID] | None = None,
+) -> Any:
+    person = WorkItem.user_id == user_uuid
+    if cross_person_agents:
+        # #2220: an agent acting for its owner also reaches the one-offs it
+        # (or a same-owner agent it hands work to) scheduled for another person.
+        person = or_(person, WorkItem.owner_agent_id.in_(list(cross_person_agents)))
+    clauses = [person, WorkItem.action_mode.is_not(None)]
     if agent_uuid is not None:
         clauses.append(WorkItem.owner_agent_id == agent_uuid)
     if owner_scope is not None:
@@ -690,6 +700,35 @@ def _state_clause(state: str, now: datetime):
             or_(WorkItem.outcome_code.is_(None), WorkItem.outcome_code != OUTCOME_MISSED),
         )
     return None
+
+
+async def cross_person_agents(db: Any, user_uuid: uuid.UUID, agent_uuid: uuid.UUID | None) -> list[uuid.UUID]:
+    """The agents whose one-offs *agent_uuid* reaches for any person (#2220).
+
+    Only when the acting person owns the acting agent: the agent itself and
+    the agents it hands work to (``delegate`` / ``transfer``) that the same
+    person owns. Empty otherwise, so another owner's or tenant's one-offs
+    stay out of reach, and a run acting for someone else gains nothing.
+    """
+    from app.models.agent import Agent
+
+    if agent_uuid is None:
+        return []
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_uuid))).scalar_one_or_none()
+    if agent is None or getattr(agent, "user_id", None) != user_uuid:
+        return []
+    targets = [
+        target
+        for target in (safe_uuid(str(t)) for t in getattr(agent, "handover_agent_ids", None) or ())
+        if target is not None
+        and hands_work_to(agent.handover_agent_ids, getattr(agent, "handover_types", None), target)
+    ]
+    owned = []
+    if targets:
+        owned = list(
+            (await db.execute(select(Agent.id).where(Agent.id.in_(targets), Agent.user_id == user_uuid))).scalars()
+        )
+    return [agent_uuid, *owned]
 
 
 async def _user(db, user_uuid: uuid.UUID):
@@ -897,16 +936,18 @@ async def list_scheduled_work_items(
             f"state must be one of: {', '.join(LIST_STATES)}."
         )
     now = datetime.now(UTC)
-    clauses = [_owner_clause(uid, safe_uuid(agent_id) if agent_id else None, owner_scope)]
-    state_clause = _state_clause(state, now)
-    if state_clause is not None:
-        clauses.append(state_clause)
+    agent_uuid = safe_uuid(agent_id) if agent_id else None
     order = (
         (WorkItem.due_at.asc(), WorkItem.created_at.asc())
         if state == "upcoming"
         else (WorkItem.updated_at.desc(),)
     )
     async with async_session() as db:
+        reach = await cross_person_agents(db, uid, agent_uuid) if agent_uuid is not None else []
+        clauses = [_owner_clause(uid, agent_uuid, owner_scope, cross_person_agents=reach)]
+        state_clause = _state_clause(state, now)
+        if state_clause is not None:
+            clauses.append(state_clause)
         rows = (
             await db.execute(
                 select(WorkItem).where(*clauses).order_by(*order).limit(min(max(limit, 1), 200))
@@ -931,14 +972,14 @@ def hands_work_to(handover_agent_ids: Any, type_map: Any, target_id: uuid.UUID |
     A target of a legacy map (no type recorded) runs every type; a target of an
     explicit map runs the type it has, ``delegate`` when it has none.
     """
-    from app.services.handover_types import is_legacy_handover_map
+    from app.services.handover_types import handover_type_set, is_legacy_handover_map
 
     target = str(target_id)
     if target not in {str(agent_id) for agent_id in handover_agent_ids or ()}:
         return False
     if is_legacy_handover_map(type_map):
         return True
-    return (type_map or {}).get(target, "delegate") in _RESPONSIBLE_HANDOVER_TYPES
+    return bool(handover_type_set((type_map or {}).get(target, "delegate")) & _RESPONSIBLE_HANDOVER_TYPES)
 
 
 def change_authority(
@@ -972,17 +1013,26 @@ def change_authority(
 
 
 async def _locked_changeable_item(
-    db, item_id: str, user_uuid: uuid.UUID, agent_uuid: uuid.UUID | None
+    db,
+    item_id: str,
+    user_uuid: uuid.UUID,
+    agent_uuid: uuid.UUID | None,
+    *,
+    across_persons: bool = False,
 ) -> tuple[WorkItem | None, str | None, str | None]:
     """The person's scheduled item, locked, with the caller's authority and name.
 
     ``(None, None, None)`` when the item is not the person's or the caller may
     not change it (:func:`change_authority`): the same answer either way, so a
     refusal never tells an agent that someone else's item exists.
+
+    *across_persons* (cancel only, #2220) also reaches a one-off of the
+    :func:`cross_person_agents` of the caller, scheduled for another person.
     """
     from app.models.agent import Agent
 
-    item = await _locked_owned_item(db, item_id, user_uuid, None)
+    reach = await cross_person_agents(db, user_uuid, agent_uuid) if across_persons else []
+    item = await _locked_owned_item(db, item_id, user_uuid, None, cross_person=reach)
     if item is None:
         return None, None, None
     agent = None
@@ -1011,14 +1061,20 @@ def _acting_details(agent_uuid: uuid.UUID | None, authority: str, agent_name: st
     }
 
 
-async def _locked_owned_item(db, item_id: str, user_uuid: uuid.UUID, agent_uuid: uuid.UUID | None):
+async def _locked_owned_item(
+    db: Any,
+    item_id: str,
+    user_uuid: uuid.UUID,
+    agent_uuid: uuid.UUID | None,
+    cross_person: Sequence[uuid.UUID] | None = None,
+) -> WorkItem | None:
     wid = safe_uuid(item_id)
     if wid is None:
         return None
     return (
         await db.execute(
             select(WorkItem)
-            .where(WorkItem.id == wid, _owner_clause(user_uuid, agent_uuid))
+            .where(WorkItem.id == wid, _owner_clause(user_uuid, agent_uuid, cross_person_agents=cross_person))
             .with_for_update()
         )
     ).scalar_one_or_none()
@@ -1082,7 +1138,7 @@ async def cancel_scheduled_work_item(
     if agent_id and agent_uuid is None:
         return None
     async with async_session() as db:
-        item, authority, agent_name = await _locked_changeable_item(db, item_id, uid, agent_uuid)
+        item, authority, agent_name = await _locked_changeable_item(db, item_id, uid, agent_uuid, across_persons=True)
         if item is None or authority is None:
             return None
         _refuse_when_settled(item, "cancelled")

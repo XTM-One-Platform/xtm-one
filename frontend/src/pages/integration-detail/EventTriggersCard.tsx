@@ -48,7 +48,9 @@ export function EventTriggersCard({ catalogEntry }: { catalogEntry: ProviderCata
                 ? t_i18n("Triggered via webhook when the event occurs in the external service.")
                 : event.mechanism === "hybrid"
                   ? t_i18n("Supports real-time webhook delivery with polling fallback.")
-                  : t_i18n("Detected via periodic polling by the agent's assignment scheduler.")}
+                  : event.mechanism === "stream"
+                    ? t_i18n("Read in real time from an event stream the platform consumes.")
+                    : t_i18n("Detected via periodic polling by the agent's assignment scheduler.")}
             </p>
           </div>
         ))}

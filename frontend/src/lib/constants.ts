@@ -1784,29 +1784,6 @@ export function organizationContextEffective(
   return platformEnabled;
 }
 
-/** @i18n-keys */
-export const ORGANIZATION_CONTEXT_CATEGORY_LABELS = {
-  primary_assets: "Primary assets",
-  software: "Software",
-  pirs: "Priority intelligence requirements (PIRs)",
-  tracked_organizations: "Tracked organizations",
-} as const;
-
-/**
- * Mirrors `services/organization_context_categories.resolve_categories`: the
- * assignment's own list wins, then the agent's, then the platform's (null inherits).
- */
-export function organizationContextCategoriesEffective(
-  platformCategories: string[],
-  agentCategories?: string[] | null,
-  assignmentCategories?: string[] | null,
-): string[] {
-  for (const list of [assignmentCategories, agentCategories]) {
-    if (list != null) return list;
-  }
-  return platformCategories;
-}
-
 // ── Template containers ───────────────────────────────────────────────
 /** The kinds a template can be created with: the surface it dresses.
  *  Mirrors `TEMPLATE_KINDS` in `backend/app/services/template_containers.py`

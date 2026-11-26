@@ -9,6 +9,7 @@ page at once instead of after ``VIEW_TTL_SECONDS``.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -36,6 +37,10 @@ class FakeRedis:
     async def incr(self, key):
         self.data[key] = str(int(self.data.get(key) or 0) + 1)
         return int(self.data[key])
+
+    async def expire(self, key, seconds):
+        self.expired = [*getattr(self, "expired", []), (key, seconds)]
+        return key in self.data
 
 
 @pytest.fixture
@@ -266,6 +271,13 @@ async def test_a_list_read_with_no_view_waits_briefly_then_says_it_is_rebuilding
     await tasks[0]
 
 
+def test_the_rebuilding_message_never_guesses_that_new_cases_opened() -> None:
+    # #2287: a deletion, a reset or a reconcile also rebuilds the view; the message names no cause.
+    message = str(view_of.ViewRebuildingError(30))
+    assert "new cases opened" not in message
+    assert "after a change to the cases" in message and "retry in 30 s" in message
+
+
 def test_a_list_read_gives_up_waiting_for_the_build_within_two_seconds() -> None:
     # #2139: a 503 held 10 s on ctem.one was no fail-fast answer.
     assert 0 < view_of.LIST_BUILD_WAIT_SECONDS <= 2.0
@@ -284,6 +296,152 @@ async def test_a_list_read_with_no_view_answers_the_build_that_finished_in_the_w
     phases = view_of.start_timing()
     view = await view_of.viewer_view(None, "u-1", "cyber", stale_ok=True)
     assert judged == ["u-1"] and view.sees("opencti:a") and "cache-built" in phases
+
+
+@pytest.mark.asyncio
+async def test_a_list_read_answers_the_view_another_pod_writes_during_the_wait(
+    redis: Any, judged: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#2232: another pod holds the build, so this pod's task ends at once; the read still finds its view."""
+    built = view_of.ViewerView(issues={"opencti:a": rules.SourceIssue(source="opencti", external_id="a", name="x")})
+
+    async def nothing() -> None:
+        return None
+
+    def revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[None]:
+        return asyncio.create_task(nothing())
+
+    async def other_pod() -> None:
+        await asyncio.sleep(0.03)
+        redis.data[view_of._view_key("u-1", "cyber", "0")] = built.to_json()
+
+    monkeypatch.setattr(view_of, "_revalidate", revalidate)
+    monkeypatch.setattr(view_of, "LIST_POLL_SECONDS", 0.01)
+    monkeypatch.setattr(view_of, "LIST_BUILD_WAIT_SECONDS", 1.0)
+    writer = asyncio.create_task(other_pod())
+    phases = view_of.start_timing()
+    view = await view_of.viewer_view(None, "u-1", "cyber", stale_ok=True)
+    await writer
+    assert judged == [] and view.sees("opencti:a") and "cache-built" in phases
+
+
+@pytest.mark.asyncio
+async def test_a_kept_view_is_decoded_once_per_worker(
+    redis: Any, judged: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#2232: a list read of a warm view never decodes its JSON again; each read gets its own copy."""
+    view_of._decoded.clear()
+    decodes: list[int] = []
+    original = view_of.ViewerView.from_json
+
+    def counting(raw: Any) -> view_of.ViewerView:
+        decodes.append(1)
+        return original(raw)
+
+    monkeypatch.setattr(view_of.ViewerView, "from_json", staticmethod(counting))
+    await view_of.viewer_view(None, "u-1", "cyber")
+    first = await view_of.viewer_view(None, "u-1", "cyber")
+    phases = view_of.start_timing()
+    second = await view_of.viewer_view(None, "u-1", "cyber")
+    assert len(decodes) == 1 and "decode-memo" in phases and {"redis", "copy"} <= set(phases)
+    first.open_ids.add("opencti:z")
+    first.stale = True
+    assert "opencti:z" not in second.open_ids and not second.stale
+    third = await view_of.viewer_view(None, "u-1", "cyber")
+    assert "opencti:z" not in third.open_ids and not third.stale
+
+
+def test_the_decoded_views_stay_bounded() -> None:
+    view_of._decoded.clear()
+    for n in range(view_of.DECODED_VIEWS_MAX + 5):
+        view_of._decode_view(view_of.ViewerView(missing=[f"p{n}"]).to_json())
+    assert len(view_of._decoded) == view_of.DECODED_VIEWS_MAX
+
+
+@pytest.mark.asyncio
+async def test_a_list_read_answers_the_previous_view_after_its_generation_key_expired(
+    redis: Any, judged: list[str], revalidations: list[Any]
+) -> None:
+    """#2232: a build longer than VIEW_TTL_SECONDS still leaves the list the previous view, never a 503."""
+    await view_of.viewer_view(None, "u-1", "cyber")
+    redis.data.pop(view_of._view_key("u-1", "cyber", "0"))  # the generation's own copy expired
+    await view_of.forget_all_views("cyber")
+    phases = view_of.start_timing()
+    view = await view_of.viewer_view(None, "u-1", "cyber", stale_ok=True)
+    assert judged == ["u-1"] and view.sees("opencti:a") and view.stale
+    assert "cache-stale" in phases and revalidations == [("u-1", "cyber", "1")]
+
+
+@pytest.mark.asyncio
+async def test_a_list_read_answers_the_kept_view_of_the_same_generation_after_its_ttl(
+    redis: Any, judged: list[str], revalidations: list[Any]
+) -> None:
+    """ctem.one, 25 Nov 2026: no case change, the view's own copy expired, and every list read 503'd."""
+    await view_of.viewer_view(None, "u-1", "cyber")
+    redis.data.pop(view_of._view_key("u-1", "cyber", "0"))  # VIEW_TTL_SECONDS passed, no generation bump
+    phases = view_of.start_timing()
+    view = await view_of.viewer_view(None, "u-1", "cyber", stale_ok=True)
+    assert judged == ["u-1"] and view.sees("opencti:a") and view.stale
+    # One background build of the same generation, never a wait on the request.
+    assert "cache-stale" in phases and revalidations == [("u-1", "cyber", "0")]
+
+
+@pytest.mark.asyncio
+async def test_a_case_read_never_takes_a_previous_view_older_than_the_view_ttl(
+    redis: Any, judged: list[str], revalidations: list[Any]
+) -> None:
+    await view_of.viewer_view(None, "u-1", "cyber")
+    key = view_of._previous_key("u-1", "cyber")
+    old = view_of.ViewerView.from_json(redis.data[key])
+    old.built_at = datetime.now(UTC) - timedelta(seconds=view_of.VIEW_TTL_SECONDS + 60)
+    redis.data[key] = old.to_json()
+    await view_of.forget_all_views("cyber")
+    phases = view_of.start_timing()
+    await view_of.viewer_view(None, "u-1", "cyber", members=["opencti:a"])
+    # The case is read for its own members, never answered from a view past its TTL.
+    assert judged == ["u-1", "case:u-1"] and "cache-scoped" in phases
+
+
+@pytest.mark.asyncio
+async def test_one_pod_builds_a_view_while_another_pod_holds_its_build_lock(redis: Any, judged: list[str]) -> None:
+    """#2232: both pods rebuilt the same view after the drain; the second one now stands down."""
+    redis.data[view_of._build_lock_key("u-1", "cyber", "0")] = "1"  # another pod builds it
+    task = view_of._revalidate("u-1", "cyber", "0")
+    assert task is not None
+    await task
+    assert judged == []
+
+
+@pytest.mark.asyncio
+async def test_the_build_lock_is_taken_once_and_released_after_the_build(redis: Any) -> None:
+    key = view_of._build_lock_key("u-1", "cyber", "3")
+    assert await view_of._take_build_lock(redis, key)
+    assert not await view_of._take_build_lock(redis, key)
+    await view_of._release_build_lock(redis, key)
+    assert await view_of._take_build_lock(redis, key)
+    # No Redis: the pod builds by itself, as before.
+    assert await view_of._take_build_lock(None, key)
+
+
+def test_the_previous_view_outlives_a_slow_build_and_a_dead_pod_frees_its_lock_fast() -> None:
+    # ctem.one, 25 Nov 2026: rollouts killed 100-640 s builds; a 1 h previous view expired and the list 503'd.
+    assert view_of.STALE_VIEW_TTL_SECONDS >= 24 * 3600
+    # A lock left by a stopped pod frees within a minute; the live builder refreshes it well before.
+    assert view_of.BUILD_LOCK_SECONDS <= 60
+    assert view_of.BUILD_LOCK_REFRESH_SECONDS * 2 < view_of.BUILD_LOCK_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_the_building_pod_keeps_its_lock_alive_until_the_build_ends(redis: Any, monkeypatch) -> None:
+    key = view_of._build_lock_key("u-1", "cyber", "4")
+    assert await view_of._take_build_lock(redis, key)
+    monkeypatch.setattr(view_of, "BUILD_LOCK_REFRESH_SECONDS", 0)
+    keep = asyncio.create_task(view_of._keep_build_lock(redis, key))
+    for _ in range(5):
+        await asyncio.sleep(0)
+    keep.cancel()
+    assert (key, view_of.BUILD_LOCK_SECONDS) in redis.expired
+    await view_of._keep_build_lock(None, key)  # no Redis: nothing to keep
 
 
 @pytest.mark.asyncio

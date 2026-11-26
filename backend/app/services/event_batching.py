@@ -26,8 +26,23 @@ runs reading the same state. An assignment whose ``trigger_config`` sets
 - a batch holds at most ``MAX_BATCH_EVENTS`` events: the next one starts a
   batch of its own.
 
-Absent or ``0`` keeps one run per event, as before. Pure and unit-tested; the
-SQL stays in ``assignment_engine``.
+Absent or ``0`` keeps one run per event, as before.
+
+Two optional keys narrow it (#2286): ``batch_events`` lists the event names the
+window applies to (another event of the same trigger runs alone, at once: a
+CTEM case reopened never waits behind the opened burst), and
+``batch_max_events`` caps the events of one batch below ``MAX_BATCH_EVENTS``
+(the cases one Loop run can work).
+
+``batch_split`` (#2379) keeps the batch a dispatch bound only: a batch run
+works its FIRST event alone, in a context of its own, and hands the rest of
+the list to one queued run that carries its ordering key, so the next event
+starts in a fresh context once this one ended, and so on down the list. One
+conversation working five cases re-sent the tool results of every earlier
+case with each call (18.1M input tokens for a five-case batch against
+0.95-1.6M per case alone).
+
+Pure and unit-tested; the SQL stays in ``assignment_engine``.
 """
 
 from __future__ import annotations
@@ -43,6 +58,20 @@ WINDOW_CONTEXT = "batch_window_seconds"
 MAX_WINDOW_SECONDS = 600
 #: Events one batch run carries at most; the next one opens a new batch.
 MAX_BATCH_EVENTS = 100
+#: ``trigger_config`` key of the event names the window applies to (absent: every event).
+EVENTS_CONFIG = "batch_events"
+#: ``trigger_config`` key of the most events one batch run carries (absent: ``MAX_BATCH_EVENTS``).
+MAX_EVENTS_CONFIG = "batch_max_events"
+#: ``trigger_config`` key: each event of a batch is worked in a run (a context) of its own.
+SPLIT_CONFIG = "batch_split"
+#: ``trigger_context`` key of the queued run a split batch run handed the rest of its list to.
+REMAINDER_CONTEXT = "batch_remainder_run_id"
+#: ``trigger_context`` key of the batch run a remainder run was split from.
+SPLIT_FROM_CONTEXT = "batch_split_from_run_id"
+#: Events a waiting batch lists once per object (``object_type`` and ``object_id``): a second
+#: ``ctem_case.opened`` for a case the batch already carries, raised again under a new event
+#: id by the case catch-up, would only queue a second run of the same case (#2447).
+OBJECT_DEDUPED_EVENTS = frozenset({"ctem_case.opened"})
 #: Trigger types whose runs a window batches (``trigger_context["type"]``).
 BATCHED_CONTEXT_TYPES = frozenset({"integration_event", "platform_event"})
 #: Trigger types whose ``trigger_config`` may carry the window.
@@ -60,6 +89,17 @@ def window_error(trigger_type: object, trigger_config: object) -> str | None:
         )
     if isinstance(raw, bool) or not isinstance(raw, int) or not 0 <= raw <= MAX_WINDOW_SECONDS:
         return f"Invalid trigger_config: '{WINDOW_CONFIG}' must be a whole number of seconds from 0 to {MAX_WINDOW_SECONDS}."
+    names = trigger_config.get(EVENTS_CONFIG)
+    if names is not None and (
+        not isinstance(names, list) or not names or not all(isinstance(n, str) and n for n in names)
+    ):
+        return f"Invalid trigger_config: '{EVENTS_CONFIG}' must be a non-empty list of event names."
+    cap = trigger_config.get(MAX_EVENTS_CONFIG)
+    if cap is not None and (isinstance(cap, bool) or not isinstance(cap, int) or not 1 <= cap <= MAX_BATCH_EVENTS):
+        return f"Invalid trigger_config: '{MAX_EVENTS_CONFIG}' must be a whole number from 1 to {MAX_BATCH_EVENTS}."
+    split = trigger_config.get(SPLIT_CONFIG)
+    if split is not None and not isinstance(split, bool):
+        return f"Invalid trigger_config: '{SPLIT_CONFIG}' must be true or false."
     return None
 
 
@@ -70,11 +110,74 @@ def window_seconds(trigger_config: Mapping[str, Any] | None, trigger_context: Ma
     raw = trigger_config.get(WINDOW_CONFIG) if isinstance(trigger_config, Mapping) else None
     if raw is None or isinstance(raw, bool):
         return 0
+    names = trigger_config.get(EVENTS_CONFIG) if isinstance(trigger_config, Mapping) else None
+    if isinstance(names, list) and names and trigger_context.get("event") not in names:
+        return 0
     try:
         seconds = int(raw)
     except (TypeError, ValueError):
         return 0
     return max(0, min(MAX_WINDOW_SECONDS, seconds))
+
+
+def max_events(trigger_config: Mapping[str, Any] | None) -> int:
+    """The most events one batch run of the trigger carries: ``batch_max_events``, else ``MAX_BATCH_EVENTS``."""
+    raw = trigger_config.get(MAX_EVENTS_CONFIG) if isinstance(trigger_config, Mapping) else None
+    if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 1:
+        return min(raw, MAX_BATCH_EVENTS)
+    return MAX_BATCH_EVENTS
+
+
+def splits(trigger_config: Mapping[str, Any] | None) -> bool:
+    """Whether the trigger works each batched event in a context of its own (``batch_split``)."""
+    return isinstance(trigger_config, Mapping) and trigger_config.get(SPLIT_CONFIG) is True
+
+
+def split_batch(payload: Mapping[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """The payload a split batch run works (its first event alone) and the rest of the batch, else ``None``.
+
+    An unbatched payload is worked as it is and a batch of one as its event:
+    nothing is left over. The rest keeps the batch form (window, events in
+    arrival order, count), so it splits again when it runs.
+    """
+    if not isinstance(payload, Mapping) or payload.get("batch") is not True:
+        return dict(payload or {}), None
+    events = events_of(payload)
+    if len(events) < 2:
+        return (dict(events[0]) if events else dict(payload)), None
+    first, rest = events[0], events[1:]
+    remainder: dict[str, Any] = {**dict(payload), "events": rest, "event_count": len(rest)}
+    return dict(first), remainder
+
+
+def split_ordering_key(batch_run_id: str) -> str:
+    """The ordering key a split batch run and every run of its rest share (one case at a time)."""
+    return f"batch:{batch_run_id}"
+
+
+#: ``trigger_context`` keys a remainder run never inherits: the window (no event joins it,
+#: a later event opens a batch of its own), the dedup key of the first event (the batch run
+#: holds it) and the resume record of the batch run.
+_NOT_INHERITED = frozenset({WINDOW_CONTEXT, "dedup_key", "handed_back", "resumes", REMAINDER_CONTEXT})
+
+
+def remainder_context(
+    trigger_context: Mapping[str, Any] | None, remainder: Mapping[str, Any], split_from: str
+) -> dict[str, Any]:
+    """The ``trigger_context`` of the queued run that works *remainder* after the batch run *split_from*.
+
+    It keeps the batch run's type and ordering key, so the drain starts it
+    only once the batch run ended (one case at a time, in arrival order), and
+    names the event it opens with.
+    """
+    context = {k: v for k, v in dict(trigger_context or {}).items() if k not in _NOT_INHERITED}
+    events = events_of(remainder)
+    head = events[0] if events else {}
+    for key in ("event_id", "object_type", "object_id", "occurred_at"):
+        if key in head:
+            context[key] = head[key]
+    context[SPLIT_FROM_CONTEXT] = split_from
+    return context
 
 
 def events_of(payload: Mapping[str, Any] | None) -> list[dict[str, Any]]:
@@ -100,15 +203,51 @@ def batch_payload(payload: Mapping[str, Any] | None, window: int) -> dict[str, A
     return batch
 
 
-def can_join(waiting: Mapping[str, Any] | None) -> bool:
-    """Whether the waiting batch has room for one more event."""
-    return len(events_of(waiting)) < MAX_BATCH_EVENTS
+def can_join(waiting: Mapping[str, Any] | None, limit: int = MAX_BATCH_EVENTS) -> bool:
+    """Whether the waiting batch has room for one more event (*limit*: the trigger's :func:`max_events`)."""
+    return len(events_of(waiting)) < min(limit, MAX_BATCH_EVENTS)
+
+
+def _object_of(event: Mapping[str, Any]) -> tuple[str, str, str] | None:
+    """``(event, object_type, object_id)`` of an event listed once per object, else ``None``."""
+    name = event.get("event")
+    object_id = event.get("object_id") or event.get("case_id")
+    if name not in OBJECT_DEDUPED_EVENTS or not object_id:
+        return None
+    return str(name), str(event.get("object_type") or ""), str(object_id)
 
 
 def carries(waiting: Mapping[str, Any] | None, incoming: Mapping[str, Any] | None) -> bool:
-    """Whether the waiting batch already lists *incoming* (the same event delivered twice)."""
-    incoming_id = _event_id(incoming or {})
-    return bool(incoming_id) and any(_event_id(e) == incoming_id for e in events_of(waiting))
+    """Whether the waiting batch already lists *incoming*.
+
+    The same event delivered twice (same event id), or, for an event of
+    :data:`OBJECT_DEDUPED_EVENTS`, the same event about the same object under
+    another event id (#2447).
+    """
+    incoming = incoming or {}
+    incoming_id = _event_id(incoming)
+    incoming_object = _object_of(incoming)
+    for event in events_of(waiting):
+        if incoming_id and _event_id(event) == incoming_id:
+            return True
+        if incoming_object is not None and _object_of(event) == incoming_object:
+            return True
+    return False
+
+
+def carried_object_ids(payload: Mapping[str, Any] | None) -> set[str]:
+    """Every object id a run's payload carries: each listed event's ``object_id`` and ``case_id``.
+
+    A batch run's context names only its first event, so a reader asking
+    "is a run already waiting for this object" reads the payload (#2447).
+    """
+    carried: set[str] = set()
+    for event in events_of(payload):
+        for key in ("object_id", "case_id"):
+            value = event.get(key)
+            if value:
+                carried.add(str(value))
+    return carried
 
 
 def merged_payload(waiting: Mapping[str, Any] | None, incoming: Mapping[str, Any] | None) -> dict[str, Any]:

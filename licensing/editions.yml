@@ -426,6 +426,7 @@ ee:
   - backend/app/services/platform_event*.py
   - backend/app/services/platform_timers.py
   - backend/app/services/integration_event_filters.py
+  - backend/app/services/webhook_refusals.py
   - backend/app/services/event_enrichment*.py
   - backend/app/services/event_run_dedup.py
   - backend/app/services/event_coalescing.py
@@ -633,6 +634,9 @@ ee:
   - backend/app/services/pennylane_events.py
   - backend/app/services/jira_webhooks.py
   - backend/app/services/wordsmith_webhooks.py
+  - backend/app/services/notion_webhooks.py
+  - backend/app/services/defender_stream.py
+  - backend/app/services/drata_webhooks.py
   - backend/app/services/teams_late_reply.py
   - backend/app/services/organization_onboarding.py
   - frontend/src/components/chat-panel/**

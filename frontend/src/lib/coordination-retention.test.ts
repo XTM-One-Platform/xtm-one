@@ -25,4 +25,8 @@ describe("parseCoordinationRetentionDays", () => {
     expect(COORDINATION_RETENTION_DEFAULTS.work_item_resolved_days).toBe(90);
     expect(COORDINATION_RETENTION_DEFAULTS.shared_state_resolved_days).toBe(90);
   });
+
+  it("defaults finished assignment runs to 90 days", () => {
+    expect(COORDINATION_RETENTION_DEFAULTS.assignment_run_days).toBe(90);
+  });
 });

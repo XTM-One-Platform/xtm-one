@@ -205,12 +205,32 @@ async def test_a_watch_starts_one_run_then_ends(watch_world):
 
 
 @pytest.mark.asyncio
-async def test_the_trigger_picker_reads_the_builder_catalog():
+async def test_the_trigger_picker_reads_the_builder_catalog(monkeypatch: pytest.MonkeyPatch):
     from app.api.v1.assignments import list_platform_events
+    from app.services import ctem_access
 
+    async def _wires(_user_id: object) -> bool:
+        return True
+
+    monkeypatch.setattr(ctem_access, "wires_ctem", _wires)
     served = await list_platform_events(user=SimpleNamespace(id=uuid.uuid4()))
     assert served == pe.catalog()
     assert {e["event"] for e in served} == set(pe.PLATFORM_EVENTS)
+
+
+@pytest.mark.asyncio
+async def test_the_trigger_picker_hides_the_ctem_events_without_a_right(monkeypatch: pytest.MonkeyPatch):
+    """#2441: a person with no CTEM right is offered no ctem_signal.* or case event."""
+    from app.api.v1.assignments import list_platform_events
+    from app.services import ctem_access
+
+    async def _wires(_user_id: object) -> bool:
+        return False
+
+    monkeypatch.setattr(ctem_access, "wires_ctem", _wires)
+    served = await list_platform_events(user=SimpleNamespace(id=uuid.uuid4()))
+    assert served == pe.catalog(ctem=False)
+    assert not any(pe.is_ctem_event(e["event"]) for e in served)
 
 
 @pytest.mark.asyncio

@@ -37,10 +37,10 @@ import uuid
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from sqlalchemy import ColumnElement, Select, func, or_, select
+from sqlalchemy import ColumnElement, Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.organization_asset import OrganizationAsset, OrganizationAssetSoftware
+from app.models.organization_asset import OrganizationAsset, OrganizationAssetSoftware, OrganizationSoftware
 from app.services import ctem_fixed_version as fixed_versions
 
 logger = logging.getLogger(__name__)
@@ -114,16 +114,20 @@ def publisher_key(value: str | None) -> str:
 
 
 def product_keys(product_label: str | None) -> tuple[str, ...]:
-    """The product keys a case label may stand for: the whole label, then without its vendor word.
+    """The product keys a case label may stand for: the whole label, then every word suffix of it.
 
     ``Microsoft Windows`` matches software stored as product ``Microsoft Windows``
-    or as vendor ``Microsoft`` and product ``Windows``.
+    or as vendor ``Microsoft`` and product ``Windows``; ``Node.js Foundation Node.js``
+    matches vendor ``Node.js Foundation`` and product ``Node.js`` (#2450): a vendor of
+    several words is stripped too. The whole label stays first (the publisher-prefixed
+    pattern of :func:`product_filter` reads it), so the read covers every row
+    :func:`matches_case` accepts, which still decides.
     """
     label = _key(product_label)
     if not label:
         return ()
-    parts = label.split(" ", 1)
-    return (label, parts[1]) if len(parts) == 2 else (label,)
+    words = label.split(" ")
+    return tuple(" ".join(words[start:]) for start in range(len(words)))
 
 
 #: Case product labels (folded) that name an operating system, and the ``os_family`` the
@@ -464,6 +468,7 @@ async def for_case(db: AsyncSession, case: Any, *, with_devices: bool = False) -
         fixed_version=case.fixed_version,
         fixed_versions_by_platform=_case_platform_fixes(case),
         with_devices=with_devices,
+        case_id=getattr(case, "id", None),
     )
 
 
@@ -481,11 +486,13 @@ async def read_running_versions(
     fixed_version: str | None,
     fixed_versions_by_platform: Mapping[str, str] | None = None,
     with_devices: bool = False,
+    case_id: uuid.UUID | None = None,
 ) -> dict[str, Any] | None:
     """:func:`running_versions` over the organization's asset software (one grouped read).
 
     ``None`` when the case names no product, no asset runs it, or the store
-    cannot be read (a case read never fails on the inventory).
+    cannot be read (a case read never fails on the inventory). With *case_id*, a
+    language package row counts only for a package case (:func:`package_case_rows`, #2223).
     """
     keys = product_keys(product_label)
     if not keys:
@@ -494,7 +501,7 @@ async def read_running_versions(
     try:
         # A savepoint, so a failed read never leaves the caller's transaction aborted.
         async with db.begin_nested():
-            counted, named = await _read_rows(db, organization_id, keys, family)
+            counted, named = await _read_rows(db, organization_id, keys, family, case_id)
             os_assets = await _read_os_assets(db, organization_id, family) if family else []
             platforms = await _read_platforms(db, organization_id, keys) if counted else {}
     except Exception:  # the inventory never breaks a case read
@@ -600,23 +607,92 @@ def inventory_version_counts(
     return out
 
 
-#: Product labels per grouped inventory read of :func:`inventory_versions` (bounded bind parameters).
-_INVENTORY_LABELS_CHUNK = 100
+#: Product keys per grouped inventory read of :func:`inventory_versions` (bounded bind parameters).
+_INVENTORY_KEYS_CHUNK = 500
+
+
+def matching_product_keys(stored: Iterable[str], labels: Iterable[str]) -> list[str]:
+    """The stored product keys a grouped inventory read of *labels* covers (pure, #2232).
+
+    A key is covered when it is one of a label's :func:`product_keys`, or ends with ``" " +`` the
+    label's whole key (a publisher-prefixed product, ``google llc google chrome``): the rule the
+    unanchored ``LIKE '% key'`` of the read applied in the database, which no index serves.
+    Each stored key is indexed by its word suffixes once, so the cost is linear in keys plus labels.
+    """
+    stored = list(dict.fromkeys(k for k in stored if k))
+    present = set(stored)
+    by_suffix: dict[str, list[str]] = {}
+    for key in stored:
+        rest = key
+        while " " in rest:
+            rest = rest.split(" ", 1)[1]
+            by_suffix.setdefault(rest, []).append(key)
+    out: dict[str, None] = {}
+    for label in dict.fromkeys(labels):
+        keys = product_keys(label)
+        if not keys:
+            continue
+        for key in keys:
+            if key in present:
+                out[key] = None
+        for key in by_suffix.get(keys[0], ()):
+            out[key] = None
+    return sorted(out)
+
+
+async def _covered_product_keys(db: AsyncSession, organization_id: uuid.UUID, labels: list[str]) -> list[str]:
+    """The organization's stored product keys *labels* cover (:func:`matching_product_keys`).
+
+    One distinct read on ``ix_organization_asset_software_org_product``, then the match in a thread.
+    """
+    soft = OrganizationAssetSoftware
+    stored = (
+        (await db.execute(select(soft.product_key).where(soft.organization_id == organization_id).distinct()))
+        .scalars()
+        .all()
+    )
+    return await asyncio.to_thread(matching_product_keys, [str(k) for k in stored], labels)
+
+
 #: Seconds an :func:`inventory_versions` answer is reused for the same organization and labels, so
 #: the cases list does not re-read and re-count the inventory on every read (#2072).
 INVENTORY_CACHE_TTL_SECONDS = 120.0
 _INVENTORY_CACHE_SIZE = 64
-_INVENTORY_CACHE: dict[tuple[uuid.UUID, tuple[str, ...]], tuple[float, dict[str, dict[str, int]]]] = {}
+#: Per (organization, labels): when it was read, then the answer without the language package rows
+#: and the answer with them (#2375).
+_INVENTORY_CACHE: dict[
+    tuple[uuid.UUID, tuple[str, ...]], tuple[float, tuple[dict[str, dict[str, int]], dict[str, dict[str, int]]]]
+] = {}
+
+
+def inventory_version_answers(
+    rows: Iterable[Any], os_assets: Mapping[str, list[dict[str, Any]]], labels: Iterable[str]
+) -> tuple[dict[str, dict[str, int]], dict[str, dict[str, int]]]:
+    """The :func:`inventory_version_counts` answers without and with the language package rows (pure, #2375).
+
+    *rows* are ``(vendor, product, version, asset_ids, language_package)`` groups: a row whose purl
+    names a language ecosystem (:func:`language_package_row`, the MinIO SDK of a repository) is
+    left out of the first answer, which a CVE of a server or OS product reads, and kept in the
+    second, which a CVE of a language package reads: the rule :func:`package_case_rows` applies
+    to a case's running versions (#2223), so the issue and the case count the same rows.
+    """
+    labels = list(labels)
+    every = [tuple(row[:4]) for row in rows]
+    server = [tuple(row[:4]) for row in rows if not row[4]]
+    return inventory_version_counts(server, os_assets, labels), inventory_version_counts(every, os_assets, labels)
 
 
 async def inventory_versions(
-    db: AsyncSession, organization_id: uuid.UUID, labels: Iterable[str]
+    db: AsyncSession, organization_id: uuid.UUID, labels: Iterable[str], *, language_packages: bool = False
 ) -> dict[str, dict[str, int]]:
     """Per product label, the known versions the device inventory reports with their asset counts (#2038).
 
     The same rows :func:`read_running_versions` reads for a case, so the CVE matcher checks every
-    version a case shows as running. ``{}`` when the store cannot be read (the matcher then keeps
-    the versions of the software entities and the profile).
+    version a case shows as running: language package rows (``pkg:pypi/minio`` of a repository)
+    count only with *language_packages*, the answer a CVE of a language package reads (#2375, the
+    rule of :func:`package_case_rows`). Both answers come from one read and are cached together.
+    ``{}`` when the store cannot be read (the matcher then keeps the versions of the software
+    entities and the profile).
     """
     wanted = [label for label in dict.fromkeys(labels) if product_keys(label)]
     if not wanted:
@@ -624,18 +700,16 @@ async def inventory_versions(
     cache_key = (organization_id, tuple(sorted(wanted)))
     cached = _INVENTORY_CACHE.get(cache_key)
     if cached is not None and time.monotonic() - cached[0] < INVENTORY_CACHE_TTL_SECONDS:
-        return cached[1]
+        return cached[1][1 if language_packages else 0]
     soft = OrganizationAssetSoftware
+    package = language_package_row(soft)
     rows: list[Any] = []
     os_assets: dict[str, list[dict[str, Any]]] = {}
     try:
         async with db.begin_nested():
-            for start in range(0, len(wanted), _INVENTORY_LABELS_CHUNK):
-                chunk = wanted[start : start + _INVENTORY_LABELS_CHUNK]
-                keys = sorted({k for label in chunk for k in product_keys(label)})
-                like = [
-                    soft.product_key.like("% " + _like_escape(product_keys(label)[0]), escape="\\") for label in chunk
-                ]
+            covered = await _covered_product_keys(db, organization_id, wanted)
+            for start in range(0, len(covered), _INVENTORY_KEYS_CHUNK):
+                keys = covered[start : start + _INVENTORY_KEYS_CHUNK]
                 rows.extend(
                     (
                         await db.execute(
@@ -644,9 +718,10 @@ async def inventory_versions(
                                 func.min(soft.product),
                                 soft.version,
                                 func.array_agg(func.distinct(soft.asset_id)),
+                                package,
                             )
-                            .where(soft.organization_id == organization_id, or_(soft.product_key.in_(keys), *like))
-                            .group_by(soft.vendor_key, soft.product_key, soft.version)
+                            .where(soft.organization_id == organization_id, soft.product_key.in_(keys))
+                            .group_by(soft.vendor_key, soft.product_key, soft.version, package)
                         )
                     ).all()
                 )
@@ -656,11 +731,11 @@ async def inventory_versions(
         logger.info("CTEM inventory versions unavailable", exc_info=True)
         return {}
     # Pure and CPU-bound on a large inventory: off the event loop so no request waits on it.
-    answer = await asyncio.to_thread(inventory_version_counts, rows, os_assets, wanted)
-    _INVENTORY_CACHE[cache_key] = (time.monotonic(), answer)
+    answers = await asyncio.to_thread(inventory_version_answers, rows, os_assets, wanted)
+    _INVENTORY_CACHE[cache_key] = (time.monotonic(), answers)
     while len(_INVENTORY_CACHE) > _INVENTORY_CACHE_SIZE:
         _INVENTORY_CACHE.pop(next(iter(_INVENTORY_CACHE)))
-    return answer
+    return answers[1 if language_packages else 0]
 
 
 def inventory_platform_sets(rows: Iterable[Any], labels: Iterable[str]) -> dict[str, tuple[str, ...]]:
@@ -699,9 +774,11 @@ async def inventory_platforms(
 ) -> dict[str, tuple[str, ...]]:
     """Per product label, the platforms of every asset running it, when all are known (#2152).
 
-    One grouped read per chunk of labels, joined on the asset row (bind parameters are the
-    organization and the product keys). ``{}`` when the store cannot be read: the CVE matcher then
-    evaluates no platform, as before.
+    One grouped read per chunk of the stored product keys the labels cover
+    (:func:`matching_product_keys`), joined on the asset row (bind parameters are the
+    organization and the product keys). A language package row (the SDK of a repository) is not
+    the product running on an asset and gives no platform (#2375). ``{}`` when the store cannot be
+    read: the CVE matcher then evaluates no platform, as before.
     """
     wanted = [label for label in dict.fromkeys(labels) if product_keys(label)]
     if not wanted:
@@ -711,12 +788,9 @@ async def inventory_platforms(
     rows: list[Any] = []
     try:
         async with db.begin_nested():
-            for start in range(0, len(wanted), _INVENTORY_LABELS_CHUNK):
-                chunk = wanted[start : start + _INVENTORY_LABELS_CHUNK]
-                keys = sorted({k for label in chunk for k in product_keys(label)})
-                like = [
-                    soft.product_key.like("% " + _like_escape(product_keys(label)[0]), escape="\\") for label in chunk
-                ]
+            covered = await _covered_product_keys(db, organization_id, wanted)
+            for start in range(0, len(covered), _INVENTORY_KEYS_CHUNK):
+                keys = covered[start : start + _INVENTORY_KEYS_CHUNK]
                 rows.extend(
                     (
                         await db.execute(
@@ -730,7 +804,8 @@ async def inventory_platforms(
                             .where(
                                 soft.organization_id == organization_id,
                                 asset.organization_id == organization_id,
-                                or_(soft.product_key.in_(keys), *like),
+                                soft.product_key.in_(keys),
+                                ~language_package_row(soft),
                             )
                             .group_by(soft.vendor_key, soft.product_key)
                         )
@@ -740,6 +815,44 @@ async def inventory_platforms(
         logger.info("CTEM inventory platforms unavailable", exc_info=True)
         return {}
     return await asyncio.to_thread(inventory_platform_sets, rows, wanted)
+
+
+async def software_asset_count(db: AsyncSession, organization_id: uuid.UUID, product_label: str | None) -> int:
+    """The assets the organization software named *product_label* counts (#2450), ``0`` when none or unreadable.
+
+    The profile's software row whose shown name (``vendor product``) is the case's label, read on its
+    own ``vendor_key`` / ``product_key``: a language package row (the SDK of a repository) is not the
+    product running (#2223). When it counts assets and the case read none, the match failed: the
+    case says so, never that no asset runs the product.
+    """
+    label = _key(product_label)
+    if not label:
+        return 0
+    software, soft = OrganizationSoftware, OrganizationAssetSoftware
+    try:
+        async with db.begin_nested():
+            count = (
+                await db.execute(
+                    select(func.count(func.distinct(soft.asset_id)))
+                    .join(
+                        software,
+                        and_(
+                            software.organization_id == soft.organization_id,
+                            software.vendor_key == soft.vendor_key,
+                            software.product_key == soft.product_key,
+                        ),
+                    )
+                    .where(
+                        soft.organization_id == organization_id,
+                        software.name_key == label[:300],
+                        ~language_package_row(soft),
+                    )
+                )
+            ).scalar()
+    except Exception:  # the inventory never breaks a case read
+        logger.info("CTEM software asset count unavailable", exc_info=True)
+        return 0
+    return int(count or 0)
 
 
 async def inventory_sources(db: AsyncSession, organization_id: uuid.UUID) -> list[str] | None:
@@ -918,7 +1031,7 @@ async def assets_for_case(db: AsyncSession, case: Any, issues: Iterable[Mapping[
     family = os_family_of(getattr(case, "product_label", None))
     try:
         async with db.begin_nested():
-            found = await _read_asset_rows(db, case.organization_id, keys, names, family)
+            found = await _read_asset_rows(db, case.organization_id, keys, names, family, getattr(case, "id", None))
             os_assets = await _read_os_assets(db, case.organization_id, family, names) if family else []
     except Exception:  # the inventory never breaks a case read
         logger.info("CTEM case asset versions unavailable", exc_info=True)
@@ -956,8 +1069,41 @@ def os_case_rows(soft: Any, asset: Any, family: str | None) -> list[ColumnElemen
     return [soft.purl == "", or_(os_family.is_(None), os_family == "", os_family == family)]
 
 
+def language_package_row(soft: Any) -> ColumnElement[bool]:
+    """A software row whose purl names a language ecosystem (``pkg:pypi``, ``pkg:maven``, ...), #2223.
+
+    Distribution packages (``pkg:deb``, ``pkg:rpm``) and rows with no purl are not.
+    """
+    from app.services.ctem_product_identity import ECOSYSTEM_TARGETS
+
+    return or_(*(func.lower(soft.purl).like(f"pkg:{kind}/%") for kind in sorted(ECOSYSTEM_TARGETS)))
+
+
+def package_case_rows(soft: Any, case_id: uuid.UUID | None) -> list[ColumnElement[bool]]:
+    """The condition a product case puts on language package rows (#2223), ``[]`` without a case.
+
+    A repository's ``pkg:maven/io.minio/minio`` is the MinIO SDK, not the MinIO server a
+    CVE affects: such a row counts as a running version only when a signal of the case says
+    the vulnerable OpenCTI Software is itself a language package
+    (``evidence.case_fix.language_package``, written by ``ctem_source_signals``). Package
+    CVEs still reach repositories through ``ctem_dependency_matches`` (purl match).
+    """
+    if case_id is None:
+        return []
+    from app.models.ctem_signal import CtemSignal
+
+    flag = CtemSignal.evidence["case_fix"]["language_package"].astext
+    is_package_case = select(CtemSignal.id).where(CtemSignal.case_id == case_id, flag == "true").limit(1).exists()
+    return [or_(~language_package_row(soft), is_package_case)]
+
+
 async def _read_asset_rows(
-    db: AsyncSession, organization_id: uuid.UUID, keys: tuple[str, ...], names: list[str], family: str | None = None
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    keys: tuple[str, ...],
+    names: list[str],
+    family: str | None = None,
+    case_id: uuid.UUID | None = None,
 ) -> list[dict[str, Any]]:
     """The software entries of the case's product on the named assets (one read)."""
     soft, asset = OrganizationAssetSoftware, OrganizationAsset
@@ -978,6 +1124,7 @@ async def _read_asset_rows(
             asset.name_key.in_([n[:300] for n in names]),
             product_filter(soft.product_key, keys),
             *os_case_rows(soft, asset, family),
+            *package_case_rows(soft, case_id),
         )
     )
     return [
@@ -1065,17 +1212,23 @@ async def _read_os_assets(
 
 
 async def _read_rows(
-    db: AsyncSession, organization_id: uuid.UUID, keys: tuple[str, ...], family: str | None = None
+    db: AsyncSession,
+    organization_id: uuid.UUID,
+    keys: tuple[str, ...],
+    family: str | None = None,
+    case_id: uuid.UUID | None = None,
 ) -> tuple[list[Any], dict[tuple[str, str, str], set[str]]]:
     """The (vendor, product, version) groups with their distinct asset ids, and the sources of each.
 
-    An operating system case (*family*) keeps only the rows :func:`os_case_rows` allows (#2036).
+    An operating system case (*family*) keeps only the rows :func:`os_case_rows` allows (#2036);
+    a case (*case_id*) keeps a language package row only as :func:`package_case_rows` says (#2223).
     """
     soft, asset = OrganizationAssetSoftware, OrganizationAsset
     where = (
         soft.organization_id == organization_id,
         product_filter(soft.product_key, keys),
         *os_case_rows(soft, asset, family),
+        *package_case_rows(soft, case_id),
     )
     joined = family is not None
 

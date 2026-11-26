@@ -466,6 +466,11 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     # The "Add a sync" stepper's preview of a new outbound sync (#1982 S4): its first run planned, nothing written.
     "preview_new_outbound_sync",
     "run_organization_sync",
+    # The Intelligence policy (#2435): an administrator editing a stored PIR's policy
+    # (question, owner, cadence, minimum score, enabled) or re-reading the PIRs from
+    # OpenCTI now; stored configuration, no model involved.
+    "patch_intelligence_policy_pir",
+    "refresh_intelligence_policy",
     # The rows a source wrote (#1276): an administrator purging them or handing them
     # to people, saved as a new version of the profile; no model involved.
     "apply_organization_source_rows",

@@ -93,6 +93,20 @@ def test_a_merge_spec_unions_lists_merges_by_key_and_keeps_counts_whole() -> Non
     assert merged["entity"]["id"] == "b"
 
 
+def test_a_sum_field_adds_up_and_counts_a_run_covered_twice_once() -> None:
+    """``sum`` adds both sides' counts, less what a run both events cover carries (#2169)."""
+    spec = {"sum": ["changed"]}
+    waiting = {**_event("a"), "coalesce_merge": spec, "changed": 4, "entity": {"id": "a", "changed": 4}}
+    waiting["covers"] = [{"id": "a", "changed": 4}]
+    incoming = {**_event("b"), "coalesce_merge": spec, "changed": 9, "entity": {"id": "b", "changed": 9}}
+    incoming["covers"] = [{"id": "a", "changed": 4}, {"id": "b", "changed": 5}]
+    merged = event_coalescing.merged_payload(waiting, incoming)
+    assert merged["changed"] == merged["entity"]["changed"] == 9
+    fresh = {**incoming, "covers": [{"id": "b", "changed": 5}], "changed": 5}
+    assert event_coalescing.merged_payload(waiting, fresh)["changed"] == 9
+    assert "changed" not in event_coalescing.merged_payload(_event("a"), {**_event("b"), "coalesce_merge": spec})
+
+
 def test_a_run_that_has_not_started_is_foldable() -> None:
     assert set(event_coalescing.FOLDABLE_STATUSES) == {assignment_engine.QUEUED_RUN_STATUS, "pending"}
 

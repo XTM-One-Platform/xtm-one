@@ -45,12 +45,12 @@ describe("agent General overview grid (#11838)", () => {
   it("lays two rows on a wide screen and three at lg", () => {
     expect(rows("2xl")).toEqual([
       [2, 2, 2, 2, 2, 2],
-      [2, 2, 3, 3, 2],
+      [2, 3, 4, 3],
     ]);
     expect(rows("lg")).toEqual([
       [2, 1, 1, 2],
       [2, 2, 1, 1],
-      [2, 2, 2],
+      [4, 2],
     ]);
   });
 

@@ -24,7 +24,11 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
 - From the Signals page, by the people who read the signals:
   `POST /api/v1/ctem-signals/triage` dismisses (state `discarded`, reason
   `dismissed_by_user`, kept out of every pass until restored), restores or
-  re-checks the selected signals or every signal a state filter matches. An
+  re-checks the selected signals or every signal a state filter matches.
+  `dry_run: true` (route and `triage_ctem_signals`, #2341) runs the same
+  selection and decisions, answers `signals` (id, state before and after,
+  `changed`, `unchanged` or `skipped`) with the counts, and rolls back: nothing
+  is written and no `ctem_signal.triaged` event is raised. An
   administrator also has `POST /api/v1/ctem-signals/add-to-inventory`: one
   profile version declares the subjects of the selected unmatched signals (a
   host an asset, a software a tech stack product, an identity its email domain
@@ -60,6 +64,20 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
    then matched to the organization's software like any software reference.
    `reconcile.software_refs` lists every reference tried; an unresolved
    subject carries `reason_params` `{keys, software}`, the counts tried.
+   **CVE subjects without software** (#2171): a signal that names CVEs
+   (subject, label or evidence `cve` / `cves`) and resolves to nothing
+   without them has its CVEs looked up in OpenCTI with the recorder's own
+   access (a `system` signal: the OpenCRQ sync owner's): the Software each
+   is related to by `has` (name and CPE) joins the software references
+   (`reconcile.cve_software`). `reconcile.cve_lookup` says how the read went
+   (`read`, `no reader`, `no OpenCTI access`, `OpenCTI did not answer`;
+   `null` when not needed). The case recompute, which holds signal row
+   locks (#1953), decides without this read; the bulk re-decide passes
+   (`evaluate_open`, `recheck_parked`, `recheck_held`, `triage`) take it up
+   front with `prepare_cve_reads`, before any row is written, and decide with
+   `remote_reads=False` from the session cache. `record_ctem_signal` names the
+   evidence keys the gate reads and answers a `hint` when the gate left the
+   signal `subject_unresolved` and its evidence holds none of them.
    **Shipped products** (`shipped_products`, what the organization ships,
    apart from the tech stack it runs): a software reference or a CPE of the
    evidence (`software`, `cpe`; the OpenCTI vulnerability listener copies
@@ -175,8 +193,8 @@ Stored as `decision` on the signal (version 1), with the state:
 ```
 
 Third parties and identities (CTEM-29): a `third_party` subject resolves to the
-profile asset row that names the tracked organization and, through a crown
-jewel's `asset_names`, to that primary asset; a primary asset named in
+profile asset row that names the tracked organization and, through a primary
+asset's `asset_names`, to that primary asset; a primary asset named in
 `evidence.primary_assets` and OpenCRQ supporting assets in
 `evidence.opencrq_asset_ids` count too. Unresolved, it goes to the watchlist
 (`no_dependency`), never to "to validate". An `identity` subject

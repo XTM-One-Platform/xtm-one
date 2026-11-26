@@ -19,7 +19,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * read from the cascade assignment > agent > platform
  * (`organizationContextEffective`, the mirror of the backend resolver).
  */
-import { useId } from "react";
+import { type ReactNode, useId } from "react";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SettingsField, settingsFieldHintId } from "@/components/ui/settings-form";
@@ -55,38 +55,50 @@ export function OrganizationContextModeSelect({
   value,
   agentMode,
   onChange,
+  fullWidth = true,
 }: {
   scope: "agent" | "assignment";
   value: OrganizationContextMode;
   /** The agent's own mode, for an assignment: what Inherit falls back to first. */
   agentMode?: OrganizationContextMode;
   onChange: (mode: OrganizationContextMode) => void;
+  /**
+   * Stretch the trigger to its cell (the agent General selects row). False keeps
+   * the content width of the other selects of the host form (assignment Parameters).
+   */
+  fullWidth?: boolean;
 }) {
   const { t_i18n } = useFormatter();
   const id = useId();
   const effective = useOrganizationContextEffectiveLabel(scope, value, agentMode);
+  const helper = t_i18n("A short summary of the organization profile at the top of the prompt. In effect: {effective}.", { effective });
+  const select = (trigger: ReactNode) => (
+    <Select value={value} onValueChange={(v) => onChange(v as OrganizationContextMode)}>
+      {trigger}
+      <SelectContent>
+        {ORGANIZATION_CONTEXT_MODES.map((mode) => (
+          <SelectItem key={mode} value={mode}>
+            {t_i18n(ORGANIZATION_CONTEXT_MODE_LABELS[mode])}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
   return (
     <div data-testid={`${scope}.organization-context-mode`}>
       <SettingsField
         id={id}
         label={t_i18n("Organization context")}
         info={t_i18n(
-          "A short block at the top of the prompt: the organization's identity and one line per category of its profile. Inherit follows the agent, then the platform setting in Settings > Organization; Always forces it on; Off removes the block and the get_organization_context tool.",
+          "A short block at the top of the prompt: the organization's identity and one line with the inventory size and the functions that query it, never its rows. Inherit follows the agent, then the platform setting in Settings > Organization; Always forces it on; Off removes the block and the organization tools.",
         )}
-        helper={t_i18n("A short summary of the organization profile at the top of the prompt. In effect: {effective}.", { effective })}
+        helper={helper}
       >
-        <Select value={value} onValueChange={(v) => onChange(v as OrganizationContextMode)}>
-          <SelectTrigger id={id} aria-describedby={settingsFieldHintId(id)}>
+        {select(
+          <SelectTrigger id={id} className={fullWidth ? "w-full" : undefined} aria-describedby={settingsFieldHintId(id)}>
             <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ORGANIZATION_CONTEXT_MODES.map((mode) => (
-              <SelectItem key={mode} value={mode}>
-                {t_i18n(ORGANIZATION_CONTEXT_MODE_LABELS[mode])}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          </SelectTrigger>,
+        )}
       </SettingsField>
     </div>
   );

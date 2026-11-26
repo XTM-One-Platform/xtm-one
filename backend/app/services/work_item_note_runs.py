@@ -61,6 +61,48 @@ def stamped_run_ids(description: str | None) -> list[uuid.UUID]:
     return list(seen)
 
 
+# Any stamped note, with or without its run: "2026-11-20 22:21Z (run <uuid>): "
+# or "2026-11-20 22:21Z: " (an answer the platform writes). Group 1 is the time,
+# group 2 the run when named.
+_STAMP_HEAD = re.compile(
+    r"(?:^|\n\n)(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?Z)"
+    r"(?: \(run ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\))?: ",
+    re.IGNORECASE,
+)
+
+# The text of a matched note a listing row carries (#2263).
+NEWEST_NOTE_MAX_CHARS = 300
+
+
+def newest_note_with_prefix(description: str | None, prefix: str) -> dict[str, str] | None:
+    """The newest stamped note of *description* whose text starts with *prefix* (#2263).
+
+    Notes are put on top of the description, so the first match is the newest.
+    Answers ``{"at", "run", "text"}`` (the text bounded to
+    :data:`NEWEST_NOTE_MAX_CHARS`, ``run`` empty when the stamp names none), or
+    ``None`` when no note starts with *prefix*. The match is literal and
+    case-sensitive, leading spaces of the note ignored. A note runs to the next
+    stamp; the oldest one ends at its first blank line, since the unstamped
+    brief follows it.
+    """
+    text = description or ""
+    wanted = prefix.strip()
+    if not wanted:
+        return None
+    heads = list(_STAMP_HEAD.finditer(text))
+    for index, head in enumerate(heads):
+        if index + 1 < len(heads):
+            body = text[head.end() : heads[index + 1].start()].strip()
+        else:
+            body = text[head.end() :].split("\n\n", 1)[0].strip()
+        if not body.startswith(wanted):
+            continue
+        if len(body) > NEWEST_NOTE_MAX_CHARS:
+            body = body[: NEWEST_NOTE_MAX_CHARS - 3].rstrip() + "..."
+        return {"at": head.group(1), "run": head.group(2) or "", "text": body}
+    return None
+
+
 async def note_runs(db: AsyncSession, description: str | None, viewer: User) -> dict[str, dict[str, Any]]:
     """``{run_id: {"agent": {"id", "name"} | None, "accessible": bool}}``.
 

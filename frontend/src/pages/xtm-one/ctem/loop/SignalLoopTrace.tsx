@@ -226,8 +226,8 @@ const THIRD_PARTY_RELATIONSHIP = { provider: "Provider", customer: "Customer", p
 const SUBJECT_ROW_KEYS = ["stix_type", "account_disabled", "report", "relationship", "organization_criticality"] as const;
 
 /**
- * The dependency keys of a third-party signal the scope gate reads (the crown
- * jewels that depend on the organization, their OpenCRQ asset ids): Decision
+ * The dependency keys of a third-party signal the scope gate reads (the primary
+ * assets that depend on the organization, their OpenCRQ asset ids): Decision
  * inputs already say them, so the raw evidence list leaves them out.
  */
 const THIRD_PARTY_SCOPE_KEYS = ["primary_assets", "opencrq_asset_ids"] as const;

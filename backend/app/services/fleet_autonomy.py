@@ -16,9 +16,10 @@
 A fleet stores one level (``Fleet.autonomy_level``), one of :data:`AUTONOMY_LEVELS`
 from the most supervised to the least:
 
-* ``full_gates`` (the default of a custom fleet): every gated action waits for
-  an approval work item. A built-in seeded fleet ships at ``low``
-  (``app.agents.fleet_seed.SEEDED_FLEET_AUTONOMY_LEVEL``, #10005).
+* ``full_gates`` (the default of every new and seeded fleet, #2279): every
+  gated action waits for a decision item between steps; no tool call pauses
+  unless an administrator opted the fleet in (#1467, never a built-in one,
+  #1675). ``app.agents.fleet_seed.SEEDED_FLEET_AUTONOMY_LEVEL`` names it.
 * ``medium``: low-impact writes go without approval; high-impact and
   destructive actions still wait.
 * ``low``: only destructive or production-impacting actions wait.
@@ -621,6 +622,53 @@ def fleet_autonomy_block(
     if instructions:
         lines.append(instructions)
     return "\n".join(lines)
+
+
+async def turn_fleet_id(db: Any, agent: Any, visited_agents: Iterable[str] | None) -> Any:
+    """The fleet whose gates a chat-path turn of *agent* is held to; ``None`` outside any fleet (#2376).
+
+    The agent's own home fleet first (a pre-existing member of 1.261102.0
+    excepted, as for its run defaults). Else the nearest agent of the handover
+    chain (*visited_agents*, oldest first, this agent last) that has a home
+    fleet: a background task, a consult, a transfer or a connected agent
+    reached by a fleet member's delegation acts for the fleet whose case is
+    running, so it is held to that fleet's gates.
+    """
+    from app.services.fleet_runs import home_fleet_defaults, is_pre_existing_fleet_member
+
+    self_id = str(getattr(agent, "id", ""))
+    if not is_pre_existing_fleet_member(agent):
+        own = await home_fleet_defaults(db, getattr(agent, "id", None))
+        if own.fleet_id is not None:
+            return own.fleet_id
+    for ancestor in reversed([str(a) for a in (visited_agents or ())]):
+        if ancestor == self_id:
+            continue
+        home = await home_fleet_defaults(db, ancestor)
+        if home.fleet_id is not None:
+            return home.fleet_id
+    return None
+
+
+async def turn_fleet_autonomy_block(db: Any, agent: Any, visited_agents: Iterable[str] | None) -> str:
+    """The :func:`fleet_autonomy_block` of a chat-path turn (#2376); ``""`` outside any fleet.
+
+    The same text an assignment run of the fleet carries
+    (``assignment_engine``), so a chat, a channel thread, a consult, a
+    background task, a transfer or a sub-delegated connected agent states the
+    gates once, as an assignment run does.
+    """
+    fleet_id = await turn_fleet_id(db, agent, visited_agents)
+    if fleet_id is None:
+        return ""
+    autonomy = await fleet_autonomy_for_run(db, fleet_id)
+    if autonomy is None:
+        return ""
+    return fleet_autonomy_block(
+        *autonomy,
+        await fleet_instructions_for_run(db, fleet_id),
+        enforced=await fleet_enforces_at_tool_level(db, fleet_id),
+    )
 
 
 async def fleet_instructions_for_run(db, fleet_id: Any) -> str | None:

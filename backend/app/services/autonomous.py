@@ -1289,6 +1289,24 @@ async def _drain_coordination_retention() -> tuple[dict, bool]:
     return {"work_items": work_items, "shared_states": states}, more
 
 
+async def _drain_run_retention() -> tuple[int, bool]:
+    """One bounded pass of the assignment run retention (Operations > Executions).
+
+    Deletes at most :data:`run_retention.RUN_RETENTION_BATCH` finished runs past
+    the window (``services/run_retention.py``) and writes one platform audit entry
+    when it deleted any. Answers the runs deleted and whether more may be left,
+    which keeps :data:`wall_clock_schedule.RETENTION_DRAIN` set.
+    """
+    from app.services import run_retention
+    from app.services.coordination_retention import effective_coordination_retention
+
+    days = (await effective_coordination_retention())["assignment_run_days"]
+    deleted = await run_retention.purge_expired_runs(older_than_days=days)
+    if deleted:
+        await run_retention.audit_run_retention_pass(deleted, days)
+    return deleted, deleted >= run_retention.RUN_RETENTION_BATCH
+
+
 async def _cleanup_flow_events(db: AsyncSession) -> int:
     """Purge flow-event emissions past retention.
 
@@ -1380,7 +1398,7 @@ async def _cleanup_retained_files(db: AsyncSession, *, also: dict[str, int] | No
 
 
 async def _run_retention_pass(db: AsyncSession) -> None:
-    """One bounded pass of the check file, file and coordination retention sweeps (#768, #2070).
+    """One bounded pass of the check file, file, coordination and run retention sweeps (#768, #2070).
 
     Each sweep is capped per tick; when one stops at its cap, the backlog flag
     of :data:`wall_clock_schedule.RETENTION_DRAIN` makes the next ticks run this
@@ -1423,8 +1441,15 @@ async def _run_retention_pass(db: AsyncSession) -> None:
             )
     except Exception as e:
         logger.error("Coordination retention error: %s", format_exception_message(e), exc_info=True)
+    more_runs = False
+    try:
+        deleted_runs, more_runs = await _drain_run_retention()
+        if deleted_runs:
+            logger.info("Run retention: deleted %d finished assignment run(s)", deleted_runs)
+    except Exception as e:
+        logger.error("Run retention error: %s", format_exception_message(e), exc_info=True)
     await wall_clock_schedule.set_backlog(
-        wall_clock_schedule.RETENTION_DRAIN, more_checks or more_files or more_coordination
+        wall_clock_schedule.RETENTION_DRAIN, more_checks or more_files or more_coordination or more_runs
     )
 
 
@@ -1778,6 +1803,11 @@ async def _run_autonomous_tick_inner() -> int:
                 from app.services.ctem_case_routing import catch_up
 
                 counts["caught_up"] = await catch_up()
+                # Per-case decisions of a groupable kind asked of one person, folded into one card (#2451).
+                from app.services import ctem_decision_groups
+
+                counts["decisions_grouped"] = await ctem_decision_groups.consolidate(db)
+                await db.commit()
                 if any(counts.values()):
                     logger.info("CTEM case sweep: %s", counts)
         except Exception as e:
@@ -1896,6 +1926,10 @@ async def _run_autonomous_tick_inner() -> int:
                 polled = await poll_blocked_on_refs()
                 if polled["released"]:
                     logger.info("Reopened %d work item(s) whose references closed", polled["released"])
+                # Items waiting for an outbound A2A task that ended (#2265).
+                from app.services.work_item_a2a_refs import release_ended_a2a_tasks
+
+                await release_ended_a2a_tasks()
                 # The class of defect: every reference met, the item still blocked.
                 await release_satisfied_blocks()
                 # Items waiting on each other through items or gated pull requests (#606).
@@ -1949,6 +1983,15 @@ async def _run_autonomous_tick_inner() -> int:
                 logger.info("Raised work_item.past_due for %d item(s)", past_due)
         except Exception as e:
             logger.error("Past-due raise error: %s", format_exception_message(e), exc_info=True)
+        # The decision gates nobody opened in time: the administrators told once (#2390).
+        try:
+            from app.services.work_item_decision_reach import raise_unseen_decisions
+
+            unseen = await raise_unseen_decisions()
+            if unseen:
+                logger.info("Raised work_item.needs_human_unseen for %d item(s)", unseen)
+        except Exception as e:
+            logger.error("Unseen decision raise error: %s", format_exception_message(e), exc_info=True)
         # The CI completions a trigger filter could not judge (their enriched
         # facts timed out or the provider failed): read again, and triggered on
         # a match, so the last check of a head is never lost to a slow read.
@@ -2814,6 +2857,16 @@ async def _run_autonomous_tick_inner() -> int:
                 logger.info("Organization context: %d scheduled sync(s) ran", synced)
         except Exception as e:
             logger.error("Organization sync scheduler error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
+
+        # --- 9a'. The Intelligence policy's PIRs, read from every connected OpenCTI (#2435) ---
+        # No model call, no configuration: at most once an hour per process.
+        try:
+            from app.services.organization_pirs import refresh_if_due
+
+            await refresh_if_due(db)
+        except Exception as e:
+            logger.error("Intelligence policy refresh error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
         # --- 9b. Settle applied improvement proposals (#1044, #8256) ---

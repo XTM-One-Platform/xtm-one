@@ -1,8 +1,9 @@
-"""The LM Studio client: only through a relay route, bounded and typed, fixed sentences on failure.
+"""The LM Studio client: on the current route, bounded and typed, fixed sentences on failure.
 
 The relay route is a stand-in whose transport is an ``httpx.MockTransport``: the
 code under test goes through ``egress_client`` and the route's ``transport()``
-exactly as with a real relay group, and nothing leaves the process.
+exactly as with a real relay group, and nothing leaves the process. A direct
+call is caught by swapping the module's ``egress_client`` for a mocked client.
 """
 
 from __future__ import annotations
@@ -201,15 +202,33 @@ def test_job_ids(value, valid):
 # ---------------------------------------------------------------------------
 
 
-async def test_without_a_relay_route_nothing_is_sent():
-    sent: list = []
-    transport = httpx.MockTransport(lambda r: sent.append(r) or _json(_LISTING))
-    # Even a client whose transport would answer: the module refuses first.
+def _direct(monkeypatch, handler) -> list[httpx.Request]:
+    """Answer the module's direct calls with ``handler``; the requests sent."""
+    sent: list[httpx.Request] = []
+    transport = httpx.MockTransport(lambda r: sent.append(r) or handler(r))
+    monkeypatch.setattr(client, "egress_client", lambda **kwargs: httpx.AsyncClient(transport=transport, **kwargs))
+    return sent
+
+
+async def test_without_a_relay_route_the_server_is_called_directly(monkeypatch):
+    sent = _direct(monkeypatch, lambda request: _json(_LISTING))
+
+    models = await client.list_models(_CONNECTION)
+
+    [request] = sent
+    assert (request.method, str(request.url)) == ("GET", "http://gpu-host:1234/api/v1/models")
+    assert request.headers["authorization"] == "Bearer lm-token"
+    assert len(models) == 2
+
+
+async def test_an_unreachable_direct_server_is_unavailable(monkeypatch):
+    def _refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    _direct(monkeypatch, _refuse)
     with pytest.raises(client.LMStudioError) as refused:
-        async with httpx.AsyncClient(transport=transport):
-            await client.list_models(_CONNECTION)
-    assert refused.value.kind == "not_routed"
-    assert sent == []
+        await client.list_models(_CONNECTION)
+    assert (refused.value.kind, refused.value.public_message) == ("unavailable", client.PUBLIC_MESSAGES["unavailable"])
 
 
 async def test_the_listing_goes_through_the_route_with_the_token_and_is_typed():
@@ -418,11 +437,15 @@ async def test_the_connection_test_is_a_registered_probe():
     assert has_connectivity_probe("lmstudio")
 
 
-async def test_the_connection_test_needs_a_relay_group():
+async def test_the_connection_test_reaches_an_unrouted_server_directly(monkeypatch):
     from app.integrations.connectivity import ProbeContext
 
-    result = await client.check_connectivity(ProbeContext(provider="lmstudio", name="LM Studio", token=None, extra={}, integration=_integration(routed=False)))
-    assert (result.status, result.message) == ("error", client.PUBLIC_MESSAGES["not_routed"])
+    sent = _direct(monkeypatch, lambda request: _json(_LISTING))
+    result = await client.check_connectivity(
+        ProbeContext(provider="lmstudio", name="GPU box", token=None, extra={}, integration=_integration(routed=False))
+    )
+    assert (result.status, result.message) == ("ok", "GPU box is connected: 2 models on the server, 1 loaded.")
+    assert len(sent) == 1
 
 
 async def test_the_connection_test_counts_the_models_through_the_relay():

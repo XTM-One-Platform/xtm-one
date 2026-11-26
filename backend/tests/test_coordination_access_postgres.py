@@ -107,7 +107,7 @@ class _Fleet:
     def id(self, name: str) -> uuid.UUID:
         return self.agents[name].id
 
-    def tools(self, name: str, *, user_id: str | None = None):
+    def tools(self, name: str, *, user_id: str | None = None, acting_admin: bool = False):
         """The agent's tools as ``run_agent_chat`` builds them."""
         agent = self.agents[name]
         user = user_id or (str(self.member.id) if name == "P" else "anonymous")
@@ -117,6 +117,7 @@ class _Fleet:
             str(agent.id),
             is_company_managed=agent.is_company_managed,
             company_managed_agent=agent.is_company_managed,
+            acting_admin=acting_admin,
         )[1]
         ss = build_shared_state_tools(
             None,
@@ -124,6 +125,7 @@ class _Fleet:
             str(agent.id),
             is_company_managed=agent.is_company_managed,
             company_managed_agent=agent.is_company_managed,
+            acting_admin=acting_admin,
         )[1]
         return wi, ss
 
@@ -268,6 +270,40 @@ async def test_an_admin_keeps_full_rest_access_to_a_narrowed_row():
             str(item.id), user_id=str(fleet.admin.id), writer=person_writer(is_admin=True)
         )
         assert out["status"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_an_agent_acting_for_an_admin_reads_past_a_narrowing_and_writes_nothing_more() -> None:
+    """#2161 (Sam, 25 Nov 2026): a gate filed by a loop agent narrowed to
+    ``self`` is listed and read by another fleet agent whose turn acts for an
+    administrator, stays hidden when it acts for anyone else, and the
+    administrator's agent still cannot write past the write narrowing."""
+    async with _database() as sessions:
+        fleet = await _Fleet(sessions).create(A=_policy(read="self", write="self"))
+        a_items, a_state = fleet.tools("A")
+        await _call(a_items, "create_work_item", title="Remediation gate", correlation_key="ctem:remediation:1")
+        await _call(a_state, "set_shared_state", key="loop", value_json='{"stage": "gate"}')
+        item = await _item_created_by(sessions, fleet.id("A"), "Remediation gate")
+
+        b_items, _ = fleet.tools("B", user_id=str(fleet.member.id))
+        hidden = (await _call(b_items, "list_work_items", correlation_key_prefix="ctem:remediation:")).content
+        assert "Remediation gate" not in hidden
+
+        admin_items, admin_state = fleet.tools("B", user_id=str(fleet.admin.id), acting_admin=True)
+        listed = (await _call(admin_items, "list_work_items", correlation_key_prefix="ctem:remediation:")).content
+        assert "Remediation gate" in listed
+        assert "Remediation gate" in (await _call(admin_items, "get_work_item", work_item_id=str(item.id))).content
+        assert '"stage": "gate"' in (await _call(admin_state, "get_shared_state", key="loop")).content
+
+        admin_b = agent_writer(is_company_managed=True, agent_id=fleet.id("B"), acting_admin=True)
+        assert coordination_admits(
+            coordination_access_of(_policy(read="self", write="self")),
+            admin_b,
+            mode="read",
+            governor_id=fleet.id("A"),
+        )
+        with pytest.raises(CompanyManagedWriteRefusedError):
+            await wi_service.update_work_item(str(item.id), user_id=None, priority="high", writer=admin_b)
 
 
 # ── Two fleets, each narrowed to its own ──────────────────────────────────────

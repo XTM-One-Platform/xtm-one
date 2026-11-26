@@ -149,13 +149,13 @@ def opencrq_facts(assets: list[dict], facts: PlatformFacts) -> None:
     from app.services.organization_context_import import opencrq_primary_asset
 
     seen: set[str] = set()
-    jewels: list[PrimaryAsset] = []
+    pa_rows: list[PrimaryAsset] = []
     for asset in assets:
         row = opencrq_primary_asset(asset)
         if row is None or row.name.casefold() in seen:
             continue
         seen.add(row.name.casefold())
-        jewels.append(
+        pa_rows.append(
             PrimaryAsset(
                 name=row.name,
                 business_service=row.business_service,
@@ -165,9 +165,9 @@ def opencrq_facts(assets: list[dict], facts: PlatformFacts) -> None:
             )
         )
     # The most critical first, so a cut at 200 keeps them.
-    jewels.sort(key=lambda j: j.criticality != "critical")
-    if jewels:
-        facts.primary_assets = jewels
+    pa_rows.sort(key=lambda j: j.criticality != "critical")
+    if pa_rows:
+        facts.primary_assets = pa_rows
         facts.sources["primary_assets"] = "opencrq"
 
 

@@ -35,6 +35,7 @@ Deduplication strategy:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -165,7 +166,7 @@ _CHAT_LIST_PAGE = 50
 _CALENDAR_PAGE = 25
 _CALENDAR_SELECT = (
     "id,subject,start,end,location,organizer,isCancelled,createdDateTime,"
-    "lastModifiedDateTime,seriesMasterId,webLink,iCalUId"
+    "lastModifiedDateTime,seriesMasterId,webLink,iCalUId,attendees"
 )
 # An event first modified within this of its creation was created, not updated.
 _CREATED_WITHIN = timedelta(seconds=60)
@@ -2073,6 +2074,26 @@ def calendar_event_payload(event: dict, *, change_type: str = "") -> dict:
     event_id = event.get("id", "")
     modified = event.get("lastModifiedDateTime", "") or datetime.now(UTC).isoformat()
     kind = calendar_change_kind(event, change_type)
+    attendees = sorted(
+        str(((a or {}).get("emailAddress") or {}).get("address") or "").lower()
+        for a in (event.get("attendees") or [])
+        if isinstance(a, dict)
+    )
+    # What an agent acts on, without the save instant: two saves that change
+    # none of it share the digest, so the second is a duplicate run (#2216).
+    content = json.dumps(
+        [
+            start.get("dateTime", ""),
+            end.get("dateTime", ""),
+            start.get("timeZone", ""),
+            kind in ("cancelled", "deleted"),
+            kind == "deleted",
+            event.get("subject", ""),
+            (event.get("location") or {}).get("displayName", ""),
+            attendees,
+        ],
+        separators=(",", ":"),
+    )
     return {
         "event_id": event_id,
         "change_kind": kind,
@@ -2089,6 +2110,9 @@ def calendar_event_payload(event: dict, *, change_type: str = "") -> dict:
         # share it): with ``last_modified_at``, the run's dedup key.
         "ical_uid": event.get("iCalUId", "") or "",
         "last_modified_at": event.get("lastModifiedDateTime", ""),
+        # Digest of the time, cancellation, subject, location and attendees:
+        # with ``ical_uid``, the run's dedup key.
+        "content_digest": hashlib.sha256(content.encode()).hexdigest()[:16],
         "web_link": event.get("webLink", ""),
         "message_id": f"{event_id}@{modified}" if event_id else "",
         "trigger_type": "integration_event",

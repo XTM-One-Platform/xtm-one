@@ -750,7 +750,7 @@ jobs:
           if [ -z "$open" ]; then
             gh issue create --repo "$GITHUB_REPOSITORY" \
               --title "ci(sandbox): the weekly sandbox image checks failed" \
-              --label ci --label sandbox --label security \
+              --label ci --label sandbox \
               --body "A stale base digest or CA bundle is the likely cause. Run: $RUN_URL"
           else
             gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "Failed again: $RUN_URL"

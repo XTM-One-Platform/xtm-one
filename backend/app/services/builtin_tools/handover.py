@@ -25,7 +25,7 @@ from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping
 from typing import TYPE_CHECKING
 
 from app.core.utils import format_exception_message, safe_uuid
-from app.services.handover_types import is_legacy_handover_map
+from app.services.handover_types import handover_type_set, is_legacy_handover_map
 from app.services.output_format import (
     CALL_OUTPUT_SCHEMA_KEY,
     CALL_OUTPUT_SCHEMA_PROPERTY,
@@ -220,9 +220,9 @@ def build_sub_agent_tools(
             return None, background_task_refusal(
                 requested, f"it is not a delegate peer of this agent - {how}"
             )
-        if str(owned.id) in (handover_type_map or {}) and peer_handover_type(
+        if str(owned.id) in (handover_type_map or {}) and "delegate" not in peer_handover_types(
             handover_type_map, str(owned.id)
-        ) != "delegate":
+        ):
             return None, background_task_refusal(
                 requested, _other_type_reason(handover_type_map, str(owned.id))
             )
@@ -489,6 +489,17 @@ def build_sub_agent_tools(
         """
         return task_result_file_ids(payload or {})
 
+    def _child_run_note(payload: dict | None) -> str:
+        """``", run <id>"`` naming the task's own run (``get_run`` reads it), or ``""``.
+
+        A parent that records what a delegate found (a case note, a ticket) cites
+        this run, not its own: the audit trail then leads to the run that did the work.
+        """
+        run_id = str((payload or {}).get("run_id") or "").strip()
+        if not run_id or run_id == str((payload or {}).get("task_id") or ""):
+            return ""
+        return f", run {run_id}"
+
     async def _with_result_files(text: str, file_ids: list[str]) -> str:
         """Register the files behind *file_ids* in the parent's FileContext.
 
@@ -547,7 +558,11 @@ def build_sub_agent_tools(
             result = await get_task_result(db, tid, user_id)
             if not result:
                 parts.append(f"{tid[:12]}: not found")
-            elif result["status"] == "failed":
+                continue
+            # The child's own run (#2240): a verdict the parent records cites the
+            # run that produced it, never the parent's run.
+            run_note = _child_run_note(result)
+            if result["status"] == "failed":
                 # A failed task's partial output (the batches written before
                 # the deadline) is handed over like a completed one's:
                 # for a parent with no conversation there is no wake to carry
@@ -556,7 +571,7 @@ def build_sub_agent_tools(
                 file_ids = _result_file_ids(result)
                 files_note = f", {len(file_ids)} file(s) produced" if file_ids else ""
                 parts.append(
-                    f"{tid[:12]}: failed{files_note}\n"
+                    f"{tid[:12]}: failed{files_note}{run_note}\n"
                     f"  Error: {error[:300].replace(chr(10), ' ')}"
                 )
                 finished_file_ids.extend(file_ids)
@@ -577,7 +592,7 @@ def build_sub_agent_tools(
                     else ""
                 )
                 parts.append(
-                    f"{tid[:12]}: completed ({len(text):,} chars{files_note})\n"
+                    f"{tid[:12]}: completed ({len(text):,} chars{files_note}){run_note}\n"
                     f"  Preview: {preview}...{paging_note}"
                 )
                 finished_file_ids.extend(file_ids)
@@ -599,10 +614,11 @@ def build_sub_agent_tools(
         result = await get_task_result(db, task_id, user_id)
         if not result:
             return f"Task {task_id} not found."
+        run_note = _child_run_note(result)
         if result["status"] == "failed":
             # The failure text plus whatever the task wrote before it failed -
             # a partial export is still the parent's to check.
-            text = f"Task failed: {result.get('error') or 'no error recorded'}"
+            text = f"Task failed: {result.get('error') or 'no error recorded'}{run_note}"
             return await _with_result_files(text, _result_file_ids(result))
         if result["status"] != "completed":
             return f"Task is still {result['status']}. Check back later."
@@ -658,6 +674,36 @@ def build_sub_agent_tools(
         if not parts:
             return "No background tasks found, and nothing running at a partner."
         return "\n".join(parts)
+
+    async def _cancel_background_task(task_ids: str) -> str:
+        """Cancel background tasks this agent spawned for the acting user (#2217).
+
+        The same durable cancel as the UI's stop button (lease released, a
+        running worker bails on its next step, delivery suppressed), scoped to
+        the acting user's tasks spawned by this agent: another agent's task or
+        another user's reads as not found, never as refused.
+        """
+        from app.services.sub_agent import cancel_sub_agent_task
+
+        if not isinstance(task_ids, str):
+            return _invalid_task_id_message(task_ids)
+        ids = [tid.strip() for tid in task_ids.split(",") if tid.strip()]
+        if not ids:
+            return "No task IDs provided."
+        lines: list[str] = []
+        for tid in ids:
+            if not _is_uuid_like(tid):
+                lines.append(_invalid_task_id_message(tid))
+                continue
+            result = await cancel_sub_agent_task(tid, user_id, spawned_by=str(parent_agent_id))
+            if result is None:
+                lines.append(f"{tid}: not found among your background tasks")
+            elif result.get("already_terminal"):
+                lines.append(f"{tid}: already {result['status']}, unchanged")
+            else:
+                was = "running" if result.get("was_running") else "pending"
+                lines.append(f"{tid}: cancelled (was {was})")
+        return "\n".join(lines)
 
     async def _collect_task_results(
         task_ids: str,
@@ -806,6 +852,7 @@ def build_sub_agent_tools(
     executor.register("get_task_result", _get_task_result)
     executor.register("get_full_task_result", _get_full_task_result)
     executor.register("list_background_tasks", _list_background_tasks)
+    executor.register("cancel_background_task", _cancel_background_task)
     executor.register("collect_task_results", _collect_task_results)
     executor.register("clear_collected", _clear_collected)
 
@@ -964,6 +1011,27 @@ def build_sub_agent_tools(
                     },
                 },
                 "required": [],
+            },
+            source="builtin:sub_agent",
+        )
+    )
+    definitions.append(
+        ToolDefinition(
+            name="cancel_background_task",
+            description=(
+                "Stop background tasks you spawned that are no longer needed: a "
+                "running one stops at its next step and its result is never "
+                "delivered. One line per task: cancelled, already finished, or not found."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "task_ids": {
+                        "type": "string",
+                        "description": "One or more task IDs, comma-separated",
+                    },
+                },
+                "required": ["task_ids"],
             },
             source="builtin:sub_agent",
         )
@@ -1419,17 +1487,27 @@ def offered_handover_types(
     )
 
 
-def peer_handover_type(type_map: Mapping[str, str] | None, agent_id: str) -> str | None:
-    """The handover type a peer of an explicit map is reached through, ``None`` for no tool.
+def peer_handover_types(type_map: Mapping[str, str] | None, agent_id: str) -> frozenset[str]:
+    """Every tool type a peer of an explicit map is reached through, empty for no tool.
 
-    A ``mandatory_transfer`` peer is routed after the agent's answer, never by
-    the model. A peer without a type, or with one no tool implements, runs as
-    ``delegate``.
+    An entry holds one type, several joined by ``|`` or ``all``
+    (``handover_type_set``). A ``mandatory_transfer`` peer is routed after the
+    agent's answer, never by the model. A peer without a type runs as ``delegate``.
     """
-    h_type = (type_map or {}).get(agent_id, "delegate")
-    if h_type == "mandatory_transfer":
-        return None
-    return h_type if h_type in TOOL_HANDOVER_TYPES else "delegate"
+    types = handover_type_set((type_map or {}).get(agent_id, "delegate"))
+    if "mandatory_transfer" in types:
+        return frozenset()
+    return types & frozenset(TOOL_HANDOVER_TYPES)
+
+
+def peer_handover_type(type_map: Mapping[str, str] | None, agent_id: str) -> str | None:
+    """The first handover type a peer of an explicit map is reached through, ``None`` for no tool.
+
+    The one a refusal names (``consult``, then ``delegate``, then ``transfer``
+    for a peer of several types, ``peer_handover_types``).
+    """
+    types = peer_handover_types(type_map, agent_id)
+    return next((h_type for h_type in _LEGACY_TOOL_ORDER if h_type in types), None)
 
 
 def peer_tool_types(
@@ -1445,8 +1523,7 @@ def peer_tool_types(
     offered_types = frozenset(offered).intersection(TOOL_HANDOVER_TYPES)
     if is_legacy_handover_map(type_map):
         return offered_types
-    h_type = peer_handover_type(type_map, agent_id)
-    return offered_types & {h_type} if h_type else frozenset()
+    return offered_types & peer_handover_types(type_map, agent_id)
 
 
 def reachable_handover_peers(
@@ -1513,11 +1590,19 @@ def handover_peer_tag(
     (``peer_tool_types``). The legacy tag and instruction are shorter than the
     ``[DELEGATE]`` ones they replace, so the prompt does not grow.
     """
-    if is_legacy_handover_map(type_map):
-        types = peer_tool_types(type_map, agent_id, offered) or frozenset(TOOL_HANDOVER_TYPES)
+    legacy = is_legacy_handover_map(type_map)
+    if legacy or len(peer_handover_types(type_map, agent_id)) > 1:
+        types = peer_tool_types(type_map, agent_id, offered) or (
+            frozenset(TOOL_HANDOVER_TYPES) if legacy else peer_handover_types(type_map, agent_id)
+        )
         tools = [f"`{HANDOVER_TOOL_NAMES[h_type]}`" for h_type in _LEGACY_TOOL_ORDER if h_type in types]
         listed = ", ".join(tools[:-1])
-        return LEGACY_HANDOVER_TAG, f"Use {listed} or {tools[-1]}." if listed else f"Use {tools[-1]}."
+        tag = (
+            LEGACY_HANDOVER_TAG
+            if legacy or len(types) == len(TOOL_HANDOVER_TYPES)
+            else "|".join(h_type.upper() for h_type in _LEGACY_TOOL_ORDER if h_type in types)
+        )
+        return tag, f"Use {listed} or {tools[-1]}." if listed else f"Use {tools[-1]}."
     h_type = peer_handover_type(type_map, agent_id) or "delegate"
     return h_type.upper(), type_instructions[h_type]
 

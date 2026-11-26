@@ -34,6 +34,19 @@ from typing import Any
 
 GATE_KEY = "ctem.remediation.decision"
 MAX_OPTIONS = 6
+#: The room of each option text on the card (#2174): a longer text is refused, never cut,
+#: so the decider reads what the agent meant and the agent rewrites it shorter.
+TEXT_LIMITS: dict[str, int] = {
+    "label": 120,
+    "residual_risk": 160,
+    "time_to_apply": 60,
+    "runbook": 120,
+    "not_priced_reason": 120,
+}
+#: What an option without figures reads when the agent gave no reason (#2174).
+NOT_PRICED_DEFAULT = "no risk figures given"
+#: The widest currency an effect line names: an ISO 4217 code is three letters (#2179).
+_WIDEST_CURRENCY = "XXX"
 
 
 class DecisionInputError(ValueError):
@@ -51,6 +64,12 @@ class RemediationOption:
     time_to_apply: str = ""
     runbook: str = ""
     preapproved: bool = False
+    not_priced_reason: str = ""
+
+    @property
+    def priced(self) -> bool:
+        """Whether the option carries any risk figure."""
+        return any(v is not None for v in (self.cost, self.expected_loss_before, self.expected_loss_after))
 
 
 @dataclass(frozen=True)
@@ -88,6 +107,18 @@ def _text(value: Any, limit: int) -> str:
     return fit(" ".join(str(value or "").split()), limit)
 
 
+def _field(item: dict[str, Any], name: str, key: str) -> str:
+    """An option text within its room, whitespace collapsed; a longer one is refused with its length (#2174)."""
+    text = " ".join(str(item.get(name) or "").split())
+    limit = TEXT_LIMITS[name]
+    if len(text) > limit:
+        raise DecisionInputError(
+            f"option {key or '?'} {name} is {len(text)} characters, the card holds {limit}: write it shorter "
+            "and put the detail in the case notes"
+        )
+    return text
+
+
 def parse_options(raw: Any) -> list[RemediationOption]:
     """The options as given, checked: 1 to 6, unique keys, a label each, figures as numbers."""
     if not isinstance(raw, list) or not raw:
@@ -100,7 +131,7 @@ def parse_options(raw: Any) -> list[RemediationOption]:
         if not isinstance(item, dict):
             raise DecisionInputError("each option is an object with key and label")
         key = _text(item.get("key"), 40)
-        label = _text(item.get("label"), 120)
+        label = _field(item, "label", key)
         if not key or not label:
             raise DecisionInputError("each option needs a key and a label")
         if key.casefold() in seen:
@@ -113,13 +144,34 @@ def parse_options(raw: Any) -> list[RemediationOption]:
                 cost=_number(item.get("cost"), f"{key}.cost"),
                 expected_loss_before=_number(item.get("expected_loss_before"), f"{key}.expected_loss_before"),
                 expected_loss_after=_number(item.get("expected_loss_after"), f"{key}.expected_loss_after"),
-                residual_risk=_text(item.get("residual_risk"), 80),
-                time_to_apply=_text(item.get("time_to_apply"), 60),
-                runbook=_text(item.get("runbook"), 120),
-                preapproved=bool(item.get("preapproved")) and bool(_text(item.get("runbook"), 120)),
+                residual_risk=_field(item, "residual_risk", key),
+                time_to_apply=_field(item, "time_to_apply", key),
+                runbook=_field(item, "runbook", key),
+                preapproved=bool(item.get("preapproved")) and bool(_field(item, "runbook", key)),
+                not_priced_reason=_field(item, "not_priced_reason", key),
             )
         )
+        _check_effect_room(out[-1])
     return out
+
+
+def _check_effect_room(option: RemediationOption) -> None:
+    """Refuse an option whose effect line, once composed, would not fit the card (#2179).
+
+    Each field fits its own room, but the line joins the figures (or the not-priced
+    reason), the residual risk, the time to apply and the runbook: measured with
+    figures shown in the widest currency, the longest the card can render, so the
+    effect is never cut whoever reads it.
+    """
+    from app.services.decision_ask import MAX_EFFECT_CHARS
+
+    length = len(_effect_line(option, figures=True, currency=_WIDEST_CURRENCY))
+    if length > MAX_EFFECT_CHARS:
+        raise DecisionInputError(
+            f"option {option.key} effect is {length} characters once its figures, residual risk, time to apply "
+            f"and runbook are joined, the card holds {MAX_EFFECT_CHARS}: shorten residual_risk, time_to_apply, "
+            "runbook or not_priced_reason and put the detail in the case notes"
+        )
 
 
 #: A version an option's text cites: "9.10.0", "v7.2.6" (two dotted numbers at least),
@@ -221,9 +273,23 @@ def _money(value: float | None, currency: str = "") -> str:
 
 
 def option_effect(option: RemediationOption, *, figures: bool, currency: str = "") -> str:
-    """One line per option: what it costs, the risk it leaves, how long it takes (figures only when readable)."""
+    """One line per option: what it costs, the risk it leaves, how long it takes (figures only when readable).
+
+    ``parse_options`` refuses an option whose line would exceed the card's room (#2179),
+    so ``fit`` here never cuts a parsed option.
+    """
+    from app.services.decision_ask import MAX_EFFECT_CHARS, fit
+
+    return fit(_effect_line(option, figures=figures, currency=currency), MAX_EFFECT_CHARS) or "no figures given"
+
+
+def _effect_line(option: RemediationOption, *, figures: bool, currency: str) -> str:
+    """The effect line of *option*, whole, before any room is applied."""
     parts: list[str] = []
-    if figures:
+    if figures and not option.priced:
+        # Nothing to print as figures: say why, never "cost unknown" three times (#2174).
+        parts.append(f"not priced: {option.not_priced_reason or NOT_PRICED_DEFAULT}")
+    elif figures:
         parts.append(f"cost {_money(option.cost, currency)}")
         parts.append(
             f"expected loss {_money(option.expected_loss_before, currency)} before, "
@@ -235,9 +301,7 @@ def option_effect(option: RemediationOption, *, figures: bool, currency: str = "
         parts.append(f"time to apply {option.time_to_apply}")
     if option.preapproved:
         parts.append(f"pre-approved runbook {option.runbook}")
-    from app.services.decision_ask import MAX_EFFECT_CHARS, fit
-
-    return fit("; ".join(parts), MAX_EFFECT_CHARS) or "no figures given"
+    return "; ".join(parts)
 
 
 def decision_ask(
@@ -249,18 +313,23 @@ def decision_ask(
     reason: str,
     case_url: str = "",
     currency: str = "",
+    severity: str = "",
+    sla_due_at: Any = None,
 ) -> dict[str, Any]:
     """The ask of the unified decision system for a waiting remediation decision, validated by ``normalize_ask``.
 
     *currency* is the organization profile's (ISO 4217): the figures read in it;
-    empty when the profile names none.
+    empty when the profile names none. *severity* (P1 to P4) opens the context and
+    *sla_due_at* is the ask's deadline, which the card shows in the reader's time
+    zone (#2174).
     """
     from app.services.decision_ask import normalize_ask
 
     choice = recommended(options, recommendation)
+    lead = f"{severity.strip()} case. " if severity and severity.strip() else ""
     ask: dict[str, Any] = {
         "question": _text(f"Which remediation do we apply to the case {case_title}?", 500),
-        "context": _text(f"The remediation decision waits because {reason}.", 800),
+        "context": _text(f"{lead}The remediation decision waits because {reason}.", 800),
         "options": [
             {"key": o.key, "label": o.label, "effect": option_effect(o, figures=figures, currency=currency)}
             for o in options
@@ -269,6 +338,8 @@ def decision_ask(
     }
     if case_url:
         ask["links"] = [{"label": "The case", "url": case_url}]
+    if sla_due_at:
+        ask["deadline"] = sla_due_at
     normalized = normalize_ask(ask)
     if normalized is None:  # pragma: no cover - the ask above is never empty
         raise DecisionInputError("the decision could not be built")

@@ -966,6 +966,12 @@ def event_filter_reason(
 
         if event in DEALHUB_EVENTS:
             return dealhub_filter_reason(payload, filter_config)
+    if payload.get("provider") == "defender":
+        from app.services.defender_stream import EVENTS as DEFENDER_EVENTS
+        from app.services.defender_stream import filter_reason as defender_filter_reason
+
+        if event in DEFENDER_EVENTS:
+            return defender_filter_reason(payload, filter_config)
     if event in JIRA_EVENTS and payload.get("provider") == "jira":
         from app.services.jira_events import filter_reason as jira_filter_reason
 

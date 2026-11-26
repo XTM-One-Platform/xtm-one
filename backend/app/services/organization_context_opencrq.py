@@ -51,13 +51,13 @@ class SyncPlan:
     """What the sync changes, on each side, and what it could not decide."""
 
     profile: OrganizationProfile
-    linked: list[tuple[str, str]] = field(default_factory=list)  # (jewel, asset id)
+    linked: list[tuple[str, str]] = field(default_factory=list)  # (primary asset, asset id)
     pushed: list[tuple[str, str, str]] = field(default_factory=list)  # (asset id, name, criticality)
     pulled: list[tuple[str, str]] = field(default_factory=list)  # (asset id, name)
-    ambiguous: list[str] = field(default_factory=list)  # jewel names matching several assets
-    stale: list[tuple[str, str]] = field(default_factory=list)  # (jewel, asset id OpenCRQ lacks)
-    #: Synced jewels whose pushed criticality falls below the sync's threshold: kept as typed rows (#1473).
-    released: list[tuple[str, str]] = field(default_factory=list)  # (jewel, asset id)
+    ambiguous: list[str] = field(default_factory=list)  # primary asset names matching several assets
+    stale: list[tuple[str, str]] = field(default_factory=list)  # (primary asset, asset id OpenCRQ lacks)
+    #: Synced primary assets whose pushed criticality falls below the sync's threshold: kept as typed rows (#1473).
+    released: list[tuple[str, str]] = field(default_factory=list)  # (primary asset, asset id)
     #: The threshold the plan pulled with, and the assets read by OpenCRQ criticality (#1558): an empty
     #: plan over assets none of which reaches the threshold says so, never "already agree".
     min_criticality: str = DEFAULT_MIN_CRITICALITY
@@ -129,41 +129,41 @@ def plan_sync(
     updated = profile.model_copy(deep=True)
     rated = [{"criticality": primary_asset_level(a)} for a in by_id.values()]
     plan = SyncPlan(profile=updated, min_criticality=min_criticality, by_criticality=count_by_criticality(rated))
-    jewels: list[PrimaryAsset] = []
+    pa_rows: list[PrimaryAsset] = []
     claimed: set[str] = set()
-    for jewel in updated.primary_assets:
-        asset_id = jewel.opencrq_asset_id
-        if asset_id and asset_id not in by_id and jewel.source == "opencrq":
+    for pa_row in updated.primary_assets:
+        asset_id = pa_row.opencrq_asset_id
+        if asset_id and asset_id not in by_id and pa_row.source == "opencrq":
             # A row an older build keyed on a SUPPORTING asset: the import supersedes it.
-            jewels.append(jewel)
+            pa_rows.append(pa_row)
             continue
         if not asset_id:
-            matches = by_name.get(jewel.name.casefold(), [])
+            matches = by_name.get(pa_row.name.casefold(), [])
             if len(matches) > 1:
-                plan.ambiguous.append(jewel.name)
+                plan.ambiguous.append(pa_row.name)
             elif matches:
                 asset_id = str(matches[0]["id"])
-                jewel = jewel.model_copy(update={"opencrq_asset_id": asset_id})
-                plan.linked.append((jewel.name, asset_id))
+                pa_row = pa_row.model_copy(update={"opencrq_asset_id": asset_id})
+                plan.linked.append((pa_row.name, asset_id))
         if asset_id:
             if asset_id in by_id:
                 claimed.add(asset_id)
             else:
-                plan.stale.append((jewel.name, asset_id))
-        jewels.append(jewel)
+                plan.stale.append((pa_row.name, asset_id))
+        pa_rows.append(pa_row)
 
-    named = {j.name.casefold() for j in jewels}
+    named = {j.name.casefold() for j in pa_rows}
     for asset_id, asset in by_id.items():
         if asset_id in claimed:
             continue
         pulled = opencrq_primary_asset(asset, min_criticality)
         if pulled is None or pulled.name.casefold() in named:
             continue
-        jewels.append(pulled)
+        pa_rows.append(pulled)
         named.add(pulled.name.casefold())
         plan.pulled.append((asset_id, pulled.name))
 
-    updated.primary_assets = jewels[:200]
+    updated.primary_assets = pa_rows[:200]
     return plan
 
 

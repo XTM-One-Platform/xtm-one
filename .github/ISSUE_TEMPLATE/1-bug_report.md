@@ -8,6 +8,12 @@ type: bug
 
 ---
 
+<!--
+SECURITY: do NOT use this form for a vulnerability (access-control bypass, data exposure,
+injection, leaked secret, ...). This repository is public. Report it privately:
+https://github.com/XTM-One-Platform/xtm-one/security/advisories/new
+-->
+
 ## Description
 
 <!-- Please provide a clear and concise description of the bug. -->

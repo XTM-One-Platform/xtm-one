@@ -136,7 +136,11 @@ time, provider label, hosts observed, the coverage list, the statuses, the count
 per path (with `recorded`, `new_host_withheld` and `out_of_scope`) and the time of the pass it
 compared with. An administrator reads the latest ones with
 `GET /api/v1/ctem-signals/attack-surface/passes?limit=N` (`truncated` true when
-a read hit its bound), so a pass that found nothing is still visible.
+a read hit its bound), so a pass that found nothing is still visible. No pass
+at all answers `why_empty`: the first step the schedule stops at (pass off, no
+owned domains or ranges, no readable provider) or "no pass has completed yet"
+(#2331). The repair's answer carries `signals`, each with its id, host,
+`first_seen_at`, `observed_at` and state, so a dry run can be checked by date.
 
 Repair: `POST /api/v1/ctem-signals/attack-surface/repair-new-hosts` with
 `{"dry_run": false}` (administrators; `dry_run` true by default answers the
@@ -145,9 +149,9 @@ no `previous_pass_at` (raised before this rule), with the verdict
 `false_positive` and reason code `partial_previous_read`. The hosts stay in the
 baseline; a signal that opened a case is left to the case step.
 
-Agents call both through the `ctem_repair` built-in group
-(`dev-docs/ctem-cases.md` section 8.2): `list_ctem_attack_surface_passes` and
-`repair_ctem_attack_surface_new_hosts` (`dry_run` true by default).
+Agents read the passes through the `ctem` built-in group
+(`list_ctem_attack_surface_passes`, `dev-docs/ctem-cases.md` section 8.1); the
+repair is an administrator REST route only since #2443 (section 8.2).
 
 ## 2ter. OpenAEV feeds (CTEM-27)
 
@@ -169,9 +173,10 @@ loop trace shows their evidence as raw lines.
   integration's owner (as the CTEM ticketing sync), listed in the credential
   gate (`tests/test_integration_credential_gate.py`). The token only reads the
   outside view of the owned domains and ranges.
-- The signals are recorded by `system`: only an administrator reads them
-  (`ctem-signals.md`, visibility). A user who is not an administrator sees no
-  outside-lens signal.
+- The signals are recorded by `system`: an administrator or a member of a
+  group with a CTEM view or decide right reads them (`ctem-signals.md`,
+  visibility, #2441). A person with no CTEM right sees no outside-lens signal
+  and no CTEM page at all.
 - The owned domains, the ranges and the pass settings are profile fields: only
   the profile edit right changes them.
 

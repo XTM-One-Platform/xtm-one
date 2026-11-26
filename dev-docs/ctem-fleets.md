@@ -177,7 +177,13 @@ Common rules:
   case opened from a signal starts with an owner (`services/ctem_case_owner.py`):
   the owner of an affected asset's records, else of one of their asset groups,
   else `CTEM_CASE_DEFAULT_OWNER`, matched to an active account by email only;
-  an `owner` case event records how it was found. Which fleet runs a case
+  else the CTEM decider (#2452): an active member of a group granting `decide`
+  with notify on, else an active administrator, the seed account only when it
+  is the sole one, the first by account creation then id; an `owner` case event
+  records how it was found. The owner is set at the opening by this code, never
+  by the loop agent; the case sweep gives the decider to an open case with no
+  owner and no `owner` event (`backfill_owners`, idempotent, no notification),
+  so an owner a person cleared stays cleared. Which fleet runs a case
   is declared on the fleet (#1966, `fleets.case_ownership`: `paths` null for
   every trigger path or a list, `key` its case item prefix), and counts only
   while a home member's "Case opened or reopened" automation is on. The loop
@@ -213,6 +219,17 @@ Common rules:
   signal, and the note lists their identifiers (first 50) so an operator can
   record a signal by hand. Gates are unchanged. Tests:
   `tests/test_ctem_fleets_on_cases.py`.
+- **One writer per counter (#2250).** Each counter of `ctem:f1:state` and
+  `ctem:f2:state` has exactly one seeded writer, named in
+  `CTEM_F1_COUNTER_WRITERS` / `CTEM_F2_COUNTER_WRITERS` (`builtin_agents.py`)
+  and in both personas: the F1 Weekly threat sweep writes `threats_reviewed`,
+  `threats_relevant` and `last_refresh` once per week; the F1 Re-test due
+  writes `cases_resolved` and `loss_avoided` once per resolved case (the note
+  names the case id, so a resumed run adds nothing); the F2 Daily backlog pass
+  sets `cve_triaged`, `cve_validated` and `last_pass` counted from the cases;
+  the F2 Re-test due writes `ticket_closed_retested` once per case. The case
+  listener (up to 5 runs at once) and the F2 triage listeners never write them.
+  Tests: `tests/test_ctem_counter_writers.py`.
 - **Bounded shared state (#10789).** Every seeded persona that keeps a list in
   shared state states its bound: a closed case leaves the open list and only
   bumps the counters, a history or closed list is appended with `keep_last`
@@ -644,12 +661,15 @@ generated from `OrganizationProfile`: every list field but `regions` and
 `tracked_organizations`; a list added to the model is a category without a
 change there. `get_organization_context(category, query, offset, limit)`
 reads one by page (at most 200 rows, `query` a case-insensitive substring
-over the row's values); `category="*"` lists them with their sizes. The
-categories preloaded after the block come from the same cascade on
-`organization_context_categories` (platform JSON list, default `[]`; agent
-and assignment NULL = inherit, a list, empty included, wins;
-`resolve_categories`), each capped at `PRELOAD_MAX_CHARS` = 6,000 characters
-with the call that reads the rest. The brief notice of an incomplete
+over the row's values); `category="*"` lists them with their sizes. No
+list is preloaded into a prompt (#2443): after the block comes one
+inventory line (`render_inventory_line`, at most `INVENTORY_LINE_MAX_CHARS`
+= 400 characters) with the asset, software, group and primary asset counts
+(`organization_inventory_query.inventory_sizes`) and the names of the query
+functions (`inventory_query.INVENTORY_QUERY_TOOLS`), never a row; Copilot
+mode leaves it out. `organization_context_categories` (platform, agent,
+assignment) is still stored and accepted by the API for one release, and
+ignored. The brief notice of an incomplete
 profile ("Organization context incomplete: missing ...", #11586) and the
 CTEM-only fields (`CTEM_ONLY_FIELDS`: PIRs, risk appetite thresholds,
 loaded hourly rate, ticketing target) are CTEM-scoped (#1384): the summary,
@@ -668,9 +688,7 @@ set in the agent and assignment forms, `PUT /api/v1/agents/{id}`,
 defaults are `GET|PUT /api/v1/organization-context/injection` (`enabled`,
 `categories`, `available_categories` read-only). Every seeded agent
 inherits (the seed never writes the mode, so a person's opt-out survives a
-refresh); the CTEM vulnerability orchestrator, triage analyst and
-remediation coordinator preload `tech_stack`, `primary_assets`,
-`assets_exposure` and `prioritization_policy` (#11543).
+refresh).
 
 The #11543 categories ride the same registry: `assets_exposure` and
 `enterprise_knowledge` are list fields (generated), `prioritization_policy`
@@ -699,21 +717,21 @@ the plan, `true` writes it) and the primary assets are reconciled with the
 company-managed OpenCRQ's supporting assets, read with a token minted for
 that administrator:
 
-- a jewel with no `opencrq_asset_id` whose name matches exactly one asset
+- a primary asset with no `opencrq_asset_id` whose name matches exactly one asset
   (case-insensitive) is linked to it; several matches are reported as
   `ambiguous`, never picked;
-- profile to OpenCRQ: a linked jewel's criticality is written to the asset
+- profile to OpenCRQ: a linked primary asset's criticality is written to the asset
   (`low`, `medium`, `high`, `critical` -> `very_high`) when they differ;
-- OpenCRQ to profile: a `very_high` asset no jewel names joins the profile
+- OpenCRQ to profile: a `very_high` asset no primary asset names joins the profile
   as a `critical` primary asset linked to it;
-- a jewel whose asset OpenCRQ no longer holds is reported
+- a primary asset whose asset OpenCRQ no longer holds is reported
   (`not_in_opencrq`) and kept;
-- a link never makes a typed jewel an OpenCRQ row: it stays `manual` with
+- a link never makes a typed primary asset an OpenCRQ row: it stays `manual` with
   `opencrq_asset_id` as a link (only a row with no `source` at all, saved
   before provenance, reads as an OpenCRQ row);
-- a synced jewel whose pushed criticality falls below the primary-asset sync's
+- a synced primary asset whose pushed criticality falls below the primary-asset sync's
   `min_criticality` becomes a typed row linked to its asset
-  (`kept_below_sync_threshold`), so the sync never removes a jewel for a
+  (`kept_below_sync_threshold`), so the sync never removes a primary asset for a
   criticality the reconcile wrote. A sync with `remove_gone` removes only the
   rows stamped with its own `sync_id`; the others are reported (`gone_kept`).
 
@@ -724,8 +742,8 @@ an administrator calls `POST /api/v1/organization-context/draft` and gets a
 proposed profile, nothing saved, read with a token minted for that
 administrator. OpenCTI gives the platform organization's name and first
 sector and the PIR ids; OpenAEV gives its security platforms as tech stack
-entries; OpenCRQ gives its `high` and `very_high` supporting assets as crown
-jewels linked to their asset (`very_high` -> `critical`). Only an empty field
+entries; OpenCRQ gives its `high` and `very_high` supporting assets as primary
+assets linked to their asset (`very_high` -> `critical`). Only an empty field
 of the current profile is filled, each filled field names its platform
 (`filled`), and a platform not connected or unreadable is listed in
 `unavailable`, never guessed and never a failure. No model is involved. The
@@ -1172,24 +1190,33 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   primary organization profile, so an object such as `{"pir_ids": [...]}` is
   refused. A subset of the profile PIRs is not supported: the playbook
   listens to every PIR of the profile; narrow the PIRs in the profile.
-- Trigger rule "PIR score thresholds" (CTEM-08):
+- Trigger rule "PIR score thresholds" (CTEM-08, per PIR since #2435):
   `trigger_config.pir_min_score: "policy"` (beside `provision`, never sent
-  to OpenCTI) holds a PIR playbook delivery (below) to the threshold of the
-  primary profile's prioritization policy: `pir_min_score_vulnerability`
-  (default 70) for a Vulnerability, `pir_min_score_threat` (default 75) for
-  threat activity (intrusion set, threat actor, campaign, malware). Both are
-  policy settings, bounded 0 to 100, never constants. The delivered score
-  lags one change, so the receiver re-reads the entity's live
-  `pirInformation(pirId)` for each delivered PIR with the trigger's OpenCTI
-  integration and starts the run when one PIR reaches the threshold; a score
-  it cannot read drops the delivery naming why (a narrowing rule never widens
-  on an outage). A delivery whose entity is not of the listener's
-  `provision.entity_types` is dropped too, since one playbook per listener
-  delivers every flag of the profile PIRs, and so is any type the policy has
-  no threshold for (a report, an indicator): the rule fails closed. Seeded
-  on "Vulnerability flagged in a PIR" (F2) and "Threat activity flagged in a PIR" (F1), both opt-in;
-  the playbook keeps `pir_min_score` 1 so the policy, not the provisioned
-  object, holds the threshold and an edit in Settings needs no reprovision.
+  to OpenCTI) holds a PIR playbook delivery (below) to the minimum score of
+  each delivered PIR on the Intelligence policy (`organization_pirs`, one row
+  per OpenCTI PIR, refreshed hourly from every connected OpenCTI by the
+  scheduler, `services/organization_pirs.py`). Only the PIRs enabled in
+  signals count: the hydrated profile derives `pir_ids`, `pir_names`,
+  `pir_details` and `pir_min_scores` from the enabled rows, so
+  `organization_context: ["pir_ids"]` resolves to them and a PIR disabled on
+  the policy leaves the playbook at the next provisioning pass. A PIR with no
+  stored row falls back to the policy's former `pir_min_score_vulnerability`
+  (default 70) or `pir_min_score_threat` (default 75), kept on the profile
+  for one release. The delivered score lags one change, so the receiver
+  re-reads the entity's live `pirInformation(pirId)` for each delivered PIR
+  with the trigger's OpenCTI integration and starts the run when one PIR
+  reaches its own minimum; a score it cannot read drops the delivery naming
+  why (a narrowing rule never widens on an outage). A delivery whose entity
+  is not of the listener's `provision.entity_types` is dropped too, since one
+  playbook per listener delivers every flag of the enabled PIRs, and so is
+  any type the policy has no threshold for (a report, an indicator): the rule
+  fails closed. Seeded on "Vulnerability flagged in a PIR" (F2) and "Threat
+  activity flagged in a PIR" (F1), both opt-in. The playbook carries one
+  `pir_score` filter per distinct minimum (a nested group of the PIR ids that
+  share it), so OpenCTI already drops a flag below its PIR's minimum; the
+  receiver check stays for the lag. Migration `i2435pirpolicy01` carried the
+  profile PIRs as enabled rows with their details and the former threat
+  minimum, and removed the `pirs` organization syncs.
 - PIR flags (CTEM-05): `provision.mode: "pir_playbook"` (with
   `organization_context: ["pir_ids"]`, required) provisions an OpenCTI
   playbook instead of a live trigger; `provision.pir_ids` (OpenCTI ids of
@@ -2084,6 +2111,28 @@ carries the gate keys that wait (`fleet_autonomy.waiting_gate_keys`, context key
 `update`, naming the gate, so a repeat is never set through the coverage. When
 the gate runs, the coverage keeps `P1D` and starts on its own.
 
+Launch scope (#2482, Sam, 26 Nov 2026). Every validation decision that
+launches a scenario on asset groups (the initial validation and the re-test of
+the threat response and vulnerability prioritization fleets) offers two scopes,
+the default first and always the recommended one: **Default**, the scenario's
+own targets, the whole asset group(s) as built (`manage_openaev_scenario`
+`launch` without `asset_ids`, as before); **Sample**, a few assets of the group
+(3 unless the person says otherwise, never more than the group holds; one per
+platform present, agents online first, the case's own asset included when the
+case names one), named on the card, which says the result measures only those
+assets. `launch` with `asset_ids` duplicates the scenario, retargets every
+inject of the copy to exactly those assets (`inject_assets`, no
+`inject_asset_groups`, content targets aligned) and launches the copy; the
+original scenario is never written, and a copy that cannot be fully retargeted
+is deleted with nothing launched (`simulations._retargeted_copy`). OpenAEV's
+own launch targets (`ScenarioTargetsInput`) are not used: they add targets to
+the injects instead of replacing the group, behind a preview feature flag. The
+daily repeat keeps the scope chosen; the Gate answered run launches the scope
+the answer chose (a plain approve is the default) and writes the scope, the
+assets and the scenario launched on the case. A sample that leaves out the
+case's own asset says it does not close the case. A gate that runs without a
+decision always launches the default scope.
+
 No seeded gate names a tool or a grant (#1675, Sam, 24 Nov 2026): every tool
 is offered and runs when called; a gate that waits is one decision item the
 orchestrator files between two steps (`needs_human`, its ask card), and the
@@ -2145,7 +2194,7 @@ The routes (`backend/app/api/v1/fleets.py`) and their service
 
 | Route | What it does | Who | AI off |
 |---|---|---|---|
-| `PATCH /fleets/{id}` `autonomy_level` | `full_gates`, `medium`, `low` (built-in fleet default, #10005), `autonomous`; audit `autonomy_level_change` | lower: whoever manages the fleet; raise: an administrator | allowed (no model call) |
+| `PATCH /fleets/{id}` `autonomy_level` | `full_gates` (default of every new and seeded fleet, #2279), `medium`, `low`, `autonomous`; audit `autonomy_level_change` | lower: whoever manages the fleet; raise: an administrator | allowed (no model call) |
 | `GET /fleets/{id}/approval-gates` | The approval gate catalog the level acts on (`Fleet.approval_gates`, else the documentation's gates; #10000), the gates proposed from the members' configuration (`services/fleet_gate_proposals.py`: one gate per bound integration and impact class naming its write tools, read-only bindings and tool scoping honoured; impact table: read never gated, mark or draft `low`, send, reply, forward, delete, isolate, payment or signature `destructive`, every other write `high`) and the approvals that exist outside the level (agent and automation human in the loop, tool-call approval). Also `autonomy_level`, `effective_catalog` (every gate the level acts on with `source` stored, documentation or computed, `pin`, `tools`, `gated` and `by_level`: the cursor's before-click preview) and `computed_catalog_on` (#10153). No model call, no quota (#10014) | whoever sees the fleet | allowed |
 | `PUT /fleets/{id}/autonomy` | One click of the cursor (#10153): `{level, pins?}` applied in one transaction, `pins` = `{gate key: "wait" \| "run"}` (per-action overrides, `Fleet.approval_pins`; a built-in fleet takes them too since #916, kept across seed upgrades: the seed never writes them). On a custom fleet it turns the computed catalog on. Audit `autonomy_level_change` with level and pins before and after | lower the level, pin "wait", drop a "run" pin: whoever manages the fleet; raise, pin "run", drop a "wait" pin: an administrator | allowed |
 | `PUT /fleets/{id}/approval-gates` | Stores a custom fleet's catalog (accepted proposals or edited gates, validated as `DocGate`, unique keys). On a built-in fleet (#916) the body is the gates added to the seeded catalog, stored in `Fleet.customer_gates` (customer layer, never written by the seed, so kept across upgrades; read after the seeded gates, source `customer`, pinned like any gate); a seeded key is refused (422: pin it instead). Audit `approval_gates_change` | add: whoever manages the fleet; remove a gate, a tool of one or lower its impact: an administrator | allowed |
@@ -2213,21 +2262,31 @@ Opening a page never calls a write route: the setup dialog reads the
 `dry_run` plan and the run estimate (`GET /fleets/{id}/run-estimate`) and
 switches nothing on before Confirm.
 
-### Seeded level: Low (#10005)
+### Seeded and default level: Full human gates (#2279)
 
-Every built-in fleet ships at `low`, the last level before full autonomy:
-only gates of impact `destructive` wait for a person; `low` and `high` gates
-run alone and stay logged in Operations. The seed
-(`backend/app/agents/fleet_seed.py`, `_apply_seed_autonomy`) sets it on a
-new built-in fleet and moves an existing one still at the stored default to
-it at the next boot, unless a person ever changed its level (an
-`autonomy_level_change` audit row on the fleet): a person-set level is never
-overwritten. The move is audited as `autonomy_level_seed_default` under
-`system:fleet-seed`, never attributed to a user. Fleets stay disabled by
-default, so the level changes nothing until someone enables the fleet. Custom
-fleets keep `full_gates`.
+Every fleet created or seeded without a level starts at `full_gates` (Sam,
+25 Nov 2026; built-in fleets shipped at `low` from #10005 to #2279, custom
+fleets without a declared catalog at `autonomous` from #10153 C2): every gate
+waits for a person, as one decision item (a needs_human work item with its ask
+card) the orchestrator files between steps. Full human gates never turns on
+tool approval: `enforce_gates_at_tool_level` stays off (#1467) and is never
+honoured on a built-in fleet (#1675), so no tool call pauses inside a run and
+the fleet's tools stay authorized. `create_fleet`
+(`backend/app/services/fleets.py`) writes `DEFAULT_AUTONOMY_LEVEL` when the
+caller passes no level (REST, the `create_fleet` tool, a spec without
+`autonomy_level`); a fork keeps its source's level. The seed
+(`backend/app/agents/fleet_seed.py`, `_apply_seed_autonomy`) moves an
+existing built-in fleet to `SEEDED_FLEET_AUTONOMY_LEVEL` at the next boot
+unless a person ever chose its level (an `autonomy_level_change` audit row on
+the fleet other than a factory reset's, `details.reason` `fleet_reset`): a
+person-set level is never overwritten. The move is audited as
+`autonomy_level_seed_default` under `system:fleet-seed`, never attributed to a
+user. A factory reset puts the fleet back at `full_gates`. Fleets stay
+disabled by default, so the level changes nothing until someone enables the
+fleet. An administrator raises the level.
 
-What waits and what runs alone at Low, per seeded fleet
+What waits and what runs alone at Low (a level an administrator picks), per
+seeded fleet
 (`backend/app/agents/builtin_fleet_docs.py`):
 
 | Fleet | Still waits for a person | Runs alone, logged |
@@ -2498,6 +2557,13 @@ writes it on the built-in fleets (`case_ownership` of `BUILTIN_FLEETS`).
   now owns at once; Pause all or Back to not set up hands them back through
   the same catch-up. An open case item of any declared key blocks a second
   run, so a case the built-in loop is running is not started again on the fork.
+- Backlog place (#2345): a pass asks at most `CATCH_UP_BATCH` (100) cases,
+  most urgent first. `get_ctem_case` and `list_ctem_cases` give a case still
+  waiting for its ask a `catch_up` block: `position` (1: the next pass asks
+  it), `backlog`, `batch_size`, `passes_ahead`, `sweep_seconds` and
+  `asked_before` (`ctem_case_routing.catch_up_places`, the same order and
+  filters as the pass). A case already run, asked recently, with its asks
+  spent or owned by no active fleet carries none.
 
 The five shared loop roles (relevance analyst, scenario creator, risk
 quantifier, remediation coordinator, threat hunt creator) are exposed

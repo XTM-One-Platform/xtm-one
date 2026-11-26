@@ -478,6 +478,10 @@ async def _get_or_create_sso_user(
 
     db.add(user)
     await db.flush()
+    # Every new account joins "CTEM Viewers" once, at its creation (#2441).
+    from app.services.ctem_groups import join_viewers_at_creation
+
+    await join_viewers_at_creation(db, user)
     return user
 
 

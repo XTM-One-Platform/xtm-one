@@ -402,7 +402,6 @@ interface Props {
  * Inventory source since #1754 (their OpenCRQ sync runs with the asset sources), so Sources > Add source offers them.
  */
 export const INVENTORY_IMPORT_SECTIONS = ["assets", "asset_groups", "software", "primary_assets"] as const satisfies readonly ImportSectionKey[];
-export const PROFILE_IMPORT_SECTIONS = ["pirs"] as const satisfies readonly ImportSectionKey[];
 
 export function OrganizationImportDialog({ open, onOpenChange, sections: offered, initialSection, initialSource }: Props) {
   const { t_i18n } = useFormatter();

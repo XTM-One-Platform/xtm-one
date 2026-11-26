@@ -49,6 +49,7 @@ from app.services.platform_builds import (
     ROLLOUT_IN_PROGRESS,
     ROLLOUT_ROLLED_BACK,
     ROLLOUT_SUPERSEDED,
+    ROLLOUT_UNRECORDED,
     is_build,
     read_rollout,
     release_windows,
@@ -130,13 +131,14 @@ async def sandbox_workspaces_overview(db: AsyncSession, own) -> dict[str, Any]:
 
 
 def _coordination_retention(platform_settings: Any) -> dict[str, int]:
-    """The effective closed work-item and resolved shared-state retention, in days (0: kept forever)."""
+    """The effective closed work-item, resolved shared-state and run retention, in days (0: kept forever)."""
     from app.services.coordination_retention import coordination_retention_days
 
     windows = coordination_retention_days(getattr(platform_settings, "coordination_retention", None))
     return {
         "work_item_retention_days": windows["work_item_resolved_days"],
         "shared_state_retention_days": windows["shared_state_resolved_days"],
+        "run_retention_days": windows["assignment_run_days"],
     }
 
 
@@ -268,7 +270,13 @@ async def get_platform_overview(db: AsyncSession, scope: InsightScope, args: dic
             "The daily analytics aggregation has not run for more than 48 hours: say the analytics figures "
             "for older days may still move."
         )
-    if deployment.state in (ROLLOUT_IN_PROGRESS, ROLLOUT_DRAINING, ROLLOUT_ROLLED_BACK, ROLLOUT_SUPERSEDED):
+    if deployment.state in (
+        ROLLOUT_IN_PROGRESS,
+        ROLLOUT_DRAINING,
+        ROLLOUT_ROLLED_BACK,
+        ROLLOUT_SUPERSEDED,
+        ROLLOUT_UNRECORDED,
+    ):
         caveats.append(deployment.words())
     if caveats:
         result["caveats"] = caveats

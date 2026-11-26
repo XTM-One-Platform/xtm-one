@@ -312,6 +312,19 @@ def test_accepted_risk_expiry_is_in_the_future_and_bounded():
         _check(target="accepted_risk", reason="r", accepted_until=NOW + timedelta(days=91))
 
 
+@pytest.mark.parametrize("hour, minute", [(0, 1), (12, 0), (23, 59)])
+def test_accepted_risk_limit_is_the_whole_last_day(hour, minute):
+    """The default the dialog sends (end of today + 90, UTC) is accepted at any hour (#2490)."""
+    now = datetime(2026, 11, 26, hour, minute, tzinfo=UTC)
+    last_day = (now + timedelta(days=90)).date()
+    end_of_last_day = datetime(last_day.year, last_day.month, last_day.day, 23, 59, 59, tzinfo=UTC)
+    _check(target="accepted_risk", reason="r", accepted_until=end_of_last_day, now=now)
+    with pytest.raises(cc.CaseRuleError, match="at most 90 days away"):
+        _check(target="accepted_risk", reason="r", accepted_until=end_of_last_day + timedelta(seconds=1), now=now)
+    with pytest.raises(cc.CaseRuleError, match="at most 90 days away"):
+        _check(target="accepted_risk", reason="r", accepted_until=end_of_last_day + timedelta(days=1), now=now)
+
+
 def test_an_agent_cannot_accept_risk():
     with pytest.raises(cc.CaseRuleError, match="only a person"):
         _check(target="accepted_risk", actor_kind="agent", reason="r", accepted_until=NOW + timedelta(days=7))
@@ -382,6 +395,7 @@ def test_aggregates_count_distinct_assets_and_primary_assets():
         "issue_count": 2,
         "asset_count": 2,
         "primary_asset_count": 1,
+        "inferred_primary_asset_count": 0,
         "kev_count": 1,
         "max_cvss": 9.8,
         "max_epss": 0.9,

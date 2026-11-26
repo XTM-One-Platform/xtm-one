@@ -230,6 +230,42 @@ async def test_batch_goes_on_after_a_failed_account_rolled_back(monkeypatch: pyt
         assert (await session.get(User, last_id)).is_active is False
 
 
+async def test_batch_answers_not_reached_past_its_time_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2182: a batch longer than the budget answers what it did and what it left, never times out."""
+    from app.services import user_deactivation
+    from app.services.builtin_tools import user_admin
+
+    async with (
+        scratch_database("useradminbud", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True) as db,
+        db.sessions() as session,
+    ):
+        admin = _user("budadmin", role="admin")
+        accounts = [_user(f"bud{index}") for index in range(10)]
+        session.add_all([admin, *accounts])
+        await session.commit()
+        _point_sessions_at(monkeypatch, db)
+        now = [0.0]
+        monkeypatch.setattr(user_admin, "_clock", lambda: now[0])
+        real = user_deactivation.deactivate_user
+
+        async def _slow(db: Any, user: Any, **kwargs: Any) -> Any:
+            now[0] += 60.0  # each cascade costs a minute
+            return await real(db, user, **kwargs)
+
+        monkeypatch.setattr(user_deactivation, "deactivate_user", _slow)
+        emails = [account.email for account in accounts]
+        ids = [account.id for account in accounts]
+        answer = json.loads(
+            await _tools(admin.id)("deactivate_platform_users", users=emails, reason="test", dry_run=False)
+        )
+        statuses = [row["status"] for row in answer["results"]]
+        assert statuses == ["done"] * 4 + ["not_reached"] * 6
+        assert answer["not_reached"] == emails[4:]
+        assert "call again" in answer["next_step"]
+        session.expire_all()
+        assert [(await session.get(User, user_id)).is_active for user_id in ids] == [False] * 4 + [True] * 6
+
+
 async def test_group_members_and_a_scim_group_stays_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
     async with (
         scratch_database("useradmingrp", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True) as db,

@@ -10,6 +10,7 @@ export const COORDINATION_RETENTION_KEYS = [
   "work_item_abandoned_days",
   "shared_state_archive_days",
   "workset_resolved_days",
+  "assignment_run_days",
 ] as const;
 
 export type CoordinationRetentionKey = (typeof COORDINATION_RETENTION_KEYS)[number];
@@ -22,6 +23,7 @@ export const COORDINATION_RETENTION_DEFAULTS: CoordinationRetention = {
   work_item_abandoned_days: 14,
   shared_state_archive_days: 14,
   workset_resolved_days: 7,
+  assignment_run_days: 90,
 };
 
 /**

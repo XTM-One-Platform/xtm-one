@@ -10,6 +10,8 @@ and the prompts read the same rule.
 
 from __future__ import annotations
 
+import json
+import re
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -114,3 +116,53 @@ def test_one_rule_in_the_seed_the_personas_and_the_prompts():
     analyst = (_PERSONAS / "ctem-threat-relevance-analyst.md").read_text()
     # The former second definition (any PIR flag is relevance) is gone.
     assert "or when a PIR flags the threat." not in analyst
+
+
+# Fixed factor set and weights of the analyst (#2431): the score is reproducible.
+_FACTORS = {
+    "sector": 0.15,
+    "region": 0.10,
+    "software": 0.30,
+    "primary_assets": 0.20,
+    "pir": 0.15,
+    "activity": 0.10,
+}
+
+
+def _analyst() -> str:
+    return (_PERSONAS / "ctem-threat-relevance-analyst.md").read_text()
+
+
+def test_the_analyst_names_every_factor_with_a_fixed_weight_summing_to_one():
+    analyst = _analyst()
+    found = {m.group(1): float(m.group(2)) for m in re.finditer(r"`(\w+)` weight (0\.\d+)", analyst)}
+    assert found == _FACTORS
+    assert round(sum(found.values()), 6) == 1.0
+    assert "the weighted sum of the factor scores you wrote" in analyst
+    assert "Never another factor, never another weight." in analyst
+
+
+def test_the_analyst_caps_an_unconfirmed_software_exposure():
+    analyst = _analyst()
+    assert "cap the `software` factor at 70" in analyst
+    assert '"exposure unconfirmed"' in analyst
+    for unconfirmed in ("SDK", "library", "package", "no CPE", "no version"):
+        assert unconfirmed in analyst, unconfirmed
+    assert "a CPE match" in analyst
+    assert "`exposure_confirmed`" in analyst.split("## Output", 1)[1]
+
+
+def test_the_analyst_schema_carries_the_factor_set_and_the_exposure_flag():
+    schema = json.loads((_PERSONAS.parent / "agent_output_schema" / "ctem-threat-relevance-analyst.json").read_text())
+    entry = schema["properties"]["threats"]["items"]
+    assert entry["properties"]["exposure_confirmed"]["type"] == "boolean"
+    assert "exposure_confirmed" in entry["required"]
+    assert set(entry["properties"]["factors"]["items"]["properties"]["name"]["enum"]) == set(_FACTORS)
+
+
+def test_the_loop_routes_a_relevant_unconfirmed_threat_to_a_version_check():
+    loop = (_PERSONAS / "ctem-threat-response-orchestrator.md").read_text()
+    relevance = loop.split("1. **Relevance.**", 1)[1].split("2. **Review", 1)[0]
+    assert "`exposure_confirmed` false" in relevance
+    assert "identify the running version" in relevance
+    assert "deferral" in relevance

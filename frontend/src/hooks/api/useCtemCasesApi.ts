@@ -133,6 +133,10 @@ interface CtemCaseValidation {
   /** "inconclusive" (#1692): a pass that proves nothing, the word given kept in `reported_result`. */
   result: "passed" | "not_exposed" | "failed" | "pending" | "inconclusive";
   reported_result?: "passed" | "not_exposed";
+  /** #1458: false when the check that reported a pass proves nothing; absent when the writer did not say. */
+  conclusive?: boolean;
+  /** #1500: "remediation" (the fix read in place), "validation" (a detection or behaviour test) or "exposure" (#2118). */
+  evidence_type?: string;
   at: string;
   mitigation_only?: boolean;
   note?: string | null;
@@ -179,6 +183,10 @@ export interface CtemCaseVisibleIssue {
   lens?: string;
   source_provider?: string;
   source_name?: string;
+  /** The source's own id of the object a module pivot opens (an OpenCTI entity, an OpenAEV finding), or null. */
+  source_external_id?: string | null;
+  /** The link to the object its source delivered (OpenCRQ, OpenCTI `link`, OpenAEV `platform_url`), or null. */
+  source_link?: string | null;
   subject_kind?: string;
 }
 
@@ -301,6 +309,20 @@ export interface CtemCaseTreatmentPlan {
  */
 export type CtemThreatPackageState = "drafted" | "awaiting_review" | "replan" | "rejected" | "validated";
 
+/** The OpenAEV scenario of the validation and its playability (#2468); name, id and link to an OpenAEV reader only. */
+export interface CtemCaseScenario {
+  restricted: boolean;
+  scenario_id?: string | null;
+  name?: string | null;
+  url?: string | null;
+  techniques_total?: number | null;
+  techniques_playable?: number | null;
+  techniques_missing?: number | null;
+  playable?: boolean | null;
+  playable_tests?: string | null;
+  at?: string | null;
+}
+
 export interface CtemCaseThreatPackage {
   restricted: boolean;
   state?: CtemThreatPackageState;
@@ -400,6 +422,8 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   treatment_plan?: CtemCaseTreatmentPlan | null;
   /** Null when no package is attached; absent on an API older than #1115. */
   threat_package?: CtemCaseThreatPackage | null;
+  /** Null when no scenario is recorded; absent on an API older than #2468. */
+  scenario?: CtemCaseScenario | null;
   ticketing?: CtemTicketingTarget;
   /** Upgrade cases only: null when no asset runs the product; absent on an API older than #1252. */
   running_versions?: CtemCaseRunningVersions | null;
@@ -552,7 +576,44 @@ export function cachedCaseSummary(list: CtemCaseList | undefined, id: string | u
   return id ? list?.cases?.find((c) => c.id === id) : undefined;
 }
 
-/** Every case the caller sees (the page holds them all: the API caps a page at 200). */
+/** Most cases one `GET /ctem-cases` page returns (`MAX_PAGE` in backend/app/services/ctem_cases_store.py). */
+export const CTEM_CASES_PAGE = 200;
+
+/**
+ * Every case of one `GET /ctem-cases` read, across its pages (#2377): the API caps a page at
+ * {@link CTEM_CASES_PAGE}. The first page's counts by state cover every case of the read (the
+ * hooks pass no state, owner or priority filter), so their sum is the total; the other pages are
+ * read in parallel, one round trip more for every 200 cases, never one after the other. A case
+ * seen on two pages (a recompute between two reads) is kept once.
+ */
+export async function readAllCtemCases(query = ""): Promise<CtemCaseList> {
+  const path = (offset: number) => `/ctem-cases?limit=${CTEM_CASES_PAGE}&offset=${offset}${query ? `&${query}` : ""}`;
+  const first = await api.get<CtemCaseList>(path(0));
+  const total = Object.values(first.counts ?? {}).reduce((sum, n) => sum + (n ?? 0), 0);
+  if (first.cases.length < CTEM_CASES_PAGE || total <= CTEM_CASES_PAGE) return first;
+  const offsets: number[] = [];
+  for (let offset = CTEM_CASES_PAGE; offset < total; offset += CTEM_CASES_PAGE) offsets.push(offset);
+  const rest = await Promise.all(offsets.map((offset) => api.get<CtemCaseList>(path(offset))));
+  const seen = new Set<string>();
+  const cases: CtemCaseSummary[] = [];
+  for (const page of [first, ...rest]) {
+    for (const c of page.cases ?? []) {
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
+      cases.push(c);
+    }
+  }
+  return { ...first, cases };
+}
+
+/** `ids` cut in runs of at most `size` (a bulk route takes 200 case ids a call). */
+export function chunkIds(ids: string[], size = CTEM_CASES_PAGE): string[][] {
+  const runs: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) runs.push(ids.slice(i, i + size));
+  return runs;
+}
+
+/** Every case the caller sees, every page read (#2377). */
 export function useCtemCases(options?: {
   /**
    * A section of a larger page (the command center Cases row) passes `false`:
@@ -568,7 +629,7 @@ export function useCtemCases(options?: {
 }) {
   return useQuery<CtemCaseList>({
     queryKey: CTEM_CASE_LIST_KEY,
-    queryFn: () => api.get("/ctem-cases?limit=200"),
+    queryFn: () => readAllCtemCases(),
     enabled: options?.enabled ?? true,
     retry: ctemCasesRetry,
     refetchInterval: (query) => ctemCasesPollInterval(query.state.status, query.state.error),
@@ -582,7 +643,7 @@ export function useCtemCasesForAsset(asset: string | undefined) {
   const name = asset?.trim() ?? "";
   return useQuery<CtemCaseList>({
     queryKey: ["ctem-cases", "asset", name],
-    queryFn: () => api.get(`/ctem-cases?limit=200&asset=${encodeURIComponent(name)}`),
+    queryFn: () => readAllCtemCases(`asset=${encodeURIComponent(name)}`),
     enabled: name !== "",
     retry: ctemCasesRetry,
     throwOnError: false,
@@ -594,7 +655,7 @@ export function useCtemCasesForPrimaryAsset(primaryAsset: string | undefined) {
   const name = primaryAsset?.trim() ?? "";
   return useQuery<CtemCaseList>({
     queryKey: ["ctem-cases", "primary-asset", name],
-    queryFn: () => api.get(`/ctem-cases?limit=200&primary_asset=${encodeURIComponent(name)}`),
+    queryFn: () => readAllCtemCases(`primary_asset=${encodeURIComponent(name)}`),
     enabled: name !== "",
     retry: ctemCasesRetry,
     throwOnError: false,
@@ -746,7 +807,16 @@ export function useMoveCtemCase() {
 export function useBulkUpdateCtemCases() {
   const qc = useQueryClient();
   return useMutation<CtemCaseBulkResult, Error, CtemCaseUpdate & { case_ids: string[] }>({
-    mutationFn: (body) => api.post("/ctem-cases/bulk", body),
+    // The route takes 200 ids a call: a larger selection is sent in runs, one after the other (#2377).
+    mutationFn: async ({ case_ids, ...change }) => {
+      const merged: CtemCaseBulkResult = { updated: [], failed: [] };
+      for (const ids of chunkIds(case_ids)) {
+        const result = await api.post<CtemCaseBulkResult>("/ctem-cases/bulk", { ...change, case_ids: ids });
+        merged.updated.push(...(result.updated ?? []));
+        merged.failed.push(...(result.failed ?? []));
+      }
+      return merged;
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ctem-cases"] }),
   });
 }
@@ -783,7 +853,20 @@ export interface CtemCaseDeleteResult {
 export function useDeleteCtemCases() {
   const qc = useQueryClient();
   return useMutation<CtemCaseDeleteResult, Error, { case_ids: string[]; dry_run: boolean; reason?: string }>({
-    mutationFn: (body) => api.post("/ctem-cases/bulk-delete", body),
+    // The route takes 200 ids a call: a larger selection is sent in runs, one after the other (#2377),
+    // so a recompute lock (409) is met by one run, never by parallel ones.
+    mutationFn: async ({ case_ids, ...rest }) => {
+      const runs = chunkIds(case_ids);
+      if (runs.length <= 1) return api.post<CtemCaseDeleteResult>("/ctem-cases/bulk-delete", { case_ids, ...rest });
+      const merged: CtemCaseDeleteResult = { dry_run: rest.dry_run, count: 0, cases: [], unknown: [] };
+      for (const ids of runs) {
+        const result = await api.post<CtemCaseDeleteResult>("/ctem-cases/bulk-delete", { case_ids: ids, ...rest });
+        merged.count += result.count ?? 0;
+        merged.cases.push(...(result.cases ?? []));
+        merged.unknown.push(...(result.unknown ?? []));
+      }
+      return merged;
+    },
     meta: { suppressGlobalErrorToast: true },
     onSuccess: (result) => {
       if (!result.dry_run) void qc.invalidateQueries({ queryKey: ["ctem-cases"] });

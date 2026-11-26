@@ -5,19 +5,23 @@
  * entity in the module it came from (#1357). A new tab with the external-link
  * icon; nothing at all when the URL cannot be built (no base URL, no id), never
  * a broken or guessed link. `iconOnly` draws the icon alone, for a table row or
- * a widget row, with the action as its tooltip and accessible name.
+ * a widget row, with the action as its tooltip and accessible name. `href` is an
+ * address already built for the object (a link its source delivered, #1357 on a
+ * case signal row): it wins over the route built from `baseUrl` and `id`.
  */
 import { Icon } from "@filigran/design-system";
 import { Tip, TIP_WRAP_FOCUS_RING } from "@/components/ui/tooltip";
 import { useFormatter } from "@/i18n";
 import { SUITE_PRODUCT_NAMES } from "@/components/layout/product-switcher";
 import { modulePivotUrl, type PivotKind, type PivotModule } from "@/lib/module-pivot";
+import { safeHttpUrl } from "@/lib/safe-url";
 import { cn } from "@/lib/utils";
 
 export function ModulePivotLink({
   module,
   baseUrl,
   id,
+  href: given,
   kind = "entity",
   iconOnly = false,
   className,
@@ -26,13 +30,14 @@ export function ModulePivotLink({
   module: PivotModule | null | undefined;
   baseUrl: string | null | undefined;
   id: string | null | undefined;
+  href?: string | null;
   kind?: PivotKind;
   iconOnly?: boolean;
   className?: string;
   testId?: string;
 }) {
   const { t_i18n } = useFormatter();
-  const href = modulePivotUrl(module, baseUrl, id, kind);
+  const href = given ? safeHttpUrl(given) : modulePivotUrl(module, baseUrl, id, kind);
   if (!href || !module) return null;
   const label = t_i18n("Open in {platform}", { platform: SUITE_PRODUCT_NAMES[module] });
   const link = (

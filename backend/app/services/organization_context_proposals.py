@@ -66,8 +66,9 @@ class ProposalError(ValueError):
 PROPOSABLE_POLICY_PATHS: tuple[str, ...] = org_context.POLICY_SETTABLE_PATHS
 #: Outside-lens settings of the primary profile an agent may set or propose (CTEM-26): the
 #: owned domains, the address ranges (CIDR, validated by the profile model) and the attack
-#: surface pass. They stay exposure fields: out of the always-on block and of missing_fields.
-PROPOSABLE_EXPOSURE_PATHS: tuple[str, ...] = ("owned_domains", "address_ranges", "attack_surface")
+#: surface pass, and the OpenCRQ evidence health pass (CTEM-28, #2196), validated by
+#: ``EvidenceHealthPass``. They stay exposure fields: out of the always-on block and of missing_fields.
+PROPOSABLE_EXPOSURE_PATHS: tuple[str, ...] = ("owned_domains", "address_ranges", "attack_surface", "evidence_health")
 #: The reference exchange rates the risk agents cite to convert a figure (#1383): an
 #: administrator sets them by API or through an agent; not a contract field.
 PROPOSABLE_RATE_PATHS: tuple[str, ...] = ("fx_rates",)
