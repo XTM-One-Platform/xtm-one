@@ -22009,6 +22009,8 @@
   "Resync signals from sources after the purge": "消去後にソースからシグナルを再同期",
   "Purging all signals": "すべてのシグナルを消去しています",
   "Purge finished": "消去が完了しました",
+  "Purge interrupted": "消去が中断されました",
+  "The purge stopped before its end because its process restarted. You can start a new purge.": "プロセスが再起動したため、消去は完了前に停止しました。新しい消去を開始できます。",
   "You can close this dialog: the purge goes on.": "このダイアログを閉じても消去は続行されます。",
   "Signal intake is running again.": "シグナルの受信を再開しました。",
   "Pause signal intake": "シグナルの受信を一時停止",

@@ -22009,6 +22009,8 @@
   "Resync signals from sources after the purge": "Resynchroniser les signaux depuis les sources après la purge",
   "Purging all signals": "Purge de tous les signaux",
   "Purge finished": "Purge terminée",
+  "Purge interrupted": "Purge interrompue",
+  "The purge stopped before its end because its process restarted. You can start a new purge.": "La purge s'est arrêtée avant sa fin, car son processus a redémarré. Vous pouvez lancer une nouvelle purge.",
   "You can close this dialog: the purge goes on.": "Vous pouvez fermer cette fenêtre : la purge continue.",
   "Signal intake is running again.": "La réception des signaux a repris.",
   "Pause signal intake": "Suspendre la réception des signaux",
