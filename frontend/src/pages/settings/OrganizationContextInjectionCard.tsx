@@ -49,7 +49,7 @@ export function OrganizationContextInjectionCard() {
   const [draft, setDraft] = useState(true);
   const enabled = data?.enabled ?? true;
   const info = t_i18n(
-    "On: every agent whose organization context is Inherit starts each chat and run with a short block: the organization's name, sector, regions, size and risk appetite, then one line per category of the profile with its size and the get_organization_context call that reads it. An agent or an assignment set to Always or Off overrides it; Off also removes the tool. Off here: no block unless an agent or an assignment asks for it.",
+    "On: every agent whose organization context is Inherit starts each chat and run with a short block: the organization's name, sector, regions, size and risk appetite, then one line with the inventory size (assets, software, groups, primary assets) and the functions that query it, never its rows. An agent or an assignment set to Always or Off overrides it; Off also removes the tools. Off here: no block unless an agent or an assignment asks for it.",
   );
 
   return (

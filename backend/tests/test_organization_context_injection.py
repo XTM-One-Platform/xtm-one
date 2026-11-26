@@ -371,13 +371,11 @@ def test_every_seeded_agent_resolves_on_with_the_tools() -> None:
             )
 
 
-def test_vulnerability_agents_preload_the_software() -> None:
+def test_no_seeded_agent_preloads_a_category() -> None:
+    """#2443: the inventory is queried, never preloaded: no seeded agent declares categories."""
     from app.agents.builtin_agents import BUILTIN_AGENTS
 
-    by_slug = {agent["slug"]: agent for agent in BUILTIN_AGENTS}
-    for slug in ("ctem-vuln-prioritization-orchestrator", "ctem-vuln-triage-analyst", "ctem-remediation-coordinator"):
-        if slug in by_slug:
-            assert "software" in by_slug[slug]["organization_context_categories"], slug
+    assert [a["slug"] for a in BUILTIN_AGENTS if "organization_context_categories" in a] == []
 
 
 def test_the_seed_never_writes_the_mode_so_an_opt_out_survives_a_refresh() -> None:

@@ -2130,9 +2130,7 @@ BUILTIN_AGENTS: list[dict] = [
     # once they are seeded, the seed skips a slug it does not know.
     {
         "slug": "ctem-vuln-prioritization-orchestrator",
-        # Vulnerability and exposure work reads the whole software inventory (#11533),
-        # the assets with their exposure and the prioritization policy (#11543).
-        "organization_context_categories": ["software", "primary_assets", "assets_exposure", "prioritization_policy"],
+        # No category preload (#2443): the inventory is queried (find_assets_running, search_assets).
         "persona": "ctem-vuln-prioritization-orchestrator",
         "name": "Vuln Orchestrator",
         "description": (
@@ -2168,9 +2166,7 @@ BUILTIN_AGENTS: list[dict] = [
     },
     {
         "slug": "ctem-vuln-triage-analyst",
-        # Vulnerability and exposure work reads the whole software inventory (#11533),
-        # the assets with their exposure and the prioritization policy (#11543).
-        "organization_context_categories": ["software", "primary_assets", "assets_exposure", "prioritization_policy"],
+        # No category preload (#2443): the inventory is queried (find_assets_running, search_assets).
         "persona": "ctem-vuln-triage-analyst",
         "name": "Vuln Triage Analyst",
         "description": (
@@ -2310,9 +2306,7 @@ CTEM_FLEET_AGENTS: list[dict] = [
     {
         **_CTEM_ROLE_AGENT_BASE,
         "slug": "ctem-remediation-coordinator",
-        # Vulnerability and exposure work reads the whole software inventory (#11533),
-        # the assets with their exposure and the prioritization policy (#11543).
-        "organization_context_categories": ["software", "primary_assets", "assets_exposure", "prioritization_policy"],
+        # No category preload (#2443): the inventory is queried (find_assets_running, search_assets).
         "persona": "ctem-remediation-coordinator",
         "name": "Remediation Coordinator",
         "description": (
@@ -3077,8 +3071,9 @@ CTEM_KEY_PREFIX = "ctem:"
 #: evidence_health.max_age_days (path 9 opens again).
 CTEM_CONTROL_MEASUREMENT_RULE = (
     "Choose the measurement like an analyst, from the asset type and the integrations the tenant has "
-    "connected, read at decision time (the integrations and tools you hold, get_organization_context "
-    "category software and assets_exposure), never from a fixed recipe, in this order: (1) a permanent "
+    "connected, read at decision time (the integrations and tools you hold, get_asset on the asset and "
+    "search_software for the security products the organization runs), never from a fixed recipe, in "
+    "this order: (1) a permanent "
     "control an integration already offers for this kind of asset (a repository with Aikido connected: "
     "enable Aikido scanning on it; an IP or host with a vulnerability scanner such as Tenable, Qualys, "
     "Rapid7 or Wiz: permanent scanning of the asset in it; an endpoint with an EDR: the policy or "
@@ -3102,8 +3097,9 @@ CTEM_CONTROL_DECAY_RECONCILE = (
     "A case whose trigger_path is control_decay (never_measured, attested_only or expired) is "
     "reconciled before any validation, scan or new control is proposed: read, read-only, the "
     "control sources you hold for its asset (the OpenAEV results on the asset, the EDR and "
-    "device-management coverage in the organization inventory, get_organization_context category "
-    "assets_exposure, and in any such integration you hold) and what OpenCRQ holds for the control "
+    "device-management coverage in the organization inventory, get_asset with the asset name, which "
+    "names every source that reports it, and in any such integration you hold) and what OpenCRQ holds "
+    "for the control "
     "(get_opencrq_control_validation). In OpenAEV read what already targets the asset with "
     "get_openaev_asset_coverage: its asset groups, static and dynamic, and the scenarios (with "
     "their recurrence), simulations and atomic testings that target it directly or through those "
