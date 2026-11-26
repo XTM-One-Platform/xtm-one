@@ -4363,8 +4363,12 @@ async def _add_run_trace_tools(
     """
     from app.models.user import User
     from app.services.agent_chat import _add_trace_tools, _turn_trace_tool_ids
+    from app.services.builtin_tools.traces import TRACE_SUITE_IDS
 
-    acting_user = await db.get(User, acting_user_id) if acting_user_id else None
+    # Most runs carry no trace suite: they read no user for it.
+    if "agent_builder" not in agent_builtin_tool_ids and not TRACE_SUITE_IDS.intersection(agent_builtin_tool_ids):
+        return
+    acting_user =await db.get(User, acting_user_id) if acting_user_id else None
     _add_trace_tools(
         composite,
         db,
