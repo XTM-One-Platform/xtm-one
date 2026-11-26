@@ -26,6 +26,7 @@ XTM One is an open-source agentic assistant platform: **agents** (persona, tools
 | Migrations (safety rules, cited by number) | `dev-docs/reference/migrations-safety.md` |
 | Area guides | `backend/AGENTS.md`, `frontend/AGENTS.md`, `backend/app/<area>/AGENTS.md` |
 | Which files are Enterprise Edition (license headers) | `dev-docs/reference/editions.md`, `licensing/editions.yml` |
+| A vulnerability found, a security fix, the `security` label | `dev-docs/reference/security-reporting.md` |
 | Feature designs | `dev-docs/*.md` (`presentations.md`, `platform-mcp-servers.md`, `FSM/`, ...) |
 
 Find the owner before writing: `rg -n "<helper or entity>" dev-docs/reference`. Cross-cutting rules (visibility, file access, OAuth sharing, base path, CSP, quotas, edition gate) have ONE module, often pinned by a tripwire test: reuse it, never re-spell it.
@@ -65,6 +66,7 @@ Numbering is stable (code cites "invariant 16"); full text in `architecture-inva
 - New model: import it in `backend/app/models/__init__.py` + an Alembic migration; a shareable entity takes the full visibility column set, joins `CompanyManagedEntity` and is tested as a non-admin (rule 19).
 - New routes register in `backend/app/main.py`; types go to `frontend/src/types/index.ts`, hooks to `frontend/src/hooks/api/`.
 - A new `.env.sample` variable is documented in `docs/docs/` (CI-enforced); update the user docs and `dev-docs/` a change affects.
+- **The repository is public: never write a vulnerability down in a public place** (issue, PR, review comment, commit, test name, `security` label - retired). Tell the user, then use a private GitHub security advisory (`SECURITY.md`); a hardening with nothing exploitable is a normal, neutrally worded issue/PR.
 - Text files are UTF-8 without BOM, with LF line endings (`.gitattributes`; pinned by `backend/tests/test_repo_text_hygiene.py`). On Windows, write files with `pwsh` 7, never Windows PowerShell 5.1 `Set-Content` / `Out-File` (it reads UTF-8 as cp1252 and adds a BOM).
 - Agentic is EE: before creating a file or a directory, `make edition P=<path>`; on `to classify`, classify it in the same commit: agentic, a glob in `licensing/editions.yml`; otherwise `make mark-ce P=<path>` (CE cannot become EE later), and a moved or split CE file stays CE. Never write the header by hand: `make license` (rule 100).
 - Python is managed by uv (`backend/` and `docs/` are uv projects: `pyproject.toml` + `uv.lock`); add a dependency with `uv add`, never pip. `uv run` syncs `.venv` to the checkout's lock: where `backend/.venv` links to another checkout's venv, use `uv run --no-sync` (`make test` / `make migrate` then skip the sync).

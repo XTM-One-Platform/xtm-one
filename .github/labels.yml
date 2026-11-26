@@ -24,9 +24,6 @@
 - name: documentation
   color: "0075ca"
   description: "Type: documentation only (docs:). Issues only — not for PRs."
-- name: security
-  color: "d93f0b"
-  description: "Security vulnerability, hardening or guardrail."
 
 # ── Workflow / triage labels ──
 - name: needs triage
