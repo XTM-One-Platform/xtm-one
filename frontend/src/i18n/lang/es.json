@@ -21912,5 +21912,7 @@
   "Type a whole number from 0 to 100.": "Escriba un número entero de 0 a 100.",
   "The PIR policy was not saved: {reason}": "La política del PIR no se guardó: {reason}",
   "In OpenCTI": "En OpenCTI",
-  "Listed": "Listado"
+  "Listed": "Listado",
+  "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, one {# notificación sin leer} other {# notificaciones sin leer}}",
+  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {Ver la # decisión que le espera} other {Ver las # decisiones que le esperan}}"
 }
