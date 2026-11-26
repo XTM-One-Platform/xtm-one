@@ -21917,7 +21917,6 @@
   "In OpenCTI": "En OpenCTI",
   "Listed": "Listado",
   "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "Para que sea concluyente, ejecute una comprobación que lea la versión en ejecución en el activo: un escaneo autenticado o un agente.",
-  "Open scenario": "Abrir escenario",
-  "{total, plural, one {Not playable: {missing} of # technique has no payload} other {Not playable: {missing} of # techniques have no payload}}": "{total, plural, one {No ejecutable: {missing} de # técnica no tiene carga útil} other {No ejecutable: {missing} de # técnicas no tienen carga útil}}",
-  "Recorded the validation scenario": "Registró el escenario de validación"
+  "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, one {# notificación sin leer} other {# notificaciones sin leer}}",
+  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {Ver la # decisión que le espera} other {Ver las # decisiones que le esperan}}"
 }
