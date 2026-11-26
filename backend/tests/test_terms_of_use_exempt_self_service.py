@@ -2,8 +2,9 @@
 
 The exemption skips the Terms of Use gate for the account that carries the
 address, so an unverified claim on it would skip the gate too. Self-registration
-and a user changing their own email under Preferences both refuse it; an
-administrator, an invitation or SSO creates the account. The refusal comes
+refuses it, and a user never changes their own email (an administrator does,
+``test_email_change_by_admin``); an administrator, an invitation or SSO creates
+the account. The refusal comes
 before any database read, so it also holds while the address is still free.
 
 Mirrors the repo's fake-session convention: the endpoint coroutines are driven
@@ -86,8 +87,7 @@ async def test_profile_email_change_refuses_an_exempt_address(monkeypatch, _exem
     user = SimpleNamespace(email="u@example.com")
     with pytest.raises(HTTPException) as exc:
         await _update_email(monkeypatch, user, email)
-    assert exc.value.status_code == 403
-    assert exc.value.detail == "This email address cannot be used"
+    assert exc.value.status_code == 422
     assert user.email == "u@example.com"
 
 

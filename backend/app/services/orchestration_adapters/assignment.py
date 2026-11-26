@@ -89,6 +89,23 @@ async def _held_run_person(ctx: AdapterContext, execution: OrchestrationExecutio
         return None
 
 
+async def _run_trigger_payload(ctx: AdapterContext, run_id: object) -> object:
+    """The run's ``trigger_payload``, ``None`` when it cannot be read.
+
+    It records the partner-task scope a partner's task started the run in
+    (``a2a.partner_scope.partner_scoped_payload``), reopened around the run. A
+    failed read leaves the transaction to ``release_db_connection_before_loop``,
+    which closes it next."""
+    try:
+        row = await ctx.db.execute(
+            select(AssignmentRun.trigger_payload).where(AssignmentRun.id == uuid.UUID(str(run_id)))
+        )
+        return row.scalar_one_or_none()
+    except Exception:
+        logger.debug("Could not read the trigger payload of assignment run %s", run_id, exc_info=True)
+        return None
+
+
 async def _bind_memory_chain(ctx: AdapterContext, run_id: object):
     """Bind the memory event chain frozen on this run, if it carries one.
 
@@ -441,6 +458,10 @@ class AssignmentAdapter(OrchestrationAdapter):
         # so a worker that runs assignments back to back cannot leak one run's
         # chain into the next.
         chain_token = await _bind_memory_chain(ctx, run_id)
+        # Started by a partner's task: the run answers it, in its scope.
+        from app.a2a.partner_scope import partner_task_scope, queued_partner_principal, queued_partner_task
+
+        trigger_payload = await _run_trigger_payload(ctx, run_id)
         # ``execute_assignment_run`` owns its own session for the whole run, so
         # this one's connection goes back to the pool first: held, each run pins
         # two. ``expire_on_commit=False`` keeps ``execution`` readable.
@@ -456,20 +477,23 @@ class AssignmentAdapter(OrchestrationAdapter):
         posting_token = set_posting_assignment(None)
         turn_token = chat_reply_guard.bind_turn(None)
         try:
-            # ``execute_assignment_run`` owns its own session + transaction,
-            # manages the AssignmentRun lifecycle (including internal
-            # retry_on_failure and HITL pausing), and never raises on a normal
-            # failure. It is re-entrant: invoked on an ``awaiting_human`` run it
-            # resumes from the pause.
-            outcome = await execute_assignment_run(
-                str(run_id),
-                hold=hold_budget_left(execution),
-                verdict=verdict,
-                cancel_event=getattr(ctx, "cancel_event", None),
-                deadline_at=getattr(execution, "deadline_at", None),
-                attempt=getattr(execution, "attempt_count", None),
-                taken_back_on_its_word=taken_back_on_its_word,
-            )
+            with partner_task_scope(
+                queued_partner_task(trigger_payload), principal=queued_partner_principal(trigger_payload)
+            ):
+                # ``execute_assignment_run`` owns its own session + transaction,
+                # manages the AssignmentRun lifecycle (including internal
+                # retry_on_failure and HITL pausing), and never raises on a normal
+                # failure. It is re-entrant: invoked on an ``awaiting_human`` run it
+                # resumes from the pause.
+                outcome = await execute_assignment_run(
+                    str(run_id),
+                    hold=hold_budget_left(execution),
+                    verdict=verdict,
+                    cancel_event=getattr(ctx, "cancel_event", None),
+                    deadline_at=getattr(execution, "deadline_at", None),
+                    attempt=getattr(execution, "attempt_count", None),
+                    taken_back_on_its_word=taken_back_on_its_word,
+                )
         finally:
             reset_posting_assignment(posting_token)
             chat_reply_guard.reset_turn(turn_token)

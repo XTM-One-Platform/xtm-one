@@ -152,6 +152,7 @@ async def test_consume_password_reset_returns_payload_and_deletes_key(fake_redis
         user_id="11111111-1111-1111-1111-111111111111",
         created_by_id="admin",
         ttl_hours=24,
+        email="user@example.com",
     )
     key = f"pwreset:{hash_token(raw)}"
     assert key in fake_redis.store
@@ -173,6 +174,7 @@ async def test_consume_password_reset_second_call_returns_none(fake_redis):
         user_id="22222222-2222-2222-2222-222222222222",
         created_by_id="admin",
         ttl_hours=24,
+        email="user@example.com",
     )
 
     first = await token_store.consume_password_reset(raw)
@@ -188,6 +190,7 @@ async def test_consume_password_reset_uses_hashed_key_not_raw_token(fake_redis):
         user_id="33333333-3333-3333-3333-333333333333",
         created_by_id="admin",
         ttl_hours=24,
+        email="user@example.com",
     )
 
     await token_store.consume_password_reset(raw)
@@ -212,6 +215,7 @@ async def test_consume_password_reset_does_not_double_dispatch(fake_redis):
         user_id="44444444-4444-4444-4444-444444444444",
         created_by_id="admin",
         ttl_hours=24,
+        email="user@example.com",
     )
 
     await token_store.consume_password_reset(raw)

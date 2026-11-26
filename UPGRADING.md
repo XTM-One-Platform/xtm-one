@@ -5,6 +5,14 @@ upgrade and rollback procedures live in the documentation site
 ([Deployment > Upgrade](docs/docs/deployment/upgrade.md)); this file documents
 releases that need special attention.
 
+## A user's email is changed by an administrator only
+
+**No migration, no configuration change.**
+
+- **Changed**: people can no longer change their own email from their profile: `PUT /api/v1/settings/preferences` answers `422` when it carries a new address. The other Filigran platforms find a person's account by this email, so an unproven address could take over someone else's account there.
+- **New**: an administrator changes it from the user's page (`Email` card), or with `PUT /api/v1/users/{user_id}/email` and `{"email": ...}`, SSO accounts included. It works without a mail server; with one, the old and the new address are told of the change.
+- **Reset links**: a password reset link stops working once the account's email is no longer the address it was sent to.
+
 ## The Filigran AI Gateway's throttle backs assignments off
 
 **No migration, no configuration change.**

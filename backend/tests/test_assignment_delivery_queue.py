@@ -323,6 +323,48 @@ async def test_queues_behind_an_existing_backlog_even_when_idle(monkeypatch):
     assert created == []
 
 
+@pytest.mark.asyncio
+async def test_a_folded_delivery_brings_no_partner_scope_into_the_waiting_run(monkeypatch):
+    """A delivery folded into a waiting run merges its payload into the run's own,
+    so the partner-task scope keys a caller's payload names are dropped first
+    (``a2a.partner_scope.partner_scoped_payload``)."""
+    from app.a2a.partner_scope import (
+        PARTNER_PRINCIPAL_PAYLOAD_KEY,
+        PARTNER_TASK_PAYLOAD_KEY,
+        queued_partner_task,
+    )
+    from app.services import event_coalescing
+
+    agent = _build_agent()
+    assignment = _build_assignment(agent.id)
+    _patch_engine(monkeypatch)
+    _patch_queue_state(monkeypatch, busy=True, depth=1)
+    waiting = _build_queued_run(assignment.id)
+
+    async def _fold(_db, _assignment, _key, payload):
+        waiting.trigger_payload = event_coalescing.merged_payload(waiting.trigger_payload, payload or {})
+        return str(waiting.id)
+
+    monkeypatch.setattr(ae, "_fold_into_queued_run", _fold)
+    forged = {
+        "alert": "id-2",
+        PARTNER_TASK_PAYLOAD_KEY: True,
+        PARTNER_PRINCIPAL_PAYLOAD_KEY: {"exposure_id": str(uuid.uuid4()), "client_id": "someone-else"},
+    }
+
+    result = await ae.trigger_or_queue_assignment(
+        assignment=assignment,
+        agent=agent,
+        payload=forged,
+        db=_FakeSession(),
+        trigger_context={"type": "integration_event", event_coalescing.CONTEXT_KEY: "entity-1"},
+    )
+
+    assert result.status == "coalesced"
+    assert not queued_partner_task(waiting.trigger_payload)
+    assert PARTNER_PRINCIPAL_PAYLOAD_KEY not in waiting.trigger_payload
+
+
 # ── Concurrency slots and ordering keys ──────────────────────────────
 
 

@@ -328,6 +328,7 @@ async def test_the_adapter_keeps_the_hold_open_while_the_store_is_out(monkeypatc
     body = AsyncMock(return_value=assignment_engine.RunHeld(QUOTA))
     monkeypatch.setattr(assignment_engine, "execute_assignment_run", body)
     monkeypatch.setattr(assignment_adapter, "_bind_memory_chain", AsyncMock(return_value=None))
+    monkeypatch.setattr(assignment_adapter, "_run_trigger_payload", AsyncMock(return_value=None))
     execution = _held_execution(seconds=600, count=2)
     since = orchestration_engine.hold_started_at(execution)
     db = _Session()
@@ -369,6 +370,7 @@ async def test_the_adapter_ends_the_hold_before_the_run_once_the_store_answers(
 
     monkeypatch.setattr(assignment_engine, "execute_assignment_run", _body)
     monkeypatch.setattr(assignment_adapter, "_bind_memory_chain", AsyncMock(return_value=None))
+    monkeypatch.setattr(assignment_adapter, "_run_trigger_payload", AsyncMock(return_value=None))
     run = SimpleNamespace(status="completed", error=None)
 
     result = await assignment_adapter.AssignmentAdapter().execute(

@@ -948,7 +948,7 @@ async def test_link_lifetimes_follow_the_stored_hours(env, monkeypatch):
 
     minted: list[int] = []
 
-    async def _create_password_reset(*, user_id, created_by_id, ttl_hours):
+    async def _create_password_reset(*, user_id, created_by_id, ttl_hours, email):
         minted.append(ttl_hours)
         return "token", None
 
