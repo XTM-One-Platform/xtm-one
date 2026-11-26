@@ -1,0 +1,5004 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for XTM One, Filigran's AI-native threat-informed defense platform.">
+      
+      
+        <meta name="author" content="Filigran">
+      
+      
+        <link rel="canonical" href="https://xtm-one-platform.github.io/xtm-one/latest/administration/organization/">
+      
+      
+        <link rel="prev" href="../settings/">
+      
+      
+        <link rel="next" href="../channels/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Organization profile - XTM One Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/timeago.css">
+    
+      <link rel="stylesheet" href="../../assets/css/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-P8K1S4VSXR"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-P8K1S4VSXR",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-P8K1S4VSXR",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="filigran" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#organization-profile" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+        
+          <aside class="md-banner md-banner--warning">
+            <div class="md-banner__inner md-grid md-typeset">
+              
+  You're not viewing the latest version.
+  <a href="../../.."> 
+    <strong>Click here to go to latest.</strong>
+  </a>
+
+            </div>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
+          </aside>
+        
+      </div>
+    
+    
+      
+
+
+<!-- Header -->
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+
+    <!-- Link to home -->
+    <a href="../.." title="XTM One Documentation" class="md-header__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+
+    <!-- Button to open drawer -->
+    <label class="md-header__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+
+    <!-- Header title -->
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color palette -->
+    
+      
+    
+
+    <!-- Site language selector -->
+    
+
+    <!-- Button to open search modal -->
+    
+      <label class="md-header__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+      </label>
+
+      <!-- Search interface -->
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+
+    <!-- Repository information -->
+    
+      <div class="md-header__source">
+        <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+
+  <!-- Navigation tabs (sticky) -->
+  
+
+  <script type="text/javascript"> !function(){var e,t,n;e="58d967e3f3ca784",t=function(){Reo.init({clientID:"58d967e3f3ca784"})},(n=document.createElement("script")).src="https://static.reo.dev/"+e+"/reo.js",n.async=!0,n.onload=t,document.head.appendChild(n)}(); </script>
+  <script src="https://copilot.filigran.ai/api/v1/public/widget.js" data-token="jNJu1JTbbPwNqk1tqEOw-WjsKU4dEcgn" data-context="{&quot;page&quot;:&quot;docs&quot;,&quot;product&quot;:&quot;XTM One&quot;}"></script>
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../deployment/overview/" class="md-tabs__link">
+          
+  
+  
+  Deployment &amp; Setup
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/getting-started/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../introduction/" class="md-tabs__link">
+          
+  
+  
+  Administration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="XTM One Documentation" class="md-nav__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    XTM One Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2">
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment &amp; Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment &amp; Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_1">
+        
+          
+          <label class="md-nav__link" for="__nav_2_1" id="__nav_2_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/scim-provisioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provisioning with SCIM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/security-headers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security headers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/secret-vaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secret vaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/xtm-suite-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/chat-approvals-in-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat approvals in client apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/backup-and-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3">
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2">
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/containers-and-scopes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Containers and scopes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/relationships-and-nesting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationships and nesting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse and deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/dates-and-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meaning of dates and status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/trust-and-confidence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trust, review, and confidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3">
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work with agents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Work with agents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/chat-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/office-add-in/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Office add-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/scheduled-work-items/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduled work items
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/workspaces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/presentations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presentations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/custom-dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/mobile-companion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mobile companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/video-studio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video Studio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sandbox-workspace/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sandbox workspace
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/create-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/assignments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Assignments and triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/webhook-triggers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Webhook triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/web-widget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publish an agent on a website
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/agent-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/agentic-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ai-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4">
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manage resources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Manage resources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/agent-to-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent-to-agent (A2A)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/browser-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Browser profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/knowledge-bases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Knowledge bases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/connect-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connect an external MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/platform-mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/platform-tools-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform tools MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/mcp-catalogs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP catalogs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/relays/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relays
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/sharing-and-access/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sharing and access
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Templates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One Desktop and runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5">
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitor activity
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Monitor activity
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/home-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ctem-signals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CTEM signals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/work-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/platform-insights/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform insights
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_6">
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    XTM Suite
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/common-experience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common experience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/opencti/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCTI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/indicator-decay/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indicator decay re-check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/openaev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenAEV
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/opencrq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCRQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/my-profile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    My profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../users-and-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users and groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../intents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Intents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organization profile
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organization profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#how-agents-use-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How agents use it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shared-context-and-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared context and permissions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#let-an-agent-edit-the-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Let an agent edit the profile
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fill-the-profile-with-an-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fill the profile with an agent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edit-the-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edit the profile
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Edit the profile">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pause-and-resume-ctem-case-opening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pause and resume CTEM case opening
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#primary-assets-and-business-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Primary assets and business services
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#primary-assets-and-opencrq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Primary assets and OpenCRQ
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#software" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Software
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Software">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#software-from-an-sbom" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Software from an SBOM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-one-asset-is-matched-across-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How one asset is matched across sources
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ai-targets-are-assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI targets are assets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#saved-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Saved versions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#draft-the-profile-from-your-platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Draft the profile from your platforms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#import-one-section-from-a-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Import one section from a platform
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keep-a-section-in-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep a section in sync
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Keep a section in sync">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#delete-a-sync-and-its-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete a sync and its rows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sources_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sync-direction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sync direction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-each-platform-feeds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each platform feeds
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#draft-the-profile-with-ai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Draft the profile with AI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#draft-tracked-organizations-with-ai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Draft tracked organizations with AI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next step
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6">
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channels and bots
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Channels and bots
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/slack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/microsoft-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/whatsapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/whatsapp-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp: two backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/telegram/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/discord/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/google-chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/agent-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent accounts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-governance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI governance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prompt-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt safety (Nova)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../editions-and-licensing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editions and licensing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../running-without-ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running without AI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../emergency-stop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../emergency-stop-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#how-agents-use-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How agents use it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shared-context-and-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared context and permissions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#let-an-agent-edit-the-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Let an agent edit the profile
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fill-the-profile-with-an-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fill the profile with an agent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edit-the-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edit the profile
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Edit the profile">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pause-and-resume-ctem-case-opening" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pause and resume CTEM case opening
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#primary-assets-and-business-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Primary assets and business services
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#primary-assets-and-opencrq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Primary assets and OpenCRQ
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#software" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Software
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Software">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#software-from-an-sbom" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Software from an SBOM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-one-asset-is-matched-across-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How one asset is matched across sources
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ai-targets-are-assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI targets are assets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#saved-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Saved versions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#draft-the-profile-from-your-platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Draft the profile from your platforms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#import-one-section-from-a-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Import one section from a platform
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keep-a-section-in-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep a section in sync
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Keep a section in sync">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#delete-a-sync-and-its-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete a sync and its rows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sources_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sync-direction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sync direction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-each-platform-feeds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each platform feeds
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#draft-the-profile-with-ai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Draft the profile with AI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#draft-tracked-organizations-with-ai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Draft tracked organizations with AI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next step
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation">
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../introduction/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Administration
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/XTM-One-Platform/xtm-one/blob/main/docs/docs/administration/organization.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"></path></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/XTM-One-Platform/xtm-one/raw/main/docs/docs/administration/organization.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"></path></svg>
+    </a>
+  
+
+
+<h1 id="organization-profile">Organization profile</h1>
+<p>The organization profile describes your organization once, for every agent: what it does, where it operates, what it must protect, what it runs, how much risk it accepts and where findings become tickets. Agents read it before they rank, scope or estimate, so that a vulnerability, a threat or an exposure is weighed against your business rather than in general.</p>
+<p>Administrators fill it in <code>Settings</code> &gt; <code>Organization</code>. There is one profile per platform.</p>
+<h2 id="how-agents-use-it">How agents use it</h2>
+<p>Every agent has a read-only tool, <code>get_organization_context</code>, that returns the profile, in chat and in assignment runs alike. An agent that belongs to a fleet also starts each run with the profile in its context.</p>
+<p>By default, every agent also starts each chat and each run with a short block: the organization's name, sector, regions, size and risk appetite, then one line per category of the profile with its size and the call that reads it. The categories are the long lists of the profile:</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>In the prompt</th>
+<th>Read with the tool</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Identity (name, sector, regions, size, risk appetite, currency)</td>
+<td>Always, in the short block</td>
+<td>The whole profile</td>
+</tr>
+<tr>
+<td><code>primary_assets</code>, <code>software</code>, <code>shipped_products</code>, <code>pirs</code>, <code>assets_exposure</code>, <code>tracked_organizations</code></td>
+<td>Their size, in the short block; their rows only when preloaded</td>
+<td><code>category</code>, filtered by <code>query</code>, paged by <code>offset</code> and <code>limit</code> (up to 200 rows a page), so a list of any length is read whole. <code>assets_exposure</code> reads the merged assets of <strong>CTEM &gt; Inventory</strong> (one row per real asset, with its sources and merged records) and its <code>query</code> also takes <code>field:value</code> terms on <code>category</code>, <code>subcategory</code>, <code>criticality</code>, <code>internet_facing</code>, <code>os_family</code>, <code>source</code> and <code>group</code></td>
+</tr>
+<tr>
+<td><code>prioritization_policy</code></td>
+<td>Its number of rules, in the short block; the rules only when preloaded</td>
+<td>One row per threshold you set, per exclusion and per accepted risk</td>
+</tr>
+<tr>
+<td><code>enterprise_knowledge</code></td>
+<td>Its number of linked knowledge bases, never the content</td>
+<td>Without <code>query</code>, the linked knowledge bases; with <code>query</code>, the passages that answer it, only from the knowledge bases the person the agent acts for can read</td>
+</tr>
+</tbody>
+</table>
+<p>A vulnerability on a product named like one of your imported GitHub or GitLab repositories (a CPE product part or a plain name, case, <code>-</code> and <code>_</code> ignored) resolves to that repository in CTEM without a <code>shipped_products</code> row; forks are left out.</p>
+<p><code>crown_jewels</code> and <code>tech_stack</code>, the former names of <code>primary_assets</code> and <code>software</code>, are no longer read; a saved selection naming them was renamed on upgrade. The product list of an asset or an asset group, and the asset CSV column, are named <code>products</code>.</p>
+<p>The short block stays the same size whatever the length of the lists. An agent asked about a vulnerability reads the software inventory page by page, or narrows it to a vendor or a product with <code>query</code>.</p>
+<p>You choose at three levels, the most specific one winning:</p>
+<ul>
+<li><strong>Settings &gt; Organization &gt; Organization context in agents</strong>: <code>Use organization context in every agent</code>, on by default, and <code>Preloaded organization categories</code>, none by default, are the defaults for every agent and assignment.</li>
+<li><strong>An agent's Configuration &gt; General</strong>: <code>Organization context</code> is <code>Inherit</code> (follow the platform), <code>Always</code> or <code>Off</code>; <code>Preloaded organization categories</code> is <code>Inherit</code> or a list of its own.</li>
+<li><strong>An assignment's parameters</strong>: the same two fields, <code>Inherit</code> following the agent, then the platform.</li>
+</ul>
+<p>A preloaded category is loaded after the short block, capped, with the call that reads the rest. Each form shows the value in effect and where it comes from. <code>Off</code> on an agent or an assignment also removes the tool; the platform switch removes the short block only. A fleet run keeps its fuller profile block and does not repeat the short block. Every built-in agent inherits the platform default; the vulnerability and remediation agents of the exposure management fleets preload the software inventory, the primary assets, the assets and exposure, and the prioritization policy.</p>
+<p>Agents cite the fields they used. For a field you have not filled, they name it in their output instead of guessing it: "the primary assets are not set", for example. The profile is treated as information typed by a person, never as instructions to the agent.</p>
+<p>The profile also feeds other features:</p>
+<ul>
+<li>An OpenCTI trigger can take its filters from the profile's intelligence requirements, regions and sector. See <a href="../../usage/xtm-suite/opencti/#react-to-opencti-events">React to OpenCTI events</a>.</li>
+<li>The primary assets stay in line with OpenCRQ through a scheduled Inventory source (see <a href="#primary-assets-and-opencrq">Primary assets and OpenCRQ</a> below).</li>
+</ul>
+<h2 id="shared-context-and-permissions">Shared context and permissions</h2>
+<p>The organization profile is one shared context for the whole platform. Every import, sync and agent write shows the same notice, <strong>Shared organization context</strong>:</p>
+<ul>
+<li>Data is read from the source platform with the permissions of the person who sets up the import or sync. A sync keeps reading with the permissions of the administrator who saved it: the import dialog says <strong>Reads as</strong> or <strong>Runs as</strong> with that person, the <strong>Runs as</strong> column of <strong>Settings &gt; Organization &gt; Syncs</strong> names them, and editing a sync saved by someone else says whose permissions it runs with now and that saving it makes it run with yours (<strong>Runs as</strong> the owner, then <strong>Saving makes it run as</strong> you).</li>
+<li>The source platform's access rules, including organization segregation and markings, are not carried over.</li>
+<li>Once imported, the organization context is visible to every user and every agent of this XTM One platform.</li>
+</ul>
+<p>This applies to the organization context only. Agent integrations, dashboards and every other feature keep each user's own permissions.</p>
+<p>A CSV upload and a row typed by hand read no platform, so they carry the shared-visibility sentence only. The agent tools of the <strong>Organization context</strong> group (<code>update_organization_context</code>, <code>upsert_organization_rows</code>, <code>run_organization_import</code>, <code>create_organization_sync</code>, <code>run_organization_sync</code>, <code>propose_organization_context_change</code>) state the same in their description, and their previews and results carry the notice, so the agent tells the person before it applies.</p>
+<h2 id="let-an-agent-edit-the-profile">Let an agent edit the profile</h2>
+<p>Reading the profile needs nothing. Changing it is the <strong>Organization Profile Editing</strong> built-in tool group (<code>organization_context</code>), off by default and marked administrator-only in an agent's built-in tools:</p>
+<ul>
+<li><code>update_organization_context</code> saves field changes at once, on your profile or a tracked organization's: the whole new value of each field with its basis. Each value is validated like this form. The change is a new saved version authored by the administrator the agent acts for, the agent's name and the basis kept per field, so <strong>Saved versions</strong> below can roll it back. Each save writes an audit log entry.</li>
+<li><code>propose_organization_context_change</code> records a proposal an administrator accepts or rejects here instead.</li>
+<li><code>list_organization_proposals</code> and <code>decide_organization_proposal</code> read the proposals and accept or reject a pending one, as the review on this page does: <code>accept</code> names the fields or organizations kept, an empty list rejects it (a proposal already applied with <code>update_organization_context</code>, for example). A decided proposal is refused, and each decision writes an audit log entry.</li>
+<li><code>list_organization_versions</code> lists the saved versions of the profile, newest first, with their source, author and primary asset count; with <code>version</code> it reads that version's whole profile. <code>restore_organization_version</code> saves the next version with some fields (or every field) taken from a past one, with the same checks as the restore on this page, and answers the rows it drops; each restore writes an audit log entry.</li>
+<li><code>update_organization_context</code> and <code>restore_organization_version</code> take <code>based_on_version</code>, the version the agent read: when another version was saved since, nothing is saved and the agent is told to read the profile again.</li>
+<li><code>reconcile_organization_with_opencrq</code> runs the primary-asset reconcile with OpenCRQ of this page: <code>apply</code> false (the default) answers the plan, <code>apply</code> true saves a version of the profile. Nothing is written to OpenCRQ: the assets read are its primary assets.</li>
+<li><code>upsert_organization_rows</code> adds or updates rows of one section without resending the list. Assets and asset groups are keyed on the source the rows come from and their <code>external_id</code> there; a row a person wrote (source <code>manual</code>, <code>csv</code> or <code>api</code>) is never updated or removed, and a field the source does not send (owner, environment, group) keeps the value a person set. Software products are added when their name is new and never overwritten. Rows are validated like the CSV import; a bad row is refused with its reason and the others go on. At most 500 rows per call.</li>
+<li><code>remove_organization_rows</code> removes the assets or asset groups a source synced, by <code>external_id</code> (a device retired from the source).</li>
+<li><code>run_organization_import</code> runs the import of <a href="#draft-the-profile-from-your-platforms">Draft the profile from your platforms</a> for one section and one platform, with the same rules.</li>
+<li><code>list_organization_syncs</code>, <code>create_organization_sync</code> and <code>run_organization_sync</code> read, add and run now the scheduled syncs of <strong>Settings &gt; Organization &gt; Syncs</strong> (see <a href="#keep-a-section-in-sync">Keep a section in sync</a>). A sync an agent creates is saved with the administrator the agent acts for as its owner: its runs read the platform with that administrator's token, exactly as a sync saved in the dialog. The agent previews the import with <code>run_organization_import</code> first; <code>create_organization_sync</code> refuses what the scheduler could not run (an unknown section, a platform that cannot feed it, an unknown time zone) and a second <strong>Sync all</strong> schedule.</li>
+</ul>
+<p>The row and import tools preview by default: they answer what would be added, updated, left unchanged, removed or refused, with the reasons, and save nothing. With <code>apply</code> set to true they save a new version, authored by the administrator the agent acts for, with the agent and the counts kept as the basis.</p>
+<p>Only an administrator can add the group to an agent. The tools are offered only on a turn that acts for an administrator: the verified caller in chat, the run's acting user in an assignment. A non-administrator talking to the same agent does not get them, and a direct call is refused ("only an administrator can change the organization profile"); an identity the platform cannot resolve is refused too. The built-in CTEM Assistant and the Platform Health orchestrator keep their proposal tool without the group.</p>
+<h2 id="fill-the-profile-with-an-agent">Fill the profile with an agent</h2>
+<p>An agent bound to the integration (read-only is enough) and to <strong>Organization Profile Editing</strong> fills a section from any platform the integration reaches: an endpoint manager, an EDR, a cloud inventory, a CMDB.</p>
+<p><strong>Intune.</strong> Bind the agent to the Microsoft Intune integration and ask:</p>
+<div class="highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>List every managed device in Intune with intune_list_devices (page through all of them),
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>then upsert them into the assets with upsert_organization_rows, source intune,
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>rows_format intune_device. Show me the preview first; apply only when I say so.
+</span></code></pre></div>
+<p>With <code>rows_format</code> <code>intune_device</code> the platform maps each device itself: the Intune device id is the <code>external_id</code>, the operating system gives the category (Windows, macOS and Linux devices are workstations, laptops when Intune says so; iOS and Android devices are smartphones, iPads tablets), and the operating system and compliance state become tags (<code>os:windows</code>, <code>compliance:noncompliant</code>). The primary user's name becomes the owner only when you pass <code>include_owner</code> true. With <code>intune_detected_app</code>, detected apps are reduced to the security products among them (Defender, CrowdStrike, SentinelOne and the like), added to the software inventory.</p>
+<p><strong>On a schedule.</strong> To keep the assets in sync, give the same agent an assignment with a schedule trigger (for example <code>0 6 * * *</code>, every day at 06:00) and a prompt such as:</p>
+<div class="highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Read every managed device from Intune. Upsert them into the assets with
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>upsert_organization_rows, source intune, rows_format intune_device, apply true.
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>Then remove with remove_organization_rows the intune assets whose device id
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>Intune no longer lists. Report the counts and every refused row with its reason.
+</span></code></pre></div>
+<p>The run acts as the assignment's user, who must be an administrator for the tools to be offered. Each run saves at most one version per call, visible in <strong>Saved versions</strong> below.</p>
+<p><strong>A platform sync instead of an assignment.</strong> For a platform the import reads (OpenCTI, OpenAEV, OpenCRQ), the agent can schedule the platform sync itself, with no model call at each run:</p>
+<div class="highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>Preview the OpenCTI import of the assets with run_organization_import. If it looks right,
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>keep it in sync every day at 06:00 Paris time with create_organization_sync, then
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>run it once now with run_organization_sync and report the counts.
+</span></code></pre></div>
+<p><strong>In one click.</strong> On <strong>Settings &gt; Organization</strong>, <strong>Draft &gt; From a connected integration</strong> opens a dialog: pick a connected integration, turn on <strong>Keep the assets in sync every day</strong> if you want the scheduled assignment, then <strong>Open the chat</strong>. The chat opens with the agent and its preview instruction ready to send; nothing is saved until you confirm in the chat. The dialog calls <code>POST /api/v1/organization-context/fill-agent</code>, which, with an <code>integration_id</code>, creates that agent for you: bound to the integration read-only and to <strong>Organization Profile Editing</strong>, its persona and its first prompt written for the platform (Intune devices are mapped on the server, any other platform's devices are mapped by the agent with their own id as <code>external_id</code>). With <code>schedule</code> true it also creates the assignment <strong>Keep my assets in sync from <integration></integration></strong> (<code>cron</code> <code>0 6 * * *</code> by default, <code>timezone</code> optional). A second call for the same integration reuses the agent and the assignment. The call creates nothing when AI is off or unlicensed.</p>
+<h2 id="sources">Sources</h2>
+<p>At the top of <strong>Settings &gt; Organization</strong>, the <code>Sources</code> panel says who feeds the profile before the tabs say what it holds. It lists each connected platform (OpenCTI, OpenAEV, OpenCRQ) with its number of syncs, then the rows typed by hand, imported from CSV, written through the API or kept by an agent. Each source shows one chip per section it fills (primary assets, software inventory, assets, asset groups) with its number of rows; a chip opens that section's tab, filtered on the source where its table has a <code>Source</code> filter. <code>Add a sync</code> opens the import stepper: pick a section and a platform, preview the rows, then turn on <code>Keep in sync</code>. With no source yet, the panel says where to start.</p>
+<h2 id="edit-the-profile">Edit the profile</h2>
+<p>Select <code>Edit</code>, change what you need, then <code>Save</code>. <code>Cancel</code> drops your changes.</p>
+<p>Above the form, a box lists the fields not filled yet: the same list agents report. The fields are:</p>
+<ul>
+<li><code>Organization name</code>, <code>Organization size</code> (a band of employees), <code>Sector</code> and <code>Sub-sector</code>.</li>
+<li><code>Regions of operation</code>: two-letter country codes, separated by commas (<code>FR, DE, US</code>).</li>
+<li><code>Annual loss threshold</code> and <code>Approval threshold</code>: your risk appetite, as amounts.</li>
+<li><code>Currency</code>: a three-letter currency code (<code>EUR</code>), and <code>Loaded hourly rate</code>: the cost of an hour of your team's work.</li>
+<li><code>Ticketing integration</code> and <code>Ticketing project</code>: where CTEM cases become tickets (for example <code>jira</code> and <code>SEC</code>). The target counts as filled only when both are set. Both sit at the top of the <strong>CTEM case sync</strong> card, before the rules that say how a case opens, updates and closes its ticket.</li>
+</ul>
+<p>The <strong>Priority intelligence requirements (PIRs)</strong> are not on this page: pick them on <strong>CTEM &gt; Inventory &gt; Exposure policy &gt; Prioritization policy</strong>, next to the two PIR score thresholds (<code>PIR score minimum: vulnerabilities</code> and <code>PIR score minimum: threat activity</code>). The list is picked from the PIRs of your connected OpenCTI: it filters the two PIR playbooks and raises the context score of a threat or a vulnerability flagged in one. Select <code>Edit</code> on the card, change the list, then <code>Save</code>.</p>
+<p>A value that is not valid (a region that is not a country code, an amount that is not a number) is refused, and the message names the field.</p>
+<h3 id="pause-and-resume-ctem-case-opening">Pause and resume CTEM case opening</h3>
+<p>The <strong>Case opening</strong> switch sits in the toolbar of <strong>CTEM &gt; Cases</strong>, beside <strong>Group by</strong> and <strong>Views</strong>, and on the header of <strong>CTEM &gt; Signals &gt; Sources</strong>, for administrators. It is on by default. Hover it to see how many confirmed signals are waiting while it is off.</p>
+<ul>
+<li><strong>Off</strong>: a confirmed signal opens no case. It stays confirmed and waits; an empty Cases list says case opening is off. Case deadlines, announcements and the stall reminder keep running, and a case can still be split by hand.</li>
+<li><strong>On again</strong>: every waiting signal opens (or joins) its case at once, without waiting for the next scheduled pass, and the Cases list fills while you watch.</li>
+</ul>
+<p>Other users do not see the switch. Every change is in the audit log.</p>
+<h2 id="primary-assets-and-business-services">Primary assets and business services</h2>
+<p>The primary assets are the assets that matter most to the business. Without them, agents cannot rank findings by business impact. In edit mode, <code>Add a primary asset</code> adds a row with:</p>
+<ul>
+<li>the primary asset's name;</li>
+<li>the <code>Business service</code> it supports;</li>
+<li>its <code>Owner</code>;</li>
+<li>its <code>Criticality</code>: <code>Low</code>, <code>Medium</code>, <code>High</code> (the default) or <code>Critical</code>.</li>
+</ul>
+<p>A link icon marks a primary asset linked to an OpenCRQ asset.</p>
+<h2 id="primary-assets-and-opencrq">Primary assets and OpenCRQ</h2>
+<p>OpenCRQ rates the same business assets as primary assets. With OpenCRQ connected as a company-managed integration, the primary assets are an Inventory source: <code>CTEM</code> &gt; <code>Inventory</code> &gt; <code>Sources</code> lists the OpenCRQ primary-asset sync next to the asset sources, with the same controls (enabled, schedule, last run with its counts, next run, <code>Run now</code>, errors). It is on and daily by default, and it links the supporting assets to their primary assets unless turned off.</p>
+<ul>
+<li>A primary asset you add or edit by hand, and a link you add or remove by hand, always win over the sync.</li>
+<li>Turning the source off stops the schedule; the rows it already wrote stay.</li>
+</ul>
+<p>The primary assets card names the source with the OpenCRQ icon and the time of its last sync. It has no OpenCRQ button: run or configure the sync from <code>Sources</code>. OpenCRQ is read with the access of the administrator who last saved the sync. See <a href="../../usage/xtm-suite/opencrq/">XTM One in OpenCRQ</a>.</p>
+<h2 id="software">Software</h2>
+<p>The software inventory lists the products you run, so that agents can match vulnerabilities to them. <code>Add a product</code> adds a row with the <code>Product</code>, its <code>Vendor</code> and, optionally, its <code>CPE</code>: the standard product identifier that vulnerability records use, which makes the match exact.</p>
+<p>When your assets carry their installed software (from a sync or an import), the software inventory agents read is built from it: one entry per product, with each version seen and the number of assets running it, and the sources that report it. The rows you typed stay: a product no asset reports (a SaaS application, a cloud service) keeps its own entry, and a CPE you typed wins over the one a source reports. <code>GET /api/v1/organization-context/software</code> answers the same list (the CTEM &gt; Inventory &gt; Software tab), and <code>GET /api/v1/organization-context/assets/by-software?product=</code> lists the assets running a product.</p>
+<h3 id="software-from-an-sbom">Software from an SBOM</h3>
+<p>An SBOM (software bill of materials) lists what an application or a container image is made of. An administrator can import one on an asset with <code>POST /api/v1/organization-context/assets/{asset_id}/sbom</code> (a CycloneDX JSON or SPDX JSON file in the <code>file</code> field): its components join the asset's software with the source <code>sbom</code>, with their CPE and package URL when the SBOM gives them, and with the component that bundles them (the NGINX inside an ingress controller image, for example). A component without a version is listed as <code>unknown</code>. Importing the same SBOM again replaces what it gave; another SBOM on the same asset adds to it. The SBOM stays with the asset when a sync merges it with another record. A file over 10,000 components is refused: split it per application or image.</p>
+<h3 id="how-one-asset-is-matched-across-sources">How one asset is matched across sources</h3>
+<p>The same device read from two sources (an endpoint manager and OpenAEV, for example) is one asset when they share a strong identifier: hardware serial, cloud resource id, code repository path, managed device id, MAC address, FQDN or hostname, in that order by default. A code repository is matched on its path (<code>github.com/owner/repo</code>, read from its URL or from a name such as <code>Owner/Repo</code>, whatever the case or a trailing <code>.git</code>), so the repository OpenAEV lists and the one GitHub or GitLab sends are one asset; two repositories with different GitHub or GitLab ids are never merged on the path. An IP address alone never merges two assets. Each field shows the value of the source that ranks first for it (by default the endpoint manager or EDR for the operating system and software, OpenCRQ for criticality, OpenAEV for exposure), and every source's value is kept. An administrator can change the order of the identifiers, leave one out, or change the source order of a field in the profile's <code>asset_identity</code> part; <code>GET /api/v1/organization-context/assets/identity</code> shows the saved settings, the defaults and what applies.</p>
+<h2 id="ai-targets-are-assets">AI targets are assets</h2>
+<p>The AI your organization runs or exposes is an asset of category <code>AI target</code>, as in OpenAEV, with its subcategory (<code>LLM model</code>, <code>AI agent</code>, <code>MCP server</code> or <code>RAG pipeline</code>), provider, endpoint, model and modality. It is listed, filtered and synced in CTEM &gt; Inventory &gt; Assets like any other asset, and AI security work reads it from there: an agent reads them with the <code>assets_exposure</code> category and the query <code>category:ai_target</code>. The profile has no separate AI list: entries saved in it before were turned into AI target assets, linked to their OpenAEV record when they had one.</p>
+<h2 id="saved-versions">Saved versions</h2>
+<p>Each save is a new version: nothing is overwritten. The page shows the current version and when it was saved. When two administrators save at the same moment, the second save is refused: reload the page and save again.</p>
+<p>Scripts list the saved versions, newest first, with <code>GET /api/v1/organization-context/versions</code> (administrators only). Any signed-in user can read the current profile with <code>GET /api/v1/organization-context</code>. The profile carries its own fields only: assets and asset groups are read and written with <code>/api/v1/organization-context/assets</code> and <code>/api/v1/organization-context/asset-groups</code>, and the profile answers how many there are in <code>row_counts</code>. A save or a restore never changes an asset row, and a row list sent with it is ignored and named in <code>ignored_row_fields</code>. Restoring a version brings back profile fields only: assets keep their own history in CTEM &gt; Inventory.</p>
+<h2 id="draft-the-profile-from-your-platforms">Draft the profile from your platforms</h2>
+<p>XTM One can propose a profile from what your connected platforms already hold:</p>
+<ul>
+<li>OpenCTI: your organization's name, its first sector and your priority intelligence requirements;</li>
+<li>OpenAEV: your security platforms (EDR, SIEM and others), as software inventory entries;</li>
+<li>OpenCRQ: the supporting assets rated high or very high, as primary assets linked to their asset.</li>
+</ul>
+<p>Only empty fields are filled: what a person typed always wins. Each filled field names the platform it came from, and a platform that is not connected or cannot be read is reported instead of failing the draft. Each platform is read with your own access. No model is involved.</p>
+<p>The draft is a proposal, never a save. In <strong>Settings &gt; Organization</strong>, open <strong>Draft &gt; From the platforms</strong>: the form opens on the proposed values, each one named with its platform, and nothing is saved until you select <strong>Save</strong>. A platform that could not be read is named with a link to <strong>Settings &gt; Integrations</strong>. Scripts use <code>POST /api/v1/organization-context/draft</code>.</p>
+<h2 id="import-one-section-from-a-platform">Import one section from a platform</h2>
+<p><strong>Settings &gt; Organization &gt; Import from the platforms</strong> imports one section of the profile from one connected platform, with no model call, in five steps:</p>
+<ol>
+<li><strong>What to import</strong>: assets, asset groups, software inventory, primary assets or PIRs. AI targets come in with the assets (category <code>AI target</code>).</li>
+<li><strong>Source</strong>: the platforms that hold this section, shown with their logo. A platform that is not connected or not readable with your account is shown greyed, with the reason.</li>
+<li><strong>Filters</strong>: each value is picked from the platform itself, never typed.</li>
+<li><strong>Mapping</strong>: each profile field with the platform attribute it reads, its fallback, and an example taken from the platform. The fields the platform does not provide are listed: rows keep what you typed for them.</li>
+<li><strong>Preview</strong>: the platform's own count, then the rows that would be new, updated, unchanged or skipped. Nothing is saved before <strong>Import</strong>. When the platform cannot be read, the preview says so with the reason: the permission the integration lacks (for example the CrowdStrike Falcon <em>Host groups: Read</em> scope), an integration that is not connected, an HTTP status or a timeout. A platform's own error text is never shown.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Platform</th>
+<th>Filters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Assets</td>
+<td>OpenCTI</td>
+<td>labels, markings, author, creator, category, subcategory, criticality, exposure, environment, platform, created on or after</td>
+</tr>
+<tr>
+<td>Assets</td>
+<td>OpenAEV</td>
+<td>asset groups, tags, category, subcategory, criticality, platform</td>
+</tr>
+<tr>
+<td>Asset groups</td>
+<td>OpenAEV</td>
+<td>tags, name contains</td>
+</tr>
+<tr>
+<td>Asset groups</td>
+<td>Microsoft Intune (Entra device groups), Tanium (computer groups), CrowdStrike Falcon (host groups), ServiceNow (business services)</td>
+<td>name contains</td>
+</tr>
+<tr>
+<td>Software</td>
+<td>OpenAEV</td>
+<td>security platform type</td>
+</tr>
+<tr>
+<td>Primary assets</td>
+<td>OpenCRQ</td>
+<td>lowest criticality, tenant</td>
+</tr>
+<tr>
+<td>PIRs</td>
+<td>OpenCTI</td>
+<td>the PIRs to import</td>
+</tr>
+</tbody>
+</table>
+<p>An asset group read from a platform brings its members, kept in sync at every run: an asset leaving the group in the platform leaves it here, a member added by hand stays. A member the inventory does not hold yet is counted as not in the inventory. Intune groups are the Entra ID security groups that hold Intune devices (user groups are left out); the Intune integration then needs the Graph permissions <code>GroupMember.Read.All</code> and <code>Device.Read.All</code> besides <code>DeviceManagementManagedDevices.Read.All</code>. CrowdStrike needs the Host groups: Read scope. ServiceNow groups are the business services, their members the hardware CIs related to them in the CMDB. Import the assets of the same platform first: a group binds its members to the assets that platform brought.</p>
+<p>OpenCTI Systems carry a category, a criticality, an exposure, an environment, an owner and a platform from the OpenCTI release that ships OpenCTI-Platform/opencti#19943; the import reads them. On an older OpenCTI those filters are hidden and every System takes the type you pick on the filters step, which is otherwise used only for Systems with no category. The owner falls back to the System's author; the platform and the markings are kept as <code>platform:</code> and <code>marking:</code> tags.</p>
+<p>Every row of every list section (primary assets, software inventory, assets, asset groups) records where it comes from: its <strong>source</strong> (<code>manual</code> when typed, <code>csv</code>, <code>api</code>, <code>agent:&lt;agent id&gt;</code>, or the platform: <code>opencti</code>, <code>openaev</code>, <code>opencrq</code>), its id in that platform (<code>external_id</code>) and the sync that wrote it (<code>sync_id</code>). A primary asset saved with only its OpenCRQ link reads as a row of that platform.</p>
+<p>An import can run again with the same or other filters. A row a previous import from the same platform wrote is updated, never duplicated, and the fields a person added that the platform does not send (a primary asset's business service and linked assets, an owner the platform leaves empty) are kept; a row typed by hand, uploaded as CSV or written through the API is never overwritten. Rows a previous import wrote that the platform no longer returns with these filters are listed as <strong>no longer in</strong> the platform: they are kept unless you switch on their removal. Each import is recorded with the platform, the filters and the time of the read. Scripts use <code>GET /api/v1/organization-context/import/options</code>, <code>POST /api/v1/organization-context/import/preview</code> and <code>POST /api/v1/organization-context/import/apply</code> (<code>remove_gone</code> removes the rows no longer in the platform).</p>
+<p>An asset is one real thing whatever the number of platforms that report it. When a platform sends an asset named like a row another source wrote (typed by hand, or read from another platform), the import adds it as a second record of that asset instead of skipping it, and the asset list shows it once, with each platform it comes from and, for every field, which source set the value. Records are joined on their serial number, cloud resource id, code repository path, device id, MAC address, fully qualified name or host name; an IP address alone never joins two records. An administrator can merge records the keys did not join, or keep apart two records they joined (<code>POST /api/v1/organization-context/assets/decisions</code>, removed with <code>DELETE</code> on the same path and the decision id); both are kept across syncs and written to the audit log. A row typed by hand needs an external id before it can be merged or kept apart, because without one it is known only by its position in the list.</p>
+<h2 id="keep-a-section-in-sync">Keep a section in sync</h2>
+<p>An import can also be saved as a <strong>sync</strong> that runs again on a schedule, so the profile follows the platform: on the import's preview, switch on <strong>Keep in sync</strong> and pick the schedule, then select <strong>Import and keep in sync</strong> (or <strong>Save the sync</strong> when nothing is new today). Only the sections the import feeds can be synced: assets, asset groups, software inventory, primary assets and PIRs. The name, sector, regions, size, currency, risk appetite and the other typed fields are never synced.</p>
+<p>A sync keeps the source, the filters, the batch type, the choice for the rows that left the platform (removed by default: a deletion upstream deletes the row in XTM One; switch it off to keep them), its exclusion list (<code>excluded_external_ids</code>: the platform's rows it never imports, a stored copy included) and a schedule:</p>
+<ul>
+<li><strong>Hourly</strong>, at a minute of the hour.</li>
+<li><strong>Daily</strong>, at a time in a time zone.</li>
+<li><strong>Weekly</strong>, on a day at a time in a time zone.</li>
+</ul>
+<p>A section can carry several syncs, for example one per source or one per filter set. <strong>Sync all</strong> is one more schedule that runs every enabled section sync in the order they were saved. <strong>Run now</strong> runs a sync at once without moving its next scheduled run.</p>
+<p><strong>Settings &gt; Organization &gt; Syncs</strong> lists them: the section, the source, the filters, the schedule, the last run (when, rows added, updated and removed, or its error on hover), the next run, the status (<strong>Enabled</strong>, <strong>Paused</strong> with its reason on hover, <strong>Disabled</strong>) and the enabled switch, with <strong>Run now</strong>, <strong>Edit</strong> (schedule and switch) and <strong>Delete</strong> on each row. <strong>Add Sync all</strong> appears once a section sync exists. Deleting a sync stops its schedule; the rows it imported stay in the profile.</p>
+<p>Each run follows the import rules:</p>
+<ul>
+<li>A run saves a new profile version only when something changed. The version names the sync and the administrator who saved it.</li>
+<li>A row typed by hand, uploaded as CSV or written through the API is never overwritten.</li>
+<li>A run reads with the platform token of the administrator who saved the sync. When that administrator is no longer active or no longer an administrator, or the platform token is missing or revoked, the sync pauses and shows the reason. Saving it again resumes it with your own token.</li>
+<li>Two runs of one sync never overlap.</li>
+<li>A run whose read was cut (more rows than one run reads) or failed removes nothing.</li>
+<li>The rows a run writes carry the sync's id; a row whose id is on the exclusion list is left out and its stored copy removed. The last run counts the excluded rows.</li>
+<li>Every run that changed the profile or failed, and every change to a sync, is written to the audit log. <code>GET /api/v1/organization-context/syncs/{id}/history</code> answers the last of these events for one sync (when, who, the trigger, the counts, the error).</li>
+</ul>
+<h3 id="delete-a-sync-and-its-rows">Delete a sync and its rows</h3>
+<p>Deleting a sync asks what becomes of the rows it wrote (<code>DELETE /api/v1/organization-context/syncs/{id}?rows=</code>):</p>
+<ul>
+<li><strong>leave</strong> (the default): the rows stay as they are.</li>
+<li><strong>release</strong>: the rows stay and become editable by hand. The saved version records where they came from ("formerly synced from" the platform).</li>
+<li><strong>purge</strong>: only the rows this sync wrote are removed. A row typed by hand, or written by another source, is kept, even when it has the same name.</li>
+</ul>
+<p><code>GET /api/v1/organization-context/syncs/{id}/rows-preview?mode=purge</code> counts and names the rows first, and the rows of other sources with the same name that are kept. Release and purge save a new profile version and are written to the audit log.</p>
+<h3 id="sources_1">Sources</h3>
+<p><code>GET /api/v1/organization-context/sources?scope=profile|inventory</code> lists every source of rows: its kind (a platform sync, an agent or partner writing through the API, a CSV import, the API, or entered by hand), its name (OpenAEV, Microsoft Intune, the agent's name), the agent that last wrote its rows when a saved version names it, its rows per section and its syncs. The rows of an agent, a partner or a CSV import can be purged or released the same way: <code>GET /api/v1/organization-context/sources/{source}/rows-preview?mode=</code> then <code>POST /api/v1/organization-context/sources/{source}/rows</code> with <code>{"mode": "purge"}</code> or <code>{"mode": "release"}</code>. Rows entered by hand are never purged.</p>
+<h3 id="sync-direction">Sync direction</h3>
+<p>Each sync has one direction and one master, never a free two-way merge:</p>
+<ul>
+<li><strong>Inbound</strong> (the default, and every sync saved before directions existed): the platform is the master. Its rows are read-only in XTM One and follow the platform.</li>
+<li><strong>Outbound</strong>: the XTM One list (typed, CSV, API or maintained by an agent) is the master. The platform rows this sync created are created, updated and deleted to match it. A platform row the sync did not create is never touched, except the criticality of a primary asset already linked to it, which follows the profile.</li>
+</ul>
+<p>An outbound run writes with the token of the administrator who saved the sync, like an inbound run, and every run is written to the audit log. A change of direction starts clean: the new direction does not take over the rows the previous one created.</p>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Platform</th>
+<th>Directions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Primary assets</td>
+<td>OpenCRQ (supporting assets)</td>
+<td>Inbound, Outbound</td>
+</tr>
+<tr>
+<td>Assets</td>
+<td>OpenAEV</td>
+<td>Inbound (outbound planned)</td>
+</tr>
+<tr>
+<td>Asset groups</td>
+<td>OpenAEV</td>
+<td>Inbound (outbound planned)</td>
+</tr>
+<tr>
+<td>PIRs</td>
+<td>OpenCTI</td>
+<td>Inbound (outbound planned)</td>
+</tr>
+<tr>
+<td>Assets</td>
+<td>OpenCTI</td>
+<td>Inbound: Systems are owned by OpenCTI connectors</td>
+</tr>
+<tr>
+<td>Assets of category AI target</td>
+<td>OpenAEV (AI targets)</td>
+<td>Inbound, Outbound: XTM One-owned AI target assets are created and updated in OpenAEV</td>
+</tr>
+<tr>
+<td>Software</td>
+<td>OpenAEV</td>
+<td>Inbound: the software inventory is read from OpenAEV agents</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-each-platform-feeds">What each platform feeds</h3>
+<p>The source x section x direction matrix, read from the platform APIs the syncs call:</p>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Section</th>
+<th>What a run reads</th>
+<th>Directions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenAEV</td>
+<td>Assets</td>
+<td>Endpoints (<code>POST /api/endpoints/search</code>): name, category and subcategory, criticality, exposure, and since #1134 S4 the freshness: <strong>last seen</strong> (<code>asset_last_seen</code>) and <strong>status</strong> (<code>asset_status</code>: active, inactive, agentless, or stale when unseen past the tenant's threshold)</td>
+<td>Inbound</td>
+</tr>
+<tr>
+<td>OpenAEV</td>
+<td>Asset groups</td>
+<td>Asset groups (<code>POST /api/asset_groups/search</code>)</td>
+<td>Inbound</td>
+</tr>
+<tr>
+<td>OpenAEV</td>
+<td>Assets of category AI target</td>
+<td>AI targets (<code>POST /api/ai_targets/search</code>)</td>
+<td>Inbound, Outbound</td>
+</tr>
+<tr>
+<td>OpenAEV</td>
+<td>Software</td>
+<td>Security platforms (<code>POST /api/security_platforms/search</code>)</td>
+<td>Inbound</td>
+</tr>
+<tr>
+<td>OpenCTI</td>
+<td>Assets</td>
+<td>Systems, with the OpenAEV taxonomy when OpenCTI carries it</td>
+<td>Inbound</td>
+</tr>
+<tr>
+<td>OpenCTI</td>
+<td>PIRs</td>
+<td>Priority intelligence requirements</td>
+<td>Inbound</td>
+</tr>
+<tr>
+<td>OpenCRQ</td>
+<td>Primary assets</td>
+<td>Supporting assets at or above the minimum criticality</td>
+<td>Inbound, Outbound</td>
+</tr>
+</tbody>
+</table>
+<p>The freshness of an asset is the source's: it is read-only in XTM One and follows each run. When several sources describe one asset, the most recently seen record wins a field the precedence leaves tied. Not synced yet: an OpenAEV per-asset software inventory (OpenAEV exposes no software list on an endpoint today), OpenCTI organizations into tracked organizations (linked one by one from the tracked organization), and OpenCRQ risk tolerances (no profile field holds them).</p>
+<p>In <strong>Syncs</strong>, the <strong>Direction</strong> column shows each sync's master, and <strong>Edit</strong> sets it: <strong>Outbound</strong> is offered only where the platform can be written, otherwise it is greyed out with the reason. Changing the direction shows that the new direction starts clean before you save.</p>
+<p><code>GET /api/v1/organization-context/syncs/directions</code> lists, per section and platform, the directions a sync may take and why outbound is not offered.</p>
+<p>The syncs run on the platform's scheduler, with no model call, AI on or off. The API is <code>GET</code>, <code>POST /api/v1/organization-context/syncs</code>, <code>PUT</code> and <code>DELETE /syncs/{id}</code>, and <code>POST /syncs/{id}/run</code>; <code>direction</code> is <code>inbound</code> or <code>outbound</code>.</p>
+<h2 id="draft-the-profile-with-ai">Draft the profile with AI</h2>
+<p><strong>Draft &gt; With AI</strong> proposes values from what you give it, all optional:</p>
+<ul>
+<li>a description of the organization (what it does, where, its main systems), up to 4,000 characters;</li>
+<li>documents, such as an annual report, an asset or CMDB export or a supplier list: 5 files, 10 MB each, used for this draft only and not stored;</li>
+<li>your public website: one page and at most 4 links of the same site, fetched only when you give it;</li>
+<li>the facts <strong>From the platforms</strong> reads, for each connected platform you keep ticked.</li>
+</ul>
+<p>One model call is made when you select <strong>Draft</strong>, never when the page loads, and it counts on your quota like a chat turn.</p>
+<p>The result is a review, never a save. Each proposed field shows its value, its source and a confidence; hover the confidence to read the basis. A field that already holds a value is marked <strong>Replaces your value</strong> and shows the current value. An amount the model inferred is marked <strong>Check this</strong>. Accept or reject each row, or select <strong>Accept all</strong>, which leaves conflicts, <strong>Check this</strong> rows and low confidence rows for you to review. Proposals equal to the current value are collapsed under <strong>Unchanged</strong>, and the fields nothing supports are listed under <strong>Not supported</strong>: they stay empty.</p>
+<p><strong>Save accepted</strong> writes one new version with the source "AI draft"; the version keeps, for each accepted field, its source and basis.</p>
+<p>Without an Enterprise licence, or when AI is switched off, <strong>With AI</strong> shows a lock and opens the licence options; <strong>From the platforms</strong> stays available and calls no model.</p>
+<h2 id="draft-tracked-organizations-with-ai">Draft tracked organizations with AI</h2>
+<p>In <strong>Settings &gt; Organization &gt; Tracked organizations</strong>, <strong>Draft with AI</strong> proposes each organization's details from its name alone: sector, regions, website, relationship, criticality and the matching OpenCTI organization. It needs agentic AI; without it the button opens the trial, license or LLM setup instead.</p>
+<ol>
+<li>Type the names, one per line, or choose a supplier or customer file (CSV or XLSX, 2 MB at most). The first column is read as names and a header row is skipped.</li>
+<li>Choose the relationship to use when the model cannot place a name.</li>
+<li>Read the count line, then select <strong>Draft</strong>. A run drafts at most 50 names and uses one agentic request of your quota per 10 names. Above 50 names, the dialog says how many are left for the next run.</li>
+</ol>
+<p>The proposals open on their own review page. Nothing is created yet.</p>
+<ul>
+<li>Accept or reject each row from its actions, or select rows and use <strong>Accept selected</strong> or <strong>Reject selected</strong>.</li>
+<li>When several OpenCTI organizations match a name, pick one in the row. A row with <strong>No match</strong> is created without a link.</li>
+<li>A name you already track is shown as <strong>Already tracked</strong>. It is never created twice and costs no request.</li>
+<li>When a batch fails, its names are listed with <strong>Retry</strong>. The other batches are kept.</li>
+<li><strong>Create accepted</strong> creates the accepted organizations with monitoring off. <strong>Discard draft</strong> creates nothing.</li>
+</ul>
+<h2 id="next-step">Next step</h2>
+<p><a href="../users-and-groups/">Users and groups</a> explains how to manage who uses the platform.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 25, 2026 01:42:38 UTC"><span class="timeago" datetime="2026-11-25T01:42:38+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 25, 2026 01:42:38 UTC">2026-11-25</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+  </span>
+
+    
+    
+    
+      
+  <span class="md-source-file__fact">
+    
+      
+  <span class="md-icon" title="Contributors">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33s1.71.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2"></path></svg>
+  </span>
+  <span>GitHub</span>
+
+    
+    <nav>
+      
+        <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
+          
+          <img src="https://avatars.githubusercontent.com/u/1334279?v=4&amp;size=72" alt="SamuelHassine">
+        </a>
+      
+        <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
+          
+          <img src="https://avatars.githubusercontent.com/u/326439686?v=4&amp;size=72" alt="Letullier-Thibert">
+        </a>
+      
+      
+      
+    </nav>
+  </span>
+
+    
+  </aside>
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer">
+        
+          
+          <a href="../settings/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Settings">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Settings
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../channels/" class="md-footer__link md-footer__link--next" aria-label="Next: Overview">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Overview
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"></path></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2026 Filigran SAS. Community Edition licensed under the Apache License 2.0
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/XTM-One-Platform" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://community.filigran.io" target="_blank" rel="noopener" title="community.filigran.io" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M94.1 315.1c0 25.9-21.2 47.1-47.1 47.1S0 341 0 315.1 21.2 268 47.1 268h47.1v47.1zm23.7 0c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1v117.8c0 25.9-21.2 47.1-47.1 47.1s-47.1-21.2-47.1-47.1zm47.1-189c-25.9 0-47.1-21.2-47.1-47.1s21.2-47 47.1-47S212 53.2 212 79.1v47.1h-47.1zm0 23.7c25.9 0 47.1 21.2 47.1 47.1S190.8 244 164.9 244H47.1C21.2 244 0 222.8 0 196.9s21.2-47.1 47.1-47.1zm189 47.1c0-25.9 21.2-47.1 47.1-47.1s47 21.2 47 47.1-21.2 47.1-47.1 47.1h-47.1v-47.1zm-23.7 0c0 25.9-21.2 47.1-47.1 47.1S236 222.8 236 196.9V79.1c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1zm-47.1 189c25.9 0 47.1 21.2 47.1 47.1s-21.2 47-47.1 47-47.1-21.2-47.1-47.1v-47.1h47.1zm0-23.7c-25.9 0-47.1-21.2-47.1-47.1s21.2-47.1 47.1-47.1h117.8c25.9 0 47.1 21.2 47.1 47.1s-21.2 47.1-47.1 47.1z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://linkedin.com/company/filigran" target="_blank" rel="noopener" title="linkedin.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M416 32H31.9C14.3 32 0 46.5 0 64.3v383.4C0 465.5 14.3 480 31.9 480H416c17.6 0 32-14.5 32-32.3V64.3c0-17.8-14.4-32.3-32-32.3M135.4 416H69V202.2h66.5V416zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77m282.1 320h-66.4V312c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9V416h-66.4V202.2h63.7v29.2h.9c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://twitter.com/FiligranHQ" target="_blank" rel="noopener" title="twitter.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"></path></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.path", "navigation.footer", "navigation.expand", "content.action.edit", "content.action.view", "content.code.annotate", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../js/timeago.min.js"></script>
+      
+        <script src="../../js/timeago_mkdocs_material.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>

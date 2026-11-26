@@ -1,0 +1,4589 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for XTM One, Filigran's AI-native threat-informed defense platform.">
+      
+      
+        <meta name="author" content="Filigran">
+      
+      
+        <link rel="canonical" href="https://xtm-one-platform.github.io/xtm-one/latest/usage/sandbox-workspace/">
+      
+      
+        <link rel="prev" href="../files/">
+      
+      
+        <link rel="next" href="../agents/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Sandbox workspace - XTM One Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/timeago.css">
+    
+      <link rel="stylesheet" href="../../assets/css/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-P8K1S4VSXR"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-P8K1S4VSXR",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-P8K1S4VSXR",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="filigran" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#working-in-the-sandbox-workspace" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+        
+          <aside class="md-banner md-banner--warning">
+            <div class="md-banner__inner md-grid md-typeset">
+              
+  You're not viewing the latest version.
+  <a href="../../.."> 
+    <strong>Click here to go to latest.</strong>
+  </a>
+
+            </div>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
+          </aside>
+        
+      </div>
+    
+    
+      
+
+
+<!-- Header -->
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+
+    <!-- Link to home -->
+    <a href="../.." title="XTM One Documentation" class="md-header__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+
+    <!-- Button to open drawer -->
+    <label class="md-header__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+
+    <!-- Header title -->
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color palette -->
+    
+      
+    
+
+    <!-- Site language selector -->
+    
+
+    <!-- Button to open search modal -->
+    
+      <label class="md-header__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+      </label>
+
+      <!-- Search interface -->
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+
+    <!-- Repository information -->
+    
+      <div class="md-header__source">
+        <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+
+  <!-- Navigation tabs (sticky) -->
+  
+
+  <script type="text/javascript"> !function(){var e,t,n;e="58d967e3f3ca784",t=function(){Reo.init({clientID:"58d967e3f3ca784"})},(n=document.createElement("script")).src="https://static.reo.dev/"+e+"/reo.js",n.async=!0,n.onload=t,document.head.appendChild(n)}(); </script>
+  <script src="https://copilot.filigran.ai/api/v1/public/widget.js" data-token="jNJu1JTbbPwNqk1tqEOw-WjsKU4dEcgn" data-context="{&quot;page&quot;:&quot;docs&quot;,&quot;product&quot;:&quot;XTM One&quot;}"></script>
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../deployment/overview/" class="md-tabs__link">
+          
+  
+  
+  Deployment &amp; Setup
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../getting-started/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../administration/introduction/" class="md-tabs__link">
+          
+  
+  
+  Administration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="XTM One Documentation" class="md-nav__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    XTM One Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2">
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment &amp; Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment &amp; Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_1">
+        
+          
+          <label class="md-nav__link" for="__nav_2_1" id="__nav_2_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/scim-provisioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provisioning with SCIM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/security-headers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security headers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/secret-vaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secret vaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/xtm-suite-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/chat-approvals-in-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat approvals in client apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/backup-and-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2">
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/containers-and-scopes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Containers and scopes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/relationships-and-nesting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationships and nesting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse and deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/dates-and-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meaning of dates and status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/trust-and-confidence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trust, review, and confidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work with agents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Work with agents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../office-add-in/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Office add-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scheduled-work-items/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduled work items
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workspaces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../presentations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presentations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mobile-companion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mobile companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../video-studio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video Studio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sandbox workspace
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sandbox workspace
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#what-persists-and-what-does-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What persists and what does not
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#putting-content-in-without-passing-it-through-the-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Putting content in without passing it through the conversation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-and-changing-files-without-echoing-them" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading and changing files without echoing them
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-content-out-without-passing-it-through-the-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting content out without passing it through the conversation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-a-repositorys-own-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running a repository's own checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-product-from-a-checkout-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the product from a checkout: services
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Running the product from a checkout: services">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-xtm-one-lab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The xtm-one lab
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pull-request-title-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pull request title rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-issue-title-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The issue title rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#closing-keywords-that-point-at-a-pull-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Closing keywords that point at a pull request
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-review-verdict-that-asks-for-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A review verdict that asks for changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keeping-variables-sessiontrue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keeping variables: session=true
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quotas-and-clean-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quotas and clean-up
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-a-turn-is-interrupted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a turn is interrupted
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../create-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../assignments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Assignments and triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../webhook-triggers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Webhook triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-widget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publish an agent on a website
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agentic-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4">
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manage resources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Manage resources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/agent-to-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent-to-agent (A2A)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/browser-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Browser profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/knowledge-bases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Knowledge bases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/connect-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connect an external MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/platform-mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/platform-tools-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform tools MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/mcp-catalogs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP catalogs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/relays/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relays
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/sharing-and-access/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sharing and access
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Templates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One Desktop and runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5">
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitor activity
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Monitor activity
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../home-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ctem-signals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CTEM signals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../work-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platform-insights/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform insights
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_6">
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    XTM Suite
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/common-experience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common experience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/opencti/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCTI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/indicator-decay/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indicator decay re-check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/openaev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenAEV
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/opencrq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCRQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../my-profile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    My profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4">
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/users-and-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users and groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/intents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Intents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/organization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organization profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6">
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channels and bots
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Channels and bots
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/slack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/microsoft-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/whatsapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/whatsapp-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp: two backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/telegram/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/discord/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/google-chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/agent-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent accounts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/ai-governance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI governance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/prompt-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt safety (Nova)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/editions-and-licensing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editions and licensing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/running-without-ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running without AI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/emergency-stop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/emergency-stop-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#what-persists-and-what-does-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What persists and what does not
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#putting-content-in-without-passing-it-through-the-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Putting content in without passing it through the conversation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-and-changing-files-without-echoing-them" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading and changing files without echoing them
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-content-out-without-passing-it-through-the-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting content out without passing it through the conversation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-a-repositorys-own-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running a repository's own checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-product-from-a-checkout-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the product from a checkout: services
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Running the product from a checkout: services">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-xtm-one-lab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The xtm-one lab
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pull-request-title-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pull request title rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-issue-title-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The issue title rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#closing-keywords-that-point-at-a-pull-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Closing keywords that point at a pull request
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-review-verdict-that-asks-for-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A review verdict that asks for changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keeping-variables-sessiontrue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keeping variables: session=true
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quotas-and-clean-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quotas and clean-up
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-a-turn-is-interrupted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a turn is interrupted
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation">
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../getting-started/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    User Guide
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../chat/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Work with agents
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/XTM-One-Platform/xtm-one/blob/main/docs/docs/usage/sandbox-workspace.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"></path></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/XTM-One-Platform/xtm-one/raw/main/docs/docs/usage/sandbox-workspace.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"></path></svg>
+    </a>
+  
+
+
+<h1 id="working-in-the-sandbox-workspace">Working in the sandbox workspace</h1>
+<p>The code interpreter (<code>code_interpreter</code>) runs Python for your agents. Every conversation, and every assignment run, has a <strong>sandbox workspace</strong>: a directory that keeps its files from one code interpreter call to the next, across the turns of the conversation, and across a turn that was interrupted and resumed. An agent can download a repository once, then lint it, fix it and test it over as many calls as it needs, instead of rebuilding everything in one giant call.</p>
+<div class="admonition note">
+<p class="admonition-title">The code interpreter is off by default</p>
+<p>In XTM One, the code interpreter is switched off by default: agents get neither the code interpreter nor the workspace tools this page describes. An administrator turns it on by switching off <code>Disable the code interpreter</code> in <code>Settings &gt; Security</code>, or with its environment variable (see <a href="../../deployment/configuration/#settings-security-options">Settings &gt; Security options</a>). The workspace itself has its own settings (see <a href="../../deployment/configuration/#code-interpreter-sandbox-workspace">Code interpreter sandbox workspace</a>).</p>
+</div>
+<h2 id="what-persists-and-what-does-not">What persists and what does not</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Kept between calls</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Files under <code>workspace/</code></td>
+<td>Yes</td>
+<td>The directory is <code>workspace/</code> in the code's working directory; its absolute path is in the <code>WORKSPACE_DIR</code> environment variable.</td>
+</tr>
+<tr>
+<td>Packages installed into <code>workspace/.venv</code></td>
+<td>Yes</td>
+<td>See <a href="#packages">Packages</a>.</td>
+</tr>
+<tr>
+<td>Variables and imports, <code>session=false</code> (the default)</td>
+<td>No</td>
+<td>Every call runs in a fresh, isolated process, as before.</td>
+</tr>
+<tr>
+<td>Variables and imports, <code>session=true</code></td>
+<td>Yes, while the kernel lives</td>
+<td>See <a href="#keeping-variables-sessiontrue">Keeping variables</a>.</td>
+</tr>
+<tr>
+<td>Files written elsewhere in the working directory</td>
+<td>No</td>
+<td>Kept as downloadable files of the conversation, as before.</td>
+</tr>
+<tr>
+<td><code>attachments/</code></td>
+<td>No</td>
+<td>The conversation's files, copied in for the call, as before.</td>
+</tr>
+</tbody>
+</table>
+<p>The process stays isolated on every call: the workspace adds files, not privileges. The sandbox has no network access and holds no credential; the workspace only ever contains the files of its own conversation.</p>
+<p>Each conversation and each assignment run has its own workspace; the next run of the same work item by the same agent takes over the workspace the previous run left. A background copy, a consulted agent or a run of another item starts with its own, empty one. To hand a file to it, pass it as a conversation file (<code>sandbox_get_file</code>, then its file_id), as a work item attachment, or inline in the task text, never as a <code>workspace/</code> path. A read of a path only another of your workspaces holds is refused with that workspace named (a conversation or a run) and these hand-overs; a path none holds keeps the plain "is not in the workspace" answer.</p>
+<p>Every code interpreter result starts with one line saying how the call ran: a fresh process or the kernel, whether the workspace was mounted, what was read and written, and which files were added, changed or removed. A fresh-process call whose code names only fixed paths under <code>workspace/</code> (<code>open('workspace/data/a.csv')</code>, <code>glob.glob('workspace/data/*.csv')</code>) gets those paths and the installed packages, not the whole workspace, so reading one file of a large checkout stays fast; the line then says how many of the workspace's files were mounted. Code that lists the workspace or builds a path under it gets all of it. The tool description the agent reads lists what the workspace holds (the most recent files first, the rest counted).</p>
+<h2 id="putting-content-in-without-passing-it-through-the-conversation">Putting content in without passing it through the conversation</h2>
+<p>Reading a 20-file repository through a chat model costs every file twice: once when the tool returns it, once when the agent pastes it into code. Content can go straight to the workspace instead:</p>
+<ul>
+<li><strong><code>to_workspace_path</code></strong>: the tools that return a file or text from outside (<code>read_file_content</code>, <code>web_fetch</code>, the GitHub file tools, the integration download tools and the read operations of OpenAPI and custom integrations) accept it. The content is written to the workspace on the server, and the agent gets back the path, the size and the sha256 instead of the content. A PDF or Office document (PDF, DOCX, PPTX, XLSX, XLS) also lands as its text, extracted on the server: the file at the path and its text at <code>&lt;path&gt;.txt</code>, or the text alone when the path ends in <code>.txt</code>, so a fetched report can be searched in code although the sandbox has no PDF library. A document with no text layer (a scan) is written raw and the answer says so. A tool result too long for the conversation keeps its start and its end, with a note saying how much was left out between them, so a log's final error lines are never lost.</li>
+<li><strong><code>sandbox_put_file</code></strong>: copies a file of the conversation (an upload, a download, a generated file) into the workspace.</li>
+<li><strong><code>materialize_repository</code></strong>: checks a repository out into the workspace through a connected integration (GitHub today), on the server, with that integration's credential and repository scope. Choose a branch, tag or commit and, optionally, sub-paths. A sub-path inside the directory one of the repository's declared checks runs from (its <code>.xtm-one/checks.toml</code>) is widened to that directory, since the check imports what lies there, and the answer says so; a check declared without a directory runs from the repository root and widens nothing, so the sub-paths stay as given. With sub-paths, the few files the repository's checks are read from are kept too, outside them: the manifests, lock files and tool configuration of the directories above each sub-path, <code>.github/workflows</code> and <code>.xtm-one/checks.toml</code>, so <code>sandbox_run_command</code> lists the checks of a narrow checkout, plus every repository file a declared check's command names (a check that runs <code>python ../.xtm-one/stores.py</code> from <code>backend/</code> keeps <code>.xtm-one/stores.py</code>), so the check also runs there. A sub-path inside a JavaScript workspaces root (a <code>package.json</code> with <code>workspaces</code>, or a <code>pnpm-workspace.yaml</code>) also keeps the <code>package.json</code> of every other workspace member, so a frozen-lockfile install (<code>yarn install --immutable</code>, <code>npm ci</code>) of the narrow checkout resolves. When the root's install lifecycle script (<code>prepare</code>, <code>postinstall</code> and their pre and post scripts) builds another member (<code>cd packages/core &amp;&amp; tsup</code>), that member is checked out too and the answer says so; a root file the script copies (<code>../../llms.txt</code>) is kept beside it, so the install passes without an <code>add_paths</code> call. The tree is written, never a git clone: no <code>.git</code> directory and no credential reach the workspace. Running it again replaces what it checked out before. To grow a narrow checkout by more paths without losing its edits, pass <code>add_paths</code> with the same <code>path</code> (and no <code>sub_paths</code> or <code>ref</code>): the paths are written at the commit the checkout records, nothing is removed, a file you edited is kept (the answer names it), a file an earlier checkout at the same path left there and nobody touched since is replaced by its version at that commit (so it is never committed back as a change), and status, diff, rebase and <code>from_checkout</code> cover the new files.</li>
+<li><strong><code>sandbox_get_file</code></strong>: the other way, a workspace file becomes a conversation file the agent can hand to you or to another tool.</li>
+<li><strong><code>sandbox_list_files</code></strong> and <strong><code>sandbox_remove_files</code></strong> list and clean it. A large tree is narrowed with <code>depth</code> (1: a directory's direct files) and <code>glob</code> (<code>*.test.ts</code>, or <code>sub/*.ts</code> from the listed directory), applied before the listing's limit.</li>
+</ul>
+<h2 id="reading-and-changing-files-without-echoing-them">Reading and changing files without echoing them</h2>
+<p>A source file of 300 KB printed from the code interpreter costs more than the whole task. Five tools read, change and create a workspace file on the server and return only what the agent asked for:</p>
+<ul>
+<li><strong><code>sandbox_outline</code></strong>: the definitions of a file with their line numbers (classes, functions and methods for Python; declaration lines for TypeScript, JavaScript, Go, Rust, Java, Kotlin, SQL, a <code>const Row = ({</code> arrow component whose parameter list spans several lines included; the types, inputs, enums, unions, interfaces, scalars and directives of a GraphQL schema file (<code>.graphql</code>, <code>.gql</code>), so <code>sandbox_read_symbol</code> reads one input of a large schema, such as the fields of <code>ReportAddInput</code> at a tag, without the server's introspection; headings for Markdown). The place to start: it says where to look.</li>
+<li><strong><code>sandbox_read_file</code></strong>: a window of a text file with line numbers (<code>offset_line</code>, <code>max_lines</code>), the total line count and the next offset when more remains. A line longer than 400 characters is cut with the rest counted; <code>max_line_chars</code> (at most 20,000) reads a long line, such as a table row or a minified file, whole. A binary file is named as such, not shown.</li>
+<li><strong><code>sandbox_grep</code></strong>: a regular expression over the text files of the workspace, or of a directory of it (<code>path_prefix</code>, <code>include_globs</code>): <code>path:line: text</code> hits, bounded by <code>max_matches</code> with the rest counted, optional context lines, <code>max_line_chars</code> as for <code>sandbox_read_file</code>. Installed packages and checkout records are skipped unless the prefix names them. An installed tree the workspace never records (<code>node_modules</code>, <code>.venv</code>, <code>site-packages</code>, written by an install check of <code>sandbox_run_command</code>) is searched in the workspace's live command container when the prefix names it (a directory or one file of it), and <code>sandbox_read_file</code>, <code>sandbox_outline</code> and <code>sandbox_read_symbol</code> read a file there the same way, their answer ending with the line <code>[read from the live command container: installed files, never recorded in the workspace]</code>: read-only, nothing enters the workspace, so <code>sandbox_checkout_status</code> and a commit are unchanged; with no live container (none started, or every one ended), the answer is a normal result, not an error, naming the exact call to run first (<code>sandbox_run_command(checkout="...", check="...-install")</code>, the install check of the directory holding the tree, else of the nearest enclosing one), then the same read again. Images, fonts, archives and media are skipped without being read. A text file up to 32 MB is searched, so a CI job log saved in the workspace can be searched. One call reads up to 4,000 files or 128 MB; past that, the answer says how many files were not searched and in which directories, so the next call can narrow <code>path_prefix</code> or <code>include_globs</code>. The matches shown hold at most 12,000 characters by default (<code>max_chars</code>, up to 60,000, lifts it; the matches cut are counted). On a log of JSON lines, <code>json_fields</code> (for example <code>["timestamp", "level", "message"]</code>, or <code>compact_json: true</code> for those three) shows only those keys of each matched line, joined by <code>|</code>, an absent key written <code>-</code>, a dotted key such as <code>attributes.queue</code> read inside a nested object; a line that is not JSON is shown whole. To compare logs, <code>group_by</code> (a key, dotted when nested) replaces the lines by one row per value of that key, with, for each file side by side, the count of matched lines and the first and last of them (line number and time; the time is read from <code>time_field</code>, <code>timestamp</code> by default, else from the runner's prefix of the line). Save a red job log and a green one in one directory and one call answers, for example, which queues received a message in each job and when.</li>
+<li><strong><code>sandbox_read_symbol</code></strong>: one definition of a file whole, by name (<code>Class</code>, <code>Class.method</code>, <code>function</code>, <code>outer.inner</code> for a nested function), with its decorators and line numbers, in one call. The name stays valid after the conversation's older tool results are pruned, so the same call reads it again. When several definitions share the name they are listed with their lines (pass the qualified name or <code>occurrence</code>).</li>
+<li><strong><code>sandbox_playwright_trace</code></strong>: a Playwright <code>trace.zip</code> of the workspace (an E2E artifact downloaded from CI) read in one bounded answer: the failure with its locator and spec line, the test attachments (JSON ones inlined), then around the failing action the actions with their call logs, the page URL changes, console errors and the requests (status, method, path, duration), with what falls outside the window counted. <code>around</code> moves the window to a call id or a time, <code>window_ms</code> widens it, <code>frame_at</code> writes the nearest screencast frame next to the zip as an image you can open.</li>
+<li><strong><code>sandbox_edit_file</code></strong>: exact find/replace edits on a file, applied in order: every <code>find</code> must exist and be unique (or <code>replace_all</code>), and nothing is written unless every edit applies. The result is the unified diff; on a line longer than 400 characters (a table row, minified JSON) it shows only the part that changed, with some context and the unchanged characters counted. A file with Windows (CRLF) line endings is matched as it reads, with plain line breaks in <code>find</code>, and keeps its CRLF endings when written. To replace or delete a long block (a whole function, an obsolete test) without copying it into <code>find</code>, an edit can name lines instead: <code>{start_line, end_line, expect_first, expect_last, replace}</code>, with the line numbers <code>sandbox_read_file</code> shows. <code>expect_first</code> and <code>expect_last</code> are a part of the text of the first and the last line of the range (<code>expect_last</code> is needed for a range of several lines); when the file has changed and the numbers no longer fit, the call is refused and nothing is written. An empty <code>replace</code> deletes the lines. When the first or the last line of the range is blank, <code>expect_first_blank: true</code> or <code>expect_last_blank: true</code> stands for its text. To add lines without replacing any, an edit can name <code>{insert_after_line, expect_first, replace}</code>: the text goes after that line (0 puts it at the top of the file, with no <code>expect_first</code>). Line numbers count the file as the earlier edits of the same call left it. When a <code>find</code> occurs several times (three identical blocks), <code>occurrence: 2</code> replaces the second one only, counted the same way, instead of widening the snippet. It is the workspace sibling of <code>edit_file_content</code>, which does the same on a conversation file.</li>
+<li><strong><code>sandbox_json_keys</code></strong>: adds, changes, renames, removes or reads keys of JSON object files, such as the translation catalogs, in one call: <code>set</code> maps a file (or <code>"*"</code> for every file named) to the keys and values to set, <code>place</code> puts a key that <code>set</code> adds right after or before another key (<code>{"New key": {"after": "Existing key"}}</code>) instead of last, <code>rename</code> maps an old key to a new one (set the new key in the same call to change its value in each file, in place), <code>remove</code> lists keys to drop and <code>get</code> lists keys to read. Each file keeps its own layout; a file that holds a duplicate key, is not an object or mixes its indentation is refused, and nothing is written for any file. In a French catalog (<code>fr.json</code>, <code>fr-FR.json</code>), a value set with a plain space before <code>?</code>, <code>!</code>, <code>;</code> or <code>:</code> is named in a warning; <code>french_spacing: "fix"</code> writes the no-break space French typography takes there instead (narrow before <code>?</code>, <code>!</code>, <code>;</code>, regular before <code>:</code>). The same call edits a TypeScript or JavaScript catalog (a <code>.ts</code> or <code>.js</code> file holding one object literal such as <code>export const fr = { 'Save': 'Enregistrer', ... };</code>, one entry per line): only the lines of the keys named change, new entries follow the file's quotes, indent and commas, and the values set there are text. It also edits a gettext catalog (a <code>.po</code> file such as <code>locales/fr/messages.po</code>), keyed by the <code>msgid</code>: a set changes the <code>msgstr</code> of an entry or adds one, a rename changes the <code>msgid</code>, and the comments, references and every other entry keep their bytes; a plural entry is read, not set, and <code>locales/fr/messages.po</code> gets the French spacing check.</li>
+<li><strong><code>sandbox_replace_in_files</code></strong>: one regular-expression replace across many files, for a rename, a moved import or an option renamed in many call sites. Give the <code>pattern</code>, the <code>replacement</code> (a Python <code>re</code> template, <code>\1</code> for a group, where <code>\u00a0</code>, <code>\U0001F600</code> or <code>\x41</code> is written as its character) and the files to change with <code>path_prefix</code> and/or <code>include_globs</code>. Every changed file is written in one step, or none: past <code>max_replacements</code> (200 by default) nothing is written. The answer lists each file with its count of replacements and lines changed, then the diffs; <code>dry_run=true</code> shows the same report without writing. Every text file up to 32 MB is searched, as with <code>sandbox_grep</code>; a file left out is named with the reason, and a pattern that matches but whose replacement changes nothing is reported as such.</li>
+<li><strong><code>sandbox_codemod</code></strong>: a change across many files that one regular expression cannot express, because each site needs its context (the element around it, an import list to edit, a ternary to rewrite). Write a transform module in the workspace whose default export takes <code>{ path, source, parse }</code> and returns the new text (or <code>null</code> to leave the file as it is); <code>parse</code> gives the file's syntax tree. Then give the <code>checkout</code>, the <code>transform</code> path and the files with <code>path_prefix</code> and/or <code>include_globs</code>. The module runs in the checkout's own codemod check (<code>frontend-codemod</code> in XTM One), and every changed file is written in one step, or none: if the transform fails on a file or a changed file no longer parses, nothing is written and each file is named with its error. <code>dry_run=true</code> shows the per-file report and the diffs without writing. Available where <code>sandbox_run_command</code> is.</li>
+<li><strong><code>sandbox_apply_patch</code></strong>: apply a unified diff to a checkout, for re-landing a pull request on a fresh branch or porting a change to another base. Save the diff in the workspace first (for example <code>get_github_pr_diff</code> with <code>to_workspace_path</code>), then give its <code>patch</code> path and the <code>checkout</code> directory. Every hunk must match the checkout exactly (it may sit a few lines away from where the diff says, which the answer reports); one hunk that does not match refuses the whole call with its file and line, and nothing is written. <code>exclude</code> leaves files out, <code>dry_run=true</code> checks without writing.</li>
+<li><strong><code>sandbox_move_files</code></strong>: move or rename files and whole directories, for a renamed module or a moved package. Give <code>moves</code> as a list of <code>{from, to}</code> workspace paths; every move is written in one step and the content is kept as is. Nothing is written when a source is missing, a destination is inside its source, two moves land on one path, or a destination exists (<code>overwrite=true</code> replaces an existing file). With <code>copy=true</code> the sources stay where they are and the destinations get the same content, so a file is duplicated (for example a lab-only page copied into the source tree to type-check it) without reading it or rewriting it in <code>code_interpreter</code>. An edit's answer shows at most 40 lines of a long insertion: the first 30 and the last 5, with the line range of the rest, which <code>sandbox_read_file</code> reads.</li>
+<li><strong><code>sandbox_diff_files</code></strong>: compares versions of a file held side by side in the workspace. <code>sandbox_diff_files(path, other)</code> is the unified diff of <code>path</code> to <code>other</code>. With <code>base</code> (the common ancestor) it is the three-way merge of <code>path</code> (ours) and <code>other</code> (theirs): the number of conflicts, the line where each one starts in the merged text, and the merged text's diff against <code>path</code>. Overlapping changes are written between <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code> / <code>=======</code> / <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code> markers labelled with the file names. <code>write_merge_to</code> stores the merged file, ready for <code>sandbox_edit_file</code> and then <code>merge_github_branch</code> resolutions (<code>workspace_path</code>). Only workspace files are read, nothing goes through an integration.</li>
+<li><strong><code>sandbox_write_file</code></strong>: creates a text file (UTF-8) with the content given, its missing directories created (<code>create_dirs</code>, default true). An existing path is refused unless <code>overwrite</code> is true, so a file is never replaced by mistake; a path outside the workspace is refused. The result is the path, the size and the sha256. The file is stored before the answer, so a <code>sandbox_run_command</code> or <code>code_interpreter</code> call made next finds it. Use it, not a code interpreter script, to add a source file, a test or a document.</li>
+</ul>
+<p>The GitHub tools follow the same rule: <code>get_github_file</code> reads a window (<code>offset</code>, <code>max_chars</code>) and says how much remains; <code>get_github_pr_diff</code> and <code>get_github_job_logs</code> accept <code>to_workspace_path</code>, so a large diff or a whole CI log lands in the workspace uncut instead of being truncated in the conversation; <code>download_github_workflow_artifact</code> takes an artifact listed by <code>list_github_artifacts</code> (a test report, a Playwright trace), up to 100 MB, and with <code>to_workspace_path</code> unzips it into that directory with its tree kept (<code>unzip=false</code> writes the zip itself; an expired artifact is refused); <code>get_github_job_logs</code> answers the failure blocks of a red job first (the runner's errors, the test runner's failure sections, linter and compiler findings, under the step that produced them; every finding line of eslint, oxlint, tsc, ruff, mypy, pytest, vitest or jest, with its file, line and rule, is listed right after the test runner's own report and ahead of every other block, at most 150 with the rest counted, and a rule timing table is the first thing left out when the answer runs out of room), then the log's last lines (a failure section too long for the summary is shown clipped to its first lines, never left out); <code>failures_only=true</code> drops the last lines, <code>tail=true</code> returns the raw last 40,000 characters; a failed Playwright test whose log names its <code>error-context.md</code> gets the page it saw appended (the text of its page snapshot, read from the run's <code>test-results</code> artifact, the navigation and header left out), and when that artifact cannot be read the answer names the file and the download to make; the command and environment the runner echoes at the start of each step are never taken for a failure, and a step that dies without any error line (an upload cut) is answered with the last lines of the step where the job stopped, encoded dumps left out; a job that completed but whose log GitHub never published (a runner that lost communication with the server) answers its steps and its check-run annotations instead of a storage error. <code>get_github_pr</code> answers a pull request's state (head SHA, mergeable state, the checks summary of the head, the unresolved review thread count) with the first 1,500 characters of its body and one line per review, and <code>get_github_issue</code> the first 1,500 characters of the body and one line per recent comment; <code>include_body=true</code> reads the body by window (<code>offset</code>, <code>max_chars</code>) and the reviews or comments whole.</p>
+<p>To poll a pull request's CI, <code>get_github_ci_status(repo, pr_number=N)</code> answers the counts and details only what did not pass. It also reads the checks the base branch requires (every ruleset and classic protection) and adds a <code>Required by &lt;base&gt;: N of M passed</code> line naming the failing, pending and never-reported required checks; a failed or pending required check is tagged <code>(required)</code>. A required check that no workflow ever reported blocks the merge as surely as a red one.</p>
+<p>To find your own pull requests in a busy repository, <code>list_github_prs(repo, author="login")</code> returns only the pull requests that login opened, and <code>head_prefix="fix/"</code> only those whose branch starts with that prefix; both read up to the 300 most recent pull requests and say so when older ones were not read. <code>include_preview=false</code> answers one line per pull request, without the body previews.</p>
+<p>To sweep many pull requests at once, <code>list_github_pr_states(repo, numbers=[...])</code> reads up to 30 of one repository in one call and answers one line each: state, draft, head SHA, merge state (clean, dirty, blocked, unstable, behind), the checks verdict on the head with its passed / failed / pending / skipped counts (the latest run of each check, so a check that failed and passed on a re-run reads as passed, exactly as <code>get_github_ci_status</code> counts it), the unresolved review threads and the review decision. Right after a push to the base branch GitHub takes a few seconds to recompute mergeability: the tool reads those pull requests again for up to about 15 s (less when GitHub settles sooner) and answers <code>merge unknown (GitHub still computing ...)</code> only when GitHub has still not finished. Use it instead of a hand-written GraphQL query or one <code>get_github_pr</code> per pull request; <code>get_github_ci_status</code> then names the checks of the one that needs attention.</p>
+<p>To know whether a push to a base left any open pull request behind, <code>list_github_prs_needing_update(repo, base, author)</code> lists the open pull requests whose merge state is behind or dirty, or that conflict (one GitHub is still computing counts too), or whose head commit, older than 30 minutes, never reported a status check the base branch requires (reason <code>missing_required_contexts</code>, with the <code>missing</code> names: a required check added to the base after the push, which GitHub shows as blocked, never behind, when the base does not require branches to be up to date), filtered by base branch and author (<code>@me</code> is the integration's account). Its result is structured, so an assignment listening to pushes can use it as its <code>activation_check</code> with the condition <code>non_empty</code>: a push that leaves nothing to update starts no run and spends no token. Add <code>exclude_drafts: true</code> and <code>exclude_head_prefix</code> (for example <code>feat/innovation-</code>) to leave out the pull requests the assignment never acts on, so a draft parked with conflicts does not wake it on every push.</p>
+<p>To find past CI runs, <code>list_github_workflow_runs(repo, workflow="e2e.yml", status="failure", created="&gt;=2026-11-03T00:00:00Z")</code> lists the failed runs of one workflow since a time in one call, newest first. <code>workflow</code> takes the file name or the numeric id; <code>branch</code>, <code>event</code> and <code>head_sha</code> narrow it further and <code>created</code> also takes a range (<code>2026-11-01..2026-11-03</code>). Each row carries the run_id, the event, the branch, the short head SHA and the creation time (UTC); <code>count</code> reads up to 100 runs per page and the answer ends with <code>More remain: call again with page=N.</code> while runs remain.</p>
+<p>To read the jobs of a run, <code>list_github_workflow_jobs(repo, run_id)</code> lists the latest attempt (job ids and failed steps). GitHub replaces a run's jobs with the re-run's the moment an automatic retry starts, so while the latest attempt is still running the answer adds one line naming the failed jobs of the attempt before it, with their job ids; <code>attempt=N</code> lists one attempt whole (<code>attempt=1</code> reads a failed first attempt while its retry runs).</p>
+<p>A checkout has no <code>.git</code> directory, so two tools answer the questions an engineer asks before a commit:</p>
+<ul>
+<li><strong><code>sandbox_checkout_status</code></strong>: the <code>git status</code> of a checkout: one <code>M</code> (modified), <code>A</code> (added) or <code>D</code> (removed) line per file changed since <code>materialize_repository</code> wrote it, with the repository, ref and commit it came from, or "clean". It is the same set of files <code>create_github_commit(from_checkout=...)</code> commits; <code>paths</code> narrows it. An untracked file the checkout's <code>.gitignore</code> files exclude (root and nested, read as git reads them: <code>!</code> re-includes, a trailing <code>/</code> is a directory, <code>**</code> crosses directories) is never a change: a build's output such as <code>frontend/dist/</code> or <code>*.tsbuildinfo</code> leaves the checkout clean, counted in one line ("N ignored file(s) not listed"), and <code>from_checkout</code> never commits it. A tracked file stays a change whatever <code>.gitignore</code> says. A narrow checkout keeps the <code>.gitignore</code> files above its <code>sub_paths</code> for this. A nested checkout (another repository checked out under this one, its directory holding its own <code>.xtm-checkout</code>) is skipped whole: none of its files is a change, untracked or committed by <code>from_checkout</code>, and the status names it once ("N nested checkout(s) excluded whole"); read or commit it through its own checkout path.</li>
+<li><strong><code>sandbox_checkout_diff</code></strong>: the <code>git diff</code> of a checkout: a unified diff of each changed file against the file as checked out, read through the connected integration at the recorded commit and checked against the hash in the record (a file that no longer matches is named, not diffed). Added files are shown from <code>/dev/null</code>, removed files to <code>/dev/null</code>, binaries are named. The answer is bounded (40 files, 60,000 characters) and names what it left out; <code>paths</code> and <code>context_lines</code> narrow it.</li>
+<li><strong><code>sandbox_checkout_rebase</code></strong>: the <code>git rebase</code> of a checkout: <code>sandbox_checkout_rebase(checkout, ref)</code> brings it onto a new ref (main moved, a pull request conflicts) without losing its edits. The tree at <code>ref</code> is read with the same <code>sub_paths</code>, and the merge starts from the merge base of the checkout's commit and <code>ref</code>, as <code>git rebase</code> does, so a checkout of a feature branch keeps every file the branch adds (listed as "Your added files kept") and every change it made that the ref did not; a file you did not change takes the ref's version (or is removed when the ref removed it), a file only you changed stays yours, and a text file changed on both sides is merged line by line. Lines both sides changed are written between <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; workspace</code>, <code>=======</code> and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; ref</code> markers to resolve with <code>sandbox_edit_file</code>, unless <code>on_conflict</code> says otherwise: <code>ref-then-workspace</code> writes the ref's lines then the lines you added there (a line you added next to a line the ref rewrote), <code>workspace-then-ref</code> the other way round, both without markers. A JSON, YAML or TOML file is parsed after the merge: when the merge would leave it invalid or write a key twice (a key both sides added with different values), it is reported in conflict with the reason and the keys named, never as merged cleanly, and the answer lists the structured files it checked under "Parsed after the merge". A binary, or a file one side deleted and the other changed, keeps your version and is reported. The record then names the new ref, so <code>sandbox_checkout_status</code> and <code>create_github_commit(from_checkout=...)</code> show only your changes on top of it. A rebase is applied once: called again when the checkout already sits on the ref (a call replayed after an interruption), it writes nothing and says so. A checkout narrowed with <code>sub_paths</code> keeps the branch's changes outside them: the files the branch changes elsewhere (a backend file of a frontend checkout) are brought into the checkout, merged with the ref and listed as "Brought in from the branch", so a later <code>add_paths</code> never writes the ref's version over them; when one cannot be read the rebase is refused with their names and nothing is written.</li>
+<li><strong>Large rebases in the background</strong>: <code>sandbox_checkout_rebase(checkout, ref, background=true)</code> answers a <code>run_id</code> at once and rebases while the agent goes on; <code>sandbox_checkout_rebase(checkout, run_id=...)</code> waits for its answer. A repeat of the same rebase while it runs (a resumed turn) answers that job, so a rebase is applied once; a rebase whose worker stopped is reported as lost and started again safely.</li>
+</ul>
+<p><code>materialize_repository</code>, <code>sandbox_checkout_diff</code> and <code>sandbox_checkout_rebase</code> read content through an integration like the download tools they use, so when tool approvals are on for an agent they ask for approval; the other <code>sandbox_*</code> tools follow <code>code_interpreter</code>.</p>
+<h2 id="getting-content-out-without-passing-it-through-the-conversation">Getting content out without passing it through the conversation</h2>
+<p>The reverse path costs the same: a file the sandbox wrote used to become a conversation file (a download card in the chat) before a tool could commit or upload it. Two arguments avoid that:</p>
+<ul>
+<li><strong><code>workspace_path</code></strong>: the tools that take a file of the conversation by <code>file_id</code> (the GitHub commit tools today; an integration's upload or import tool can offer it too) accept a workspace path instead. The file's bytes are read on the server and handed to the tool for that call only: no conversation file, no download, nothing listed in the files of the conversation. Give one of <code>file_id</code> or <code>workspace_path</code>, not both. A <code>create_github_commit</code> write of a file inside a <code>materialize_repository</code> checkout is checked against the branch: when the branch moved past the checkout and changed that file since, both changes are merged line by line, or the commit is refused with the overlapping lines named; the branch's change is never written over.</li>
+<li><strong>Merging a branch</strong> (GitHub): <code>merge_github_branch(repo, branch, from_ref)</code> merges <code>from_ref</code> (default: the default branch) into <code>branch</code> server-side, without a pull request; GitHub builds the merge commit. On a conflict nothing is merged and the answer names the paths changed on both sides since the merge base, with the refs to read them at, and the next call settles them with <code>resolutions</code> (below). The default branch is refused.</li>
+<li><strong>Resolving a conflicting merge</strong> (GitHub): call <code>merge_github_branch</code> again with <code>resolutions</code>, one entry per path the conflict answer named: <code>{path, keep: "branch"}</code> or <code>{path, keep: "ref"}</code> takes one side in the overlapping hunks only, every non-overlapping change of both sides in that file being kept (in a JSON object file such as a translation catalogue, by key: the keys both sides changed take that side and every key either side added is kept; a binary, a delete against a change or a file too large for the line merge keeps that side's whole file, and the answer says so), <code>{path, content}</code> writes a merged text, and <code>{path, workspace_path}</code> writes a file of the sandbox workspace (for example a checkout brought onto the ref with <code>sandbox_checkout_rebase</code>, its conflict markers settled with <code>sandbox_edit_file</code>). Everything is checked before the first write: a path left without a resolution, a resolution of a path the answer did not name, an executable file, a symbolic link or a submodule, or a single file over the 5 MB commit cap writes nothing, and the refusal names each file with its size. The merge then lands in commits GitHub builds and signs, so a branch requiring signed commits accepts them: commits giving each resolved path the ref's version, the merge itself, then commits writing the resolved contents. Each step is split into as many signed commits as the 5 MB cap of one commit needs, so four large translation catalogues conflicting at once still merge. A path both sides changed the same way is listed apart and needs no resolution. When GitHub still refuses the merge (a conflict on a path the compare did not list), the first commits are undone by signed commits and the answer says so. The answer lists how each resolution was applied (the overlapping hunks taken from which side) and ends with <code>Final head: &lt;sha&gt;</code>, the last commit the call wrote: read CI on that commit, never on an intermediate one; the <code>Outcome:</code> line of an error answer reads the branch again until it shows that commit. <code>manage_github_pr action=update_branch</code> refused on a conflict answers the same list of paths and the <code>merge_github_branch</code> call that settles them.</li>
+<li><strong>A merge cut midway</strong> (GitHub): when a <code>merge_github_branch</code> call with <code>resolutions</code> is stopped after its "Take <ref>'s version of N conflicting files before the merge" commits and before the merge (a restart of the platform, for example), the next call moves the branch back before those commits first, then resolves every conflicting path from both sides again, so no file is left at the ref's version by accident. The answer names the commits it dropped. When the branch cannot be moved back (someone pushed on it meanwhile), nothing is merged and the answer says so.</ref></li>
+<li><strong>Rebasing a branch</strong> (GitHub, true rebase): <code>rebase_github_branch(repo, branch, expected_head, onto)</code> replays each commit of <code>branch</code> since its merge base with <code>onto</code> (default: the default branch), oldest first, on top of <code>onto</code>. Each replayed commit is built and signed by GitHub and keeps its message; its original author is named in a <code>Co-authored-by</code> trailer and the commit it came from in a <code>Rebased-from</code> trailer. Once every commit is replayed, the branch moves in one step, and only while it still points at <code>expected_head</code> (force with lease): a branch that moved since you read it is refused and nothing is written. A conflicting commit stops the replay before anything of it is written; the answer names the commit and each overlapping hunk, and the call made again with <code>resolutions</code> (<code>{commit, path, keep: "onto" | "commit" | "both"}</code> or <code>{commit, path, content}</code>) goes on from that commit, never replaying one twice. <code>max_commits</code> (default 40) splits a long branch over several calls. For a branch stacked on a branch you just rebased, pass <code>onto</code> = the parent branch and <code>upstream</code> = the parent's old tip: only the stacked branch's own commits move (<code>git rebase --onto</code>).</li>
+<li><strong><code>from_checkout</code></strong> on <code>create_github_commit</code>: <code>materialize_repository</code> leaves a small record beside the tree it checks out (<code>&lt;directory&gt;/.xtm-checkout</code>: the repository, the ref, the commit and the hash of every file). <code>create_github_commit(repo, message, from_checkout="&lt;directory&gt;")</code> commits exactly what the sandbox changed since: edited and new files are written, removed files are deleted, everything else is left alone; <code>paths</code> narrows it to some files or directories, new files included (a new file named in <code>paths</code> is committed even outside the checked-out sub-paths), and the result names any path under which nothing changed; a file under a named path that an earlier, wider checkout left and nobody edited is not counted as new. Without <code>paths</code>, a file changed outside the checked-out sub-paths refuses the whole commit, nothing written, so a commit never leaves part of your work behind: name the sub-paths and that file in <code>paths</code> to commit it, or the sub-paths alone to leave it out. An unchanged checkout commits nothing, and a checkout of another repository is refused. A change set larger than the 5 MB or the 100 files one commit may carry (the four i18n catalogs together, or a sweep over 115 files, say) lands in the same call as several consecutive signed commits, each under the cap, smallest files first so the code and the tests come before the large files; the result lists every commit. The commits are made on a short-lived scratch branch named <code>tmp/commit-batch/&lt;creation time&gt;-&lt;tip&gt;-&lt;token&gt;</code> (never a product branch: it is deleted as soon as the call ends, a failed or cancelled call included, and the next split on the repository deletes any such branch left over for more than a day) and the target branch moves once, to the last of them, so it never points at a partial change set and CI never starts on one. If one of them fails, or the branch was pushed to meanwhile, the branch is not moved and the whole change set is still a change of the checkout. A single file over 5 MB is refused. When the branch is no longer at the checkout's commit (someone pushed, or the branch was cut from a newer main), each file the commit carries that the branch also changed since is merged line by line with the branch's version instead of written over it, and the workspace file is brought to the merged text; if both changed the same lines, nothing is committed and the result names the overlapping hunks and the <code>sandbox_checkout_rebase</code> call to run. A deletion of a file the branch already removed is dropped. After the commit, the record moves to the new commit and branch, as a commit moves <code>HEAD</code> in git: <code>sandbox_checkout_status</code> is clean again, the next <code>from_checkout</code> commit carries only what changed since, and a file committed outside the checked-out sub-paths is tracked from then on. The record is a plain workspace file: it is listed, removed with the tree, and replaced by the next checkout.</li>
+<li><strong>Editing a repository file without the sandbox</strong> (GitHub): an entry of <code>create_github_commit</code>'s <code>files</code> may give <code>edits</code> instead of <code>content</code> or <code>file_id</code>: <code>{path, edits: [{find, replace, replace_all?}]}</code>. The edits are applied server-side to the file as it is at the branch tip, with the contract of <code>sandbox_edit_file</code>: each <code>find</code> must exist and be unique unless <code>replace_all</code>, the edits apply in order, and a <code>find</code> absent or not unique refuses the whole commit, naming it, with the branch unchanged. The commit is the usual one, built and signed by GitHub, and may mix edited files with full contents and deletions; the result carries the diff of each edited file. Only an existing UTF-8 text file can be edited this way; changing one line no longer needs the whole file resent or a sandbox round trip.</li>
+<li><strong>Editing an issue or pull request body in place</strong> (GitHub): <code>update_github_issue</code> and <code>update_github_pr</code> take <code>edits</code> (<code>[{find, replace, replace_all?}]</code>) instead of <code>body</code>. The edits apply to the body as GitHub stores it at write time, with the same contract (each <code>find</code> exists and is unique unless <code>replace_all</code>, nothing written unless every edit applies), and the answer is the body's diff, so ticking one checklist line of a long tracking issue never sends or reads the whole body. <code>expect_updated_at</code> (the <code>updated_at</code> you read) refuses the write when the issue or pull request changed since, with <code>edits</code> or a whole <code>body</code>. <code>get_github_issue(include_body=true)</code> reads a body window only; <code>include_comments=true</code> reads the comments whole.</li>
+<li><strong>Signed commits and executable files</strong> (GitHub): <code>create_github_commit</code> lets GitHub build and sign the commit, so a branch that requires signed commits accepts it. An existing file keeps its mode: editing a script that is already executable is still a signed commit, and the script stays executable. Only a change of mode (a new executable file, <code>executable: true</code> on a plain file, <code>executable: false</code> on a script, a renamed script) is committed through another API, and that commit is not signed; the answer says so and names the file.</li>
+<li><strong>Moving a branch</strong> (GitHub): <code>manage_github_ref(action="update_branch", branch, sha)</code> moves a branch to a commit as a fast-forward; a move that would drop commits needs <code>force=true</code>. Whatever <code>force</code> says, a move that leaves an open pull request of that branch with nothing ahead of its base is refused: GitHub closes such a pull request by itself and it cannot be reopened. To bring the base into a pull request's branch use <code>manage_github_pr(action="update_branch")</code>; to change the branch, add a commit with <code>create_github_commit</code>.</li>
+<li><strong>Creating a branch at a commit</strong> (GitHub): <code>create_github_branch(repo, branch, from_branch)</code> takes a branch name or a commit SHA in <code>from_branch</code>. A branch of that name is used first, exactly as before; when none exists and the value is 4 to 40 hexadecimal characters, it is resolved as a commit (a short SHA must be unambiguous) and the branch is created at that commit, the answer naming the ref and the full SHA. So a branch can be cut at the commit a checkout records in <code>.xtm-checkout</code>. A value that is neither answers <code>Branch or commit not found: &lt;value&gt;</code> and nothing is created. Without <code>from_branch</code> the branch starts on the repository's default branch, read from the repository (never a fixed <code>main</code>: a repository whose default is <code>master</code> may keep a stale <code>main</code>); the answer names the base branch and its SHA, and warns when a named base is not the default branch. <code>manage_github_ref(action="create_tag")</code> without <code>sha</code> or <code>from_ref</code> tags the default branch the same way.</li>
+<li><strong>History of a checkout</strong> (GitHub): a checkout carries no <code>.git</code>, so history is read server-side. <code>get_github_blame(repo, path, ref, start_line, end_line)</code> answers, for each range of lines, the commit that last changed it (short SHA, author, date, subject), at most 400 lines per call with the next <code>start_line</code> named when more remains; <code>compare_github_commits(repo, base, head)</code> names the merge base of the two refs, the base a merge or a <code>sandbox_checkout_rebase</code> starts from.</li>
+</ul>
+<h2 id="running-a-repositorys-own-checks">Running a repository's own checks</h2>
+<p>A checked-out repository needs nothing added to it: the platform reads its checks from what it already has. Its own CI workflows first (<code>.github/workflows/</code>: the commands they run to install, lint, type-check, test and build, in the directory they run them in, with the plain-text <code>env:</code> values the workflow, the job and the step set, such as the profile variables a <code>dbt parse</code> reads, and <code>${{ env.NAME }}</code> resolved from those values; a value written as any other expression (<code>${{ secrets.X }}</code>, <code>${{ github.workspace }}</code>) is never copied, and the run's answer names those variables so a placeholder can be passed with <code>sandbox_run_command</code>'s <code>env</code> (variables for one run over the check's own; the runner's variables cannot be set); the runner's own variables (<code>PATH</code>, <code>HOME</code>, <code>GITHUB_*</code>, <code>RUNNER_*</code>) are left out; release and deploy jobs are left out), then its manifests (<code>package.json</code> with yarn, pnpm or npm; a pnpm repository runs the pnpm release it pins in <code>packageManager</code> or, failing that, in <code>engines.pnpm</code> (an exact version or the highest one satisfying a range), named in each check's description; <code>pyproject.toml</code> with uv, Poetry or pip requirements, <code>pom.xml</code> and Gradle, <code>Cargo.toml</code>, <code>dbt_project.yml</code>) and its <code>Makefile</code>. Each check is named after its stack and kind, prefixed by its directory (<code>front:node-unit</code>, <code>client:python-lint</code>), and the list says where each command came from; the databases and brokers its CI and compose files start are listed beside them. A repository whose CI runs its tests through one script per project (<code>bash run_test.sh &lt;project&gt;/tests/test-requirements.txt</code>, as a connectors monorepo does) gets one <code>&lt;project&gt;/tests:python-test</code> check per test requirements file: it runs that script from the repository root as CI does, in a throwaway git repository where only that project counts as changed, and reports the JUnit results; nothing the run creates stays in the checkout. A narrow checkout of one project keeps the script and the in-repository package its requirements install from (<code>#subdirectory=</code>). Calling <code>sandbox_run_command(checkout="&lt;directory&gt;")</code> without a check returns that list as a normal answer (not an error), with each check's directory, sandbox image and report, and the services the checkout declares; it is an error only when the checkout has no check at all. A repository can instead declare its checks in <code>.xtm-one/checks.toml</code> at its root (one command each, no shell, with the sandbox image that carries the tool and the report it writes): that declaration then replaces the detection. Writing such a file into a checkout in your workspace is the intended way to run a command the detection does not name: it runs in the same container, image list, time limit and network policy as a detected check, and is committed only if you commit it. <code>sandbox_run_command(checkout="&lt;directory&gt;", check="&lt;name&gt;", args=[...])</code> runs one of them in a sandbox container with the workspace mounted, and answers with the exit code, the duration, the findings of a JUnit or SARIF report (file, line, rule, message, bounded), a head and tail of the output, and the directory under <code>workspace/.xtm/runs/</code> that holds the whole output. What the command wrote in the checkout (a formatted file, a generated artefact) is saved back to the workspace; what it built in the container (<code>node_modules</code>, caches) stays there for the next command.</p>
+<p>A Node package whose <code>test</code> script runs a wrapper of its own that collects every test file (<code>node test/run.mjs</code>) also gets a <code>node-unit-file</code> check when a loader such as <code>test/register.mjs</code> sits beside the wrapper: it runs the Node test runner on the files given as <code>args</code> only, so one test file runs in seconds instead of the whole suite.</p>
+<p>A repository that holds GitHub Actions workflows or composite actions (<code>action.yml</code>) also gets an <code>actions-lint</code> check, even when it declares its own checks in <code>.xtm-one/checks.toml</code>: every file is parsed as YAML and its shape checked (a workflow's <code>on</code> and <code>jobs</code>, a composite action's steps with exactly one of <code>run</code> and <code>uses</code>, and <code>shell</code> beside <code>run</code>), the workflows are linted with <code>actionlint</code> (with the repository's <code>.github/actionlint.yaml</code> when it has one, for custom runner labels; a checkout narrowed to a workflow keeps that file beside it), and the shell of every <code>run:</code> block that runs on bash is syntax-checked with <code>bash -n</code>, each error reported with its file and line. Pass file paths as args to check only those files, or <code>affected=true</code> to check the workflow and action files the checkout changed.</p>
+<p>The container holds no credential. On a sandbox without network, the images an administrator configures carry the repository's locked dependencies, and a check that tries to install something fails; where the administrator configures toolchain images (a stack's build tools without any repository's dependencies) and lets the sandbox reach the package registries, they are used first and a detected install check fetches the dependencies. A check that is neither declared nor detected is refused, with the list of those that are; an administrator can allow arbitrary commands for the platform (<code>CODE_INTERPRETER_COMMAND_ALLOW_ARGV</code>). Every checkout also has a built-in <code>script</code> check (unless the repository declares one of that name): its first argument is one file of the workspace (<code>.py</code> run with Python, <code>.mjs</code>, <code>.cjs</code>, <code>.js</code>, <code>.ts</code> or <code>.mts</code> run with Node), the others are the script's own arguments; it runs with the checkout root as working directory, or with the directory of the checkout the call names in <code>cwd</code> (a module script that reads files relative to its own package), on the image of the nearest check of the file's directory with that directory's dependencies installed and the same Python version its checks use, so a one-off reproduction script reads the checkout's dependencies without allowing arbitrary commands. A file outside the workspace is refused. The tool is offered on the OpenSandbox backend only.</p>
+<p>An agent may edit a file and run a check in the same step: the command waits (at most a minute) for the workspace writes of that step to land before it reads the workspace, so it always tests the edited code, and its answer says when it waited.</p>
+<p>To verify a change without picking test files by hand, call <code>sandbox_run_command</code> with the unit test check and <code>affected=true</code>: it reads what the checkout's changes touch (the functions and classes on the changed lines, the string keys they add or remove, a Python module's import path), finds the test files under the check's directory that name one of them (a function or class of a changed Python module counts only in a test file that imports that module, so a common name does not pull unrelated tests; a string key counts only in a test that quotes it, and only when it is distinctive: a JSON-schema keyword such as <code>description</code> or <code>properties</code>, or a short key without an underscore such as <code>sources</code>, is set aside and named; a name that more than a quarter of the test files carry, such as a shared fixture, is set aside and named), adds the test files you changed, and runs the check on those files only. On a checkout limited to some sub_paths, the answer also names the files a run looked for outside them (the tests failing on those are not runnable in this checkout, not regressions) and the files it wrote outside them (stray writes, never committed). A pytest check runs its affected selection with <code>--continue-on-collection-errors</code>: a selected test file that cannot even be imported in a narrow checkout (it reads a fixture outside the sub_paths at import) is named not runnable in this checkout, the other selected files still run, and the answer gives their own pass or fail count without it. Tests that fail on the same missing file are shown as one finding for that file, with the count of the others. The answer starts with what was selected and why; nothing runs when the checkout has no change or no test names what changed.</p>
+<p>A command that lasts longer than one tool call (a real <code>npm ci</code>, <code>pip install</code> or full test suite) keeps running in its container: the call answers <code>running</code> with a <code>run_id</code> and the output so far, and calling <code>sandbox_run_command</code> again with that <code>run_id</code> waits for its end and answers the exit code, the output, the report and the workspace changes as usual. With <code>background: true</code> the call does not wait at all: it answers <code>running</code> within about a second with the <code>run_id</code> and the first lines, so the agent goes on working while the command runs. With a <code>run_id</code> and <code>stop: true</code>, the command is ended at once with every process it started, and the answer is its result marked as stopped, with what it printed and wrote until then. An install whose lockfiles did not change since it succeeded in the same container is answered from that container at once, marked <code>cached</code>, as long as what it installed (its <code>node_modules</code> or <code>.venv</code> state) is still in the container; a lockfile change, or dependencies gone from the container, runs it again, and the answer says which file was missing. A check that fails in a Node project whose dependencies are not installed in its container says so and names the install check to run first. The first command on an image the platform has not started yet for the workspace can find its container still starting (a large image being pulled): the call then answers that the container is starting and that nothing ran, and the same call a minute later runs the command in it. A container runs one command at a time: the same check asked again while it runs (a turn resumed after a restart that did not know its <code>run_id</code>) answers that command as a call with its <code>run_id</code> would, and a different command answers, without failing, that the container is busy and which <code>run_id</code> to wait for. When a turn is resumed after a restart, its resume note lists the sandbox commands its interrupted part left running, with their <code>run_id</code>s, so it waits on them instead of starting them again. A resumed turn that repeats the exact call its interrupted part had made is never a second execution either: while the command still runs, the repeat waits for that same run; once it ended, the repeat is answered with its saved result. A <code>run_id</code> whose command already ended answers its saved result (exit code and last output, from <code>.xtm/runs/&lt;id&gt;/</code>); a <code>run_id</code> whose container went with the restart starts the same command again once in a new container (its install first when the container has no dependencies) and answers that new run's result, its first line naming the lost run and the new <code>run_id</code>; with <code>stop: true</code>, or polled again afterwards, it answers without failing that the run is <code>lost</code>.</p>
+<p>XTM One's own repository declares <code>backend-lint</code>, <code>backend-types</code>, <code>backend-dead-code</code>, <code>backend-unit</code>, <code>backend-tripwires</code>, <code>backend-snapshots</code>, <code>frontend-install</code>, <code>frontend-types</code>, <code>frontend-e2e-types</code> (the end-to-end specs, as CI types them), <code>frontend-lint</code>, <code>frontend-i18n</code> (the translation tables, validated as CI does), <code>frontend-unit</code> and <code>frontend-unit-update</code>. <code>frontend-unit-update</code> runs the test files given as args with <code>vitest --update=all</code> and <code>ARCHITECTURE_FIXTURE=write</code>, so a deliberate change to what a test pins (a vitest snapshot, the architecture fixtures the backend's Chromium tests draw) is rewritten in the checkout and reviewed with <code>sandbox_checkout_diff</code>. <code>backend-snapshots</code> regenerates the generated snapshots of the tools that skip approval in the checkout after a tool is added or renamed, so they are reviewed as a diff rather than edited by hand (<code>args=["--check"]</code> only verifies them).</p>
+<p>A check whose directory has an install check (a check of the same directory and image named <code>install</code> or ending <code>-install</code>; without one, the install of the nearest enclosing directory on the same image, so a package check of a Yarn, npm or pnpm workspace such as <code>packages/x:node-unit</code> binds the root <code>node-install</code>) runs that install first, in the same call, when the container has no installed dependencies there or the lockfiles changed since the last install: the answer starts with a line naming the install and its duration, and the next call skips it. A check that needs no dependencies declares <code>install_first = false</code> in <code>.xtm-one/checks.toml</code>.</p>
+<p>Once a pull request is open, its review threads are the other check a merge waits on: <code>list_github_pr_review_threads(repo, number)</code> lists the unresolved ones (thread id, file and line, first comment, last replier; <code>state=resolved</code> or <code>all</code> for the others). GitHub pages review threads by 100: the tool follows the cursor through every page before it states a count, so the unresolved and resolved counts cover the whole pull request; when paging stops early (a later page fails, or the cap of 50 pages) the first line reads <code>PARTIAL, N of M threads read</code>, the counts cover the threads read only, and the answer never says there is no unresolved thread. <code>manage_github_pr_review_thread(repo, number, thread_id, action="reply_and_resolve", body)</code> answers one and resolves it in one call (<code>reply</code>, <code>resolve</code> and <code>unresolve</code> alone too). A reply posted while the account holds a pending (unsubmitted) review on the pull request would join that review and stay unseen by everyone else: the tool reads the reply's state back and answers an error naming that review, and <code>reply_and_resolve</code> resolves nothing. The tool never submits the review itself, since that would publish everything in it (other drafts, its body): submit or discard it on GitHub deliberately. The listing names any pending review of the account. Several replies to one pull request issued in the same tool round are posted one after another (GitHub attached concurrent replies to a pending review), so answering every thread in one round is safe.</p>
+<h2 id="running-the-product-from-a-checkout-services">Running the product from a checkout: services</h2>
+<p>The same file can declare how the repository runs, in <code>[service.&lt;name&gt;]</code> tables: the command that starts it, the port it listens on, the path that answers once it is up, the sandbox image, its environment, the services it needs started first and the repository paths it reads (<code>needs</code>). A service started on a checkout made with <code>sub_paths</code> that lacks one of those paths is refused before anything starts, with the missing paths and the <code>materialize_repository(path="&lt;directory&gt;", add_paths=[...])</code> call that adds them. <code>sandbox_start_service(checkout="&lt;directory&gt;", service="&lt;name&gt;")</code> starts it in a sandbox container of its own, from the files of the workspace, waits until it answers and returns a <code>service_id</code> and a <code>preview_url</code> that the browser tool and <code>web_fetch</code> open. <code>sandbox_service_status</code> says whether it still answers, <code>sandbox_service_logs</code> returns the last lines of its output (with <code>pattern</code>, only the lines matching that regular expression, e.g. <code>pattern="seeded|not seeded"</code>, and how many matched; a line that repeats is shown once with its count, <code>(x5)</code>, and a very long line is cut), <code>sandbox_stop_service</code> stops it.</p>
+<p>The preview URL opens with the browser tool and reads with <code>web_fetch</code> for as long as the service runs: the platform recognises the preview of a service an agent started and adds what the sandbox server asks for itself, so no key is ever typed or shown. Any other address of the sandbox server stays refused.</p>
+<p>A file the running application serves behind its sign-in (a PDF datasheet, a CSV export) is read back with the browser tool's <code>download</code> action: the page itself fetches the URL, with its cookies and, when the application keeps a bearer token in the page, the request headers an optional <code>expression</code> computes there (the token is never shown to the agent). A file served only from a POST route (an export that takes its options as a JSON body) is fetched with <code>method: "POST"</code> and <code>body</code>, a JSON text sent as <code>application/json</code>; a read-only browser profile refuses a POST. The response is kept as a file of the conversation or run, up to 25 MB; a PDF answers its page count, <code>read_file_content</code> reads its text and <code>render_source_pages</code> shows its pages. The URL is held to the same policy as a navigation.</p>
+<p>A service has the network policy and the absence of credentials of every sandbox. It stops when the agent stops it, or at the lifetime its declaration gives (one hour by default) after the last call on it. The tools are offered with <code>sandbox_run_command</code>, when the sandbox backend is OpenSandbox.</p>
+<h3 id="the-xtm-one-lab">The xtm-one lab</h3>
+<p>The xtm-one repository declares <code>[service.lab]</code>: <code>sandbox_start_service(checkout="&lt;directory&gt;", service="lab")</code> starts the whole product from the checkout (its database, cache, object store and a stub model, the backend with its migrations, then the frontend) and answers a preview URL once the frontend is up and the lab has seeded its sample data and printed <code>lab up</code> (its <code>ready_log</code>), so the first <code>sandbox_service_logs</code> call already shows the signed-in session URL and the seeded pages; about three and a half minutes on a pod that has nothing cached. Sign in as <code>lab@filigran.io</code> with the password <code>lab-only-password</code>; those credentials exist only inside that lab. The lab runs without a licence, as XTM One, so every screen opens. If it does not become ready, <code>sandbox_service_logs</code> shows why: while it waits for the backend, the lab prints the backend's readiness answer every 15 seconds. A service whose process ends before it is ready (a seed refused, a script error) is answered at once with its exit code and its last 20 lines, not at the end of its readiness window. A lab that takes longer to start than one tool call allows (a product such as OpenCTI can need fifteen minutes) is answered <code>starting</code> after about three minutes, with its <code>service_id</code>, its preview URL and the state of each of its services; <code>background=true</code> answers that way as soon as the checkout is in the lab. Follow it with <code>sandbox_service_status</code> (each service: ready, starting, or exited with its code) and <code>sandbox_service_logs</code>, which reads a service's output while it starts. Calling <code>sandbox_start_service</code> again with the same arguments waits for that same lab, never a second one.</p>
+<h2 id="the-pull-request-title-rule">The pull request title rule</h2>
+<p>The same file can declare the title a pull request must have, in a <code>[pull_request]</code> table: <code>title_pattern</code> (a regular expression), <code>title_rule</code> (the rule in words) and <code>title_example</code>. <code>create_github_pr</code>, and <code>update_github_pr</code> when it changes the title, read it on the branch the pull request targets and refuse a title that does not match before anything is written, with the rule and the example in the answer, so the title is fixed at once instead of after a failed CI check. A repository without the table is checked against the title check of its own CI: the workflows whose file name holds "title" or "convention", a shell step testing the title against a pattern, or the shared <code>pr-title-check</code> action (<code>type(scope?)!?: description (#123)</code>, a <code>(deps)</code> title exempt). Two checks that run on alternative conditions (a private issue, for instance) each accept the title, with a note naming the condition. No such check found: the result says <code>Title not checked</code>; a workflow that cannot be read never blocks the write. The xtm-one repository declares the rule of its <em>Validate PR Title</em> workflow: <code>type(scope?): description</code>.</p>
+<h2 id="the-issue-title-rule">The issue title rule</h2>
+<p>An <code>[issue]</code> table with the same three keys declares the title an issue must have. <code>create_github_issue</code>, and <code>update_github_issue</code> when it changes the title, read it on the default branch and refuse a title that does not match before anything is written, with the rule and the example in the answer. A repository without the table creates and renames issues as before; the pull request rule never applies to an issue.</p>
+<h2 id="closing-keywords-that-point-at-a-pull-request">Closing keywords that point at a pull request</h2>
+<p>GitHub closes whatever a closing keyword names (<code>closes #12</code>, <code>fix owner/repo#34</code>, <code>resolves</code> and a pull request URL) when the pull request carrying it merges. Aimed at an issue, that is how <code>Closes #12</code> works. Aimed at another pull request, it closes that pull request without a word. <code>create_github_pr</code>, <code>update_github_pr</code> and <code>merge_github_pr</code> therefore refuse a title, body or squash commit message whose closing keyword points at a pull request, in the same repository or another, and write nothing; the answer names each reference. Reword it (<code>see</code>, <code>needs</code>, <code>awaiting</code>) and call again. A reference to an issue, or one that cannot be read, is left as it is.</p>
+<p><code>create_github_pr</code> can assign the pull request in the same call: pass <code>assignees</code> (GitHub logins). The answer names who GitHub assigned, and any login it could not assign (someone without access to the repository). If the assignment fails, the pull request is still created and the answer says so.</p>
+<p><code>merge_github_pr</code> also checks the messages of the pull request's own commits whenever they land on the base branch: a squash without a commit message (GitHub then builds the message from the commits), a merge commit or a rebase. The refusal names the commit and the reference; pass a reworded <code>commit_message</code> to a squash, or amend the commit. A squash with your own commit message does not read the commits.</p>
+<p><code>manage_github_pr</code> with <code>ready_for_review</code> or <code>convert_to_draft</code> is safe to call once when GitHub has a bad moment: on a transient answer ("Something went wrong", a 502, 503 or 504, a timeout) it reads the pull request back, answers applied when the pull request is already in the state you asked for, and otherwise tries again, at most three times in about 20 seconds. A refusal such as a missing permission is answered at once.</p>
+<h2 id="a-review-verdict-that-asks-for-changes">A review verdict that asks for changes</h2>
+<p>When an agent review loop posts its verdict on a pull request (a comment whose first line reads <code>UX-LOOP round=N verdict=...</code>), <code>merge_github_pr</code> and <code>manage_github_pr</code> (<code>ready_for_review</code>, <code>enable_automerge</code>) refuse while the newest verdict is not <code>APPROVE</code>. The refusal names the round, the verdict and the comment; a newer round with <code>verdict=APPROVE</code> releases it. A pull request without such a comment is never blocked.</p>
+<h2 id="keeping-variables-sessiontrue">Keeping variables: session=true</h2>
+<p><code>code_interpreter(session=true)</code> runs the code in the conversation's kernel, a long-lived Python process where variables and imports persist from one <code>session=true</code> call to the next. <code>reset=true</code> starts a new one. The result says which kernel ran: a new one, the same one as before, or a new one because the previous kernel was gone.</p>
+<p>A kernel is gone, and its variables with it, when it was idle past its timeout (15 minutes by default), when a cell ran past the call's timeout, or when the call reached another server process (local sandbox). Files under <code>workspace/</code> are kept either way, so keep in files what a later step must not lose.</p>
+<h2 id="packages">Packages</h2>
+<p>When the administrator has set a package allow-list, <code>code_interpreter(packages=["name==version"])</code> installs packages into <code>workspace/.venv</code> before the code runs, where they stay. The server downloads the package from the configured index, as a wheel checked against the index's sha256, and the sandbox stays offline. Only listed packages (and their listed dependencies) are installed; the result names what was installed, what already was, and what was not and why.</p>
+<h2 id="quotas-and-clean-up">Quotas and clean-up</h2>
+<ul>
+<li>A workspace holds at most 2 GB and 20,000 files by default. A call that would go past either saves nothing it wrote under <code>workspace/</code> that time, and the result says so. Remove files and run it again.</li>
+<li>A workspace is deleted when its conversation is archived or deleted, when its assignment run is deleted, and after 7 days without use.</li>
+</ul>
+<h2 id="when-a-turn-is-interrupted">When a turn is interrupted</h2>
+<p>A deployment or a restart can stop the server while an agent is working. The tool calls the turn completed are kept: a graceful stop lets the call in flight finish, keeps every completed result, and marks the turn <code>interrupted_resumable</code>. <strong>Continue where you left off</strong> (or any message) starts a turn that receives those calls and their results in order, followed by a short note that names the last completed call, how many results were replayed, what the workspace holds, and which long results were shortened for the replay and the file each one is kept whole in. The agent continues from there instead of starting again, and the workspace is exactly as the interrupted turn left it.</p>
+<p>When the platform itself stopped the turn (a deployment, a scale-in, a restart or the recycling of a web worker), the agent resumes the same message by itself once XTM One is back, from the same completed calls and the same workspace, as long as the message makes progress between two stops (up to twenty automatic resumes; three stops in a row without a new completed tool call end them). A turn stopped for any other reason waits for you: nothing restarts it on its own.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="../files/">Files</a> - the files your agents produced.</li>
+<li><a href="../chat/">Chat</a> - conversations and interrupted turns.</li>
+<li><a href="../../deployment/configuration/#code-interpreter-sandbox-workspace">Configuration</a> - the settings behind the quotas, the clean-up and the kernels.</li>
+</ul>
+
+
+
+
+
+
+
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 24, 2026 10:08:47 UTC"><span class="timeago" datetime="2026-11-24T10:08:47+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 24, 2026 10:08:47 UTC">2026-11-24</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+  </span>
+
+    
+    
+    
+      
+  <span class="md-source-file__fact">
+    
+      
+  <span class="md-icon" title="Contributors">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33s1.71.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2"></path></svg>
+  </span>
+  <span>GitHub</span>
+
+    
+    <nav>
+      
+        <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
+          
+          <img src="https://avatars.githubusercontent.com/u/1334279?v=4&amp;size=72" alt="SamuelHassine">
+        </a>
+      
+        <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
+          
+          <img src="https://avatars.githubusercontent.com/u/326439686?v=4&amp;size=72" alt="Letullier-Thibert">
+        </a>
+      
+      
+      
+    </nav>
+  </span>
+
+    
+  </aside>
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer">
+        
+          
+          <a href="../files/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Files">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Files
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../agents/" class="md-footer__link md-footer__link--next" aria-label="Next: Agents">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Agents
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"></path></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2026 Filigran SAS. Community Edition licensed under the Apache License 2.0
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/XTM-One-Platform" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://community.filigran.io" target="_blank" rel="noopener" title="community.filigran.io" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M94.1 315.1c0 25.9-21.2 47.1-47.1 47.1S0 341 0 315.1 21.2 268 47.1 268h47.1v47.1zm23.7 0c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1v117.8c0 25.9-21.2 47.1-47.1 47.1s-47.1-21.2-47.1-47.1zm47.1-189c-25.9 0-47.1-21.2-47.1-47.1s21.2-47 47.1-47S212 53.2 212 79.1v47.1h-47.1zm0 23.7c25.9 0 47.1 21.2 47.1 47.1S190.8 244 164.9 244H47.1C21.2 244 0 222.8 0 196.9s21.2-47.1 47.1-47.1zm189 47.1c0-25.9 21.2-47.1 47.1-47.1s47 21.2 47 47.1-21.2 47.1-47.1 47.1h-47.1v-47.1zm-23.7 0c0 25.9-21.2 47.1-47.1 47.1S236 222.8 236 196.9V79.1c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1zm-47.1 189c25.9 0 47.1 21.2 47.1 47.1s-21.2 47-47.1 47-47.1-21.2-47.1-47.1v-47.1h47.1zm0-23.7c-25.9 0-47.1-21.2-47.1-47.1s21.2-47.1 47.1-47.1h117.8c25.9 0 47.1 21.2 47.1 47.1s-21.2 47.1-47.1 47.1z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://linkedin.com/company/filigran" target="_blank" rel="noopener" title="linkedin.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M416 32H31.9C14.3 32 0 46.5 0 64.3v383.4C0 465.5 14.3 480 31.9 480H416c17.6 0 32-14.5 32-32.3V64.3c0-17.8-14.4-32.3-32-32.3M135.4 416H69V202.2h66.5V416zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77m282.1 320h-66.4V312c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9V416h-66.4V202.2h63.7v29.2h.9c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://twitter.com/FiligranHQ" target="_blank" rel="noopener" title="twitter.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"></path></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.path", "navigation.footer", "navigation.expand", "content.action.edit", "content.action.view", "content.code.annotate", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../js/timeago.min.js"></script>
+      
+        <script src="../../js/timeago_mkdocs_material.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>

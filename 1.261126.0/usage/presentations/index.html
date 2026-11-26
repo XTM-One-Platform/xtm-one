@@ -1,0 +1,5047 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for XTM One, Filigran's AI-native threat-informed defense platform.">
+      
+      
+        <meta name="author" content="Filigran">
+      
+      
+        <link rel="canonical" href="https://xtm-one-platform.github.io/xtm-one/latest/usage/presentations/">
+      
+      
+        <link rel="prev" href="../workspaces/">
+      
+      
+        <link rel="next" href="../reports/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Presentations - XTM One Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/timeago.css">
+    
+      <link rel="stylesheet" href="../../assets/css/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-P8K1S4VSXR"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-P8K1S4VSXR",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-P8K1S4VSXR",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="filigran" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#presentations" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+        
+          <aside class="md-banner md-banner--warning">
+            <div class="md-banner__inner md-grid md-typeset">
+              
+  You're not viewing the latest version.
+  <a href="../../.."> 
+    <strong>Click here to go to latest.</strong>
+  </a>
+
+            </div>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
+          </aside>
+        
+      </div>
+    
+    
+      
+
+
+<!-- Header -->
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+
+    <!-- Link to home -->
+    <a href="../.." title="XTM One Documentation" class="md-header__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+
+    <!-- Button to open drawer -->
+    <label class="md-header__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+
+    <!-- Header title -->
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color palette -->
+    
+      
+    
+
+    <!-- Site language selector -->
+    
+
+    <!-- Button to open search modal -->
+    
+      <label class="md-header__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+      </label>
+
+      <!-- Search interface -->
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+
+    <!-- Repository information -->
+    
+      <div class="md-header__source">
+        <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+
+  <!-- Navigation tabs (sticky) -->
+  
+
+  <script type="text/javascript"> !function(){var e,t,n;e="58d967e3f3ca784",t=function(){Reo.init({clientID:"58d967e3f3ca784"})},(n=document.createElement("script")).src="https://static.reo.dev/"+e+"/reo.js",n.async=!0,n.onload=t,document.head.appendChild(n)}(); </script>
+  <script src="https://copilot.filigran.ai/api/v1/public/widget.js" data-token="jNJu1JTbbPwNqk1tqEOw-WjsKU4dEcgn" data-context="{&quot;page&quot;:&quot;docs&quot;,&quot;product&quot;:&quot;XTM One&quot;}"></script>
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../deployment/overview/" class="md-tabs__link">
+          
+  
+  
+  Deployment &amp; Setup
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../getting-started/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../administration/introduction/" class="md-tabs__link">
+          
+  
+  
+  Administration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="XTM One Documentation" class="md-nav__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    XTM One Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2">
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment &amp; Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment &amp; Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_1">
+        
+          
+          <label class="md-nav__link" for="__nav_2_1" id="__nav_2_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/scim-provisioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provisioning with SCIM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/security-headers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security headers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/secret-vaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secret vaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/xtm-suite-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/chat-approvals-in-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat approvals in client apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/backup-and-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2">
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/containers-and-scopes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Containers and scopes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/relationships-and-nesting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationships and nesting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse and deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/dates-and-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meaning of dates and status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/trust-and-confidence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trust, review, and confidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work with agents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Work with agents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../office-add-in/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Office add-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scheduled-work-items/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduled work items
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workspaces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presentations
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presentations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#create-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a deck
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#play-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Play a deck
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#present-with-your-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Present with your notes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Present with your notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#present-to-a-meeting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Present to a meeting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#read-a-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read a page
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#change-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change a deck
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Change a deck">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#edit-slides-by-hand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edit slides by hand
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#edit-in-the-studio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edit in the studio
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#share-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Share a deck
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Share a deck">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#public-link" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public link
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#live-poll" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Live poll
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#work-on-a-deck-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Work on a deck together
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export a deck
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#move-a-deck-to-another-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Move a deck to another platform
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#template-and-theme" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Template and theme
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Template and theme">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#choose-a-template-when-you-create-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose a template when you create a deck
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#change-the-template-or-the-theme-of-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change the template or the theme of a deck
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-slide-with-its-own-theme" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A slide with its own theme
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-slide-in-the-xtm-one-palette" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A slide in the XTM One palette
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bento-slides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bento slides
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#videos-on-a-slide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Videos on a slide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#covers-hero-backdrops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Covers: hero backdrops
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#speakers-and-icons-on-the-title-slide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Speakers and icons on the title slide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#header-and-footer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Header and footer
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-presentations-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Presentations page
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next step
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mobile-companion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mobile companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../video-studio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video Studio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sandbox-workspace/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sandbox workspace
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../create-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../assignments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Assignments and triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../webhook-triggers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Webhook triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-widget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publish an agent on a website
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agentic-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4">
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manage resources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Manage resources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/agent-to-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent-to-agent (A2A)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/browser-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Browser profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/knowledge-bases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Knowledge bases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/connect-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connect an external MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/platform-mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/platform-tools-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform tools MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/mcp-catalogs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP catalogs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/relays/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relays
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/sharing-and-access/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sharing and access
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Templates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One Desktop and runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5">
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitor activity
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Monitor activity
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../home-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ctem-signals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CTEM signals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../work-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platform-insights/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform insights
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_6">
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    XTM Suite
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/common-experience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common experience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/opencti/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCTI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/indicator-decay/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indicator decay re-check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/openaev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenAEV
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/opencrq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCRQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../my-profile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    My profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4">
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/users-and-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users and groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/intents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Intents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/organization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organization profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6">
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channels and bots
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Channels and bots
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/slack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/microsoft-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/whatsapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/whatsapp-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp: two backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/telegram/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/discord/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/google-chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/agent-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent accounts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/ai-governance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI governance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/prompt-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt safety (Nova)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/editions-and-licensing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editions and licensing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/running-without-ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running without AI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/emergency-stop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/emergency-stop-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#create-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a deck
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#play-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Play a deck
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#present-with-your-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Present with your notes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Present with your notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#present-to-a-meeting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Present to a meeting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#read-a-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read a page
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#change-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change a deck
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Change a deck">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#edit-slides-by-hand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edit slides by hand
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#edit-in-the-studio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edit in the studio
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#share-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Share a deck
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Share a deck">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#public-link" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public link
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#live-poll" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Live poll
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#work-on-a-deck-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Work on a deck together
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export a deck
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#move-a-deck-to-another-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Move a deck to another platform
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#template-and-theme" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Template and theme
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Template and theme">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#choose-a-template-when-you-create-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose a template when you create a deck
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#change-the-template-or-the-theme-of-a-deck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change the template or the theme of a deck
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-slide-with-its-own-theme" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A slide with its own theme
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-slide-in-the-xtm-one-palette" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A slide in the XTM One palette
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bento-slides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bento slides
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#videos-on-a-slide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Videos on a slide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#covers-hero-backdrops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Covers: hero backdrops
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#speakers-and-icons-on-the-title-slide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Speakers and icons on the title slide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#header-and-footer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Header and footer
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-presentations-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Presentations page
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next step
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation">
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../getting-started/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    User Guide
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../chat/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Work with agents
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/XTM-One-Platform/xtm-one/blob/main/docs/docs/usage/presentations.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"></path></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/XTM-One-Platform/xtm-one/raw/main/docs/docs/usage/presentations.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"></path></svg>
+    </a>
+  
+
+
+<h1 id="presentations">Presentations</h1>
+<p>For a written document rather than slides, ask for a <a href="../reports/">report</a>.</p>
+<p>A presentation is a slide deck your assistant builds for you, in a conversation, from a plain-language request. It renders right inside the chat, plays like a real deck (keyboard, touch, fullscreen, speaker notes), stays editable by asking for changes, and exports to PDF and PowerPoint that look exactly like the slides on screen.</p>
+<p>Every deck you can see is listed under <code>Work &gt; Presentations</code> in the sidebar — your own, the ones colleagues shared with you, and the ones published to the whole company. The <code>Work</code> group is where what your agents produce lives: their runs under <code>Operations</code>, their decks here, and every other file they output or you gave them under <a href="../files/"><code>Files</code></a>.</p>
+<h2 id="create-a-deck">Create a deck</h2>
+<p>Ask any assistant that can generate presentations — the <code>General Assistant</code>, or an agent with the presentation tool enabled — for slides, in your own words:</p>
+<blockquote>
+<p>Create a 10-slide all-hands deck for Q3: highlights, the three numbers that matter, the roadmap for Q4, and a closing slide with my contact details.</p>
+</blockquote>
+<p>The assistant composes the slides, and the deck appears in the conversation as an interactive card. When several templates are available to you and your request does not name one, the assistant first asks which template to use (see <a href="#template-and-theme">Template and theme</a>). You can also start from the <code>Presentations</code> page: <code>New presentation</code> lets you pick the template and the theme, then opens the chat with the beginning of a request already typed for you.</p>
+<div class="admonition tip">
+<p class="admonition-title">Brief it like a designer</p>
+<p>A good brief names the audience, the one message to remember, and the numbers you want on screen. The assistant chooses the slide compositions — a two-column comparison, a wall of key figures, a before/after, a diagram with an explanation, a roadmap, a takeaways slide — and keeps each slide readable from the back of the room. Ask for a short outline first when the deck is long, then let it build the whole thing in one pass.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Start from the last edition</p>
+<p>For a deck you make again and again — the quarterly update, the monthly report — ask the assistant to copy the last one: "copy <em>Quarterly Review, Q3 2026</em> as <em>Quarterly Review, Q4 2026</em>, then update the numbers". The copy keeps the template, the theme, the slide size, the header and footer settings and every slide with its speaker notes, so the new edition starts from the approved layout rather than from a fresh draft, and a footer that shows the deck's title shows the new one. The copy is yours: it is shared with nobody, starts with no comments, and the original is not changed. Any deck you can open can be copied this way, one shared with you as <code>Can view</code> or published to the company included. The assistant then changes only what differs, slide by slide (see <a href="#change-a-deck">Change a deck</a>). When you no longer need a copy, ask the assistant to delete it ("delete <em>My draft of the Q4 review</em>"): it deletes a deck only when you ask, and only one you own - a deck shared with you, even as <code>Can edit</code>, stays as it is. Deleting is final: there is no trash to restore from, and the deck's history, comments, sharing and public link go with it, exactly as with <code>Delete</code> on the <a href="#the-presentations-page">Presentations page</a>.</p>
+</div>
+<p>Slides can carry text, bullet and check lists, callouts, key figures, tables, feature grids, timelines, process flows, numbered cards, quotes, images (a product screenshot can wear a browser window, a slim browser window with a thinner bar for several screenshots side by side, or a device frame, on a glow in the brand colours), a challenge-and-answer pair (two stacked cards joined by an arrow), logo grids, native charts, org charts, and diagrams drawn from a text description (flowcharts, sequences, mind maps). The assistant can highlight a word or a phrase with bold, emphasis, code style, or a colored tone — for example an <code>accent</code> to point at the one thing that matters, or <code>success</code> / <code>warning</code> / <code>error</code> for a verdict.</p>
+<div class="admonition tip">
+<p class="admonition-title">Architecture and ecosystem diagrams</p>
+<p>Ask for "an architecture diagram of the platform", "how the modules feed each other" or "the ecosystem around the product" and the assistant draws a native diagram in the deck's own palette and fonts: product logos from the template inside the boxes, labeled arrows between them ("Threat data", "Findings"), a highlighted core the rest runs on, a band across the top for a portal or a marketplace, a titled panel around the modules of a platform, and a legend. A box or a panel can also wear a colour of the template's palette — on the brand decks, the product colours: XTM One purple, OpenCTI blue, OpenAEV orange, OpenCRQ blue — as its border, a tint of its body, its icon and the chips inside it (ask for "each product in its own colour"); the colour follows the slide's theme, dark or light, and the PowerPoint exports carry it as shown. The arrows are routed so they never run through a box - when the two plain elbows between two boxes are both blocked, the arrow takes the free lane between the rows or the columns - an exchange in both directions runs as two parallel lines that do not cross, every arrow lands on the middle of a side (the plain ties from a highlighted core fan out onto the middle of each box's top edge), and a label never sits on a box or on another label: it slides along its arrow, or beside it, to a clear spot. The drawing is never blown up to fill the slide - a diagram on three columns keeps the same box and type sizes as one on five - and a diagram a little too tall for its place closes its rows up before anything is made smaller. A box that only gives context (a "ghost") can carry its icon inline before its label (<code>icon_tile: false</code>) so its label stays centred and two such boxes on one row line up. A panel can be headed by the platform's own logo from the template, in its top-left corner, with or without its title after it (ask for "the platform's logo on the panel"), and by a row of up to six small pills on the same line - the platform's capabilities, in its top-right corner by default, or right after the logo and title - which takes no room from the boxes inside the panel (ask for "the platform's capabilities in the panel's corner"). The template's own mark or logo placed in a box, a panel, an image or a row of logos reads exactly as it does in the slide's corner: in the slide's accent on a light slide and its light colour on a dark one, so a white mark is never lost on a pale slide; and the layout check names any logo painted at under 1.5:1 contrast against what is under it; the pills are never wrapped onto a second line, and when a row is too long for its panel the layout check says so and names the panel. A logo or a row of capabilities can also sit bare inside a panel, with no box around it (<code>frame: false</code>); the arrows to it end on the logo or the words themselves. An arrow can be told which side of a box it leaves and enters (<code>source_side</code> / <code>target_side</code>: top, right, bottom or left) - ask for "the request out of the left of the core into the top of the product, and the answer back the same way" and the two are drawn as two squared, parallel paths - and the router keeps that side even when it faces away, bending around the box. Two arrows between the same two boxes, one each way, are drawn as two parallel lines at the same height on both boxes, flat when the boxes sit on one row; <code>lane: 1</code> and <code>lane: 2</code> say which one runs on top. An arrow can also end on a panel's border instead of on a box (<code>target: "zone:platform"</code>, the panel carrying the id <code>platform</code>) - context feeding the whole platform - with its head on the border and no hidden box taking a row inside the panel. In the live deck the diagram is interactive: hover or focus a box to light up what it connects to, click it to read the detail the assistant wrote for it, Escape to release. Everything is vector — the PDF export stays sharp at any size.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Org charts</p>
+<p>Ask for "the leadership team", "the engineering org with its headcount" or "the hiring plan for next year" and the assistant draws a native <strong>org chart</strong>: every seat says who it reports to, and the deck lays the tree out itself - one line of cards per level, every card of a level as wide and as tall as the others, each manager centred over their reports and joined to them by one line along the gap, and a secondary manager drawn as a dashed line routed around the cards. Each kind of seat looks the same on every slide: a <strong>person</strong> (their photo from the template's people photos, or their initials, the name on one line and the role under it), an <strong>open seat</strong> (dashed, in the warning colour, marked <em>Open role</em>, with its target date), a <strong>planned hire</strong> (in the accent colour, with the period it is planned for - "+3 Platform engineers" for three of them), a <strong>team</strong> drawn as one card with its headcount, a team drawn as a <strong>bubble</strong> whose area is its headcount, and an <strong>external</strong> seat (a contractor, a partner or an agency, muted with a dotted outline). Ask for "the headcount under each manager" and every manager carries the roll-up the chart computes from the tree - people count one, teams their headcount, open and planned seats apart ("14 · +3 open · +4 planned") - or today against the target ("14 → 47"). Other looks: <strong>left to right</strong>, a <strong>leadership wheel</strong> around the root, <strong>compact</strong> cards, everything as <strong>bubbles</strong>, or <strong>cards over bubbles</strong> (the people as cards, their teams as bubbles under them), one tinted zone per branch, and a legend of the kinds drawn. A large organisation folds: from a level you choose, a manager's reports become one card with their count, or only the first levels are drawn; when a level is wider than the slide its last level stacks into a column under one line, and a chart that would still need type too small to read is refused with a notice rather than shrunk - the layout check then tells the assistant to fold teams or draw them as bubbles. In the live deck, hover or focus a seat to read its whole team's headcount, its tags, its note and its dotted managers; click a folded team (or press Enter) to open it in place - the deck itself does not change; the arrow keys walk the tree. The PowerPoint export (editable shapes) carries the chart as native shapes - each seat a group of its card or circle, its words as text - and its lines as connectors, so it can be edited in PowerPoint; the PDF stays vector. In a video, an org chart is built level by level (see <a href="../video-studio/">Video Studio</a>).</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Positioning maps</p>
+<p>Ask for "a competitive landscape", "where the vendors sit on coverage and openness" or "a 2x2 of the options" and the assistant draws a native <strong>positioning map</strong>: two real axes with arrowheads, each with its title and the meaning of both ends ("Single stage" to "Whole loop"), crossing at the centre or running along the left and bottom edges, four named quadrants over a faint tint, and every item placed at its own position on both axes (0 to 100), anywhere on the plane rather than snapped to a cell. Every vendor mark is drawn at one size in a small square, its plain name beside it; the item the slide is about is larger, in the template's accent; context items can be dimmed. Names are moved to a free side of their mark so they never cover another name; when no side is free, the layout check names the crowded items. Up to four short <strong>callouts</strong> under or beside the map say why the highlighted item sits where it does, and each item can carry a one-sentence note shown on hover. Two maps fit side by side on one slide, same top and same height, and the editable PowerPoint export writes the axes, tints, marks and names as shapes.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Charts and dashboard slides</p>
+<p>Give the assistant the numbers — "ARR by quarter for the last eight quarters", "the share of Community versus Enterprise", "trials against a target of 150" — and it draws a native chart in the deck's own palette and fonts: bar, stacked bar, line, area, pie, donut, a gauge against a target, a bar and line combined, a <strong>waterfall</strong> for a bridge, or a <strong>butterfly</strong> - two groups compared rung by rung, such as individual contributors and managers per seniority level, the first drawn to the left of a central spine and the second to the right, every number written as a plain size with no minus sign, a level one group does not have (a 0) left empty on its side - no bar and no number, the level names on the spine (or on the left axis), and each side's total under the legend if you ask for it; or a world <strong>map</strong> coloured by country (see "Maps by country" below). Values read the way a board expects (<code>€16.5M</code>, <code>86%</code>, thousands separators in your language) and are written on the figure: a small upright label just above each bar of a grouped bar chart, as on a dashboard card — set smaller where it would touch its neighbour, and turned on its side only when even the smallest size would — and, on a stacked bar, inside each segment that has room for it, with the stack's total above - or, on a horizontal bar chart, just past the end of each bar, where the chart keeps room for the widest total so a <code>100%</code> on a chart of shares is never cut by its frame. A segment too thin for its number - a series worth a few percent of each stack - writes it just past the stack instead, after the total: a small figure in the series' colour, tied to its segment by a short line, several of them stacked neatly when one bar has more than one; the PowerPoint export draws them in the same place. Ask for smaller or larger chart text ("label size sm", as on a Metabase card; "lg" for a figure read from the back of the room): the values and the axis text follow, in the viewer and in the exports. To size the numbers apart from the axis text, ask for a value size - one of those text sizes, or a size in pixels from 10 to 32 ("values at 20px", two under the slide's 22) - and only the numbers on the bars, points and stacks change, set smaller from there if they must; the axis text keeps its size, in the PowerPoint export too. In the editor this is <strong>Value text size</strong> on the chart. When the values of a bar, stacked bar or combined chart are wider than the room between two bars - two series over seven quarters in half a slide - you choose what they do instead of being set smaller or turned: ask for them <strong>on two rows</strong> ("stagger the values") and every value keeps its size, upright, just above its bar - only a value that would touch the one beside it moves a row higher, and on a chart that combines bars and a line, a value the line would run through moves above the line, so no number is crossed out by it; or ask to <strong>keep them upright</strong>, and every value keeps its size in its place: a value that would touch its neighbour or the line moves just one row higher when that row is free, without moving any bar, and one that would still touch something there is left out, which the layout check reports. Either way the bars stand a little further apart, or narrow a little, to make room - except the bars of a grouped bar chart, which keep the tight groups they always have, so each period still reads as one group: there a value wider than its bar runs over the gap and the bar beside it, its halo keeping it legible on that bar, and only another value moves it a row higher or leaves it out. The PowerPoint export spaces its bars the same way. A horizontal bar or stacked bar chart takes the same choice: staggered, every value keeps its text size - one that would touch the value in the next row moves along its row just past it, and a segment's number too long for its segment is written past the stack, after the total, at the same size and tied to its segment by a short line - so two share charts on one slide read at one size; kept upright, a value that would touch another, or that its segment cannot hold, is left out, which the layout check reports. In the editor this is <strong>Value labels</strong> on the chart. On a pie or a donut each value sits just outside its slice, at the end of a short line, and the pie leaves exactly the room its values need, so a value is never cut by the card or written over the legend: in a narrow panel the pie is drawn a little smaller, and the values are set smaller only when the pie would otherwise shrink too far. When even the smallest size leaves no room outside - a pie squeezed beside a long legend - the values are written inside the slices large enough to hold them, in a colour that reads on each slice, and a slice too small keeps its number in the tooltip. The PowerPoint export writes the values at the same size and on the same side of each slice. Values turned on their side are reported by the layout check (<code>values rotated on chart 2</code>) so the assistant can put them on two rows, pick a smaller text size or a wider column; so are a pie's values set smaller than its text size (<code>values shrunk on chart 2</code>), so the assistant can move the legend under the chart or give it a wider column. Should a chart have truly no room for its numbers, the layout check says so (<code>values hidden on chart 2</code>) so the assistant gives it more room or fewer series; values are never dropped without a word. For a stacked chart it only suggests a taller or wider chart when that would actually bring the numbers back; when no size would, it says so and suggests leaving that series' numbers to the tooltip, or leaving the chart as it is - the totals are written either way. Figures are as precise as they need to be: a value under 10 keeps two significant digits (<code>0.96x</code>, <code>1.4h</code>), and two different values never read the same (<code>1.57x</code> and <code>1.56x</code>, not <code>1.5x</code> twice). When a slide states its figures to a given precision, ask for it - "two decimals on the burn multiple" - and every value read against that axis, its ticks and tooltips included, is written with exactly that many decimals (<code>1.27x</code>, <code>€19.14M</code>), in the exports too. By default each amount takes its own unit, so one chart can read <code>€480k</code> next to <code>€1.2M</code>; ask for one unit - "all in millions", or thousands, or billions - and every amount on the chart, its ticks, tooltips and target included, is written in it with the chart's decimals (<code>€0.25M</code> next to <code>€2.50M</code>, an amount too small for the unit reading <code>€0.00M</code> rather than disappearing), in the exports too. Pies, donuts and gauges keep their own amounts. A gauge stands in the middle of its card or dashboard panel, its dial filling the start of its track and rounded at the value; ask for a small, medium or large one ("size sm", md by default, lg: a dial 240, 360 or 480 px across, in a dashboard panel too), or for one that fills its room ("fill"), and the dial grows as far as the room allows without cutting its number or its target label - in the PowerPoint export too, where the gauge is a picture of the figure. A line drawn over bars writes its values as well - each next to its point, over it or under it, on the bar with a white halo where the point falls in one, never on an axis label or one number over another: a value set too close to another moves just clear of it, and a line's first value slides clear of the axis beside it. A line or an area whose values would run into one another in a single row - eight quarters in a one-third dashboard panel - writes them alternately above and below the points, at the largest size that gives each value two points' room, before it sets them smaller or leaves any out; the PowerPoint export places them the same way. A chart where nothing touches is drawn exactly as before. To part a line from the bars on purpose, ask for an axis range - "make the left axis go up to €60M", "start the right axis at -€5M" - or set <strong>Axis maximum</strong> / <strong>Right axis minimum</strong> in the editor; the range always keeps zero and every value of its axis. To leave one series' numbers to the tooltip, ask for it ("no values on the burn bars", or on the small series of a stacked chart, whose stack totals still count it). A target shows as a dashed reference line named in the legend, and the chart follows the theme when you switch it between dark and light. The legend sits above the plot - on the panel's title row in a dashboard, beside a chart's own title - unless you say otherwise: ask for "the legend under the chart" (or set <strong>Legend position</strong> to <code>Bottom</code> in the editor) when a narrow panel's entries would otherwise wrap beside the title, and it moves to one centred line under the axis with the plot taking the room; <code>Right</code> stacks the entries beside the plot, the natural place for a donut's slices. The PowerPoint export puts the legend on the same side. A chart stands on a card — the deck's card surface and a fine border, like the key figures beside it and the panels of a dashboard — with its legend and caption inside; ask for a chart "without its card" (or turn <strong>Framed</strong> off in the editor) to draw it straight on the slide. Give a chart a <strong>title</strong> ("title it Monthly signups", or the <strong>Title</strong> field in the editor) and it is written at the top of the card, as a dashboard panel titles its chart, with the legend on the same row; the caption stays the note under the plot. Two by two charts on a slide, each titled and asked to fill its space, take their cards to the bottom; a chart in a dashboard panel is titled by the panel, which refuses a second title. The card is there from the first frame and stays while the bars grow in, and the editable PowerPoint carries it as a plain shape under the chart. Two units can share one chart — new logos as bars next to the average sales price as a line, or burn in millions next to the burn multiple: the second series reads against an axis on the right, written in its own unit (<code>€300k</code>, <code>1.5x</code>) and drawn in that series' colour, with a target line of its own if you give one. In the live deck a chart is interactive: hover a bar or a point for its exact value, click a legend entry to hide or show a series. A chart asked to fill its space — on its own, under a heading in one of two columns, or inside a card that fills its column — takes the height left once the blocks around it are placed, and never less than a readable plot: when there is not even that, the layout check reports the chart as too short, so the assistant trims what surrounds it. A <strong>waterfall</strong> shows a bridge — "the ARR bridge from Q2 to Q3: opening, new logos, expansion, churn, ending": the opening and ending stand on the axis, each change floats from where the previous one left the total — rises in green, falls in red — and dashed lines carry the level from bar to bar. The platform adds the bars up: an ending that does not equal the opening plus the changes (beyond half a percent of what the changes moved, the slack of rounded figures) is refused with the gap named — "ending €19.14M vs running sum €19.2M, gap €0.06M" — so the assistant corrects the figure that is wrong. When the gap is real, ask for it to be shown: it is drawn as its own <strong>Unexplained</strong> bar before the total instead of being hidden in it. For a slide that reproduces a dashboard, ask for a <strong>dashboard slide</strong>: a row of key figures across the top — each can carry a small trend line beside its value — and up to six panels of charts, tables or figures on a grid below, sized to fit the slide without shrinking. Two panels can also share the grid half and half - a chart beside a table: ask for "two equal columns" (in the editor, <strong>Panel columns</strong> set to 2 on the slide) and they sit side by side at the same width, up to four panels on the slide; the PDF and PowerPoint exports draw the same two columns. When five or six key figures each carry a long comparison under them ("Q3 25 EUR 4.5M · Q2 EUR 6.7M"), ask for <strong>small tiles</strong> (or set <strong>Tile size</strong> to Small on the slide in the editor): the figures and their notes are set smaller so each note stays on one line, and the panels below get the room back, in the PDF and PowerPoint exports too. A row of key figures on a content slide comes in three sizes — small, medium (the default) and large — and a size reads the same on every slide: when a slide holds more than fits and is shrunk to fit, what surrounds the row shrinks, not the figures, so a KPI row repeated across a deck keeps the same size from one slide to the next, in the PDF and PowerPoint exports too. Only a slide too full to fit even that way shrinks its figures as well, and the layout check says so. A key figure's change is green when it rises and red when it falls, unless you say which way is good news: when lower is better - a loss, a burn, churn, costs - the assistant shows a fall in green with its arrow still pointing down ("-18.4% QoQ"), and a rise in red. In the editor, <strong>Delta tone</strong> sets that colour on a figure by hand, and the PDF and both PowerPoint exports show the same colours.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Maps by country</p>
+<p>Ask for "customers by country" or "headcount per country" and the assistant draws a world <strong>map</strong> (a choropleth): each country with a figure is coloured on a ramp of the template's chart colour, from a light wash for the lowest figure to the full colour for the highest, and the countries without one stay in the muted surface colour, in the dark and the light theme alike. The countries are named by their two-letter ISO 3166-1 code (<code>FR</code>, <code>US</code>, <code>GB</code>); a code that is not one — <code>UK</code> for the United Kingdom, a country name — is refused with its position named, so the assistant corrects it before the deck is saved. Hover a country to read its name, in your language, and its figure; with values shown, the figure is also written inside every country large enough to hold it, as large as the country allows, and a country too small to see (Singapore, Malta) gets a dot in its colour. The legend is the ramp itself, with the lowest and the highest figure. Ask for a <strong>stepped legend</strong> instead and the figures are grouped into at most five classes, cut where they naturally part (or into the number of classes you ask for, from two to seven): each class is one flat shade of the same colour, every country takes the shade of its class, and the legend lists the classes beside the map, a dot and a range each — <code>43</code> for a class of one figure, <code>12 - 39</code> for a range, <code>120 +</code> for the top class. Ask for <strong>no dots</strong> and the small countries keep their colour only, however tiny that is at the map's scale; a territory with no shape of its own on the map (Réunion, French Guiana) keeps its dot, so its figure is never lost. In the editor, the <code>Map legend</code>, <code>Map classes</code> and <code>Small-country markers</code> controls set the same. To zoom, ask for the map of <strong>Europe</strong>, the <strong>Americas</strong> or <strong>Asia-Pacific</strong>: the neighbouring countries are still drawn at the edges, and the layout check names a country that falls outside the region. A map takes a title, a caption, a frame, the full height of its slide and the text sizes like any chart, on a content slide or in a dashboard panel. In the PDF it is vector, like every chart; in the editable PowerPoint it is a high-resolution picture of the map, its title, caption and legend written as text beside it — PowerPoint's own map chart only opens in Office with an internet connection, so it is not used.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Agenda slides</p>
+<p>A short agenda is a numbered list — one column up to four items, two columns up to six. From seven items the assistant lays it out as a <strong>board-deck grid</strong>: three columns of <code>N. | TITLE</code> cells, each with a one-line description under the title, so a long agenda still reads from the back of the room. The grid holds six to nine items — two to three full rows — and past nine the agenda returns to a two-column list rather than shrinking. Ask for "the agenda as a grid" or "as a list" to choose the look yourself, or "in three columns" to get the grid from six items; a description on any one item reserves that line on every cell, so the board stays even.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Logo walls</p>
+<p>Ask for "our customers by sector" or "a logo wall of our partners" and the assistant groups the logos into equal cards — one per sector or category, its title and icon on one line — that fill the slide, each card's logos spread across its full width. Every logo is sized by its visible mark, not by its file: the transparent margin a logo was exported with is cropped away, so "small", "medium", "large" and "extra large" (28 / 40 / 56 / 72 px on the slide) are the height you actually see, and a round seal is drawn a little taller than a long wordmark so both carry the same weight. A logo row that is too narrow shrinks all its logos together, never one alone. Ask for the logos <strong>in one colour</strong> (the slide's text colour, or a muted grey) for a quiet "trusted by" band — it is also how white brand logos stay visible on a light slide; hovering a logo in the live deck shows its original colours. Labels under the logos are off unless you ask for them. Boxes of text follow the same idea: ask for "a card" instead of a tinted panel, with the icon on the title line and the content using the full width.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Formulas and configuration cards</p>
+<p>Ask for "core + modules + capacity = one license" and the assistant draws a <strong>formula</strong>: two to five cards joined by <code>+</code>, <code>=</code>, <code>-</code> or <code>x</code>, each with an icon, a logo or a row of logos, a title and a subtitle, and a coloured bar on its top edge; the last card can be the result, drawn in the deck's brand gradient with white text. Under it, <strong>configuration cards</strong> show two to four example setups side by side: each card stacks up to six rows, a logo or a name on the left and a status chip on the right (for example <em>Included</em> or <em>Enterprise Edition</em>); a row that is available but not used is greyed, its chip dashed. Cards are centred by default and a product wordmark can stand alone as a card's name. Configuration cards can carry a heading with a rule over them ("Example configurations"), frame each row, line their chips up at the right and close each card with a tinted band (for example <em>Agentic capacity</em> on the left, <em>Included allowance</em> on the right). Both follow the theme in light and dark, and both export to PowerPoint as native shapes and text you can edit, the result card keeping its gradient.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Customer quotes</p>
+<p>Ask for "a customer quote slide" or "the customer's quote as a statement" and the assistant makes the quote the slide itself: large and bold, centred on the slide, with an oversized quote mark in the deck's accent colour, the speaker's name, role and company underneath and, when you give them, two to four facts about the customer ("Employees 80K", "Revenue $30B") as figures in the accent colour. A quote can also sit beside other content as a pull quote with a large accent rule, or be a testimonial card with the speaker's portrait or the company logo. In the editor, a selected quote offers its four looks as thumbnails, the size (up to the size of a title-slide headline), the alignment, the quote marks, the portrait and the logo picked from the deck's template, and the figures. Key figures anywhere on a slide can drop their card the same way (the <code>plain</code> variant of a metric), so a row of numbers sits under a paragraph without turning into boxes.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Funding rounds and partner logos</p>
+<p>Ask for "our funding rounds with the lead investors' logos" and the assistant draws a timeline whose steps each carry their investor's logo, under the step's description and centred on its step, all the logos on one row. In the editor, each step of a timeline has a logo picker over the template's logos. A logo grid with a set number of columns shares its width in equal cells, each logo centred in its own, so a grid placed under a timeline of as many steps lines up with it; <code>Stretch</code> spreads the logos edge to edge instead.</p>
+</div>
+<p>Sales and marketing collateral has its own building blocks: a <strong>feature matrix</strong> (a comparison table with an accented "us" column and check / cross marks), <strong>editions and plans</strong> as tier cards with one recommended tier and a call-to-action button each, a <strong>fact sheet</strong> made of badges (certifications, hosting regions, community numbers) and label / value rows, <strong>personas</strong> — two to four audience cards naming the role, what hurts today and what changes for them — and a <strong>banner</strong> for a hero header or a closing call to action with buttons that link to a page or an e-mail address. Ask for "a battlecard against a legacy TIP", "the editions slide", "who it is for" or "a closing slide with a demo button" and the assistant reaches for them.</p>
+<div class="admonition note">
+<p class="admonition-title">Pages, not only slides</p>
+<p>Not everything is presented from a stage. Ask for a <strong>product brief</strong>, a <strong>one-pager</strong>, a <strong>datasheet</strong> or a <strong>case study</strong> and the assistant lays it out on a portrait page — A4 or US Letter — instead of a 16:9 slide: a hero banner, a fact sheet, a feature matrix, the editions, and a call to action, denser than a slide because it is read, not projected. A page exports to a PDF on real A4 / Letter paper and to a portrait PowerPoint of the same size. On screen it is not a slide show — see <a href="#read-a-page">Read a page</a>.</p>
+</div>
+<p>Images come from the <strong>predefined assets</strong> of the deck's template rather than from the assistant's imagination: add your architecture diagram, product screenshots or partner logos to a template, ask for "the architecture diagram" or "a logo wall of our partners", and the assistant places the actual figure — every one is described so it can be picked by what it shows, and the assistant asks the template for one role or keyword at a time rather than reading the whole inventory. See <a href="../resources/templates/#predefined-assets">Templates</a>.</p>
+<h2 id="play-a-deck">Play a deck</h2>
+<p>The card in the chat is a live deck. Everything you operate it with sits in the <strong>toolbar along its top edge</strong> — nothing is drawn over the slide itself: no corner arrows, no progress bar, no counter on the slide.</p>
+<ul>
+<li>The middle of the bar is navigation: previous / next, and the slide counter (<code>3 / 12</code>), which opens a <strong>go-to-slide</strong> menu listing every slide by title, with a number field for long decks.</li>
+<li><code>Present</code> — the one highlighted button on the bar — takes the deck, toolbar included, to the whole screen. The slide fills the screen edge to edge: a 16:9 deck on a 16:9 monitor has no border at all, and on a screen of another shape (a 16:10 laptop, an ultrawide) the bands around it are black, like any player, whatever theme the deck or the app is in. The bar floats over the top edge for a moment, then slides away with the pointer after a moment of stillness and comes back as soon as you move the pointer — never when you press a key, so stepping through the slides with the arrows or a clicker never makes it flash; press <span class="keys"><kbd class="key-escape">Esc</kbd></span> (or the bar's exit button) to leave. The keyboard is always active while presenting. Where the browser will not hand over the screen — a locked-down kiosk, an embedded desktop window — the deck fills the application window instead, with the same bar and the same keys; and from a chat embedded in another product, <code>Present</code> opens the standalone viewer, which can go fullscreen.</li>
+<li><code>Open in studio</code>, on the card in the chat, lands on the standalone viewer at <code>/presentations/&lt;id&gt;</code> — the same page a deck opens on from the <code>Presentations</code> list, with the editor, the comments, the history and the sharing controls — and opens the <a href="#edit-in-the-studio">studio</a> beside it, carrying this very conversation along so the assistant keeps everything it already knows about the deck. It is also the page you put on a projector or share as a link: no product menus, only the deck's own toolbar. <code>Open in a new tab</code>, in the <code>More</code> menu, opens that page beside the chat.</li>
+<li><code>Comments</code> opens the review notes on the deck and <code>History</code> its revisions (see <a href="#work-on-a-deck-together">Work on a deck together</a>); the count on <code>Comments</code> is the number of notes still open. The initials beside <code>Present</code> are whoever else has the deck open right now.</li>
+<li>The <code>More</code> menu holds the rarer presenter actions: the slide overview, the black screen, the <a href="#present-with-your-notes">speaker view</a> with your notes and the next slide, the printable notes handout, and the list of keyboard shortcuts.</li>
+</ul>
+<p>In the chat, the keyboard belongs to the page until you click the deck or its toolbar; from then on the deck has the keys, until you click somewhere else. In the viewer and while presenting the deck always has them.</p>
+<table>
+<thead>
+<tr>
+<th>Keys</th>
+<th>What they do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="keys"><kbd class="key-arrow-right">Right</kbd></span> <span class="keys"><kbd class="key-space">Space</kbd></span> <span class="keys"><kbd class="key-n">N</kbd></span> <span class="keys"><kbd class="key-page-down">Page Down</kbd></span> / <span class="keys"><kbd class="key-arrow-left">Left</kbd></span> <span class="keys"><kbd class="key-p">P</kbd></span> <span class="keys"><kbd class="key-page-up">Page Up</kbd></span></td>
+<td>Next / previous slide</td>
+</tr>
+<tr>
+<td><span class="keys"><kbd class="key-home">Home</kbd></span> / <span class="keys"><kbd class="key-end">End</kbd></span></td>
+<td>First / last slide</td>
+</tr>
+<tr>
+<td><span class="keys"><kbd class="key-g">G</kbd></span></td>
+<td>Go to a slide</td>
+</tr>
+<tr>
+<td><span class="keys"><kbd class="key-o">O</kbd></span></td>
+<td>Slide overview</td>
+</tr>
+<tr>
+<td><span class="keys"><kbd class="key-f">F</kbd></span> / <span class="keys"><kbd class="key-escape">Esc</kbd></span></td>
+<td>Present / stop presenting (<span class="keys"><kbd class="key-escape">Esc</kbd></span> also closes the overview)</td>
+</tr>
+<tr>
+<td><span class="keys"><kbd class="key-b">B</kbd></span> or <span class="keys"><kbd class="key-period">.</kbd></span></td>
+<td>Black screen</td>
+</tr>
+<tr>
+<td><span class="keys"><kbd class="key-s">S</kbd></span></td>
+<td>Speaker view</td>
+</tr>
+<tr>
+<td><span class="keys"><kbd class="key-a">A</kbd></span></td>
+<td>Present to a meeting (audience window)</td>
+</tr>
+<tr>
+<td><span class="keys"><kbd class="key-question">?</kbd></span> or <span class="keys"><kbd class="key-f1">F1</kbd></span></td>
+<td>Keyboard shortcuts</td>
+</tr>
+</tbody>
+</table>
+<p>Shortcuts pause while you type in a field or use a menu, so a key never turns the page by accident.</p>
+<p>The deck is authored at a fixed 16:9 slide size (or 4:3 if you asked for it) and scales to whatever space it is given — a chat card, a laptop screen, a projector — so what you rehearse is what the room sees.</p>
+<h2 id="present-with-your-notes">Present with your notes</h2>
+<p>Every slide can carry <strong>speaker notes</strong> — what you say over it, not what the room reads. The assistant writes them with the deck (ask for "speaker notes on every slide, conversational, two or three sentences each" and it does; the note under each slide in the editor panel shows the words and the speaking time it adds up to), and reports back which content slides still have none. They live in the deck, travel with it in the PowerPoint export, and are read from the <strong>speaker view</strong>.</p>
+<p><span class="keys"><kbd class="key-s">S</kbd></span>, or <code>Speaker view</code> in the <code>More</code> menu, opens the speaker view in a <strong>window of its own</strong> — from the standalone viewer or from the card in the chat alike. Put the deck on the room's screen and keep this window on your laptop:</p>
+<ul>
+<li>The <strong>current slide</strong> on top, so you know what the room sees without turning round — with a "screen is black" notice while the deck is paused.</li>
+<li>Your <strong>notes</strong> in large type under it, the reason the window exists: bullets as bullets, emphasis as emphasis. <code>+</code> / <code>-</code> set the type size once and it is remembered.</li>
+<li>The <strong>next slide</strong> in the side column, so the transition is spoken before it appears.</li>
+<li>A <strong>stopwatch</strong> that starts on your first slide change (pause, resume, reset at will), the wall clock, and your <strong>pacing</strong>: the notes give every slide an estimated speaking time, so the window knows how far ahead of or behind the plan you are, and how much spoken time is left. Type a <strong>target length</strong> in minutes and the plan is re-scaled to the slot you actually have.</li>
+<li>The <strong>transport</strong>: previous / next, a go-to-slide menu, the black screen — every one with the same key as the deck.</li>
+</ul>
+<p>The window <strong>follows the deck</strong>: whichever screen is playing it — the viewer, a chat card, the fullscreen stage — announces where it is, and the keys pressed in the speaker window move the room's screen. Your clicker moves both. With no deck window open it runs in <strong>rehearsal mode</strong>, and says so: same notes, same timer, its own position — the way to practise the talk before the room is there. Edits made from the studio while you rehearse land in the notes and the previews without a reload.</p>
+<p><code>Notes handout</code>, in the same menu (and in the speaker window's header), opens every slide with its notes as <strong>one printable document</strong> at <code>/presentations/&lt;id&gt;/notes</code> — the sheets for the lectern, or for the colleague who presents the deck in your place. <code>Only slides with notes</code> leaves the section dividers out; print it to paper or to PDF from the browser.</p>
+<div class="admonition tip">
+<p class="admonition-title">If the speaker window does not open</p>
+<p>Browsers block windows a page opens without a click behind them. Allow pop-ups for this site and press <span class="keys"><kbd class="key-s">S</kbd></span> again — the speaker view is a new window, never a popup drawn over the deck.</p>
+</div>
+<h3 id="present-to-a-meeting">Present to a meeting</h3>
+<p><span class="keys"><kbd class="key-a">A</kbd></span>, or <code>Present to a meeting</code> in the <code>More</code> menu, opens the <strong>audience window</strong>: the slides and nothing else, letterboxed in black at any window size, with no toolbar and no pointer. It is a plain browser window, so share it in Teams, Zoom or Google Meet while the speaker view stays on your own screen. It follows the deck and the speaker view, takes the deck keys from the first moment (a clicker works at once), and a click on a slide moves to the next one (<span class="keys"><kbd class="key-shift">Shift</kbd></span> + click goes back). Press <span class="keys"><kbd class="key-s">S</kbd></span> in it to bring the speaker view back; close it with its own window button.</p>
+<p>The speaker view is the hub of the meeting: its header says whether an audience window is live (<code>Audience window live</code> or <code>No audience window</code>), and <code>Open audience window</code> opens one, or <code>Bring back audience window</code> brings the open one to the front at the current slide without reloading it, so the share the meeting tool holds is kept. With two screens, in a browser that supports window placement (Chrome and Edge), the browser asks once for permission to manage windows; once allowed, the audience window opens over the whole of the screen the speaker view is not on. Refused, or on one screen, it opens as a plain 16:9 window to share.</p>
+<p><strong>Hand the clicker.</strong> A co-presenter on another computer can move your slides. In the speaker view, <code>Hand the clicker</code> asks for a person; only someone who can already open the deck can receive it (a public-link viewer cannot). They get one in-app notice, open the deck on their own machine and drive it from the bar at the bottom of the viewer: previous, next and the slide you are on. Their moves reach your stage and your audience window through the server, so it works whatever meeting tool you use. One person holds the clicker at a time; your own keys keep working, <code>Take back</code> returns it to you in one click, the holder can <code>Give back</code> too, and a holder whose connection drops loses it after 45 seconds. Every hand-over and take-back is in the audit log.</p>
+<h2 id="read-a-page">Read a page</h2>
+<p>A portrait presentation — a brief, a one-pager, a datasheet on A4 or Letter — is a <strong>document</strong>, and the platform treats it as one. Instead of a stage it opens as a reader: every page stacked on a scrolling surface as a sheet of paper, the same toolbar along the top edge, and nothing that only makes sense for a slide show — no fullscreen, no transitions, no speaker view.</p>
+<ul>
+<li>The middle of the bar is navigation: previous / next page, and the page counter (<code>1 / 2</code>), which opens a <strong>go-to-page</strong> menu listing every page by its heading. Scrolling moves the counter too — the current page is the one under the top of the reader.</li>
+<li>The zoom controls sit beside it: zoom in / out in steps, and <code>Fit width</code>, which sizes each sheet to the reader. <span class="keys"><kbd class="key-control">Ctrl</kbd></span> + mouse wheel zooms as well.</li>
+<li><code>Open in studio</code>, on the card in the chat, lands on the standalone reader at <code>/presentations/&lt;id&gt;</code> with the <a href="#edit-in-the-studio">studio</a> open beside it and the document's actions (edit, comments, history, share, export) alongside; <code>Open in a new tab</code> in the <code>More</code> menu opens it beside the chat.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Keys</th>
+<th>What they do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="keys"><kbd class="key-arrow-right">Right</kbd></span> <span class="keys"><kbd class="key-n">N</kbd></span> <span class="keys"><kbd class="key-page-down">Page Down</kbd></span> / <span class="keys"><kbd class="key-arrow-left">Left</kbd></span> <span class="keys"><kbd class="key-p">P</kbd></span> <span class="keys"><kbd class="key-page-up">Page Up</kbd></span></td>
+<td>Next / previous page</td>
+</tr>
+<tr>
+<td><span class="keys"><kbd class="key-home">Home</kbd></span> / <span class="keys"><kbd class="key-end">End</kbd></span></td>
+<td>First / last page</td>
+</tr>
+<tr>
+<td><span class="keys"><kbd class="key-g">G</kbd></span></td>
+<td>Go to a page</td>
+</tr>
+<tr>
+<td><span class="keys"><kbd class="key-plus">+</kbd></span> / <span class="keys"><kbd class="key-minus">-</kbd></span> / <span class="keys"><kbd class="key-0">0</kbd></span></td>
+<td>Zoom in / zoom out / fit width</td>
+</tr>
+<tr>
+<td><span class="keys"><kbd class="key-question">?</kbd></span> or <span class="keys"><kbd class="key-f1">F1</kbd></span></td>
+<td>Keyboard shortcuts</td>
+</tr>
+</tbody>
+</table>
+<p>What you see is what prints: each sheet on screen is the page the PDF export produces, scaled as a whole, so a line that fits on screen fits on paper. In the library, pages carry a paper badge (<code>A4</code>, <code>LETTER</code>) and open with <code>Open</code> rather than <code>Present</code>; the <code>Decks</code> / <code>Pages</code> pills above the list show one kind at a time.</p>
+<h2 id="change-a-deck">Change a deck</h2>
+<p>You never rebuild a deck from scratch. Ask the assistant for the change in the same conversation, and it changes the deck <strong>in place</strong>: the card in the chat and the link you already shared show the new version, and the viewer keeps your current slide instead of jumping back to the first one.</p>
+<blockquote>
+<p>Move the roadmap before the numbers, add a slide comparing the two options, and make the closing slide warmer.</p>
+</blockquote>
+<p>A small change stays small. "Change <em>revenue</em> to <em>ARR</em> on slide 12", "shorten this title", "swap the two columns", "delete the second bullet" edits exactly that slide, block or word: the assistant applies the change to the deck as it is stored rather than writing the whole deck again, so the other slides are not redrawn, reworded or reshuffled along the way — on a forty-slide deck as much as on a five-slide one. The same holds inside a dashboard slide: "stagger the values of the ARR chart on slide 7", "rename that panel", "widen the trend chart" or "drop the region table" changes that one panel, and the other charts, tables and key figures of the dashboard are not written again. The reply says which slides changed and confirms that the rest are untouched, and the deck's <code>History</code> records the same thing (<code>Edited slide 12</code>). The layout check that follows every save looks at the slide that was edited — if the new wording no longer fits, the assistant trims that slide, not the others — while anything that was already tight elsewhere is left for you to raise, or for the viewer's <code>Layout check</code>; a change to the whole deck (a new theme, another aspect ratio) is checked on every slide, since every slide was redrawn. When two people edit the same deck, the second edit is applied to the deck as the first one left it — and if slides were added or reordered in between, the assistant re-reads the deck before touching a slide by its number, rather than editing whatever slide now sits there. Only a request that is genuinely a rewrite — a new outline, a different story — regenerates the deck.</p>
+<div class="admonition tip">
+<p class="admonition-title">Point at the slide</p>
+<p>Naming the slide ("on slide 12", "the closing slide", or, in the studio, "this slide") is what keeps an edit surgical. A word that appears on several slides is changed only where you pointed; without a pointer, the assistant is shown every slide the word appears on before anything changes, so it changes them all on purpose or asks you which one you meant.</p>
+</div>
+<p>To find out where something is said, ask: "is <em>Acme</em> still mentioned anywhere in this deck?" or "which slides talk about the old pricing?". The assistant searches the text of every slide - titles, blocks, table cells, chart labels and captions, speaker notes, the header and the footer - and tells you each slide and place it appears, without changing anything. It can match the exact letter case, or whole words only, so a search for <em>core</em> does not stop at <em>scores</em>.</p>
+<p>Small fixes need no assistant round-trip. In the standalone viewer, <code>Edit slides</code> turns the deck itself into an editor, the way a slide editor is expected to work, with a side panel beside it.</p>
+<h3 id="edit-slides-by-hand">Edit slides by hand</h3>
+<p><strong>On the slide.</strong> Click a text and type: the caret lands where you clicked, the slide keeps its look while you type, and the panel's fields follow. Click a block — a list, a callout, a card, a table — to select it: an outline shows what you have, a small bar above it carries its actions (move up or down, duplicate, insert a block after it, delete), and the <code>Selection</code> tab of the panel shows every setting the block has. Clicking a selected list row, tile or card opens the one text it holds; a double-click does both at once; clicking the empty part of a slide selects the slide.</p>
+<p>While a text is open, the bar above it formats the selection or the word at the caret: <strong>bold</strong>, <em>emphasis</em>, <code>code</code>, a tone (accent, info, success, warning, error, muted, gradient), a link to another slide, clear formatting, a line break. What you see is what the deck stores — a formatting the deck's grammar cannot carry (an emphasis glued to the middle of a word, say) is written as plain text rather than as broken markup.</p>
+<p><strong>Link one slide to another.</strong> Select the words and pick <code>Link to a slide</code> in that bar: it lists the deck's slides by number and title. The words get an accent underline, and clicking them while the deck is played - in the viewer, the chat card, the studio or a public link - goes to that slide; a page document scrolls to the page. While you edit, a click on a link only places the caret. To take a link off, put the caret in it and pick <code>Remove link</code> at the top of the same list (<code>Clear formatting</code> does it too). The assistant writes the same links when you ask ("link each EPIC on the roadmap slides to its detail slide").</p>
+<p>A link points at <strong>its slide, not at a number</strong>: add, move or reorder slides and every link still lands where it did. A link whose slide was deleted is shown as plain text, and the assistant's next save names it so it can fix it. Links are kept in the exports - see <a href="#export-a-deck">Export a deck</a>.</p>
+<p><strong>Link to a web page or an e-mail address.</strong> A slide can also link out - to a ticket, a document, a contact: ask the assistant ("link each open item to its GitHub issue"). A link to an <code>https://</code> page or a <code>mailto:</code> address opens in a new tab and works in the exports too. Any other kind of address (<code>http://</code>, a bare path) is shown as written rather than as a link, and the assistant is told so it can fix it. Removing such a link works like removing a link to a slide.</p>
+<p><strong>From the keyboard</strong>, with a block selected: <span class="keys"><kbd class="key-enter">Enter</kbd></span> edits its main text, <span class="keys"><kbd class="key-tab">Tab</kbd></span> / <span class="keys"><kbd class="key-shift">Shift</kbd><span>+</span><kbd class="key-tab">Tab</kbd></span> move the selection to the next / previous block of the slide, <span class="keys"><kbd class="key-delete">Del</kbd></span> deletes it, <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-d">D</kbd></span> duplicates it, <span class="keys"><kbd class="key-alt">Alt</kbd><span>+</span><kbd class="key-arrow-up">Up</kbd></span> / <span class="keys"><kbd class="key-alt">Alt</kbd><span>+</span><kbd class="key-arrow-down">Down</kbd></span> move it, <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-s">S</kbd></span> saves at once (everything saves on its own anyway), <span class="keys"><kbd class="key-escape">Esc</kbd></span> leaves the text, then the selection, then hands the keys back to the deck. While typing in a text: <span class="keys"><kbd class="key-enter">Enter</kbd></span> inserts a line break, <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-enter">Enter</kbd></span> (or a click elsewhere) closes the text, <span class="keys"><kbd class="key-escape">Esc</kbd></span> takes back what you typed in it, <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-b">B</kbd></span> / <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-i">I</kbd></span> / <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-e">E</kbd></span> toggle bold / emphasis / code. You never need to close a text to keep it: what you type is saved while you type.</p>
+<p><strong>Undo and redo</strong> — <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-z">Z</kbd></span> and <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-y">Y</kbd></span> (or <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-shift">Shift</kbd><span>+</span><kbd class="key-z">Z</kbd></span>; <span class="keys"><kbd class="key-command">Cmd</kbd></span> on a Mac) — work from anywhere while the panel is open: on the slide, on a floating bar, in the panel and in its fields, so a word typed in the inspector is taken back with the same keys as a block moved on the stage (the Undo / Redo buttons in the panel footer do the same, and the shortcuts sheet — <span class="keys"><kbd class="key-question">?</kbd></span> or <span class="keys"><kbd class="key-f1">F1</kbd></span> — lists every editor key while the panel is open). Saving never ends the history: undo goes back past the last save, and what you went back to is saved as a new revision, the earlier one staying in <code>History</code>. Inside a text you are editing in place, the same keys walk that text's own history — a burst of typing, a line break, each formatting — until you leave the field, and undoing puts the caret back where the change was made. When a collaborator or the assistant changes the deck while you edit, undo takes back <strong>your</strong> changes only, never theirs. The history starts over when you leave the deck.</p>
+<p><strong>In the panel:</strong></p>
+<ul>
+<li><code>Slides</code> — a filmstrip of the deck: click a slide to go to it, reorder, duplicate or delete slides, change the composition of a slide with its layout picker (the layouts the deck's template offers, every layout for a deck without one; the slide's words move into the new shape and a toast says what was kept, derived or could not find a home), and <code>Add slide</code> with any layout after the current one — the stage lands on the new slide. <code>Add slide</code> and <code>Duplicate</code> stop at the deck's slide limit — 100 slides, or what the deck's template allows (see <a href="../resources/templates/">Templates</a>) — and say so. Everything else about a slide — its look included — is one click away in <code>Selection</code>.</li>
+<li><code>Selection</code> — the slide or the block you selected, with every one of its settings: the title and subtitle, the alignment and the spread of a slide, its theme, its hero and overlay, its speaker notes; for a block, its content (the items of a list, the rows of a table, the tiles of a metrics grid — add, reorder, remove) and its style (size, tone, density, columns, alignment, icons, variants...). A setting left on <code>Default</code> follows the deck's design, exactly as when the assistant writes the slide. A setting that only acts on another shape of the slide — a column ratio on a slide with a single flow of blocks, a spread with one block — says so under its control rather than changing nothing silently; the value is kept and takes effect when the slide takes that shape. Insert a block from the palette here too — text, heading, quote, list, callout, metrics, table, badges, cards, timeline, columns, comparison... Blocks that need a file, numbers or a graph (an image, a logo grid, a chart, a diagram) are the assistant's: ask it in the studio.</li>
+<li><code>Deck</code> — the title, the template and the theme (<code>Dark</code> / <code>Light</code>, among the ones the template supports — see <a href="#template-and-theme">Template and theme</a>), the header and footer pattern (the event, the classification, the footer text, the logo, the footer and the slide numbers — see <a href="#header-and-footer">Header and footer</a>) and the slide transition.</li>
+</ul>
+<p>To add a block, click the <strong>+</strong> under the last block of the slide (or of a column, or of the callout, comparison or columns block you selected) and pick one: it lands at the end of that run, selected. A slide's <code>Selection</code> tab offers the same under <code>Add a block</code>. On a slide with columns, or in a columns block, <code>Equal row heights</code> lines the blocks up as rows: the cards at the same place in each column share one height.</p>
+<p><strong>Every change saves itself.</strong> There is no Save button: a moment after you stop, the change is written, and during a long stretch of typing it is written every few seconds as you go. The footer of the panel says where your work stands — <code>Saving...</code>, <code>All changes saved</code> (hover it for the time and the revision), <code>Offline</code> (your changes are kept and saved as soon as you are back online), <code>Not saved yet - retrying</code> with <code>Retry now</code>, or <code>Your last change could not be saved</code> with the reason and <code>Undo it</code> when the deck refuses a change (an emptied required field, say). Hiding the tab or leaving the deck saves at once; closing the panel waits for the last save, and asks only if it failed. Your session of edits is one entry in the deck's <code>History</code>, named after what it touched (<code>Edited slides 3, 7</code>, <code>Inserted slide 4</code>, <code>Moved slide 5 to 1</code>); a pause of a few minutes, half an hour of editing, a template change or an edit by the assistant starts the next one. The slides keep the platform's layouts — you arrange blocks, you do not drag boxes around — which is what keeps a hand-edited deck one the assistant can still read, fit and export.</p>
+<div class="admonition note">
+<p class="admonition-title">Decks from earlier versions</p>
+<p>A deck built with an earlier version of the platform may use slide compositions that no longer exist. It keeps working: such a slide is shown as the closest current composition, with its words, notes and images intact, and is stored that way the next time the deck is saved. Nothing to do on your side — and if you ask the assistant to change one of these slides, its reply mentions the conversion.</p>
+</div>
+<p>Anything that needs judgement or material — a new argument, a chart from your numbers, an image, a whole section — is the assistant's job, and the place for it is the <strong>studio</strong>; the two work on the same deck, so a hand edit and a prompted edit follow each other in the same <code>History</code>.</p>
+<h3 id="edit-in-the-studio">Edit in the studio</h3>
+<p><code>Studio</code>, in the viewer toolbar, opens a chat beside the deck: the conversation on the left, the presentation on the right as a live preview. <code>Edit with my assistant</code>, on a card in the library, lands on the same screen.</p>
+<ul>
+<li>The assistant you talk to <strong>already knows which presentation is open</strong> — its title, its slides, the revision you are looking at, and what you are allowed to do with it. There is nothing to load and no identifier to paste: "make the title shorter", "add a slide comparing the two options after this one", "warm up the closing" is enough. It also knows <strong>which slide is on your screen</strong>, so "this slide", "here" and "it" mean the one you are looking at.</li>
+<li>Pick any of your chat agents from the menu at the top of the rail, or stay with the <code>General Assistant</code>. Whichever you pick has the presentation tools while it is in the studio, even if it does not carry them elsewhere — you never have to find "the agent that can edit slides" first.</li>
+<li>Opening the studio resumes the deck's latest conversation, whatever agent it was held with. To have another agent take it over - the one that held it was deleted, or you want another one to apply what you asked earlier - click the arrows next to the agent's name (<code>Continue with another agent</code>): the conversation keeps its history, the new agent reads the earlier answers as the previous agent's, and a note marks the change (see <a href="../chat/#continue-a-conversation-with-another-agent">Chat</a>). The Video Studio's rail works the same way.</li>
+<li>Every change is applied <strong>to this presentation, in place</strong>: the deck on the right refreshes the moment the assistant saves, the link you shared stays the same, and the change lands in the deck's <code>History</code> like any other edit. The assistant only creates a new presentation if you ask for a copy.</li>
+<li><strong>The assistant shows you what it changed.</strong> When it edits a slide, the deck on the right moves to that slide as the save lands (unless you are presenting), its reply links the slides it touched — "done, see [slide 4]" — and clicking such a link moves the deck rather than opening a new tab (hold <span class="keys"><kbd class="key-control">Ctrl</kbd></span> or <span class="keys"><kbd class="key-command">Cmd</kbd></span> to open the viewer instead). The saved-receipt line in the rail reads <code>Saved - slide 4 changed.</code> with a <code>Go to slide 4</code> shortcut. The same links work in the main chat: the inline preview opens on that slide, and a link pasted or shared elsewhere (<code>/presentations/&lt;id&gt;#/&lt;slide&gt;</code>) opens the viewer on it.</li>
+<li>The rail is a full conversation: attach a file (a brief, numbers, a logo) with the paperclip, send a follow-up while the assistant is still working to steer it, and scroll up for earlier turns. If the deck came out of a conversation, the empty rail offers to <strong>continue that conversation</strong>, so nothing the assistant learned while building it is lost.</li>
+<li><strong>Make the rail as wide as you read.</strong> Drag the divider between the chat and the deck to widen the rail — up to half the screen, for the outline of a whole deck or a slide-by-slide review that would otherwise wrap every few words — and back again; the deck rescales as you drag. Double-click the divider to return to the default width. The divider works from the keyboard too (focus it, then <span class="keys"><kbd class="key-arrow-left">Left</kbd></span> / <span class="keys"><kbd class="key-arrow-right">Right</kbd></span>, <span class="keys"><kbd class="key-shift">Shift</kbd></span> for bigger steps, <span class="keys"><kbd class="key-home">Home</kbd></span> / <span class="keys"><kbd class="key-end">End</kbd></span> for the narrowest and the widest). The width you pick is remembered in your browser for every presentation; it is not part of the link you share.</li>
+<li>Collapse the rail with the chevron to give the deck the whole width; a thin <code>Studio</code> strip stays at the left edge to bring it back, with the conversation exactly where you left it. <code>Present</code> leaves the studio first — a chat beside a fullscreen deck would be invisible. While the rail is open, colleagues who have the deck open see you as editing.</li>
+<li>The studio is for the people who can <strong>edit</strong> the deck. Someone who can only <strong>view</strong> it does not see <code>Studio</code> (nor the strip at the left edge, nor <code>Open in studio</code> on the card in a chat); <code>Copy and edit with my assistant</code>, on the library card, makes them a copy of their own and opens the studio on it.</li>
+<li>The studio remembers the conversation in the page address (<code>?studio=1&amp;c=…</code>), so reloading, bookmarking or pasting the link to yourself reopens the same chat beside the same deck.</li>
+</ul>
+<p>The keyboard follows the focus: arrows typed in the composer never turn the page, and the deck's shortcuts work again as soon as you click back on it.</p>
+<div class="admonition note">
+<p class="admonition-title">Two people, one deck</p>
+<p>Several people (and their assistants) can edit a deck at the same time. A change a colleague saves reaches your screen within a few seconds and is <strong>merged</strong> with yours: what they changed lands, what you changed stays — even on the same slide, as long as it is not the same block. The slides they just changed flash in the filmstrip, and the text you are typing in stays open unless they changed that very block. If you both changed the same thing at the same moment, your version is kept and you are told on which slide. A slide you delete while a colleague edits it comes back with their changes, and you are told: an edit is work, a deletion is quick to redo. While you edit, each colleague's selected block is outlined on your slide in their colour, with their name, and their initials show on the slide they are on in the filmstrip, so you can see where the others work before you touch the same block. The studio follows the same rule from the other side: the assistant reads the current revision before it edits, so a collaborator's change made a minute ago is not silently rewritten.</p>
+</div>
+<h2 id="share-a-deck">Share a deck</h2>
+<p>A deck starts private to you. <code>Share</code> (on the card in the chat, in the viewer toolbar, or on the library card) opens the sharing dialog. Access is granted <strong>in the dialog</strong>, never by the deck's address on its own (the one exception is its <a href="#public-link">public link</a>, which you turn on explicitly):</p>
+<ul>
+<li>share with specific people or groups, choosing <code>Can view</code> or <code>Can edit</code> for each</li>
+<li>administrators can publish the deck to the whole company (optionally restricting it to the people and groups listed)</li>
+<li>then copy the link to paste into a message</li>
+</ul>
+<p>Under the link, <code>Who can open this link</code> says in words who it will open for — only you, the people and groups listed, or everyone in the company — and, while you have unsaved changes, that the new audience applies when you save. Anyone else who follows the link is told the presentation is not available.</p>
+<p><strong>Ask the assistant to share it.</strong> "Share the Q3 review deck read-only with the EMT: ada@example.com, ..." works in the chat too. The assistant names the people and groups who will get (or lose) access, then shares the deck as you, with the same rules as the dialog: only the deck's owner, or someone it is shared with as an editor, can share it. People are named by the email of their account on the platform (or their user id), groups by name. If an address matches no account, nothing is shared and the assistant tells you which one: it never invites anyone. It can also change someone's access, remove it (they lose access at once) or replace the whole list. Ask "who has access to this deck?" and it reads the current list. Publishing a deck to the whole company stays in the dialog, for administrators. Every change the assistant makes is in the audit log.</p>
+<p>Someone who <strong>can edit</strong> can open the deck, use <code>Edit slides</code>, and ask <strong>their own assistant</strong> to change it in place from the <a href="#edit-in-the-studio">studio</a> — the link stays the same for everyone. Someone who <strong>can view</strong> can open, present, export, duplicate and comment on it, and browse its <code>History</code>; the editing tools (<code>Edit slides</code>, the studio, the <code>Layout check</code>) are not offered to them, and their <code>Copy and edit with my assistant</code> action works on a copy of their own, leaving the original untouched. Asked in a chat to change a deck they can only view, the assistant does the same: it offers to copy the deck exactly and change the copy, rather than writing a new deck from what it read.</p>
+<p>Sharing never changes the slides: opening the dialog while someone's assistant is mid-edit cannot disturb their work.</p>
+<h3 id="public-link">Public link</h3>
+<p>To show a deck to people who have <strong>no account</strong> on the platform - a customer, a partner, a board, a conference audience - turn on its <strong>public link</strong> at the bottom of the sharing dialog. The deck gets a second, unique address that anyone who has it can open, without signing in:</p>
+<ul>
+<li>it opens the deck read-only: the slides, navigation, the overview and fullscreen presenting, and a link to one slide (<code>#/3</code>) lands on it. A page document reads as a document;</li>
+<li>it shows <strong>only the slides</strong>: no speaker notes, comments, history, sharing or editing, and nothing about who made the deck. Pictures and logos are served only when the deck shows them;</li>
+<li>it stays <strong>live</strong>: an edit to the deck shows the next time the page is opened.</li>
+</ul>
+<p>The switch applies at once - it is not part of <code>Save</code>. While the link is on, the dialog shows it with a copy button, who turned it on and when. <code>Replace link</code> issues a new address and the old one stops working immediately (use it if a link reached the wrong people); turning the switch off stops the link for everyone. The people and groups the deck is shared with keep their access either way. A deck with a public link carries a globe on its library card, for everyone who can see it.</p>
+<p><strong>Allow PDF download.</strong> Under an active link, this switch (off on every new link) adds a <code>Download PDF</code> button to the public page. Visitors get the vector PDF of exactly what the link shows - the slides, never the speaker notes - rendered by the platform when they ask, and reused for a few minutes while the deck does not change. Like the link's own switch, it applies at once. <code>Replace link</code> keeps the option; turning the link off forgets it, so a link turned on again starts without a download. Downloads are bounded per visitor and per link: when too many arrive at once, visitors are asked to try again in a few minutes.</p>
+<p>Who can turn it on: the deck's owner, someone it is shared with as an editor (<code>Can edit</code>), and administrators - the same people who can share it. Someone who can only view the deck sees that it is public, but cannot copy, replace or turn off the link.</p>
+<p><strong>Ask the assistant.</strong> "Give me a public link to the Q3 deck I can send to the customer" works in the chat: the assistant turns the link on (or hands back the one the deck has) and gives you the address, telling you that anyone with it can view the deck. It can also replace the link or turn it off ("turn off the public link of the Q3 deck"), let visitors download the PDF or stop them ("let people with the link download it as a PDF"), and <code>who has access to this deck?</code> says when a public link is on and whether it offers the PDF. It acts as you, with the dialog's rules: only on a deck you can edit; on a company-published deck only an administrator can, from the dialog or by asking their assistant. Every change, by hand or by the assistant, is in the audit log.</p>
+<div class="admonition warning">
+<p class="admonition-title">Anyone with the link</p>
+<p>A public link is a capability: whoever has the address can open the deck, and can pass it on. Turn it off, or replace it, when it is no longer needed. Administrators can turn public links off for the whole platform in <strong>Settings &gt; Access and security &gt; Security options</strong> (<code>Public presentation links</code>, or <code>PRESENTATION_PUBLIC_LINKS_ENABLED=false</code>): every public link then stops working at once and none can be created; turning the option back on restores the links that were not turned off.</p>
+</div>
+<h3 id="live-poll">Live poll</h3>
+<p>A <strong>live poll</strong> block asks the room a question and draws the answers on the slide as they arrive. Ask the assistant ("add a live poll on slide 12: a quiz 2+2 with 3, 4, 5, then a word cloud 'one word for this quarter'") or add the block from the editor. A poll holds one to five questions:</p>
+<ul>
+<li><strong>Choice</strong>: two to six options, one vote each; the slide shows a bar per option with its count and share.</li>
+<li><strong>Quiz</strong>: a choice with a right answer; <code>Reveal the answer</code> turns the right option green and shows the share of right answers.</li>
+<li><strong>Word cloud</strong>: one word (or up to three); the most frequent words are drawn largest. Offensive words are refused.</li>
+<li><strong>Rating</strong>: 1 to 5; the slide shows the average and the distribution.</li>
+</ul>
+<p>The block shows a <strong>short link</strong> (<code>/v/CODE</code>) drawn large and its <strong>QR code</strong>. The audience opens it on a phone, without an account, and answers the question the presenter has open; the page shows nothing else of the deck. Each phone answers each question once; nobody is identified. Results update on the slide within two seconds, in the viewer, fullscreen presenting and the speaker view. The presenter buttons are never on the slide, so the room does not see them: the deck's owner and editors find them under the deck in the viewer and under the current slide in the speaker view (previous and next question, reveal the quiz answer, lock voting, and reset the votes, confirmed). <code>Results: once voting is locked</code> hides the bars until you lock. A poll runs in one of two <strong>modes</strong>, set in the editor (<code>Mode</code>) or by asking the assistant ("make the poll on slide 12 autonomous"); switching keeps the votes. <strong>Guided</strong> steps question by question with the controls above. <strong>Autonomous</strong> draws all the questions at once with their live results and the link across the top: a full-slide poll where <strong>every question is open at once</strong>. The audience page lists all the questions on one scrolling page, and each person answers any of them, in any order, with one vote per question; nobody steps through the questions, so the poll runs in fullscreen presenting with no presenter action. Such a poll has no previous or next question: lock voting (for the whole poll), reveal the quiz answers and reset stay, never required.</p>
+<p>Presenting <strong>fullscreen on a single screen</strong> (a laptop sharing one screen, no speaker view), move the pointer to the bottom edge: the poll controls show in a bar there and slide away with the top bar after two seconds of stillness, so the room never sees them. The keys work without leaving fullscreen: <code>L</code> locks or reopens voting, <code>V</code> reveals or hides the quiz answer, <code>Shift+R</code> resets the votes (<code>Enter</code> confirms, <code>Esc</code> cancels), and on a guided poll <code>N</code> and <code>P</code> step to the next and previous question. The arrows still move the slides. A short message on the screen confirms each action. For a <strong>hands-free</strong> poll, set <code>Presenter controls: None on the presented screen</code> (<code>controls: none</code>): presenting fullscreen, nothing of the presenter shows on the slide, no bar on hover, no message and no key; the results still move by themselves within two seconds, and lock, reset and reveal stay available from the controls under the deck, the speaker view and the assistant. Set <code>Quiz answer: Shown from the start</code> (<code>reveal: live</code>) to mark the right quiz option from the start while the bars fill, with no reveal step; the audience page then shows it too. A poll takes at most 500 voters; its votes are deleted with the deck. The audience link follows the platform's <code>Public presentation links</code> switch: when an administrator turns public links off, poll links stop answering too. A <strong>PDF or PowerPoint export</strong> draws a snapshot of the poll at the time of the export: the short link with its host, the QR code, the voter count and the current results (bars with counts and percentages, the word cloud, the rating average); a deck without votes yet shows the link and empty bars at 0%. The quiz answer is marked only if you revealed it. A deck shared through its public link exports the link and the QR without results.</p>
+<h2 id="work-on-a-deck-together">Work on a deck together</h2>
+<p>A shared deck is reviewed where it is presented. Three things in the viewer's toolbar are there for the people working on it with you:</p>
+<p><strong>Who is here.</strong> The initials beside <code>Present</code> are the people looking at the deck right now — hover one for the name, and for whether they are editing and which slide they are on. They appear as someone opens the deck and disappear within a minute of them leaving. While someone edits, the room is refreshed every few seconds, so their changes and where they work show almost at once (see <a href="#edit-in-the-studio">Two people, one deck</a>).</p>
+<p><strong>Comments.</strong> <code>Comments</code> opens a side panel of review notes. A note is attached to the slide you are on (or to the whole deck, if you say so), so a reviewer can write "this number is last quarter's" on the slide it concerns; clicking a note takes the deck to that slide. Anyone the deck is shared with can read and add notes and reply to them — reviewing is exactly what read-only access is for; you can edit and delete your own, and whoever manages the deck can tidy up any of them. When a note has been dealt with, <code>Resolve</code> moves it out of the way (the author or a manager decides) — <code>Open</code> and <code>Resolved</code> at the top of the panel switch between the two, and <code>This slide</code> narrows the list to the current slide. The count on the <code>Comments</code> button (and on the card in the library) is the number still open.</p>
+<p>Your assistant works the comments with you. In the deck's conversation, ask it to "address the review comments" and it reads each open note with the slide it is about and changes the deck in place; ask it to "implement Ada's comment on slide 5 and close it" and it makes the change, then resolves that note — with a reply saying what was done, if you like. It can also leave notes for you ("comment on every slide where a number has no source"), read the resolved ones back, or reopen a thread that was closed too early. Everything it posts appears under <strong>your</strong> name, in the panel, the moment it is saved, and it can only close what you could close yourself: on a deck you merely view, it will reply to a note rather than resolve it. Nothing is resolved unless you ask — a reviewer asked a question, and you decide when it is answered. A note on a slide that was later deleted stays in the panel, marked <code>Slide removed</code>, so nothing a reviewer wrote is lost.</p>
+<p>Writing a note yourself, <code>Generate with AI</code> under the text box drafts it for you: say what the note should convey ("ask for the source of the revenue figure") and the assistant writes it against the slide you are on — it sees the slide's content, not just your words — or against the thread you are replying to. If you have already typed a draft, the same button becomes <code>Improve with AI</code> and tightens what you wrote. The draft lands in the text box for you to edit and post, or discard; nothing is sent until you press <code>Comment</code>.</p>
+<p>The panel is as wide as you read: drag its left edge to widen it — up to a third of the screen — and back again, or double-click the edge to return to the default width; the divider works from the keyboard too (focus it, then <span class="keys"><kbd class="key-arrow-left">Left</kbd></span> / <span class="keys"><kbd class="key-arrow-right">Right</kbd></span>, <span class="keys"><kbd class="key-home">Home</kbd></span> / <span class="keys"><kbd class="key-end">End</kbd></span>). The width you pick is remembered in your browser for the editor, history and comments panels alike.</p>
+<p><strong>History.</strong> Every change — an assistant generation, a session of edits in the panel, a restore — is kept as a numbered revision, with who made it, when, and what changed (<code>Edited slides, title</code>), the last thirty per deck. Edits by hand save themselves every few seconds, so one person's run of edits is one entry, kept up to date as they go (the revision numbers skip what it folded in). <code>History</code> opens the list; clicking a revision <strong>previews</strong> it in place, with a banner naming what you are looking at and <code>Back to current</code> beside it. <code>Restore</code> brings a revision back as the current version, and is itself a new revision, so a restore can be undone the same way. Restoring, like editing, needs edit access.</p>
+<p>Working alone, none of this gets in your way: the buttons are quiet until someone leaves a note or a second person opens the deck.</p>
+<h2 id="export-a-deck">Export a deck</h2>
+<p><code>Export</code> is available on the chat card and in the viewer toolbar. Every export is rendered by the platform itself from the same slides you see, so the result does not depend on your browser or zoom level:</p>
+<table>
+<thead>
+<tr>
+<th>Format</th>
+<th>What you get</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PDF (vector)</code></td>
+<td>One page per slide, with selectable text and the deck's own fonts. Page size matches PowerPoint's slide size, so a PDF page and a PowerPoint slide of the same deck have identical dimensions.</td>
+</tr>
+<tr>
+<td><code>PowerPoint (pixel-perfect)</code></td>
+<td>One full-slide image per slide, with the speaker notes attached and the deck's slide transition. Opens anywhere and looks exactly like the screen.</td>
+</tr>
+<tr>
+<td><code>PowerPoint (editable shapes)</code></td>
+<td>Text boxes, cards, tables, badges, buttons and dividers as real PowerPoint shapes placed where the platform placed them — tinted columns, check marks, outlined display numbers, list bullets, callout bars and the rule under each slide title included — so a colleague can keep editing in PowerPoint. <strong>Charts are real PowerPoint charts</strong>: a bar, stacked bar, line, area, pie, donut, waterfall or butterfly chart opens with its series, categories, colours and number formats, ready to be edited or re-pointed at new figures (see below). <strong>Org charts are native shapes</strong>: each seat a group of its card or circle (an oval of its size), its tile, badge and words as editable text, every reporting line a connector, the whole chart one group. Icons, diagrams (architecture diagrams included), logos and gradient surfaces are embedded as images — the light along the top of a card and the glow under its figure as a transparent picture under the card's editable text. The speaker notes and the deck's slide transition come along too.</td>
+</tr>
+</tbody>
+</table>
+<p><code>Print to PDF (browser)</code>, in the <code>More</code> menu of the card and of the viewer, is the fallback that needs nothing from the server: it opens the deck in your browser's print layout and starts the print dialog. In that dialog pick <strong>Save as PDF</strong> as the destination: the browser then uses the deck's own page size and every slide lands on a landscape page. Sending it to a printer instead - including a virtual one such as <em>Microsoft Print to PDF</em> - uses that printer's paper (usually portrait Letter or A4), so the slides come out rotated and boxed in the middle of each page.</p>
+<p>The print dialog opens once every chart, diagram, icon and logo on the deck is drawn. A figure that cannot be drawn - its code could not be loaded, or it never finished loading - does not hold it forever: after a short wait the deck prints as it stands, and a notice (<code>Part of the deck was not finished</code>) says so when the dialog closes. Use the <code>PDF (vector)</code> export for the complete deck: it never exports a figure that could not be drawn, and fails with the reason instead, so it can be tried again.</p>
+<p><strong>Links</strong> click in every export: the PDF carries a link to a slide as a link to its own page and a web link as a web link, and in both PowerPoint files each link is a transparent area over the words that goes to the slide or opens the address, so the slide looks exactly as on screen. In the editable file that area is a separate shape: if you move or rewrite the linked words in PowerPoint, move the area with them. <code>Print to PDF (browser)</code> does not keep them.</p>
+<div class="admonition tip">
+<p class="admonition-title">Which PowerPoint export?</p>
+<p>Use <code>pixel-perfect</code> when the deck is finished and only has to be presented from PowerPoint. Use <code>editable shapes</code> when someone will keep working on it there.</p>
+<p>Both play the deck's slide transition with PowerPoint's closest one: <code>Fade</code> fades, <code>Slide</code> pushes the next slide in from the right, <code>Zoom</code> zooms in. The 3D <code>Convex</code> and <code>Concave</code> have no PowerPoint twin, so they become a push and a cover from the right; <code>None</code> cuts from slide to slide.</p>
+</div>
+<p><strong>Charts in the exports.</strong> A chart on a slide is data the platform draws, not a picture, and each export treats it that way. The PDF keeps every chart as vector graphics in the deck's own colours and fonts — as sharp as the text next to it. The editable PowerPoint rebuilds bar, stacked bar, line, area, pie, donut and combined bar-and-line charts as native PowerPoint charts: same series and categories, the palette of the deck's template, the same axis range and the same number formats (<code>€16.5M</code>, <code>86%</code>, <code>12,400 users</code>), the legend and the target line where the slide had them — and a chart that plots two units keeps its right-hand axis as a second PowerPoint value axis. The values written on the bars are PowerPoint's own data labels, at the size the slide set them, turned on their side where it turned them and a row higher where it wrote them on two rows - further along their row on a horizontal chart - the bars spaced as on the slide; a line's value the slide moved clear of a bar, another value or the axis sits where the slide wrote it, and a line's values written alternately above and below the points are PowerPoint's own labels above and below them; on a stacked bar, the segments that carry a value on the slide carry it in PowerPoint, and the stack totals sit above the stacks as text - past the end of the bars on a horizontal chart, inside the chart's frame as on the slide. A <strong>waterfall</strong> is an editable stacked bar chart in which each bar stands on an invisible base series — the way a waterfall is built by hand in PowerPoint, and one that opens in Keynote, Google Slides and LibreOffice too — with the slide's colours, its signed values and its connector lines; to change a step in PowerPoint, edit its bar and the base under the steps after it. A <strong>butterfly</strong> is an editable clustered bar chart: the left-hand group is stored as negative numbers so its bars run to the left, and a number format hides the minus sign, so labels and the axis read plain sizes and a 0 has no label - to change a value on the left in PowerPoint's data sheet, type it as a negative number. PowerPoint's bar chart has no column between its two sides, so a butterfly whose level names sit on the spine on the slide shows them on the left axis in PowerPoint, and the export says so in its notes. Three figures have no PowerPoint equivalent — a <strong>gauge</strong>, a <strong>map</strong>, and bars read against two different axes (PowerPoint would draw them over each other) — and are placed as a high-resolution picture of the rendered figure instead, a map's title, caption and legend staying editable text beside it. When a stand-in is used the export says so: a short note appears when the download starts (<code>Exported with notes</code>, naming the slide and the chart), and an assistant that exported the file for you lists the same notes in its reply, so nobody opens the file expecting PowerPoint's own waterfall chart, or to edit a chart that is a picture.</p>
+<h2 id="move-a-deck-to-another-platform">Move a deck to another platform</h2>
+<p>The last entry of the <code>Export</code> menu, <code>JSON package (import elsewhere)</code>, is not a rendering: it is the deck itself — its slides, the name of its template and every logo, diagram or image it uses, embedded in one <code>&lt;title&gt;.presentation.json</code> file. <code>Import</code> on the Presentations page reads that file back and creates the deck under your name, so a deck built on a staging or local platform continues on production, and a deck can be kept as a backup outside the platform.</p>
+<p>On import, the platform first looks for what it already has: a template with the same name (a built-in brand deck the destination also ships, or a company template you recreated) and, inside it, the assets by filename — so a deck that uses the brand logos points at the destination's own logos and nothing is duplicated. When the template holds several files of that name (a dark and a light <code>logo.svg</code>), the one with the same content is used; if none has it, the one the template lists first is used and the confirmation says so. Only what is missing is copied out of the file, as files that belong to you. The confirmation says what happened: how many assets were matched, how many were copied, and which template the deck ended up on. If the template does not exist on the destination, the install's default template is used and the message says so; if a file can be neither matched nor copied, the import is refused naming it, rather than silently producing a deck with a hole in it. A picture that was already missing from the deck when it was exported is the exception: the deck imports without it, and the confirmation says how many.</p>
+<p>The imported deck is a new deck — revision 1 in its history, with none of the original's shares or comments — and validates like any other: a package written by a newer platform whose slides use a layout the destination does not know yet is refused with the exact slide and field. A package embeds only the files <strong>you</strong> could download when exporting; a shared deck exports the files its owner shared with the deck, never anything else of theirs.</p>
+<h2 id="template-and-theme">Template and theme</h2>
+<p>Two words describe how a deck looks, and each means exactly one thing:</p>
+<ul>
+<li>The <strong>template</strong> is the deck's design: a palette per theme, the heading and body fonts, the logos drawn on every slide, the predefined assets the assistant may place, and a few sentences of composition guidance. A deck wears one template, or none.</li>
+<li>The <strong>theme</strong> is the colour scheme the deck is drawn in: <code>Dark</code> or <code>Light</code>, nothing else. A template supports the themes it has a palette for — a template designed only on a dark background supports <code>Dark</code> alone — so the theme picker of a deck only ever offers what its template supports. A deck with no template offers both.</li>
+</ul>
+<p>Out of the box every platform ships with the read-only <code>XTM One Brand Deck</code> (the product's purple palette, <code>Dark</code> theme only). Creating your own — by hand, or from a brief and a logo with <code>Generate with AI</code> — is covered in <a href="../resources/templates/">Templates</a>.</p>
+<h3 id="choose-a-template-when-you-create-a-deck">Choose a template when you create a deck</h3>
+<ul>
+<li><code>New presentation</code>, on the Presentations page (and <code>New presentation with this template</code> on a template's page), asks which template the deck starts in — one of the templates you can see, <code>No template - plain look</code>, or <code>Let my assistant ask me in the chat</code> — the theme among the ones that template supports, and which assistant writes it (<code>Written by</code>: only the assistants that carry the <code>Presentation Generation</code> tool are offered, so the chat you land in can always produce the deck). It then opens the chat with the request written for you; add what the deck is about and send.</li>
+<li>In a chat, when you ask for a presentation and you can see several templates, the template is <strong>your</strong> choice, never the assistant's: unless your request names one ("in the Sales template") or asks for "no template" (the plain built-in look), the assistant <strong>lists your templates and asks which one to use</strong> before creating anything — the platform refuses to create a new deck in a template you did not pick, even one the assistant would have chosen for you. It may recommend one, but the deck is created once you answer. With a single template in view, it is used and the reply says so.</li>
+<li>Automations, and chats where the assistant cannot ask, use the <strong>default template</strong> an administrator sets in <code>Settings &gt; Parameters</code> — the platform's built-in brand deck unless another company template was chosen.</li>
+<li>On XTM One, the <code>CTEM Assistant</code> is the General Assistant of the platform and carries the presentation tools out of the box, as do the <code>XTM-One Assistant</code> and the assistant of each product (<code>OpenCTI Assistant</code>, <code>OpenAEV Assistant</code>, <code>OpenCRQ Assistant</code>, <code>FIMI Analyst</code>), with the <code>Presentation Design</code> skill; on the Copilot edition the General Assistant does, and any agent an administrator gives the <code>Presentation Generation</code> tool to is offered as a writer.</li>
+</ul>
+<h3 id="change-the-template-or-the-theme-of-a-deck">Change the template or the theme of a deck</h3>
+<p>A template is not copied into the deck: the deck stays <strong>linked</strong> to it. Its colours, fonts and logos are read from the template every time the deck is drawn, so editing the template restyles every deck wearing it, at once. Everything else — the slides, their words, the images you uploaded, the theme you picked — belongs to the deck.</p>
+<p><code>Edit slides</code>, in the viewer, opens the <code>Design</code> section: pick another template from the <code>Template</code> menu (or <code>No template - plain look</code>) and the deck restyles on screen at once. The pick is an edit like any other, not a try-on: it is saved a moment later (the footer reads <code>All changes saved</code>) and every viewer of the deck sees the new template. To go back, <code>Undo</code> (<code>Ctrl+Z</code>) puts the previous template back, and the deck's <code>History</code> keeps the version before the change; the <code>Theme</code> toggle beside it offers <code>Dark</code> and <code>Light</code> and greys out what the chosen template does not support — switching to a template with a single palette snaps the deck to that theme. In a chat, "apply the Sales template" or "switch this deck to the light theme" does the same; the assistant tells you when a template cannot draw the theme you asked for. Deleting a template does not touch the decks that wore it: they keep their content and fall back to the plain look.</p>
+<h3 id="a-slide-with-its-own-theme">A slide with its own theme</h3>
+<p>A slide can be drawn in the other scheme than the deck: a dark cover and a dark closing slide over a light body is the classic shape of a brand deck. In the <code>Selection</code> tab of <code>Edit slides</code>, <code>Theme</code> offers <code>Inherit</code>, <code>Dark</code> and <code>Light</code> for the slide. <code>Inherit</code> — the default — follows the deck theme; <code>Dark</code> or <code>Light</code> fixes the slide's own scheme, and everything on it follows: its paper, its text, its tones and charts, and the logo variant drawn in its corner. A slide with a theme of its own <strong>keeps it whatever happens to the deck theme</strong>: switching the deck between <code>Dark</code> and <code>Light</code> changes only the slides that inherit (the <code>Design</code> section says how many slides keep their own theme), and the slide comes back to the deck only when you choose <code>Inherit</code> again. The template's rule applies to slides too — a slide can only take a theme the template supports, and a template that cannot draw a slide's theme snaps that slide the way it snaps the deck. In a chat, "make the cover dark" or "let slide 5 follow the deck again" does the same; the assistant's outline marks the slides that keep their own theme. On the <code>Filigran Brand Deck</code>, the cover and the closing slide are always dark, whatever the deck theme: the Filigran deck design system draws them on the dark brand backdrop in both schemes, so a light deck keeps a dark cover and a dark closing slide and only its body slides turn light. A <code>fill</code> callout grows with the room only when it holds something that takes the room by design (a chart, an image, a diagram): around a list or key-values that fill, it ends with their rows, and the free height stays below it.</p>
+<h3 id="a-slide-in-the-xtm-one-palette">A slide in the XTM One palette</h3>
+<p>A slide about XTM One can take the <strong>XTM One palette</strong> inside any template: in the <code>Selection</code> tab of <code>Edit slides</code>, <code>Palette</code> offers <code>Default</code> (the template's palette) and <code>XTM One</code>. <code>XTM One</code> redraws that slide's accent, block gradients and chart colours from the XTM One violets, Sky Blue and Aqua, in the dark and the light theme; the logo and the footer stay the template's. Text stays readable on both themes: on a dark slide the accent is Light violet, on a light slide it is Violet. In a chat, "put slide 6 in the XTM One palette" does the same.</p>
+<h3 id="bento-slides">Bento slides</h3>
+<p>A content slide that carries 1 to 3 images (a screenshot, a photo, a diagram) can be laid out as a <strong>bento grid</strong>: <code>Bento grid</code> in the <code>Selection</code> tab turns its 3 to 5 blocks into the cells of a grid that fills the slide. The first image takes the large cell on the left; the other blocks (text, a KPI, another image) fill the right. A photo set to fill its frame covers its cell; a screenshot or a diagram is kept whole, never cropped: in a wide cell, a diagram narrower than the cell sits centred on the slide's surface colour, which is the expected look. A KPI or a text block in a cell takes the cell as its card, so each cell shows one frame, its content centred vertically (a text longer than the cell starts at the top). The grid follows the template's spacing and corner radius, in the editor and in the PDF and PowerPoint exports. A video counts as an image here: it can take the large cell.</p>
+<h3 id="videos-on-a-slide">Videos on a slide</h3>
+<p>A <strong>video</strong> block plays a video inside the slide: a Video Studio video (ask the assistant to place it, or name its id) or an MP4 or WebM file. A Video Studio video plays its latest ready render, with its poster and its captions; a video that has no ready render yet cannot be placed. The video shows its poster until it plays, with sound and controls, in the editor, in present mode, in a shared deck and through a public link, where it plays without signing in. Set <code>Autoplay</code> to start it when the slide is shown (muted, unless you turn <code>Muted</code> off) and pause it when the slide leaves; <code>Start at</code> and <code>End at</code> play only a part of it. It takes the same frames as a screenshot (browser window, slim window, device) and <code>Fill the height</code>. In a PowerPoint export the video is embedded as a movie that plays in PowerPoint, its poster as the preview, up to 100 MB; a larger video keeps its poster. The PDF shows the poster with a play badge and a link to the video.</p>
+<p>A video block also takes a link to a video on the web. A <strong>YouTube</strong> or <strong>Vimeo</strong> link plays in the provider's own player (YouTube in its privacy-enhanced mode, from <code>youtube-nocookie.com</code>); no other video site is accepted. The player loads when the slide is shown and stops when it leaves; the poster is the video's thumbnail, and the PDF and the PowerPoint export show that poster with a link to the video, since a web player cannot be packed into a file. A link to an <strong>MP4 or WebM file</strong> on a public site is imported once when the deck is saved, up to 100 MB: from then on it plays, shares and exports like a video you uploaded, and keeps playing if the site removes it. A link that serves something other than an MP4 or a WebM file, or a larger file, is refused with the reason.</p>
+<h3 id="covers-hero-backdrops">Covers: hero backdrops</h3>
+<p>A title or a closing slide has a <strong>hero</strong> — the backdrop behind its headline, drawn in the slide's own colours: <code>Plain</code> (the flat paper), <code>Gradient</code> (the brand gradient washed over the paper, with the template's mark as a faint watermark in the corner — the look of a brand cover), <code>Split</code> (the text on the left, a gradient panel on the right that carries the slide's background image when it has one), <code>Spotlight</code> (a soft glow behind the headline and two thin arcs in the corner). A template can add covers of its own: the <code>THREAD Conference Deck</code> adds the tiles of the THREAD design kit — <code>Mosaic</code> (coloured square tiles gathered in the corners, clear of the headline, the logo and the slide number — each slide has its own arrangement, the same every time it is shown or exported) and three more shapes of the same tiles: <code>Cascade</code> (tiles stepping down from the top-right corner, the logo large in the top-left corner and the headline low on the slide, over a thin rule and one row with the speakers on the left and the footer line on the right), <code>Horizon</code> (a skyline of tiles along the bottom edge, the logo large in the top-left corner) and <code>Pillar</code> (a column of tiles down the right edge). These covers are THREAD's artwork, so they are offered on THREAD decks only: a deck on the <code>Filigran Brand Deck</code>, the <code>XTM One Brand Deck</code> or no template never shows them, and a cover that carried one (a deck moved to another template, or made before this rule) is drawn on its template's default cover — <code>Gradient</code> on both brand decks. Pick the hero in the <code>Selection</code> tab; a dark gradient cover on a light deck is the slide's theme set to <code>Dark</code> plus the <code>Gradient</code> hero. Under the hero, <strong>Hero colour</strong> says which colour of the template's palette the backdrop is drawn in — each chip is painted in the exact colour the slide will use: <code>Brand gradient</code> (the default — the template's gradient, from its first colour to its second), or one colour alone: <code>Accent</code>, <code>Gradient start</code>, <code>Gradient end</code>, one of the <code>Info</code> / <code>Success</code> / <code>Warning</code> / <code>Error</code> tones, or <code>Muted</code>. On the <code>XTM One Brand Deck</code> the gradient runs from the product purple into cyan, so a cover that should stay purple picks <code>Accent</code> (or <code>Gradient start</code>); an incident review can open on an <code>Error</code> red spotlight. On a title slide, <code>Accent the last line of the title</code> colours the last line of the headline (after a line break — or its last word) in the accent tone, so "Uncover Threats. / Take Action." reads the way the brand deck does without any formatting in the text. Any slide with a background image can also take an <strong>overlay</strong> — <code>None</code>, <code>Soft</code> or <code>Strong</code> — a scrim between the picture and the text so the headline stays readable. Templates can set the cover defaults for new decks — the hero, its colour and the slide's theme (the <code>Filigran Brand Deck</code> and the <code>XTM One Brand Deck</code> open and close on a gradient cover) — and everything exports as it shows: the PDF draws each slide in its own colours, and the PowerPoint carries the backdrop as a picture under editable text.</p>
+<h3 id="speakers-and-icons-on-the-title-slide">Speakers and icons on the title slide</h3>
+<p>A title or a closing slide has an <strong>alignment</strong>: <code>start</code> lays the logo, the headline, the subtitle and the speakers out on the left, <code>center</code> on the slide's axis. A title slide starts on the left, a closing slide centred; the choice holds whatever the hero, under a template's own cover too, and in the PDF and PowerPoint exports.</p>
+<p>A title slide names <strong>up to four speakers</strong> — a keynote's one, a talk two people give together, a panel — side by side under the headline, in speaking order, each with a name, a title, up to three credentials and an optional portrait. Ask for them ("Samuel Hassine and Julien Richard present, with their photos") or edit them in the <code>Selection</code> tab: <code>Speakers</code> adds, reorders and removes them, and a speaker's <code>Photo</code> is picked from the people photos of the deck's template. A deck made before several speakers existed keeps its one speaker, now the first of the list. The closing slide still names one speaker, with contacts.</p>
+<p>The row of <strong>icons</strong> under a title is edited in the same tab: <code>Icons</code> lists them in order — pick another icon by typing its name (suggestions appear as you type), reorder them, remove one, or add up to six.</p>
+<h3 id="header-and-footer">Header and footer</h3>
+<p>The line at the bottom of every slide is <strong>not written on the slides</strong>. It is drawn from a handful of deck settings, so it is set once and never edited slide by slide — and it cannot drift: a footer that reads the deck's title changes on every slide the moment the deck is renamed.</p>
+<p>A template can define the footer (and, optionally, a header) for every deck wearing it, as a pattern such as <code>{{event}} - {{title}} - {{classification}}</code>. <code>{{title}}</code> is the deck's title, <code>{{subtitle}}</code> the subtitle of its opening slide (as plain text — the footer never shows inline emphasis), <code>{{event}}</code> the event you set; anything else — a classification, a client, a version — is a <strong>field</strong> the template declares with a label and, optionally, a default. Both built-in brand decks define <code>{{event}} - {{title}} - {{classification}}</code>; like the event, the classification is empty until you set one. An empty part disappears together with its separator, so a deck with no event reads <code>Quarterly review - Confidential</code>, not <code>- Quarterly review - Confidential</code>, and a deck with neither reads <code>Quarterly review</code>.</p>
+<p><code>Edit slides</code>, in the viewer, has a <code>Header &amp; footer</code> section:</p>
+<ul>
+<li><code>Show logo</code>, <code>Show footer</code> (and the header, when the template defines one) and <code>Show slide numbers</code> switch each part of the furniture on or off for the whole deck. Opening, section and closing slides never carry the footer; a body slide can leave it out on its own (<code>hide_footer</code>).</li>
+<li><code>Event</code> names the occasion — a conference, a customer meeting, a board date.</li>
+<li>One field per variable the template declares (<code>Classification</code> for the brand deck), labelled by the template, with its default shown greyed until you type. A deck wearing a template with no pattern, or no template at all, gets a free <code>Footer text</code> instead, drawn after the event.</li>
+<li>The <code>Footer preview</code> line shows exactly what every slide will read as you type; the panel tells you when the footer switch hides it.</li>
+</ul>
+<p>In a chat, "mark this deck Confidential", "set the event to FIC 2026" or "hide the slide numbers" changes those settings — one field, not thirty slides — and the assistant's reply says what the footer now reads. Exports (PDF and PowerPoint) draw the same line. How a template declares its pattern is covered in <a href="../resources/templates/#header-and-footer">Templates</a>.</p>
+<h2 id="the-presentations-page">The Presentations page</h2>
+<p><code>Work &gt; Presentations</code> in the sidebar lists every deck you can see, most recently changed first and a page at a time; the page bar sits above and below the grid, like on the <code>Videos</code> page. Search by the words of a title, the owner's name or the template's name, show only <code>Decks</code> or <code>Pages</code>, and narrow the list to <code>Mine</code>, <code>Shared</code> or <code>Company</code>: the search and the filters cover your whole library, not only the page shown, and the count next to them is how many decks they match. The page, the filters and the search stay in the address, so a link or a reload keeps them. Each card shows the slide count, the template it wears and its theme (<code>Dark</code> or <code>Light</code>), the owner, when it last changed, and - as icons on the right of the attribute row - whether it is shared with you, company-managed, or view only. Click anywhere on a card to open the deck. The card's footer carries <code>Present</code> (or <code>Open</code> for a page), <code>Edit with my assistant</code> (which opens the deck with the <a href="#edit-in-the-studio">studio</a> beside it), and a menu with <code>Share</code>, <code>Duplicate</code>, and <code>Delete</code> for a deck you manage. <code>Import</code>, next to <code>New presentation</code>, reads a JSON package exported from another platform (see <a href="#move-a-deck-to-another-platform">Move a deck to another platform</a>).</p>
+<p>Deleting a deck removes it for everyone it was shared with; a chat message that embedded it then shows the deck as no longer available.</p>
+<h2 id="next-step">Next step</h2>
+<p>Set up the brand your decks are generated in with <a href="../resources/templates/">Templates</a>.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+  </span>
+
+    
+    
+    
+      
+  <span class="md-source-file__fact">
+    
+      
+  <span class="md-icon" title="Contributors">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33s1.71.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2"></path></svg>
+  </span>
+  <span>GitHub</span>
+
+    
+    <nav>
+      
+        <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
+          
+          <img src="https://avatars.githubusercontent.com/u/326439686?v=4&amp;size=72" alt="Letullier-Thibert">
+        </a>
+      
+      
+      
+    </nav>
+  </span>
+
+    
+  </aside>
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer">
+        
+          
+          <a href="../workspaces/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Workspaces">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Workspaces
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../reports/" class="md-footer__link md-footer__link--next" aria-label="Next: Reports">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Reports
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"></path></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2026 Filigran SAS. Community Edition licensed under the Apache License 2.0
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/XTM-One-Platform" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://community.filigran.io" target="_blank" rel="noopener" title="community.filigran.io" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M94.1 315.1c0 25.9-21.2 47.1-47.1 47.1S0 341 0 315.1 21.2 268 47.1 268h47.1v47.1zm23.7 0c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1v117.8c0 25.9-21.2 47.1-47.1 47.1s-47.1-21.2-47.1-47.1zm47.1-189c-25.9 0-47.1-21.2-47.1-47.1s21.2-47 47.1-47S212 53.2 212 79.1v47.1h-47.1zm0 23.7c25.9 0 47.1 21.2 47.1 47.1S190.8 244 164.9 244H47.1C21.2 244 0 222.8 0 196.9s21.2-47.1 47.1-47.1zm189 47.1c0-25.9 21.2-47.1 47.1-47.1s47 21.2 47 47.1-21.2 47.1-47.1 47.1h-47.1v-47.1zm-23.7 0c0 25.9-21.2 47.1-47.1 47.1S236 222.8 236 196.9V79.1c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1zm-47.1 189c25.9 0 47.1 21.2 47.1 47.1s-21.2 47-47.1 47-47.1-21.2-47.1-47.1v-47.1h47.1zm0-23.7c-25.9 0-47.1-21.2-47.1-47.1s21.2-47.1 47.1-47.1h117.8c25.9 0 47.1 21.2 47.1 47.1s-21.2 47.1-47.1 47.1z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://linkedin.com/company/filigran" target="_blank" rel="noopener" title="linkedin.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M416 32H31.9C14.3 32 0 46.5 0 64.3v383.4C0 465.5 14.3 480 31.9 480H416c17.6 0 32-14.5 32-32.3V64.3c0-17.8-14.4-32.3-32-32.3M135.4 416H69V202.2h66.5V416zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77m282.1 320h-66.4V312c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9V416h-66.4V202.2h63.7v29.2h.9c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://twitter.com/FiligranHQ" target="_blank" rel="noopener" title="twitter.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"></path></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.path", "navigation.footer", "navigation.expand", "content.action.edit", "content.action.view", "content.code.annotate", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../js/timeago.min.js"></script>
+      
+        <script src="../../js/timeago_mkdocs_material.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>

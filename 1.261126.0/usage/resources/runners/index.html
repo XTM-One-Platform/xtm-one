@@ -1,0 +1,5094 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for XTM One, Filigran's AI-native threat-informed defense platform.">
+      
+      
+        <meta name="author" content="Filigran">
+      
+      
+        <link rel="canonical" href="https://xtm-one-platform.github.io/xtm-one/latest/usage/resources/runners/">
+      
+      
+        <link rel="prev" href="../variables/">
+      
+      
+        <link rel="next" href="../../home-dashboard/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>XTM One Desktop and runners - XTM One Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../css/timeago.css">
+    
+      <link rel="stylesheet" href="../../../assets/css/custom.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-P8K1S4VSXR"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-P8K1S4VSXR",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-P8K1S4VSXR",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  <link href="../../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="filigran" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#xtm-one-desktop-and-runners" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+        
+          <aside class="md-banner md-banner--warning">
+            <div class="md-banner__inner md-grid md-typeset">
+              
+  You're not viewing the latest version.
+  <a href="../../../.."> 
+    <strong>Click here to go to latest.</strong>
+  </a>
+
+            </div>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
+          </aside>
+        
+      </div>
+    
+    
+      
+
+
+<!-- Header -->
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+
+    <!-- Link to home -->
+    <a href="../../.." title="XTM One Documentation" class="md-header__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+
+    <!-- Button to open drawer -->
+    <label class="md-header__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+
+    <!-- Header title -->
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color palette -->
+    
+      
+    
+
+    <!-- Site language selector -->
+    
+
+    <!-- Button to open search modal -->
+    
+      <label class="md-header__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+      </label>
+
+      <!-- Search interface -->
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+
+    <!-- Repository information -->
+    
+      <div class="md-header__source">
+        <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+
+  <!-- Navigation tabs (sticky) -->
+  
+
+  <script type="text/javascript"> !function(){var e,t,n;e="58d967e3f3ca784",t=function(){Reo.init({clientID:"58d967e3f3ca784"})},(n=document.createElement("script")).src="https://static.reo.dev/"+e+"/reo.js",n.async=!0,n.onload=t,document.head.appendChild(n)}(); </script>
+  <script src="https://copilot.filigran.ai/api/v1/public/widget.js" data-token="jNJu1JTbbPwNqk1tqEOw-WjsKU4dEcgn" data-context="{&quot;page&quot;:&quot;docs&quot;,&quot;product&quot;:&quot;XTM One&quot;}"></script>
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../deployment/overview/" class="md-tabs__link">
+          
+  
+  
+  Deployment &amp; Setup
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../getting-started/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../administration/introduction/" class="md-tabs__link">
+          
+  
+  
+  Administration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="XTM One Documentation" class="md-nav__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    XTM One Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2">
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment &amp; Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment &amp; Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_1">
+        
+          
+          <label class="md-nav__link" for="__nav_2_1" id="__nav_2_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/scim-provisioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provisioning with SCIM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/security-headers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security headers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/secret-vaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secret vaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/xtm-suite-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/chat-approvals-in-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat approvals in client apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../deployment/backup-and-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2">
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../foundations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../foundations/data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../foundations/containers-and-scopes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Containers and scopes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../foundations/relationships-and-nesting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationships and nesting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../foundations/deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse and deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../foundations/dates-and-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meaning of dates and status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../foundations/trust-and-confidence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trust, review, and confidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3">
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work with agents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Work with agents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../chat-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../office-add-in/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Office add-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../scheduled-work-items/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduled work items
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../workspaces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../presentations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presentations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../custom-dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../mobile-companion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mobile companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../video-studio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video Studio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../sandbox-workspace/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sandbox workspace
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../create-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../assignments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Assignments and triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../webhook-triggers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Webhook triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../web-widget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publish an agent on a website
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agent-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../agentic-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ai-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manage resources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Manage resources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-to-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent-to-agent (A2A)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../browser-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Browser profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../knowledge-bases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Knowledge bases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../connect-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connect an external MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platform-mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platform-tools-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform tools MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp-catalogs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP catalogs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relays/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relays
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sharing-and-access/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sharing and access
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Templates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One Desktop and runners
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One Desktop and runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#install-xtm-one-desktop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install XTM One Desktop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install-headless-command-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install headless (command line)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Install headless (command line)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-headless-build-linux-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The headless build (Linux servers)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-xtm-one-desktop-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The XTM One Desktop app
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The XTM One Desktop app">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#upgrading-from-xtm-one-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading from XTM One Runner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#signing-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signing in
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#acting-on-this-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Acting on this machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#seeing-what-the-agent-does-on-a-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seeing what the agent does on a machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uninstall-and-re-enroll" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uninstall and re-enroll
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#permissions-the-first-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Permissions the first time
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-an-agent-can-do-on-a-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What an agent can do on a runner
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What an agent can do on a runner">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#long-commands-in-the-background" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Long commands in the background
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#control-what-a-runner-allows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control what a runner allows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choose-which-machines-an-agent-can-reach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose which machines an agent can reach
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#availability-and-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Availability and limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fleet-oversight-for-administrators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fleet oversight for administrators
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#good-habits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Good habits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5">
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitor activity
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Monitor activity
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../home-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ctem-signals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CTEM signals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../work-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platform-insights/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform insights
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_6">
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    XTM Suite
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../xtm-suite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../xtm-suite/common-experience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common experience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../xtm-suite/opencti/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCTI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../xtm-suite/indicator-decay/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indicator decay re-check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../xtm-suite/openaev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenAEV
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../xtm-suite/opencrq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCRQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../my-profile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    My profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4">
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/users-and-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users and groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/intents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Intents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/organization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organization profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6">
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channels and bots
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Channels and bots
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/channels/slack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/channels/microsoft-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/channels/whatsapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/channels/whatsapp-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp: two backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/channels/telegram/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/channels/discord/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/channels/google-chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/channels/agent-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent accounts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/ai-governance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI governance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/prompt-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt safety (Nova)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/editions-and-licensing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editions and licensing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/running-without-ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running without AI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/emergency-stop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../administration/emergency-stop-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#install-xtm-one-desktop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install XTM One Desktop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install-headless-command-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install headless (command line)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Install headless (command line)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-headless-build-linux-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The headless build (Linux servers)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-xtm-one-desktop-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The XTM One Desktop app
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The XTM One Desktop app">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#upgrading-from-xtm-one-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading from XTM One Runner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#signing-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signing in
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#acting-on-this-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Acting on this machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#seeing-what-the-agent-does-on-a-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seeing what the agent does on a machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uninstall-and-re-enroll" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uninstall and re-enroll
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#permissions-the-first-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Permissions the first time
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-an-agent-can-do-on-a-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What an agent can do on a runner
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What an agent can do on a runner">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#long-commands-in-the-background" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Long commands in the background
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#control-what-a-runner-allows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control what a runner allows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choose-which-machines-an-agent-can-reach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose which machines an agent can reach
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#availability-and-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Availability and limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fleet-oversight-for-administrators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fleet oversight for administrators
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#good-habits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Good habits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation">
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../../getting-started/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    User Guide
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Manage resources
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/XTM-One-Platform/xtm-one/blob/main/docs/docs/usage/resources/runners.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"></path></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/XTM-One-Platform/xtm-one/raw/main/docs/docs/usage/resources/runners.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"></path></svg>
+    </a>
+  
+
+
+<h1 id="xtm-one-desktop-and-runners">XTM One Desktop and runners</h1>
+<p><strong>XTM One Desktop</strong> is the native XTM One app for Windows, macOS, and Linux. It
+gives you two things in one install:</p>
+<ul>
+<li><strong>A real window for your agents.</strong> Your chat, your conversation history and
+  your agent selection - everything the web app does - in a native window that
+  stays in your system tray and comes back with one shortcut
+  (<code>Ctrl+Alt+Space</code>).</li>
+<li><strong>An assistant that can act on the machine you are sitting at.</strong> From that
+  chat, agents can run commands, read and edit files, capture a genuine
+  full-desktop screenshot, and drive a browser you are already logged into - on
+  <em>this</em> machine, within its permission model, with your approval inline in the
+  chat, and with every command audited.</li>
+</ul>
+<p>The second half is a <strong>runner</strong>: the small pull-based daemon the Desktop app
+embeds, which connects outbound to XTM One and pulls the work agents send to
+this machine. A runner also exists on its own, without the window: the
+<strong>headless runner</strong> you install on servers, VMs, and MDM-managed fleets where
+nobody sits at a desktop (see <a href="#install-headless-command-line">Install headless</a>).
+Both appear as <em>machines</em> on the XTM One Desktop page, both obey the same
+permission model, and both are what the <code>computer_use</code> agent tools target.</p>
+<p>Runners exist for the cases a headless browser cannot cover. When an auditor
+wants a screenshot with the real desktop, the OS clock, and the signed-in
+identity - not an AI-generated or headless render - a runner captures the true
+screen of a real session. The same channel lets an agent operate an
+authenticated browser or run a check directly on a workstation or server.</p>
+<p>Runners are <strong>pull-based</strong>: the app connects outbound to XTM One and pulls work.
+The platform never opens a port on your machine, and there is nothing inbound to
+firewall.</p>
+<h2 id="install-xtm-one-desktop">Install XTM One Desktop</h2>
+<p>Everything starts from the <strong>XTM One Desktop</strong> page: open your user menu, at
+the top right, and choose <code>Get XTM One Desktop</code> (<code>My machines</code> inside the
+Desktop app), or search for <em>Get XTM One Desktop</em> in the command palette. On a personal machine the graphical installer needs no
+command line; for servers and fleets there is a fully headless command-line
+path (see the next section).</p>
+<ol>
+<li>Open the <strong>XTM One Desktop</strong> page and download the installer for your
+   operating system - the page detects it and offers it first; the other
+   platforms are listed below. The main button is the x86_64 (Intel/AMD) build;
+   ARM machines take the <code>arm64</code> link next to it. Macs need no choice at all -
+   one universal bundle covers both Intel and Apple Silicon.</li>
+<li>Run the installer (<code>next, next, finish</code> on Windows; drag to <code>Applications</code> on
+   macOS; an AppImage or a <code>.deb</code> / <code>.rpm</code> on Linux). On Linux it needs glibc
+   2.35 or newer: Ubuntu 22.04, Debian 12 or a later distribution.</li>
+<li>Launch <strong>XTM One Desktop</strong>. On the <code>Connect this machine</code> screen, paste this
+   instance's URL and an <strong>enrollment key</strong>, then connect. The chat window opens
+   on your instance: sign in as you would in a browser. (Single sign-on opens
+   your system browser - see <a href="#signing-in">Signing in</a> below.)</li>
+</ol>
+<div class="admonition note">
+<p class="admonition-title">If the OS blocks the first launch</p>
+<p>A build that is not code-signed for your operating system trips the
+first-open gate: Windows SmartScreen shows <em>"unrecognized app"</em> (click
+<strong>More info &gt; Run anyway</strong>), and macOS reports it <em>"could not verify ...
+is free of malware"</em> - click <strong>Done</strong> (not Move to Trash), then open
+<strong>System Settings &gt; Privacy &amp; Security</strong>, click <strong>Open Anyway</strong>, and
+launch again. This only ever concerns the first manual install:
+self-updates are signature-verified and never re-prompt, and the headless
+install path is not affected.</p>
+</div>
+<p>Create an enrollment key from the same page, under <strong>Connect a machine</strong>. The
+key carries the permissions the enrolled machine starts with, as one of three
+presets:</p>
+<ul>
+<li><strong>Desktop (recommended)</strong> - every capability enabled. This is the preset for
+  the machine you sit at: usable from the very first message. Shell commands
+  run as the agent sends them; turn on <strong>Shell commands need approval</strong> on the
+  key if you want each one held for your approval in the chat (off unless you
+  turn it on).</li>
+<li><strong>Locked down</strong> - screenshots and browser control only, no approval gate;
+  enable more later from the machine's card. The historical default.</li>
+<li><strong>Custom</strong> - choose the mode, the capabilities and the approval gate yourself
+  (this is where fleet keys for servers are configured).</li>
+</ul>
+<p>A key is single-use for the first machine but can be configured for reuse
+across a fleet, and it can carry labels so an unattended roll-out lands already
+configured. After enrollment the app stores a durable credential in the
+machine's OS keychain and stays connected across reboots - you never paste the
+key again.</p>
+<div class="admonition info">
+<p class="admonition-title">One record per machine</p>
+<p>Each enrolled machine is one runner. Installing on ten machines gives you ten
+runners you can name, label, and target individually - not ten integrations.
+Re-enrolling a machine that is already in the list (a reinstall, a re-run of
+the install script) updates its existing record - new credential, refreshed
+host facts, your name/permissions/labels kept - instead of creating a
+duplicate. Revoked runners stay revoked: enrolling that machine again
+deliberately creates a fresh record.</p>
+</div>
+<h2 id="install-headless-command-line">Install headless (command line)</h2>
+<p>Servers, VMs, and MDM-managed fleets rarely have someone sitting at a desktop,
+and have no use for a chat window. For those machines, the XTM One Desktop page
+also shows a one-line install command per operating system under <code>Servers and
+headless machines (command line)</code>: copy it, replace the key placeholder with an
+enrollment key, and run it on the target machine - no graphical session is ever
+needed. What it installs is the <strong>headless runner</strong>: the same binary as the
+Desktop app without the window and the tray, serving shell, file and browser
+commands to your agents exactly as before.</p>
+<p>The command downloads the runner build matched to your instance's version,
+verifies its integrity, installs the binary, enrolls the machine, and registers
+it to start automatically (a LaunchAgent on macOS, a systemd user service on
+Linux, a logon task on Windows). The same binary is also a CLI afterwards:
+<code>xtm-one-runner status</code>, <code>xtm-one-runner run</code>, and <code>xtm-one-runner reset</code> manage
+it without any UI.</p>
+<p>If the integrity check cannot run - the host has no <code>sha256sum</code> / <code>shasum</code>, or
+no <code>.sha256</code> is available next to the archive - the installer still installs
+but warns <code>INTEGRITY NOT VERIFIED</code> and says why. For fleet and MDM rollouts,
+add <code>--require-checksum</code> (<code>-RequireChecksum</code> on Windows) or set
+<code>XTM_RUNNER_REQUIRE_CHECKSUM=1</code> so an unverified binary is refused instead. A
+checksum that does not match, or a <code>.sha256</code> that holds no checksum, always
+stops the install. The checksum is served by your instance next to the
+archive, so it proves the download arrived intact rather than who built it:
+use an <code>https://</code> address for your instance, since over plain HTTP both could
+be swapped in transit and the installer warns about it. If the installer
+cannot get the archive from your instance, it reports the HTTP status it
+received, so a proxy or firewall problem - or a sign-in page from an
+authentication proxy answering in its place - is not mistaken for a build
+without embedded downloads.</p>
+<p>The installer also checks the <strong>release signature</strong>: every release signs its
+runner archives, and the installer verifies the archive's <code>.minisig</code> against
+the release public keys it carries (the signature names which key made it, so
+a new release key can be trusted before releases are signed with it), so when
+that signature is there to check, a binary that was not built by the release -
+swapped on a mirror or behind a proxy, together with its checksum - is
+refused. The signature must also have been made for the archive this machine
+needs, so a signed build of another platform or flavor served in its place is
+refused too. Release signatures also name the runner version they were made
+for: when the archive comes from your instance, a signature for another version
+- an older signed build served in place of the current one - is refused, and
+the installer prints the version it verified. Archives signed before versions
+were signed install as before, and say so. The same checks guard the runner's
+own self-updates, which never install a build older than the running one. On
+macOS and Linux it uses <code>minisign</code> when installed, otherwise OpenSSL 3,
+otherwise (when upgrading) the runner already installed; on Windows it needs
+nothing extra. A
+signature that does not verify always stops the install. When the signature
+cannot be checked - no <code>.minisig</code> next to the archive (a build made without
+the release signing key), one that is not a signature at all (an error page
+from a mirror or a proxy, for example), a signature whose trusted comment
+names no file, or no verifier on the host (for example a first install on a
+macOS machine with neither <code>minisign</code> nor OpenSSL 3) - the installer warns
+<code>SIGNATURE NOT VERIFIED</code>; add <code>--require-signature</code> (<code>-RequireSignature</code> on
+Windows) or set <code>XTM_RUNNER_REQUIRE_SIGNATURE=1</code> to refuse instead. Without
+it, whoever can swap the archive can also withhold its <code>.minisig</code> and leave
+only that warning, so always add it for a mirror (<code>--download-base</code>) and for
+MDM or other unattended rollouts, where nobody reads the warning. If you build
+and sign the runner with your own key, an instance built from your fork serves
+installers that already trust the key of its <code>tauri.conf.json</code>; an installer
+taken from anywhere else needs <code>XTM_RUNNER_MINISIGN_PUBKEY</code> set to your public
+key: the key line of your <code>.pub</code> file, or the base64 value <code>tauri.conf.json</code>
+carries. The installer then says which key ID it checks against - the ID your
+<code>.pub</code> file prints - so you can confirm it is yours.</p>
+<h3 id="the-headless-build-linux-servers">The headless build (Linux servers)</h3>
+<p>On Linux the installer picks between two builds of the same runner:</p>
+<table>
+<thead>
+<tr>
+<th>Build</th>
+<th>Ships</th>
+<th>Capabilities</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Desktop (default)</td>
+<td>Everywhere else, and any Linux with a graphical session</td>
+<td>Screenshots, mouse/keyboard, shell, files, browser</td>
+</tr>
+<tr>
+<td>Headless</td>
+<td>Linux hosts with no graphical session</td>
+<td>Shell, files, browser</td>
+</tr>
+</tbody>
+</table>
+<p>This is not a matter of taste. The desktop build links the desktop libraries
+(GTK, X11) at load time, so on a server without them it fails before it runs -
+no flag or setting can work around that. The headless build links none of them.</p>
+<p>The installer decides from the environment: no <code>DISPLAY</code> and no
+<code>WAYLAND_DISPLAY</code>, and no graphical session on the machine, means headless — so
+SSH-ing into your own Linux desktop to run the installer still gets you the
+desktop build. Force either one with <code>--headless</code> or <code>--desktop</code> (or
+<code>XTM_RUNNER_FLAVOR=headless</code> for cloud-init and MDM). The choice sticks: a
+headless runner is only ever offered headless updates.</p>
+<p>Two things a server does differently:</p>
+<ul>
+<li><strong>Credential storage.</strong> Servers usually run no keyring daemon. When there is
+  no OS keychain, the runner stores its credential in a file readable only by
+  its own user, next to its config, and says so in the log.</li>
+<li><strong>Staying up after logout.</strong> The service runs under your user account, so
+  enable lingering or it stops when your SSH session ends. The installer does it
+  for you when it can: <code>sudo loginctl enable-linger &lt;user&gt;</code>.</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Desktop capabilities need a desktop</p>
+<p>Screenshots and mouse/keyboard control require a logged-in graphical
+session. Shell commands, file operations, and browser control work on fully
+headless servers. A headless runner asked for a screenshot answers with a
+clear error rather than a black frame - assign that work to a runner on a
+real desktop.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title"><code>libxdo.so.3: cannot open shared object file</code></p>
+<p>A runner installed <strong>before</strong> this error was fixed needs one library that a
+stock Ubuntu desktop does not ship (it lives in <code>universe</code>). Install it once
+with <code>sudo apt install libxdo3</code>; the runner then starts and updates itself
+to a build that no longer needs it. Newer builds synthesize input over the
+X11 protocol directly and require nothing extra to install. That is a
+packaging fix, not new Wayland support: synthetic input reaches X11 and
+XWayland windows, so a Wayland-native application still does not receive
+<code>computer_action</code> keystrokes or clicks.</p>
+</div>
+<h2 id="the-xtm-one-desktop-app">The XTM One Desktop app</h2>
+<p>Once enrolled, the app opens your instance in its own window and lives in the
+system tray (or menu bar) behind the XTM One icon. From there you can:</p>
+<ul>
+<li>open the chat window - or press <code>Ctrl+Alt+Space</code> from anywhere</li>
+<li>see live status - <code>Online</code>, <code>Connecting</code>, <code>Reconnecting</code>, or
+  <code>Update required</code> when your instance no longer accepts this version of the
+  app (update it from the connection panel)</li>
+<li>open the <strong>connection panel</strong>: the machine's name, the enrolled instance URL,
+  the app version, and the host facts reported to the platform (OS build,
+  available shells, installed browsers, monitors, timezone and locale)</li>
+<li>change a few settings - automatic updates, launch-at-login, and the browser
+  CDP URL</li>
+<li>unenroll the machine locally</li>
+</ul>
+<p>The same actions are in the app's own menu, so you never have to find the tray
+icon: the <strong>File</strong> and <strong>Help</strong> menus of the chat window on Windows and Linux,
+the menu bar on macOS (where <code>Cmd+,</code> opens the settings). <strong>Check for
+updates...</strong>, in the Help menu (the app menu on macOS), asks your instance for
+a newer build and, when there is one, installs it and restarts the app.</p>
+<p>Closing a window hides the app to the tray; the runner keeps serving. To stop
+the app, use <strong>Quit</strong> in the tray or in the app's menu; while an update is
+being installed, Quit waits up to a minute for you to answer or cancel its
+password prompt, and the connection panel says so. The window stays on your
+instance: links that would open a new tab, and any link to another site, open
+in your default browser, and downloads land in your Downloads folder. The app
+updates itself from signed bundles matched to your instance, so a fleet stays
+current without anyone touching each machine. When an update restarts the
+app, the windows you had open come back, with the chat on the page you were
+on.</p>
+<p>On Linux, only the AppImage updates unattended. A <code>.deb</code> / <code>.rpm</code> install
+updates through your package manager, which asks for an administrator
+password, so the app does not install those updates on its own: it opens the
+connection panel to announce the new version, and <strong>Install version ...</strong>
+installs it when you choose to. For a Linux desktop that should stay current
+with nobody at the keyboard, install the AppImage (or the headless build on a
+server). A <code>.deb</code> / <code>.rpm</code> install from an earlier version gets this behaviour
+through one last update applied the old way: until you accept it, that version
+asks for the password on its own each time it checks for updates.</p>
+<h3 id="upgrading-from-xtm-one-runner">Upgrading from XTM One Runner</h3>
+<p>An installed runner updates itself into XTM One Desktop; the enrollment, the
+credential and the launch-at-login choice are kept. A few things change name
+along the way:</p>
+<ul>
+<li><strong>Windows</strong>: XTM One Desktop installs into a new <code>XTM One Desktop</code> folder and
+  removes the former install. The Start menu and desktop shortcuts and a taskbar
+  pin keep their <code>XTM One Runner</code> name but start XTM One Desktop; <code>XTM One
+  Runner</code> leaves Installed apps. A machine updated before this was fixed may
+  still list <code>XTM One Runner</code> in Installed apps: do not uninstall it, as that
+  removes the machine's enrollment and sign-in. The next update removes it for
+  you.</li>
+<li><strong>macOS</strong>: the app bundle is swapped in place. A Mac upgraded from the runner
+  keeps its old folder name until you reinstall from a fresh download.</li>
+<li><strong>Linux</strong>: the AppImage updates in place. The <code>.deb</code> / <code>.rpm</code> package is now
+  named <code>xtm-one-desktop</code>; it declares that it replaces <code>xtm-one-runner</code>, so a
+  package-manager upgrade removes the old package for you.</li>
+</ul>
+<p>Headless runners on servers are not affected: they keep their own update
+channel and the same command line.</p>
+<h3 id="signing-in">Signing in</h3>
+<p>Email and password work inside the window like anywhere else. <strong>Single sign-on
+runs in your system browser</strong>: identity providers refuse or degrade embedded
+browsers (conditional access, passkeys, Windows Hello, "use the browser you are
+already signed in to"), and the app's window shares no session with the
+browser you use all day. So a <code>Continue with ...</code> button in the app opens your
+browser on your instance's sign-in; you finish there as usual, the browser then
+shows <strong>which machine</strong> is asking (the name of your XTM One Desktop machine and
+who enrolled it) and asks you to confirm, and the app signs itself in a moment
+later. The browser tab keeps no session - you asked to sign in on the desktop.</p>
+<p>The confirmation matters: a sign-in request can only be started by an enrolled
+XTM One Desktop, and can only land on a machine that is <strong>yours</strong> (you enrolled
+it) or <strong>company-managed</strong> (a shared machine your administrator provisioned). A
+machine someone else enrolled is refused, even one shared with your group: that
+share lets the machine run your commands, it does not let whoever holds the
+machine act as you. If the machine named is not yours, choose <strong>Not my
+machine</strong>: the request is dropped so nobody else can complete it, the refusal
+is recorded in the audit log, and you should tell your administrator.</p>
+<p>Once signed in, <strong>you stay signed in</strong> when the app restarts - after an
+update, a reboot or a crash - under exactly the rules of the browser: the
+session ends when its lifetime or its idle timeout set by your administrator
+ends it (see <a href="../../../deployment/authentication/#session-lifetime-and-idle-timeout">Session lifetime and idle timeout</a>),
+or when you sign out. The app keeps your session in the machine's OS keychain
+(Windows Credential Manager, macOS Keychain, Secret Service on Linux) next to
+its own credential, so it no longer depends on the window's browser storage,
+which an unclean shutdown can damage.</p>
+<h3 id="acting-on-this-machine">Acting on this machine</h3>
+<p>Every message you send from the app carries the machine it was typed on, so
+the agent's <code>computer_use</code> tools default to it: "run the tests", "what is in
+<code>~/Downloads</code>", "take a screenshot" act <em>here</em>, without naming a runner. Fleet
+targeting still works - name another machine and the agent reaches it, within
+the usual rules. Above the composer, a small bar shows the machine, its
+connection state and a switch to turn local execution off for a conversation.</p>
+<p>When the machine's permission model holds a shell command for approval (the
+<strong>Shell commands need approval</strong> switch, on the enrollment key or on the
+machine's card), the request appears <strong>in the chat</strong>, above the
+composer: what the agent wants to run and on which machine, with <strong>Approve</strong>,
+<strong>Always allow</strong>, <strong>Reject</strong> and <strong>Always block</strong>. The agent waits for your
+decision and the command's output lands in the same reply. A decision you do
+not take in time leaves the command queued on the XTM One Desktop page, where
+you can still approve it.</p>
+<h3 id="seeing-what-the-agent-does-on-a-machine">Seeing what the agent does on a machine</h3>
+<p>Every command an agent sends to a machine shows up in the conversation as a
+card, above the reply it leads to - in the Desktop app and in the browser
+alike:</p>
+<ul>
+<li>a <strong>shell command</strong> is a small terminal window: the prompt and the command,
+  a live timer while it runs, then its exit code, how long it took and its
+  output (errors in their own colour), with buttons to copy the command or the
+  output and a larger view;</li>
+<li>a <strong>file read or written</strong> shows its path and a preview of the content;</li>
+<li>a <strong>folder listing</strong> shows the folder's entries, folders first;</li>
+<li>a <strong>screenshot</strong> shows a thumbnail you can enlarge;</li>
+<li>a <strong>mouse, keyboard or browser action</strong> says what was done (text typed
+  through the agent is shown as a character count, never as text).</li>
+</ul>
+<p>A command held for your approval, blocked by the machine's policy, refused
+because the machine was busy or offline, or cut short when the reply ended
+says so on its card. The cards are saved with the conversation, so they are
+still there after a reload and for the people you share it with; a very long
+output is shortened on the card, and the reply's reasoning details (the
+<strong>i</strong> icon) keep more of it.</p>
+<p>While a shell command runs, its card has a <code>Stop</code> button (only the square icon
+on a narrow card). Stopping ends the command and every process it started; what
+it printed until then stays on the card, and the agent is told that the command
+was stopped and when. You can stop a command that runs for you, and so can the
+people who manage the machine. A stopped card says who stopped it:
+<code>Stopped by you</code>, or <code>Stopped by</code> followed by the person's name for everyone
+else who reads the conversation.</p>
+<p>Inside <strong>XTM One Desktop</strong>, the paths on a card whose command ran on <em>this</em>
+machine get <strong>Open</strong> (with its default application), <strong>Show in folder</strong> and
+<strong>Copy path</strong>, and so do absolute paths the agent quotes in its reply, such as
+<code>C:\Users\me\Desktop\disks.txt</code> or a <code>file:///</code> link: a click opens the item,
+<code>Alt</code> (<code>Option</code> on macOS) + click shows it in its folder. Only documents,
+images, media and plain-text files are opened that way - an executable, a
+script, a shortcut, an installer, a web page or a document able to carry
+macros is only ever shown in its folder - and a network address (a
+<code>\\server\share</code> path, a link that leads onto one) is never opened from the
+chat; a drive letter you mapped to a share yourself works like any other drive.</p>
+<p>When a long reply finishes while the app is behind another window, the
+taskbar entry flashes (the Dock icon bounces on macOS) so you know it is
+ready.</p>
+<h3 id="uninstall-and-re-enroll">Uninstall and re-enroll</h3>
+<p>Uninstalling the app removes the local enrollment with it - the stored
+credential, your sign-in, the configuration, and the launch-at-login entry -
+so the next install always starts fresh at the Connect form. The runner's record on the
+platform is deliberately left alone (an uninstall can happen offline): revoke
+it on the XTM One Desktop page when you retire a machine for good.</p>
+<p>If a running runner's record is revoked on the platform, the app shows a fatal
+error with a <strong>Re-enroll this machine</strong> button: one click drops the dead local
+credential and reopens the Connect form, prefilled with your instance URL and
+ready for a fresh enrollment key.</p>
+<p>Revoking takes effect on every server at once: from that moment no new command
+is queued for the machine or handed to it and nothing more is accepted from it,
+its queued and running commands end, and its live connection closes right away,
+or at its next heartbeat (every 30 seconds by default) at the latest. A command
+handed to it a moment before the revocation may still reach it; it is recorded
+as cancelled and its result is refused.</p>
+<h3 id="permissions-the-first-time">Permissions the first time</h3>
+<ul>
+<li><strong>macOS</strong> asks for <strong>Screen Recording</strong> and <strong>Accessibility</strong> permission the
+  first time an agent captures the screen or controls input. Grant them in
+  <code>System Settings &gt; Privacy &amp; Security</code>; the app links you straight there and
+  shows whether each one is granted.</li>
+<li><strong>Linux</strong> capture and input need a graphical session. On Wayland, capture goes
+  through the desktop portal; the app warns when the current session cannot be
+  captured.</li>
+</ul>
+<h2 id="what-an-agent-can-do-on-a-runner">What an agent can do on a runner</h2>
+<p>When an agent has the <code>computer_use</code> built-in tool and at least one of your
+runners is online, it can:</p>
+<ul>
+<li>take a <strong>full-desktop screenshot</strong> (the audit-evidence case)</li>
+<li>perform <strong>mouse and keyboard</strong> actions</li>
+<li><strong>run a shell command</strong>, and keep a long one running in the background (see <a href="#long-commands-in-the-background">Long commands in the background</a>)</li>
+<li><strong>read, write, and list files</strong></li>
+<li><strong>control a browser</strong> you already authenticated</li>
+</ul>
+<p>Browser control attaches to a browser you started with remote debugging, at
+the browser CDP URL of the app's settings (<code>http://127.0.0.1:9222</code> by
+default): start Chrome or Edge with <code>--remote-debugging-port=9222</code> and a
+profile of its own (<code>--user-data-dir=...</code>; recent versions ignore the port on
+your everyday profile), and sign in there once. The agent acts on one tab and
+keeps it from one command to the next: <code>list_tabs</code> shows the open tabs, the one
+the agent drives and the one you used last, and <code>select_tab</code> switches to
+another tab (the one you used last when no tab is named), for instance after
+you signed in in a new tab. Opening tabs or signing in in that browser does not
+break the connection; if it drops anyway, the next command reconnects to the
+same tab. When the browser cannot be reached because an administrator policy
+turns its remote debugging off (<code>RemoteDebuggingAllowed</code>), the error says so.</p>
+<p>Typing into a page field brings the driven tab to the front and focuses the
+field first, then reads it back: when the field still holds nothing (it could
+not take the focus), the action fails and names the field, never the text.</p>
+<p>Typing and scrolling are bounded by the command's time budget, never by a
+length: text of any size is typed in small chunks, and when the budget runs
+out the action stops between two chunks and says how far it got, so nothing
+is typed after the command is reported as timed out. A shell command's output
+and its errors are each kept up to 1 MiB; past that the output is cut and the
+result says so. The data a command returns - that output, a folder listing, a
+page's content - may take up to 16 MiB once written as JSON, where escaping
+counts (a control character takes six bytes), and a file it returns up to
+<code>RUNNER_MAX_RESULT_BYTES</code>. A larger result is not kept: the command fails at
+once and its error says why, so the agent can ask for less.</p>
+<p>Flows can drive runners too: the <code>Runner command</code> node dispatches the same
+command kinds through the same transport — the runner's permission mode,
+allow-lists, and approval gating apply unchanged — and can wait for the
+result. A flow reads at most 1 MiB of that result, written as JSON: a larger
+one reaches the node's outputs cut to fit, each cut text ending with a
+<code>[TRUNCATED ...]</code> marker and <code>flow_truncated</code> giving its full size, while the
+machine's command history keeps it whole. Flows can also react to runner lifecycle through the built-in
+<code>Runner online</code>, <code>Runner offline</code>, and <code>Runner command completed</code> event
+types with the <code>On event</code> and <code>Wait for event</code> nodes. <code>Runner offline</code> fires
+when a machine is revoked while online, or when it has been silent for
+<code>RUNNER_OFFLINE_AFTER_SECONDS</code> (75 seconds by default): the scheduler's
+presence sweep, which runs about once a minute and handles up to 500 machines
+per pass, then declares it offline. <code>Runner online</code> fires once the machine is
+heard from again, so the two always alternate. A platform restart or upgrade
+drops every runner connection for a few seconds; a machine back within that
+window fires neither. The machine rides the restart out: it retries its polls,
+heartbeats and result uploads with back-off, so a command that finishes while
+the platform restarts still reports its result once the platform is back
+within about 50 seconds.</p>
+<p>The agent waits for a command's result as long as the machine may take to
+report it: from the moment the machine takes the command, its execution limit
+and then those 50 seconds of upload retries (205 seconds in all by default,
+<code>RUNNER_RESULT_WAIT_TIMEOUT_SECONDS</code> sets a fixed wait instead), never longer
+than the agent run allows one tool call. When that limit ends the wait first,
+the agent is told the command may still finish.</p>
+<p>A command is never sent later to nobody: when the agent stops waiting for it
+(its wait ran out or you stopped the turn) or the flow run waiting for it ends,
+a command the machine had not picked up yet is cancelled, including one still
+waiting for your approval in a flow, and one the machine already took is not
+sent again. If that one still finishes, its output is in the machine's command
+history.</p>
+<p>Screenshots and file reads come back into the conversation as inline images or
+downloadable files, exactly like other tool results, so they can flow straight
+into an evidence workflow. The PNG is also forwarded to the model as a native
+vision block (high-detail, PNG preserved) so the agent can read the URL bar,
+labels, errors, and OS clock itself - it should never ask you to describe or
+verify the capture.</p>
+<h3 id="long-commands-in-the-background">Long commands in the background</h3>
+<p>A command that takes long - a large download, a build, a server that keeps
+running - can run as a <strong>background job</strong>. The agent gets an answer at once
+with the job's id and its first lines of output, and the command keeps running
+on the machine, its output kept in a log file there. The agent then follows the
+job with its <code>shell_jobs</code> tool: it lists the machine's jobs, reads a job's
+output from where it left off, and stops a job with every process it started.</p>
+<p>In the conversation, the card of a background job reads <code>Background</code> while the
+job runs, and keeps its <code>Stop</code> button after the reply ends. Stopping a job asks
+you to confirm first. Once the job is over, the card shows its exit code
+(<code>Ended</code> when there is none), or <code>Stopped by you</code> if you stopped it.</p>
+<p>On the <strong>XTM One Desktop</strong> page, the card of a machine you manage lists its
+<code>Background jobs</code>, running ones first, each with a <code>Stop</code> button. The list is
+read from the machine when you open its card, after a stop, and when you click
+<code>Refresh</code>. Every read is a command in the machine's history, so the list is not
+refreshed on its own. When the machine is offline, busy or does not answer, the
+list says so.</p>
+<p>A machine whose app is too old for background jobs refuses them before
+anything is sent, and the agent is told which version it needs: update XTM One
+Desktop or the runner, or run the command without the background option.</p>
+<h2 id="control-what-a-runner-allows">Control what a runner allows</h2>
+<p>Each runner carries its own permission model, set on the XTM One Desktop page
+(the machine's card):</p>
+<ul>
+<li><strong>Restricted</strong> (default) - least privilege. Only the capabilities you enable
+  are allowed (screenshot, mouse/keyboard, shell, file operations, browser
+  control). Enabling a capability is the consent: once it is on, it runs
+  without further prompts. <strong>Shell commands</strong> are the exception and get finer
+  control:<ul>
+<li><strong>Allow-list</strong> (standing approvals) - a matching command runs
+  immediately and never asks for approval. With approval off, only
+  allow-listed commands can run at all.</li>
+<li><strong>Block-list</strong> (standing refusals) - a command containing a blocked word
+  or phrase is always refused. It never runs and never reaches the
+  approval queue, and the block-list wins over the allow-list.</li>
+<li><strong>Require approval</strong> - any shell command not covered by the lists waits
+  for a human decision: inline in the chat when the command was asked for
+  from XTM One Desktop, otherwise on the XTM One Desktop page. When
+  approving or rejecting, <strong>Approve &amp; always allow</strong> / <strong>Reject &amp; always
+  block</strong> saves the exact command, whatever its length, into the
+  corresponding list, so the same command never asks again. Approval
+  applies to shell commands only -
+  screenshots, input, file operations and browser control never queue.</li>
+<li>File operations can additionally be narrowed with a <strong>path allow-list</strong>.
+  The platform checks the path as written against it, and the runner
+  resolves links to see where the path really leads. A path inside the
+  allowed folders that leads outside them through a link (a symbolic
+  link, a junction, a mount point) still runs by default, as it always
+  has, with a warning in its result and in the runner log; with
+  <code>RUNNER_STRICT_PATH_CONFINEMENT=true</code> (see
+  <a href="../../../deployment/configuration/">Configuration</a>) it is refused (to
+  reach what such a link leads to, add that folder to the allowed paths).
+  A link that stays inside the allowed folders keeps working either way, an
+  allowed folder that does not exist yet can be written into (the runner
+  creates it), and a path written as a network share or automount path
+  (<code>\\server\share</code>, <code>/net/host</code>) is only looked up inside an allowed
+  folder that is itself on it. After opening a file or folder the runner
+  re-checks the handle it actually got: its type in every mode, and in
+  strict mode its real path too, so a link swapped in between the check
+  and the open is caught and nothing is truncated or written until that
+  check passes (only a folder the write has to create is made before it,
+  so a link swapped in at that moment can leave an empty folder where it
+  leads; on a volume the OS cannot resolve paths on, some RAM disks
+  and VirtualBox shared folders, the handle cannot be named and the
+  pre-open check stands). What no mode prevents: a link in an allowed
+  folder that leads onto a share is followed to see where it leads, which
+  can reach that host, and a hard link is the file itself under a second
+  name, so one inside an allowed folder is served like any file there.</li>
+</ul>
+</li>
+<li><strong>Full control</strong> - a deliberate opt-in that allows every capability and
+  every command with no lists and no approval. It is clearly flagged in the
+  UI, and every command is still audited. An agent listing its runners
+  (<code>list_runners</code>) sees every capability on a full-control runner, whatever
+  capability toggles were saved before the switch.</li>
+</ul>
+<p>Whatever the mode, every command is recorded server-side with its result, and
+<strong>revoking</strong> a runner invalidates its credential immediately - the next command
+fails and the app stops. A command still queued when a runner's permissions are
+tightened is checked again when it is delivered, and cancelled if they no
+longer allow it.</p>
+<p>File operations read and write regular files as they always have. A path goes to the operating system as written and is never judged by its name: what the OS opens for it decides, and when the OS refuses it, its error is the result. A file that is not a regular file - a character or block device (a serial port, <code>/dev/urandom</code>, <code>/dev/zero</code>, <code>NUL</code> on Windows, a volume or disk opened raw such as <code>\\.\C:</code>), a named pipe (FIFO) or a socket, as the OS reports the object opened - is also read and written as before, on every runner, with a warning in the result and in the runner log saying what it is. With <code>RUNNER_STRICT_PATH_CONFINEMENT=true</code> (see <a href="../../../deployment/configuration/">Configuration</a>) it is refused, on every runner, full control included; on Windows a device is refused once it is opened, before anything is read or written, since its handle is what tells. A name Windows opens as a file is a file, whatever it looks like - <code>con.log</code>, <code>aux.c</code> or <code>nul.txt</code> on Windows 11, a folder named <code>aux</code>, a drive, share or volume location behind a <code>\\.\</code>, <code>\??\</code> or <code>\\?\</code> prefix, a file in a volume shadow copy (<code>\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1\...</code>) - and is served as one, with no warning, strict or not. Reading a Windows device such as <code>NUL</code>, or a raw volume, fails as it always did: Windows cannot describe it for the size check before the read. Such a file is opened without waiting and then used as a plain open would, so a named pipe with no program at its other end returns at once (empty for a read, an error for a write) instead of holding a runner worker for good; a socket cannot be opened as a file at all. A restricted runner with allowed folders only reaches one inside those folders; a device path never lies under a drive-letter folder.</p>
+<p>A read never asks for more than a positive result size limit (<code>RUNNER_MAX_RESULT_BYTES</code>, the largest file a runner may upload) or 256 KiB, whichever is larger. What comes back as a file - binary content, or text past 256 KiB - is cut to the limit and flagged as incomplete; the 256 KiB of text that comes back inline has never met that limit, so under a smaller limit a runner from this release still returns such text whole (an older runner cuts it to the limit, as before). A limit of 0 or less keeps its meaning - every non-empty file result is refused at upload and reads are not bounded - and is reported at startup and by the <a href="../../../administration/settings/#security-audit">security audit</a> (<code>Settings</code> → <code>Security</code>).</p>
+<p>A read that stops at its size before the end of the file says so in its
+result: how many bytes were read, and how to read the rest - a larger
+<code>max_bytes</code>, or, at the result size limit, another way such as a shell command
+that splits or compresses the file. A runner from before this release cannot
+tell, so a read it returns at exactly the size it was asked for is flagged as
+possibly incomplete.</p>
+<h2 id="choose-which-machines-an-agent-can-reach">Choose which machines an agent can reach</h2>
+<p>Runners are targeted, not global:</p>
+<ul>
+<li>Give runners <strong>labels</strong> (for example <code>audit</code>, <code>eu-west</code>, <code>workstation</code>).</li>
+<li>On an agent, set a <strong>runner selector</strong> - specific runners or a set of labels -
+  so the agent can only reach the machines you intend.</li>
+<li>An <strong>assignment</strong> can refine that selection further, never widen it, so an
+  agent-driven automation can never reach a machine its agent could not. A
+  flow's <code>Runner command</code> node targets one explicit runner instead — gated by
+  the runner's own permission mode, allow-lists, and visibility (a flow can
+  only use runners visible to the person who runs it: their own,
+  group-shared, or company-managed).</li>
+</ul>
+<p>When more than one eligible machine is online, mutating actions require the agent
+to name the target runner explicitly, so a command can never land on the wrong
+machine by accident. The <code>list_runners</code> tool lets an agent see which machines are
+online before acting.</p>
+<h2 id="availability-and-limits">Availability and limits</h2>
+<p>The whole subsystem is governed by platform configuration: an administrator
+enables it, sets where installers are downloaded from, and can cap how many
+runners a user may enroll and how many commands may run on one machine at once.
+If downloads are not configured on your deployment, the page explains it and you
+can still enroll a runner you obtained separately. See the runner variables in
+<a href="../../../deployment/configuration/">Configuration</a> for the full list.</p>
+<h2 id="fleet-oversight-for-administrators">Fleet oversight for administrators</h2>
+<p>The XTM One Desktop page lists <strong>your</strong> machines: the ones you enrolled, the
+ones shared with you, and the company-managed fleet - for administrators too. To
+see every machine enrolled with the platform, whoever enrolled it, an
+administrator opens <code>Administration &gt; Objects</code> and filters by <code>Machines</code>: each
+row shows the machine's owner, operating system, live connection state
+(<code>Online</code>, <code>Offline</code> with the time it was last seen, or <code>Revoked</code>) and runner
+version, and opens the machine's own page with the same permission editor and
+revoke / delete actions as here. Reading the command history of a machine you
+neither own nor hold a configure-level share on (a company-managed machine is
+yours to manage and is not counted) is recorded in the audit log. See
+<a href="../../../administration/introduction/#objects">Objects</a>.</p>
+<h2 id="good-habits">Good habits</h2>
+<ul>
+<li>Name each machine so you can tell an agent exactly where to work.</li>
+<li>Start in <code>Restricted</code> mode and enable only the capabilities you need; reserve
+  <code>Full control</code> for machines you fully trust.</li>
+<li>Use labels for fleets and set agent selectors so each agent reaches only its
+  own machines.</li>
+<li>Turn on shell-command approval when a person should stay in the loop, and
+  build up the allow/block lists from real decisions with "Approve &amp; always
+  allow" / "Reject &amp; always block".</li>
+<li>Revoke a runner as soon as a machine is decommissioned.</li>
+</ul>
+<h2 id="related">Related</h2>
+<ul>
+<li>The <strong>XTM One Desktop</strong> page (<code>Get XTM One Desktop</code>, or <code>My machines</code> inside
+  the app, in the profile menu) - where you download the app, create enrollment
+  keys and manage your machines.</li>
+<li><a href="../../agents/">Agents</a> - bind the <code>computer_use</code> tool and set the runner
+  selector.</li>
+<li><a href="../../../deployment/configuration/">Configuration</a> - the <code>RUNNERS_ENABLED</code> and
+  <code>RUNNER_*</code> deployment variables.</li>
+</ul>
+
+
+
+
+
+
+
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+  </span>
+
+    
+    
+    
+      
+  <span class="md-source-file__fact">
+    
+      
+  <span class="md-icon" title="Contributors">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33s1.71.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2"></path></svg>
+  </span>
+  <span>GitHub</span>
+
+    
+    <nav>
+      
+        <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
+          
+          <img src="https://avatars.githubusercontent.com/u/326439686?v=4&amp;size=72" alt="Letullier-Thibert">
+        </a>
+      
+      
+      
+    </nav>
+  </span>
+
+    
+  </aside>
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer">
+        
+          
+          <a href="../variables/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Variables">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Variables
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../home-dashboard/" class="md-footer__link md-footer__link--next" aria-label="Next: Home dashboard">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Home dashboard
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"></path></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2026 Filigran SAS. Community Edition licensed under the Apache License 2.0
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/XTM-One-Platform" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://community.filigran.io" target="_blank" rel="noopener" title="community.filigran.io" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M94.1 315.1c0 25.9-21.2 47.1-47.1 47.1S0 341 0 315.1 21.2 268 47.1 268h47.1v47.1zm23.7 0c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1v117.8c0 25.9-21.2 47.1-47.1 47.1s-47.1-21.2-47.1-47.1zm47.1-189c-25.9 0-47.1-21.2-47.1-47.1s21.2-47 47.1-47S212 53.2 212 79.1v47.1h-47.1zm0 23.7c25.9 0 47.1 21.2 47.1 47.1S190.8 244 164.9 244H47.1C21.2 244 0 222.8 0 196.9s21.2-47.1 47.1-47.1zm189 47.1c0-25.9 21.2-47.1 47.1-47.1s47 21.2 47 47.1-21.2 47.1-47.1 47.1h-47.1v-47.1zm-23.7 0c0 25.9-21.2 47.1-47.1 47.1S236 222.8 236 196.9V79.1c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1zm-47.1 189c25.9 0 47.1 21.2 47.1 47.1s-21.2 47-47.1 47-47.1-21.2-47.1-47.1v-47.1h47.1zm0-23.7c-25.9 0-47.1-21.2-47.1-47.1s21.2-47.1 47.1-47.1h117.8c25.9 0 47.1 21.2 47.1 47.1s-21.2 47.1-47.1 47.1z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://linkedin.com/company/filigran" target="_blank" rel="noopener" title="linkedin.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M416 32H31.9C14.3 32 0 46.5 0 64.3v383.4C0 465.5 14.3 480 31.9 480H416c17.6 0 32-14.5 32-32.3V64.3c0-17.8-14.4-32.3-32-32.3M135.4 416H69V202.2h66.5V416zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77m282.1 320h-66.4V312c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9V416h-66.4V202.2h63.7v29.2h.9c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://twitter.com/FiligranHQ" target="_blank" rel="noopener" title="twitter.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"></path></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.path", "navigation.footer", "navigation.expand", "content.action.edit", "content.action.view", "content.code.annotate", "content.code.copy", "search.highlight"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../../js/timeago.min.js"></script>
+      
+        <script src="../../../js/timeago_mkdocs_material.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>
