@@ -200,6 +200,81 @@ def test_a_has_relationship_to_a_vulnerability_is_a_path_1_signal_on_the_target(
     assert row.lens == "inside"
     assert fields["ref"] == "vulnerability--1"
     assert fields["evidence"]["source_ref"] == "software--nginx"
+    assert fields["evidence"]["target_ref"] == "vulnerability--1"
+    assert fields["label"] is None and "cve" not in fields["evidence"]
+
+
+def _has_relationship(*, target_value: str | None = None, message: str | None = None) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        "type": "relationship",
+        "relationship_type": "has",
+        "id": "relationship--81176c5c",
+        "source_ref": "software--86a9d0f5",
+        "target_ref": "vulnerability--c0cdd6e3",
+    }
+    if target_value is not None:
+        data["extensions"] = {
+            listeners.OPENCTI_EXTENSION: {
+                "id": "rel-internal",
+                "source_value": "Veeam Plug-In for AWS",
+                "target_value": target_value,
+            }
+        }
+    payload: dict[str, Any] = {"type": "create", "data": data}
+    if message is not None:
+        payload["_opencti_event"] = {"message": message}
+    return payload
+
+
+def test_a_has_relationship_is_named_by_the_target_value_cve() -> None:
+    """#2524: the subject is the target's CVE, the STIX id stays in evidence, the CVE reaches the gate."""
+    from app.services.ctem_scope_gate import signal_cve_ids
+
+    _row, fields = _matched("create", _has_relationship(target_value="CVE-2026-123634"))
+    assert (fields["ref"], fields["label"]) == ("CVE-2026-123634", "CVE-2026-123634")
+    assert fields["evidence"]["target_ref"] == "vulnerability--c0cdd6e3"
+    assert fields["evidence"]["cve"] == "CVE-2026-123634"
+    assert fields["external_id"] == "rel-internal"
+    assert signal_cve_ids(fields["ref"], fields["label"], fields["evidence"]) == ["CVE-2026-123634"]
+
+
+def test_a_has_relationship_without_target_value_takes_the_cve_of_the_message() -> None:
+    message = "[relationship] Veeam Plug-In for AWS has cve-2026-123634"
+    _row, fields = _matched("create", _has_relationship(message=message))
+    assert (fields["ref"], fields["label"]) == ("CVE-2026-123634", "CVE-2026-123634")
+    assert fields["evidence"]["cve"] == "CVE-2026-123634"
+    assert fields["evidence"]["message"] == message
+
+
+def test_a_has_relationship_with_neither_keeps_the_stix_id() -> None:
+    _row, fields = _matched("create", _has_relationship(message="[relationship] Veeam has a vulnerability"))
+    assert (fields["ref"], fields["label"]) == ("vulnerability--c0cdd6e3", None)
+    assert "cve" not in fields["evidence"]
+
+
+def test_a_vulnerability_object_and_a_relationship_on_one_cve_share_the_subject_and_the_case_key() -> None:
+    """#2524: one CVE delivered both ways is one subject, so related signals and the case key match."""
+    from app.services.ctem_case_loop import fix_of
+
+    vuln = {
+        "type": "create",
+        "data": {"type": "vulnerability", "id": "vulnerability--c0cdd6e3", "name": "CVE-2026-123634"},
+    }
+    signals_seen = []
+    for payload in (vuln, _has_relationship(target_value="CVE-2026-123634")):
+        row, fields = _matched("create", payload)
+        signals_seen.append(
+            SimpleNamespace(
+                trigger_path=row.trigger_path,
+                subject_kind=row.subject_kind,
+                subject_ref=fields["ref"],
+                subject_label=fields["label"],
+                evidence=fields["evidence"],
+            )
+        )
+    obj, rel = signals_seen
+    assert (obj.subject_kind, obj.subject_ref.lower()) == (rel.subject_kind, rel.subject_ref.lower())
+    assert fix_of(obj).key == fix_of(rel).key  # type: ignore[arg-type]
 
 
 def test_an_opencti_actor_is_a_path_2_signal_and_a_report_is_nothing():
