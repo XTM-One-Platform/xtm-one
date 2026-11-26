@@ -2715,6 +2715,7 @@ async def _activation_check_executor(
                 company_managed_agent=agent.is_company_managed,
                 acting_admin=acting_admin,
                 run_person_id=str(run.user_id) if run.user_id else None,
+                run_person_chosen=_run_person_chosen(run, assignment),
             )
         )
     if "shared_state" in builtin_ids:
@@ -3652,6 +3653,21 @@ def _resolve_run_file_owner_id(run: AssignmentRun) -> str | None:
     if run.is_company_managed:
         return None
     return str(run.user_id) if run.user_id else None
+
+
+def _run_person_chosen(run: AssignmentRun, assignment: Assignment | None) -> bool:
+    """Whether ``run.user_id`` was chosen: its triggering user or the run-as user (#2422).
+
+    ``False`` when it is only the assignment owner standing in: a company-managed
+    assignment's owner is the seed account, never a decider by default, while a
+    run someone started or set to run as that account keeps it as the decider.
+    """
+    person = getattr(run, "user_id", None)
+    if person is None:
+        return False
+    return bool(
+        person == getattr(run, "triggered_by_user_id", None) or person == getattr(assignment, "run_as_user_id", None)
+    )
 
 
 def _inbox_release_reason(loop_result: Any, messages: Any, offered_tools: Any) -> str | None:
@@ -6632,6 +6648,7 @@ async def execute_assignment_run(
                     # The run's person routes its decisions (#2422); the
                     # file owner above stays empty for a company-managed run.
                     run_person_id=str(run.user_id) if run.user_id else None,
+                    run_person_chosen=_run_person_chosen(run, assignment),
                 )
                 composite.add_tools(wi_defs, wi_exec)
 
