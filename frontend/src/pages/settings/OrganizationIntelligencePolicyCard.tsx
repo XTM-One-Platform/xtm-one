@@ -15,6 +15,7 @@ import { Icon, Spinner } from "@filigran/design-system";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DateTimeCell } from "@/components/ui/date-time-cell";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import { SettingsCard, type SettingsCardFold, SettingsField, SettingsSwitchField
 import { SettingsReadField, SettingsReadGrid } from "@/components/ui/settings-read-view";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
+import { TruncatedText } from "@/components/ui/truncated-text";
 import { useIntegrations } from "@/hooks/api/useIntegrationApi";
 import {
   type IntelligencePolicyPir,
@@ -105,7 +107,7 @@ interface Props {
 }
 
 export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props) {
-  const { t_i18n, intl } = useFormatter();
+  const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const { isAdmin } = useAuth();
   const policy = useIntelligencePolicy();
@@ -118,7 +120,8 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
   const open = rows.find((pir) => pir.id === openId) ?? null;
   const sourceOf = (pir: IntelligencePolicyPir) =>
     pir.integration_id ? (integrations.find((integration) => integration.id === pir.integration_id)?.name ?? t_i18n("Integration not found")) : "";
-  const dateText = (iso: string | null) => (iso ? intl.formatDate(iso, { dateStyle: "medium", timeStyle: "short" }) : "");
+  /** One line, cut with the shared tooltip; an empty value reads "-" as the shared cells do (UX r1 B2, A1 on #2444). */
+  const textCell = (text: string) => (text ? <TruncatedText text={text} /> : <span>-</span>);
   const cadenceText = (cadence: string) => {
     const known = (REVIEW_CADENCES as readonly string[]).includes(cadence) ? (cadence as ReviewCadence) : "";
     return known ? t_i18n(REVIEW_CADENCE_LABELS[known]) : "";
@@ -138,7 +141,7 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
       header: "Name",
       cell: (pir) => (
         <span className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 break-words">{pir.name}</span>
+          <TruncatedText text={pir.name} />
           {pir.gone_at && (
             <Badge variant="warning" className="shrink-0 whitespace-nowrap">
               {t_i18n("No longer in OpenCTI")}
@@ -150,11 +153,12 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
       csv: (pir) => pir.name,
     },
     { key: "source", header: "Source", cell: (pir) => sourceOf(pir), sortValue: (pir) => sourceOf(pir), csv: (pir) => sourceOf(pir), hideBelow: "6xl", hideable: true },
-    { key: "owner", header: "Owner", cell: (pir) => pir.owner, sortValue: (pir) => pir.owner.toLowerCase(), csv: (pir) => pir.owner, hideable: true },
+    { key: "owner", header: "Owner", cell: (pir) => textCell(pir.owner), sortValue: (pir) => pir.owner.toLowerCase(), csv: (pir) => pir.owner, hideable: true },
     {
       key: "review_cadence",
       header: "Review cadence",
-      cell: (pir) => cadenceText(pir.review_cadence),
+      cell: (pir) => textCell(cadenceText(pir.review_cadence)),
+      sortValue: (pir) => Math.max(0, (REVIEW_CADENCES as readonly string[]).indexOf(pir.review_cadence)),
       csv: (pir) => cadenceText(pir.review_cadence),
       hideBelow: "4xl",
       hideable: true,
@@ -162,7 +166,7 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
     {
       key: "primary_assets",
       header: "Primary assets served",
-      cell: (pir) => pir.primary_assets.join(", "),
+      cell: (pir) => textCell(pir.primary_assets.join(", ")),
       csv: (pir) => pir.primary_assets.join(", "),
       hideBelow: "7xl",
       hideable: true,
@@ -199,7 +203,7 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
     {
       key: "last_seen_at",
       header: "Last refreshed",
-      cell: (pir) => dateText(pir.last_seen_at),
+      cell: (pir) => <DateTimeCell value={pir.last_seen_at} />,
       sortValue: (pir) => pir.last_seen_at ?? "",
       csv: (pir) => pir.last_seen_at ?? "",
       hideBelow: "8xl",
@@ -235,7 +239,7 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
             }
             data-testid="settings.organization.intelligence-policy.refresh"
           >
-            {refresh.isPending ? <Spinner size="sm" tone="inherit" label={t_i18n("Refresh now")} /> : <Icon name="refresh-cw" size={16} aria-hidden />}
+            {refresh.isPending ? <Spinner size="sm" tone="inherit" /> : <Icon name="refresh-cw" size={16} aria-hidden />}
             {t_i18n("Refresh now")}
           </Button>
         ) : undefined
