@@ -64,6 +64,21 @@ the re-run period applying to a recurring option only
 (`ctem_control_measurement.complete_gate_ask`, called from the work item write,
 from the case and the profile's re-test delay).
 
+A `never_measured` case (#2461) closes only on a first measurement OpenCRQ books
+for the asset: a DETECTION or PREVENTION expectation result on a covered
+technique, or CVE findings from a scan that reads versions. A clean
+unauthenticated scan has nothing to book: its pass is recorded `inconclusive`
+and never closes the case. Each option of the gate says whether its pass
+"closes the case" or "does not close the case"; a non-closing option is never
+recommended, and when nothing on the instance can close the case the first and
+only decision is the structural one (connect a version-reading or measuring
+source), any interim scan offered inside it as non-closing. The card of such a
+case carries `never_measured_line` instead of the general line, and the
+platform moves a recommendation that sits on a non-closing option to the first
+option that closes the case (`closing_recommendation`), on every write of the
+card. The case is recognised by its platform title
+(`ctem_case_loop._CONTROL_DECAY_TITLES`).
+
 A caller may name another lens than the default (a `has` relationship is the
 inside lens of path 1). `GET /api/v1/ctem-signals/paths` answers this table.
 
@@ -146,12 +161,7 @@ writes the repository to `evidence.assets` as for a Dependabot alert.
 
 `GET /api/v1/ctem-signals/paths` also names, per path, what fires it
 (`description`), its `sources` and its `status`, plus `count_30d` and
-`last_signal_at` (the reader's visibility, as the signal list). Each source
-also carries its own `count_30d` and `last_signal_at` (#2436): every system
-recording point stamps `evidence.xtm_source_key` with the source key
-(`provider:kind[:name]`), and `activity_by_source` groups on it; a signal
-recorded before the stamp counts under its provider, credited to that
-provider's unnamed source only when the path has exactly one. Additive: the
+`last_signal_at` (the reader's visibility, as the signal list). Additive: the
 former fields are unchanged. The table lives in
 `services/ctem_signal_sources.py` (`PATH_SOURCES`); a test fails when a
 listener row of section 2 has no source row.
@@ -165,17 +175,11 @@ listener row of section 2 has no source row.
 `status`, one per path, the one its sources say (UX round 1 on #2442):
 `error` (a source XTM One provisions is in error on one of its integrations,
 `error_count` on the source; critical tone, the chip says "N sources in
-error"), `enabled` (one source bound and every source used on the path, of a
-connected provider and not taken off it, is on; low tone) or `partly_enabled`
-(one bound, another used source off or not set up; medium tone), never
-`connected`: the status reads the sources' on/off state, never the integration
-connection alone (#2436, Sam 26 Nov 2026; a provisioned source whose platform
-source exists switched off reads `off` on the source, and an assignment trigger
-left on that integration never turns it back on), `not_set_up` (none bound, a
-source XTM One provisions has its provider connected but is switched on
-nowhere, `not_set_up` on the source; neutral tone, action "Set up"), `off`
-(none bound, one source `off`: its provider is connected, the source does not
-run; neutral tone, action "Turn on" to its card in Settings > Organization),
+error"), `connected` (one source bound), `not_set_up` (none bound, a source
+XTM One provisions has its provider connected but is switched on nowhere,
+`not_set_up` on the source; neutral tone, action "Set up"), `off` (none
+bound, one pass `off`: its provider is connected, the pass does not run;
+neutral tone, action "Turn on" to its card in Settings > Organization),
 `not_connected` (a source exists, none bound, off or not set up: no
 integration of the provider is connected), `agents_api` (no automatic source:
 agents and the API only, never read as connected). In the path panel the
@@ -367,15 +371,26 @@ Signals are organization data; their content is what the recorder chose to
 write, not a mirror of a source product's object (cases render per viewer,
 `ctem-cases.md` principle 8; signals do not, so they never copy a source's
 restricted fields). An administrator reads every signal of the organization;
-anyone else reads the signals recorded for them (their API calls and their
-agents' tool calls), unless one of their groups grants a CTEM right (#1748,
-`services/ctem_access.py`, the one reader of `groups.ctem_access`): `view`
+anyone else reaches CTEM only through a right one of their groups grants
+(#1748, #2441, `services/ctem_access.py`, the one reader of
+`groups.ctem_access`). Without a right there is no CTEM at all: every signal
+and case route answers 403 (a router dependency), no CTEM tool is wired in
+their turns or runs (`ctem_access.wires_ctem`), the `ctem_signal.*` and
+`ctem_case.*` events are neither offered nor saved in their triggers
+(`platform_events.ctem_event_error`), and the menu hides the section. There
+is no own-signals fallback. Two groups are seeded in XTM One
+(`services/ctem_groups.py`, found by `groups.seed_key`): "CTEM Viewers"
+(`view`; Auto join on, #2478: every active account at its first seed, every
+account created afterwards once, at its creation; the single sign-on auto join
+skips it (`ctem_groups.JOINED_AT_CREATION_KEYS`), so an administrator's removal
+holds; migration `t2478viewersaj01` turned the toggle on once on platforms
+seeded before, and nothing turns it on again, so a toggle-off holds) and
+"CTEM Operators" (`decide`, empty). `view`
 reads every signal and case of the organization as an administrator does and
 writes nothing (a triage or a case write answers 403, a tool answers
 "Refused"); `decide` also triages the signals and changes the cases.
 `groups.ctem_notify` (on by default) is the switch of the gate notifications
-of a `decide` group. A listener's signal (`system`) is read only with one of
-those. Two organizations never share a row (the unique key holds the
+of a `decide` group. Two organizations never share a row (the unique key holds the
 organization).
 
 An agent tool takes the administrator's reach through
@@ -433,9 +448,10 @@ permissions.
 **Visibility.** Both events are viewer-checked (`VIEWER_CHECKED_EVENTS`), the
 case events' delivery check: a subscription hears one only when the user its
 run executes as reads the signal (`ctem_signals.user_reads_signal`: an
-administrator, a member of a group with a CTEM right, or the signal's
-recorder). A listener-recorded signal (`recorded_by = system`) reaches only an
-assignment that runs as one of those.
+administrator or a member of a group with a CTEM right, read at delivery
+time, #2441). A delivery dropped because the run-as person lost the right is
+counted (`xtmone_platform_event_object_dropped_total`, label `reason`) and
+logged.
 
 **The trigger.** The assignment form shows a "CTEM signal" tile next to
 "Platform event" (XTM One mode). It saves a `platform_event` trigger: `event`

@@ -5,7 +5,8 @@
 XTM One mode only, no model call. ``POST`` records a signal for the caller,
 idempotent on its dedupe key (the same key again answers ``created: false``
 with ``last_seen_at`` moved). An administrator reads every signal of the
-organization; anyone else reads the signals recorded for them. The rules are
+organization, as does a member of a group with a CTEM view or decide right;
+anyone else gets 403 on every route (#2441). The rules are
 ``services/ctem_signals.py``; the design ``dev-docs/ctem-signals.md``.
 """
 
@@ -68,13 +69,34 @@ def _require_xtm_one() -> None:
 
 
 async def _reader(db: AsyncSession, user: User) -> str | None:
-    """``None`` reads the organization (an administrator, a CTEM view or decide right); else the caller's own signals."""
-    return await ctem_access.signal_reader(db, user)
+    """``None``: the organization's signals (an administrator, a CTEM view or decide right); 403 without a right (#2441)."""
+    try:
+        return await ctem_access.signal_reader(db, user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
 
 
 async def _writer(db: AsyncSession, user: User) -> str | None:
-    """``None`` acts on the organization's signals (an administrator, a CTEM decide right); else the caller's own."""
-    return await ctem_access.signal_writer(db, user)
+    """``None``: acts on the organization's signals (an administrator, a CTEM decide right); else 403 (#2441)."""
+    try:
+        return await ctem_access.signal_writer(db, user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
+
+
+async def _require_ctem_right(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> None:
+    """Every route of the signal API: 403 for a person with no CTEM right (#2441), in XTM One mode."""
+    if settings.is_copilot_like:
+        return  # each route answers its own 404 there
+    reason = await ctem_access.refusal(db, user, write=False)
+    if reason is not None:
+        raise HTTPException(status_code=403, detail=reason)
+
+
+router.dependencies.append(Depends(_require_ctem_right))
 
 
 async def _organization_id(db: AsyncSession) -> uuid.UUID:
@@ -100,15 +122,13 @@ async def list_ctem_signal_paths(
     primary = await get_primary(db)
     counts: dict[str, dict[str, int]] = {}
     activity: dict[str, dict[str, Any]] = {}
-    by_source: dict[str, dict[str, dict[str, Any]]] = {}
     if primary is not None:
         reader = await _reader(db, user)
         counts = await signals.counts_by_path(db, organization_id=primary.id, recorded_by=reader)
         since = datetime.now(UTC) - timedelta(days=30)
         activity = await signals.activity_by_path(db, organization_id=primary.id, recorded_by=reader, since=since)
-        by_source = await signals.activity_by_source(db, organization_id=primary.id, recorded_by=reader, since=since)
     bound = await bound_sources(db, user.id)
-    return {"paths": signals.path_catalog(counts, bound=bound, activity=activity, by_source=by_source)}
+    return {"paths": signals.path_catalog(counts, bound=bound, activity=activity)}
 
 
 class SignalSourceEnable(BaseModel):
@@ -273,8 +293,14 @@ async def record_ctem_signal(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Record one signal for the caller; the same dedupe key again moves ``last_seen_at``."""
+    """Record one signal for the caller; the same dedupe key again moves ``last_seen_at``.
+
+    A CTEM decide right (or an administrator) only (#2441): a view right is read only.
+    """
     _require_xtm_one()
+    reason = await ctem_access.refusal(db, user, write=True)
+    if reason is not None:
+        raise HTTPException(status_code=403, detail=reason)
     organization_id = await _organization_id(db)
     try:
         row, created = await signals.record_signal(
@@ -423,9 +449,6 @@ async def triage_ctem_signals(
     if bool(body.ids) == (body.filter is not None):
         raise HTTPException(status_code=422, detail="Give either ids or a filter")
     organization_id = await _organization_id(db)
-    if await ctem_access.level(db, user) == "view":
-        # A CTEM view right is strictly read only (#1748): no triage.
-        raise HTTPException(status_code=403, detail=ctem_access.VIEW_ONLY_MESSAGE)
     rows = await signals.select_signals(
         db,
         organization_id=organization_id,
