@@ -45,7 +45,6 @@ from ._common import (
     _fmt_payload,
     _fmt_player,
     _fmt_scenario,
-    ui_tenant_id,
     _fmt_team,
     _fmt_vulnerability,
     _merge_fork_candidates,
@@ -66,6 +65,7 @@ from ._common import (
     scoped_safe_request,
     stored_targets_line,
     tool_client,
+    ui_tenant_id,
 )
 from .read_scope import area_scope, count_text, with_scope
 
