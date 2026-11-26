@@ -265,7 +265,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
 
         if await view_of.acts_on_case(db, str(scope), rows, vertical):
             return None
-        return f"Refused: {ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
+        reason = await ctem_access.refusal(db, str(scope), write=True)
+        return f"Refused: {reason or ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
 
     async def _list(
         state: str = "",
@@ -420,9 +421,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
 
                 view = await view_of.viewer_view(db, str(scope), vertical)
                 visible = set(view.open_ids)
-                if await ctem_access.level(db, scope) == "view":
-                    # A CTEM view right is strictly read only (#1748).
-                    return f"Refused: {ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
+                refused = await ctem_access.refusal(db, scope, write=True)
+                if refused is not None:
+                    # Checked at call time for the person the turn or run acts for (#1748, #2441).
+                    return f"Refused: {refused} Nothing was changed."
                 pending = case_loop.PendingEvents()
                 case = await store.create_manual_case(
                     db,

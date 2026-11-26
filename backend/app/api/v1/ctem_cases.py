@@ -124,6 +124,21 @@ def _require_xtm_one() -> None:
         raise HTTPException(status_code=404, detail="CTEM cases are only available in XTM One mode")
 
 
+async def _require_ctem_right(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> None:
+    """Every route of the case API: 403 for a person with no CTEM right (#2441), in XTM One mode."""
+    if settings.is_copilot_like:
+        return  # each route answers its own 404 there
+    reason = await ctem_access.refusal(db, user, write=False)
+    if reason is not None:
+        raise HTTPException(status_code=403, detail=reason)
+
+
+router.dependencies.append(Depends(_require_ctem_right))
+
+
 async def _organization_id(db: AsyncSession) -> uuid.UUID:
     primary = await get_primary(db)
     if primary is None:
@@ -182,9 +197,10 @@ async def list_view(db: AsyncSession, user_id: str, vertical: str) -> view_of.Vi
 
 
 async def require_acts_on(db: AsyncSession, user: User, rows: list[Any], vertical: str) -> None:
-    """403 when *user* sees the case only through a CTEM view right (#1748): read, never change."""
+    """403 unless *user* holds a CTEM decide right or is an administrator (#1748, #2441)."""
     if not await view_of.acts_on_case(db, user, rows, vertical):
-        raise HTTPException(status_code=403, detail=ctem_access.VIEW_ONLY_MESSAGE)
+        reason = await ctem_access.refusal(db, user, write=True)
+        raise HTTPException(status_code=403, detail=reason or ctem_access.VIEW_ONLY_MESSAGE)
 
 
 async def check_owner_sees(db: AsyncSession, rows: list[Any], owner_user_id: uuid.UUID | None, vertical: str) -> None:
@@ -359,9 +375,10 @@ async def split_ctem_case(
     organization_id = await _organization_id(db)
     view = await view_of.viewer_view(db, str(user.id), vertical)
     visible = set(view.open_ids)
-    if await ctem_access.level(db, user) == "view":
-        # A CTEM view right is strictly read only (#1748).
-        raise HTTPException(status_code=403, detail=ctem_access.VIEW_ONLY_MESSAGE)
+    reason = await ctem_access.refusal(db, user, write=True)
+    if reason is not None:
+        # Only a CTEM decide right (or an administrator) changes cases (#1748, #2441).
+        raise HTTPException(status_code=403, detail=reason)
     pending = case_loop.PendingEvents()
     try:
         case = await store.create_manual_case(

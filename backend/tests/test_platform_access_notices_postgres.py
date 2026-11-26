@@ -42,6 +42,7 @@ from app.core.xtm_auth import _kid, _private_key, _public_key_raw
 from app.models.api_key import UserApiKey
 from app.models.app_lock import AppLockSession
 from app.models.audit_log import AuditLog
+from app.models.group import Group, GroupMember
 from app.models.platform_registration import PlatformRegistration
 from app.models.user import User
 from app.services import api_key_access, email, token_store
@@ -142,6 +143,8 @@ async def _database():
         "access_notices",
         tables=[
             User.__table__,
+            Group.__table__,
+            GroupMember.__table__,
             UserApiKey.__table__,
             PlatformRegistration.__table__,
             AuditLog.__table__,

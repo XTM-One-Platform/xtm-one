@@ -371,6 +371,10 @@ async def test_a_failing_benchmark_seed_never_fails_the_boot(monkeypatch, caplog
     from app.services.health import fleet_seed as health_fleet_seed
 
     monkeypatch.setattr(health_fleet_seed, "seed_health_fleet", nothing)
+    # The CTEM access groups (#2441) are seeded on every xtm_one boot.
+    from app.services import ctem_groups
+
+    monkeypatch.setattr(ctem_groups, "seed_ctem_groups", nothing)
     monkeypatch.setattr(template_container_seed, "seed_builtin_template_containers", nothing)
     monkeypatch.setattr(template_asset_seed, "seed_builtin_template_assets", nothing)
     monkeypatch.setattr(evaluation_seed, "seed_builtin_datasets", fails)

@@ -142,7 +142,7 @@ def test_a_phase_lists_five_cases_at_most(monkeypatch):
 
 @pytest.fixture
 def client(monkeypatch):
-    user = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None)
+    user = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None, is_admin=False)
     case = _case("new")
     rows = [_member(case, "v1")]
     reads = {"events": 0}
@@ -165,6 +165,11 @@ def client(monkeypatch):
     monkeypatch.setattr(store, "events_of", _events_of)
     monkeypatch.setattr(view_of, "viewer_view", _viewer)
     monkeypatch.setattr(api_module, "_require_xtm_one", lambda: None)
+
+    async def _view_right(_db, _user_id):
+        return "view"  # no CTEM without a right (#2441)
+
+    monkeypatch.setattr(api_module.ctem_access, "group_right", _view_right)
     app = FastAPI()
     app.include_router(api_module.router, prefix="/api/v1/ctem-cases")
     app.dependency_overrides[deps.get_current_user] = lambda: user

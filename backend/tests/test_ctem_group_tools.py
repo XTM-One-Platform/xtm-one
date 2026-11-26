@@ -173,20 +173,28 @@ async def test_triage_with_a_view_right_is_refused_and_writes_nothing(world: Sim
     assert world.triaged == [] and world.db.commits == 0
 
 
-@pytest.mark.parametrize(("level", "recorded_by_self"), [("decide", False), ("admin", False), (None, True)])
-async def test_triage_reaches_the_organization_with_decide_else_own_signals(
-    world: SimpleNamespace, level: str | None, recorded_by_self: bool
-) -> None:
+@pytest.mark.parametrize("level", ["decide", "admin"])
+async def test_triage_reaches_the_organization_with_decide(world: SimpleNamespace, level: str) -> None:
     person = uuid.uuid4()
     user = SimpleNamespace(id=person, is_admin=level == "admin", name="Decider")
     world.db = _Db(user)
     world.level = level
     answer = json.loads(await _call(str(person), action="dismiss", state="pending"))
     assert answer == {"matched": 1, "counts": {"changed": 1, "skipped": 0}}
-    assert world.selected[0]["recorded_by"] == (str(person) if recorded_by_self else None)
+    assert world.selected[0]["recorded_by"] is None
     _count, kw = world.triaged[0]
     assert kw["action"] == "dismiss" and kw["actor"] == "Decider" and kw["evaluator_id"] == person
     assert world.db.commits == 1
+
+
+async def test_triage_without_a_right_is_refused(world: SimpleNamespace) -> None:
+    # No own-signals fallback (#2441): a person with no CTEM right changes nothing.
+    person = uuid.uuid4()
+    world.db = _Db(SimpleNamespace(id=person, is_admin=False, name="Nobody"))
+    world.level = None
+    answer = await _call(str(person), action="dismiss", state="pending")
+    assert answer.startswith("Refused: You have no CTEM access")
+    assert world.triaged == []
 
 
 async def test_triage_keeps_an_administrator_under_strict_agent_access_to_their_own(world: SimpleNamespace) -> None:

@@ -21644,7 +21644,7 @@
   "No CTEM access": "CTEM アクセスなし",
   "View signals and cases": "シグナルとケースを表示",
   "View and decide": "表示と決定",
-  "Members see only the signals they record themselves.": "メンバーは自分で記録したシグナルのみ表示できます。",
+  "Members have no CTEM access through this group: no CTEM menu, signals, cases, agent tools or triggers.": "このグループはメンバーに CTEM へのアクセスを付与しません。CTEM メニュー、シグナル、ケース、エージェントのツール、トリガーはいずれも利用できません。",
   "Members read every signal and case of the organization, read only.": "メンバーは組織のすべてのシグナルとケースを読み取り専用で表示できます。",
   "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.": "メンバーはシグナルのトリアージ、ケースの変更（担当者、期限、状態、受容リスク）、ケースの決定への回答も行えます。メンバーのエージェントも同じ範囲を持ちます。",
   "Notify the members of case decisions": "ケースの決定をメンバーに通知",

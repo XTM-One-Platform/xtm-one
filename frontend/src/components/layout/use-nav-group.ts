@@ -20,6 +20,7 @@ import {
   usePlatformConfig,
 } from "@/hooks/usePlatformConfig";
 import { useRelaysEnabled } from "@/hooks/api/useRelayApi";
+import { ctemMayView } from "@/lib/ctem-access";
 import { resolveNav, type NavFlags, type NavGroup, type NavLeaf } from "./nav-model";
 import { findNavFamily, findNavGroup } from "./nav-hub";
 
@@ -39,15 +40,18 @@ export function useNavFlags(): NavFlags {
   const dashboardStudio = useFeatureFlag("DASHBOARD_STUDIO");
   const evaluation = useFeatureFlag("EVALUATION");
   const aiAdoption = platformConfig?.features.ai_adoption !== false;
+  const { user, isAdmin } = useAuth();
+  // CTEM only with a right (#2441): an administrator or a CTEM view or decide group.
+  const ctem = xtmOne && ctemMayView(user, isAdmin);
   return useMemo(() => ({
     chat, customVariables, relays, xtmOne, aiAdoption, aiEnabled, aiLicensed,
     deepInvestigation, health, videoStudio, dashboardStudio, evaluation,
     // Intents are XTM One domain content: no row or hub card in Copilot mode (#445).
     intents: xtmOne,
-    // The CTEM cases list is XTM One domain content: no row in Copilot mode (#1135).
-    ctemCases: xtmOne,
+    // The CTEM section is XTM One domain content (#1135), for a person with a CTEM right only (#2441).
+    ctemCases: ctem,
   }), [chat, customVariables, relays, xtmOne, aiAdoption, aiEnabled, aiLicensed,
-    deepInvestigation, health, videoStudio, dashboardStudio, evaluation]);
+    deepInvestigation, health, videoStudio, dashboardStudio, evaluation, ctem]);
 }
 
 /** The group `id` as the current reader resolves it. */
