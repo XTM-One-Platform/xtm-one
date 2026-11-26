@@ -1385,6 +1385,7 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
     view.judged, view.built_at = set(members), datetime.now(UTC)
     view.opencrq = await _reads_opencrq(db, user_id)
     view.opencti = await _reads_opencti(db, user_id)
+    view.openaev = await _reads_openaev(db, user_id)
     lap("access")
     for issue in [*read.closed, *read.looked_up]:
         view.issues[issue.member_id] = issue
@@ -1435,6 +1436,7 @@ async def read_case_view(db: AsyncSession, user_id: str, vertical: str, members:
     # One session: the two credential checks run one after the other, never concurrently.
     view.opencrq = await _reads_opencrq(db, user_id)
     view.opencti = await _reads_opencti(db, user_id)
+    view.openaev = await _reads_openaev(db, user_id)
     for issue in [*out.closed, *out.looked_up]:
         view.issues[issue.member_id] = issue
     for issue in out.issues:
@@ -1509,6 +1511,16 @@ async def _reads_opencti(db: AsyncSession, user_id: str) -> bool:
         return await _user_creds(db, user_id, "opencti") is not None
     except Exception as exc:  # unreadable is not readable: the package stays restricted
         logger.info("CTEM cases: OpenCTI access unreadable for %s: %s", user_id, format_exception_message(exc))
+        return False
+
+
+async def _reads_openaev(db: AsyncSession, user_id: str) -> bool:
+    """Whether *user_id* reads OpenAEV with their own credentials (#2468): the gate on the
+    name, id and link of a case's validation scenario."""
+    try:
+        return await _user_creds(db, user_id, "openaev") is not None
+    except Exception as exc:  # unreadable is not readable: the scenario stays restricted
+        logger.info("CTEM cases: OpenAEV access unreadable for %s: %s", user_id, format_exception_message(exc))
         return False
 
 

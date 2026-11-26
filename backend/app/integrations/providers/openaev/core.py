@@ -65,6 +65,7 @@ from ._common import (
     scoped_safe_request,
     stored_targets_line,
     tool_client,
+    ui_tenant_id,
 )
 from .read_scope import area_scope, count_text, with_scope
 
@@ -687,7 +688,7 @@ def register_core(
         items = data.get("content", [])
         return format_entity_list(
             items,
-            partial(_fmt_scenario, base_url=base_url),
+            partial(_fmt_scenario, base_url=base_url, tenant_id=await ui_tenant_id(hdrs)),
             noun="scenario",
             total=data.get("totalElements"),
             empty_msg=f"No scenarios found{' for ' + repr(search) if search else ''}.",
@@ -730,7 +731,7 @@ def register_core(
                     except ValueError:
                         count = None
                 data = {**data, SCENARIO_INJECT_COUNT_KEY: count}
-        return _fmt_scenario(data, base_url)
+        return _fmt_scenario(data, base_url, await ui_tenant_id(hdrs))
 
     # ── 12. Create scenario ───────────────────────────────────────────
 
@@ -839,7 +840,7 @@ def register_core(
             return err
         resp = _require_response(resp)
         data = resp.json()
-        return f"Scenario {scenario_id} updated.\n" + _fmt_scenario(data, base_url)
+        return f"Scenario {scenario_id} updated.\n" + _fmt_scenario(data, base_url, await ui_tenant_id(hdrs))
 
     # ── 14. Delete scenario ───────────────────────────────────────────
 
