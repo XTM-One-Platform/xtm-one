@@ -38,6 +38,7 @@ recording points (:func:`excluded_sources`) record nothing from it there.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import select
@@ -48,7 +49,7 @@ ATTACK_SURFACE_PROVIDERS: tuple[str, ...] = ("shodan", "gti")
 EVIDENCE_HEALTH_PROVIDERS: tuple[str, ...] = ("opencrq",)
 
 SOURCE_KINDS: tuple[str, ...] = ("listener", "pass", "pir_playbook")
-PATH_STATUSES: tuple[str, ...] = ("connected", "off", "not_connected", "agents_api")
+PATH_STATUSES: tuple[str, ...] = ("connected", "error", "not_set_up", "off", "not_connected", "agents_api")
 
 
 class BoundSources(set[tuple[str, str]]):
@@ -59,6 +60,10 @@ class BoundSources(set[tuple[str, str]]):
         self.off: set[tuple[str, str]] = set()
         #: Per trigger path, the ``(provider, kind)`` an administrator excluded from it (#1445).
         self.excluded: dict[str, set[tuple[str, str]]] = {}
+        #: The sources XTM One provisions whose provider is connected but which feed nothing yet (#2434).
+        self.not_set_up: set[tuple[str, str]] = set()
+        #: Per provisioned source, the integrations on which it is in error (#2434, UX round 1 on #2442).
+        self.error: dict[tuple[str, str], int] = {}
 
 
 def source_key(provider: str, kind: str) -> str:
@@ -156,11 +161,17 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
 
 
 def path_status(sources: list[dict[str, Any]]) -> str:
-    """``agents_api`` with no source, ``connected`` when one is bound, ``off`` when one is off, else ``not_connected``."""
+    """``agents_api`` with no source; ``error`` when a source is in error; ``connected`` when one is bound;
+    ``not_set_up`` when a source of a connected provider is not set up; ``off`` when one is off; else
+    ``not_connected``. One status per path, the one its sources say (UX round 1 on #2442, B1)."""
     if not sources:
         return "agents_api"
+    if any(s.get("error_count") for s in sources):
+        return "error"
     if any(s.get("bound") for s in sources):
         return "connected"
+    if any(s.get("not_set_up") for s in sources):
+        return "not_set_up"
     return "off" if any(s.get("off") for s in sources) else "not_connected"
 
 
@@ -170,6 +181,8 @@ def path_sources(path: str, bound: set[tuple[str, str]] | None) -> list[dict[str
     known = bound or set()
     off = getattr(bound, "off", None) or set()
     excluded = (getattr(bound, "excluded", None) or {}).get(path, set())
+    not_set_up = getattr(bound, "not_set_up", None) or set()
+    errors = getattr(bound, "error", None) or {}
     out: list[dict[str, Any]] = []
     for s in PATH_SOURCES.get(path, ()):
         pair = (s.provider, s.kind)
@@ -180,6 +193,10 @@ def path_sources(path: str, bound: set[tuple[str, str]] | None) -> list[dict[str
                 "event": s.event,
                 "bound": pair in known and pair not in excluded,
                 "off": pair not in known and pair in off,
+                # A source XTM One provisions, its provider connected, switched on nowhere yet (#2434).
+                "not_set_up": pair not in known and pair in not_set_up,
+                # The integrations on which this provisioned source is in error (#2434).
+                "error_count": int(errors.get(pair, 0)),
                 "excluded": pair in excluded,
                 # Bound before the exclusion: an excluded source of a connected provider still reads connected.
                 "available": pair in known,
@@ -305,8 +322,12 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
     # exist and the last check passed (#2434): a connected integration alone feeds nothing.
     for pair in PROVISIONED_PAIRS:
         bound.discard(pair)
-    provisioned = await provisioned_pairs(db, connected)
+    provisioned = await provisioned_pairs(db, connected, errors=bound.error)
     bound.update(provisioned)
+    # A connected provider whose provisioned source feeds nothing and is in no error: Not set up, never Not connected.
+    bound.not_set_up = {
+        pair for pair in PROVISIONED_PAIRS if connected.get(pair[0]) and pair not in bound and pair not in bound.error
+    }
     return bound
 
 
@@ -331,12 +352,17 @@ def provisioned_pair(provider: str, state: Any) -> tuple[str, str] | None:
     return None
 
 
-async def provisioned_pairs(db: AsyncSession, connected: dict[str, set[str]]) -> set[tuple[str, str]]:
+async def provisioned_pairs(
+    db: AsyncSession, connected: dict[str, set[str]], *, errors: dict[tuple[str, str], int] | None = None
+) -> set[tuple[str, str]]:
     """The provisioned sources on the caller's connected integrations: platform sources, then the
-    assignments that still hold a provisioned trigger until the migration moves them (#2434)."""
+    assignments that still hold a provisioned trigger until the migration moves them (#2434).
+
+    *errors*, when given, receives per source the number of its integrations whose platform source
+    reads ``error`` (``ctem_platform_sources.status_of``: enabled and not provisioned, or a refused enable)."""
     from app.models.assignment import Assignment
     from app.models.ctem_signal_source import CtemSignalSource
-    from app.services.ctem_platform_sources import is_connected
+    from app.services.ctem_platform_sources import is_connected, status_of
     from app.services.openaev_trigger_provisioning import STATE_KEY as OPENAEV_STATE_KEY
     from app.services.opencti_trigger_provisioning import STATE_KEY as OPENCTI_STATE_KEY
 
@@ -350,12 +376,17 @@ async def provisioned_pairs(db: AsyncSession, connected: dict[str, set[str]]) ->
                 CtemSignalSource.kind,
                 CtemSignalSource.integration_id,
                 CtemSignalSource.state,
-            ).where(CtemSignalSource.enabled.is_(True))
+                CtemSignalSource.enabled,
+            )
         )
     ).all()
-    for provider, kind, integration_id, state in rows:
-        if str(integration_id) in connected.get(provider, set()) and is_connected(state):
+    for provider, kind, integration_id, state, enabled in rows:
+        if str(integration_id) not in connected.get(provider, set()):
+            continue
+        if enabled and is_connected(state):
             out.add((provider, kind))
+        elif errors is not None and status_of(SimpleNamespace(enabled=enabled, state=state))[0] == "error":
+            errors[(provider, kind)] = errors.get((provider, kind), 0) + 1
     configs = (
         await db.execute(
             select(Assignment.trigger_config).where(

@@ -131,10 +131,12 @@ export function useCtemCaseSignals(caseId: string | undefined) {
 }
 
 /**
- * Connected (a bound source), off (a pass whose provider is connected but which does not run, #1344),
- * not connected (a source exists, no integration of it is connected) or agents and API only (no source).
+ * Connected (a bound source), error (a source XTM One provisions is in error, #2434), not set up (a source
+ * XTM One provisions, its provider connected, switched on nowhere), off (a pass whose provider is connected
+ * but which does not run, #1344), not connected (no integration of a source's provider is connected) or
+ * agents and API only (no source).
  */
-export type CtemSignalPathStatus = "connected" | "off" | "not_connected" | "agents_api";
+export type CtemSignalPathStatus = "connected" | "error" | "not_set_up" | "off" | "not_connected" | "agents_api";
 
 /** One way a trigger path is fired (#1189): an integration listener, a scheduled pass or the OpenCTI PIR playbook. */
 export interface CtemSignalPathSource {
@@ -146,6 +148,10 @@ export interface CtemSignalPathSource {
   bound: boolean;
   /** A pass whose provider is connected but which does not run: turned off, or no integration it can pick (#1344). */
   off?: boolean;
+  /** A source XTM One provisions, its provider connected, switched on on none of its integrations (#2434). */
+  not_set_up?: boolean;
+  /** The integrations on which this source XTM One provisions is in error (#2434). */
+  error_count?: number;
   /** Taken off this path by an administrator (#1445): never bound here, it still feeds its other paths. */
   excluded?: boolean;
   /** Bound before the exclusion: the source is connected and would feed the path if not excluded (#1445). */

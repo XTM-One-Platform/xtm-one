@@ -21885,5 +21885,7 @@
   "Fill {fields} in Settings > Organization: the source is not provisioned without them.": "Fill {fields} in Settings > Organization: the source is not provisioned without them.",
   "The objects could not be removed from the source platform. The next check tries again: {detail}": "The objects could not be removed from the source platform. The next check tries again: {detail}",
   "Not provisioned yet. The next check provisions it.": "Not provisioned yet. The next check provisions it.",
-  "The source platform refused: {detail}": "The source platform refused: {detail}"
+  "The source platform refused: {detail}": "The source platform refused: {detail}",
+  "{count, plural, one {# source in error} other {# sources in error}}": "{count, plural, one {# source in error} other {# sources in error}}",
+  "The XTM One user this source provisions as. XTM One uses that user's {integration} connection to create the objects that deliver this source (a notifier and its triggers, or a playbook). If that user is deactivated or loses the connection, the source turns to Error and stops delivering until you pick another user.": "The XTM One user this source provisions as. XTM One uses that user's {integration} connection to create the objects that deliver this source (a notifier and its triggers, or a playbook). If that user is deactivated or loses the connection, the source turns to Error and stops delivering until you pick another user."
 }

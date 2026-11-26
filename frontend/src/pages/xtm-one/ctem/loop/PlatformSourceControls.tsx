@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { userSelectOption } from "@/components/ui/entity-select-options";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { SettingsField, settingsFieldHintId } from "@/components/ui/settings-form";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { useUsers } from "@/hooks/api/useAuthApi";
@@ -63,7 +64,6 @@ export function PlatformSourceEnableDialog({
   const [runAs, setRunAs] = useState<string>("");
   const [refusal, setRefusal] = useState<string | null>(null);
   const fieldId = useId();
-  const errorId = `${fieldId}-error`;
 
   useEffect(() => {
     setRunAs(source?.run_as_user_id ?? "");
@@ -96,32 +96,34 @@ export function PlatformSourceEnableDialog({
             })}
           </DialogDescription>
         </DialogHeader>
-        <DialogBody className="space-y-1.5">
-          <label htmlFor={fieldId} className="content-compact font-medium">
-            {t_i18n("Run as")}
-          </label>
-          <SearchableSelect
+        <DialogBody>
+          {/* The run-as is the only field and Turn on needs it: marked required, its info bubble says who it is (#2442 UX r1 B2). */}
+          <SettingsField
             id={fieldId}
-            aria-label={t_i18n("Run as")}
-            aria-invalid={refusal ? true : undefined}
-            aria-describedby={refusal ? errorId : undefined}
-            options={(users ?? []).filter((u) => u.is_active).map((u) => userSelectOption(u))}
-            value={runAs}
-            onValueChange={(value) => {
-              setRunAs(value);
-              setRefusal(null);
-            }}
-            disabled={enable.isPending}
-            placeholder={t_i18n("Search users...")}
-          />
-          <p className="content-caption text-default-secondary">
-            {t_i18n("Pick a user with a connected integration to this platform and the rights to create its triggers.")}
-          </p>
-          {refusal && (
-            <p id={errorId} role="alert" className="content-compact text-feedback-error-primary" data-testid="ctem-platform-source-refusal">
-              {refusal}
-            </p>
-          )}
+            label={t_i18n("Run as")}
+            required
+            info={t_i18n(
+              "The XTM One user this source provisions as. XTM One uses that user's {integration} connection to create the objects that deliver this source (a notifier and its triggers, or a playbook). If that user is deactivated or loses the connection, the source turns to Error and stops delivering until you pick another user.",
+              { integration: source?.integration_name ?? "" },
+            )}
+            helper={t_i18n("Pick a user with a connected integration to this platform and the rights to create its triggers.")}
+            error={refusal ? <span data-testid="ctem-platform-source-refusal">{refusal}</span> : undefined}
+          >
+            <SearchableSelect
+              id={fieldId}
+              aria-label={t_i18n("Run as")}
+              aria-invalid={refusal ? true : undefined}
+              aria-describedby={settingsFieldHintId(fieldId)}
+              options={(users ?? []).filter((u) => u.is_active).map((u) => userSelectOption(u))}
+              value={runAs}
+              onValueChange={(value) => {
+                setRunAs(value);
+                setRefusal(null);
+              }}
+              disabled={enable.isPending}
+              placeholder={t_i18n("Search users...")}
+            />
+          </SettingsField>
         </DialogBody>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} disabled={enable.isPending}>

@@ -157,11 +157,19 @@ listener row of section 2 has no source row.
 | `pass` | a scheduled pass: attack surface (Shodan, GTI; paths 5, 6, 7), evidence health (OpenCRQ; paths 9, 12) | the pass runs on a connected integration of the provider; `off` (never `bound`) when the provider is connected but the pass is off or names none of its integrations |
 | `pir_playbook` | the OpenCTI PIR playbook (CTEM-05), delivered through the OpenCTI listener (paths 1, 2) | an enabled platform source holds a provisioned playbook whose last check passed (section 4bis) |
 
-`status`: `connected` (one source bound), `off` (none bound, one pass `off`:
-its provider is connected, the pass does not run; neutral tone, action "Turn
-on" to its card in Settings > Organization), `not_connected` (a source exists,
-none bound or off: no integration of the provider is connected), `agents_api`
-(no automatic source: agents and the API only, never read as connected).
+`status`, one per path, the one its sources say (UX round 1 on #2442):
+`error` (a source XTM One provisions is in error on one of its integrations,
+`error_count` on the source; critical tone, the chip says "N sources in
+error"), `connected` (one source bound), `not_set_up` (none bound, a source
+XTM One provisions has its provider connected but is switched on nowhere,
+`not_set_up` on the source; neutral tone, action "Set up"), `off` (none
+bound, one pass `off`: its provider is connected, the pass does not run;
+neutral tone, action "Turn on" to its card in Settings > Organization),
+`not_connected` (a source exists, none bound, off or not set up: no
+integration of the provider is connected), `agents_api` (no automatic source:
+agents and the API only, never read as connected). In the path panel the
+source row of a provisioned source reads its platform status (Off, Connected
+or Error), the same word as its lines.
 
 The evidence health pass is on by default (#1344): `evidence_health.enabled`
 is unset until an administrator saves it. Unset (or the legacy stored default,

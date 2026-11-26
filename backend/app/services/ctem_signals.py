@@ -552,9 +552,10 @@ def path_catalog(
     path that is neither reads "not configured", never 0 (CTEM-30, #937).
 
     Every path also carries ``description`` and its ``sources``
-    (``ctem_signal_sources``), each ``bound`` per *bound*, and ``status``:
-    ``connected``, ``not_connected`` or ``agents_api`` (no source: agents and
-    the API only, never connected). With *activity* (:func:`activity_by_path`):
+    (``ctem_signal_sources``), each ``bound`` per *bound*, and ``status``
+    (``ctem_signal_sources.path_status``): ``error``, ``connected``,
+    ``not_set_up``, ``off``, ``not_connected`` or ``agents_api`` (no source:
+    agents and the API only, never connected). With *activity* (:func:`activity_by_path`):
     ``count_30d`` and ``last_signal_at`` (#1189).
     """
     from app.services.ctem_signal_listeners import paths_with_listener

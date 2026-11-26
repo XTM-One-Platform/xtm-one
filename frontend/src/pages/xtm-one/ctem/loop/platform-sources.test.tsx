@@ -127,6 +127,46 @@ describe("the path panel (#2434)", () => {
     expect(screen.getByLabelText("Run as").getAttribute("aria-invalid")).toBe("true");
   });
 
+  it("marks Run as required and explains it in an info bubble (UX round 1 on #2442, B2)", () => {
+    open();
+    fireEvent.click(screen.getByTestId("ctem-path-source-set-up"));
+    const dialog = screen.getByTestId("ctem-platform-source-enable");
+    expect(within(dialog).getByLabelText("Required").textContent).toBe("*");
+    expect(within(dialog).getByLabelText("About this field")).toBeTruthy();
+  });
+
+  it("a source in error reads Error on its row and the path says how many sources are in error (B1)", () => {
+    const errored: CtemSignalPath = {
+      ...PROVEN,
+      status: "error",
+      sources: [{ provider: "openaev", kind: "listener", event: "A simulation proves an exposure", bound: false, error_count: 1 }],
+    };
+    state.sources = [source({ status: "error", reason_code: "provider_error", reason_params: { detail: "unreachable" } })];
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalPathSourcesSheet path={errored} paths={[errored]} connected={new Set(["openaev"])} onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("ctem-path-sources-status").textContent).toBe("1 source in error");
+    expect(screen.getByTestId("ctem-path-source-state").textContent).toBe("Error");
+    expect(screen.getByTestId("ctem-platform-source-status").textContent).toBe("Error");
+  });
+
+  it("a connected provider with its source off reads Not set up on the path, never Not connected (B1)", () => {
+    const off: CtemSignalPath = {
+      ...PROVEN,
+      status: "not_set_up",
+      sources: [{ provider: "openaev", kind: "listener", event: "A simulation proves an exposure", bound: false, not_set_up: true }],
+    };
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalPathSourcesSheet path={off} paths={[off]} connected={new Set(["openaev"])} onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("ctem-path-sources-status").textContent).toBe("Not set up");
+    expect(screen.getByTestId("ctem-path-source-state").textContent).toBe("Off");
+  });
+
   it("an enabled source shows its run-as and status; the switch off disables it", () => {
     state.sources = [source({ id: "s-1", enabled: true, run_as_user_id: "u-1", status: "connected" })];
     open();

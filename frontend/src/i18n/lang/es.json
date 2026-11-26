@@ -21885,5 +21885,7 @@
   "Fill {fields} in Settings > Organization: the source is not provisioned without them.": "Complete {fields} en Configuración > Organización: la fuente no se aprovisiona sin ellos.",
   "The objects could not be removed from the source platform. The next check tries again: {detail}": "No se pudieron eliminar los objetos de la plataforma de origen. La próxima comprobación lo vuelve a intentar: {detail}",
   "Not provisioned yet. The next check provisions it.": "Aún no aprovisionada. La próxima comprobación la aprovisiona.",
-  "The source platform refused: {detail}": "La plataforma de origen se negó: {detail}"
+  "The source platform refused: {detail}": "La plataforma de origen se negó: {detail}",
+  "{count, plural, one {# source in error} other {# sources in error}}": "{count, plural, one {# fuente con error} other {# fuentes con error}}",
+  "The XTM One user this source provisions as. XTM One uses that user's {integration} connection to create the objects that deliver this source (a notifier and its triggers, or a playbook). If that user is deactivated or loses the connection, the source turns to Error and stops delivering until you pick another user.": "El usuario de XTM One con el que se aprovisiona esta fuente. XTM One usa la conexión {integration} de ese usuario para crear los objetos que entregan esta fuente (un notificador y sus disparadores, o un playbook). Si ese usuario se desactiva o pierde la conexión, la fuente pasa a Error y deja de entregar hasta que elija otro usuario."
 }

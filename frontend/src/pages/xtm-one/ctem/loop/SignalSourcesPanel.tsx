@@ -51,8 +51,10 @@ import {
   LENS_ICON,
   PATH_ICON,
   PATH_STATUS_LABEL,
+  PATH_STATUS_ORDER,
   PATH_STATUS_TONE,
   pathStatus,
+  pathStatusLabel,
   SOURCE_KIND_LABEL,
   connectedProviders,
   sourceState,
@@ -61,8 +63,13 @@ import {
 
 const LENSES = ["inside", "outside", "world"] as const;
 
-/** The status order of the sort and the filter: connected first, agents-only last. */
-const STATUS_ORDER = ["connected", "off", "not_connected", "agents_api"] as const;
+/** The state word after a source in the folded line; bound and not connected say none. @i18n-keys */
+const COMPACT_STATE_WORD = {
+  error: "Error",
+  off: "Off",
+  not_set_up: "Not set up",
+  excluded: "Not used here",
+} as const satisfies Partial<Record<ReturnType<typeof sourceState>, string>>;
 
 /** The lens headings and what each sees. @i18n-keys */
 const LENS_HEADING = { inside: "Inside", outside: "Outside", world: "World" } as const;
@@ -109,6 +116,7 @@ function SourceItem({ source, connected }: { source: CtemSignalPathSource; conne
         {source.off && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Off")}</span>}
         {state === "excluded" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not used here")}</span>}
         {state === "not_set_up" && <span className="shrink-0 content-caption text-default-secondary">{t_i18n("Not set up")}</span>}
+        {state === "error" && <span className="shrink-0 content-caption text-feedback-error-primary">{t_i18n("Error")}</span>}
       </span>
     </Tip>
   );
@@ -188,13 +196,8 @@ function SourceList({
   if (compact) {
     const stateWord = (s: CtemSignalPathSource) => {
       const state = sourceState(s, connected);
-      return state === "off"
-        ? `, ${t_i18n("Off")}`
-        : state === "not_set_up"
-          ? `, ${t_i18n("Not set up")}`
-          : state === "excluded"
-            ? `, ${t_i18n("Not used here")}`
-            : "";
+      const word = state in COMPACT_STATE_WORD ? COMPACT_STATE_WORD[state as keyof typeof COMPACT_STATE_WORD] : null;
+      return word ? `, ${t_i18n(word)}` : "";
     };
     const label = (s: CtemSignalPathSource) => `${sourceName(s)} (${t_i18n(SOURCE_KIND_LABEL[s.kind])}${stateWord(s)})`;
     const names = shown.map(label).join(", ");
@@ -290,10 +293,10 @@ export function SignalSourcesPanel() {
       key: "status",
       header: "Status",
       width: 168,
-      sortValue: (path) => STATUS_ORDER.indexOf(pathStatus(path)),
+      sortValue: (path) => PATH_STATUS_ORDER.indexOf(pathStatus(path)),
       cell: (path) => {
         const status = pathStatus(path);
-        return <Chip label={t_i18n(PATH_STATUS_LABEL[status])} severity={PATH_STATUS_TONE[status]} data-testid="ctem-signal-sources-status" />;
+        return <Chip label={pathStatusLabel(path, t_i18n)} severity={PATH_STATUS_TONE[status]} data-testid="ctem-signal-sources-status" />;
       },
     },
     {
@@ -383,7 +386,7 @@ export function SignalSourcesPanel() {
             key: "status",
             label: "Status",
             values: (path) => [pathStatus(path)],
-            options: STATUS_ORDER.map((s) => ({ value: s, label: t_i18n(PATH_STATUS_LABEL[s]) })),
+            options: PATH_STATUS_ORDER.map((s) => ({ value: s, label: t_i18n(PATH_STATUS_LABEL[s]) })),
             // Ordinal scale: connected first, agents-only last.
             ordered: true,
           },
