@@ -646,6 +646,10 @@ _SHARE_COLUMNS = frozenset({"shared_group_ids", "shared_user_ids"})
 # author thought of: variable resolution matched ``shared_group_ids`` and never
 # ``shared_user_ids``.
 _SHARE_COLUMN_READS_ALLOWED: dict[tuple[str, str], str] = {
+    ("services/agent_bindings.py", "unlink_agents_shared_with_group"): (
+        "the agents granted to a group some members just left, to sweep the "
+        "references those members' agents hold; decides no visibility"
+    ),
     ("services/intent_binding_writes.py", "agent_shared_scope_filter"): (
         "whether an agent is shared at all, never with whom"
     ),

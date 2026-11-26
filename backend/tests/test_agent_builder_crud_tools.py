@@ -2829,11 +2829,17 @@ async def test_get_prompt_returns_full_content(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+def _builder_agent(**fields) -> SimpleNamespace:
+    """An agent row as update_agent reads it: ``user_id`` and the share lists
+    are what ``agent_audience()`` compares before and after the edit."""
+    return SimpleNamespace(**{"user_id": None, "shared_group_ids": None, "shared_user_ids": None, **fields})
+
+
 @pytest.mark.asyncio
 async def test_update_agent_company_managed_requires_admin(monkeypatch):
     """A non-admin caller must NOT be able to flip an agent company-managed via
     the builder — even when they can otherwise edit the agent."""
-    agent = SimpleNamespace(id=uuid.uuid4(), name="Helper", is_company_managed=False)
+    agent = _builder_agent(id=uuid.uuid4(), name="Helper", is_company_managed=False)
     _stub_writable_agent(monkeypatch, agent=agent)
     _admin_caller(monkeypatch, is_admin=False)
 
@@ -2864,7 +2870,7 @@ async def test_update_agent_company_managed_admin_toggles(monkeypatch):
     """An admin flips the agent company-managed; the shared toggle helper is
     invoked with the resolved want-state + owner fallback and the change
     commits."""
-    agent = SimpleNamespace(id=uuid.uuid4(), name="Helper", is_company_managed=False)
+    agent = _builder_agent(id=uuid.uuid4(), name="Helper", is_company_managed=False)
     _stub_writable_agent(monkeypatch, agent=agent)
     admin = _admin_caller(monkeypatch, is_admin=True)
 
@@ -2898,7 +2904,7 @@ async def test_update_agent_company_managed_admin_toggles(monkeypatch):
 async def test_update_agent_company_managed_noop_when_unchanged(monkeypatch):
     """Re-asserting the current value is a no-op: neither the admin gate nor the
     toggle helper is reached, and nothing commits."""
-    agent = SimpleNamespace(id=uuid.uuid4(), name="Helper", is_company_managed=True)
+    agent = _builder_agent(id=uuid.uuid4(), name="Helper", is_company_managed=True)
     _stub_writable_agent(monkeypatch, agent=agent)
 
     async def _toggle_must_not_run(*_a, **_k):
@@ -2936,7 +2942,7 @@ async def test_update_agent_accepts_workset_and_refuses_unknown_builtin(monkeypa
     """Drive the builder end to end: `builtin_tool_ids="workset"` is accepted
     and stored, while an unknown id is refused before any write. Pins the
     allow-list change on the real validation path, not just the tuple."""
-    agent = SimpleNamespace(
+    agent = _builder_agent(
         id=uuid.uuid4(),
         name="Helper",
         is_company_managed=False,
@@ -3005,7 +3011,7 @@ def _builder_for(monkeypatch, agent):
 @pytest.mark.asyncio
 async def test_update_agent_sets_the_consolidated_groups(monkeypatch):
     """The groups the API refused (#8827) are accepted and stored as given."""
-    agent = SimpleNamespace(id=uuid.uuid4(), name="Helper", is_company_managed=False, builtin_tool_ids=[])
+    agent = _builder_agent(id=uuid.uuid4(), name="Helper", is_company_managed=False, builtin_tool_ids=[])
     executor, _created = _builder_for(monkeypatch, agent)
 
     result = await _call(
@@ -3024,7 +3030,7 @@ async def test_update_agent_sets_the_consolidated_groups(monkeypatch):
 async def test_update_agent_add_mode_keeps_every_group(monkeypatch):
     """The regression: adding one group in 'add' mode keeps all the others."""
     every = [g for g in _every_group() if g != "observability"]
-    agent = SimpleNamespace(id=uuid.uuid4(), name="Helper", is_company_managed=False, builtin_tool_ids=list(every))
+    agent = _builder_agent(id=uuid.uuid4(), name="Helper", is_company_managed=False, builtin_tool_ids=list(every))
     executor, _created = _builder_for(monkeypatch, agent)
 
     result = await _call(
@@ -3043,7 +3049,7 @@ async def test_update_agent_add_mode_keeps_every_group(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_update_agent_add_mode_does_not_duplicate_a_group_through_its_former_id(monkeypatch):
-    agent = SimpleNamespace(id=uuid.uuid4(), name="Helper", is_company_managed=False, builtin_tool_ids=["coordination"])
+    agent = _builder_agent(id=uuid.uuid4(), name="Helper", is_company_managed=False, builtin_tool_ids=["coordination"])
     executor, _created = _builder_for(monkeypatch, agent)
 
     result = await _call(
@@ -3058,7 +3064,7 @@ async def test_update_agent_add_mode_does_not_duplicate_a_group_through_its_form
 @pytest.mark.asyncio
 async def test_update_agent_replace_mode_names_the_groups_removed(monkeypatch):
     every = _every_group()
-    agent = SimpleNamespace(id=uuid.uuid4(), name="Helper", is_company_managed=False, builtin_tool_ids=list(every))
+    agent = _builder_agent(id=uuid.uuid4(), name="Helper", is_company_managed=False, builtin_tool_ids=list(every))
     executor, _created = _builder_for(monkeypatch, agent)
 
     result = await _call(executor, "update_agent", agent_id=str(agent.id), builtin_tool_ids="observability")
@@ -3071,7 +3077,7 @@ async def test_update_agent_replace_mode_names_the_groups_removed(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_update_agent_remove_mode_drops_a_group_and_refuses_clear(monkeypatch):
-    agent = SimpleNamespace(
+    agent = _builder_agent(
         id=uuid.uuid4(), name="Helper", is_company_managed=False, builtin_tool_ids=["files", "web", "cti"]
     )
     executor, _created = _builder_for(monkeypatch, agent)
