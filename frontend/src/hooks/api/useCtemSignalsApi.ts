@@ -174,6 +174,71 @@ export interface CtemSignalPath {
   last_signal_at?: string | null;
 }
 
+/** A source XTM One provisions in its platform: off, connected, or in error with its reason (#2434). */
+export type CtemPlatformSourceStatus = "off" | "connected" | "error";
+
+/** Why a platform source cannot run, as data: the UI renders the code, never the English `reason` (#2434). */
+export type CtemPlatformSourceReasonCode =
+  | "no_run_as"
+  | "run_as_inactive"
+  | "run_as_no_integration"
+  | "no_webhook_secret"
+  | "no_token"
+  | "integration_not_found"
+  | "organization_context_missing"
+  | "objects_not_removed"
+  | "not_provisioned_yet"
+  | "provider_error";
+
+/** One platform signal source on one integration (`GET /ctem-signals/sources`, dev-docs/ctem-signals.md 4bis). */
+export interface CtemPlatformSource {
+  /** `null` until it is switched on once. */
+  id: string | null;
+  provider: string;
+  kind: "listener" | "pir_playbook";
+  integration_id: string;
+  integration_name: string;
+  integration_connected: boolean;
+  enabled: boolean;
+  run_as_user_id: string | null;
+  status: CtemPlatformSourceStatus;
+  reason: string | null;
+  reason_code: CtemPlatformSourceReasonCode | null;
+  reason_params: Record<string, string>;
+  checked_at: string | null;
+}
+
+/** The platform signal sources, administrators only (the API answers 403 to anyone else). */
+export function useCtemPlatformSources(enabled = true) {
+  return useQuery<{ sources: CtemPlatformSource[] }>({
+    queryKey: ["ctem-signals", "platform-sources"],
+    queryFn: () => api.get("/ctem-signals/sources"),
+    enabled,
+    retry: false,
+    throwOnError: false,
+  });
+}
+
+/** Switch a source on as a run-as user: provisioned at once, or refused with `detail: {code, params, message}`. */
+export function useEnableCtemPlatformSource() {
+  const qc = useQueryClient();
+  return useMutation<CtemPlatformSource, Error, { provider: string; kind: string; integration_id: string; run_as_user_id: string }>({
+    mutationFn: (body) => api.post("/ctem-signals/sources/enable", body),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** Switch a source off: what it provisioned in the source platform is removed. */
+export function useDisableCtemPlatformSource() {
+  const qc = useQueryClient();
+  return useMutation<CtemPlatformSource, Error, string>({
+    mutationFn: (id) => api.post(`/ctem-signals/sources/${encodeURIComponent(id)}/disable`, {}),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
 /** The 12 trigger paths with their counts, for the Discovery stage's signals card. */
 export function useCtemSignalPaths() {
   return useQuery<{ paths: CtemSignalPath[] }>({

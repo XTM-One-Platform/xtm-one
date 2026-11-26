@@ -509,8 +509,38 @@ async def replaced_by_source(db: Any, provider: str, state: Any) -> bool:
     return row is not None and bool(row.enabled) and is_connected(row.state)
 
 
+#: How a reason reads as data (code, params), so the UI renders it in the reader's language and
+#: never shows the platform's English line as is; first match wins, the rest is the source
+#: platform's own answer (``provider_error``, its text a parameter).
+_REASON_CODES: tuple[tuple[str, str], ...] = (
+    (r"^no run-as user", "no_run_as"),
+    (r"^the run-as user is deactivated", "run_as_inactive"),
+    (r"^The run-as user has no connected (?P<provider>.+?) integration", "run_as_no_integration"),
+    (r"webhook_secret", "no_webhook_secret"),
+    (r"^no .+ token could be resolved", "no_token"),
+    (r"(integration .+ not found$|^no .+ integration )", "integration_not_found"),
+    (r"^organization context: (?P<fields>.+?) not filled", "organization_context_missing"),
+    (r"^objects not removed: (?P<detail>.+)$", "objects_not_removed"),
+    (r"^not provisioned", "not_provisioned_yet"),
+)
+
+
+def reason_code(reason: str | None) -> tuple[str | None, dict[str, str]]:
+    """``(code, params)`` of a refusal or error reason; ``(None, {})`` when there is none."""
+    import re
+
+    if not reason:
+        return None, {}
+    for pattern, code in _REASON_CODES:
+        found = re.search(pattern, reason)
+        if found:
+            return code, {k: v for k, v in found.groupdict().items() if v}
+    return "provider_error", {"detail": reason[:500]}
+
+
 def to_dict(row: Any) -> dict[str, Any]:
     status, reason = status_of(row)
+    code, params = reason_code(reason)
     return {
         "id": str(row.id),
         "provider": row.provider,
@@ -520,5 +550,7 @@ def to_dict(row: Any) -> dict[str, Any]:
         "run_as_user_id": str(row.run_as_user_id) if row.run_as_user_id else None,
         "status": status,
         "reason": reason,
+        "reason_code": code,
+        "reason_params": params,
         "checked_at": (row.state or {}).get("checked_at"),
     }

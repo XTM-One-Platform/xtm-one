@@ -26,7 +26,13 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { useTriggerTabIndex } from "@/components/ui/row-target-context";
 import { Tip } from "@/components/ui/tooltip";
-import { useCtemSignalPaths, type CtemSignalPath, type CtemSignalPathSource } from "@/hooks/api/useCtemSignalsApi";
+import {
+  type CtemPlatformSource,
+  type CtemSignalPath,
+  type CtemSignalPathSource,
+  useCtemPlatformSources,
+  useCtemSignalPaths,
+} from "@/hooks/api/useCtemSignalsApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useFormatter } from "@/i18n";
@@ -34,7 +40,9 @@ import { formatShortDateTimeIntl } from "@/lib/relative-time";
 import { CTEM_PRODUCT_INFO, INTEGRATION_PROVIDER_NAMES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { SIGNAL_STATE_LABEL } from "./DecisionReason";
+import { PlatformSourceEnableDialog } from "./PlatformSourceControls";
 import { SignalPathSourcesSheet } from "./SignalPathSourcesSheet";
+import { isProvisioned } from "./platform-sources";
 import { signalsHref } from "./signals-route";
 import {
   connectHref,
@@ -233,8 +241,16 @@ export function SignalSourcesPanel() {
   // The path whose sources the side panel shows (#1445): read from the live list so a save refreshes it.
   const [openPath, setOpenPath] = useState<string | null>(null);
   const opened = paths.find((p) => p.id === openPath) ?? null;
+  // The platform sources an administrator turns on from the row's Set up (#2434).
+  const { data: platform } = useCtemPlatformSources(isAdmin);
+  const platformSources = platform?.sources ?? [];
+  const [enabling, setEnabling] = useState<CtemPlatformSource | null>(null);
+  const firstOff = (source: CtemSignalPathSource) =>
+    platformSources.find((s) => s.provider === source.provider && s.kind === source.kind && !s.enabled && s.integration_connected) ?? null;
   // Read once over every path: a provider connected on one path is connected on all of them.
-  const connected = connectedProviders(paths);
+  // A provider whose source XTM One provisions is connected once its integration is, even with every
+  // source still off (#2434): its sources read Not set up, never Not connected.
+  const connected = new Set([...connectedProviders(paths), ...platformSources.filter((s) => s.integration_connected).map((s) => s.provider)]);
   const lastSignal = (path: CtemSignalPath) =>
     path.last_signal_at ? formatShortDateTimeIntl(intl, path.last_signal_at) : t_i18n("None");
 
@@ -315,9 +331,16 @@ export function SignalSourcesPanel() {
         const target = pathStatus(path) === "connected" ? null : connectTarget(path);
         // A profile pass is turned on by an administrator: a reader gets no button for it.
         const actionable = target && (isAdmin || !connectNeedsAdmin(target));
+        // A source XTM One provisions, of a connected provider: Set up opens its enable dialog (#2434).
+        const setUp = target && isAdmin && isProvisioned(target) && connected.has(target.provider) ? firstOff(target) : null;
         return (
           <span className="inline-flex items-center justify-end gap-1">
-            {actionable && (
+            {setUp && (
+              <Button variant="secondary" size="sm" onClick={() => setEnabling(setUp)} data-testid="ctem-signal-sources-set-up">
+                {t_i18n("Set up")}
+              </Button>
+            )}
+            {actionable && !setUp && !(isProvisioned(target) && connected.has(target.provider)) && (
               <Button variant="secondary" size="sm" onClick={() => navigate(connectHref(target))} data-testid="ctem-signal-sources-connect">
                 {target.off ? t_i18n("Turn on") : t_i18n("Connect")}
               </Button>
@@ -401,6 +424,15 @@ export function SignalSourcesPanel() {
         rowTestId="ctem-signal-sources-path"
       />
       <SignalPathSourcesSheet path={opened} paths={paths} connected={connected} onClose={() => setOpenPath(null)} />
+      <PlatformSourceEnableDialog
+        source={enabling}
+        label={
+          enabling
+            ? `${CTEM_PRODUCT_INFO[enabling.provider]?.name ?? INTEGRATION_PROVIDER_NAMES[enabling.provider] ?? enabling.provider} ${t_i18n(SOURCE_KIND_LABEL[enabling.kind])}`
+            : ""
+        }
+        onClose={() => setEnabling(null)}
+      />
     </div>
   );
 }

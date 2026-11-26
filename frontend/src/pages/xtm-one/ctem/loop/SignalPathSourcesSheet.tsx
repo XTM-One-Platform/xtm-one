@@ -10,14 +10,17 @@
  * - a scheduled pass of the profile (attack surface, evidence health): its organization-wide switch
  *   (the same `enabled` its Settings card writes), the integrations it runs on, the paths it also
  *   feeds and, for the attack surface pass, a pointer when no owned domain or range is set;
- * - a live listener: its state only (a listener runs while its integration is connected: there is no
- *   switch in the model);
- * - the PIR playbook: its state and a pointer to the PIR field that provisions it;
+ * - a live listener that needs nothing provisioned: its state only (it runs while its integration is
+ *   connected);
+ * - a source XTM One provisions in its platform (the OpenAEV and OpenCTI live listeners, the PIR
+ *   playbook, #2434): per integration its switch, run-as, status and reason; "Set up" and the switch
+ *   open its enable dialog, where the run-as is picked (`PlatformSourceControls`);
  * - a provider with no integration here: Connect, the integration creation flow.
  *
  * Every write is an organization profile save, so administrators only: a reader sees the same states
  * without controls.
  */
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Chip, Icon, type IconName } from "@filigran/design-system";
@@ -26,7 +29,7 @@ import { ProviderLogo } from "@/components/ui/provider-logo";
 import { SlideOver } from "@/components/ui/slide-over";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
-import type { CtemSignalPath, CtemSignalPathSource } from "@/hooks/api/useCtemSignalsApi";
+import { type CtemPlatformSource, type CtemSignalPath, type CtemSignalPathSource, useCtemPlatformSources } from "@/hooks/api/useCtemSignalsApi";
 import { useIntegrations } from "@/hooks/api/useIntegrationApi";
 import { type OrganizationProfile, useOrganizationContext, usePatchOrganizationContext } from "@/hooks/api/useOrganizationContextApi";
 import { useAuth } from "@/hooks/useAuth";
@@ -41,6 +44,8 @@ import {
   passIntegrationIds,
 } from "@/lib/organization-profile";
 import { cn } from "@/lib/utils";
+import { PlatformSourceControls, PlatformSourceEnableDialog } from "./PlatformSourceControls";
+import { isProvisioned } from "./platform-sources";
 import {
   PATH_ICON,
   PATH_STATUS_LABEL,
@@ -78,6 +83,8 @@ function SourceRow({
   isAdmin,
   saving,
   onSave,
+  platformSources,
+  onEnable,
 }: {
   path: CtemSignalPath;
   source: CtemSignalPathSource;
@@ -87,6 +94,8 @@ function SourceRow({
   isAdmin: boolean;
   saving: boolean;
   onSave: (next: Partial<OrganizationProfile>, done: string) => void;
+  platformSources: readonly CtemPlatformSource[];
+  onEnable: (source: CtemPlatformSource) => void;
 }) {
   const { t_i18n } = useFormatter();
   const navigate = useNavigate();
@@ -95,6 +104,9 @@ function SourceRow({
   const passField = profilePassField(source);
   const key = sourceKey(source);
   const shared = (source.also_feeds ?? []).map((id) => labels[id] ?? id);
+  const provisioned = isProvisioned(source);
+  // "Set up" opens the enable dialog of the first integration of the provider still off (#2434).
+  const firstOff = platformSources.find((s) => s.provider === source.provider && s.kind === source.kind && !s.enabled && s.integration_connected);
 
   const attackSurface = { ...DEFAULT_ATTACK_SURFACE, ...(profile?.attack_surface ?? {}) };
   const evidenceHealth: EvidenceHealthPass = { ...DEFAULT_EVIDENCE_HEALTH, ...((profile?.evidence_health ?? {}) as Partial<EvidenceHealthPass>) };
@@ -180,12 +192,15 @@ function SourceRow({
         </div>
       )}
 
-      {source.kind === "listener" && state !== "not_connected" && (
+      {source.kind === "listener" && !provisioned && state !== "not_connected" && (
         <p className="content-compact text-default-secondary">{t_i18n("A live listener runs while its integration is connected.")}</p>
       )}
-      {source.kind === "pir_playbook" && state === "not_set_up" && isAdmin && (
+      {provisioned && state !== "not_connected" && (
+        <PlatformSourceControls source={source} platformSources={platformSources} isAdmin={isAdmin} onEnable={onEnable} />
+      )}
+      {provisioned && state === "not_set_up" && isAdmin && firstOff && (
         <span>
-          <Button variant="ghost" size="sm" onClick={() => navigate(connectHref(source))} data-testid="ctem-path-source-settings">
+          <Button variant="secondary" size="sm" onClick={() => onEnable(firstOff)} data-testid="ctem-path-source-set-up">
             {t_i18n("Set up")}
           </Button>
         </span>
@@ -236,6 +251,10 @@ export function SignalPathSourcesSheet({
   const qc = useQueryClient();
   const profile = data?.profile;
   const labels = Object.fromEntries(paths.map((p) => [p.id, t_i18n(p.label)]));
+  // The platform sources are an administrator's read (#2434): a reader reads the path states alone.
+  const { data: platform } = useCtemPlatformSources(isAdmin && !!path);
+  const platformSources = platform?.sources ?? [];
+  const [enabling, setEnabling] = useState<CtemPlatformSource | null>(null);
 
   const onSave = (next: Partial<OrganizationProfile>, done: string) => {
     if (!profile || !isAdmin) return;
@@ -297,6 +316,8 @@ export function SignalPathSourcesSheet({
                     isAdmin={isAdmin}
                     saving={save.isPending}
                     onSave={onSave}
+                    platformSources={platformSources}
+                    onEnable={setEnabling}
                   />
                 ))}
               </ul>
@@ -304,6 +325,11 @@ export function SignalPathSourcesSheet({
           </div>
         </div>
       )}
+      <PlatformSourceEnableDialog
+        source={enabling}
+        label={enabling ? `${providerName(enabling.provider)} ${t_i18n(SOURCE_KIND_LABEL[enabling.kind])}` : ""}
+        onClose={() => setEnabling(null)}
+      />
     </SlideOver>
   );
 }

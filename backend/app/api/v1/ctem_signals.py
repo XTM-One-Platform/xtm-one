@@ -167,6 +167,8 @@ async def list_ctem_signal_sources(
                     "run_as_user_id": None,
                     "status": "off",
                     "reason": None,
+                    "reason_code": None,
+                    "reason_params": {},
                     "checked_at": None,
                 }
             )
@@ -183,7 +185,11 @@ async def enable_ctem_signal_source(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ) -> dict[str, Any]:
-    """Switch a source on as the run-as user and provision it at once; 400 with the exact reason when it cannot."""
+    """Switch a source on as the run-as user and provision it at once; 400 with the exact reason when it cannot.
+
+    The 400 ``detail`` is ``{code, params, message}`` (``ctem_platform_sources.reason_code``):
+    the UI renders the code in the reader's language, ``message`` is the English line.
+    """
     _require_xtm_one()
     from app.services import ctem_platform_sources as platform_sources
 
@@ -197,7 +203,8 @@ async def enable_ctem_signal_source(
         )
     except platform_sources.SourceRefusedError as exc:
         await db.commit()
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        code, params = platform_sources.reason_code(str(exc))
+        raise HTTPException(status_code=400, detail={"code": code, "params": params, "message": str(exc)}) from exc
     await db.commit()
     return platform_sources.to_dict(row)
 

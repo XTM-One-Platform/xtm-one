@@ -365,3 +365,47 @@ def test_the_pir_playbook_source_reads_the_profile_pirs():
     spec = sources.PROVISIONED[("opencti", "pir_playbook")].spec()
     assert spec["mode"] == "pir_playbook" and spec["organization_context"] == ["pir_ids"]
     assert "Vulnerability" in spec["entity_types"] and "Intrusion-Set" in spec["entity_types"]
+
+
+@pytest.mark.parametrize(
+    "reason, code, params",
+    [
+        (None, None, {}),
+        (sources.NO_RUN_AS, "no_run_as", {}),
+        ("the run-as user is deactivated or no longer exists: pick another run-as", "run_as_inactive", {}),
+        (
+            "The run-as user has no connected OpenCTI integration: the source provisions as that user. "
+            "Connect OpenCTI for that user, or pick a run-as user who has it.",
+            "run_as_no_integration",
+            {"provider": "OpenCTI"},
+        ),
+        ("the OpenAEV integration has no webhook_secret: set one", "no_webhook_secret", {}),
+        ("no OpenAEV token could be resolved for the integration", "no_token", {}),
+        ("no OpenAEV integration 123", "integration_not_found", {}),
+        (
+            "organization context: pir_ids not filled (Settings > Organization)",
+            "organization_context_missing",
+            {"fields": "pir_ids"},
+        ),
+        ("objects not removed: 404", "objects_not_removed", {"detail": "404"}),
+        ("not provisioned yet", "not_provisioned_yet", {}),
+        ("403 Forbidden: missing capability", "provider_error", {"detail": "403 Forbidden: missing capability"}),
+    ],
+)
+def test_every_reason_reads_as_a_code_the_ui_translates(reason, code, params):
+    """The Sources UI renders the code in the reader's language, never the English line as is."""
+    assert sources.reason_code(reason) == (code, params)
+
+
+def test_the_row_carries_its_reason_code():
+    row = SimpleNamespace(
+        id=uuid.uuid4(),
+        provider="openaev",
+        kind="listener",
+        integration_id=INTEGRATION,
+        enabled=True,
+        run_as_user_id=RUN_AS,
+        state={"status": "error", "error": "no OpenAEV token could be resolved for the integration"},
+    )
+    out = sources.to_dict(row)
+    assert out["status"] == "error" and out["reason_code"] == "no_token" and out["reason_params"] == {}
