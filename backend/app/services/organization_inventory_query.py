@@ -388,8 +388,14 @@ async def find_assets_running(
     through_dependencies: bool = True,
     offset: object = 0,
     limit: object = DEFAULT_PAGE,
+    **filters: Any,
 ) -> dict[str, Any]:
     """The assets running a software, optionally in a version range, directly or through a dependency.
+
+    *filters* are the :func:`search_assets` filters (``internet_facing=["yes"]``,
+    ``os_family=["windows"]``...), applied by PostgreSQL before the page, so "the internet-facing
+    Windows hosts running X below Y" is one call. Each row carries the asset's criticality,
+    internet_facing and os_family and the primary assets it supports (directly or through a group).
 
     The software is named by *product* (and *vendor*) or by a product-level *cpe*. *version*
     is an exact version; *min_version* / *max_version* a range (``1.2 <= v < 1.4`` by default).
@@ -466,6 +472,11 @@ async def find_assets_running(
                 frontier.append(user)
     inst = OrganizationAssetSoftware
     base = [inst.organization_id == organization_id, inst.software_version_id.in_(list(reach))]
+    wanted = _filters(**filters)
+    if wanted:
+        matching = select(OrganizationAsset.id).where(*store._asset_where(organization_id, filters=wanted))
+        base.append(inst.asset_id.in_(matching))
+    extra["filters"] = wanted
     total = (await db.execute(select(func.count(func.distinct(inst.asset_id))).where(*base))).scalar() or 0
     asset_ids = [
         row[0]
@@ -483,15 +494,23 @@ async def find_assets_running(
     ]
     rows = (
         await db.execute(
-            select(inst, OrganizationAsset.name)
+            select(inst, OrganizationAsset.name, OrganizationAsset.fields)
             .join(OrganizationAsset, OrganizationAsset.id == inst.asset_id)
             .where(*base, inst.asset_id.in_(asset_ids))
         )
     ).all()
+    primary = await _primary_asset_keys(db, organization_id, asset_ids)
     by_asset: dict[uuid.UUID, dict[str, Any]] = {}
-    for installed, name in rows:
+    for installed, name, fields in rows:
         entry = by_asset.setdefault(
-            installed.asset_id, {"asset_id": str(installed.asset_id), "asset_name": name, "runs": []}
+            installed.asset_id,
+            {
+                "asset_id": str(installed.asset_id),
+                "asset_name": name,
+                **{field: _field_of(fields, field) for field in _RUNNING_ROW_FIELDS},
+                "primary_assets": primary.get(installed.asset_id, []),
+                "runs": [],
+            },
         )
         direct = installed.software_version_id in matched
         entry["runs"].append(
@@ -503,6 +522,39 @@ async def find_assets_running(
         )
     items = [by_asset[a] for a in asset_ids if a in by_asset]
     return page(items, total=int(total), offset=start, limit=size, **extra)
+
+
+#: The asset fields each :func:`find_assets_running` row carries: what ranks an exposure.
+_RUNNING_ROW_FIELDS: tuple[str, ...] = ("criticality", "internet_facing", "os_family")
+
+
+def _field_of(fields: Any, name: str) -> Any:
+    entry = (fields or {}).get(name) if isinstance(fields, Mapping) else None
+    return entry.get("value") if isinstance(entry, Mapping) else None
+
+
+async def _primary_asset_keys(
+    db: AsyncSession, organization_id: uuid.UUID, asset_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, list[str]]:
+    """The primary assets each asset of a page supports, directly or through a group, in ONE statement."""
+    if not asset_ids:
+        return {}
+    rec, link, member = OrganizationAssetRecord, OrganizationPrimaryAssetLink, OrganizationAssetGroupMember
+    live = [link.organization_id == organization_id, link.removed.is_(False), rec.asset_id.in_(list(asset_ids))]
+    direct = (
+        select(rec.asset_id, link.primary_asset_key).select_from(link).join(rec, rec.id == link.record_id).where(*live)
+    )
+    grouped = (
+        select(rec.asset_id, link.primary_asset_key)
+        .select_from(link)
+        .join(member, member.group_id == link.group_id)
+        .join(rec, rec.id == member.record_id)
+        .where(*live)
+    )
+    out: dict[uuid.UUID, set[str]] = {}
+    for asset_id, key in (await db.execute(direct.union(grouped))).all():
+        out.setdefault(asset_id, set()).add(str(key))
+    return {asset_id: sorted(keys) for asset_id, keys in out.items()}
 
 
 # ── Aggregations, groups, primary assets, changes ─────────────────────────

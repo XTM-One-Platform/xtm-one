@@ -191,9 +191,11 @@ def build_inventory_query_tools() -> tuple[list[ToolDefinition], CallableToolExe
         through_dependencies: bool = True,
         offset: int = 0,
         limit: int = 0,
+        **filters: Any,
     ) -> str:
         from app.services import organization_inventory_query as q
 
+        known = {k: v for k, v in filters.items() if k in _ASSET_FILTERS}
         return await _run(
             "Assets running it",
             lambda db, org: q.find_assets_running(
@@ -210,6 +212,7 @@ def build_inventory_query_tools() -> tuple[list[ToolDefinition], CallableToolExe
                 through_dependencies=through_dependencies,
                 offset=offset,
                 limit=limit,
+                **known,
             ),
         )()
 
@@ -300,7 +303,8 @@ def build_inventory_query_tools() -> tuple[list[ToolDefinition], CallableToolExe
             FIND_ASSETS_RUNNING,
             _find_assets_running,
             "Which assets run a software, in an exact version or a range (semantic: 1.10 > 1.9), directly or "
-            "through an SBOM dependency (via names what they run). Use it for 'who is affected by'.",
+            "through an SBOM dependency (via names what they run), with the asset filters; rows carry criticality "
+            "and primary assets. Use it for 'who is affected by'.",
             {
                 "product": {"type": "string", "description": "Product (or give cpe)."},
                 "vendor": {"type": "string", "description": "Vendor."},
@@ -311,6 +315,7 @@ def build_inventory_query_tools() -> tuple[list[ToolDefinition], CallableToolExe
                 "min_inclusive": {"type": "boolean"},
                 "max_inclusive": {"type": "boolean"},
                 "through_dependencies": {"type": "boolean", "description": "Default true."},
+                **_ASSET_FILTERS,
                 **_PAGE,
             },
             [],
