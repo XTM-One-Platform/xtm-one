@@ -154,8 +154,13 @@ class _DedicatedToolSession:
         # the skill-package binding reconciliation update_agent runs whenever one
         # of them changes, so the stub must expose all three (empty = nothing
         # bound, hence nothing to reconcile).
+        # ``user_id`` and the share lists are read by ``agent_audience()``,
+        # which update_agent compares before and after the edit.
         self.agent = SimpleNamespace(
             name=agent_name,
+            user_id=None,
+            shared_group_ids=None,
+            shared_user_ids=None,
             is_company_managed=False,
             knowledge_base_permissions=None,
             skill_ids=[],

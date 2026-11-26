@@ -36,7 +36,7 @@ evaluation_runs.placebo_comparison_id ··> evaluation_placebo_comparisons
 | `evaluation_agents` | The evaluation's subjects: an agent or a flow (`flow_id`, #8257), exactly one (`ck_evaluation_agents_one_subject`). Unique `(evaluation_id, agent_id)`, partial unique `(evaluation_id, flow_id)`. `is_baseline`, at most one per evaluation (partial unique `uq_eval_agent_baseline`). `output_extractor`, `tags`. A flow subject: `dev-docs/health-evaluation.md`. |
 | `evaluation_datasets` | Unique `(evaluation_id, dataset_id)`. `position` unique per evaluation, appended under a lock on the evaluation row. |
 | `evaluation_result_traces` | `trace_id` without FK. `trace_role` CHECK `agent`/`judge`/`auxiliary`. Unique `(result_id, trace_id)` and `(result_id, trace_order)`. |
-| `evaluation_episodes` | One per run and entry, unique `(run_id, entry_id)`. `correlation_id` unique, `eval:{run_id}:{entry_id}`. `entry_id` FK CASCADE on `dataset_entries`. `first_turn_details` (JSONB): `version_entry_id` and the first turn's `execution_details` without judge and quality, from which a resume builds the result (§12). |
+| `evaluation_episodes` | One per run and entry, unique `(run_id, entry_id)`. `correlation_id` unique, `eval:{run_id}:{entry_id}`. `entry_id` FK CASCADE on `dataset_entries`. `idempotency_key` is the latest accepted callback key, `superseded_idempotency_keys` (JSONB list) the ones before it. `first_turn_details` (JSONB): `version_entry_id` and the first turn's `execution_details` without judge and quality, from which a resume builds the result (§12). |
 | `evaluation_run_params` | Unique `(run_id, key)`; `source` CHECK `auto`/`evaluation`/`manual` (§13). |
 
 **Legacy columns**: `evaluations.quality_weight` (ignored on write, never served); `evaluations.quality_source` (only `judge`: create and update refuse `f1`, a stored, imported or copied row may hold it, and is then read as `judge`: the pages, both run comparisons and the persona loop show and compare Judge Quality, and a new run logs `quality_source` `judge`; the agent tools' evaluation summary serves the stored setting as it is); `speed_score`, `overall_score`, `f1_score` on runs and results, never written by scoring, and `f1_score` neither shown by the pages nor served by the agent tools. A result's `f1_score` is cleared only when a resumed callback replaces the answer it scored.
@@ -248,11 +248,11 @@ A launch refusal (`check_launchable`, `plan_launch` in `services/evaluation/laun
 - `evaluation_instructions: ""` clears as `null` does; `tags: {}` or `null` clears them; `placebo_config: null` removes the method.
 - A `family` change re-checks the stored extractors the request does not replace (422) and reports `family_conflicts` with linked datasets, which stay linked. Changing tolerance, penalty, family or a headline selection recomposes the stored headlines (§6).
 
-`POST /{id}/copy` copies every `EVALUATION_SETTINGS` value, each agent link with its extractor, tags and baseline flag, and the dataset links; no run. The copy is private, named `Copy of <name>`, with `trigger_config` `{}`: no schedule, on-agent-change, callback mode or secret. A stored `execution_mode` other than `llm_only`/`full_loop` becomes `llm_only`. The settings are copied, not re-validated.
+`POST /{id}/copy` copies every `EVALUATION_SETTINGS` value, each agent link with its extractor, tags and baseline flag, and the dataset links; no run. The copy is private, named `Copy of <name>`, with `trigger_config` `{}`: no schedule, on-agent-change, callback mode or secret. A stored `execution_mode` other than `llm_only`/`full_loop` becomes `llm_only`, and a `run_mode` other than `parallel`/`sequential` becomes `parallel`: what each ran as, written so by an export too. Every other setting is then checked as create checks it (`_settings_checked_as_created`): a value stored before its rule existed is a 422 naming the field, and nothing is copied.
 
 A model of `model_ids` the launch's rule rejects (`model_served`: a chat model one of the owner's providers owns, by its catalog or its vendor prefix) is refused on create, and on update when the request adds it (422, the launch's wording, `check_models_served`); a saved one is never re-checked, so an evaluation whose provider went away stays editable. Copy and import keep it and name it in `warnings` (the copier or importer is the new owner). Every evaluation response, and the `get_evaluation` agent tool, serves `unavailable_model_ids`, read from the owner's providers at each read (`unserved_model_ids`), never stored; the Run menus leave such a model out of a selection. The pickers list the owner's models (`GET /{id}/available-models`), not the editor's, so they offer only what a save accepts.
 
-Create and import validate the same way: both call `_validated_settings`, and an import reads its settings through `CreateEvaluationRequest`, so a package value create would refuse is a 422 naming the field, except `quality_source: f1`, which create refuses and import keeps; an unknown family is a 400.
+Create, update, import and copy validate the same way: create and update through their request schemas, import and copy through `CreateEvaluationRequest` and `_validated_settings` (`_settings_checked_as_created`). A value create would refuse is a 422 naming the field, except `quality_source: f1`, which create refuses and import keeps; an unknown family is a 400. The schemas refuse a `run_mode` other than `parallel`/`sequential`, a `penalty_factor` outside 0-1.5 (the scoring card's slider), and `sub_score_weights` with an unknown criterion, a weight outside 0-1 or a sum other than 1 (the `SubScoreWeights` model in `services/evaluation/settings.py`, which stores the criteria sent; one left out weighs 0).
 
 ## 4. Execution outcomes
 
@@ -350,7 +350,7 @@ The judge reads the raw answer while the family's quality metrics score the extr
 - Parse: `structured_output.validate_and_parse(..., allow_partial=True)` extracts the verdict from fences or prose and repairs JSON slips; each sub-score is coerced to an int and clamped to 0-100. A missing or non-numeric one becomes 0 and is listed as missing.
 - When `available_tools` is `[]`, `tool_selection_quality` is set to 100 before the completeness check. When it is None, the judge grades it.
 - **Judge failure** = unparseable verdict OR truncated at `max_tokens` (`answer_was_cut`) OR any missing sub-score OR a judge call that raised during a run (reasoning "Judge failure: the judge call raised (...)"). No retry, no substitute: the reasoning becomes "Judge failure: ..." with a 300-character raw preview, and the entry leaves every headline. A cut verdict is remedied by raising `judge_max_tokens` or replaying the judge with a larger `judge_max_tokens`.
-- `score = round(Σ sub_scores[k] × w[k], 2)` over the keys of `w`: `sub_score_weights` when set, else 0.20 each. Custom weights are used as given (no validation, no normalisation), `{}` falls back to 0.20 each; a sub-score absent from them adds nothing. The score is stored even on a judge failure.
+- `score = round(Σ sub_scores[k] × w[k], 2)` over the keys of `w`: `sub_score_weights` when set, else 0.20 each. Custom weights are checked on every write (§3) and used as stored; a sub-score absent from them adds nothing, and a stored `{}` (written before the check) falls back to 0.20 each. The score is stored even on a judge failure.
 - A replay is a failure unless the judge reported `is_judge_failure: false`; it never changes the anomaly kind.
 
 ## 6. Headlines
@@ -759,14 +759,14 @@ No JWT, no AI gate (the episode was already dispatched). The signature is compar
 | 400 | no `resume_secret` is set |
 | 401 | `X-Signature` missing or wrong |
 | 410 | the episode was closed before any callback was applied: the payload is **not** applied and this is **not** a duplicate; the detail names the episode and its status |
-| 200 `{accepted: true, duplicate: true, episode_id, status}` | the key equals the episode's stored `idempotency_key`; or the episode is `completed`; or it was closed after an earlier callback was applied. Nothing is enqueued |
+| 200 `{accepted: true, duplicate: true, episode_id, status}` | the episode already accepted this key, the latest or an earlier one; or the episode is `completed`; or it was closed after an earlier callback was applied. Nothing is enqueued |
 | 200 `{accepted: true, duplicate: false, episode_id, status}` | accepted |
 
 ### Acceptance
 
-- In one transaction: store `idempotency_key` and `callback_payload`, set the episode `resumed`, clear its deadline, and create one orchestration execution `{adapter: "evaluation", payload: {kind: "resume_episode", episode_id, idempotency_key}}` with deadline = (`timeout_seconds`, else 3600) + `orchestration_grace_seconds`; the worker is woken after the commit.
+- In one transaction: store `idempotency_key` and `callback_payload` (the previous key moves to `superseded_idempotency_keys`), set the episode `resumed`, clear its deadline, and create one orchestration execution `{adapter: "evaluation", payload: {kind: "resume_episode", episode_id, idempotency_key}}` with deadline = (`timeout_seconds`, else 3600) + `orchestration_grace_seconds`; the worker is woken after the commit.
 - `idempotency_key` is the duplicate key and a generation token: a different key on an episode still `resumed` is a new generation, accepted with its own execution, and an older execution's failure handling never closes a newer generation's episode.
-- Only the latest accepted key counts as a duplicate: a validly signed replay of an earlier callback, while the episode is still `resumed`, is accepted again and overwrites the stored payload.
+- Every accepted key counts as a duplicate: a validly signed replay of an earlier callback leaves the stored payload unchanged.
 
 ### Processing (`process_resume_episode`)
 

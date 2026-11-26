@@ -64,7 +64,7 @@ import {
   useUserCustomTools,
   useUpdateUserRole, useToggleUserActive, useImpersonateUser, useDeleteUser,
   useUserQuotas, useUpdateUserQuotas, useResetUserQuotas,
-  useSetUserPassword, useSendPasswordReset, useResetUserMfa,
+  useSetUserPassword, useSendPasswordReset, useResetUserMfa, useUpdateUserEmail,
   useAuthConfig,
 } from "@/hooks/api/useAuthApi";
 import { useAvailableModels, usePlatformQuotas } from "@/hooks/api/useSettingsApi";
@@ -373,6 +373,7 @@ function ProfileTab({ user, userId }: { user: UserDetailType; userId: string }) 
         </CardContent>
       </Card>
 
+      <EmailCard user={user} userId={userId} />
       <PasswordCard user={user} userId={userId} />
       <TwoFactorCard user={user} userId={userId} />
     </div>
@@ -440,6 +441,68 @@ function TwoFactorCard({ user, userId }: { user: UserDetailType; userId: string 
           </p>
         )}
         {ConfirmDialog}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Email Card — the one place a user's email changes
+// ---------------------------------------------------------------------------
+
+function EmailCard({ user, userId }: { user: UserDetailType; userId: string }) {
+  const { t_i18n } = useFormatter();
+  const { toast } = useToast();
+  const updateEmail = useUpdateUserEmail();
+  const [email, setEmail] = useState("");
+  const next = email.trim().toLowerCase();
+  const unchanged = !next || next === user.email.toLowerCase();
+
+  const handleSave = () => {
+    if (unchanged) return;
+    updateEmail.mutate(
+      { userId, email: next },
+      {
+        onSuccess: (res) => {
+          setEmail("");
+          toast({ title: t_i18n("Email changed"), description: t_i18n("The account now uses {email}.", { email: res.email }), variant: "success" });
+        },
+        onError: (err) => toast({ title: t_i18n("Failed to change the email"), description: err.message, variant: "error" }),
+      },
+    );
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Mail className="h-4 w-4 text-accent" /> {t_i18n("Email")}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {user.is_platform_admin ? (
+          <p className="content-compact text-default-secondary">
+            {t_i18n("The platform admin account's email is set by ADMIN_EMAIL and cannot be changed.")}
+          </p>
+        ) : (
+          <>
+            <p className="content-compact text-default-secondary">
+              {t_i18n("The other platforms find this person's account by this address. Users cannot change it themselves. The old and the new address are notified, and reset links already sent stop working.")}
+            </p>
+            <div className="flex gap-2">
+              <Input
+                aria-label={t_i18n("New email")}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={user.email}
+              />
+              <Button className="shrink-0" disabled={unchanged || updateEmail.isPending} onClick={handleSave}>
+                {updateEmail.isPending ? <Spinner size="sm" tone="inherit" label={t_i18n("Loading...")} /> : t_i18n("Change")}
+              </Button>
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );

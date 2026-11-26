@@ -785,6 +785,10 @@ class EvaluationEpisode(Base):
 
     # Latest idempotency key accepted for callback resume.
     idempotency_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # The keys accepted before it, so a replay of an earlier callback is refused.
+    superseded_idempotency_keys: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=sa.text("'[]'::jsonb")
+    )
 
     waiting_since: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -824,3 +828,9 @@ class EvaluationEpisode(Base):
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )
+
+    @property
+    def accepted_idempotency_keys(self) -> list[str]:
+        """Every callback key this episode accepted, the latest last."""
+        latest = [self.idempotency_key] if self.idempotency_key else []
+        return [*(self.superseded_idempotency_keys or []), *latest]

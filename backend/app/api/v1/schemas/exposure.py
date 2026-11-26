@@ -21,7 +21,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-ResourceKind = Literal["integration", "mcp_server", "custom_tool", "channel_bot", "variable"]
+ResourceKind = Literal[
+    "integration", "mcp_server", "custom_tool", "channel_bot", "variable", "knowledge_base", "skill", "prompt"
+]
 PreviewEntityType = Literal[
     "integration",
     "mcp_server",

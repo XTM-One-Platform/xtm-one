@@ -47,10 +47,11 @@ You can usually review or update:
 
 - full name
 - title
-- email address
 - time zone
 - theme
 - authentication method
+
+Your email address is shown but not editable: the other Filigran platforms find your account by it, so an administrator changes it for you.
 
 If you use SSO, the page shows that clearly so you know sign-in is handled by your identity provider.
 

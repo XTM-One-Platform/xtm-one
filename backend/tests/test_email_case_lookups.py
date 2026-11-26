@@ -64,17 +64,13 @@ def test_the_admin_email_is_lowercased_like_every_account():
     assert Settings(admin_email=" Admin@Filigran.io ").admin_email == "admin@filigran.io"
 
 
-async def test_an_email_taken_in_another_case_is_refused_on_the_profile():
+async def test_the_unchanged_address_in_another_case_is_accepted_on_the_profile(monkeypatch):
     me = User(email="me@corp.com", full_name="Me")
-    db = _RecordingDb(found=User(email="jane@corp.com", full_name="Jane"))
 
-    with pytest.raises(HTTPException) as excinfo:
-        await update_preferences(
-            UserPreferencesRequest(email=" Jane@Corp.com "), request=None, user=me, db=db
-        )
+    db = await _update_profile(monkeypatch, me, email=" Me@Corp.com ", full_name="Me Again")
 
-    assert excinfo.value.status_code == 400
-    assert "jane@corp.com" in _bound(db.statements[0])
+    assert (me.email, me.full_name) == ("me@corp.com", "Me Again")
+    assert db.statements == []
 
 
 class _ProfileDb(_RecordingDb):
@@ -97,17 +93,15 @@ async def _update_profile(monkeypatch, user, **fields):
     return db
 
 
-async def test_the_admin_email_account_cannot_change_its_email(monkeypatch):
-    """``xtm_super_admin`` follows the address: moved, it would go to whoever registers it next."""
-    monkeypatch.setattr("app.core.config.settings.admin_email", "admin@corp.com")
-    admin = User(email="admin@corp.com", full_name="Admin", role="admin")
+async def test_the_profile_never_changes_the_email(monkeypatch):
+    """Other products find their account by it: an administrator changes it (``test_email_change_by_admin``)."""
+    me = User(email="me@corp.com", full_name="Me", role="admin")
 
     with pytest.raises(HTTPException) as excinfo:
-        await _update_profile(monkeypatch, admin, email="someone.else@corp.com", full_name="Renamed")
+        await _update_profile(monkeypatch, me, email="Me.Again@Corp.com", full_name="Renamed")
 
-    assert excinfo.value.status_code == 400
-    assert "ADMIN_EMAIL" in excinfo.value.detail
-    assert (admin.email, admin.full_name) == ("admin@corp.com", "Admin")
+    assert excinfo.value.status_code == 422
+    assert (me.email, me.full_name) == ("me@corp.com", "Me")
 
 
 async def test_the_admin_email_account_still_changes_its_other_preferences(monkeypatch):
@@ -117,15 +111,6 @@ async def test_the_admin_email_account_still_changes_its_other_preferences(monke
     await _update_profile(monkeypatch, admin, email=" Admin@Corp.com ", full_name="Platform Admin", title="CISO")
 
     assert (admin.email, admin.full_name, admin.title) == ("admin@corp.com", "Platform Admin", "CISO")
-
-
-async def test_another_user_still_changes_their_email(monkeypatch):
-    monkeypatch.setattr("app.core.config.settings.admin_email", "admin@corp.com")
-    me = User(email="me@corp.com", full_name="Me", role="admin")
-
-    await _update_profile(monkeypatch, me, email="Me.Again@Corp.com")
-
-    assert me.email == "me.again@corp.com"
 
 
 def test_every_user_id_column_the_merge_moves_exists_and_has_no_foreign_key():

@@ -46,7 +46,7 @@ from app.core.utils import external_base
 from app.models.agent import Agent
 from app.models.group import Group, GroupMember
 from app.models.scim_token import SCIM_TOKEN_PREFIX, ScimToken
-from app.models.user import User
+from app.models.user import User, admin_email_change_refusal
 from app.services import scim as s
 from app.services.audit import log_audit, log_system_audit
 
@@ -248,6 +248,9 @@ async def _apply_user(db: AsyncSession, user: User, changes: s.UserChanges, toke
     if changes.user_name:
         email = changes.user_name.strip().lower()
         if email != user.email.lower():
+            refusal = admin_email_change_refusal(user, email)
+            if refusal:
+                raise s.ScimError(400, refusal, "mutability")
             other = await _by_email(db, email)
             if other is not None and other.id != user.id:
                 raise s.ScimError(409, f"userName {changes.user_name} is taken", "uniqueness")
@@ -355,6 +358,9 @@ async def create_user(
 
     cfg = await get_sso_config(db)
     email = changes.user_name.strip().lower()
+    refusal = admin_email_change_refusal(None, email)
+    if refusal:
+        raise s.ScimError(400, refusal, "invalidValue")
     active = changes.active is not False
     now = datetime.now(UTC)
     user = User(
@@ -539,6 +545,10 @@ async def _change_members(
     for uid in to_add:
         db.add(GroupMember(group_id=group.id, user_id=uid, added_by=None, source=SCIM_SOURCE))
     await db.flush()
+    if removed:
+        from app.services.agent_bindings import unlink_agents_shared_with_group
+
+        await unlink_agents_shared_with_group(db, group.id)
     return to_add, removed
 
 

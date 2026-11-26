@@ -28,6 +28,10 @@ credentials:
   delivery only warns, so this check is where it is enforced;
 - the agents an agent's work-item roster names (``work_item_owner_agent_ids``),
   which it may hand work to: an added one must be an agent the writer can see.
+- the agents an agent's trace supervision allow-list names
+  (``trace_supervision_target_agent_ids``), whose traces it may inspect: an
+  added one must be an agent whose conversations the writer may read, a
+  narrower rule than seeing it (the trace tools check it again on every read).
 - the relay group an integration, an MCP server or a flow node routes through
   (``relay_group_id``): its requests leave from that group's network,
   so a newly picked group must be one the writer can see.
@@ -88,6 +92,10 @@ TRIGGER_INTEGRATION_REFUSED_DETAIL = (
 )
 WORK_ITEM_OWNERS_REFUSED_DETAIL = (
     "One or more work-item owner agents were not found or are not accessible."
+)
+TRACE_SUPERVISION_TARGETS_REFUSED_DETAIL = (
+    "One or more trace supervision target agents were not found, or you may not "
+    "read their conversations."
 )
 WHITELIST_BYPASS_REFUSED_DETAIL = "Only admins can enable bypass_whitelist on a channel."
 RELAY_GROUP_REFUSED_DETAIL = "The relay group was not found or is not accessible."
@@ -459,6 +467,37 @@ async def assert_work_item_owner_additions_allowed(
         user_group_ids=user_group_ids,
     ):
         raise HTTPException(status_code=400, detail=WORK_ITEM_OWNERS_REFUSED_DETAIL)
+
+
+# --- Agent trace supervision allow-list -------------------------------------
+
+
+async def assert_trace_supervision_additions_allowed(
+    db: AsyncSession,
+    *,
+    user: User,
+    value: list | None,
+    baseline: list | None = None,
+    user_group_ids: list[str] | None = None,
+) -> None:
+    """Refuse (400) a write that adds to an agent's
+    ``trace_supervision_target_agent_ids`` an agent whose traces ``user`` may
+    not read (``traces.agents_whose_traces_user_may_read``: an admin, its owner,
+    a ``config_with_chats`` grantee). A target's traces hold every user's
+    conversations with it, so naming one is reading them. An entry naming no
+    agent is refused alike; entries already stored are never re-checked.
+    """
+    from app.services.builtin_tools.traces import agents_whose_traces_user_may_read
+
+    known = {_key(entry) for entry in baseline or []}
+    added = {_key(entry) for entry in value or [] if entry} - known
+    if not added:
+        return
+    readable = await agents_whose_traces_user_may_read(
+        db, user, [key for key in added if not key.startswith("raw:")], user_group_ids
+    )
+    if added - readable:
+        raise HTTPException(status_code=400, detail=TRACE_SUPERVISION_TARGETS_REFUSED_DETAIL)
 
 
 # --- Channel bots (agent and assignment ``channel_config``) -----------------

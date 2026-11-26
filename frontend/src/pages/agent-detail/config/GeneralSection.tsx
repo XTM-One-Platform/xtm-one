@@ -1544,6 +1544,7 @@ export function GeneralSection({
                 agent={agent}
                 integrations={integrations}
                 sharedGroupIds={sharedGroupIds}
+                sharedUserIds={userSharing.userIds}
                 currentUserId={currentUserId}
                 disabled={isPending}
                 onLend={onLendIntegrations}
