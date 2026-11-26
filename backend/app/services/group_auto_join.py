@@ -19,7 +19,10 @@ This module is the one writer of the memberships it grants
   (``system:sso-sign-in``), anchored on the person who joined;
 * the SAML group mapping manages only ``saml`` memberships, so it never removes
   one granted here; an administrator can, and the next single sign-on grants it
-  again while the toggle stays on.
+  again while the toggle stays on;
+* a seeded group whose auto join is served at account creation
+  (``ctem_groups.JOINED_AT_CREATION_KEYS``, "CTEM Viewers") is skipped here, so
+  an administrator's removal from it holds at the next sign-in (#2478).
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.group import Group, GroupMember
 from app.models.user import User
 from app.services.audit import log_system_audit
+from app.services.ctem_groups import JOINED_AT_CREATION_KEYS
 
 #: ``GroupMember.source`` of a membership granted at a single sign-on.
 AUTO_JOIN_SOURCE = "auto_join"
@@ -49,7 +53,14 @@ async def join_auto_join_groups(db: AsyncSession, user: User, *, provider: str) 
     or the person is already in each of them. The caller drops the cached
     resolutions that read memberships once its transaction has committed.
     """
-    groups = (await db.execute(select(Group.id, Group.name).where(Group.auto_join.is_(True)))).all()
+    groups = (
+        await db.execute(
+            select(Group.id, Group.name).where(
+                Group.auto_join.is_(True),
+                Group.seed_key.is_(None) | Group.seed_key.not_in(JOINED_AT_CREATION_KEYS),
+            )
+        )
+    ).all()
     if not groups:
         return set()
     names = dict(groups)

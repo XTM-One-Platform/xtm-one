@@ -380,8 +380,11 @@ their turns or runs (`ctem_access.wires_ctem`), the `ctem_signal.*` and
 (`platform_events.ctem_event_error`), and the menu hides the section. There
 is no own-signals fallback. Two groups are seeded in XTM One
 (`services/ctem_groups.py`, found by `groups.seed_key`): "CTEM Viewers"
-(`view`; every active account at its first seed, every account created
-afterwards once, at its creation; an administrator's removal holds) and
+(`view`; Auto join on, #2478: every active account at its first seed, every
+account created afterwards once, at its creation; the single sign-on auto join
+skips it (`ctem_groups.JOINED_AT_CREATION_KEYS`), so an administrator's removal
+holds; migration `t2478viewersaj01` turned the toggle on once on platforms
+seeded before, and nothing turns it on again, so a toggle-off holds) and
 "CTEM Operators" (`decide`, empty). `view`
 reads every signal and case of the organization as an administrator does and
 writes nothing (a triage or a case write answers 403, a tool answers

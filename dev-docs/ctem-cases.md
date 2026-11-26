@@ -51,7 +51,7 @@ progress, resolved, accepted risk).
    Reaching cases at all needs a CTEM right (#2441, `services/ctem_access.py`):
    an administrator, or a member of a group granting `view` (read) or
    `decide` (read and change); anyone else gets 403 and no CTEM menu, tool or
-   trigger. The seeded "CTEM Viewers" group holds every account, "CTEM
+   trigger. The seeded "CTEM Viewers" group (Auto join on, #2478) holds every account, "CTEM
    Operators" starts empty. A case gate waits for the `decide` groups that
    have an active member (`ctem_access.gate_recipient`); with none, the
    routing of the person the run acts for, never every administrator.
