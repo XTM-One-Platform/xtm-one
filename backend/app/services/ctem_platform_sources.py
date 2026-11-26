@@ -81,6 +81,41 @@ def _opencti_pir_spec() -> dict[str, Any]:
     return spec
 
 
+#: The OpenCTI types the live listener source delivers: every OpenCTI row of
+#: ``ctem_signal_listeners.LISTENERS`` (``has`` is the relationship type, which
+#: OpenCTI's ``entity_type`` filter matches on a relationship).
+LIVE_LISTENER_ENTITY_TYPES: tuple[str, ...] = (
+    "Vulnerability",
+    "has",
+    "Intrusion-Set",
+    "Threat-Actor-Group",
+    "Threat-Actor-Individual",
+    "Campaign",
+    "Malware",
+    "User-Account",
+    "Email-Addr",
+)
+
+
+def _opencti_listener_spec() -> dict[str, Any]:
+    from app.services import opencti_trigger_provisioning as prov
+
+    spec = prov.read_provision_spec(
+        {
+            "provider": "opencti",
+            "provision": {
+                "fleet": OBJECT_FLEET,
+                "purpose": "OpenCTI live listener",
+                "entity_types": list(LIVE_LISTENER_ENTITY_TYPES),
+                "event_types": ["create", "update"],
+            },
+        }
+    )
+    if spec is None:  # the block above always declares one
+        raise RuntimeError("the OpenCTI live listener spec is empty")
+    return spec
+
+
 @dataclass(frozen=True)
 class Provisioned:
     """How one source kind of one provider is provisioned."""
@@ -93,6 +128,9 @@ class Provisioned:
 #: ``(provider, kind)`` -> how it is provisioned.
 PROVISIONED: dict[tuple[str, str], Provisioned] = {
     ("openaev", "listener"): Provisioned("app.services.openaev_trigger_provisioning", _openaev_spec, "OpenAEV"),
+    ("opencti", "listener"): Provisioned(
+        "app.services.opencti_trigger_provisioning", _opencti_listener_spec, "OpenCTI"
+    ),
     ("opencti", "pir_playbook"): Provisioned("app.services.opencti_trigger_provisioning", _opencti_pir_spec, "OpenCTI"),
 }
 

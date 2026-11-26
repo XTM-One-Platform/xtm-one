@@ -200,6 +200,48 @@ def test_the_openaev_source_listens_to_the_loop_events():
     assert set(spec["events"]) == set(CTEM_OPENAEV_LOOP_EVENTS)
 
 
+def test_the_opencti_live_listener_source_covers_every_opencti_listener_row():
+    """The live listener source delivers what the OpenCTI rows of the listener table record."""
+    from app.services import opencti_trigger_provisioning as prov
+    from app.services.ctem_signal_listeners import LISTENERS
+
+    spec = sources.PROVISIONED[("opencti", "listener")].spec()
+    assert spec["mode"] == prov.TRIGGER_MODE and set(spec["event_types"]) == {"create", "update"}
+    wanted = {t.lower() for t in spec["entity_types"]}
+    for row in LISTENERS:
+        if row.provider != "opencti":
+            continue
+        for kind in row.object_types:
+            name = kind.split(":")[-1]
+            assert name in wanted or (name == "threat-actor" and "threat-actor-group" in wanted), kind
+
+
+async def test_enable_the_opencti_live_listener_provisions_one_trigger(monkeypatch):
+    from app.services import opencti_trigger_provisioning as prov
+
+    from .test_opencti_trigger_provisioning import FakeOpenCTI
+
+    octi = FakeOpenCTI()
+
+    async def connection(_db, integration_id, user_id):
+        assert user_id == RUN_AS
+        return octi, str(integration_id), "s3cret"
+
+    async def run_as_ok(_db, _provider, _user_id):
+        return None
+
+    monkeypatch.setattr(prov, "integration_connection", connection)
+    monkeypatch.setattr(sources, "_run_as_reason", run_as_ok)
+    db = FakeDb("opencti")
+    row = await sources.enable(
+        db, provider="opencti", kind="listener", integration_id=INTEGRATION, run_as_user_id=RUN_AS, now=NOW
+    )
+    assert sources.status_of(row) == ("connected", None)
+    assert len(octi.notifiers) == 1 and list(octi.triggers) == [row.state["trigger_id"]]
+    await sources.disable(db, row, now=NOW)
+    assert not octi.notifiers and not octi.triggers and sources.status_of(row) == ("off", None)
+
+
 def test_the_pir_playbook_source_reads_the_profile_pirs():
     spec = sources.PROVISIONED[("opencti", "pir_playbook")].spec()
     assert spec["mode"] == "pir_playbook" and spec["organization_context"] == ["pir_ids"]
