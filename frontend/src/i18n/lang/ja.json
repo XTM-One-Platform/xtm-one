@@ -21899,6 +21899,7 @@
   "The PIRs could not be read: {reason}": "PIR を読み取れませんでした: {reason}",
   "{enabled, plural, one {# PIR enabled in signals} other {# PIRs enabled in signals}} of {total}": "{total} 件中 {enabled, plural, other {# 件の PIR がシグナルで有効}}",
   "No PIR yet. The PIRs of every connected OpenCTI appear here after the next refresh.": "PIR はまだありません。接続されたすべての OpenCTI の PIR は次回の更新後にここに表示されます。",
+  "{integration}: the PIRs could not be read. {reason}": "{integration}: PIR を読み取れませんでした。{reason}",
   "PIR policy: {name}": "PIR ポリシー: {name}",
   "The question this PIR answers, who owns it, its minimum score and whether it drives signals. OpenCTI keeps the PIR itself.": "この PIR が答える質問、担当者、最小スコア、シグナルを発生させるかどうか。PIR 自体は OpenCTI が保持します。",
   "PIR policy saved": "PIR ポリシーを保存しました",
