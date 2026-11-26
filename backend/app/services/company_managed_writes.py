@@ -102,6 +102,10 @@ class CompanyManagedWriter:
     # run-as user), apart from the file owner a company-managed run leaves
     # empty: who that run's decisions wait for when nobody is named (#2422).
     run_person_id: uuid.UUID | None = None
+    # That person was chosen (the run's triggering or run-as user), not the
+    # assignment owner standing in: it stays the decider even when it is the
+    # seed account, the platform administrator.
+    run_person_chosen: bool = False
 
 
 def person_writer(*, is_admin: bool) -> CompanyManagedWriter:
@@ -115,6 +119,7 @@ def agent_writer(
     agent_id: str | uuid.UUID | None = None,
     acting_admin: bool = False,
     run_person_id: str | uuid.UUID | None = None,
+    run_person_chosen: bool = False,
 ) -> CompanyManagedWriter:
     """An agent's tools, dispatch or run: a company-managed agent writes them.
 
@@ -122,7 +127,8 @@ def agent_writer(
     ``coordination_access`` decides; *acting_admin* (the person it acts for is
     an administrator) lets it read past every narrowing; *run_person_id* is
     the person an assignment run acts for, read only to route its decisions
-    (``work_item_recipient``, #2422), never for file access.
+    (``work_item_recipient``, #2422), never for file access; *run_person_chosen*
+    says it is the run's triggering or run-as user, not the owner standing in.
     """
     return CompanyManagedWriter(
         bool(is_company_managed),
@@ -130,6 +136,7 @@ def agent_writer(
         _as_uuid(agent_id),
         acting_admin=bool(acting_admin),
         run_person_id=_as_uuid(run_person_id),
+        run_person_chosen=bool(run_person_chosen) and run_person_id is not None,
     )
 
 

@@ -24,15 +24,17 @@ The recipient is resolved at the write, in this order:
    user who can read the item; a company-managed agent may only name a
    decider (#2422): the person its run acts for, its acting user, a member of
    a CTEM ``decide`` group for CTEM work, the owner of its home fleet or an
-   administrator, never the seed account. Anyone else is dropped (logged) and
-   the steps below apply, so the decision is never lost;
+   administrator, never the seed account unless that account is the run's
+   chosen person (it triggered the run, or the run runs as it). Anyone else is
+   dropped (logged) and the steps below apply, so the decision is never lost;
 2. the run's acting user (the person the run acts for);
 3. the owner of the writing agent, for a personal agent; for a company-managed
    agent (#2367) its owner is the seed account that stands for the platform,
    never a decider, so the item goes instead to the CTEM ``decide`` groups
    (``ctem_access.gate_recipient``) when the agent holds CTEM tools or its
    home fleet is a CTEM fleet, else to the person its assignment run acts for
-   (the triggering user, else the run-as user, #2422; the seed account never),
+   (the triggering user, else the run-as user, #2422; the seed account only
+   when it is that chosen person, never as the assignment owner standing in),
    else to the owner of its home fleet when that fleet is a person's (not
    seeded), else to step 4;
 4. the platform administrators, when none of the above exists (a
@@ -154,12 +156,16 @@ async def resolve_recipient(
     is_company_managed: bool,
     workspace_id: uuid.UUID | None,
     run_person_id: uuid.UUID | None = None,
+    run_person_chosen: bool = False,
 ) -> Recipient:
     """The person a ``needs_human`` item filed this way waits for.
 
     *run_person_id* is the person the writing assignment run acts for (its
     triggering user, else its run-as user), which a company-managed run does
-    not carry as *acting_user_id* (#2422).
+    not carry as *acting_user_id* (#2422). *run_person_chosen* says that
+    person was chosen (the run's trigger or run-as user), not the assignment
+    owner standing in: a chosen person stays the decider even when it is the
+    seed account, which is the platform administrator (``ADMIN_EMAIL``).
 
     Raises :class:`RecipientError` when *explicit* names no active user, a user
     who cannot read the item, or when nobody at all can be notified.
@@ -182,7 +188,12 @@ async def resolve_recipient(
         ):
             raise RecipientError(f"recipient {explicit.strip()!r} cannot see this work item; nothing was written")
         if not company_agent or await _company_agent_may_name(
-            db, agent, person, acting_user_id=acting_user_id, run_person_id=run_person_id
+            db,
+            agent,
+            person,
+            acting_user_id=acting_user_id,
+            run_person_id=run_person_id,
+            run_person_chosen=run_person_chosen,
         ):
             return Recipient(person.id, "explicit")
         # A company-managed agent named someone who is no decider (the seed account
@@ -196,7 +207,9 @@ async def resolve_recipient(
         return Recipient(acting_user_id, "acting_user")
     owner: uuid.UUID | None = getattr(agent, "user_id", None)
     if company_agent:
-        routed = await _company_agent_recipient(db, agent, run_person_id=run_person_id)
+        routed = await _company_agent_recipient(
+            db, agent, run_person_id=run_person_id, run_person_chosen=run_person_chosen
+        )
         if routed is not None:
             return routed
     elif owner is not None:
@@ -269,17 +282,21 @@ async def _company_agent_may_name(
     *,
     acting_user_id: uuid.UUID | None,
     run_person_id: uuid.UUID | None,
+    run_person_chosen: bool = False,
 ) -> bool:
     """Whether a company-managed *agent* may address its decision to *person* (#2422).
 
     A decider only: the person its run acts for, its acting user, an
     administrator, the owner of a home fleet a person owns, or a CTEM
-    ``decide`` group member for CTEM work; never the seed account. A failed
-    read refuses (the routing then applies), never a widening.
+    ``decide`` group member for CTEM work; never the seed account, unless it
+    is the acting user or the run's chosen person (read first). A failed read
+    refuses (the routing then applies), never a widening.
     """
+    if person.id is not None and (person.id == acting_user_id or (run_person_chosen and person.id == run_person_id)):
+        return True
     if _is_seed_account(person, agent):
         return False
-    if person.id in {acting_user_id, run_person_id}:
+    if person.id == run_person_id:
         return True
     if getattr(person, "is_admin", False):
         return True
@@ -297,8 +314,14 @@ async def _company_agent_may_name(
     return False
 
 
-async def _run_person(db: Any, agent: Any, run_person_id: uuid.UUID | None) -> uuid.UUID | None:
-    """*run_person_id* when it is an active person other than the seed account; else ``None``."""
+async def _run_person(
+    db: Any, agent: Any, run_person_id: uuid.UUID | None, *, chosen: bool = False
+) -> uuid.UUID | None:
+    """*run_person_id* when it is an active person; else ``None``.
+
+    The seed account is refused unless *chosen* (it triggered the run or the
+    run runs as it): the assignment owner standing in is never a decider.
+    """
     if run_person_id is None:
         return None
     from app.models.user import User
@@ -308,17 +331,19 @@ async def _run_person(db: Any, agent: Any, run_person_id: uuid.UUID | None) -> u
     except Exception:
         logger.info("work item recipient: run person %s unreadable", run_person_id, exc_info=True)
         return None
-    if person is None or not person.is_active or _is_seed_account(person, agent):
+    if person is None or not person.is_active or (not chosen and _is_seed_account(person, agent)):
         return None
     return safe_uuid(person.id)
 
 
-async def _company_agent_recipient(db: Any, agent: Any, *, run_person_id: uuid.UUID | None = None) -> Recipient | None:
+async def _company_agent_recipient(
+    db: Any, agent: Any, *, run_person_id: uuid.UUID | None = None, run_person_chosen: bool = False
+) -> Recipient | None:
     """Who a company-managed *agent*'s decision waits for when nobody is named (#2367, #2422).
 
     The CTEM ``decide`` groups (notify on) for an agent holding CTEM tools or
-    living in a CTEM fleet; else the person its run acts for (never the seed
-    account); else the owner of its home fleet when a person owns it (a seeded
+    living in a CTEM fleet; else the person its run acts for (the seed account
+    only when it is the run's chosen person); else the owner of its home fleet when a person owns it (a seeded
     fleet's owner is the seed account too); else ``None``: the administrators.
     A failed read is ``None``, never a widening.
     """
@@ -335,7 +360,7 @@ async def _company_agent_recipient(db: Any, agent: Any, *, run_person_id: uuid.U
         groups = group_refs(await ctem_access.gate_recipient(db))
         if groups:
             return await _resolve_groups(db, groups)
-    person = await _run_person(db, agent, run_person_id)
+    person = await _run_person(db, agent, run_person_id, chosen=run_person_chosen)
     if person is not None:
         return Recipient(person, "run_person")
     owner = _persons_fleet_owner(fleet)

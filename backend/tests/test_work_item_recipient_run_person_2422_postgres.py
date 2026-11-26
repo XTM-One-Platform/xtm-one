@@ -37,7 +37,12 @@ pytestmark = pytest.mark.integration
 
 
 async def _decision(
-    agent: Any, *, run_person: Any = None, recipient: str | None = None, key: str | None = None
+    agent: Any,
+    *,
+    run_person: Any = None,
+    recipient: str | None = None,
+    key: str | None = None,
+    chosen: bool = False,
 ) -> dict[str, Any]:
     """A needs_human item a company-managed run files with no file owner, as the run's tools do."""
     return await wi_service.create_work_item(
@@ -55,6 +60,7 @@ async def _decision(
             is_company_managed=True,
             agent_id=agent.id,
             run_person_id=getattr(run_person, "id", None),
+            run_person_chosen=chosen,
         ),
     )
 
@@ -202,6 +208,70 @@ async def test_a_ctem_decide_member_may_be_named_for_ctem_work() -> None:
             item = await _decision(agent, recipient=str(decider.id))
 
     assert item["waits_for_user_id"] == str(decider.id)
+
+
+@pytest.mark.asyncio
+async def test_a_run_acting_as_the_admin_account_waits_for_that_admin_alone(monkeypatch: Any) -> None:
+    """The seed account is the platform administrator: chosen as the run's person, it decides."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "admin_email", "root-h@example.com")
+    async with _temp_database() as sessions:
+        async with sessions() as session:
+            root = await _make_user(session, email="root-h@example.com", is_admin=True)
+            other_admin = await _make_user(session, email="admin-h@example.com", is_admin=True)
+            agent = await _company_agent(session, root)
+            await session.commit()
+
+        async with _pointed_at_db(sessions):
+            item = await _decision(agent, run_person=root, chosen=True)
+            mine = await wi_service.work_items_waiting_for_person(user_id=str(root.id))
+            others = await wi_service.work_items_waiting_for_person(user_id=str(other_admin.id))
+            # The same account only standing in as the assignment owner: the fallback is unchanged.
+            standing_in = await _decision(agent, run_person=root, chosen=False)
+
+    assert item["waits_for_user_id"] == str(root.id)
+    assert mine["count"] == 1
+    assert others["count"] == 0
+    assert standing_in["waits_for_user_id"] is None  # the administrators
+
+
+@pytest.mark.asyncio
+async def test_an_explicit_admin_account_that_is_the_run_person_is_kept(monkeypatch: Any) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "admin_email", "root-i@example.com")
+    async with _temp_database() as sessions:
+        async with sessions() as session:
+            root = await _make_user(session, email="root-i@example.com", is_admin=True)
+            await _make_user(session, email="admin-i@example.com", is_admin=True)
+            run_as = await _make_user(session, email="run-as-i@example.com")
+            agent = await _company_agent(session, root)
+            await session.commit()
+
+        async with _pointed_at_db(sessions):
+            by_email = await _decision(agent, run_person=root, chosen=True, recipient="root-i@example.com")
+            by_id = await _decision(agent, run_person=root, chosen=True, recipient=str(root.id))
+            # Named while another person is the run's person: still dropped, the routing applies.
+            not_the_run = await _decision(agent, run_person=run_as, chosen=True, recipient=str(root.id))
+
+    assert by_email["waits_for_user_id"] == str(root.id)
+    assert by_id["waits_for_user_id"] == str(root.id)
+    assert not_the_run["waits_for_user_id"] == str(run_as.id)
+
+
+def test_the_run_person_is_chosen_only_when_triggered_or_run_as() -> None:
+    from app.services.assignment_engine import _run_person_chosen
+
+    owner, run_as, trigger = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    assignment = SimpleNamespace(user_id=owner, run_as_user_id=run_as)
+    no_run_as = SimpleNamespace(user_id=owner, run_as_user_id=None)
+
+    assert _run_person_chosen(SimpleNamespace(user_id=trigger, triggered_by_user_id=trigger), assignment)  # type: ignore[arg-type]
+    assert _run_person_chosen(SimpleNamespace(user_id=run_as, triggered_by_user_id=None), assignment)  # type: ignore[arg-type]
+    assert not _run_person_chosen(SimpleNamespace(user_id=owner, triggered_by_user_id=None), no_run_as)  # type: ignore[arg-type]
+    assert not _run_person_chosen(SimpleNamespace(user_id=None, triggered_by_user_id=None), assignment)  # type: ignore[arg-type]
+    assert agent_writer(is_company_managed=True, run_person_chosen=True).run_person_chosen is False
 
 
 def test_a_company_managed_run_keeps_no_file_owner() -> None:

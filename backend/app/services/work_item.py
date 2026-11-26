@@ -2432,6 +2432,7 @@ async def create_work_item(
             is_company_managed=is_company_managed,
             workspace_id=workspace_id,
             run_person_id=getattr(writer, "run_person_id", None),
+            run_person_chosen=bool(getattr(writer, "run_person_chosen", False)),
         )
         item = WorkItem(
             user_id=user_uuid,
@@ -2886,6 +2887,7 @@ async def update_work_item(
                 is_company_managed=bool(item.is_company_managed),
                 workspace_id=item.workspace_id,
                 run_person_id=getattr(writer, "run_person_id", None),
+                run_person_chosen=bool(getattr(writer, "run_person_chosen", False)),
             )
         previous_status = item.status
         if title is not None:
@@ -6291,6 +6293,7 @@ async def _resolved_recipient(
     is_company_managed: bool,
     workspace_id: uuid.UUID | None,
     run_person_id: uuid.UUID | None = None,
+    run_person_chosen: bool = False,
 ) -> uuid.UUID | None:
     """The ``waits_for_user_id`` a write stores (#11893): ``None`` when the item
     needs nobody, waits for its own user, or for the administrators.
@@ -6312,6 +6315,7 @@ async def _resolved_recipient(
         is_company_managed=is_company_managed,
         workspace_id=workspace_id,
         run_person_id=run_person_id,
+        run_person_chosen=run_person_chosen,
     )
     return person
 
@@ -6327,6 +6331,7 @@ async def _resolved_recipient_and_groups(
     is_company_managed: bool,
     workspace_id: uuid.UUID | None,
     run_person_id: uuid.UUID | None = None,
+    run_person_chosen: bool = False,
 ) -> tuple[uuid.UUID | None, list[str] | None]:
     """The person and the groups :func:`resolve_recipient` names, as stored.
 
@@ -6346,6 +6351,7 @@ async def _resolved_recipient_and_groups(
         is_company_managed=is_company_managed,
         workspace_id=workspace_id,
         run_person_id=run_person_id,
+        run_person_chosen=run_person_chosen,
     )
     if found.group_ids:
         return None, list(found.group_ids)
@@ -6363,6 +6369,7 @@ async def _resolved_recipients(
     is_company_managed: bool,
     workspace_id: uuid.UUID | None,
     run_person_id: uuid.UUID | None = None,
+    run_person_chosen: bool = False,
 ) -> tuple[uuid.UUID | None, list[str] | None]:
     """``(waits_for_user_id, waits_for_group_ids)`` a write stores (#11893, #1748).
 
@@ -6387,6 +6394,7 @@ async def _resolved_recipients(
             is_company_managed=is_company_managed,
             workspace_id=workspace_id,
             run_person_id=run_person_id,
+            run_person_chosen=run_person_chosen,
         )
         return None, None
     return await _resolved_recipient_and_groups(
@@ -6399,6 +6407,7 @@ async def _resolved_recipients(
         is_company_managed=is_company_managed,
         workspace_id=workspace_id,
         run_person_id=run_person_id,
+        run_person_chosen=run_person_chosen,
     )
 
 
