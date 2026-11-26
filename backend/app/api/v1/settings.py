@@ -150,7 +150,7 @@ from app.models.llm_trace import LLMTrace
 from app.models.mcp_server import MCPServer
 from app.models.oauth_default import OAuthDefault
 from app.models.sso_config import SSOConfig
-from app.models.user import User, admin_email_change_refusal, is_platform_admin
+from app.models.user import User, admin_email_change_refusal, is_platform_admin, provisioning_source
 from app.services import ai_state, general_assistant_skills, token_store
 from app.services.audit import log_audit
 from app.services.audit_retention import audit_log_retention_days
@@ -4808,10 +4808,9 @@ def email_change_blocked(user: User) -> str | None:
     The rule both self-service routes apply and ``GET /auth/me`` reports, so
     the profile offers no change it would refuse. An identity provider owns the
     address of an SSO account and of one SCIM provisioned or linked
-    (``users.provisioning_source``): its next sync writes its own address back. Platform administrator standing follows
+    (``models.user.provisioning_source``): its next sync writes its own address back. Platform administrator standing follows
     ``ADMIN_EMAIL``, and the boot finds the account by it.
     """
-    from app.api.v1.users import provisioning_source
     from app.services import email as email_service
 
     if provisioning_source(user) != "local":

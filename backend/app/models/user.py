@@ -5,7 +5,20 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    ColumnElement,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    and_,
+    not_,
+    or_,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -201,7 +214,7 @@ class User(Base):
     scim_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
     # When SCIM first created, linked or updated the account, ``externalId``
     # or not (``externalId`` is optional): its identity provider manages it
-    # from then on (``users.provisioning_source``). NULL for one SCIM never saw.
+    # from then on (:func:`provisioning_source`). NULL for one SCIM never saw.
     scim_linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
 
     # LLM preferences (per-user overrides)
@@ -420,3 +433,25 @@ def admin_email_change_refusal(user: object | None, email: str) -> str | None:
     if settings.admin_email and email == settings.admin_email.strip().lower():
         return "This address is the platform admin's, set by ADMIN_EMAIL: it cannot be given to an account"
     return None
+
+
+def provisioning_source(user: object) -> str:
+    """``scim`` for an account its identity provider manages, else ``sso`` or ``local``.
+
+    The one rule (the users API, the user admin tools, the self-service email
+    change): SCIM manages an account it created, linked or updated, which
+    ``scim_linked_at`` records whether or not the provider sent the optional
+    ``externalId``. :func:`provisioning_source_clause` is its SQL form.
+    """
+    if getattr(user, "scim_external_id", None) or getattr(user, "scim_linked_at", None):
+        return "scim"
+    return "sso" if getattr(user, "sso_provider", None) else "local"
+
+
+def provisioning_source_clause(source: str) -> ColumnElement[bool]:
+    """The accounts :func:`provisioning_source` reads as *source* (``scim``, ``sso``, ``local``), as a filter on ``User``."""
+    scim = or_(User.scim_external_id.is_not(None), User.scim_linked_at.is_not(None))
+    if source == "scim":
+        return scim
+    sso = User.sso_provider.is_not(None)
+    return and_(not_(scim), sso if source == "sso" else not_(sso))

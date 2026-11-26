@@ -44,7 +44,7 @@ from app.models.group import Group, GroupMember
 from app.models.integration import Integration
 from app.models.knowledge_base import KnowledgeBase
 from app.models.mcp_server import MCPServer
-from app.models.user import User, admin_email_change_refusal, is_platform_admin
+from app.models.user import User, admin_email_change_refusal, is_platform_admin, provisioning_source
 from app.services import token_store
 from app.services.assignment_pause import owner_not_deactivated
 from app.services.audit import log_audit
@@ -132,13 +132,6 @@ class UserDetailResponse(BaseModel):
     deactivated_at: str | None = None
     deactivation_source: str | None = None
     deprovisioned_at: str | None = None
-
-
-def provisioning_source(user: User) -> str:
-    """``scim`` for an account an identity provider manages, else ``sso`` or ``local``."""
-    if getattr(user, "scim_external_id", None) or getattr(user, "scim_linked_at", None):
-        return "scim"
-    return "sso" if getattr(user, "sso_provider", None) else "local"
 
 
 class UserIntegrationItem(BaseModel):

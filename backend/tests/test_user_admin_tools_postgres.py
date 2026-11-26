@@ -294,3 +294,28 @@ async def test_group_members_and_a_scim_group_stays_read_only(monkeypatch: pytes
         assert refused.startswith("Refused: the group entra-team is managed by the identity provider")
         rows = (await session.execute(select(GroupMember).where(GroupMember.group_id == scim.id))).scalars().all()
         assert rows == []
+
+
+async def test_an_account_scim_linked_without_an_external_id_lists_as_scim(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import UTC, datetime
+
+    async with (
+        scratch_database("useradminsrc", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True) as db,
+        db.sessions() as session,
+    ):
+        admin = _user("admin", role="admin")
+        by_id, linked, sso, local = _user("byid"), _user("linked"), _user("sso"), _user("local")
+        by_id.scim_external_id = "ext-1"
+        linked.scim_linked_at = datetime.now(UTC)
+        sso.sso_provider = "oidc"
+        session.add_all([admin, by_id, linked, sso, local])
+        await session.commit()
+        _point_sessions_at(monkeypatch, db)
+        call = _tools(admin.id)
+
+        listed = json.loads(await call("list_platform_users"))
+        source = {row["email"].split("-")[0]: row["source"] for row in listed["users"]}
+        assert source == {"admin": "local", "byid": "scim", "linked": "scim", "sso": "sso", "local": "local"}
+        for wanted in ("scim", "sso", "local"):
+            rows = json.loads(await call("list_platform_users", source=wanted))["users"]
+            assert {row["email"].split("-")[0] for row in rows} == {k for k, v in source.items() if v == wanted}

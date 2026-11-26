@@ -306,7 +306,7 @@ async def test_an_account_linked_by_username_alone_is_managed_by_its_identity_pr
     # externalId is optional in SCIM 2.0: the link alone hands the account,
     # its email included, to the identity provider.
     from app.api.v1.settings import email_change_blocked
-    from app.api.v1.users import provisioning_source
+    from app.models.user import provisioning_source
 
     monkeypatch.setattr("app.services.email.is_email_configured", lambda: True)
     async with scratch_database(
