@@ -21952,7 +21952,6 @@
   "Intelligence policy": "Politique de renseignement",
   "The PIRs of every connected OpenCTI, refreshed every hour. Each one has its own minimum score; only the PIRs enabled in signals start fleet runs.": "Les PIR de chaque OpenCTI connecté, actualisés toutes les heures. Chacun a son propre score minimum ; seuls les PIR activés dans les signaux lancent des exécutions de flotte.",
   "The PIRs were not refreshed": "Les PIR n'ont pas été actualisés",
-  "Refresh now": "Actualiser maintenant",
   "The PIRs could not be read: {reason}": "Les PIR n'ont pas pu être lus : {reason}",
   "{enabled, plural, one {# PIR enabled in signals} other {# PIRs enabled in signals}} of {total}": "{enabled, plural, one {# PIR activé dans les signaux} other {# PIR activés dans les signaux}} sur {total}",
   "No PIR yet. The PIRs of every connected OpenCTI appear here after the next refresh.": "Aucun PIR pour l'instant. Les PIR de chaque OpenCTI connecté apparaissent ici après la prochaine actualisation.",

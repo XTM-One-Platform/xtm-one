@@ -21952,7 +21952,6 @@
   "Intelligence policy": "インテリジェンスポリシー",
   "The PIRs of every connected OpenCTI, refreshed every hour. Each one has its own minimum score; only the PIRs enabled in signals start fleet runs.": "接続されたすべての OpenCTI の PIR (1 時間ごとに更新)。各 PIR に固有の最小スコアがあり、シグナルで有効な PIR のみがフリート実行を開始します。",
   "The PIRs were not refreshed": "PIR は更新されませんでした",
-  "Refresh now": "今すぐ更新",
   "The PIRs could not be read: {reason}": "PIR を読み取れませんでした: {reason}",
   "{enabled, plural, one {# PIR enabled in signals} other {# PIRs enabled in signals}} of {total}": "{total} 件中 {enabled, plural, other {# 件の PIR がシグナルで有効}}",
   "No PIR yet. The PIRs of every connected OpenCTI appear here after the next refresh.": "PIR はまだありません。接続されたすべての OpenCTI の PIR は次回の更新後にここに表示されます。",
