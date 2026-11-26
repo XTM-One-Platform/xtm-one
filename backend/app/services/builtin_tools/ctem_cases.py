@@ -320,6 +320,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
 
         # Each attached host's module ids, rows stored before #2448 included: asset_id is the inventory id.
         await case_assets.enrich_source_ids(db, rendered.get("assets"))
+        # The hosts the issues name, resolved to their inventory id and module ids in one lookup (#2492).
+        await case_assets.resolve_named_rows(db, getattr(case, "organization_id", None), rendered.get("assets"))
         return case, rows, rendered
 
     async def _view_only(db: AsyncSession, rows: list[Any], vertical: str) -> str | None:
