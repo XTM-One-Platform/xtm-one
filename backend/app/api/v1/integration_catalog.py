@@ -6934,7 +6934,10 @@ PROVIDER_CATALOG = {
         "integration_category": "detection_response",
         # Also a SIEM (#1373): advanced hunting over the unified Defender and
         # Sentinel tables, so it fills a fleet's SIEM capability beside Sentinel.
-        "integration_types": ["xdr", "edr", "siem", "threat_intel", "soar"],
+        # Also a vulnerability scanner: Defender Vulnerability Management (TVM)
+        # software inventory and CVE exposure per device, so it fills a fleet's
+        # Vulnerability scanner capability beside Tenable, Qualys and Wiz.
+        "integration_types": ["xdr", "edr", "siem", "vulnerability_management", "threat_intel", "soar"],
         # Delegated OAuth (sign-in) is the default; app-only application
         # permissions remain available via the "API Key" auth mode and are
         # recommended for fully-unattended assignments.
