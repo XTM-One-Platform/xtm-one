@@ -41,6 +41,7 @@ PROVIDER_NATIVE_MIMES: dict[str, set[str]] = {
     },
     "openai": {
         "image/",
+        "application/pdf",
     },
     "bedrock": {
         "image/",
@@ -74,8 +75,19 @@ PROVIDER_NATIVE_MIMES: dict[str, set[str]] = {
 PROVIDER_PDF_PAGE_LIMITS: dict[str, int] = {
     "anthropic": 600,
     "gemini": 1000,
+    # OpenAI documents 100 pages per request (its newer docs cap only bytes).
+    "openai": 100,
     # Bedrock mostly fronts Anthropic models — use the same conservative cap.
     "bedrock": 600,
+}
+
+# Raw bytes of native PDFs one request may carry, spent like the page cap.
+# Anthropic (32 MB) and Gemini inline data (20 MB) cap the base64 request,
+# 4/3 of the raw bytes; OpenAI documents 32 MB of file content per request.
+PROVIDER_PDF_BYTE_LIMITS: dict[str, int] = {
+    "anthropic": 24 * 1024 * 1024,
+    "gemini": 15 * 1024 * 1024,
+    "openai": 32 * 1024 * 1024,
 }
 
 # What a natively-sent PDF page costs. Anthropic bills each page as its
@@ -318,7 +330,7 @@ async def prepare_tool_result_attachments(
             )
         elif isinstance(resolved, NativeFile):
             # A tool result carries text and images only: a document the
-            # provider reads natively elsewhere (a PDF on Anthropic / Gemini,
+            # provider reads natively elsewhere (a PDF on Anthropic / Gemini / OpenAI,
             # an Office or text file on Bedrock) is read here as its text.
             extra_texts.append(
                 (await _extract_fallback(file_ref, data=resolved.data)).text
@@ -422,11 +434,22 @@ def _pdf_over_page_limit(
     file_ref: FileRef,
     pages: int | None,
     provider_key: str,
+    size: int = 0,
 ) -> bool:
-    """The per-file page cap: a PDF over it goes to text on its own.
+    """The per-file page and byte caps: a PDF over one goes to text on its own.
 
     Fail-open on an unknown page count, like :func:`_count_pdf_pages`.
     """
+    byte_limit = PROVIDER_PDF_BYTE_LIMITS.get(provider_key)
+    if byte_limit is not None and size > byte_limit:
+        logger.warning(
+            "PDF %s is %d bytes, over the %s native limit of %d — degrading to text extraction",
+            file_ref.filename,
+            size,
+            provider_key,
+            byte_limit,
+        )
+        return True
     page_limit = PROVIDER_PDF_PAGE_LIMITS.get(provider_key)
     if pages is None or page_limit is None or pages <= page_limit:
         return False
@@ -452,7 +475,7 @@ async def _resolve_native_pdf(
     per-file page limit. The per-REQUEST budget is the caller's job.
     """
     pages = await _count_pdf_pages(data, await _content_digest(data, file_ref))
-    if _pdf_over_page_limit(file_ref, pages, provider_key):
+    if _pdf_over_page_limit(file_ref, pages, provider_key, len(data)):
         return await _extract_fallback(file_ref, data=data)
     return NativeFile(
         data=data,
@@ -690,6 +713,7 @@ async def resolve_payload_files(
     plan = PayloadFilePlan()
     supported = PROVIDER_NATIVE_MIMES.get(provider_key, set())
     page_limit = PROVIDER_PDF_PAGE_LIMITS.get(provider_key)
+    byte_limit = PROVIDER_PDF_BYTE_LIMITS.get(provider_key)
     token_budget = attachment_token_budget(context_window)
     current_turn = _current_turn_index(messages)
 
@@ -697,8 +721,10 @@ async def resolve_payload_files(
     tokens_used = 0
     seen_digests: set[str] = set()
 
-    def _fits(pages: int, tokens: int) -> bool:
+    def _fits(pages: int, tokens: int, size: int = 0) -> bool:
         if page_limit is not None and pages_used + pages > page_limit:
+            return False
+        if byte_limit is not None and plan.native_pdf_bytes + size > byte_limit:
             return False
         return token_budget is None or tokens_used + tokens <= token_budget
 
@@ -745,7 +771,7 @@ async def resolve_payload_files(
                     continue
                 elif file_ref.content_type == "application/pdf":
                     pages = await _count_pdf_pages(data, digest)
-                    if _pdf_over_page_limit(file_ref, pages, provider_key):
+                    if _pdf_over_page_limit(file_ref, pages, provider_key, len(data)):
                         # Over the per-file cap on its own: text.
                         fallback = await _extract_fallback(file_ref, data=data)
                     else:
@@ -756,7 +782,7 @@ async def resolve_payload_files(
                                 len(data) // BaseLLMProvider._BYTES_PER_NATIVE_TOKEN, 1
                             )
                         )
-                        if _fits(pages or 0, est_tokens):
+                        if _fits(pages or 0, est_tokens, len(data)):
                             plan.resolved[key] = NativeFile(
                                 data=data,
                                 content_type=file_ref.content_type,

@@ -376,15 +376,15 @@ async def test_dedupe_is_by_bytes_not_by_name(monkeypatch):
 
 
 async def test_dedupe_applies_where_pdfs_are_text_too(monkeypatch):
-    """OpenAI takes no PDF natively: the copies would be 80k characters of
-    identical text each. Once."""
+    """An OpenAI-compatible backend takes no PDF natively: the copies would be
+    80k characters of identical text each. Once."""
     _install_fake_pypdf(monkeypatch)
     messages = [
         _user("a", _pdf("report.pdf", 20)),
         _user("b", _pdf("report.pdf", 20)),
     ]
 
-    plan = await resolve_payload_files(messages, "openai", context_window=128_000)
+    plan = await resolve_payload_files(messages, "openai_compat", context_window=128_000)
 
     assert _kinds(plan, messages) == [["stub"], ["text"]]
     assert plan.native_pdf_pages == 0

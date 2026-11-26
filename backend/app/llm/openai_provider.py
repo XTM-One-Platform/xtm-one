@@ -20,7 +20,7 @@ from app.llm.base import (
     BaseLLMProvider,
     ChatMessage,
     ChatResponse,
-    build_openai_messages_async,
+    build_openai_payload,
     parse_tool_arguments,
     retry_llm_call,
     usage_sink_of,
@@ -182,13 +182,14 @@ class OpenAIProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProvider):
     ) -> ChatResponse:
         model = model or self.default_model
 
-        oai_messages = await build_openai_messages_async(
+        oai_messages, pdf_tokens = await build_openai_payload(
             messages, "openai", context_window=self._resolve_context_window(model)
         )
         text_chars, image_count, native_file_bytes = self._measure_oai_payload(oai_messages)
         self._check_resolved_overflow(
             text_chars=text_chars, image_count=image_count,
             native_file_bytes=native_file_bytes, tools=tools, model=model,
+            native_document_tokens=pdf_tokens,
         )
 
         if tools and uses_responses_api_with_tools(model):
@@ -296,13 +297,14 @@ class OpenAIProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProvider):
         if usage_sink is not None:
             usage_sink.restart()
 
-        api_messages = await build_openai_messages_async(
+        api_messages, pdf_tokens = await build_openai_payload(
             messages, "openai", context_window=self._resolve_context_window(model)
         )
         text_chars, image_count, native_file_bytes = self._measure_oai_payload(api_messages)
         self._check_resolved_overflow(
             text_chars=text_chars, image_count=image_count,
             native_file_bytes=native_file_bytes, tools=tools, model=model,
+            native_document_tokens=pdf_tokens,
         )
 
         extra_params: dict = {}
@@ -391,13 +393,14 @@ class OpenAIProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProvider):
         if usage_sink is not None:
             usage_sink.restart()
 
-        oai_messages = await build_openai_messages_async(
+        oai_messages, pdf_tokens = await build_openai_payload(
             messages, "openai", context_window=self._resolve_context_window(model)
         )
         text_chars, image_count, native_file_bytes = self._measure_oai_payload(oai_messages)
         self._check_resolved_overflow(
             text_chars=text_chars, image_count=image_count,
             native_file_bytes=native_file_bytes, tools=tools, model=model,
+            native_document_tokens=pdf_tokens,
         )
         if tools and uses_responses_api_with_tools(model):
             return await responses_chat(

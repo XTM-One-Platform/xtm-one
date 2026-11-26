@@ -34,7 +34,7 @@ from app.llm.base import (
     ChatMessage,
     ChatResponse,
     ModelDeclinedError,
-    build_openai_messages_async,
+    build_openai_payload,
     declined_error,
     gateway_error_envelope,
     parse_tool_arguments,
@@ -1018,11 +1018,16 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
         (:func:`openai_function_tools`); ``None`` when unknown."""
         return "anthropic" if is_claude_model(model) else None
 
-    async def _build_messages(self, messages: list[ChatMessage], model: str) -> list[dict]:
-        oai_messages = await build_openai_messages_async(
-            messages, "openai_compat", context_window=self._resolve_context_window(model)
+    async def _file_provider_key(self, model: str) -> str:
+        """The ``file_resolver`` key *model*'s attachments resolve under: which files go native."""
+        return "openai_compat"
+
+    async def _build_messages(self, messages: list[ChatMessage], model: str) -> tuple[list[dict], int]:
+        """The OpenAI-format messages and the page-based token estimate of their native PDFs."""
+        oai_messages, pdf_tokens = await build_openai_payload(
+            messages, await self._file_provider_key(model), context_window=self._resolve_context_window(model)
         )
-        return drop_claude_assistant_tail(oai_messages, model)
+        return drop_claude_assistant_tail(oai_messages, model), pdf_tokens
 
     async def _prepare_messages(
         self, messages: list[ChatMessage], model: str, tools: list[ToolDefinition] | None, kwargs: dict
@@ -1032,11 +1037,12 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
         are dropped for this request when they would not fit, and never sent
         with ``disable_thinking``, as the Anthropic provider does; Gemini's
         signatures still are, as the Gemini provider does."""
-        oai_messages = await self._build_messages(messages, model)
+        oai_messages, pdf_tokens = await self._build_messages(messages, model)
         text_chars, image_count, native_file_bytes = self._measure_oai_payload(oai_messages)
         self._check_resolved_overflow(
             text_chars=text_chars, image_count=image_count,
             native_file_bytes=native_file_bytes, tools=tools, model=model,
+            native_document_tokens=pdf_tokens,
         )
         if not self.replays_thinking_blocks:
             return oai_messages, None
@@ -1051,6 +1057,7 @@ class OpenAICompatibleProvider(OpenAISpeechMixin, OpenAIVideosMixin, BaseLLMProv
             estimated = self._estimate_resolved_tokens(
                 text_chars=text_chars + replay.chars(), image_count=image_count,
                 native_file_bytes=native_file_bytes, tool_chars=self._tool_definition_chars(tools),
+                native_document_tokens=pdf_tokens,
             )[0]
             if estimated <= limit:
                 break
