@@ -1090,6 +1090,7 @@ async def test_asset_bulk_update_by_ids(monkeypatch):
         ({"asset_ids": ["a1"], "asset_filter": "{}", "category": "host"}, "exactly one selection"),
         ({"asset_ids": ["a1"]}, "at least one of"),
         ({"asset_ids": ["a1"], "subcategory": "server"}, "needs its category"),
+        ({"asset_ids": ["a1"], "internet_facing": None}, "internet_facing or clear"),
         ({"asset_filter": "not json", "category": "host"}, "valid JSON"),
     ],
 )
@@ -1102,6 +1103,79 @@ async def test_asset_bulk_update_refuses_before_any_call(monkeypatch, args, mess
     result = await _run(executor, "manage_openaev_asset", {"action": "bulk_update", **args})
     assert message in result.content
     assert fake.calls == []
+
+
+@pytest.mark.parametrize("value", [True, False])
+async def test_asset_bulk_update_sends_internet_facing_alone(monkeypatch, value):
+    # OpenAEV #9936: asset_internet_facing in PUT /api/assets/bulk, true and false.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi([{"asset_id": "a1", "asset_internet_facing": value}])
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "bulk_update", "asset_ids": ["a1"], "internet_facing": value},
+    )
+    assert not result.is_error, result.content
+    assert fake.last_json() == {"asset_ids_to_process": ["a1"], "asset_internet_facing": value}
+    assert "Updated 1 asset(s): asset_internet_facing." in result.content
+    assert "NOT applied" not in result.content
+
+
+async def test_asset_bulk_update_without_internet_facing_does_not_send_it(monkeypatch):
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi(["a1"])
+    monkeypatch.setattr(assets, "_api", fake)
+    await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "bulk_update", "asset_ids": ["a1"], "category": "host"},
+    )
+    assert "asset_internet_facing" not in fake.last_json()
+
+
+async def test_asset_bulk_update_internet_facing_on_an_older_openaev(monkeypatch):
+    # Without #9936 a body carrying only the field is refused "Nothing to update".
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+
+    async def fake(base_url, headers, method, path, action, *, json=None, params=None, **kw):
+        return None, "Error: OpenAEV returned 400 while trying to bulk update assets: Nothing to update"
+
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "bulk_update", "asset_ids": ["a1"], "internet_facing": True},
+    )
+    assert "does not accept internet_facing in bulk yet" in result.content
+    assert "asset by asset with action 'update'" in result.content
+
+
+async def test_asset_bulk_update_internet_facing_dropped_beside_other_fields(monkeypatch):
+    # An older OpenAEV applies the other fields and ignores the unknown one.
+    from app.integrations.providers.openaev import assets
+
+    executor, _ = _build()
+    fake = _RecordingApi(
+        [
+            {"asset_id": "a1", "asset_internet_facing": False},
+            {"asset_id": "a2", "asset_internet_facing": True},
+        ]
+    )
+    monkeypatch.setattr(assets, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_asset",
+        {"action": "bulk_update", "asset_ids": ["a1", "a2"], "criticality": "high", "internet_facing": True},
+    )
+    assert "Updated 2 asset(s)" in result.content
+    assert "internet_facing was NOT applied on 1 of them" in result.content
 
 
 async def test_asset_bulk_update_on_an_openaev_without_the_route(monkeypatch):

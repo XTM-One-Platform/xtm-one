@@ -153,8 +153,14 @@ async def _bulk_update(
     criticality: str,
     tags: list[str] | None,
     clear: list[str] | None = None,
+    internet_facing: bool | None = None,
 ) -> str:
-    """One ``PUT /api/assets/bulk`` (OpenAEV #9654) over ids or a filter group."""
+    """One ``PUT /api/assets/bulk`` (OpenAEV #9654) over ids or a filter group.
+
+    ``internet_facing`` (true or false; None leaves it unchanged) needs OpenAEV
+    #9936: an older OpenAEV refuses it alone with "Nothing to update" or drops
+    it beside other fields, and both are answered, never claimed as applied.
+    """
     ids = [i for i in (asset_ids or []) if i]
     if bool(ids) == bool(filter_json):
         return "bulk_update needs exactly one selection: asset_ids or asset_filter."
@@ -189,8 +195,12 @@ async def _bulk_update(
         changes["asset_criticality"] = criticality.strip().upper()
     if tags:
         changes["asset_tags_to_add"] = tags
+    if internet_facing is not None:
+        changes["asset_internet_facing"] = internet_facing
     if not changes:
-        return "Provide at least one of category, subcategory, url, criticality, tags or clear ['url']."
+        return (
+            "Provide at least one of category, subcategory, url, criticality, tags, internet_facing or clear ['url']."
+        )
     if "asset_subcategory" in changes and "asset_category" not in changes:
         return "A subcategory needs its category: pass category too."
     body.update(changes)
@@ -201,10 +211,29 @@ async def _bulk_update(
                 f"{err}\nThis OpenAEV has no bulk asset update (it needs OpenAEV with "
                 "PUT /api/assets/bulk): update the assets one by one with action 'update'."
             )
+        if internet_facing is not None and "nothing to update" in err.lower():
+            return f"{err}\n{_BULK_INTERNET_FACING_UNSUPPORTED}"
         return err
     updated = resp.json() if resp is not None else None
     count = len(updated) if isinstance(updated, list) else 0
-    return f"Updated {count} asset(s): {', '.join(sorted(changes))}."
+    answer = f"Updated {count} asset(s): {', '.join(sorted(changes))}."
+    if internet_facing is not None and isinstance(updated, list):
+        missed = [
+            a
+            for a in updated
+            if isinstance(a, dict)
+            and "asset_internet_facing" in a
+            and a["asset_internet_facing"] is not internet_facing
+        ]
+        if missed:
+            answer += f"\ninternet_facing was NOT applied on {len(missed)} of them: {_BULK_INTERNET_FACING_UNSUPPORTED}"
+    return answer
+
+
+_BULK_INTERNET_FACING_UNSUPPORTED = (
+    "This OpenAEV does not accept internet_facing in bulk yet (it needs OpenAEV with "
+    "#9936): set it asset by asset with action 'update'."
+)
 
 
 def register(
@@ -243,6 +272,7 @@ def register(
                 criticality=criticality,
                 tags=tags,
                 clear=clear,
+                internet_facing=internet_facing,
             )
         if not asset_id:
             return "asset_id (endpoint_id) is required."
@@ -597,7 +627,7 @@ def register(
                 "(asset_id + any of the fields; the others are kept; clear lists the "
                 "fields to unset), 'delete' "
                 "(asset_id) and 'bulk_update' (asset_ids or asset_filter; sets category, "
-                "subcategory, url, criticality, adds tags on every match). "
+                "subcategory, url, criticality, internet_facing, adds tags on every match). "
                 "Endpoints are normally created by deploying an agent; use "
                 "search_openaev_assets / get_openaev_asset to read."
             ),
@@ -633,7 +663,10 @@ def register(
                     },
                     "subcategory": {"type": "string", "description": "WEBSITE, SERVER..."},
                     "criticality": {"type": "string", "description": "LOW, MEDIUM, HIGH, VERY_HIGH."},
-                    "internet_facing": {"type": "boolean"},
+                    "internet_facing": {
+                        "type": "boolean",
+                        "description": "update and bulk_update; omit to keep it.",
+                    },
                     "external_reference": {"type": "string"},
                     "clear": {
                         "type": "array",
