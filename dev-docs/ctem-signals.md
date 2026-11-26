@@ -146,7 +146,12 @@ writes the repository to `evidence.assets` as for a Dependabot alert.
 
 `GET /api/v1/ctem-signals/paths` also names, per path, what fires it
 (`description`), its `sources` and its `status`, plus `count_30d` and
-`last_signal_at` (the reader's visibility, as the signal list). Additive: the
+`last_signal_at` (the reader's visibility, as the signal list). Each source
+also carries its own `count_30d` and `last_signal_at` (#2436): every system
+recording point stamps `evidence.xtm_source_key` with the source key
+(`provider:kind[:name]`), and `activity_by_source` groups on it; a signal
+recorded before the stamp counts under its provider, credited to that
+provider's unnamed source only when the path has exactly one. Additive: the
 former fields are unchanged. The table lives in
 `services/ctem_signal_sources.py` (`PATH_SOURCES`); a test fails when a
 listener row of section 2 has no source row.

@@ -85,6 +85,27 @@ def test_the_catalog_carries_sources_status_and_activity() -> None:
     assert rows["new_exposure"]["last_signal_at"] is None
 
 
+def test_each_source_carries_its_own_30_day_activity() -> None:
+    """#2436: the path detail table shows the signals of the last 30 days and the last signal per source."""
+    by_source = {
+        "credential_leak": {
+            "github:listener:secret_scanning": {"count_30d": 4, "last_signal_at": "2026-11-25T08:00:00+00:00"},
+            "aikido:listener": {"count_30d": 1, "last_signal_at": "2026-11-20T08:00:00+00:00"},
+            # Recorded before #2436 stamped the source key: counted under the provider's only unnamed source.
+            "aikido": {"count_30d": 2, "last_signal_at": "2026-11-24T08:00:00+00:00"},
+        },
+        # Two unnamed OpenCTI sources on this path: a legacy signal is never guessed onto one of them.
+        "new_vulnerability": {"opencti": {"count_30d": 5, "last_signal_at": "2026-11-24T08:00:00+00:00"}},
+    }
+    rows = {r["id"]: r for r in ctem_signals.path_catalog({}, by_source=by_source)}
+    leak = {s["key"]: s for s in rows["credential_leak"]["sources"]}
+    assert leak["github:listener:secret_scanning"]["count_30d"] == 4
+    assert leak["aikido:listener"]["count_30d"] == 3
+    assert leak["aikido:listener"]["last_signal_at"] == "2026-11-24T08:00:00+00:00"
+    assert leak["opencti:listener"]["count_30d"] == 0 and leak["opencti:listener"]["last_signal_at"] is None
+    assert all(s["count_30d"] == 0 for s in rows["new_vulnerability"]["sources"] if s["provider"] == "opencti")
+
+
 def test_the_catalog_without_activity_keeps_its_former_shape_plus_sources() -> None:
     row = ctem_signals.path_catalog()[0]
     assert {"id", "label", "default_lens", "listener", "description", "sources", "status", "capabilities"} == set(row)

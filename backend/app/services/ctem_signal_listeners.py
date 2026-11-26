@@ -745,6 +745,10 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
                 from app.services.ctem_trigger_rules import PIR_FLOOR_KEY
 
                 fields["evidence"][PIR_FLOOR_KEY] = False
+            from app.services.ctem_signal_sources import source_key
+
+            # #2436: the source that recorded it, so the signal sources view counts each source apart.
+            fields["evidence"][ctem_signals.SOURCE_KEY_EVIDENCE] = source_key(provider, kind, row.source)
             signal, created = await ctem_signals.record_signal(
                 db,
                 organization_id=primary.id,
@@ -840,6 +844,7 @@ async def note_tracked_organizations(payload: Mapping[str, Any], organization_id
                     "report": _text(data.get("name"))[:300],
                     "relationship": tracked.relationship or "",
                     "organization_criticality": tracked.criticality,
+                    ctem_signals.SOURCE_KEY_EVIDENCE: "opencti:listener",
                 }
                 signal, created = await ctem_signals.record_signal(
                     db,

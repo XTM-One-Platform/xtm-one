@@ -544,6 +544,20 @@ class _Store:
                 row["last_signal_at"] = r.last_seen_at.isoformat()
         return out
 
+    async def activity_by_source(
+        self, _db: Any, *, organization_id: Any, recorded_by: Any, since: datetime
+    ) -> dict[str, dict[str, dict[str, Any]]]:
+        out: dict[str, dict[str, dict[str, Any]]] = {}
+        for r in self._mine(organization_id, recorded_by):  # type: ignore[no-untyped-call]
+            key = str((r.evidence or {}).get(signals.SOURCE_KEY_EVIDENCE) or r.source_provider)
+            row = out.setdefault(r.trigger_path, {}).setdefault(key, {"count_30d": 0, "last_signal_at": None})
+            if r.last_seen_at >= since:
+                row["count_30d"] = int(row["count_30d"]) + 1
+            last = row["last_signal_at"]
+            if last is None or r.last_seen_at.isoformat() > last:
+                row["last_signal_at"] = r.last_seen_at.isoformat()
+        return out
+
 
 class _Db:
     commits = 0
@@ -573,6 +587,7 @@ def store(monkeypatch):
     monkeypatch.setattr(signals, "get_signal", fake.get)
     monkeypatch.setattr(signals, "counts_by_path", fake.counts_by_path)
     monkeypatch.setattr(signals, "activity_by_path", fake.activity_by_path)
+    monkeypatch.setattr(signals, "activity_by_source", fake.activity_by_source)
     fake.bound = set()  # type: ignore[attr-defined]
 
     async def _bound(_db: Any, _user_id: Any) -> set[tuple[str, str]]:
