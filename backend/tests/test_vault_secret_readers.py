@@ -150,6 +150,8 @@ OTHER_COLUMN_READS: dict[str, str] = {
     "api/v1/webhooks.py:provider_webhook_unverified_reason": _PENDING_EXTRA_CONFIG,
     "api/v1/webhooks.py:receive_assignment_webhook": _PENDING_EXTRA_CONFIG,
     "api/v1/webhooks.py:receive_integration_webhook": _PENDING_EXTRA_CONFIG,
+    # The platform signal source receiver (#2434): the assignment receiver's verification, unchanged.
+    "api/v1/webhooks.py:receive_signal_source_webhook": _PENDING_EXTRA_CONFIG,
     "integrations/providers/openapi.py:decrypt_extra": _PENDING_EXTRA_CONFIG,
     "services/builtin_tools/agent_builder.py:build_agent_builder_tool._update_integration": _PENDING_EXTRA_CONFIG,
     "services/integration_notification_auth.py:load_slack_signing_secrets": _PENDING_EXTRA_CONFIG,

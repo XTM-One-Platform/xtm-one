@@ -89,6 +89,9 @@ REPOSITORY_ADVISORY_EVENTS: tuple[str, ...] = ("repository_advisory.published",)
 LISTENERS: tuple[Listener, ...] = (
     Listener("opencti", ("create", "update"), ("vulnerability",), "new_vulnerability", "world", "vulnerability"),
     Listener("opencti", ("create",), ("relationship:has",), "new_vulnerability", "inside", "vulnerability"),
+    # #2434: a sighting of a vulnerability in the organization's data (the former "Vulnerability
+    # sighted" trigger); the evidence says ``stix_type: sighting``, which the fleet routes on.
+    Listener("opencti", ("create",), ("sighting",), "new_vulnerability", "inside", "vulnerability"),
     Listener(
         "opencti",
         ("create", "update"),
@@ -175,8 +178,8 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
     if row.subject_kind == "identity":
         return _identity_signal(kind, data, payload)
     external_id = _text(data.get("id"))
-    if kind.startswith("relationship:"):
-        target = _text(data.get("target_ref"))
+    if kind.startswith("relationship:") or kind == "sighting":
+        target = _text(data.get("sighting_of_ref" if kind == "sighting" else "target_ref"))
         if not target.startswith("vulnerability--"):
             return None
         ref, label = target, None
@@ -575,10 +578,18 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
             kind = "pir_playbook" if payload.get("xtm_source") == "pir_playbook" else "listener"
             if is_excluded(await excluded_sources(db, primary.id), row.trigger_path, provider, kind):
                 return False
-            if row.trigger_path == "relevant_threat":
+            if row.trigger_path in ("relevant_threat", "new_vulnerability") and fields["evidence"].get("pir"):
                 from app.services.ctem_trigger_rules import PIR_FLOOR_KEY
 
-                fields["evidence"][PIR_FLOOR_KEY] = await _pir_floor(db, primary.id, fields["evidence"].get("pir"))
+                # #2434: a vulnerability's floor too, so its fleet routes on the event, not a trigger.
+                floor = "threat" if row.trigger_path == "relevant_threat" else "vulnerability"
+                fields["evidence"][PIR_FLOOR_KEY] = await _pir_floor(
+                    db, primary.id, fields["evidence"].get("pir"), kind=floor
+                )
+            elif row.trigger_path == "relevant_threat":
+                from app.services.ctem_trigger_rules import PIR_FLOOR_KEY
+
+                fields["evidence"][PIR_FLOOR_KEY] = False
             signal, created = await ctem_signals.record_signal(
                 db,
                 organization_id=primary.id,
@@ -607,8 +618,8 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
         return False
 
 
-async def _pir_floor(db: Any, organization_id: Any, pirs: object) -> bool:
-    """#1678: whether a relevant threat's PIR score at delivery reaches the policy's threat threshold.
+async def _pir_floor(db: Any, organization_id: Any, pirs: object, *, kind: str = "threat") -> bool:
+    """#1678: whether a PIR score at delivery reaches the policy's threshold for *kind* (threat, vulnerability).
 
     The relevance floor of the seeded threat signal run: below it the signal
     is kept for the weekly sweep and starts no run. A profile that cannot be
@@ -625,7 +636,7 @@ async def _pir_floor(db: Any, organization_id: Any, pirs: object) -> bool:
         logger.warning("CTEM relevance floor: the organization profile was not read", exc_info=True)
         profile = None
     policy = getattr(profile, "prioritization_policy", None)
-    return pir_floor_met(pirs, threshold_for(policy, "threat"))
+    return pir_floor_met(pirs, threshold_for(policy, kind))
 
 
 async def note_tracked_organizations(payload: Mapping[str, Any], organization_ids: list[str], *, verified: bool) -> int:

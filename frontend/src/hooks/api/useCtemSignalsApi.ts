@@ -131,10 +131,12 @@ export function useCtemCaseSignals(caseId: string | undefined) {
 }
 
 /**
- * Connected (a bound source), off (a pass whose provider is connected but which does not run, #1344),
- * not connected (a source exists, no integration of it is connected) or agents and API only (no source).
+ * Connected (a bound source), error (a source XTM One provisions is in error, #2434), not set up (a source
+ * XTM One provisions, its provider connected, switched on nowhere), off (a pass whose provider is connected
+ * but which does not run, #1344), not connected (no integration of a source's provider is connected) or
+ * agents and API only (no source).
  */
-export type CtemSignalPathStatus = "connected" | "off" | "not_connected" | "agents_api";
+export type CtemSignalPathStatus = "connected" | "error" | "not_set_up" | "off" | "not_connected" | "agents_api";
 
 /** One way a trigger path is fired (#1189): an integration listener, a scheduled pass or the OpenCTI PIR playbook. */
 export interface CtemSignalPathSource {
@@ -146,6 +148,10 @@ export interface CtemSignalPathSource {
   bound: boolean;
   /** A pass whose provider is connected but which does not run: turned off, or no integration it can pick (#1344). */
   off?: boolean;
+  /** A source XTM One provisions, its provider connected, switched on on none of its integrations (#2434). */
+  not_set_up?: boolean;
+  /** The integrations on which this source XTM One provisions is in error (#2434). */
+  error_count?: number;
   /** Taken off this path by an administrator (#1445): never bound here, it still feeds its other paths. */
   excluded?: boolean;
   /** Bound before the exclusion: the source is connected and would feed the path if not excluded (#1445). */
@@ -172,6 +178,71 @@ export interface CtemSignalPath {
   /** Signals the caller sees, last seen in the last 30 days. */
   count_30d?: number;
   last_signal_at?: string | null;
+}
+
+/** A source XTM One provisions in its platform: off, connected, or in error with its reason (#2434). */
+export type CtemPlatformSourceStatus = "off" | "connected" | "error";
+
+/** Why a platform source cannot run, as data: the UI renders the code, never the English `reason` (#2434). */
+export type CtemPlatformSourceReasonCode =
+  | "no_run_as"
+  | "run_as_inactive"
+  | "run_as_no_integration"
+  | "no_webhook_secret"
+  | "no_token"
+  | "integration_not_found"
+  | "organization_context_missing"
+  | "objects_not_removed"
+  | "not_provisioned_yet"
+  | "provider_error";
+
+/** One platform signal source on one integration (`GET /ctem-signals/sources`, dev-docs/ctem-signals.md 4bis). */
+export interface CtemPlatformSource {
+  /** `null` until it is switched on once. */
+  id: string | null;
+  provider: string;
+  kind: "listener" | "pir_playbook";
+  integration_id: string;
+  integration_name: string;
+  integration_connected: boolean;
+  enabled: boolean;
+  run_as_user_id: string | null;
+  status: CtemPlatformSourceStatus;
+  reason: string | null;
+  reason_code: CtemPlatformSourceReasonCode | null;
+  reason_params: Record<string, string>;
+  checked_at: string | null;
+}
+
+/** The platform signal sources, administrators only (the API answers 403 to anyone else). */
+export function useCtemPlatformSources(enabled = true) {
+  return useQuery<{ sources: CtemPlatformSource[] }>({
+    queryKey: ["ctem-signals", "platform-sources"],
+    queryFn: () => api.get("/ctem-signals/sources"),
+    enabled,
+    retry: false,
+    throwOnError: false,
+  });
+}
+
+/** Switch a source on as a run-as user: provisioned at once, or refused with `detail: {code, params, message}`. */
+export function useEnableCtemPlatformSource() {
+  const qc = useQueryClient();
+  return useMutation<CtemPlatformSource, Error, { provider: string; kind: string; integration_id: string; run_as_user_id: string }>({
+    mutationFn: (body) => api.post("/ctem-signals/sources/enable", body),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** Switch a source off: what it provisioned in the source platform is removed. */
+export function useDisableCtemPlatformSource() {
+  const qc = useQueryClient();
+  return useMutation<CtemPlatformSource, Error, string>({
+    mutationFn: (id) => api.post(`/ctem-signals/sources/${encodeURIComponent(id)}/disable`, {}),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
 }
 
 /** The 12 trigger paths with their counts, for the Discovery stage's signals card. */

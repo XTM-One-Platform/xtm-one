@@ -119,6 +119,22 @@ def shares_slots(run_type: object) -> bool:
     return run_type in SHARED_SLOT_TRIGGER_TYPES
 
 
+def event_run_working_window(trigger_context: dict[str, Any] | None) -> int | None:
+    """The working window, in tokens, of an event-driven run (#2430).
+
+    A run of a platform event, an integration event or a webhook
+    (``SHARED_SLOT_TRIGGER_TYPES``) gets
+    ``AGENT_LOOP_EVENT_RUN_WORKING_WINDOW_TOKENS``, which the agent loop
+    computes its working-context budgets on (``run_agent_loop(
+    working_window_tokens=)``); every other run, or the setting at ``0``:
+    ``None``, the model's window.
+    """
+    if not isinstance(trigger_context, dict) or not shares_slots(trigger_context.get("type")):
+        return None
+    tokens = settings.agent_loop_event_run_working_window_tokens
+    return tokens if tokens > 0 else None
+
+
 #: Trigger types of a seeded assignment that fires once per event: born with
 #: ``SEEDED_EVENT_CONCURRENCY`` runs at once unless its seed names a cap, so an
 #: event storm on one seeded fleet never takes the whole worker pool.

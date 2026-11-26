@@ -153,15 +153,23 @@ listener row of section 2 has no source row.
 
 | Source `kind` | What it is | `bound` when |
 |---|---|---|
-| `listener` | an integration delivery a listener row maps to the path | an integration of the provider is connected and visible to the reader |
+| `listener` | an integration delivery a listener row maps to the path | an integration of the provider is connected and visible to the reader; for the OpenCTI and OpenAEV listeners, which XTM One provisions, only when their objects exist and the last check passed (section 4bis) |
 | `pass` | a scheduled pass: attack surface (Shodan, GTI; paths 5, 6, 7), evidence health (OpenCRQ; paths 9, 12) | the pass runs on a connected integration of the provider; `off` (never `bound`) when the provider is connected but the pass is off or names none of its integrations |
-| `pir_playbook` | the OpenCTI PIR playbook (CTEM-05), delivered through the OpenCTI listener (paths 1, 2) | OpenCTI is connected and an enabled assignment holds a provisioned playbook |
+| `pir_playbook` | the OpenCTI PIR playbook (CTEM-05), delivered through the OpenCTI listener (paths 1, 2) | an enabled platform source holds a provisioned playbook whose last check passed (section 4bis) |
 
-`status`: `connected` (one source bound), `off` (none bound, one pass `off`:
-its provider is connected, the pass does not run; neutral tone, action "Turn
-on" to its card in Settings > Organization), `not_connected` (a source exists,
-none bound or off: no integration of the provider is connected), `agents_api`
-(no automatic source: agents and the API only, never read as connected).
+`status`, one per path, the one its sources say (UX round 1 on #2442):
+`error` (a source XTM One provisions is in error on one of its integrations,
+`error_count` on the source; critical tone, the chip says "N sources in
+error"), `connected` (one source bound), `not_set_up` (none bound, a source
+XTM One provisions has its provider connected but is switched on nowhere,
+`not_set_up` on the source; neutral tone, action "Set up"), `off` (none
+bound, one pass `off`: its provider is connected, the pass does not run;
+neutral tone, action "Turn on" to its card in Settings > Organization),
+`not_connected` (a source exists, none bound, off or not set up: no
+integration of the provider is connected), `agents_api` (no automatic source:
+agents and the API only, never read as connected). In the path panel the
+source row of a provisioned source reads its platform status (Off, Connected
+or Error), the same word as its lines.
 
 The evidence health pass is on by default (#1344): `evidence_health.enabled`
 is unset until an administrator saves it. Unset (or the legacy stored default,
@@ -289,6 +297,59 @@ and case stay as the first sighting and the next steps left them.
    (newest sighting first, `total`, `counts` by state),
    `GET /api/v1/ctem-signals/{id}`, `GET /api/v1/ctem-signals/paths`.
 
+## 4bis. Platform signal sources (#2434)
+
+The sources XTM One must provision in the source platform before they
+deliver (`ctem_platform_sources.PROVISIONED`: the OpenAEV listener, the
+OpenCTI live listener, the OpenCTI PIR playbook) are platform objects, one
+`ctem_signal_sources` row per `(provider, kind, integration_id)` (model
+`models/ctem_signal_source.py`, migration `s2434sigsrc01`). No fleet,
+agent or assignment holds them: disabling or deleting one never stops a
+source.
+
+- **Off by default.** A fresh platform has no row; the Sources API reads a
+  source never switched on as `off`.
+- **Enable with a run-as.** `POST /api/v1/ctem-signals/sources/enable`
+  (administrator) takes the provider, kind, integration and run-as user, and
+  provisions at once as that user (`ctem_platform_sources.enable`). It answers
+  the row `connected`, or 400 with the exact reason (no run-as, run-as
+  deactivated, run-as without a connection to the integration, no webhook
+  secret, integration not connected, organization context missing for the PIR
+  playbook) and leaves no object behind in the source platform.
+- **Disable.** `POST /api/v1/ctem-signals/sources/{id}/disable` removes the
+  provisioned objects; a removal that fails keeps their ids and the error on
+  the row, and the next pass finishes it.
+- **Recheck.** `ctem_platform_sources.maintain` runs on the provisioning tick
+  (`trigger_provisioning`): every enabled source is rechecked each
+  `RECHECK_SECONDS`, an edited or deleted object is repaired, and a run-as
+  that is gone or disconnected puts the source in `error` with that reason,
+  never a silent stop.
+- **Status.** `connected` only when the objects exist and the last check
+  passed (`is_connected`); `off`; `error` with its reason. The path statuses of
+  section 2bis follow the same rule (`ctem_signal_sources.provisioned_pairs`):
+  a connected integration alone never reads Connected.
+- **Receiver.** The provisioned objects post to
+  `/api/hooks/integrations/{integration_id}/signal-sources/{source_id}`
+  (`webhooks.receive_signal_source_webhook`): integration `webhook_secret`,
+  per-source throttle, delivery de-duplication, then `note_event` records the
+  signal. A source that is off or unknown is ignored. No run starts here.
+
+**Fleets route on signals.** The F2 triage assignments of the vulnerability
+prioritization orchestrator (New KEV or EPSS jump, Vulnerability on software
+we run, Vulnerability flagged in a PIR, Vulnerability sighted) are
+`platform_event` triggers on `ctem_signal.recorded`, scope all, filtered on
+`trigger_path`, `source_provider` and one routing fact each (section 6bis).
+They provision nothing.
+
+**Migration, no breaking change.** `adopt_from_assignments` runs first in
+every provisioning pass. For each enabled built-in holder
+(`HOLDER_ASSIGNMENTS`) whose objects exist, the source of the same
+integration is enabled with the holder's run-as and provisioned. The holder's
+own objects stay until that source is enabled and connected
+(`replaced_by_source`), then its provider pass removes them: new before old,
+no delivery lost. A refused adoption stays off with its reason and is tried
+once (`adopted_from`).
+
 ## 5. Visibility
 
 Signals are organization data; their content is what the recorder chose to
@@ -358,8 +419,11 @@ same sighting. Event ids are stable (one per signal for `recorded`, one per
 verdict change for `triaged`).
 
 **Payload: ids and routing only.** `signal_id`, `trigger_path`, `lens`,
-`source_provider`, `subject_kind`, `verdict`, `case_id`, plus
-`previous_verdict` on `triaged`. These are the filter keys. The agent reads the
+`source_provider`, `subject_kind`, `verdict`, `case_id`, `pir_floor_met`,
+`facts`, plus `previous_verdict` on `triaged`. These are the filter keys.
+`facts` (#2434, `ctem_signals.routing_facts`) holds yes/no only, never a
+value: `kev`, `epss_high` (EPSS at or above 0.5), `sighted`,
+`software_named`, `pir_flagged`. The agent reads the
 signal itself with `list_ctem_signals signal_id=...` under the run's
 permissions.
 
@@ -393,4 +457,9 @@ Copilot mode), `tests/test_ctem_signals_postgres.py` (the upsert, a new
 sighting keeps the next steps' writes, organization isolation, filters, the
 check constraints), `tests/test_ctem_signal_events.py` (section 6bis: first
 sighting raises `recorded`, re-sighting nothing, a verdict change `triaged`,
-a non-admin subscriber does not hear an admin-only signal, filters match).
+a non-admin subscriber does not hear an admin-only signal, filters match),
+`tests/test_ctem_platform_sources.py` (section 4bis: off by default, enable
+with a run-as provisions, refusals with their reason, disable deprovisions,
+an assignment off never stops a source, adoption new before old, status reads
+Connected only when provisioned), `tests/test_ctem_f2_vuln_prioritization.py`
+(the F2 assignments on `ctem_signal.recorded` and their routing facts).

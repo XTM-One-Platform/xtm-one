@@ -1266,6 +1266,33 @@ async def integration_gql(db: Any, integration: Any, user_id: Any, *, timeout: i
     return gql, api_base
 
 
+async def integration_connection(db: Any, integration_id: str, user_id: Any) -> tuple[Gql, str, str] | str:
+    """``(gql, integration_id, secret)`` on one OpenCTI integration as *user_id*, or the reason it cannot be built.
+
+    The platform signal sources (``services/ctem_platform_sources.py``, #2434) name
+    their integration and run-as themselves, with no assignment.
+    """
+    from app.models.integration import Integration
+    from app.services.trigger_provisioning import receiver_secret
+
+    try:
+        integration = await db.get(Integration, uuid.UUID(str(integration_id)))
+    except ValueError:
+        integration = None
+    if integration is None or integration.provider != "opencti":
+        return f"OpenCTI integration {integration_id} not found"
+    try:
+        secret = await receiver_secret(integration)
+    except Exception as exc:  # unreadable config, unreadable vault secret or unusable secret
+        return f"the OpenCTI integration's webhook_secret cannot be read: {type(exc).__name__}"
+    if not secret:
+        return "the OpenCTI integration has no webhook_secret: set one so the receiver authenticates OpenCTI"
+    connection = await integration_gql(db, integration, user_id)
+    if isinstance(connection, str):
+        return connection
+    return connection[0], str(integration.id), secret
+
+
 def _with_state(trigger_config: dict, state: dict | None) -> dict:
     updated = dict(trigger_config)
     if state is None:
@@ -1371,18 +1398,27 @@ async def maintain(db: Any, *, now: datetime | None = None) -> int:
     from app.models.assignment import Assignment
 
     now = now or datetime.now(UTC)
+    from app.services.ctem_platform_sources import replaced_by_source
+
     rows = (
         await db.execute(
             select(Assignment, Agent)
             .join(Agent, Agent.id == Assignment.agent_id)
-            .where(Assignment.trigger_type == "integration_event")
+            .where(Assignment.trigger_type.in_(("integration_event", "platform_event")))
         )
     ).all()
     changed = 0
     for assignment, agent in rows:
         config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
-        if config.get("provider") != "opencti":
-            continue
+        listening = assignment.trigger_type == "integration_event" and config.get("provider") == "opencti"
+        if not listening:
+            # A holder the seed moved to ctem_signal.recorded (#2434) keeps its old objects
+            # until the platform source of the same integration delivers: new before old.
+            if not isinstance(config.get(STATE_KEY), dict) or not await replaced_by_source(
+                db, "opencti", config[STATE_KEY]
+            ):
+                continue
+            config = {k: v for k, v in config.items() if k != PROVISION_KEY}
         if PROVISION_KEY not in config and STATE_KEY not in config:
             continue
         wants = PROVISION_KEY in config and assignment.enabled
