@@ -20,10 +20,14 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
   gate's session (it decides inside a savepoint) and is bounded in time. The
   bulk CVE prefetch (`prepare_cve_reads`, no savepoint open) still hands the
   pooled connection back during its OpenCTI reads.
-- On the case sweep tick, the signals still `new` past a 10-minute grace (a
-  record-time failure, a case-delete release whose background re-decision
-  was lost), 500 per case sweep, oldest first, each in its own savepoint
-  (`recheck_new`): nothing waits "for reconcile" for good.
+- Every 90 seconds, on its own Redis slot (`ctem:signals:recheck-new`), never
+  the hourly case sweep's (#2530): the signals still `new` past a 10-minute
+  grace (a record-time failure, a case-delete release whose background
+  re-decision was lost), oldest first, each in its own savepoint, 500 per
+  batch committed one by one, batch after batch until a short batch or a
+  20-second budget (`drain_new` over `recheck_new`): a backlog of thousands
+  drains in minutes and nothing waits "for reconcile" for good. This path
+  never opens a case; the case sweep keeps its cadence.
 - After a profile change (assets, groups, primary assets, owned domains, tech
   stack, shipped products): the autonomous tick decides again the unmatched
   signals last decided before the newest profile version, 500 per tick
@@ -86,6 +90,23 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
    `remote_reads=False` from the session cache. `record_ctem_signal` names the
    evidence keys the gate reads and answers a `hint` when the gate left the
    signal `subject_unresolved` and its evidence holds none of them.
+   **Threat subjects read from OpenCTI** (#2523): the OpenCTI listener records a
+   threat (`intrusion-set`, `threat-actor`, `threat-actor-group`, `campaign`,
+   `malware`) from the event payload alone, so its evidence holds none of the
+   lists above. A threat that resolves to nothing on its evidence has its
+   OpenCTI id (the source external id, else `evidence.stix_id`) read with the
+   recorder's own access, as the CVE read: the Software it `targets` or `uses`
+   (the threat as source) and the Software that `has` each Vulnerability it
+   targets (at most 50) join the software references
+   (`reconcile.threat_software`, name and CPE, at most 200).
+   `reconcile.threat_lookup` says how the read went, with the CVE read's values
+   (`null` when not needed). The read is bounded (200 relations, 15 s), cached
+   per session, reader and threat id, never raises, and follows the CVE read's
+   paths: the record-time gate reads inside its savepoint without releasing the
+   connection, the bulk passes (the hourly `recheck_new` included) take it up
+   front in `prepare_cve_reads` with the connection released (#2516). The loop
+   trace's Reconcile step lists `software_refs` as "Software tried" when the
+   decision is `subject_unresolved`.
    **Shipped products** (`shipped_products`, what the organization ships,
    apart from the tech stack it runs): a software reference or a CPE of the
    evidence (`software`, `cpe`; the OpenCTI vulnerability listener copies

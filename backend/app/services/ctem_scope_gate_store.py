@@ -493,6 +493,85 @@ async def _with_cve_software(
     return replace(facts, cve_software=tuple(found), cve_lookup=how)
 
 
+#: #2523: the OpenCTI types a threat signal is recorded from (the ``relevant_threat`` listener).
+THREAT_STIX_TYPES: frozenset[str] = frozenset(
+    {"intrusion-set", "threat-actor", "threat-actor-group", "campaign", "malware"}
+)
+
+
+def threat_opencti_id(facts: gate.SignalFacts) -> str:
+    """#2523: the OpenCTI id of a threat signal's subject, ``""`` when it has none (pure).
+
+    Only an OpenCTI-recorded threat of :data:`THREAT_STIX_TYPES` carries one: its
+    source external id (the internal id, #2505), else the STIX id of its evidence.
+    """
+    if facts.subject_kind != "threat" or facts.source_provider != "opencti":
+        return ""
+    evidence = facts.evidence if isinstance(facts.evidence, dict) else {}
+    if str(evidence.get("stix_type") or "").strip().lower() not in THREAT_STIX_TYPES:
+        return ""
+    return str(facts.source_external_id or evidence.get("stix_id") or "").strip()
+
+
+async def _with_threat_software(
+    db: AsyncSession,
+    row: CtemSignal,
+    facts: gate.SignalFacts,
+    profile: Any,
+    primary_assets: Any,
+    *,
+    remote: bool = True,
+    release: bool = False,
+) -> gate.SignalFacts:
+    """*facts* with the software OpenCTI says the threat targets or uses (#2523).
+
+    Read only for an OpenCTI threat (:func:`threat_opencti_id`) that resolves to
+    nothing on its evidence alone, with the recorder's own OpenCTI access, once
+    per session, reader and threat id. Never raises. *remote* and *release* as
+    :func:`_with_cve_software`.
+    """
+    from app.services import ctem_cve_software, ctem_threat_software
+
+    threat_id = threat_opencti_id(facts)
+    if not threat_id or gate.resolve(profile, facts, primary_assets).resolved:
+        return facts
+    if not remote:
+        fallback = _session_hit(db, ("fallback_reader",))
+        hit = _session_hit(db, ("threat_software", scenario_reader(row, fallback), threat_id))
+        if hit is None:
+            return facts
+        found, how = hit
+        return replace(facts, threat_software=tuple(found), threat_lookup=how)
+    try:
+        async with db.begin_nested():
+            fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
+        reader = scenario_reader(row, fallback)
+        found, how = await _session_cached(
+            db,
+            ("threat_software", reader, threat_id),
+            lambda: ctem_threat_software.threat_software(db, reader, threat_id, release=release),
+        )
+    except Exception:
+        logger.warning("CTEM scope gate: threat software not read for %s", getattr(row, "id", "?"), exc_info=True)
+        found, how = (), ctem_cve_software.LOOKUP_FAILED
+    return replace(facts, threat_software=tuple(found), threat_lookup=how)
+
+
+async def _with_remote_software(
+    db: AsyncSession,
+    row: CtemSignal,
+    facts: gate.SignalFacts,
+    profile: Any,
+    primary_assets: Any,
+    *,
+    remote: bool = True,
+    release: bool = False,
+) -> gate.SignalFacts:
+    """*facts* with the OpenCTI software reads the gate takes: the CVEs' (#2171), then the threat's (#2523)."""
+    facts = await _with_cve_software(db, row, facts, profile, primary_assets, remote=remote, release=release)
+    return await _with_threat_software(db, row, facts, profile, primary_assets, remote=remote, release=release)
+
+
 async def prepare_cve_reads(
     db: AsyncSession,
     rows: list[CtemSignal],
@@ -500,7 +579,7 @@ async def prepare_cve_reads(
     profiles: dict[uuid.UUID, Any] | None = None,
     links: dict[uuid.UUID, Any] | None = None,
 ) -> None:
-    """Take the OpenCTI CVE software reads of *rows* now, before any of them is written (#2171 review).
+    """Take the OpenCTI software reads of *rows* now (CVEs #2171, threats #2523), before any row is written.
 
     A bulk pass (:func:`evaluate_open`, :func:`recheck_parked`, :func:`recheck_held`,
     :func:`triage`) decides many signals in one transaction; its earlier rows'
@@ -527,7 +606,7 @@ async def prepare_cve_reads(
             else:
                 primary_assets = await _session_cached(db, ("links", org), partial(_primary_assets, db, org))
             # No savepoint is open here: release the connection during the OpenCTI I/O (#2518 review).
-            await _with_cve_software(db, row, facts, profile, primary_assets, release=True)
+            await _with_remote_software(db, row, facts, profile, primary_assets, release=True)
         except Exception:
             logger.warning("CTEM scope gate: CVE read not prepared for %s", getattr(row, "id", "?"), exc_info=True)
 
@@ -578,7 +657,7 @@ async def evaluate(
         scenarios = await _scenarios_for(db, row)
     facts = facts_of(row)
     if isinstance(facts, gate.SignalFacts):
-        facts = await _with_cve_software(db, row, facts, profile, primary_assets, remote=remote_reads)
+        facts = await _with_remote_software(db, row, facts, profile, primary_assets, remote=remote_reads)
     decision = gate.decide(
         profile,
         facts,
@@ -826,8 +905,12 @@ async def _decide_again(
 
 #: How long a signal may stay ``new`` before :func:`recheck_new` decides it.
 UNDECIDED_GRACE = timedelta(minutes=10)
-#: How many ``new`` signals one case sweep decides (the CVE reads are taken in bulk up front).
+#: How many ``new`` signals one batch decides (the CVE reads are taken in bulk up front).
 RECHECK_NEW_BATCH = RECHECK_BATCH
+#: The cadence of :func:`drain_new`, on its own slot, never the hourly case sweep's (#2530).
+RECHECK_NEW_SECONDS = 90
+#: How long one :func:`drain_new` pass may keep deciding batches before it hands the tick back.
+RECHECK_NEW_BUDGET_SECONDS = 20.0
 
 
 async def recheck_new(
@@ -859,6 +942,58 @@ async def recheck_new(
         ).scalars()
     )
     return await _decide_again(db, rows, now=at, isolate=True)
+
+
+async def recheck_new_due() -> bool:
+    """Take the :func:`drain_new` slot for this cadence window; True when this tick runs it (or Redis is unavailable)."""
+    try:
+        from app.core.redis import redis_client
+
+        client = await redis_client()
+        return bool(await client.set("ctem:signals:recheck-new", "1", nx=True, ex=RECHECK_NEW_SECONDS))
+    except Exception:  # no Redis: every tick drains; the recheck is idempotent past the grace
+        return True
+
+
+async def drain_new(
+    db: AsyncSession,
+    *,
+    now: datetime | None = None,
+    batch: int = RECHECK_NEW_BATCH,
+    grace: timedelta = UNDECIDED_GRACE,
+    budget_seconds: float = RECHECK_NEW_BUDGET_SECONDS,
+    clock: Callable[[], float] = time.monotonic,
+) -> dict[str, int]:
+    """The signals still ``new`` past *grace*, decided by :func:`recheck_new` batch after batch (#2530).
+
+    Each batch is committed before the next, and the event loop is yielded between
+    them; the pass stops when a batch comes back short (nothing past the grace is
+    left) or *budget_seconds* is spent, so a backlog of thousands drains in a few
+    passes instead of one batch per hourly case sweep. A row the gate cannot
+    decide has its ``updated_at`` moved (``isolate``), so it leaves the selection
+    for one grace and never loops. No case is opened here: the case sweep does
+    that on its own cadence. Answers the counts by state, ``batches`` included.
+    """
+    import asyncio
+
+    size = max(1, int(batch))
+    started = clock()
+    totals: dict[str, int] = {}
+    batches = 0
+    while True:
+        counts = await recheck_new(db, now=now, batch=size, grace=grace)
+        await db.commit()
+        decided = sum(counts.values())
+        if decided:
+            batches += 1
+            for state, count in counts.items():
+                totals[state] = totals.get(state, 0) + count
+        if decided < size or clock() - started >= budget_seconds:
+            break
+        await asyncio.sleep(0)
+    if batches:
+        totals["batches"] = batches
+    return totals
 
 
 #: The watchlist reasons an inventory link or a software change can lift (#1591 S3).

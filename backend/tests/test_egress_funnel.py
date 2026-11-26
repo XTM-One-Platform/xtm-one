@@ -77,6 +77,9 @@ PLATFORM_INTERNAL = {
     "services/ctem_dependency_matches.py": "registered OpenCTI, reached at its registered API URL (#1331)",
     "services/ctem_metrics_collector.py": "registered platforms, reached at their registered API URL",
     "services/ctem_threat_package_live.py": "registered OpenCTI, reached at its registered API URL with the acting user's access (#1547)",
+    "services/ctem_threat_software.py": (
+        "registered OpenCTI, reached at its registered API URL with the recorder's access (#2523)"
+    ),
     "services/github_token_installations.py": "GitHub App installation tokens from api.github.com",
     "services/health/platform_checks.py": "Platform Health version check: the public XTM One release list on api.github.com",
     "services/mcp_oauth_clients.py": (

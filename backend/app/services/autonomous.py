@@ -1780,24 +1780,34 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("CTEM case expiry error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+        # CTEM signals still new past the grace (a record-time gate that failed, a
+        # case-delete release whose background re-decision was lost): decided on
+        # their own short cadence (#2530), batch after batch within a time budget,
+        # so a backlog drains in minutes and none waits "for reconcile" for good.
+        # Rules only, no model call; no case is opened here.
+        try:
+            from app.services import ctem_scope_gate_store
+
+            if await ctem_scope_gate_store.recheck_new_due():
+                undecided = await ctem_scope_gate_store.drain_new(db)
+                if undecided:
+                    logger.info("CTEM signals left new decided by the scheduled recheck: %s", undecided)
+        except Exception as e:
+            logger.error("CTEM new-signal recheck error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
         # CTEM case loop (#857): open the cases of confirmed signals still
         # waiting, escalate SLA breaches once. Rules only, no model call;
         # its own cadence (CTEM_CASE_SWEEP_SECONDS, default hourly).
         try:
             from app.services import ctem_case_loop
+            from app.services.ctem_signal_purge import intake_paused
 
-            if await ctem_case_loop.sweep_due():
+            # #2528: no recheck and no case sweep while a purge of every signal runs.
+            if not await intake_paused() and await ctem_case_loop.sweep_due():
                 # #1505: the unmatched signals a newer profile version may now hold, decided
                 # again first, so the sweep below opens their cases grouped by case key.
                 from app.services import ctem_scope_gate_store
 
-                # The signals still new past the grace (a record-time gate that failed, a
-                # case-delete release whose background re-decision was lost): decided here,
-                # so none waits "for reconcile" for good.
-                undecided = await ctem_scope_gate_store.recheck_new(db)
-                await db.commit()
-                if undecided:
-                    logger.info("CTEM signals left new decided by the scheduled recheck: %s", undecided)
                 rechecked = await ctem_scope_gate_store.recheck_parked(db)
                 await db.commit()
                 if rechecked:
@@ -1836,8 +1846,10 @@ async def _run_autonomous_tick_inner() -> int:
         # its own cadence (attack_surface.cadence_hours, default daily). Rules only, no model call.
         try:
             from app.services import ctem_attack_surface
+            from app.services.ctem_signal_purge import intake_paused
 
-            surface_counts = await ctem_attack_surface.scheduled_pass(db)
+            # #2528: the pass keeps its cadence slot for after a purge of every signal.
+            surface_counts = None if await intake_paused() else await ctem_attack_surface.scheduled_pass(db)
             if surface_counts:
                 logger.info("CTEM attack surface pass: %s", surface_counts)
         except Exception as e:
@@ -1848,8 +1860,9 @@ async def _run_autonomous_tick_inner() -> int:
         # (evidence_health.cadence_hours, default daily). Rules only, no model call.
         try:
             from app.services import ctem_evidence_health
+            from app.services.ctem_signal_purge import intake_paused
 
-            evidence_counts = await ctem_evidence_health.scheduled_pass(db)
+            evidence_counts = None if await intake_paused() else await ctem_evidence_health.scheduled_pass(db)
             if evidence_counts:
                 logger.info("CTEM evidence health pass: %s", evidence_counts)
         except Exception as e:

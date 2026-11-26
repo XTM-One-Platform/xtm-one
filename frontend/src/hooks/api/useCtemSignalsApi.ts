@@ -33,6 +33,11 @@ export interface CtemDecisionRecord {
     assets_capped?: boolean;
     primary_assets_named?: string[];
     products?: string[];
+    /** #1720 / #2523: every software reference the gate tried against the inventory and shipped products. */
+    software_refs?: string[];
+    /** #2171 / #2523: how the OpenCTI software read went ("read", "no reader", "no OpenCTI access", "OpenCTI did not answer"). */
+    cve_lookup?: string | null;
+    threat_lookup?: string | null;
     lenses?: string[];
     confidence?: string;
   } & Record<string, unknown>;
@@ -335,6 +340,46 @@ export function useDisableCtemPlatformSource() {
   return useMutation<CtemPlatformSource, Error, string>({
     mutationFn: (id) => api.post(`/ctem-signals/sources/${encodeURIComponent(id)}/disable`, {}),
     onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** One step of a purge job (#2528): pause, purge, resync, resume. */
+export type CtemSignalPurgeStepState = "pending" | "running" | "done" | "failed" | "skipped";
+
+export interface CtemSignalPurgeJob {
+  id: string;
+  state: "running" | "done" | "failed";
+  resync: boolean;
+  step: "pause" | "purge" | "resync" | "resume";
+  steps: Record<"pause" | "purge" | "resync" | "resume", { state: CtemSignalPurgeStepState; counts: Record<string, unknown> }>;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface CtemSignalPurgeInfo {
+  counts: { signals: number; cases: number };
+  confirm_word: string;
+  job: CtemSignalPurgeJob | null;
+}
+
+/** What a purge would delete now and the running or last job (administrators only); polled while a job runs. */
+export function useCtemSignalPurge(enabled: boolean) {
+  return useQuery<CtemSignalPurgeInfo>({
+    queryKey: ["ctem-signals", "purge"],
+    queryFn: () => api.get("/ctem-signals/purge"),
+    enabled,
+    refetchInterval: (query) => (query.state.data?.job?.state === "running" ? 2000 : false),
+  });
+}
+
+/** Start the purge of every signal (#2528): 422 without the word, 409 while a job runs. */
+export function useStartCtemSignalPurge() {
+  const qc = useQueryClient();
+  return useMutation<{ job: CtemSignalPurgeJob }, Error, { confirm: string; resync: boolean }>({
+    mutationFn: (body) => api.post("/ctem-signals/purge", body),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals", "purge"] }),
     meta: { suppressGlobalErrorToast: true },
   });
 }

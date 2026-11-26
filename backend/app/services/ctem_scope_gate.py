@@ -92,6 +92,11 @@ class SignalFacts:
     cve_software: tuple[str, ...] = ()
     #: #2171: how that read went: ``""`` not attempted, ``"read"``, else why it could not answer.
     cve_lookup: str = ""
+    #: #2523: the software (name or CPE) OpenCTI says a threat subject targets or uses, read by the
+    #: store with the recorder's own access when the evidence alone does not resolve the threat.
+    threat_software: tuple[str, ...] = ()
+    #: #2523: how that read went: ``""`` not attempted, ``"read"``, else why it could not answer.
+    threat_lookup: str = ""
 
 
 #: #2171: the evidence keys the gate reads; any other key is kept on the signal but never reconciled.
@@ -450,6 +455,8 @@ def resolve(
         software += threat_software(facts.evidence)
     # #2171: the software OpenCTI says has the CVEs the signal names.
     software += [s for s in facts.cve_software if str(s or "").strip()]
+    # #2523: the software OpenCTI says the threat targets or uses.
+    software += [s for s in facts.threat_software if str(s or "").strip()]
     software = list(dict.fromkeys(software))
     out.software_refs = software
     for entry in profile.software:
@@ -687,6 +694,9 @@ def decide(
             # #2171: the software read from OpenCTI for the signal's CVEs, and how that read went.
             "cve_software": list(facts.cve_software),
             "cve_lookup": facts.cve_lookup or None,
+            # #2523: the software read from OpenCTI for a threat subject, and how that read went.
+            "threat_software": list(facts.threat_software),
+            "threat_lookup": facts.threat_lookup or None,
             "hosted_under": resolution.hosted_domains,
             "primary_assets": resolution.primary_assets,
             "inventory_links_read": bool(primary_assets is not None and primary_assets.loaded),

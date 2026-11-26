@@ -69,6 +69,72 @@ READ_TOOLS = {
     "intune_get_health_script_device_states",
     "intune_list_mobile_apps",
     "intune_get_app_install_status",
+    "intune_get_app_assignments",
+}
+
+INSTALL_REPORT = "/beta/deviceManagement/reports/getDeviceInstallStatusReport"
+APP_OVERVIEW_REPORT = "/beta/deviceManagement/reports/getAppStatusOverviewReport"
+
+#: A getDeviceInstallStatusReport answer as Graph serves it (Schema + Values, enum
+#: columns doubled by their ``_loc`` text), recorded shape, data invented.
+INSTALL_REPORT_ANSWER: dict[str, Any] = {
+    "TotalRowCount": 3,
+    "Schema": [
+        {"Column": "DeviceName", "PropertyType": "String"},
+        {"Column": "UserPrincipalName", "PropertyType": "String"},
+        {"Column": "Platform", "PropertyType": "String"},
+        {"Column": "AppVersion", "PropertyType": "String"},
+        {"Column": "InstallState", "PropertyType": "Int32"},
+        {"Column": "InstallState_loc", "PropertyType": "String"},
+        {"Column": "InstallStateDetail", "PropertyType": "Int32"},
+        {"Column": "InstallStateDetail_loc", "PropertyType": "String"},
+        {"Column": "ErrorCode", "PropertyType": "Int32"},
+        {"Column": "HexErrorCode", "PropertyType": "String"},
+        {"Column": "LastModifiedDateTime", "PropertyType": "DateTime"},
+        {"Column": "DeviceId", "PropertyType": "String"},
+    ],
+    "Values": [
+        [
+            "LAPT-0001",
+            "a@example.com",
+            "macOS",
+            "1.2",
+            1,
+            "Installed",
+            0,
+            "None",
+            0,
+            "0",
+            "2026-11-26T10:00:00Z",
+            "d-1",
+        ],
+        [
+            "LAPT-0002",
+            "b@example.com",
+            "Windows",
+            "1.2",
+            2,
+            "Failed",
+            2016330908,
+            "Install failed",
+            -2016330908,
+            "0x87D1041C",
+            "2026-11-26T11:00:00Z",
+            "d-2",
+        ],
+    ],
+}
+
+APP_OVERVIEW_ANSWER: dict[str, Any] = {
+    "TotalRowCount": 1,
+    "Schema": [
+        {"Column": "ApplicationId", "PropertyType": "String"},
+        {"Column": "InstalledDeviceCount", "PropertyType": "Int32"},
+        {"Column": "FailedDeviceCount", "PropertyType": "Int32"},
+        {"Column": "PendingInstallDeviceCount", "PropertyType": "Int32"},
+        {"Column": "NotInstalledDeviceCount", "PropertyType": "Int32"},
+    ],
+    "Values": [["app-1", 1, 1, 0, 1]],
 }
 
 
@@ -91,6 +157,9 @@ class FakeGraph:
         self.forbidden: set[str] = set()
         self.refuse_filter: set[str] = set()
         self.no_assignments_route: set[str] = set()
+        self.install_report: dict[str, Any] = INSTALL_REPORT_ANSWER
+        self.overview_status = 200
+        self.install_report_status = 200
         self.detected: list[dict[str, Any]] = [
             {"id": "da-1", "displayName": "Google Chrome", "version": "130.0", "deviceCount": 2},
             {"id": "da-2", "displayName": "Google Chrome", "version": "129.0", "deviceCount": 1},
@@ -175,19 +244,23 @@ class FakeGraph:
             return httpx.Response(204)
 
         if re.fullmatch(r"/beta/deviceAppManagement/mobileApps/[^/]+/deviceStatuses", path):
+            # What Graph answers on a macOS LOB, an iOS VPP or a Windows MSI app.
             return httpx.Response(
-                200,
+                400,
                 json={
-                    "value": [
-                        {
-                            "deviceName": "LAPT-0001",
-                            "deviceId": "d-1",
-                            "installState": "installed",
-                            "userPrincipalName": "a@example.com",
-                        }
-                    ]
+                    "error": {"code": "BadRequest", "message": "Resource not found for the segment 'deviceStatuses'."}
                 },
             )
+        if path == INSTALL_REPORT and method == "POST":
+            if self.install_report_status != 200 or not re.fullmatch(
+                r"\(ApplicationId eq '[^']+'\)", (body or {}).get("filter", "")
+            ):
+                return httpx.Response(400, json={"error": {"code": "BadRequest", "message": "Invalid filter clause"}})
+            return httpx.Response(200, json=self.install_report)
+        if path == APP_OVERVIEW_REPORT and method == "POST":
+            if self.overview_status != 200:
+                return httpx.Response(self.overview_status, json={"error": {"message": "Report unavailable"}})
+            return httpx.Response(200, json=APP_OVERVIEW_ANSWER)
 
         for collection, store in self.objects.items():
             if path == collection:
@@ -574,11 +647,111 @@ async def test_app_assign_with_intent_and_install_status(graph: FakeGraph) -> No
             "target": {"@odata.type": "#microsoft.graph.groupAssignmentTarget", "groupId": "g-1"},
         }
     ]
-    out = await _call("intune_get_app_install_status", app_id="app-1")
-    assert "LAPT-0001" in out and "installed" in out
-
     out = await _call("intune_delete", kind="mobile_app", object_id="app-1")
     assert out.startswith("Error: kind must be one of"), out
+
+
+@pytest.mark.asyncio
+async def test_app_install_status_reads_the_reports_api(graph: FakeGraph) -> None:
+    out = await _call("intune_get_app_install_status", app_id="app-1", top=2)
+    (sent,) = _sent(graph, "POST", INSTALL_REPORT)
+    assert sent["filter"] == "(ApplicationId eq 'app-1')"
+    assert sent["top"] == 2 and sent["skip"] == 0
+    assert {"DeviceName", "UserPrincipalName", "Platform", "InstallState", "ErrorCode"} <= set(sent["select"])
+    assert _sent(graph, "POST", APP_OVERVIEW_REPORT) == [{"filter": "(ApplicationId eq 'app-1')"}]
+    assert not [r for r in graph.requests if r.url.path.endswith("/deviceStatuses")]
+    assert out.startswith("Summary: installed 1, failed 1, pending 0, not installed 1"), out
+    assert "Device install status (devices 1-2 of 3):" in out
+    assert "• LAPT-0001 (ID: d-1, macOS) — Installed, version 1.2, user a@example.com" in out
+    assert "• LAPT-0002 (ID: d-2, Windows) — Failed, Install failed (error 0x87D1041C), version 1.2" in out
+    assert out.endswith("More results: call again with skip=2"), out
+
+
+@pytest.mark.asyncio
+async def test_app_install_status_next_page_has_no_summary(graph: FakeGraph) -> None:
+    graph.install_report = {**INSTALL_REPORT_ANSWER, "Values": INSTALL_REPORT_ANSWER["Values"][:1]}
+    out = await _call("intune_get_app_install_status", app_id="app-1", skip=2)
+    (sent,) = _sent(graph, "POST", INSTALL_REPORT)
+    assert sent["skip"] == 2
+    assert not _sent(graph, "POST", APP_OVERVIEW_REPORT)
+    assert out.startswith("Device install status (devices 3-3 of 3):"), out
+    assert "More results" not in out
+
+
+@pytest.mark.asyncio
+async def test_app_install_status_without_rows_and_with_a_failed_summary(graph: FakeGraph) -> None:
+    graph.install_report = {"TotalRowCount": 0, "Schema": INSTALL_REPORT_ANSWER["Schema"], "Values": []}
+    graph.overview_status = 500
+    out = await _call("intune_get_app_install_status", app_id="app-1")
+    assert out.startswith("Summary unavailable:"), out
+    assert out.endswith("No device reports an install status for this app."), out
+
+
+@pytest.mark.asyncio
+async def test_app_install_status_reports_graph_errors(graph: FakeGraph) -> None:
+    graph.install_report_status = 400
+    out = await _call("intune_get_app_install_status", app_id="app-1")
+    assert out.startswith("Error:"), out
+    assert "Invalid filter clause" in out, out
+    assert not _sent(graph, "POST", APP_OVERVIEW_REPORT)
+
+    graph.install_report_status = 200
+    graph.forbidden.add(INSTALL_REPORT)
+    out = await _call("intune_get_app_install_status", app_id="app-1")
+    assert out.startswith("Error: Microsoft Intune admin consent required for scope DeviceManagementApps.Read.All"), out
+
+    graph.requests.clear()
+    out = await _call("intune_get_app_install_status", app_id="it's")
+    assert out.startswith("Error: app_id must be an Intune or Entra object id"), out
+    assert not graph.requests
+
+
+@pytest.mark.asyncio
+async def test_app_assignments_all_users_required(graph: FakeGraph) -> None:
+    graph.assignments["app-1"] = [
+        {
+            "id": "a-1",
+            "intent": "required",
+            "target": {"@odata.type": "#microsoft.graph.allLicensedUsersAssignmentTarget"},
+        }
+    ]
+    out = await _call("intune_get_app_assignments", app_id="app-1")
+    assert out == "Company Portal (ID: app-1, macOSLobApp): 1 assignment(s):\n• all users — intent required", out
+    assert [r.method for r in graph.requests] == ["GET", "GET"]
+
+
+@pytest.mark.asyncio
+async def test_app_assignments_group_include_and_exclude_available(graph: FakeGraph) -> None:
+    graph.assignments["app-1"] = [
+        {
+            "id": "a-1",
+            "intent": "available",
+            "target": {
+                "@odata.type": "#microsoft.graph.groupAssignmentTarget",
+                "groupId": "g-pilot",
+                "deviceAndAppManagementAssignmentFilterId": "f-1",
+                "deviceAndAppManagementAssignmentFilterType": "include",
+            },
+        },
+        {
+            "id": "a-2",
+            "intent": "available",
+            "target": {"@odata.type": "#microsoft.graph.exclusionGroupAssignmentTarget", "groupId": "g-out"},
+        },
+    ]
+    out = await _call("intune_get_app_assignments", app_id="app-1")
+    assert "2 assignment(s)" in out, out
+    assert "• group g-pilot (include) — intent available, filter f-1 (include)" in out
+    assert "• group g-out (exclude) — intent available" in out
+
+
+@pytest.mark.asyncio
+async def test_app_assignments_none_and_forbidden(graph: FakeGraph) -> None:
+    out = await _call("intune_get_app_assignments", app_id="app-1")
+    assert out.endswith("not assigned to any group, user or device."), out
+    graph.forbidden.add(APPS)
+    out = await _call("intune_get_app_assignments", app_id="app-1")
+    assert out.startswith("Error: Microsoft Intune admin consent required for scope DeviceManagementApps.Read.All"), out
 
 
 # ── Detected apps ────────────────────────────────────────────────────────

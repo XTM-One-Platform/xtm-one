@@ -512,6 +512,50 @@ async def evaluate_ctem_signals(
     return {"evaluated": sum(counts.values()), "counts": counts}
 
 
+class SignalPurge(BaseModel):
+    """Start the purge of every signal (#2528): the typed confirmation word, and whether to resync after it."""
+
+    confirm: str = Field(max_length=40)
+    #: Resync the signals from their sources after the purge (default off).
+    resync: bool = False
+
+
+@router.get("/purge")
+async def get_ctem_signal_purge(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """What a purge would delete now (``{signals, cases}``), the confirmation word, and the running or last job."""
+    _require_xtm_one()
+    from app.services import ctem_signal_purge as purge
+
+    return {"counts": await purge.counts(db), "confirm_word": purge.CONFIRM_WORD, "job": await purge.read_status()}
+
+
+@router.post("/purge", status_code=202)
+async def purge_ctem_signals(
+    body: SignalPurge,
+    admin: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Purge every signal and the cases they opened or joined, administrators only (#2528).
+
+    One job at a time, in the background: intake paused, cases then signals deleted
+    in batches with the raised-key state of the passes, an optional resync, intake
+    resumed whatever happened. 422 without the confirmation word, 409 while a job runs.
+    Answers the job's first status; ``GET /purge`` follows it.
+    """
+    _require_xtm_one()
+    from app.services import ctem_signal_purge as purge
+
+    if body.confirm.strip() != purge.CONFIRM_WORD:
+        raise HTTPException(status_code=422, detail=f"Type {purge.CONFIRM_WORD} to confirm the purge")
+    try:
+        job = await purge.start(admin, resync=body.resync)
+    except purge.PurgeBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    return {"job": job}
+
+
 @router.get("/attack-surface/passes")
 async def list_attack_surface_passes(
     limit: int = Query(default=10, ge=1, le=50),

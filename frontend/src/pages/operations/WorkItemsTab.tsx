@@ -297,8 +297,10 @@ export default function WorkItemsTab({
   // "Waiting for me" with the read switch on is the decision inbox alone: one records list per
   // view (UX r1 B2 on #1081). Only a server answer `enabled: false` (switch off) falls back to
   // the per-engine work items list: while the read is pending or failed the inbox renders its
-  // own skeleton or error line with Retry (UX r2 B1 on #1081).
-  const waitingDecisions = useWaitingDecisions(waitingForMe);
+  // own skeleton or error line with Retry (UX r2 B1 on #1081). Read on every view, not only
+  // this one: the Waiting for me chip counts the same rows while the switch is on (#2522), and
+  // the inbox shares the query, so the view opens on the read the chip already made.
+  const waitingDecisions = useWaitingDecisions();
   const inboxView = waitingForMe && waitingDecisions.data?.enabled !== false;
   const sortKey = table.sort && (SORT_KEYS as readonly string[]).includes(table.sort.key) ? (table.sort.key as WorkItemOrder) : "created";
   const direction = table.sort?.direction ?? "desc";
@@ -473,14 +475,24 @@ export default function WorkItemsTab({
   // administrator set, since the click clears that scope and lists inside the lock.
   const waitingFilters = { open_only: true, waiting_for_me: true, workspace, fleet: lockedFleet };
   const { data: waitingCountData } = useWorkItemCount(waitingFilters, false, !fleetPending);
+  // With the decisions read switch on, the view is the decision inbox (runs' tool approvals and
+  // questions, flow asks, work items), so the chip counts its rows from the same read (#2522);
+  // only an answer `enabled: false` (switch off) keeps the work items count, unchanged.
+  const decisionsOff = waitingDecisions.data?.enabled === false;
+  const inboxRows = waitingDecisions.data?.enabled === true ? waitingDecisions.data.items?.length : undefined;
+  const waitingCount = decisionsOff ? waitingCountData?.count : inboxRows;
+  // A failed inbox read shows no number (the view says the error), never a pending skeleton.
+  const waitingCountPending = decisionsOff
+    ? waitingCountData === undefined
+    : inboxRows === undefined && !waitingDecisions.isError;
   const { data: staleViewCountData } = useWorkItemCount({ ...quickBase, stale_only: true }, false, !landing);
   const quickOptions = [
     {
       key: WAITING_FOR_ME_VIEW,
       label: "Waiting for me",
       icon: User,
-      count: waitingCountData?.count,
-      countPending: waitingCountData === undefined,
+      count: waitingCount,
+      countPending: waitingCountPending,
     },
     { key: "stale", label: "Stale", icon: AlertTriangle, count: staleViewCountData?.count, countPending: staleViewCountData === undefined },
   ];
