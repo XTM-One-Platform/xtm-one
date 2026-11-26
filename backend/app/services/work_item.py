@@ -7434,13 +7434,15 @@ async def _complete_case_ask(db: Any, correlation_key: object, ask: Any) -> Any:
     """
     if not ask:
         return ask
-    from app.services import ctem_case_assets, ctem_control_measurement
+    from app.services import ctem_case_assets, ctem_control_measurement, ctem_validation_scenario
     from app.services.ctem_version_match import complete_gate_ask
 
     # The assets line goes first, then the version match above it: the version match leads the card.
     ask = await ctem_case_assets.complete_gate_ask(db, correlation_key, ask)
     ask = await complete_gate_ask(db, correlation_key, ask)
-    return await ctem_control_measurement.complete_gate_ask(db, correlation_key, ask)
+    ask = await ctem_control_measurement.complete_gate_ask(db, correlation_key, ask)
+    # A validation card links its scenario and package, and states a scenario that is not playable (#2468).
+    return await ctem_validation_scenario.complete_gate_ask(db, correlation_key, ask)
 
 
 def _ux_review_of(correlation_key: object, title: object) -> dict[str, Any] | None:
