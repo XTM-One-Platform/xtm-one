@@ -585,7 +585,7 @@ def test_a_gateway_in_jwt_mode_is_told_to_reach_the_platform_jwks(monkeypatch: p
     message = response.json()["message"]
     assert "gateway_overloaded" in message
     assert "https://xtm.example.com/xtm/auth/jwks" in message
-    assert "token" in message
+    assert "gateway token" not in message
 
 
 def test_a_gateway_with_a_token_has_it_redacted_and_no_jwks_hint(monkeypatch: pytest.MonkeyPatch) -> None:

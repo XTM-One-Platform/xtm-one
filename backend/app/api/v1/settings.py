@@ -1972,7 +1972,7 @@ def _discovery_failure(provider: str, typed_key: str, api_key: str, exc: Excepti
     jwks = f"{xtm_issuer()}{XTM_JWKS_PATH}" if xtm_issuer() else f"its {XTM_JWKS_PATH} endpoint"
     return reason, (
         " — check that the gateway trusts this platform's BASE_URL as an "
-        f"issuer and can reach {jwks}, or use a gateway token instead."
+        f"issuer and can reach {jwks}."
     )
 
 
