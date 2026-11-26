@@ -32,8 +32,8 @@ def notifications_definition() -> ToolDefinition:
     return ToolDefinition(
         name=TOOL_NAME,
         description=(
-            "Read the notification bell of the person you act for: waiting "
-            "decisions first, then the newest. Nothing is marked read."
+            "The bell of the person you act for: waiting "
+            "decisions first, then newest. Marks nothing read."
         ),
         input_schema={
             "type": "object",
