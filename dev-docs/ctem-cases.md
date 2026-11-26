@@ -798,7 +798,12 @@ then the existing AI assessment and facts grid unchanged.
   decision, Closed, All) and the toggles (`?c_q=`: Mine, Unassigned, Overdue,
   Critical and high). A case Waiting for decision says what it waits on, who
   and since when (the "Waits on" column; `waiting_on` on each list row: the
-  newest unanswered waiting gate, `ctem_case_audit.open_wait`).
+  newest unanswered waiting gate, `ctem_case_audit.open_wait`). One derivation
+  of who (#2452): `waiting_on.by` is the person the gate names (a user id),
+  else the case owner, the person accountable for the case (the gate's decision
+  item goes to the CTEM deciders, `ctem_access.gate_recipient`, who the owner
+  may not be); owned and unowned cases read alike, and "A decision" is left only for a case with no owner, which the case
+  sweep no longer leaves open (`ctem_case_owner.backfill_owners`).
 - **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
   (quick filters, search and filters applied) at `/ctem/cases` or as columns
   at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.
@@ -1105,8 +1110,8 @@ context: every figure 0.
 | `get_ctem_case` | one case with members (source, id), the latest 20 history events; at most 100 issues (ranked, Restricted last) with `issues_total` and `issues_truncated`; reads the case's own members, never a whole view build (#2092) |
 | `create_ctem_case` | splits open issues (`source:external_id`) out of their cases into a manual case that pins them (`ctem_cases_store.create_manual_case`; a `split` event on each case they leave) |
 | `update_ctem_case` | owner, due date, note, state with `reason`; `resolved` needs `evidence`; `accepted_risk` refused for an agent (a person accepts risk). Answers a compact result (#2092): id, title, state, owner, due date, `changed`, `unchanged` and `history_written`, never the whole case; a gate decision identical to the newest one of its key is not recorded again (`unchanged: ["gate"]`); a committed write never answers an error |
-| `record_ctem_case_validation` | a validation or re-test reference (provider, ref, result, kind, mitigation_only) through `ctem_case_loop.record_validation`: passed or not_exposed resolves (mitigated, watching when mitigation only), failed reopens, the events raised after the commit |
-| `record_ctem_case_ticket` | a ticket reference (integration, key, url, status) through `ctem_case_loop.record_ticket`: one entry per `(integration, key)` updated in place, a `ticket` event on change, never a state move |
+| `record_ctem_case_validation` | a validation or re-test reference (provider, ref, result, kind, mitigation_only) through `ctem_case_loop.record_validation`: passed or not_exposed resolves (mitigated, watching when mitigation only), failed reopens, the events raised after the commit; answers compactly (#2473): id, title, state after the write, `state_changed` (with `previous_state` and `resolution_kind` when it moved), the `validation` entry recorded with its index and the `history_written` events, never the case re-read |
+| `record_ctem_case_ticket` | a ticket reference (integration, key, url, status) through `ctem_case_loop.record_ticket`: one entry per `(integration, key)` updated in place, a `ticket` event on change, never a state move; answers compactly (#2473): id, title, state, `state_changed`, the `ticket` recorded and the `history_written` events |
 | `decide_ctem_case_remediation` | the remediation decision (CTEM-17, gate B, key `ctem.remediation.decision`): options with figures and the recommendation; rules in `services/ctem_remediation_decision.py` (see 9ter) |
 | `merge_ctem_cases` | #2037: folds duplicate cases of one fix (`case_ids`) into `target_id` through `ctem_cases_store.merge_cases`, the rules of `POST /ctem-cases/merge`: every case named must be one the acting person sees and acts on (a view right is refused), the agent is the actor of each `merge` event; the survivor keeps its state, owner and SLA and takes the keys, members, history and signals, so a recompute maps them to it and no case reopens. The seeded loop orchestrators merge a duplicate into the case a person holds, else the oldest, and never delete it: `delete_ctem_cases` frees the fix key, so a case whose signals still match reopens at the next reconcile with a new SLA |
 

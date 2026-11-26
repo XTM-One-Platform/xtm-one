@@ -39,6 +39,16 @@ Results aggregate into four **families**, because `MANUAL` / `ARTICLE` /
 never contains those three names. Our constants mirror both lists:
 `EXPECTATION_TYPES` and `EXPECTATION_RESULT_TYPES`.
 
+A payload (threat arsenal action, `manage_openaev_threat_arsenal`) accepts a
+narrower set, `PAYLOAD_EXPECTATION_TYPES`: `PREVENTION`, `DETECTION`,
+`VULNERABILITY`. OpenAEV's `PayloadService` answers 400 "Unsupported
+expectation type" for anything else (`LOGGING` exists behind the
+`LOGGING_EXPECTATION` preview flag and is not offered). The tool refuses
+`MANUAL`, `ARTICLE` and `CHALLENGE` locally, before any request: an
+evidence-only action is judged on its findings, and human validation is a
+manual (or email, challenge) inject, not a payload expectation. The six types
+stay valid on inject-level tools.
+
 What SUCCESS proves, per family:
 
 - `PREVENTION` - the attack was **blocked**.
