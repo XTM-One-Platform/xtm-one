@@ -4698,12 +4698,9 @@ class FlowWalker:
         return outcome
 
     async def _exec_integration(self, config: dict) -> _NodeResult:
-        from app.api.v1.helpers import get_user_group_ids
         from app.services.integration_tools import (
-            BindingBasis,
-            ToolBindings,
             build_integration_tools,
-            shadow_invisible_bindings,
+            resolve_agent_integration_bindings,
         )
         from app.tools.base import ToolCall
 
@@ -4725,24 +4722,17 @@ class FlowWalker:
             return _NodeResult(error="The configured integration no longer exists.")
 
         # The run acts as its user: the node uses the integration only when
-        # that person may, the rule of an agent's binding in chat (a flow
-        # lends nothing).
-        bindings = {integration.provider: str(integration.id)}
-        withheld: list[dict] = []
-        await shadow_invisible_bindings(
-            self.db,
-            bindings,
-            {},
-            acting_user_id=str(self.user.id),
-            user_group_ids=await get_user_group_ids(self.db, self.user.id),
-            withheld=withheld,
+        # that person may, else their own of the provider, the rule of an
+        # agent's binding in chat (a flow lends nothing).
+        resolved = await resolve_agent_integration_bindings(
+            self.db, None, self.user.id, source={integration.provider: [str(integration.id)]}
         )
-        if not bindings:
+        if not resolved.bindings:
             from app.services.integration_credentials import unavailable_integration_reasons
 
             # Chat's reason: connect your own account, the owner's token is
             # not shared, or it is not shared with you.
-            reason = next(iter(unavailable_integration_reasons(withheld).values()), None)
+            reason = next(iter(unavailable_integration_reasons(resolved.withheld).values()), None)
             return _NodeResult(
                 error=(
                     f"The run's user may not use the configured integration: {reason}."
@@ -4753,13 +4743,7 @@ class FlowWalker:
             )
 
         definitions, executor = await build_integration_tools(
-            self.db,
-            ToolBindings(
-                bindings,
-                basis=BindingBasis.CALLER_CHECKED,
-                reason="a flow Integration node, for the run's user (shadow_invisible_bindings)",
-            ),
-            context=flow_integration_context(self.user.id),
+            self.db, resolved.tool_bindings, context=flow_integration_context(self.user.id)
         )
         known = {d.name for d in definitions}
         if operation not in known:

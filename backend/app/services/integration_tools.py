@@ -5823,15 +5823,17 @@ def _withhold_every_binding(
     withheld: list[dict] | None,
 ) -> None:
     """Drop every binding (both maps mutated in place): a run with no person
-    to check them against uses none. Each is said as one its user cannot see,
-    by provider only."""
-    from app.services.integration_credentials import invisible_binding
+    to check them against uses none. Each is said by provider only
+    (``integration_credentials.no_person_binding``)."""
+    from app.services.integration_credentials import no_person_binding
 
+    if not effective_bindings:
+        return
     for key, integration_id in list(effective_bindings.items()):
         effective_bindings.pop(key, None)
         binding_origin_map.pop(key, None)
         if withheld is not None and integration_id:
-            withheld.append(invisible_binding(key.split("#", 1)[0], integration_id, binding_key=key))
+            withheld.append(no_person_binding(key.split("#", 1)[0], integration_id, binding_key=key))
     logger.warning("Integration bindings withheld from a run with no person that is not its owner's own")
 
 
@@ -6155,7 +6157,8 @@ async def resolve_agent_integration_bindings(
     *acting_user_id* ``None`` or not a UUID: no one to check against. The run
     is the owner's own only when its path says so (*owner_run*: the public
     widget, an anonymous channel user, the platform MCP key, a run with no
-    owner anywhere), steps 2 and 3 skipped; otherwise it keeps no binding.
+    owner anywhere), steps 2 and 3 skipped, a *source* still checked in
+    step 2 as the agent's owner; otherwise it keeps no binding.
     """
     from app.api.v1.helpers import get_user_group_ids
     from app.services.integration_credentials import drop_orphaned_bindings, lent_integration_ids
@@ -6170,8 +6173,22 @@ async def resolve_agent_integration_bindings(
 
     acting_uuid = normalize_acting_user_id(acting_user_id)
     if acting_uuid is None:
+        owner = normalize_acting_user_id(getattr(agent, "user_id", None))
         if not owner_run:
             _withhold_every_binding(bindings, origins, dropped)
+        elif bindings and not agent_own and owner is not None:
+            # *source* is checked for everyone: here, as the agent's owner.
+            shadowed = await shadow_invisible_bindings(
+                db,
+                bindings,
+                origins,
+                acting_user_id=str(owner),
+                user_group_ids=await get_user_group_ids(db, owner),
+                withheld=dropped,
+                lent_ids=lent_integration_ids(agent),
+                lent_owner_id=owner,
+            )
+            return AgentIntegrationBindings(bindings, origins, dropped, shadowed)
         return AgentIntegrationBindings(bindings, origins, dropped)
 
     shadowed: list[str] = []

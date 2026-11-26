@@ -190,6 +190,19 @@ async def test_a_turn_refuses_a_bundle_holding_what_its_resolution_withheld(sess
 # --- The pipeline tool ref's pinned integration ---------------------------------
 
 
+def _github(name: str, *, user_id=None, company: bool = False) -> Integration:
+    return Integration(
+        id=uuid.uuid4(),
+        provider="github",
+        name=name,
+        status="connected",
+        auth_type="api_key",
+        access_token_enc="enc",
+        user_id=user_id,
+        is_company_managed=company,
+    )
+
+
 def _ref(provider: str, integration_id: uuid.UUID) -> dict:
     return {
         "source": "integration",
@@ -281,11 +294,16 @@ async def test_a_platform_health_run_with_no_user_keeps_no_binding(session):
     agent = _shared_agent()
     agent.health_role = sorted(HEALTH_ROLES)[0]
     agent.is_company_managed = True
+    # Not even a company-wide integration for its per-user bindings.
+    agent.integration_template_bindings = ["github"]
+    session.add(_github("company github", user_id=_OWNER, company=True))
+    await session.flush()
 
     resolved = await _run_bindings(session, None, agent=agent)
 
     assert resolved.bindings == {}
     assert sorted(entry["provider"] for entry in resolved.withheld) == ["github", "jira"]
+    assert {entry["reason"] for entry in resolved.withheld} == {"no_acting_person"}
 
 
 async def test_a_colleague_s_assignment_run_uses_their_own_integration_of_the_provider(session):
@@ -304,6 +322,44 @@ async def test_a_colleague_s_assignment_run_uses_their_own_integration_of_the_pr
     resolved = await _run_bindings(session, _COLLEAGUE)
 
     assert resolved.bindings == {"jira": str(_LENT), "github": str(own.id)}
+    assert resolved.withheld == []
+
+
+async def test_a_withheld_provider_resolves_among_the_colleague_s_scoped_integrations_as_in_chat(session, monkeypatch):
+    """Two of the colleague's GitHubs, scoped by the registered platform's URL:
+    the one it names stands in, as in chat."""
+    from app.models.platform_registration import PlatformRegistration
+
+    await session.run_sync(lambda s: PlatformRegistration.__table__.create(s.connection()))
+    session.add(
+        PlatformRegistration(
+            platform_identifier="github",
+            platform_url="https://b.example",
+            platform_title="b",
+            platform_version="1",
+            status="active",
+        )
+    )
+    scoped = {
+        url: _github(f"colleague github {url}", user_id=_COLLEAGUE)
+        for url in ("https://a.example", "https://b.example")
+    }
+    urls = {}
+    for url, integration in scoped.items():
+        integration.scope_config = {"match_key": "url", "resolve_from_platform": "platform_url"}
+        integration.extra_config_enc = "enc"
+        urls[integration.id] = url
+        session.add(integration)
+    await session.flush()
+
+    async def reveal(integration):
+        return {"url": urls[integration.id]}
+
+    monkeypatch.setattr(integration_tools, "_reveal_extra", reveal)
+
+    resolved = await _run_bindings(session, _COLLEAGUE)
+
+    assert resolved.bindings["github"] == str(scoped["https://b.example"].id)
     assert resolved.withheld == []
 
 
@@ -371,6 +427,21 @@ async def test_a_flow_integration_node_runs_only_what_the_run_s_user_may_use(ses
         assert outcome.error == "The run's user may not use the configured integration: the acting user cannot see it."
 
 
+async def test_a_flow_integration_node_falls_back_to_the_run_s_user_s_own_integration(session, built):
+    from app.services.flow_runner import FlowWalker
+
+    own = _github("colleague github", user_id=_COLLEAGUE)
+    session.add(own)
+    await session.flush()
+    walker = SimpleNamespace(db=session, user=SimpleNamespace(id=_COLLEAGUE), _renderer=None)
+
+    await FlowWalker._exec_integration(
+        walker, {"integration_id": str(_PERSONAL), "operation": "github_search", "parameters": {}}
+    )
+
+    assert built["bindings"] == {"github": str(own.id)}
+
+
 # --- The turn's prompt and a run with no person -----------------------------------------
 
 
@@ -391,6 +462,33 @@ async def test_a_run_with_no_person_keeps_no_binding_unless_declared_the_owner_s
     assert closed.bindings == {}
     assert sorted(entry["provider"] for entry in closed.withheld) == ["github", "jira"]
     assert declared.bindings == {"github": str(_PERSONAL), "jira": str(_LENT)}
+
+
+async def test_an_owner_run_checks_an_assignment_s_own_binding_as_the_agent_s_owner(session):
+    colleague_s = _github("colleague github", user_id=_COLLEAGUE)
+    session.add(colleague_s)
+    await session.flush()
+    source = {"github": [str(colleague_s.id)], "jira": [str(_LENT)]}
+
+    resolved = await integration_tools.resolve_agent_integration_bindings(
+        session, _shared_agent(), None, owner_run=True, source=source
+    )
+
+    assert resolved.bindings == {"jira": str(_LENT)}
+    assert [entry["provider"] for entry in resolved.withheld] == ["github"]
+
+
+async def test_a_pipeline_pin_of_a_run_with_no_person_falls_back_to_nothing(session, built):
+    """Not even to a company-wide integration: its direct bindings keep none."""
+    session.add(_github("company github", user_id=_OWNER, company=True))
+    await session.flush()
+
+    loaded = await agent_chat._load_pipeline_tool_standalone(
+        session, _ref("github", _PERSONAL), "anonymous", _shared_agent(), owner_run=False
+    )
+
+    assert loaded is None
+    assert "bindings" not in built
 
 
 # --- A pipeline pin copied from another agent -----------------------------------

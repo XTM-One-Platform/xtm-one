@@ -89,6 +89,12 @@ OAUTH_NOT_SHARED_REASON = "oauth_credentials_not_shared"
 #: carries the provider and never the name: the name is not the user's to read.
 INTEGRATION_NOT_VISIBLE_REASON = "integration_not_visible"
 
+#: ``missing_integration_bindings`` reason for a binding a run with no person
+#: did not use: no one to check it against, and the run is not its agent
+#: owner's own (``integration_tools.resolve_agent_integration_bindings``).
+#: Such an entry carries the provider and never the name.
+NO_ACTING_PERSON_REASON = "no_acting_person"
+
 #: ``missing_integration_bindings`` reason for an integration whose people each
 #: connect their own account (``credential_mode = "per_user"``) when the
 #: acting person has not connected theirs. The entry carries the name: the
@@ -699,7 +705,28 @@ def format_unshared_oauth_prompt_note(missing_bindings: Iterable[Any] | None) ->
             "them, say so: the user can connect their account from the "
             "integration's page."
         )
-    return note + format_orphaned_binding_prompt_note(entries)
+    return note + format_orphaned_binding_prompt_note(entries) + format_no_person_binding_prompt_note(entries)
+
+
+def format_no_person_binding_prompt_note(missing_bindings: Iterable[Any] | None) -> str:
+    """Tool Availability note for the bindings a run with no person withheld
+    (:data:`NO_ACTING_PERSON_REASON`): empty unless one was, providers
+    ``json.dumps``-escaped."""
+    providers = sorted(
+        {
+            refused_binding_label({"provider": entry.get("provider")})
+            for entry in missing_bindings or []
+            if isinstance(entry, dict) and entry.get("reason") == NO_ACTING_PERSON_REASON
+        }
+    )
+    if not providers:
+        return ""
+    names = ", ".join(json.dumps(p) for p in providers)
+    return (
+        f"\n\n**Tool Availability Notice**: The {names} integration(s) bound to "
+        "this agent are not available: this run acts for no person they could "
+        "be checked against. If the request needs them, say so."
+    )
 
 
 def format_orphaned_binding_prompt_note(missing_bindings: Iterable[Any] | None) -> str:
@@ -734,6 +761,12 @@ def invisible_binding(
         "integration_id": str(integration_id),
         "reason": INTEGRATION_NOT_VISIBLE_REASON,
     }
+
+
+def no_person_binding(provider: Any, integration_id: Any, *, binding_key: str | None = None) -> dict[str, str]:
+    """The ``missing_integration_bindings`` entry for a binding a run with no
+    person did not use: the provider, never the name."""
+    return {**invisible_binding(provider, integration_id, binding_key=binding_key), "reason": NO_ACTING_PERSON_REASON}
 
 
 async def invisible_integration_bindings(
@@ -803,6 +836,7 @@ def unavailable_integrations_notice(
 _UNAVAILABLE_REASON_TEXT = {
     OAUTH_NOT_SHARED_REASON: "it uses its owner's personal OAuth credentials, which are not shared",
     INTEGRATION_NOT_VISIBLE_REASON: "the acting user cannot see it",
+    NO_ACTING_PERSON_REASON: "the run acts for no person it could be checked against",
     OWN_ACCOUNT_NOT_CONNECTED_REASON: "the acting user has not connected their own account to it",
     OWNER_LOST_ACCESS_REASON: "the agent's owner no longer has access to it",
     INTEGRATION_INVALID_REASON: "its stored configuration lacks a key its provider needs",
@@ -829,7 +863,7 @@ def unavailable_integration_reasons(missing_bindings: Iterable[Any] | None) -> d
         text = _UNAVAILABLE_REASON_TEXT.get(str(entry.get("reason") or ""))
         if text is None:
             continue
-        if entry.get("reason") in (INTEGRATION_NOT_VISIBLE_REASON, OWNER_LOST_ACCESS_REASON):
+        if entry.get("reason") in (INTEGRATION_NOT_VISIBLE_REASON, OWNER_LOST_ACCESS_REASON, NO_ACTING_PERSON_REASON):
             label = refused_binding_label({"provider": entry.get("provider")})
         else:
             label = refused_binding_label(entry)

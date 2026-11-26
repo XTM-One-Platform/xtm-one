@@ -290,7 +290,7 @@ _BASES = {
     # The turn's resolution; the pipeline ref's checked pin or fallback pick;
     # its pin in the owner's own run.
     "services/agent_chat.py": {"RESOLVED", "CALLER_CHECKED", "OWNER_RUN"},
-    # The Integration node, for the run's user; the call-tool node, the caller's own.
+    # The call-tool node, the caller's own (the Integration node is resolved).
     "services/flow_runner.py": {"CALLER_CHECKED"},
     "services/general_chat.py": {"CALLER_CHECKED", "ADMIN_CONFIGURED"},
     "api/v1/public_chat.py": {"OWNER_RUN"},
@@ -309,6 +309,7 @@ _BASES = {
 _FROM_RESOLVER = {
     "services/assignment_engine.py",
     "services/evaluation_engine.py",
+    "services/flow_runner.py",
     "services/scheduled_work_item_runner.py",
 }
 

@@ -821,6 +821,9 @@ async def _load_pipeline_tool_unbound(
                 # of the person's own stands in for the pinned one.
                 return None
             integ = None
+        if integ is None and _acting is None and not owner_run:
+            # A run with no person that is not its owner's own resolves none.
+            return None
         _owner_run_pin = integ is not None and _acting is None
 
         # Fallback: scope-based resolution (legacy refs without integration_id).

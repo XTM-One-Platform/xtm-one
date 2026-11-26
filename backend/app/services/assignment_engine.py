@@ -2672,8 +2672,8 @@ async def _resolve_run_integration_bindings(
 ):
     """The integration bindings an assignment run uses, for the person it acts for.
 
-    The assignment's own (``integration_bindings`` set; ``{}`` binds nothing),
-    else the agent's, resolved by
+    The assignment's own (``integration_bindings`` set; ``{}`` binds none
+    of the agent's, its template bindings still resolve), else the agent's, resolved by
     ``integration_tools.resolve_agent_integration_bindings``: chat's rule, so
     someone other than the agent's owner keeps only what they may use or the
     agent lends, and the run says what it withheld. A run with no person (an
@@ -2682,25 +2682,29 @@ async def _resolve_run_integration_bindings(
 
     Then the agent's template bindings, and the providers withheld from the
     person, resolve to that person's own integration or a company-wide one
-    (with no person, company-wide only). A provider whose candidates define a
-    ``scope_config`` is never auto-picked among several.
+    (with no person, company-wide only; for Platform Health's, none). A
+    template provider whose candidates define a ``scope_config`` is never
+    auto-picked among several: the assignment's own binding pins one. A
+    withheld provider resolves as in chat (``resolve_template_integration``).
     """
     from app.models.integration import Integration as _IntegModel
     from app.services.integration_tools import (
         drop_foreign_personal_integrations,
         pick_template_integration,
         resolve_agent_integration_bindings,
+        resolve_template_integration,
         template_candidate_filter,
     )
 
     inherits = assignment.integration_bindings is None
+    # A run with no person is its agent's own, except Platform Health's,
+    # which acts with no user at all, as the work it delegates does.
+    owner_run = not is_health_agent(agent)
     resolved = await resolve_agent_integration_bindings(
         db,
         agent,
         effective_user_id,
-        # A run with no person is its agent's own, except Platform Health's,
-        # which acts with no user at all, as the work it delegates does.
-        owner_run=not is_health_agent(agent),
+        owner_run=owner_run,
         source=None if inherits else assignment.integration_bindings,
         origin="agent_binding_inherited" if inherits else "assignment_binding_override",
         templates=False,
@@ -2714,13 +2718,14 @@ async def _resolve_run_integration_bindings(
     )
 
     # Resolved for ``effective_user_id`` (the run's user, else the agent's
-    # owner); a run with no one gets company-wide integrations only.
+    # owner); a run with no one gets company-wide integrations only, and
+    # Platform Health's none.
     needed = [
         p
         for p in dict.fromkeys([*(agent.integration_template_bindings or []), *resolved.shadowed])
         if p not in resolved.bindings
     ]
-    if not needed:
+    if not needed or (effective_user_id is None and not owner_run):
         return resolved
     rows = await db.execute(
         select(_IntegModel)
@@ -2745,15 +2750,26 @@ async def _resolve_run_integration_bindings(
         if not candidates:
             del by_provider[provider]
             continue
-        if len(candidates) > 1 and any(i.scope_config for i in candidates):
-            # A scope is defined: intent headers or the trigger context pick.
+        if provider in resolved.shadowed:
+            # Stands in for a binding withheld from the person, as in chat.
+            picked, origin = await resolve_template_integration(
+                db,
+                provider,
+                candidates,
+                None,
+                acting_user_id=effective_user_id,
+                context=f"assignment={assignment.name} agent={agent.name}",
+            )
+        elif len(candidates) > 1 and any(i.scope_config for i in candidates):
+            # A scope is defined: the assignment's own binding pins one.
             continue
-        picked, origin = pick_template_integration(
-            candidates,
-            effective_user_id,
-            provider=provider,
-            context=f"assignment={assignment.name} agent={agent.name}",
-        )
+        else:
+            picked, origin = pick_template_integration(
+                candidates,
+                effective_user_id,
+                provider=provider,
+                context=f"assignment={assignment.name} agent={agent.name}",
+            )
         if picked is not None:
             resolved.bind_template(provider, str(picked.id), origin or "")
 
@@ -5963,9 +5979,20 @@ async def execute_assignment_run(
 
             # Integration tools: the run's bindings, resolved for the person
             # it acts for (chat's rule).
-            _run_bindings = await _resolve_run_integration_bindings(
-                db, agent=agent, assignment=assignment, effective_user_id=effective_user_id
-            )
+            try:
+                _run_bindings = await _resolve_run_integration_bindings(
+                    db, agent=agent, assignment=assignment, effective_user_id=effective_user_id
+                )
+            except Exception:
+                # As a failed integration build below: the run goes on without them.
+                logger.error(
+                    "Assignment %s: integration bindings not resolved; the run has no integration tools",
+                    assignment.name,
+                    exc_info=True,
+                )
+                from app.services.integration_tools import AgentIntegrationBindings
+
+                _run_bindings = AgentIntegrationBindings({}, {}, [])
             effective_bindings = _run_bindings.bindings
             binding_origin_map = _run_bindings.origins
 

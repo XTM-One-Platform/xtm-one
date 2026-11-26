@@ -21,16 +21,19 @@ import app.api.v1.helpers as helpers
 from app.models.integration import Integration
 from app.services.integration_credentials import (
     INTEGRATION_NOT_VISIBLE_REASON,
+    NO_ACTING_PERSON_REASON,
     OAUTH_NOT_SHARED_REASON,
     clean_unavailable_integrations,
     format_unshared_oauth_prompt_note,
     invisible_binding,
     invisible_integration_bindings,
+    no_person_binding,
     resolve_session_integration_bindings,
     session_integrations_withheld,
+    unavailable_integration_reasons,
     unavailable_integrations_notice,
 )
-from app.services.integration_tools import shadow_invisible_bindings
+from app.services.integration_tools import _withhold_every_binding, shadow_invisible_bindings
 from tests.integration_credential_fakes import COLLEAGUE_ID, FakeSession, make_integration
 
 
@@ -212,3 +215,25 @@ def test_a_stored_notice_is_served_clean_and_once():
     ]
     assert clean_unavailable_integrations({"provider": "jira"}) == []
     assert clean_unavailable_integrations(None) == []
+
+
+def test_a_run_with_no_person_says_what_it_did_not_use_by_provider_only():
+    entry = {**no_person_binding("jira", uuid.uuid4()), "integration_name": "Owner's Jira"}
+
+    assert entry["reason"] == NO_ACTING_PERSON_REASON
+    note = format_unshared_oauth_prompt_note([entry])
+    assert '"jira"' in note and "acts for no person" in note and "Owner's Jira" not in note
+    assert unavailable_integration_reasons([entry]) == {
+        "jira": "the run acts for no person it could be checked against"
+    }
+    # No one to tell on a reply.
+    assert unavailable_integrations_notice([entry]) == []
+
+
+def test_a_run_with_no_person_and_nothing_bound_withholds_nothing_and_says_nothing(caplog):
+    withheld: list = []
+
+    with caplog.at_level("WARNING", logger="app.services.integration_tools"):
+        _withhold_every_binding({}, {}, withheld)
+
+    assert withheld == [] and caplog.records == []

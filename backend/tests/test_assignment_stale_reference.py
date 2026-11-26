@@ -969,6 +969,25 @@ async def test_a_run_without_the_signal_completes_as_before(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_run_whose_bindings_cannot_be_resolved_runs_without_integration_tools(monkeypatch):
+    built = AsyncMock(return_value=([], None))
+    failing = AsyncMock(side_effect=RuntimeError("database gone"))
+
+    run, _session, _mocks = await _drive_run(
+        monkeypatch,
+        report_integration_id=None,
+        patches={
+            "app.services.assignment_engine._resolve_run_integration_bindings": failing,
+            "app.services.integration_tools.build_integration_tools": built,
+        },
+    )
+
+    assert run.status == "completed", run.error
+    failing.assert_awaited_once()
+    built.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_reference_through_an_integration_the_run_is_not_bound_to_is_ignored(monkeypatch):
     run, _session, mocks = await _drive_run(monkeypatch, report_integration_id=str(uuid.uuid4()))
 
