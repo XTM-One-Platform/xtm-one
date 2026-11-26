@@ -2660,6 +2660,7 @@
   "Enable to collect enterprise-only metrics: Analytics API and AI Code Tracking.": "Activez pour collecter les métriques réservées à l'Enterprise : Analytics API et AI Code Tracking.",
   "Enable two-factor": "Activer la double authentification",
   "Enabled": "Activé",
+  "Partly enabled": "Partiellement activé",
   "Enabled (idle)": "Activé (inactif)",
   "Enabled tiers are injected into every assignment run and chat message.": "Les niveaux activés sont injectés dans chaque exécution d'assignation et chaque message de conversation.",
   "Enabling the {name} integration": "L'activation de l'intégration {name}",
@@ -21918,5 +21919,18 @@
   "Listed": "Listé",
   "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "Pour le rendre concluant, lancez un contrôle qui lit la version en service sur l'actif : un scan authentifié ou un agent.",
   "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, one {# notification non lue} other {# notifications non lues}}",
-  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {Voir la # décision qui vous attend} other {Voir les # décisions qui vous attendent}}"
+  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {Voir la # décision qui vous attend} other {Voir les # décisions qui vous attendent}}",
+  "{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}": "{count, plural, one {{shown} signal en 30 jours} other {{shown} signaux en 30 jours}}",
+  "Last signal: {date}": "Dernier signal : {date}",
+  "PIRs this playbook listens to": "PIR écoutés par ce playbook",
+  "None available: no PIR is enabled on the Intelligence policy.": "Aucun disponible : aucun PIR n'est activé dans la politique de renseignement.",
+  "None available of this path's type in OpenCTI: every enabled PIR is listened to by default.": "Aucun PIR de ce type dans OpenCTI : tous les PIR activés sont écoutés par défaut.",
+  "No PIR: no playbook on this path": "Aucun PIR : pas de playbook sur ce chemin",
+  "Search PIRs": "Rechercher des PIR",
+  "No PIR": "Aucun PIR",
+  "No playbook is provisioned for this path.": "Aucun playbook n'est provisionné pour ce chemin.",
+  "Each PIR records at its own minimum score: {list}": "Chaque PIR enregistre à son propre score minimum : {list}",
+  "Use the default": "Utiliser la valeur par défaut",
+  "Open the Intelligence policy": "Ouvrir la politique de renseignement",
+  "PIR selection saved": "Sélection des PIR enregistrée"
 }

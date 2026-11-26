@@ -3250,6 +3250,10 @@ CTEM_OPENAEV_LOOP_EVENTS: tuple[str, ...] = (
     "critical_asset_reached",
     # CTEM-27: an asset unseen past the tenant's threshold is a path 6 signal.
     "asset_stale",
+    # #2436: a finding created on an asset (path 5) and an asset a scan found (path 7),
+    # both recorded only once an administrator switches their source on.
+    "finding_created",
+    "asset_created",
 )
 #: A key no OpenAEV delivery carries: the trigger provisions and listens, never runs.
 CTEM_LISTEN_ONLY_FILTER: dict[str, Any] = {"_ctem_listen_only": {"exists": True}}

@@ -2660,6 +2660,7 @@
   "Enable to collect enterprise-only metrics: Analytics API and AI Code Tracking.": "有効にするとEnterprise限定メトリクス（Analytics APIとAIコードトラッキング）を収集します。",
   "Enable two-factor": "二要素認証を有効にする",
   "Enabled": "有効",
+  "Partly enabled": "一部有効",
   "Enabled (idle)": "有効（待機中）",
   "Enabled tiers are injected into every assignment run and chat message.": "有効な階層は、すべてのアサインメント実行とチャットメッセージに注入されます。",
   "Enabling the {name} integration": "{name}インテグレーションの有効化",
@@ -21918,5 +21919,18 @@
   "Listed": "掲載中",
   "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "判定可能にするには、資産上で稼働中のバージョンを読み取るチェック（認証付きスキャンまたはエージェント）を実行してください。",
   "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, other {未読の通知 # 件}}",
-  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, other {あなたを待っている判断 # 件をすべて表示}}"
+  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, other {あなたを待っている判断 # 件をすべて表示}}",
+  "{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}": "{count, plural, other {30日間で{shown}件のシグナル}}",
+  "Last signal: {date}": "最後のシグナル: {date}",
+  "PIRs this playbook listens to": "このプレイブックが監視するPIR",
+  "None available: no PIR is enabled on the Intelligence policy.": "利用可能なものはありません: インテリジェンスポリシーで有効なPIRはありません。",
+  "None available of this path's type in OpenCTI: every enabled PIR is listened to by default.": "OpenCTIにこのパスの種類のPIRはありません: 既定では有効なすべてのPIRを監視します。",
+  "No PIR: no playbook on this path": "PIRなし: このパスにプレイブックはありません",
+  "Search PIRs": "PIRを検索",
+  "No PIR": "PIRなし",
+  "No playbook is provisioned for this path.": "このパスにはプレイブックがプロビジョニングされません。",
+  "Each PIR records at its own minimum score: {list}": "各PIRはそれぞれの最小スコアで記録します: {list}",
+  "Use the default": "既定値を使用",
+  "Open the Intelligence policy": "インテリジェンスポリシーを開く",
+  "PIR selection saved": "PIRの選択を保存しました"
 }
