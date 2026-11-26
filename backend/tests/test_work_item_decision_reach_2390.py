@@ -95,16 +95,17 @@ async def test_inactive_reasons_reads_people_groups_and_the_administrators_in_on
     fresh, gone, group_member, group = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     db = _BatchDb(
         members=[(group, group_member)],
-        emails=[(fresh, "a@example.com"), (gone, "b@example.com")],
+        emails=[(fresh, "a@example.com", True), (gone, "b@example.com", True)],
         logins=[(fresh, _NOW - timedelta(hours=3))],
     )
     reasons = await work_item_decision_reach.inactive_reasons(
-        db, [(fresh, None), (gone, None), (None, [str(group)]), (None, None)], now=_NOW
+        db, [(fresh, None), (gone, None), (None, [str(group)]), (None, None), (uuid.uuid4(), None)], now=_NOW
     )
     assert reasons[0] is None
     assert reasons[1] == "the recipient has never signed in"
     assert reasons[2] is not None and "no member" in reasons[2]
     assert reasons[3] is None  # the administrators are never inactive
+    assert reasons[4] == "the recipient is no longer on the platform"
 
 
 @pytest.mark.asyncio
@@ -211,15 +212,19 @@ class _Rows:
 
 
 class _UnseenSession:
-    """First execute: the gate ids; then per id the locked re-read and the admins read."""
+    """First execute: the gate ids; then per id the locked re-read (recipient reads are patched).
 
-    def __init__(self, gates, admins, rereads=None):
+    Then the administrators' phase locks again each gate it marks, in sweep order.
+    """
+
+    def __init__(self, gates, rereads=None):
         rereads = gates if rereads is None else rereads
         self._results = [_Rows([g.id for g in gates])]
         for r in rereads:
             self._results.append(_Rows([r] if r else []))
+        for r in rereads:
             if r:
-                self._results.append(_Rows(admins))
+                self._results.append(_Rows([r]))
         self.commits = 0
         self.rollbacks = 0
 
@@ -239,9 +244,12 @@ class _UnseenSession:
         self.rollbacks += 1
 
 
-def _patch(monkeypatch, session, published, notified):
+def _patch(monkeypatch, session, published, notified, *, admins=(), reasons=None, members=None):
+    """*reasons*: recipient id (person or first group) to inactive reason; *members*: group id to member ids."""
     from app.core import database
     from app.services import notify
+
+    reasons, members = reasons or {}, members or {}
 
     async def _publish(name, data, *, event_id=None):
         published.append((name, data, event_id, session.commits))
@@ -250,35 +258,268 @@ def _patch(monkeypatch, session, published, notified):
     async def _notify(_db, user_id, **kwargs):
         notified.append((user_id, kwargs))
 
+    async def _reason(_db, *, user_id, group_ids, now=None):
+        key = str(group_ids[0]) if group_ids else str(user_id)
+        return reasons.get(key)
+
+    async def _admin_ids(_db):
+        return [str(a) for a in admins]
+
+    async def _members(_db, group_ids):
+        return [str(u) for g in group_ids for u in members.get(str(g), [])]
+
     monkeypatch.setattr(database, "async_session", lambda: session)
     monkeypatch.setattr(platform_events, "publish", _publish)
     monkeypatch.setattr(notify, "notify_web_user", _notify)
+    monkeypatch.setattr(work_item_decision_reach, "inactive_reason", _reason)
+    monkeypatch.setattr(work_item_decision_reach, "_admin_ids", _admin_ids)
+    monkeypatch.setattr(work_item_decision_reach, "_group_member_ids", _members)
+
+
+def test_the_administrators_are_the_fallback_only():
+    person, group = uuid.uuid4(), uuid.uuid4()
+    assert work_item_decision_reach.reminder_targets(person=person, group_ids=None, reason=None) == ("person", person)
+    assert work_item_decision_reach.reminder_targets(person=person, group_ids=[group], reason=None) == (
+        "groups",
+        [group],
+    )
+    assert work_item_decision_reach.reminder_targets(person=person, group_ids=None, reason="gone") == ("admins", "gone")
+    assert work_item_decision_reach.reminder_targets(person=None, group_ids=None, reason=None) == (
+        "admins",
+        work_item_decision_reach.ADDRESSED_TO_ADMINS,
+    )
+
+
+def test_a_deactivated_or_removed_recipient_has_no_real_recipient():
+    reason = person_inactive_reason(
+        email="p@example.com", last_login=_NOW, now=_NOW, days=7, seed_email=_SEED, active=False
+    )
+    assert reason == "the recipient's account is deactivated"
 
 
 @pytest.mark.asyncio
-async def test_an_unopened_gate_past_the_threshold_notifies_every_admin_once(monkeypatch):
+async def test_an_active_recipient_is_reminded_and_no_administrator_is_told(monkeypatch):
     gate = _gate()
-    admins = [uuid.uuid4(), uuid.uuid4()]
-    session = _UnseenSession([gate], admins)
+    session = _UnseenSession([gate])
     published, notified = [], []
-    _patch(monkeypatch, session, published, notified)
+    _patch(monkeypatch, session, published, notified, admins=[uuid.uuid4(), uuid.uuid4()])
 
     assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 1
 
-    assert sorted(u for u, _ in notified) == sorted(str(a) for a in admins)
-    assert all(kw["extra_data"]["work_item_id"] == str(gate.id) for _, kw in notified)
+    assert [u for u, _ in notified] == [str(gate.waits_for_user_id)]
+    assert notified[0][1]["extra_data"]["work_item_id"] == str(gate.id)
     (name, data, event_id, commits_before) = published[0]
     assert name == UNSEEN_EVENT and commits_before == 1
     assert event_id == work_item_decision_reach.unseen_event_id(gate)
     assert data["work_item_id"] == str(gate.id) and data["unseen_hours"] == 24
-    assert sorted(data["notified_admin_ids"]) == sorted(str(a) for a in admins)
+    assert data["notified_admin_ids"] == [] and data["reminded_user_ids"] == [str(gate.waits_for_user_id)]
+    assert data["no_recipient_reason"] is None
     assert gate.payload[UNSEEN_MARK_KEY] == _NOW.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_a_group_recipient_reminds_its_active_members(monkeypatch):
+    group, member = uuid.uuid4(), uuid.uuid4()
+    gate = _gate(waits_for_user_id=None, waits_for_group_ids=[str(group)])
+    session = _UnseenSession([gate])
+    published, notified = [], []
+    _patch(monkeypatch, session, published, notified, admins=[uuid.uuid4()], members={str(group): [member]})
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 1
+    assert [u for u, _ in notified] == [str(member)]
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "the recipient has never signed in",
+        "the recipient is the platform's technical seed account, which no person signs in to",
+        "no member of its recipient groups signed in within 7 days",
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_gate_nobody_can_answer_goes_to_the_administrators(monkeypatch, reason):
+    gate = _gate()
+    admins = [uuid.uuid4(), uuid.uuid4()]
+    session = _UnseenSession([gate])
+    published, notified = [], []
+    _patch(monkeypatch, session, published, notified, admins=admins, reasons={str(gate.waits_for_user_id): reason})
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 1
+
+    assert sorted(u for u, _ in notified) == sorted(str(a) for a in admins)
+    assert all(kw["extra_data"]["work_item_ids"] == [str(gate.id)] for _, kw in notified)
+    assert all(reason in kw["summary"] for _, kw in notified)
+    data = published[0][1]
+    assert sorted(data["notified_admin_ids"]) == sorted(str(a) for a in admins)
+    assert data["no_recipient_reason"] == reason and data["reminded_user_ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_five_gates_nobody_can_answer_make_one_summary_per_administrator(monkeypatch):
+    gates = [_gate(title=f"Decision {n}") for n in range(5)]
+    admins = [uuid.uuid4(), uuid.uuid4()]
+    session = _UnseenSession(gates)
+    published, notified = [], []
+    reasons = {str(g.waits_for_user_id): "the recipient has never signed in" for g in gates}
+    _patch(monkeypatch, session, published, notified, admins=admins, reasons=reasons)
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 5
+
+    assert sorted(u for u, _ in notified) == sorted(str(a) for a in admins)
+    for _, kw in notified:
+        assert kw["title"].startswith("5 decisions have waited 24 hours")
+        assert kw["extra_data"]["work_item_ids"] == [str(g.id) for g in gates]
+        assert all(f"Decision {n}" in kw["summary"] for n in range(5))
+    assert len(published) == 5
+
+
+@pytest.mark.asyncio
+async def test_a_group_with_no_active_member_falls_back_to_the_administrators(monkeypatch):
+    group = uuid.uuid4()
+    gate = _gate(waits_for_user_id=None, waits_for_group_ids=[str(group)])
+    admins = [uuid.uuid4()]
+    session = _UnseenSession([gate])
+    published, notified = [], []
+    _patch(monkeypatch, session, published, notified, admins=admins, members={str(group): []})
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 1
+
+    assert [u for u, _ in notified] == [str(admins[0])]
+    assert work_item_decision_reach.NO_ACTIVE_GROUP_MEMBER in notified[0][1]["summary"]
+    data = published[0][1]
+    assert data["no_recipient_reason"] == work_item_decision_reach.NO_ACTIVE_GROUP_MEMBER
+    assert data["notified_admin_ids"] == [str(admins[0])] and data["reminded_user_ids"] == []
+    assert gate.payload[UNSEEN_MARK_KEY] == _NOW.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_administrator_summary_leaves_the_gate_unmarked_for_the_next_tick(monkeypatch):
+    from app.services import notify
+
+    gate = _gate()
+    session = _UnseenSession([gate])
+    published, notified = [], []
+    reasons = {str(gate.waits_for_user_id): "the recipient has never signed in"}
+    _patch(monkeypatch, session, published, notified, admins=[uuid.uuid4()], reasons=reasons)
+
+    async def _broken(_db, _user_id, **_kwargs):
+        raise RuntimeError("bell down")
+
+    monkeypatch.setattr(notify, "notify_web_user", _broken)
+    committed_marks = []
+    real_commit = session.commit
+
+    async def _commit():
+        committed_marks.append(UNSEEN_MARK_KEY in (gate.payload or {}))
+        await real_commit()
+
+    session.commit = _commit
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 0
+
+    # The only commit is the per-gate one, before any mark: the rolled-back
+    # summary transaction held the mark, so the next tick takes the gate again.
+    assert committed_marks == [False]
+    assert published == [] and session.rollbacks == 1
+
+
+class _ExpiringGate(SimpleNamespace):
+    """A gate whose attributes cannot be read once a rollback expired it, as under AsyncSession."""
+
+    expired = False
+
+    def __getattribute__(self, name):
+        if name not in ("expired", "__dict__", "__class__") and object.__getattribute__(self, "expired"):
+            raise RuntimeError(f"MissingGreenlet: expired attribute {name} read after a rollback")
+        return object.__getattribute__(self, name)
+
+
+class _ExpiringSession(_UnseenSession):
+    """A rollback expires every gate of the session; a locked re-read refreshes the row it returns."""
+
+    def __init__(self, gates, rereads=None):
+        super().__init__(gates, rereads)
+        self._gates = list(gates)
+
+    async def execute(self, statement):
+        rows = await super().execute(statement)
+        for row in rows._rows:
+            if isinstance(row, _ExpiringGate):
+                row.expired = False
+        return rows
+
+    async def rollback(self):
+        await super().rollback()
+        for gate in self._gates:
+            gate.expired = True
+
+
+@pytest.mark.asyncio
+async def test_a_failed_administrator_summary_reads_no_expired_gate(monkeypatch):
+    from app.services import notify
+
+    gate = _ExpiringGate(**vars(_gate()))
+    session = _ExpiringSession([gate])
+    published, notified = [], []
+    reasons = {str(gate.waits_for_user_id): "the recipient has never signed in"}
+    _patch(monkeypatch, session, published, notified, admins=[uuid.uuid4()], reasons=reasons)
+
+    async def _broken(_db, _user_id, **_kwargs):
+        raise RuntimeError("bell down")
+
+    monkeypatch.setattr(notify, "notify_web_user", _broken)
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 0
+    assert published == [] and session.rollbacks == 1
+
+
+@pytest.mark.asyncio
+async def test_a_rollback_in_the_sweep_does_not_break_the_administrator_summary(monkeypatch):
+    """A gate queued for the administrators, then another tick holding the next gate (rollback)."""
+    queued = _ExpiringGate(**vars(_gate(title="Nobody can answer")))
+    held = _ExpiringGate(**vars(_gate()))
+    admins = [uuid.uuid4()]
+    session = _ExpiringSession([queued, held], rereads=[queued, None])
+    published, notified = [], []
+    reasons = {str(queued.waits_for_user_id): "the recipient has never signed in"}
+    _patch(monkeypatch, session, published, notified, admins=admins, reasons=reasons)
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 1
+    assert [u for u, _ in notified] == [str(admins[0])]
+    assert notified[0][1]["extra_data"]["work_item_ids"] == [str(queued.id)]
+    assert published[0][1]["notified_admin_ids"] == [str(admins[0])]
+
+
+@pytest.mark.asyncio
+async def test_a_sweep_of_active_recipients_tells_no_administrator(monkeypatch):
+    """The 25 Nov 2026 backlog: eleven gates addressed to active people, zero administrator notices."""
+    gates = [_gate(title=f"Decision {n}") for n in range(11)]
+    admins = [uuid.uuid4()]
+    session = _UnseenSession(gates)
+    published, notified = [], []
+    _patch(monkeypatch, session, published, notified, admins=admins)
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 11
+    assert str(admins[0]) not in {u for u, _ in notified}
+    assert sorted(u for u, _ in notified) == sorted(str(g.waits_for_user_id) for g in gates)
+
+
+@pytest.mark.asyncio
+async def test_a_second_sweep_sends_nothing_new(monkeypatch):
+    """An alerted gate (the old rule's included) carries the mark, so the query no longer returns it."""
+    session = _UnseenSession([])
+    published, notified = [], []
+    _patch(monkeypatch, session, published, notified, admins=[uuid.uuid4()])
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 0
+    assert published == [] and notified == []
 
 
 @pytest.mark.asyncio
 async def test_a_gate_taken_by_another_tick_raises_nothing(monkeypatch):
     gate = _gate()
-    session = _UnseenSession([gate], [], rereads=[None])
+    session = _UnseenSession([gate], rereads=[None])
     published, notified = [], []
     _patch(monkeypatch, session, published, notified)
 

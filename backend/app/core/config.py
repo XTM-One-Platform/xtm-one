@@ -2666,8 +2666,9 @@ class Settings(BaseSettings):
     #     never, or the seed admin account) is named in a warning at the write
     #     and in the fleet health finding decision_recipient_inactive (#2390).
     work_item_recipient_inactive_days: int = 7
-    #   - A decision gate nobody opened for this many hours notifies every
-    #     active administrator once and raises work_item.needs_human_unseen.
+    #   - A decision gate nobody opened for this many hours reminds its
+    #     recipient once (the administrators only when nobody can answer it,
+    #     one summary per tick) and raises work_item.needs_human_unseen.
     work_item_decision_unseen_hours: int = 24
     #   - Comma-separated targets a TEST work item (correlation key starting
     #     with ``retest:`` or ``test:``, title starting with ``Notify retest``)
