@@ -6,6 +6,7 @@ the threat Unmatched, with the recorder's own access, never inside the bulk pass
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from dataclasses import replace
 from datetime import date
@@ -135,7 +136,7 @@ async def test_read_threat_software_follows_targets_uses_and_targeted_vulnerabil
                 "stixCoreRelationships": {
                     "edges": [
                         {"node": {"to": {"name": "Ivanti Connect Secure", "cpe": "cpe:2.3:a:ivanti:connect_secure"}}},
-                        {"node": {"to": {"id": "v1", "name": "CVE-2024-21887"}}},
+                        {"node": {"to": {"vulnerability_id": "v1"}}},
                         {"node": {"to": {}}},
                     ]
                 }
@@ -147,6 +148,43 @@ async def test_read_threat_software_follows_targets_uses_and_targeted_vulnerabil
     found = await ctem_threat_software.read_threat_software(_NO_CLIENT, "https://octi", {}, THREAT_ID)
     assert found == ["Ivanti Connect Secure", "cpe:2.3:a:ivanti:connect_secure", "Ivanti Policy Secure"]
     assert len(calls) == 2
+
+
+_SIBLING_FRAGMENTS = re.compile(r"(?:\.\.\. on \w+ \{[^{}]*\}\s*){2,}")
+_FRAGMENT = re.compile(r"\.\.\. on (\w+) \{([^{}]*)\}")
+_FIELD = re.compile(r"(\w+)\s*(:\s*\w+)?")
+
+
+def _response_keys(selection: str) -> set[str]:
+    """The response keys of a flat selection: the alias when one is given, else the field name."""
+    return {match.group(1) for match in _FIELD.finditer(selection)}
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        ctem_threat_software._OCTI_THREAT_TARGETS,
+        ctem_cve_software._OCTI_CVE_SOFTWARE,
+        ctem_cve_software._OCTI_VULNS,
+    ],
+)
+def test_sibling_inline_fragments_share_no_response_key(query: str) -> None:
+    """OpenCTI refuses sibling fragments whose shared key differs in type (``String`` vs ``String!``).
+
+    The read tests mock ``_graphql``, so only this check stops a query OpenCTI rejects at validation.
+    """
+    for group in _SIBLING_FRAGMENTS.finditer(query):
+        seen: dict[str, str] = {}
+        for fragment in _FRAGMENT.finditer(group.group(0)):
+            for key in _response_keys(fragment.group(2)):
+                assert key not in seen, f"{key!r} is read on both {seen[key]} and {fragment.group(1)}"
+                seen[key] = fragment.group(1)
+
+
+def test_the_fragment_check_catches_the_shipped_conflict() -> None:
+    shipped = "to { ... on Software { name cpe } ... on Vulnerability { id name } }"
+    with pytest.raises(AssertionError, match="'name'"):
+        test_sibling_inline_fragments_share_no_response_key(shipped)
 
 
 @pytest.mark.asyncio
