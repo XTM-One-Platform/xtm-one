@@ -240,7 +240,7 @@ class TestUpdateDeleteScoping:
         db = _ScriptedDB([_FakeResult(one=None)])
 
         with patch.object(
-            agent_memory_api, "get_user_agent", new=AsyncMock(return_value=agent)
+            agent_memory_api, "_managed_agent", new=AsyncMock(return_value=agent)
         ), pytest.raises(HTTPException) as exc_info:
             await agent_memory_api.update_memory_entry(
                 str(agent.id),
@@ -261,7 +261,7 @@ class TestUpdateDeleteScoping:
         db = _ScriptedDB([_FakeResult(one=None)])
 
         with patch.object(
-            agent_memory_api, "get_user_agent", new=AsyncMock(return_value=agent)
+            agent_memory_api, "_managed_agent", new=AsyncMock(return_value=agent)
         ), pytest.raises(HTTPException) as exc_info:
             await agent_memory_api.delete_memory_entry(
                 str(agent.id),
@@ -280,7 +280,7 @@ class TestUpdateDeleteScoping:
         db = _ScriptedDB([_FakeResult(one=None)])
 
         with patch.object(
-            agent_memory_api, "get_user_agent", new=AsyncMock(return_value=agent)
+            agent_memory_api, "_managed_agent", new=AsyncMock(return_value=agent)
         ), pytest.raises(HTTPException):
             await agent_memory_api.delete_memory_entry(
                 str(agent.id),

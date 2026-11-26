@@ -1207,6 +1207,9 @@ interface ExposureAudience {
 
 // Every resource a person lends through something shared (/exposure/*)
 export type LentResourceKind = "integration" | "mcp_server" | "custom_tool" | "channel_bot" | "variable";
+/** What a share confirmation can list: the lent resources, and the knowledge
+ *  bases, skills and prompts an agent, a flow or the General Assistant attaches. */
+type PreviewLentKind = LentResourceKind | "knowledge_base" | "skill" | "prompt";
 
 /** What a lent resource holds that its audience acts with (never the value). */
 type LentSecretKind =
@@ -1216,7 +1219,9 @@ type LentSecretKind =
   | "mcp_env"
   | "code"
   | "secret_value"
-  | "plain_value";
+  | "plain_value"
+  | "documents"
+  | "instructions";
 
 export type ResourceExposurePathKind = ExposurePathKind | "prompt" | "custom_tool";
 
@@ -1335,7 +1340,7 @@ export interface ResourcePreviewRequest {
 /** One resource the change lends to new people (`gained`) or takes from people
  *  who could use it (`lost`). */
 export interface ResourcePreviewItem {
-  resource: LentResourceRef;
+  resource: Omit<LentResourceRef, "kind"> & { kind: PreviewLentKind };
   secret: LentSecret;
   via: { type: ResourcePreviewEntityType; id: string | null; name: string | null } | null;
   gained: ResourceAudience;
@@ -2177,8 +2182,8 @@ export interface Agent {
    *  it is shared with (their chats with it only); null lends nothing.
    *  Written with `lent_integration_ids` on PUT /agents/{id}, owner only. */
   integration_lending?: { integration_ids: string[]; set_by: string; set_at: string } | null;
-  /** The owner's personal integrations this group-shared agent binds that
-   *  none of its groups gets otherwise, sent by GET /agents/{id} to a viewer
+  /** The owner's personal integrations this shared agent binds that not
+   *  every one of its groups and people gets otherwise, sent by GET /agents/{id} to a viewer
    *  who may edit it (an editor cannot read the owner's rows). */
   shared_personal_integrations?: { id: string; name: string; provider: string }[] | null;
   /** The integrations it binds that its owner can no longer see: its runs
@@ -6513,6 +6518,8 @@ export interface WorkItemAskOption {
   effect?: string | null;
   /** A terminal option (cancel, close): the card asks to confirm it before sending (#2150). */
   confirm?: boolean;
+  /** Answering with it records the answer and leaves the item waiting, nothing dispatched (#1719, #2500). */
+  keeps_waiting?: boolean;
 }
 
 /** `work_items.ask` (#9437): the question a person answers, as the agent wrote it. */

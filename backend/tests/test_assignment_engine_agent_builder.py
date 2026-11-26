@@ -15,11 +15,8 @@ tool group silently goes missing from the assignment path again.
 import inspect
 import re
 
-import pytest
-
 import app.services.agent_chat as agent_chat
 import app.services.assignment_engine as assignment_engine
-from app.services.builtin_tools.traces import TRACE_PAYLOAD_TOOL_NAME
 
 _GATE_RE = re.compile(r'"([a-z_]+)" in agent_builtin_tool_ids')
 
@@ -73,39 +70,16 @@ def test_assignment_engine_builtin_tool_parity_with_chat():
     )
 
 
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param(
-            inspect.getsource(assignment_engine.execute_assignment_run),
-            id="assignment_engine",
-        ),
-    ],
-)
-def test_agent_builder_alias_admits_the_trace_payload_tool(source):
-    """The ``agent_builder`` alias filters ``build_trace_tools``' definitions
-    through a whitelist of *selectable* builtin ids. ``get_trace_payload`` is
-    not one — it ships with whichever inspection tool is enabled — so a
-    name whitelist drops it silently, leaving the alias with tools that report
-    bounded previews and no way to fetch what was held back.
-
-    Same drift class as the missing ``agent_builder`` block above: a filter
-    that has to be told about a tool nobody selects. Any new
-    non-selectable trace tool needs adding to both whitelists too. The chat
-    side wires every trace suite through ``agent_chat._add_trace_tools``,
-    tested on the tools it registers in ``test_general_assistant_tools``.
+def test_the_engine_wires_trace_suites_through_the_chat_turn_rule():
+    """Every trace suite a run gets, carried or implied by ``agent_builder``,
+    goes through ``_add_run_trace_tools``: the chat turn's gate
+    (``agent_chat._turn_trace_tool_ids``) for the run's acting user, and the
+    chat's wiring (``agent_chat._add_trace_tools``), which brings
+    ``get_trace_payload`` along. A direct ``build_trace_tools`` call in the run
+    body would wire them for a user who may not read the agent's chats.
     """
-    gate_body = source.split('"agent_builder" in agent_builtin_tool_ids', 1)[1]
-    alias_block = gate_body.split("if _missing_trace_tools:", 1)[1].split(
-        "composite.add_tools", 1
-    )[0]
-    # From the filter's own assignment onward: the ``import`` above it and the
-    # comment explaining it both name the tool, and matching those would pass
-    # while the comprehension quietly drops it.
-    alias_filter = alias_block.split("trace_defs = [", 1)[1]
-    assert "TRACE_PAYLOAD_TOOL_NAME" in alias_filter, (
-        f"the agent_builder alias must let {TRACE_PAYLOAD_TOOL_NAME} past its "
-        "_missing_trace_tools whitelist — it is not a selectable builtin id, so "
-        "filtering by name alone strips the agent's only way to read a "
-        "truncated or offloaded trace payload in full"
-    )
+    source = inspect.getsource(assignment_engine.execute_assignment_run)
+    assert "build_trace_tools" not in source
+    assert "_add_run_trace_tools(composite, db, agent, agent_builtin_tool_ids, effective_user_id)" in source
+    helper = inspect.getsource(assignment_engine._add_run_trace_tools)
+    assert "_turn_trace_tool_ids" in helper and "_add_trace_tools" in helper

@@ -40,8 +40,26 @@ describe("unsharedPersonalIntegrations", () => {
     expect(ids).toEqual(["i-1"]);
   });
 
+  it("keeps the ones the people an agent is shared with, without any group, do not have", () => {
+    const list = [integration("i-1"), integration("i-2", { shared_user_ids: ["user-2"] })];
+    const ids = unsharedPersonalIntegrations({ p: ["i-1", "i-2"] }, list, null, ["user-2"]).map((i) => i.id);
+    expect(ids).toEqual(["i-1"]);
+  });
+
+  it("keeps a row only some of the agent's groups and people hold", () => {
+    const list = [
+      integration("i-1", { shared_user_ids: ["alice"] }),
+      integration("i-2", { shared_group_ids: [GROUP] }),
+      integration("i-3", { shared_group_ids: [GROUP], shared_user_ids: ["alice", "bob"] }),
+    ];
+    const ids = unsharedPersonalIntegrations({ p: ["i-1", "i-2", "i-3"] }, list, [GROUP], ["alice", "bob"]).map(
+      (i) => i.id,
+    );
+    expect(ids).toEqual(["i-1", "i-2"]);
+  });
+
   it("is empty on an agent shared with nobody", () => {
-    expect(unsharedPersonalIntegrations(bound, integrations, [])).toEqual([]);
+    expect(unsharedPersonalIntegrations(bound, integrations, [], null)).toEqual([]);
   });
 });
 
@@ -79,6 +97,23 @@ describe("PersonalIntegrationsBanner", () => {
     expect(screen.getByText("Personal integrations on a shared agent")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Stop using my integrations through this agent" }));
     expect(onLend).toHaveBeenCalledWith([]);
+  });
+
+  it("offers the owner the lending on an agent shared with people only", () => {
+    const onLend = vi.fn();
+    renderWithProviders(
+      <PersonalIntegrationsBanner
+        agent={agent()}
+        integrations={integrations}
+        sharedGroupIds={null}
+        sharedUserIds={["user-2"]}
+        currentUserId={OWNER}
+        onLend={onLend}
+      />,
+    );
+    expect(screen.getByText("Personal integrations on a shared agent")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Use my integrations through this agent" }));
+    expect(onLend).toHaveBeenCalledWith(["i-1", "i-2"]);
   });
 
   it("offers the lending to the owner only", () => {

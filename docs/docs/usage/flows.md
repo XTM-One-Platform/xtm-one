@@ -305,8 +305,8 @@ agent node reads that agent's traces, which hold every user's conversations
 with it. Saving a flow refuses it on an agent whose chats you cannot read
 (an administrator, the agent's owner or someone it is shared with as
 `Full access (incl. chats)` can), unless the agent carries it itself, and a
-run only wires it, the trace inspection the agent builder brings included,
-for a person running the flow who can read them.
+run only wires it, the trace inspection the agent carries or the agent
+builder brings included, for a person running the flow who can read them.
 
 A `Call tool` node runs the tool picked in its drawer. For a custom tool the
 node keeps both its name and the tool itself, so the step runs that tool,

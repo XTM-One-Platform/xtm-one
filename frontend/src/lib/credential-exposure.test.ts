@@ -97,6 +97,13 @@ test("every lent resource says whose it is and what it holds", () => {
   assert.equal(lentResourceLabel(t, { ...base, kind: "integration", secretKind: "oauth_account", provider: "GitHub" }), "Alice's GitHub connected account");
 });
 
+test("an attached knowledge base, skill or prompt says whose it is", () => {
+  const base = { name: "Playbooks", provider: "", isCompany: false, isYours: false, holderName: "Alice" };
+  assert.equal(lentResourceLabel(t, { ...base, kind: "knowledge_base", secretKind: "documents", isYours: true }), "Your knowledge base Playbooks and its documents");
+  assert.equal(lentResourceLabel(t, { ...base, kind: "skill", secretKind: "instructions" }), "Alice's skill Playbooks and its instructions");
+  assert.equal(lentResourceLabel(t, { ...base, kind: "prompt", secretKind: "instructions", holderName: null }), "Someone else's prompt Playbooks");
+});
+
 test("A2A partners and webhook callers are named, and count as someone", () => {
   assert.equal(describeAudience(t, { ...nobody, a2a_partners: true, webhook_callers: true }), "its A2A partners, anyone holding one of its webhook URLs");
   assert.equal(audienceIsEmpty(nobody), true);

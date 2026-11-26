@@ -26,7 +26,13 @@ the agent-builder tool alike, so the two can never drift:
   :func:`derive_available_channel_types`;
 - the company-managed toggle: :func:`strip_personal_bindings` when an agent
   becomes company-managed, :func:`revert_company_managed_to_private` when it
-  goes back, and :func:`retain_agent_bindings`, which a duplicate also uses.
+  goes back, and :func:`retain_agent_bindings`, which a duplicate also uses;
+- who reaches an agent: when :func:`agent_audience` changes,
+  :func:`unlink_agent_from_lost_holders` takes it off the handover targets and
+  work-item rosters of the agents whose owner no longer reaches it;
+  :func:`unlink_agents_shared_with_group` after someone leaves a group, and
+  :func:`unlink_lost_holders_of` for the agents a deleted group was pruned
+  from (``helpers.prune_group_grants``).
 
 Refusals are ``HTTPException`` s; the agent-builder tool turns their ``detail``
 into the message it returns to the model.
@@ -37,8 +43,10 @@ from __future__ import annotations
 import uuid
 
 from fastapi import HTTPException
-from sqlalchemy import not_, select
+from sqlalchemy import Text as SAText
+from sqlalchemy import cast, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.api.v1.binding_access import (
     WHITELIST_BYPASS_REFUSED_DETAIL,
@@ -49,6 +57,7 @@ from app.api.v1.helpers import (
     bindable_knowledge_base_clause,
     parse_uuid_list,
     user_visible_filter,
+    visible_to_user_column_clause,
 )
 from app.channels.base import CHANNEL_TO_BOT_PROVIDER
 from app.core.utils import safe_uuid
@@ -305,7 +314,108 @@ def retain_agent_bindings(agent: Agent, keep: dict[str, set[str]]) -> dict[str, 
     if "work_item_owner_agent_ids" in keep and agent.work_item_owner_agent_ids:
         _filter("work_item_owner_agent_ids")
 
+    if "trace_supervision_target_agent_ids" in keep and agent.trace_supervision_target_agent_ids:
+        _filter("trace_supervision_target_agent_ids")
+
     return dropped
+
+
+#: The agent columns naming other agents this agent hands work to.
+AGENT_REFERENCE_FIELDS = ("handover_agent_ids", "work_item_owner_agent_ids")
+
+
+def agent_audience(agent: Agent) -> tuple:
+    """What decides who reaches *agent*: compare it before and after a write
+    to know whether :func:`unlink_agent_from_lost_holders` has work to do."""
+    return (
+        canonical_id(agent.user_id),
+        bool(agent.is_company_managed),
+        bool(getattr(agent, "access_restricted", False)),
+        frozenset(str(g) for g in agent.shared_group_ids or []),
+        frozenset(str(u) for u in agent.shared_user_ids or []),
+    )
+
+
+async def unlink_agent_from_lost_holders(db: AsyncSession, agent: Agent) -> int:
+    """Take *agent* off the handover targets and work-item rosters of the
+    agents that may no longer name it, in place; returns how many changed.
+
+    A personal holder keeps it while the holder's owner still reaches it
+    (:func:`visible_to_user_column_clause`, the tiers a write adding it is
+    checked with: an administrator reaches every agent). A company-managed
+    holder is edited by administrators only, so its owner's reach takes
+    nothing from it: it loses *agent* as a handover target once *agent* is
+    no longer company-managed (:func:`validate_company_managed_bindings`),
+    and keeps it on its work-item roster. The handover type and condition
+    maps follow (:func:`retain_agent_bindings`).
+    """
+    target = str(agent.id)
+    # The query below reads the audience this request just wrote.
+    await db.flush()
+    target_row = aliased(Agent)
+    still_reached = (
+        select(target_row.id)
+        .where(target_row.id == agent.id, visible_to_user_column_clause(target_row, Agent.user_id))
+        # Each holder's own owner, never any agent's.
+        .correlate(Agent)
+        .exists()
+    )
+    holders = (
+        await db.execute(
+            select(Agent, still_reached).where(
+                Agent.id != agent.id,
+                or_(*(cast(getattr(Agent, field), SAText).contains(target) for field in AGENT_REFERENCE_FIELDS)),
+            )
+        )
+    ).all()
+    changed = 0
+    for holder, reached in holders:
+        lost: set[str] = set()
+        if holder.is_company_managed:
+            if not agent.is_company_managed:
+                lost.add("handover_agent_ids")
+        elif not reached:
+            lost.update(AGENT_REFERENCE_FIELDS)
+        keep: dict[str, set[str]] = {}
+        for field in lost:
+            named = {canonical_id(i) for i in getattr(holder, field) or []}
+            if target in named:
+                keep[field] = {i for i in named if i and i != target}
+        if keep:
+            retain_agent_bindings(holder, keep)
+            changed += 1
+    return changed
+
+
+async def unlink_lost_holders_of(db: AsyncSession, agents: list[Agent]) -> int:
+    """:func:`unlink_agent_from_lost_holders` for each of *agents*, whose
+    audience changed without their own row being edited (a group they are
+    shared with was deleted). Returns the holders changed."""
+    changed = 0
+    for agent in agents:
+        changed += await unlink_agent_from_lost_holders(db, agent)
+    return changed
+
+
+async def unlink_agents_shared_with_group(db: AsyncSession, group_id: uuid.UUID) -> int:
+    """After memberships of *group_id* were removed: every agent shared with
+    the group goes through :func:`unlink_agent_from_lost_holders`, so the
+    former members' agents stop naming the ones they no longer reach."""
+    target = str(group_id)
+    candidates = (
+        (
+            await db.execute(
+                select(Agent).where(
+                    Agent.shared_group_ids.isnot(None),
+                    cast(Agent.shared_group_ids, SAText).contains(target),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    shared = [a for a in candidates if target in {str(g) for g in a.shared_group_ids or []}]
+    return await unlink_lost_holders_of(db, shared)
 
 
 #: How a dropped binding is named in a copy's warnings (singular form).
@@ -318,6 +428,7 @@ COPY_WARNING_LABELS: dict[str, str] = {
     "skill_ids": "skill",
     "prompt_ids": "prompt",
     "work_item_owner_agent_ids": "work-item owner agent",
+    "trace_supervision_target_agent_ids": "trace supervision target agent",
     "channel_config": "channel setting",
     "assignment_tool_sources": "assignment MCP server",
     "assignment_integration_bindings": "assignment integration binding",

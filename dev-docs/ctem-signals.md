@@ -279,7 +279,7 @@ One row per `(organization_id, recorded_by, dedupe_key)`.
 |---|---|
 | `organization_id` | The organization (FK, cascade) |
 | `trigger_path`, `lens` | Section 2 (check constraints) |
-| `source_provider`, `source_external_id` | Who saw it (`opencti`, `openaev`, `aikido`, `manual`...) and the object's id there |
+| `source_provider`, `source_external_id` | Who saw it (`opencti`, `openaev`, `aikido`, `manual`...) and the object's id there; for OpenCTI the internal id of its extension (#2505: the STIX `id` is the `standard_id`, which changes on a rename or a merge), the STIX `id` when the extension is absent, the STIX ids kept in the evidence (`stix_id`, `stix_ids`) |
 | `subject_kind`, `subject_ref`, `subject_label` | What it is about: `asset`, `software`, `identity`, `third_party`, `vulnerability`, `threat`, `code`; a stable reference (hostname, IP, URL, CPE, CVE id, account, organization) |
 | `observed_at`, `first_seen_at`, `last_seen_at`, `seen_count` | The latest sighting, the first, the latest time seen, how many sightings |
 | `evidence` | JSON, at most 8,000 characters: the facts and a `link` |

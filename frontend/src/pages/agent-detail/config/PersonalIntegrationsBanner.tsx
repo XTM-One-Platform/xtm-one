@@ -34,6 +34,7 @@ type Props = {
   };
   integrations?: Integration[];
   sharedGroupIds: string[] | null;
+  sharedUserIds?: string[] | null;
   currentUserId?: string;
   disabled?: boolean;
   /** Lend these integration ids through the agent; `[]` stops lending. */
@@ -51,6 +52,7 @@ export function PersonalIntegrationsBanner({
   agent,
   integrations,
   sharedGroupIds,
+  sharedUserIds = null,
   currentUserId,
   disabled,
   onLend,
@@ -64,9 +66,10 @@ export function PersonalIntegrationsBanner({
         agent.integration_bindings,
         integrations,
         sharedGroupIds,
+        sharedUserIds,
         agent.shared_personal_integrations,
       ),
-    [agent.integration_bindings, integrations, sharedGroupIds, agent.shared_personal_integrations],
+    [agent.integration_bindings, integrations, sharedGroupIds, sharedUserIds, agent.shared_personal_integrations],
   );
   if (personal.length === 0) return null;
 

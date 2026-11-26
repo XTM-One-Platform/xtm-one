@@ -286,8 +286,7 @@ async def test_the_memory_tab_clear_lets_later_memories_land(monkeypatch):
     async def _no_rows(*_a, **_kw):
         return 0
 
-    monkeypatch.setattr(agent_memory_api, "get_user_agent", _agent)
-    monkeypatch.setattr(agent_memory_api, "_can_manage_memory", lambda *_a: True)
+    monkeypatch.setattr(agent_memory_api, "_managed_agent", _agent)
     monkeypatch.setattr(agent_memory_api, "log_audit", _noop)
     monkeypatch.setattr(persistent_memory, "clear_agent_memories", _no_rows)
 

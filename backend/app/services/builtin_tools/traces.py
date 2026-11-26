@@ -37,7 +37,7 @@ import hashlib
 import json
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -129,6 +129,31 @@ async def may_read_agent_traces(
     if user_group_ids is None:
         user_group_ids = await helpers.get_user_group_ids(db, user.id)
     return helpers.can_view_agent_chats(user, agent, user_group_ids)
+
+
+async def agents_whose_traces_user_may_read(
+    db: AsyncSession,
+    user: Any,
+    agent_ids: Iterable[Any],
+    user_group_ids: list[str] | None = None,
+) -> set[str]:
+    """The canonical ids among *agent_ids* whose traces *user* may read
+    (:func:`may_read_agent_traces`). An id naming no agent is left out.
+
+    A trace supervision allow-list names the agents another agent may inspect;
+    what a caller reads through it is never wider than what that caller may
+    read of each target on its own, so it is checked when the list is written
+    and again when it is read.
+    """
+    from app.models.agent import Agent
+
+    wanted = {canonical for canonical in (_canonical_agent_id(str(v)) for v in agent_ids if v) if canonical}
+    if not wanted or user is None:
+        return set()
+    if user_group_ids is None:
+        user_group_ids = await get_user_group_ids(db, user.id)
+    rows = (await db.execute(select(Agent).where(Agent.id.in_([uuid.UUID(i) for i in wanted])))).scalars().all()
+    return {str(agent.id) for agent in rows if await may_read_agent_traces(db, user, agent, user_group_ids)}
 
 
 _MAX_LIMIT = 25
@@ -2206,13 +2231,22 @@ def build_trace_tools(
             continue
     own_agent_id = _canonical_agent_id(agent_id)
 
-    def _supervised_agent_ids(user: User) -> list[str] | None:
+    async def _readable_allowlist(_db: AsyncSession, user: User, group_ids: list[str]) -> set[str]:
+        """The other agents of the allow-list whose traces this caller may read
+        (:func:`agents_whose_traces_user_may_read`): the list says which agents
+        this one may supervise, the caller's right to each one's chats decides."""
+        others = supervision_allowlist - {own_agent_id}
+        if not others:
+            return set()
+        return await agents_whose_traces_user_may_read(_db, user, others, group_ids)
+
+    async def _supervised_agent_ids(_db: AsyncSession, user: User, group_ids: list[str]) -> list[str] | None:
         """The other agents whose runs this caller may look up by run id: the
-        allow-list, or every agent (``None``) for an admin granted the
+        readable allow-list, or every agent (``None``) for an admin granted the
         supervision surface; ``[]`` for none."""
         if allow_cross_agent and agent_tool_admin_bypass(user):
             return None
-        return sorted(supervision_allowlist - {own_agent_id})
+        return sorted(await _readable_allowlist(_db, user, group_ids))
 
     async def _supervised_trace_of_run(
         _db: AsyncSession, user: User, group_ids: list[str], value: str
@@ -2220,8 +2254,10 @@ def build_trace_tools(
         """The root trace of a supervised agent's run *value* names, or the
         refusal naming each trace of a resumed run; ``(None, None)`` without a
         grant, so no other agent's run is even searched."""
-        scope = _supervised_agent_ids(user)
-        if scope == [] or _health_refuses_other_agents():
+        if _health_refuses_other_agents():
+            return None, None
+        scope = await _supervised_agent_ids(_db, user, group_ids)
+        if scope == []:
             return None, None
         candidates = await _supervised_run_root_traces(
             _db, value, viewer=_trace_viewer(user), group_ids=group_ids, agent_ids=scope
@@ -2361,7 +2397,11 @@ def build_trace_tools(
                     agent_ids = _supervision_scope(
                         admin_bypass=agent_tool_admin_bypass(user),
                         target_uuid=target_uuid,
-                        supervision_allowlist=supervision_allowlist,
+                        supervision_allowlist=(
+                            set()
+                            if own_agent_id is not None and target_uuid == own_agent_id
+                            else await _readable_allowlist(_db, user, group_ids)
+                        ),
                         own_agent_id=own_agent_id,
                     )
                 except SupervisionDeniedError as denied:
@@ -2600,9 +2640,11 @@ def build_trace_tools(
                 is_own_trace = trace_agent_id == agent_id or (
                     own_agent_id is not None and _canonical_agent_id(trace_agent_id) == own_agent_id
                 )
-                may_read_other_agent = (
-                    allow_cross_agent and agent_tool_admin_bypass(user)
-                ) or trace_agent_id in supervision_allowlist
+                may_read_other_agent = allow_cross_agent and agent_tool_admin_bypass(user)
+                if not is_own_trace and not may_read_other_agent:
+                    may_read_other_agent = _canonical_agent_id(trace_agent_id) in await _readable_allowlist(
+                        _db, user, group_ids
+                    )
                 if not is_own_trace and not may_read_other_agent and allow_cross_agent:
                     # A deleted agent's trace: the caller's run of it, or
                     # an agent they owned - never through an admin bypass.

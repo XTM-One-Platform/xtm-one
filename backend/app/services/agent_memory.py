@@ -40,13 +40,20 @@ and extracted knowledge stored with vector embeddings for semantic search.
 All functions accept an optional ``scope_id`` that isolates memory per
 caller context:
 
-- **Assignment / event execution** (autonomous, no user):
-  ``scope_id=None`` → key ``agent_mem:{tier}:{agent_id}``
-  The agent accumulates knowledge about its own autonomous operations.
-
 - **Authenticated chat** (user talks to agent):
   ``scope_id=user_id`` → key ``agent_mem:{tier}:{agent_id}:scope:{user_id}``
   Each user has a private memory lane with each agent.
+
+- **Assignment run**: the lane of the user the run acts as
+  (``assignment_helpers.assignment_memory_scope``: ``run.user_id``, else the
+  agent's owner), the same lane that user's chat with the agent reads. A run
+  never writes the agent-level lane, so what its acting user's integrations
+  and knowledge bases returned reaches no other user.
+
+- **Agent-level** (``scope_id=None`` → key ``agent_mem:{tier}:{agent_id}``):
+  written only by the designated agent-level writer inside a trusted
+  autonomous run (``agent_chat._derive_memory_scope_id``); its consolidation
+  persists with ``user_id = NULL``, which every user's chat reads.
 
 - **Public chat** (embedded widget):
   Agent memory is **not used** at all — visitors only get per-visitor

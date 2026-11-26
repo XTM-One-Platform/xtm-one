@@ -5102,3 +5102,120 @@ def test_placeholder_id_guard_rejects_fabricated_ids():
     assert _placeholder_id_error(
         "workflow_id", "7f3a9c12-1b2c-4d5e-9f00-abcdef012345", hint
     ) is None
+
+
+# ── Scenario export: lab targets neutralised for publication ─────────────────
+
+
+def _scenario_export_zip(targets: str) -> bytes:
+    import io
+    import zipfile
+
+    scenario = {
+        "scenario_information": {
+            "scenario_description": f"Scans {targets}",
+            "scenario_mail_from": "openaev@example.com",
+        },
+        "scenario_injects": [
+            {
+                "inject_title": "Nuclei",
+                "inject_content": {"target_selector": "manual", "targets": targets},
+            }
+        ],
+    }
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+        info = zipfile.ZipInfo("Lab.json", date_time=(2026, 11, 2, 10, 30, 0))
+        info.comment = b"Scenario"
+        archive.writestr(info, json.dumps(scenario))
+        archive.writestr("documents/a.bin", b"\x00\x01kept")
+    return out.getvalue()
+
+
+def _export_with(monkeypatch, data: bytes) -> list:
+    """Patch the export fetch (no network) and record what deliver_file is handed."""
+    from app.integrations.file_delivery import FetchedFile
+    from app.integrations.providers.openaev import simulations
+
+    delivered: list = []
+
+    async def fake_scope_path(headers, path):
+        return path, ""
+
+    async def fake_fetch(client, method, url, *, provider, action, max_bytes, **kwargs):
+        return FetchedFile(data=data, content_type="application/zip", filename="x.zip")
+
+    async def fake_deliver(**kwargs):
+        from app.tools.base import ToolResult
+
+        delivered.append(kwargs)
+        return ToolResult(
+            tool_call_id="", content="\n".join(["Downloaded", *kwargs.get("notes", ())])
+        )
+
+    monkeypatch.setattr(simulations, "_scope_path", fake_scope_path)
+    monkeypatch.setattr(simulations, "fetch_file", fake_fetch)
+    monkeypatch.setattr(simulations, "deliver_file", fake_deliver)
+    return delivered
+
+
+async def test_export_neutralises_lab_targets_when_asked(monkeypatch):
+    import io
+    import zipfile
+
+    original = _scenario_export_zip("honey.scanme.sh")
+    delivered = _export_with(monkeypatch, original)
+    executor, _ = _build()
+    result = await _run(
+        executor,
+        "export_openaev_scenario",
+        {"scenario_id": "s1", "neutralise_targets": True},
+    )
+    assert not result.is_error, result.content
+    assert "Neutralised 1 lab target value(s)" in result.content
+    data = delivered[0]["data"]
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        scenario = json.loads(archive.read("Lab.json"))
+        assert archive.getinfo("Lab.json").comment == b"Scenario"
+        assert archive.read("documents/a.bin") == b"\x00\x01kept"
+    content = scenario["scenario_injects"][0]["inject_content"]
+    assert content["targets"] == "host.example.com"
+    assert scenario["scenario_information"]["scenario_description"] == "Scans host.example.com"
+    assert b"honey.scanme.sh" not in data
+
+
+@pytest.mark.parametrize("flag", [None, False, "false"])
+async def test_export_without_neutralise_targets_is_byte_identical(monkeypatch, flag):
+    original = _scenario_export_zip("honey.scanme.sh")
+    delivered = _export_with(monkeypatch, original)
+    executor, _ = _build()
+    arguments: dict = {"scenario_id": "s1"}
+    if flag is not None:
+        arguments["neutralise_targets"] = flag
+    result = await _run(executor, "export_openaev_scenario", arguments)
+    assert not result.is_error, result.content
+    assert delivered[0]["data"] == original
+    assert "Neutralised" not in result.content
+
+
+async def test_export_that_cannot_be_neutralised_is_not_delivered(monkeypatch):
+    delivered = _export_with(monkeypatch, b"PK\x03\x04-not-a-zip")
+    executor, _ = _build()
+    result = await _run(
+        executor,
+        "export_openaev_scenario",
+        {"scenario_id": "s1", "neutralise_targets": True},
+    )
+    assert result.is_error
+    assert result.content.startswith("Error: ")
+    assert not delivered
+
+
+def test_export_schema_documents_neutralise_targets():
+    _, tools = _build()
+    tool = next(t for t in tools if t.name == "export_openaev_scenario")
+    prop = tool.input_schema["properties"]["neutralise_targets"]
+    assert prop["type"] == "boolean"
+    assert prop["default"] is False
+    assert "neutralise_targets" in tool.description
+    assert "example hosts" in tool.description

@@ -1362,33 +1362,24 @@ async def _turn_trace_tool_ids(
     """The trace suites a turn wires: the one rule, whatever carries them.
 
     Trace inspection reads the agent's own traces, every user's conversations
-    with it (``_own_trace_reader``).
-
-    - The work of an A2A partner's task gets none, whatever identity it runs
-      as (``a2a.partner_scope``).
-    - A suite the agent carries itself was chosen by whoever configured it.
-    - A suite a chat session or a flow's tool node adds, and the full surface
-      ``agent_builder`` implies, are wired only for someone who may read the
-      agent's traces (``traces.may_read_agent_traces``).
+    with it (``_own_trace_reader``), so a suite is wired only for someone who
+    may read the agent's traces (``traces.may_read_agent_traces``), the rule
+    its Chats tab follows. That holds for a suite the agent carries itself, one
+    a chat session or a flow's tool node adds, and the full surface
+    ``agent_builder`` implies. The work of an A2A partner's task gets none,
+    whatever identity it runs as (``a2a.partner_scope``).
     """
     from app.a2a.partner_scope import in_partner_task
-    from app.services.builtin_tool_aliases import runtime_builtin_tool_ids
     from app.services.builtin_tools.traces import TRACE_SUITE_IDS, may_read_agent_traces
 
     if in_partner_task():
         return set()
-    named = TRACE_SUITE_IDS.intersection(agent_builtin_tool_ids)
-    # The agent's own list, read through the ``observability`` group and its
-    # [DEPRECATED] trace ids, so a migrated row carries what it did.
-    carried = named.intersection(
-        runtime_builtin_tool_ids(agent.builtin_tool_ids, getattr(agent, "builtin_allowed_tools", None))
-    )
-    gated = named - carried
+    wired = set(TRACE_SUITE_IDS.intersection(agent_builtin_tool_ids))
     if "agent_builder" in agent_builtin_tool_ids:
-        gated |= TRACE_SUITE_IDS - named
-    if gated and await may_read_agent_traces(db, user_record, agent, user_group_ids):
-        return carried | gated
-    return carried
+        wired |= TRACE_SUITE_IDS
+    if wired and await may_read_agent_traces(db, user_record, agent, user_group_ids):
+        return wired
+    return set()
 
 
 def _platform_builder_actor(user_id: str) -> tuple[str, bool]:
