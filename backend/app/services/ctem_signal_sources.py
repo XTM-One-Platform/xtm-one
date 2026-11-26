@@ -16,8 +16,14 @@ each is bound for the caller. Three kinds of source:
   evidence health pass runs by default on the single connected OpenCRQ
   integration, ``ctem_evidence_health.resolve_pass``).
 - ``pir_playbook``: the OpenCTI PIR playbook (CTEM-05) delivering flagged
-  entities through the OpenCTI listener. Bound when an enabled assignment holds
-  a provisioned playbook.
+  entities through the OpenCTI listener.
+
+A source XTM One provisions in its platform (:data:`PROVISIONED_PAIRS`: the
+OpenCTI and OpenAEV listeners, the PIR playbook) is bound only when its objects
+exist and the last check passed (#2434): an enabled platform signal source
+(``services/ctem_platform_sources.py``) or, until the migration moves it, an
+enabled assignment holding a provisioned trigger on that integration. A
+connected integration alone never reads connected.
 
 A path with no source at all is recorded by agents and the API only: it never
 reads connected. No model call; read-only.
@@ -254,11 +260,9 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
     every role reads the same status for an organization-wide pass.
     """
     from app.api.v1.helpers import integration_visible_filter
-    from app.models.assignment import Assignment
     from app.models.integration import Integration
     from app.services import ctem_evidence_health as evidence_health
     from app.services import organization_context as org_context
-    from app.services.opencti_trigger_provisioning import STATE_KEY
     from app.services.organizations import get_primary
 
     providers = {s.provider for sources in PATH_SOURCES.values() for s in sources}
@@ -297,17 +301,77 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
             elif state != evidence_health.PASS_NONE and platform.get(provider):
                 bound.off.add((provider, "pass"))
 
-    if "opencti" in connected:
-        configs = (
-            await db.execute(
-                select(Assignment.trigger_config).where(
-                    Assignment.trigger_type == "integration_event", Assignment.enabled.is_(True)
-                )
-            )
-        ).scalars()
-        for config in configs:
-            state = config.get(STATE_KEY) if isinstance(config, dict) else None
-            if isinstance(state, dict) and state.get("playbook_id") and state.get("status") != "error":
-                bound.add(("opencti", "pir_playbook"))
-                break
+    # A source XTM One provisions in its platform reads connected only when its objects
+    # exist and the last check passed (#2434): a connected integration alone feeds nothing.
+    for pair in PROVISIONED_PAIRS:
+        bound.discard(pair)
+    provisioned = await provisioned_pairs(db, connected)
+    bound.update(provisioned)
     return bound
+
+
+#: The ``(provider, kind)`` sources XTM One must provision in the source platform before they deliver.
+PROVISIONED_PAIRS: tuple[tuple[str, str], ...] = (
+    ("opencti", "listener"),
+    ("opencti", "pir_playbook"),
+    ("openaev", "listener"),
+)
+
+
+def provisioned_pair(provider: str, state: Any) -> tuple[str, str] | None:
+    """The source a provisioning *state* feeds when it is provisioned and its last check passed, else ``None``."""
+    from app.services.ctem_platform_sources import is_connected
+
+    if not is_connected(state):
+        return None
+    if provider == "opencti":
+        return ("opencti", "pir_playbook" if state.get("playbook_id") else "listener")
+    if provider == "openaev":
+        return ("openaev", "listener")
+    return None
+
+
+async def provisioned_pairs(db: AsyncSession, connected: dict[str, set[str]]) -> set[tuple[str, str]]:
+    """The provisioned sources on the caller's connected integrations: platform sources, then the
+    assignments that still hold a provisioned trigger until the migration moves them (#2434)."""
+    from app.models.assignment import Assignment
+    from app.models.ctem_signal_source import CtemSignalSource
+    from app.services.ctem_platform_sources import is_connected
+    from app.services.openaev_trigger_provisioning import STATE_KEY as OPENAEV_STATE_KEY
+    from app.services.opencti_trigger_provisioning import STATE_KEY as OPENCTI_STATE_KEY
+
+    out: set[tuple[str, str]] = set()
+    if not ({provider for provider, _ in PROVISIONED_PAIRS} & set(connected)):
+        return out
+    rows = (
+        await db.execute(
+            select(
+                CtemSignalSource.provider,
+                CtemSignalSource.kind,
+                CtemSignalSource.integration_id,
+                CtemSignalSource.state,
+            ).where(CtemSignalSource.enabled.is_(True))
+        )
+    ).all()
+    for provider, kind, integration_id, state in rows:
+        if str(integration_id) in connected.get(provider, set()) and is_connected(state):
+            out.add((provider, kind))
+    configs = (
+        await db.execute(
+            select(Assignment.trigger_config).where(
+                Assignment.trigger_type == "integration_event", Assignment.enabled.is_(True)
+            )
+        )
+    ).scalars()
+    keys = {"opencti": OPENCTI_STATE_KEY, "openaev": OPENAEV_STATE_KEY}
+    for config in configs:
+        if not isinstance(config, dict):
+            continue
+        provider = config.get("provider")
+        if provider not in keys:
+            continue
+        state = config.get(keys[provider])
+        pair = provisioned_pair(provider, state)
+        if pair and str((state or {}).get("integration_id") or "") in connected.get(provider, set()):
+            out.add(pair)
+    return out

@@ -109,6 +109,118 @@ async def list_ctem_signal_paths(
     return {"paths": signals.path_catalog(counts, bound=bound, activity=activity)}
 
 
+class SignalSourceEnable(BaseModel):
+    """Switch one platform signal source on (#2434): its integration and the user it provisions as."""
+
+    provider: str = Field(min_length=1, max_length=40)
+    kind: str = Field(min_length=1, max_length=20)
+    integration_id: uuid.UUID
+    run_as_user_id: uuid.UUID
+
+
+@router.get("/sources")
+async def list_ctem_signal_sources(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """The platform signal sources XTM One provisions, with switch, run-as, status and reason (#2434).
+
+    One row per provisioned ``(provider, kind)`` and connected integration of
+    that provider; a source never switched on reads ``off``.
+    """
+    _require_xtm_one()
+    from sqlalchemy import select
+
+    from app.models.ctem_signal_source import CtemSignalSource
+    from app.models.integration import Integration
+    from app.services import ctem_platform_sources as platform_sources
+
+    providers = sorted({p for p, _ in platform_sources.PROVISIONED})
+    integrations = (
+        (
+            await db.execute(
+                select(Integration).where(Integration.provider.in_(providers)).order_by(Integration.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    stored = {
+        (r.provider, r.kind, str(r.integration_id)): r
+        for r in (await db.execute(select(CtemSignalSource))).scalars().all()
+    }
+    out: list[dict[str, Any]] = []
+    for (provider, kind), spec in platform_sources.PROVISIONED.items():
+        for integration in integrations:
+            if integration.provider != provider:
+                continue
+            row = stored.get((provider, kind, str(integration.id)))
+            item = (
+                platform_sources.to_dict(row)
+                if row is not None
+                else {
+                    "id": None,
+                    "provider": provider,
+                    "kind": kind,
+                    "integration_id": str(integration.id),
+                    "enabled": False,
+                    "run_as_user_id": None,
+                    "status": "off",
+                    "reason": None,
+                    "checked_at": None,
+                }
+            )
+            item["integration_name"] = integration.name
+            item["integration_connected"] = integration.status == "connected"
+            item["label"] = spec.label
+            out.append(item)
+    return {"sources": out}
+
+
+@router.post("/sources/enable")
+async def enable_ctem_signal_source(
+    body: SignalSourceEnable,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Switch a source on as the run-as user and provision it at once; 400 with the exact reason when it cannot."""
+    _require_xtm_one()
+    from app.services import ctem_platform_sources as platform_sources
+
+    try:
+        row = await platform_sources.enable(
+            db,
+            provider=body.provider,
+            kind=body.kind,
+            integration_id=body.integration_id,
+            run_as_user_id=body.run_as_user_id,
+        )
+    except platform_sources.SourceRefusedError as exc:
+        await db.commit()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await db.commit()
+    return platform_sources.to_dict(row)
+
+
+@router.post("/sources/{source_id}/disable")
+async def disable_ctem_signal_source(
+    source_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Switch a source off and remove what it provisioned in the source platform."""
+    _require_xtm_one()
+    from app.models.ctem_signal_source import CtemSignalSource
+    from app.services import ctem_platform_sources as platform_sources
+
+    row = await db.get(CtemSignalSource, source_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Signal source not found")
+    await platform_sources.disable(db, row)
+    await db.commit()
+    return platform_sources.to_dict(row)
+
+
 @router.get("")
 async def list_ctem_signals(
     state: SignalState | None = Query(default=None),
