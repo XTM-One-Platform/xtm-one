@@ -21936,5 +21936,14 @@
   "Indicator sighting": "インジケーターの検知",
   "Code scanning": "コードスキャン",
   "Secret scanning": "シークレットスキャン",
-  "{count, plural, other {+# not used here}}": "{count, plural, other {ここでは未使用 +#}}"
+  "{count, plural, other {+# not used here}}": "{count, plural, other {ここでは未使用 +#}}",
+  "Answer recorded": "回答を記録しました",
+  "Answered: {option} by {person}, {date}.": "回答: {option}（{person}、{date}）",
+  "Answered: {option}, {date}.": "回答: {option}（{date}）",
+  "Change the answer": "回答を変更",
+  "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.": "ほかの{count, plural, other {# 件のステップ}}の完了を待っています。",
+  "Still waiting: {agent} asks again when there is something new to decide.": "待機中: 新たに決めることがあれば {agent} が再度確認します。",
+  "Still waiting: its agent asks again when there is something new to decide.": "待機中: 新たに決めることがあればエージェントが再度確認します。",
+  "Your answer is recorded; the work item keeps waiting.": "回答を記録しました。作業項目は待機を続けます。",
+  "Your answer is recorded; it keeps waiting until {agent} asks again.": "回答を記録しました。{agent} が再度確認するまで待機を続けます。"
 }
