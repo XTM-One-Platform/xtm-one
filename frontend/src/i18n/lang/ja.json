@@ -21885,5 +21885,7 @@
   "Fill {fields} in Settings > Organization: the source is not provisioned without them.": "設定 > 組織 で {fields} を入力してください。入力がないとソースはプロビジョニングされません。",
   "The objects could not be removed from the source platform. The next check tries again: {detail}": "ソースプラットフォームからオブジェクトを削除できませんでした。次回のチェックで再試行します: {detail}",
   "Not provisioned yet. The next check provisions it.": "まだプロビジョニングされていません。次回のチェックでプロビジョニングします。",
-  "The source platform refused: {detail}": "ソースプラットフォームが拒否しました: {detail}"
+  "The source platform refused: {detail}": "ソースプラットフォームが拒否しました: {detail}",
+  "{count, plural, one {# source in error} other {# sources in error}}": "{count, plural, other {# 件のソースでエラー}}",
+  "The XTM One user this source provisions as. XTM One uses that user's {integration} connection to create the objects that deliver this source (a notifier and its triggers, or a playbook). If that user is deactivated or loses the connection, the source turns to Error and stops delivering until you pick another user.": "このソースをプロビジョニングする XTM One ユーザーです。XTM One はそのユーザーの {integration} 接続を使って、このソースを配信するオブジェクト(通知先とそのトリガー、またはプレイブック)を作成します。そのユーザーが無効化されるか接続を失うと、ソースはエラーになり、別のユーザーを選ぶまで配信を停止します。"
 }
