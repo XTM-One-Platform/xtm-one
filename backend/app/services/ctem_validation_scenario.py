@@ -64,7 +64,10 @@ NOT_PLAYABLE_OPTIONS: tuple[dict[str, str], ...] = (
     {
         "key": "C",
         "label": "Reject and clean up",
-        "effect": "No validation: the scenario, the coverage and the threat package drafted for this case are removed.",
+        "effect": (
+            "No validation: delete the scenario, set its arsenal actions UNVERIFIED, turn the coverage's auto "
+            "enrichment off, keep the Grouping."
+        ),
     },
 )
 

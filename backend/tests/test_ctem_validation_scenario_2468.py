@@ -175,6 +175,7 @@ def test_persona_carries_the_playability_rule() -> None:
     validation = text.split("3. **Validation.**", 1)[1].split("4. **Risk.**", 1)[0]
     assert "Scenario not playable: N of M techniques have no payload" in validation
     assert "OpenAEV Payload Creator" in validation
+    assert "never recommended for a plain launch" in validation
     assert "validate manually" in validation
     assert "reject and clean up" in validation
     assert "`update_ctem_case` `scenario`" in validation
