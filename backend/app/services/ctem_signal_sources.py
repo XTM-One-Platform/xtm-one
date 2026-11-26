@@ -55,7 +55,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 ATTACK_SURFACE_PROVIDERS: tuple[str, ...] = ("shodan", "gti")
 EVIDENCE_HEALTH_PROVIDERS: tuple[str, ...] = ("opencrq",)
 
-SOURCE_KINDS: tuple[str, ...] = ("listener", "pass", "pir_playbook")
+#: ``webhook``: a generic signed webhook source an administrator creates on one path
+#: (``ctem_webhook_sources``, #2506); never in :data:`PATH_SOURCES`, read from its table.
+SOURCE_KINDS: tuple[str, ...] = ("listener", "pass", "pir_playbook", "webhook")
 #: A path's status (#2436, Sam 26 Nov 2026): read from its sources' on/off state, never from the
 #: integration connection alone: ``enabled`` (every source used on the path is on), ``partly_enabled``
 #: (some are), then ``error``, ``not_set_up``, ``off``, ``not_connected`` and ``agents_api``.

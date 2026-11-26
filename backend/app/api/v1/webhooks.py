@@ -4755,6 +4755,55 @@ async def _handle_hubspot_assignment_webhook(
     return {"status": "ok", "triggered": triggered, "count": len(triggered)}
 
 
+@router.post("/ctem-webhook-sources/{source_id}")
+async def receive_ctem_webhook_source(source_id: str, request: Request) -> dict:
+    """Receive a delivery of a generic signed webhook source of a CTEM trigger path (#2506).
+
+    ``X-XTM-Signature: sha256=<hex HMAC-SHA256 of the raw body>`` with the
+    source's own secret: a wrong or missing signature answers 401 and records
+    nothing, the source on or off. A verified delivery to a source that is on
+    records one signal on its path (``ctem_webhook_sources.receive``); fleets
+    subscribe through ``ctem_signal.recorded``. No run starts here.
+    """
+    from app.models.ctem_webhook_source import CtemWebhookSource
+    from app.services import ctem_case_loop, ctem_scope_gate_store
+    from app.services import ctem_webhook_sources as webhook_sources
+    from app.services.ctem_loop_stream import publish_signal_update
+
+    source_uuid = safe_uuid(source_id)
+    if source_uuid is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="webhook source not found")
+    await enforce_rate_limit(
+        request,
+        "webhook-ctem-source",
+        limit=_webhook_requests_per_minute(),
+        window_seconds=60,
+        bucket=str(source_uuid),
+    )
+    body = await request.body()
+    async with async_session() as db:
+        row = await db.get(CtemWebhookSource, source_uuid)
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="webhook source not found")
+        try:
+            result = await webhook_sources.receive(db, row, body, request.headers.get(webhook_sources.SIGNATURE_HEADER))
+        except webhook_sources.SignatureError:
+            logger.warning("CTEM webhook source %s: delivery refused, missing or wrong signature", source_uuid)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing or wrong signature") from None
+        except webhook_sources.WebhookSourceError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+        signal = result.pop("signal", None)
+        if signal is None:
+            await db.commit()
+            return result
+        pending = await ctem_scope_gate_store.evaluate_after_record(db, signal, created=bool(result.get("created")))
+        result["signal_id"] = str(signal.id)
+        await db.commit()
+        await ctem_case_loop.publish_pending(pending)
+        await publish_signal_update(db, signal)
+    return result
+
+
 @router.post("/integrations/{integration_id}/signal-sources/{source_id}")
 async def receive_signal_source_webhook(
     integration_id: str,

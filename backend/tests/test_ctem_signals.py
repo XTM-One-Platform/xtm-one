@@ -595,6 +595,12 @@ def store(monkeypatch):
         return set(fake.bound)  # type: ignore[attr-defined]
 
     monkeypatch.setattr("app.services.ctem_signal_sources.bound_sources", _bound)
+
+    async def _no_webhooks(_db):
+        return []
+
+    # #2506: no webhook source on the paths unless a test adds one.
+    monkeypatch.setattr("app.services.ctem_webhook_sources.list_sources", _no_webhooks)
     return fake
 
 

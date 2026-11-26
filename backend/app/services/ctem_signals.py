@@ -415,6 +415,18 @@ def source_activity(
     return {"count_30d": count, "last_signal_at": last}
 
 
+def _available_here(source: dict[str, Any]) -> bool:
+    """A source that is or could be on here: on, off, taken off the path, not set up or in error (#2506)."""
+    return bool(
+        source.get("bound")
+        or source.get("off")
+        or source.get("excluded")
+        or source.get("available")
+        or source.get("not_set_up")
+        or source.get("error_count")
+    )
+
+
 async def observed_by_case(
     db: AsyncSession, case_ids: list[uuid.UUID], *, organization_id: uuid.UUID, recorded_by: str | None
 ) -> dict[uuid.UUID, list[datetime]]:
@@ -598,6 +610,7 @@ def path_catalog(
     bound: set[tuple[str, str]] | None = None,
     activity: dict[str, dict[str, Any]] | None = None,
     by_source: dict[str, dict[str, dict[str, Any]]] | None = None,
+    webhooks: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[dict[str, Any]]:
     """The 12 trigger paths, with their default lens and whether a listener maps an event to them.
 
@@ -611,7 +624,10 @@ def path_catalog(
     ``not_set_up``, ``off``, ``not_connected`` or ``agents_api`` (no source:
     agents and the API only, never connected). With *activity* (:func:`activity_by_path`):
     ``count_30d`` and ``last_signal_at`` (#1189). With *by_source* (:func:`activity_by_source`),
-    each source carries its own ``count_30d`` and ``last_signal_at`` (#2436).
+    each source carries its own ``count_30d`` and ``last_signal_at`` (#2436). With *webhooks*
+    (``ctem_webhook_sources.path_sources_of``), each path also lists its signed webhook sources (#2506).
+    Every path carries ``sources_enabled`` and ``sources_available``: its sources on, and its sources
+    that could be on here (a source of a provider with no integration here never counts, #2506).
     """
     from app.services.ctem_signal_listeners import paths_with_listener
     from app.services.ctem_signal_sources import PATH_CAPABILITIES, PATH_DESCRIPTIONS, path_sources, path_status
@@ -619,7 +635,7 @@ def path_catalog(
     listened = paths_with_listener()
     out: list[dict[str, Any]] = []
     for path, (label, lens) in PATH_CATALOG.items():
-        sources = path_sources(path, bound)
+        sources = path_sources(path, bound) + [dict(w) for w in (webhooks or {}).get(path, [])]
         if by_source is not None:
             for source in sources:
                 source.update(source_activity(path, source, by_source))
@@ -632,6 +648,8 @@ def path_catalog(
             "sources": sources,
             "status": path_status(sources),
             "capabilities": list(PATH_CAPABILITIES.get(path, ())),
+            "sources_enabled": sum(1 for s in sources if s.get("bound")),
+            "sources_available": sum(1 for s in sources if _available_here(s)),
         }
         if counts is not None:
             by_state = counts.get(path) or {s: 0 for s in SIGNAL_STATES}
