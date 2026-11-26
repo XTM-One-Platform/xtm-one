@@ -32,14 +32,14 @@ def notifications_definition() -> ToolDefinition:
     return ToolDefinition(
         name=TOOL_NAME,
         description=(
-            "Read the notification bell of the person you act for, as they see it: waiting "
+            "Read the notification bell of the person you act for: waiting "
             "decisions first, then the newest. Nothing is marked read."
         ),
         input_schema={
             "type": "object",
             "properties": {
                 "limit": {"type": "integer", "description": f"1 to {MAX_LIMIT} (default 20)"},
-                "offset": {"type": "integer", "description": "The next page's offset"},
+                "offset": {"type": "integer", "description": "Next page"},
             },
         },
         source="builtin:coordination",
