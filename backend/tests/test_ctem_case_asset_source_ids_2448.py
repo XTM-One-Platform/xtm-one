@@ -120,8 +120,13 @@ async def test_a_validation_writes_the_source_ids_and_the_reads_keep_them() -> N
 
 @pytest.mark.asyncio
 async def test_a_row_stored_before_the_change_is_enriched_at_read_time() -> None:
-    old = {"asset_id": str(WEB), "name": "web-1.example", "sources": ["openaev"], "provenance": "name_match_inferred"}
-    issue_row = {"name": "db-1.example", "provenance": "issue"}
+    old: dict[str, Any] = {
+        "asset_id": str(WEB),
+        "name": "web-1.example",
+        "sources": ["openaev"],
+        "provenance": "name_match_inferred",
+    }
+    issue_row: dict[str, Any] = {"name": "db-1.example", "provenance": "issue"}
     rows = [old, issue_row]
     await case_assets.enrich_source_ids(cast(Any, _Db([(WEB, "openaev", OPENAEV_ID)])), rows)
     assert old["source_ids"] == [{"source": "openaev", "external_id": OPENAEV_ID}]
@@ -132,12 +137,12 @@ async def test_a_row_stored_before_the_change_is_enriched_at_read_time() -> None
 
 @pytest.mark.asyncio
 async def test_enrichment_keeps_stored_ids_and_never_fails_a_read() -> None:
-    stored = {"asset_id": str(WEB), "source_ids": [{"source": "opencti", "external_id": "x"}]}
+    stored: dict[str, Any] = {"asset_id": str(WEB), "source_ids": [{"source": "opencti", "external_id": "x"}]}
     db = _Db([(WEB, "openaev", OPENAEV_ID)])
     await case_assets.enrich_source_ids(cast(Any, db), [stored])
     assert stored["source_ids"] == [{"source": "opencti", "external_id": "x"}] and db.reads == 0
 
-    old = {"asset_id": str(WEB)}
+    old: dict[str, Any] = {"asset_id": str(WEB)}
     await case_assets.enrich_source_ids(cast(Any, _Broken([])), [old])
     assert "source_ids" not in old and old["id_space"] == case_assets.ID_SPACE
 
