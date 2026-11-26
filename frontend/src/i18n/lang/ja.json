@@ -22013,6 +22013,7 @@
   "The purge stopped before its end because its process restarted. You can start a new purge.": "プロセスが再起動したため、消去は完了前に停止しました。新しい消去を開始できます。",
   "You can close this dialog: the purge goes on.": "このダイアログを閉じても消去は続行されます。",
   "Signal intake is running again.": "シグナルの受信を再開しました。",
+  "Signal intake is still paused.": "シグナルの受信はまだ一時停止中です。",
   "Pause signal intake": "シグナルの受信を一時停止",
   "Delete the signals and their cases": "シグナルとそのケースを削除",
   "Resync from the sources": "ソースから再同期",
