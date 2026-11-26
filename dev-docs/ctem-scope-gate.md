@@ -20,10 +20,14 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
   gate's session (it decides inside a savepoint) and is bounded in time. The
   bulk CVE prefetch (`prepare_cve_reads`, no savepoint open) still hands the
   pooled connection back during its OpenCTI reads.
-- On the case sweep tick, the signals still `new` past a 10-minute grace (a
-  record-time failure, a case-delete release whose background re-decision
-  was lost), 500 per case sweep, oldest first, each in its own savepoint
-  (`recheck_new`): nothing waits "for reconcile" for good.
+- Every 90 seconds, on its own Redis slot (`ctem:signals:recheck-new`), never
+  the hourly case sweep's (#2530): the signals still `new` past a 10-minute
+  grace (a record-time failure, a case-delete release whose background
+  re-decision was lost), oldest first, each in its own savepoint, 500 per
+  batch committed one by one, batch after batch until a short batch or a
+  20-second budget (`drain_new` over `recheck_new`): a backlog of thousands
+  drains in minutes and nothing waits "for reconcile" for good. This path
+  never opens a case; the case sweep keeps its cadence.
 - After a profile change (assets, groups, primary assets, owned domains, tech
   stack, shipped products): the autonomous tick decides again the unmatched
   signals last decided before the newest profile version, 500 per tick
