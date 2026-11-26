@@ -18,9 +18,8 @@ Readers:
   ``pir_details`` / ``pir_min_scores`` from the ENABLED rows, so every reader of
   the profile (the API, the agents' organization context, the CTEM fleets'
   ``organization_context: ["pir_ids"]``) sees the enabled PIRs. A platform with
-  no stored PIR answers the profile as saved (nothing to overlay).
-- :func:`enabled_thresholds` answers ``{pir_id: min_score}`` for the provisioning
-  and the receiver's PIR score rule.
+  no stored PIR answers the profile as saved (nothing to overlay). The
+  provisioning and the receiver's PIR score rule read ``pir_min_scores``.
 """
 
 from __future__ import annotations
@@ -174,7 +173,11 @@ async def _opencti_integrations(db: AsyncSession) -> list[Any]:
         (
             await db.execute(
                 select(Integration)
-                .where(Integration.provider == "opencti", Integration.is_company_managed.is_(True))
+                .where(
+                    Integration.provider == "opencti",
+                    # access_restricted: bypass - scheduled system refresh of the platform-wide PIR policy, no acting user.
+                    Integration.is_company_managed.is_(True),
+                )
                 .order_by(Integration.created_at)
             )
         )
@@ -266,17 +269,6 @@ def apply_edit(row: OrganizationPir, fields: Mapping[str, Any], now: datetime) -
     row.updated_at = now
 
 
-async def enabled_thresholds(db: AsyncSession) -> dict[str, int] | None:
-    """``{pir_id: min_score}`` of the PIRs enabled in signals; ``None`` when no PIR is stored at all.
-
-    ``None`` keeps a platform that never stored a PIR on the profile as saved.
-    """
-    rows = (await db.execute(select(OrganizationPir))).scalars().all()
-    if not rows:
-        return None
-    return {r.pir_id: int(r.min_score) for r in rows if r.enabled}
-
-
 def overlay(profile: Any, rows: list[OrganizationPir]) -> Any:
     """*profile* with its PIR fields answered from the enabled *rows* (unchanged when *rows* is empty). Pure."""
     if not rows:
@@ -311,9 +303,3 @@ async def overlay_profile(db: AsyncSession, profile: Any) -> Any:
         logger.warning("Intelligence policy: PIRs unreadable: %s", format_exception_message(exc))
         return profile
     return overlay(profile, rows)
-
-
-def thresholds_for(pir_ids: list[str], stored: Mapping[str, int] | None, fallback: int) -> dict[str, int]:
-    """The minimum score of each delivered PIR: its own when stored and enabled, else *fallback*. Pure."""
-    stored = stored or {}
-    return {pid: int(stored.get(pid, fallback)) for pid in pir_ids}
