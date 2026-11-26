@@ -256,6 +256,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         version_history.with_asset_count(rendered, events)
         # The detection gaps from the whole history (#2393), never the newest page alone.
         rendered["detection_gaps"] = view_of.detection_gaps_of(events)
+        from app.services import ctem_case_assets as case_assets
+
+        # Each attached host's module ids, rows stored before #2448 included: asset_id is the inventory id.
+        await case_assets.enrich_source_ids(db, rendered.get("assets"))
         return case, rows, rendered
 
     async def _view_only(db: AsyncSession, rows: list[Any], vertical: str) -> str | None:
@@ -1304,7 +1308,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="get_ctem_case",
             description=(
                 "Read one CTEM case: its fix, its member issues with their source product and id, "
-                "assets, primary assets and its latest history. A null count is unknown for you, never none."
+                "assets, primary assets and its latest history. A null count is unknown for you, never none. "
+                "An asset's asset_id is the inventory id; its id in a source product is in source_ids[].external_id."
             ),
             input_schema={
                 "type": "object",

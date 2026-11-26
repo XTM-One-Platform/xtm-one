@@ -727,15 +727,21 @@ async def _inventory_of(case: Any, rendered: dict[str, Any], events: list[Any]) 
         running = await case_versions.for_case(db, case)
         # The asset count agrees with the running versions this read serves (#2225).
         version_history.with_live_asset_count(rendered, running, at=datetime.now(UTC))
+        # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
+        # The hosts a validation ran on, with their provenance, after the issues' own (#2395).
+        affected = case_assets.with_attached(
+            await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
+            case_assets.attached_assets(case.validations),
+        )
+        # Copies (a cached view is never changed in place), then the module ids of each attached
+        # host, rows stored before #2448 included: asset_id is the inventory id.
+        assets = [dict(a) for a in rendered.get("assets") or []]
+        await case_assets.enrich_source_ids(db, [*assets, *(affected.get("assets") or [])])
         return {
+            "assets": assets,
             # The versions the case's product runs on the assets (#1252), never a typed software version.
             "running_versions": _with_history(running, events),
-            # The assets its visible issues name, with the version each runs from the inventory (#1176 slice 3b).
-            # The hosts a validation ran on, with their provenance, after the issues' own (#2395).
-            "affected_assets": case_assets.with_attached(
-                await case_versions.assets_for_case(db, case, rendered.get("issues") or []),
-                case_assets.attached_assets(case.validations),
-            ),
+            "affected_assets": affected,
         }
 
 
