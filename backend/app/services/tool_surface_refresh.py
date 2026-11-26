@@ -73,7 +73,6 @@ async def rebuild_bound_builtin_groups(
     from app.services.builtin_tools import (
         build_organization_context_write_tools,
         build_user_admin_tools,
-        ctem_read_tools_for,
         ctem_repair_tools_for,
         ctem_tools_for,
         offers_organization_context_write,
@@ -98,7 +97,7 @@ async def rebuild_bound_builtin_groups(
         groups.append(
             build_user_admin_tools(user_id=user_id, caller_is_admin=is_admin, agent_name=agent.name, run_id=run_id)
         )
-    for build in (ctem_read_tools_for, ctem_tools_for, ctem_repair_tools_for):
+    for build in (ctem_tools_for, ctem_repair_tools_for):
         built = build(agent, ids, user_id=user_id)
         if built is not None:
             groups.append(built)

@@ -57,6 +57,7 @@ from app.api.v1.agent_import import (
 )
 from app.api.v1.binding_access import (
     assert_channel_bot_additions_allowed,
+    assert_trace_supervision_additions_allowed,
     assert_work_item_owner_additions_allowed,
     tool_sources_for_copy,
     trigger_config_for_copy,
@@ -156,6 +157,7 @@ from app.models.user import User
 from app.services import builtin_customer_layer
 from app.services.agent_bindings import (
     BINDING_MODELS,
+    agent_audience,
     derive_available_channel_types,
     filter_integration_bindings,
     retain_agent_bindings,
@@ -163,6 +165,7 @@ from app.services.agent_bindings import (
     revert_company_managed_to_private,
     sanitize_handover_config,
     strip_personal_bindings,
+    unlink_agent_from_lost_holders,
     validate_channel_config,
     validate_company_managed_bindings,
     validate_handover_conditions,
@@ -588,6 +591,9 @@ async def create_agent(
         )
     await assert_work_item_owner_additions_allowed(
         db, user=user, value=body.work_item_owner_agent_ids
+    )
+    await assert_trace_supervision_additions_allowed(
+        db, user=user, value=body.trace_supervision_target_agent_ids
     )
     # A new agent is in no fleet: every handover into a fleet must reach an
     # exposed member.
@@ -1829,8 +1835,10 @@ async def update_agent(
         )
 
     old_name = agent.name
+    audience_before = agent_audience(agent)
     versioned_before = versioned_agent_values(agent)
     stored_work_item_owner_agent_ids = list(agent.work_item_owner_agent_ids or [])
+    stored_trace_supervision_target_agent_ids = list(agent.trace_supervision_target_agent_ids or [])
 
     # Handle slug update with validation
     if body.slug is not None:
@@ -2416,6 +2424,10 @@ async def update_agent(
             .values(user_id=agent.user_id)
         )
 
+    # Whoever no longer reaches the agent stops naming it from their agents.
+    if agent_audience(agent) != audience_before:
+        await unlink_agent_from_lost_holders(db, agent)
+
     # Public catalog toggle (admin-only for company-managed entities)
     if body.is_public_catalog is not None:
         if agent.is_company_managed and not user.is_admin:
@@ -2474,6 +2486,14 @@ async def update_agent(
             user=user,
             value=body.work_item_owner_agent_ids,
             baseline=stored_work_item_owner_agent_ids,
+            user_group_ids=user_group_ids,
+        )
+    if "trace_supervision_target_agent_ids" in body.model_fields_set:
+        await assert_trace_supervision_additions_allowed(
+            db,
+            user=user,
+            value=body.trace_supervision_target_agent_ids,
+            baseline=stored_trace_supervision_target_agent_ids,
             user_group_ids=user_group_ids,
         )
 
@@ -3562,6 +3582,7 @@ async def copy_agent_for_user(
     out per kind. The caller holds the provider config lock (shared).
     """
     from app.agents.fleet_opt_in import PROVISIONING_STATE_KEYS
+    from app.services.builtin_tools.traces import agents_whose_traces_user_may_read
     from app.services.llm_provider_deletion import provider_reference_problem
 
     # A pin to a config that no longer exists, or that the copier may not use,
@@ -3636,6 +3657,10 @@ async def copy_agent_for_user(
             keep[field] = await _ids_matching(
                 db, model, ids, user_visible_filter(model, user.id, user_group_ids)
             )
+        # A supervision target is kept only when the copier may read its traces.
+        keep["trace_supervision_target_agent_ids"] = await agents_whose_traces_user_may_read(
+            db, user, new_agent.trace_supervision_target_agent_ids or [], user_group_ids
+        )
         dropped = retain_agent_bindings(new_agent, keep)
         original_channels = new_agent.channel_config or {}
         kept_channels, dropped["channel_config"] = await retain_copier_channels(
@@ -4630,7 +4655,8 @@ def _to_response(
         disable_chat=a.disable_chat,
         hide_runs=bool(getattr(a, "hide_runs", False)),
         web_enabled=a.web_enabled,
-        web_token=a.web_token,
+        # The public widget link runs the agent as its owner.
+        web_token=a.web_token if can_manage else None,
         web_suggested_prompts=a.web_suggested_prompts or [],
         web_uploads_enabled=bool(getattr(a, "web_uploads_enabled", False)),
         assignment_count=assignment_count,

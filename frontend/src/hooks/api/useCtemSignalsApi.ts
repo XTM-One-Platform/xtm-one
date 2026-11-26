@@ -136,12 +136,12 @@ export function useCtemCaseSignals(caseId: string | undefined) {
  * but which does not run, #1344), not connected (no integration of a source's provider is connected) or
  * agents and API only (no source).
  */
-export type CtemSignalPathStatus = "connected" | "error" | "not_set_up" | "off" | "not_connected" | "agents_api";
+export type CtemSignalPathStatus = "enabled" | "partly_enabled" | "error" | "not_set_up" | "off" | "not_connected" | "agents_api";
 
 /** One way a trigger path is fired (#1189): an integration listener, a scheduled pass or the OpenCTI PIR playbook. */
 export interface CtemSignalPathSource {
   provider: string;
-  kind: "listener" | "pass" | "pir_playbook";
+  kind: "listener" | "pass" | "pir_playbook" | "webhook";
   /** The English line naming the event that fires the path (an i18n key). */
   event: string;
   /** Bound for the caller: a connected integration they can see (and, for a pass, the pass runs on it). */
@@ -158,6 +158,18 @@ export interface CtemSignalPathSource {
   available?: boolean;
   /** The other trigger paths this source feeds (a pass is organization-wide: one switch feeds them all). */
   also_feeds?: string[];
+  /** The key the profile names it by: `provider:kind`, `provider:kind:name` when named (#2436). */
+  key?: string;
+  /** Tells apart two sources of one provider and kind on one path (#2436). */
+  name?: string;
+  /** False: the source records nothing until an administrator switches it on for the path (#2436). */
+  default_on?: boolean;
+  /** Signals this source recorded on the path in the last 30 days, and the last one (#2436). */
+  count_30d?: number;
+  last_signal_at?: string | null;
+  /** A generic signed webhook source (#2506): its id, and why its last delivery recorded nothing. */
+  webhook_id?: string;
+  last_error?: string | null;
 }
 
 /** One trigger path with the signals the caller sees on it (`GET /ctem-signals/paths`, CTEM-30). */
@@ -178,6 +190,88 @@ export interface CtemSignalPath {
   /** Signals the caller sees, last seen in the last 30 days. */
   count_30d?: number;
   last_signal_at?: string | null;
+  /** Its sources on, and its sources that are or could be on here (#2506). */
+  sources_enabled?: number;
+  sources_available?: number;
+}
+
+/** A generic signed webhook source of one trigger path (#2506, dev-docs/ctem-signals.md 4ter). */
+export interface CtemWebhookSource {
+  id: string;
+  trigger_path: string;
+  name: string;
+  enabled: boolean;
+  subject_kind: string;
+  mapping: { id: string; label?: string; severity?: string };
+  receiver_path: string;
+  receiver_url: string;
+  signature_header: string;
+  secret_rotated_at: string | null;
+  last_delivery_at: string | null;
+  last_error: string | null;
+  created_at: string | null;
+  /** In the create and rotate answers only: shown once, never read back. */
+  secret?: string;
+}
+
+export interface CtemWebhookSourceCreate {
+  trigger_path: string;
+  name: string;
+  subject_kind?: string;
+  mapping: { id: string; label?: string | null; severity?: string | null };
+}
+
+/** The webhook sources, administrators only. */
+export function useCtemWebhookSources(enabled = true) {
+  return useQuery<{ sources: CtemWebhookSource[] }>({
+    queryKey: ["ctem-signals", "webhook-sources"],
+    queryFn: () => api.get("/ctem-signals/webhook-sources"),
+    enabled,
+    retry: false,
+    throwOnError: false,
+  });
+}
+
+/** Create a webhook source, off; the answer carries its secret once. */
+export function useCreateCtemWebhookSource() {
+  const qc = useQueryClient();
+  return useMutation<CtemWebhookSource, Error, CtemWebhookSourceCreate>({
+    mutationFn: (body) => api.post("/ctem-signals/webhook-sources", body),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** Switch a webhook source on or off, or change its name or mapping. */
+export function useUpdateCtemWebhookSource() {
+  const qc = useQueryClient();
+  return useMutation<CtemWebhookSource, Error, { id: string } & Partial<Pick<CtemWebhookSourceCreate, "name" | "mapping">> & { enabled?: boolean }>({
+    mutationFn: ({ id, ...body }) => api.patch(`/ctem-signals/webhook-sources/${encodeURIComponent(id)}`, body),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** A new secret for a webhook source; the old one is refused from now on. */
+export function useRotateCtemWebhookSource() {
+  const qc = useQueryClient();
+  return useMutation<CtemWebhookSource, Error, string>({
+    mutationFn: (id) => api.post(`/ctem-signals/webhook-sources/${encodeURIComponent(id)}/rotate`, {}),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** What a webhook source's mapping reads in a sample: nothing is recorded. */
+export function useTestCtemWebhookSource() {
+  return useMutation<
+    { ok: boolean; reason?: string; id?: string; label?: string | null; severity?: string | null },
+    Error,
+    { id: string; sample: unknown }
+  >({
+    mutationFn: ({ id, sample }) => api.post(`/ctem-signals/webhook-sources/${encodeURIComponent(id)}/test`, { sample }),
+    meta: { suppressGlobalErrorToast: true },
+  });
 }
 
 /** A source XTM One provisions in its platform: off, connected, or in error with its reason (#2434). */

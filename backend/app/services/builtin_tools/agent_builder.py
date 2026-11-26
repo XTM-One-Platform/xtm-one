@@ -3921,6 +3921,12 @@ def build_agent_builder_tool(
                     keep[field] = await ids_matching(
                         _db, model, ids, user_visible_filter(model, uid, group_ids, is_admin=False)
                     )
+                # A supervision target is kept only when the caller may read its traces.
+                from app.services.builtin_tools.traces import agents_whose_traces_user_may_read
+
+                keep["trace_supervision_target_agent_ids"] = await agents_whose_traces_user_may_read(
+                    _db, caller, clone.trace_supervision_target_agent_ids or [], group_ids
+                )
                 dropped = retain_agent_bindings(clone, keep)
                 original_channels = clone.channel_config or {}
                 kept_channels, dropped["channel_config"] = await retain_copier_channels(
@@ -4501,6 +4507,11 @@ def build_agent_builder_tool(
                 fleet_err = await fleet_scope_error(trigger_type, trig_config, agent.id)
                 if fleet_err is not None:
                     return fleet_err
+                from app.services.platform_events import ctem_event_error
+
+                ctem_err = await ctem_event_error(trigger_type, trig_config, user_id)
+                if ctem_err is not None:
+                    return ctem_err
                 from app.services.trigger_provisioning import provision_spec_error
 
                 provision_err = provision_spec_error(trigger_type, trig_config)
@@ -5747,6 +5758,10 @@ def build_agent_builder_tool(
                     "permission to edit it."
                 )
 
+            from app.services.agent_bindings import (
+                agent_audience,
+                unlink_agent_from_lost_holders,
+            )
             from app.services.agent_config_versioning import (
                 INITIAL_COMMIT_MESSAGE,
                 record_agent_version_changes,
@@ -5756,6 +5771,7 @@ def build_agent_builder_tool(
 
             # What the REST update versions, versioned here too.
             versioned_before = versioned_agent_values(agent)
+            audience_before = agent_audience(agent)
             updated: list[str] = []
             text_read_back = ""
             if text_mode != "replace":
@@ -7468,6 +7484,10 @@ def build_agent_builder_tool(
                         summary=f"Changed who can use agent '{agent.name}' through an agent",
                         details={"slug": agent.slug, **_share_audit},
                     )
+            # Whoever no longer reaches the agent stops naming it from their
+            # agents, as on the REST update.
+            if agent_audience(agent) != audience_before:
+                await unlink_agent_from_lost_holders(_db, agent)
             _audience = await _agent_audience_lines(_db, agent) if _share_lines else []
 
             try:
@@ -8246,6 +8266,15 @@ def build_agent_builder_tool(
                 )
                 if fleet_err is not None:
                     return f"{fleet_err} Nothing was saved."
+                from app.services.platform_events import ctem_event_error
+
+                ctem_err = await ctem_event_error(
+                    trigger_type or assignment.trigger_type,
+                    assignment.trigger_config if parsed_config is None else parsed_config,
+                    getattr(assignment, "user_id", None) or user_id,
+                )
+                if ctem_err is not None:
+                    return f"{ctem_err} Nothing was saved."
                 if parsed_config is not None:
                     from app.services.trigger_provisioning import provision_spec_error
 
@@ -12364,12 +12393,13 @@ def build_agent_builder_tool(
 
     async def _list_platform_events(search: str = "") -> str:
         """The platform events a ``platform_event`` trigger subscribes to."""
+        from app.services import ctem_access
         from app.services.platform_events import catalog
 
         needle = (search or "").strip().lower()
-        rows = [
-            e for e in catalog() if not needle or needle in e["event"] or needle in e["description"].lower()
-        ]
+        # The CTEM signal and case events only for a person with a CTEM right (#2441).
+        offered = catalog(ctem=await ctem_access.wires_ctem(user_id))
+        rows = [e for e in offered if not needle or needle in e["event"] or needle in e["description"].lower()]
         if not rows:
             return "No platform event matches."
         lines = [

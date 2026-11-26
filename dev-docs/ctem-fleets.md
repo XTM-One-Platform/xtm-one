@@ -177,7 +177,13 @@ Common rules:
   case opened from a signal starts with an owner (`services/ctem_case_owner.py`):
   the owner of an affected asset's records, else of one of their asset groups,
   else `CTEM_CASE_DEFAULT_OWNER`, matched to an active account by email only;
-  an `owner` case event records how it was found. Which fleet runs a case
+  else the CTEM decider (#2452): an active member of a group granting `decide`
+  with notify on, else an active administrator, the seed account only when it
+  is the sole one, the first by account creation then id; an `owner` case event
+  records how it was found. The owner is set at the opening by this code, never
+  by the loop agent; the case sweep gives the decider to an open case with no
+  owner and no `owner` event (`backfill_owners`, idempotent, no notification),
+  so an owner a person cleared stays cleared. Which fleet runs a case
   is declared on the fleet (#1966, `fleets.case_ownership`: `paths` null for
   every trigger path or a list, `key` its case item prefix), and counts only
   while a home member's "Case opened or reopened" automation is on. The loop
@@ -655,12 +661,15 @@ generated from `OrganizationProfile`: every list field but `regions` and
 `tracked_organizations`; a list added to the model is a category without a
 change there. `get_organization_context(category, query, offset, limit)`
 reads one by page (at most 200 rows, `query` a case-insensitive substring
-over the row's values); `category="*"` lists them with their sizes. The
-categories preloaded after the block come from the same cascade on
-`organization_context_categories` (platform JSON list, default `[]`; agent
-and assignment NULL = inherit, a list, empty included, wins;
-`resolve_categories`), each capped at `PRELOAD_MAX_CHARS` = 6,000 characters
-with the call that reads the rest. The brief notice of an incomplete
+over the row's values); `category="*"` lists them with their sizes. No
+list is preloaded into a prompt (#2443): after the block comes one
+inventory line (`render_inventory_line`, at most `INVENTORY_LINE_MAX_CHARS`
+= 400 characters) with the asset, software, group and primary asset counts
+(`organization_inventory_query.inventory_sizes`) and the names of the query
+functions (`inventory_query.INVENTORY_QUERY_TOOLS`), never a row; Copilot
+mode leaves it out. `organization_context_categories` (platform, agent,
+assignment) is still stored and accepted by the API for one release, and
+ignored. The brief notice of an incomplete
 profile ("Organization context incomplete: missing ...", #11586) and the
 CTEM-only fields (`CTEM_ONLY_FIELDS`: PIRs, risk appetite thresholds,
 loaded hourly rate, ticketing target) are CTEM-scoped (#1384): the summary,
@@ -679,9 +688,7 @@ set in the agent and assignment forms, `PUT /api/v1/agents/{id}`,
 defaults are `GET|PUT /api/v1/organization-context/injection` (`enabled`,
 `categories`, `available_categories` read-only). Every seeded agent
 inherits (the seed never writes the mode, so a person's opt-out survives a
-refresh); the CTEM vulnerability orchestrator, triage analyst and
-remediation coordinator preload `tech_stack`, `primary_assets`,
-`assets_exposure` and `prioritization_policy` (#11543).
+refresh).
 
 The #11543 categories ride the same registry: `assets_exposure` and
 `enterprise_knowledge` are list fields (generated), `prioritization_policy`
@@ -1183,24 +1190,33 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   primary organization profile, so an object such as `{"pir_ids": [...]}` is
   refused. A subset of the profile PIRs is not supported: the playbook
   listens to every PIR of the profile; narrow the PIRs in the profile.
-- Trigger rule "PIR score thresholds" (CTEM-08):
+- Trigger rule "PIR score thresholds" (CTEM-08, per PIR since #2435):
   `trigger_config.pir_min_score: "policy"` (beside `provision`, never sent
-  to OpenCTI) holds a PIR playbook delivery (below) to the threshold of the
-  primary profile's prioritization policy: `pir_min_score_vulnerability`
-  (default 70) for a Vulnerability, `pir_min_score_threat` (default 75) for
-  threat activity (intrusion set, threat actor, campaign, malware). Both are
-  policy settings, bounded 0 to 100, never constants. The delivered score
-  lags one change, so the receiver re-reads the entity's live
-  `pirInformation(pirId)` for each delivered PIR with the trigger's OpenCTI
-  integration and starts the run when one PIR reaches the threshold; a score
-  it cannot read drops the delivery naming why (a narrowing rule never widens
-  on an outage). A delivery whose entity is not of the listener's
-  `provision.entity_types` is dropped too, since one playbook per listener
-  delivers every flag of the profile PIRs, and so is any type the policy has
-  no threshold for (a report, an indicator): the rule fails closed. Seeded
-  on "Vulnerability flagged in a PIR" (F2) and "Threat activity flagged in a PIR" (F1), both opt-in;
-  the playbook keeps `pir_min_score` 1 so the policy, not the provisioned
-  object, holds the threshold and an edit in Settings needs no reprovision.
+  to OpenCTI) holds a PIR playbook delivery (below) to the minimum score of
+  each delivered PIR on the Intelligence policy (`organization_pirs`, one row
+  per OpenCTI PIR, refreshed hourly from every connected OpenCTI by the
+  scheduler, `services/organization_pirs.py`). Only the PIRs enabled in
+  signals count: the hydrated profile derives `pir_ids`, `pir_names`,
+  `pir_details` and `pir_min_scores` from the enabled rows, so
+  `organization_context: ["pir_ids"]` resolves to them and a PIR disabled on
+  the policy leaves the playbook at the next provisioning pass. A PIR with no
+  stored row falls back to the policy's former `pir_min_score_vulnerability`
+  (default 70) or `pir_min_score_threat` (default 75), kept on the profile
+  for one release. The delivered score lags one change, so the receiver
+  re-reads the entity's live `pirInformation(pirId)` for each delivered PIR
+  with the trigger's OpenCTI integration and starts the run when one PIR
+  reaches its own minimum; a score it cannot read drops the delivery naming
+  why (a narrowing rule never widens on an outage). A delivery whose entity
+  is not of the listener's `provision.entity_types` is dropped too, since one
+  playbook per listener delivers every flag of the enabled PIRs, and so is
+  any type the policy has no threshold for (a report, an indicator): the rule
+  fails closed. Seeded on "Vulnerability flagged in a PIR" (F2) and "Threat
+  activity flagged in a PIR" (F1), both opt-in. The playbook carries one
+  `pir_score` filter per distinct minimum (a nested group of the PIR ids that
+  share it), so OpenCTI already drops a flag below its PIR's minimum; the
+  receiver check stays for the lag. Migration `i2435pirpolicy01` carried the
+  profile PIRs as enabled rows with their details and the former threat
+  minimum, and removed the `pirs` organization syncs.
 - PIR flags (CTEM-05): `provision.mode: "pir_playbook"` (with
   `organization_context: ["pir_ids"]`, required) provisions an OpenCTI
   playbook instead of a live trigger; `provision.pir_ids` (OpenCTI ids of
@@ -2094,6 +2110,28 @@ carries the gate keys that wait (`fleet_autonomy.waiting_gate_keys`, context key
 `manage_opencti_security_coverage` refuses a periodicity on `create` and
 `update`, naming the gate, so a repeat is never set through the coverage. When
 the gate runs, the coverage keeps `P1D` and starts on its own.
+
+Launch scope (#2482, Sam, 26 Nov 2026). Every validation decision that
+launches a scenario on asset groups (the initial validation and the re-test of
+the threat response and vulnerability prioritization fleets) offers two scopes,
+the default first and always the recommended one: **Default**, the scenario's
+own targets, the whole asset group(s) as built (`manage_openaev_scenario`
+`launch` without `asset_ids`, as before); **Sample**, a few assets of the group
+(3 unless the person says otherwise, never more than the group holds; one per
+platform present, agents online first, the case's own asset included when the
+case names one), named on the card, which says the result measures only those
+assets. `launch` with `asset_ids` duplicates the scenario, retargets every
+inject of the copy to exactly those assets (`inject_assets`, no
+`inject_asset_groups`, content targets aligned) and launches the copy; the
+original scenario is never written, and a copy that cannot be fully retargeted
+is deleted with nothing launched (`simulations._retargeted_copy`). OpenAEV's
+own launch targets (`ScenarioTargetsInput`) are not used: they add targets to
+the injects instead of replacing the group, behind a preview feature flag. The
+daily repeat keeps the scope chosen; the Gate answered run launches the scope
+the answer chose (a plain approve is the default) and writes the scope, the
+assets and the scenario launched on the case. A sample that leaves out the
+case's own asset says it does not close the case. A gate that runs without a
+decision always launches the default scope.
 
 No seeded gate names a tool or a grant (#1675, Sam, 24 Nov 2026): every tool
 is offered and runs when called; a gate that waits is one decision item the

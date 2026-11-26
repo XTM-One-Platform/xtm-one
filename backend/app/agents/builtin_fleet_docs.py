@@ -628,7 +628,10 @@ CTEM_THREAT_RESPONSE_STRUCTURED: dict[str, Any] = {
         },
         {
             "title": "Validation",
-            "detail": "An OpenAEV scenario reproduces the threat, then its results are read.",
+            "detail": (
+                "An OpenAEV scenario reproduces the threat, then its results are read. The decision offers "
+                "the whole group (recommended) or a sample of a few assets."
+            ),
             "gate": True,
         },
         {"title": "Risk", "detail": "The expected loss is updated in OpenCRQ."},
@@ -714,7 +717,12 @@ CTEM_VULN_PRIORITIZATION_STRUCTURED: dict[str, Any] = {
         {"title": "Asset match", "detail": "No matching asset closes the case, with the reason."},
         # Each step names the gate it stands for (#1074): the About response badges it when that gate
         # waits at the fleet's live level and pins; the static flag is Low's (seeded at full_gates, #2279).
-        {"title": "Exploitability", "detail": "Validated in OpenAEV.", "gate": True, "gate_key": CTEM_VALIDATION_GATE},
+        {
+            "title": "Exploitability",
+            "detail": "Validated in OpenAEV, on the whole group (recommended) or a sample of a few assets.",
+            "gate": True,
+            "gate_key": CTEM_VALIDATION_GATE,
+        },
         {"title": "Score", "detail": "The finding is scored in OpenCRQ."},
         {
             "title": "Ticket",

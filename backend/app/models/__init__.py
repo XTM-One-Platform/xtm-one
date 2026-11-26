@@ -46,6 +46,7 @@ import app.models.ctem_signal
 import app.models.ctem_signal_source
 import app.models.ctem_surface_observation
 import app.models.ctem_surface_pass
+import app.models.ctem_webhook_source
 import app.models.custom_dashboard
 import app.models.custom_integration_definition
 import app.models.custom_tool
@@ -104,6 +105,7 @@ import app.models.organization
 import app.models.organization_asset
 import app.models.organization_asset_record
 import app.models.organization_context
+import app.models.organization_pir
 import app.models.platform_build
 import app.models.platform_event_task_watch
 import app.models.platform_health_snapshot

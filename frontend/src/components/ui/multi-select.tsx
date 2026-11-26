@@ -52,7 +52,14 @@ interface MultiSelectOption {
 interface MultiSelectProps {
   options: MultiSelectOption[];
   selected: string[];
-  onToggle: (value: string) => void;
+  /** One call per value added or removed: for a field whose values are independent filters. */
+  onToggle?: (value: string) => void;
+  /**
+   * The whole next selection, once per change (a clear or a chip removal included): for a field
+   * saved as one value, where a toggle per removed value would save from a stale selection and
+   * the last save would win (UX r2 B4 of #2454). Given, `onToggle` is not called.
+   */
+  onChange?: (next: string[]) => void;
   placeholder: string;
   /** The field's accessible name when the placeholder is not one (a default value shown as the hint). */
   "aria-label"?: string;
@@ -92,7 +99,8 @@ const LOCKED_CHIP_HIDING = {
  * The wrapped chip row of a locked field holds every chip to the field's width: the row, each item,
  * the chip and its label body may shrink, so a long label ends in the chip's ellipsis (its tooltip
  * carries the whole name) and no chip runs under the clear and open controls or past the field
- * (UX r1 B2 of #2428).
+ * (UX r1 B2 of #2428). Every chip row is bounded so, a long option name (a PIR, #2506 A2 of #2436)
+ * ends in the chip's ellipsis with its whole name in the chip's tooltip, never a silent cut.
  */
 const BOUNDED_CHIP_ROW =
   "min-w-0 max-w-full [&>li]:min-w-0 [&>li]:max-w-full [&>li>span]:max-w-full [&>li>span>:first-child]:min-w-0";
@@ -101,6 +109,7 @@ export function MultiSelect({
   options,
   selected,
   onToggle,
+  onChange,
   placeholder,
   "aria-label": ariaLabel,
   id,
@@ -140,6 +149,12 @@ export function MultiSelect({
     const nextValues = [
       ...new Set([...(Array.isArray(next) ? next : next ? [next] : []).map((o) => o.value), ...selected.filter((v) => locked.has(v))]),
     ];
+    if (nextValues.length === selected.length && nextValues.every((v) => selected.includes(v))) return;
+    if (onChange) {
+      onChange(nextValues);
+      return;
+    }
+    if (!onToggle) return;
     // One `onToggle` per actual change, in both directions — the call sites
     // treat each value as an independent filter.
     for (const added of nextValues.filter((v) => !selected.includes(v))) onToggle(added);
@@ -181,7 +196,7 @@ export function MultiSelect({
           className={
             lockedSelected.length > 0
               ? cn(BOUNDED_CHIP_ROW, LOCKED_CHIP_HIDING[Math.min(lockedSelected.length, 2) as 1 | 2])
-              : undefined
+              : BOUNDED_CHIP_ROW
           }
           overflowLabel={(count, labels) => t_i18n("+{count} more: {labels}", { count, labels: labels.join(", ") })}
         />

@@ -132,11 +132,26 @@ def test_a_waited_gate_rests_on_its_own_decision_key(gate: str, key: str) -> Non
     assert order.waited_refusal(gate, _CASE, {f"{key}{_CASE}"}) is None
 
 
-def test_a_gate_without_its_own_key_rests_on_any_decision_of_the_case() -> None:
-    for gate in ("ctem.production_change", "ctem.accept_risk", "ctem.close_without_retest"):
-        assert order.waited_item_keys(gate, _CASE) == []
-        assert order.waited_refusal(gate, _CASE, set())
-        assert order.waited_refusal(gate, _CASE, {f"ctem:accept-risk:{_CASE}"}) is None
+@pytest.mark.parametrize(
+    ("gate", "key"),
+    [
+        ("ctem.production_change", "ctem:production-change:"),
+        ("ctem.accept_risk", "ctem:accept-risk:"),
+        ("ctem.close_without_retest", "ctem:close-without-retest:"),
+    ],
+)
+def test_every_catalog_gate_rests_on_its_own_key(gate: str, key: str) -> None:
+    """#2464: another gate's open decision no longer makes this gate read filed."""
+    assert order.waited_item_keys(gate, _CASE) == [f"{key}{_CASE}"]
+    assert order.gate_of(f"{key}{_CASE}") == (gate, _CASE)
+    assert order.waited_refusal(gate, _CASE, {f"ctem:review:{_CASE}"})
+    assert order.waited_refusal(gate, _CASE, {f"{key}{_CASE}"}) is None
+
+
+def test_a_gate_outside_the_catalog_rests_on_any_decision_of_the_case() -> None:
+    assert order.waited_item_keys("ctem.other", _CASE) == []
+    assert order.waited_refusal("ctem.other", _CASE, set())
+    assert order.waited_refusal("ctem.other", _CASE, {f"ctem:evidence:{_CASE}"}) is None
 
 
 async def test_open_gate_item_keys_reads_once() -> None:

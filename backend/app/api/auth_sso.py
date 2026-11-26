@@ -33,6 +33,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.helpers import prune_group_grants
 from app.core.base_path import with_base_path
 from app.core.config import settings
 from app.core.database import get_db
@@ -478,6 +479,10 @@ async def _get_or_create_sso_user(
 
     db.add(user)
     await db.flush()
+    # Every new account joins "CTEM Viewers" once, at its creation (#2441).
+    from app.services.ctem_groups import join_viewers_at_creation
+
+    await join_viewers_at_creation(db, user)
     return user
 
 
@@ -690,12 +695,16 @@ async def _sync_user_groups(
         )
         kept_auto_join = set(result.scalars().all())
 
+    from app.services.agent_bindings import unlink_agents_shared_with_group
+
     if not group_names:
         # No groups in assertion — remove all SAML-sourced memberships
         # except those of auto-join groups.
         removed = [m for gid, m in saml_memberships.items() if gid not in kept_auto_join]
         for membership in removed:
             await db.delete(membership)
+        for membership in removed:
+            await unlink_agents_shared_with_group(db, membership.group_id)
         if removed:
             logger.info(
                 "SAML group sync for %s: removed %d SAML memberships (no groups in assertion)",
@@ -742,6 +751,8 @@ async def _sync_user_groups(
     to_remove = current_saml_group_ids - target_group_ids - kept_auto_join
     for gid in to_remove:
         await db.delete(saml_memberships[gid])
+    for gid in to_remove:
+        await unlink_agents_shared_with_group(db, gid)
 
     if to_add or to_remove or to_retag:
         logger.info(
@@ -825,6 +836,9 @@ async def _rename_uuid_groups(
                 # Its members now belong to the target group: so do the LLM
                 # provider exclusions that kept them off a vendor.
                 await carry_group_exclusions(db, group.id, target_group.id)
+                # Its grants go with it, as on any group deletion: its members
+                # keep what the named group reaches.
+                await prune_group_grants(db, group.id)
                 await db.delete(group)
                 renamed += 1
                 logger.info(

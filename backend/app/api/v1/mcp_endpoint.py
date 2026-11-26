@@ -100,7 +100,8 @@ PERSONA_TRUNCATE = 500
 
 
 #: The caller of a ``/mcp/global`` request authenticated with the platform
-#: key: returned only once the key verified, never a user id.
+#: key: returned only once the key verified, never a user id. It is no
+#: user, so it never gets a cross-platform JWT (``integration_tools._generate_platform_jwt``).
 GLOBAL_KEY_CALLER = "mcp-global"
 
 

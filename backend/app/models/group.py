@@ -77,6 +77,12 @@ class Group(Base):
         String(20), nullable=False, default="auto", server_default="auto"
     )
 
+    # The stable key of a group the platform seeds (``services/ctem_groups.py``,
+    # #2441: ``ctem_viewers``, ``ctem_operators``); NULL for any other group.
+    # The seed finds its group by this key, never by name: an administrator may
+    # rename it.
+    seed_key: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, default=None)
+
     # The identity provider's id of the group when SCIM provisions it
     # (``externalId``, ``api/v1/scim.py``); NULL for a group SCIM never saw.
     scim_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)

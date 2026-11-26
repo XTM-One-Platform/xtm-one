@@ -189,9 +189,11 @@ class ConversationContinuationService:
             # ``CallbackOutcome``.
             return None, CallbackOutcome.NOT_FOUND
 
-        # This exact callback already landed. Genuinely a duplicate whatever the
-        # episode went on to do, because ITS payload was applied.
-        if episode.idempotency_key and episode.idempotency_key == idempotency_key:
+        # This exact callback already landed, as the latest or an earlier one.
+        # Genuinely a duplicate whatever the episode went on to do, because ITS
+        # payload was applied; accepting a replay of an earlier one would put
+        # its payload back over a later callback's.
+        if idempotency_key in episode.accepted_idempotency_keys:
             return episode, CallbackOutcome.DUPLICATE
 
         if episode.status in TERMINAL_EPISODE_STATUSES:
@@ -217,6 +219,8 @@ class ConversationContinuationService:
                 return episode, CallbackOutcome.DUPLICATE
             return episode, CallbackOutcome.DISCARDED
 
+        # Reassigned, not appended: the JSONB list does not track in-place edits.
+        episode.superseded_idempotency_keys = episode.accepted_idempotency_keys
         episode.idempotency_key = idempotency_key
         episode.callback_payload = payload
         episode.resumed_at = datetime.now(UTC)
@@ -443,7 +447,7 @@ async def _store_resumed_answer(
     """
     from app.models.dataset_version import DatasetVersionEntry
     from app.services.evaluation.scorers.registry import judge_enabled
-    from app.services.evaluation_engine import SUB_SCORE_WEIGHTS
+    from app.services.evaluation.settings import SUB_SCORE_WEIGHTS
 
     result = await db.execute(
         select(EvaluationResult).where(

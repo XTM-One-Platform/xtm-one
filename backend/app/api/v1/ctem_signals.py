@@ -5,7 +5,8 @@
 XTM One mode only, no model call. ``POST`` records a signal for the caller,
 idempotent on its dedupe key (the same key again answers ``created: false``
 with ``last_seen_at`` moved). An administrator reads every signal of the
-organization; anyone else reads the signals recorded for them. The rules are
+organization, as does a member of a group with a CTEM view or decide right;
+anyone else gets 403 on every route (#2441). The rules are
 ``services/ctem_signals.py``; the design ``dev-docs/ctem-signals.md``.
 """
 
@@ -68,13 +69,34 @@ def _require_xtm_one() -> None:
 
 
 async def _reader(db: AsyncSession, user: User) -> str | None:
-    """``None`` reads the organization (an administrator, a CTEM view or decide right); else the caller's own signals."""
-    return await ctem_access.signal_reader(db, user)
+    """``None``: the organization's signals (an administrator, a CTEM view or decide right); 403 without a right (#2441)."""
+    try:
+        return await ctem_access.signal_reader(db, user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
 
 
 async def _writer(db: AsyncSession, user: User) -> str | None:
-    """``None`` acts on the organization's signals (an administrator, a CTEM decide right); else the caller's own."""
-    return await ctem_access.signal_writer(db, user)
+    """``None``: acts on the organization's signals (an administrator, a CTEM decide right); else 403 (#2441)."""
+    try:
+        return await ctem_access.signal_writer(db, user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
+
+
+async def _require_ctem_right(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> None:
+    """Every route of the signal API: 403 for a person with no CTEM right (#2441), in XTM One mode."""
+    if settings.is_copilot_like:
+        return  # each route answers its own 404 there
+    reason = await ctem_access.refusal(db, user, write=False)
+    if reason is not None:
+        raise HTTPException(status_code=403, detail=reason)
+
+
+router.dependencies.append(Depends(_require_ctem_right))
 
 
 async def _organization_id(db: AsyncSession) -> uuid.UUID:
@@ -95,18 +117,24 @@ async def list_ctem_signal_paths(
     its status, and its signals of the last 30 days (#1189, the signal sources dialog).
     """
     _require_xtm_one()
+    from app.services import ctem_webhook_sources as webhook_sources
     from app.services.ctem_signal_sources import bound_sources
 
     primary = await get_primary(db)
     counts: dict[str, dict[str, int]] = {}
     activity: dict[str, dict[str, Any]] = {}
+    by_source: dict[str, dict[str, dict[str, Any]]] = {}
     if primary is not None:
         reader = await _reader(db, user)
         counts = await signals.counts_by_path(db, organization_id=primary.id, recorded_by=reader)
         since = datetime.now(UTC) - timedelta(days=30)
         activity = await signals.activity_by_path(db, organization_id=primary.id, recorded_by=reader, since=since)
+        by_source = await signals.activity_by_source(db, organization_id=primary.id, recorded_by=reader, since=since)
     bound = await bound_sources(db, user.id)
-    return {"paths": signals.path_catalog(counts, bound=bound, activity=activity)}
+    webhooks = webhook_sources.path_sources_of(await webhook_sources.list_sources(db))
+    return {
+        "paths": signals.path_catalog(counts, bound=bound, activity=activity, by_source=by_source, webhooks=webhooks)
+    }
 
 
 class SignalSourceEnable(BaseModel):
@@ -228,6 +256,166 @@ async def disable_ctem_signal_source(
     return platform_sources.to_dict(row)
 
 
+class WebhookMapping(BaseModel):
+    """Where each signal field is read in the posted JSON: dotted paths (``event.id``, ``items.0.name``)."""
+
+    id: str = Field(min_length=1, max_length=200)
+    label: str | None = Field(default=None, max_length=200)
+    severity: str | None = Field(default=None, max_length=200)
+
+
+class WebhookSourceCreate(BaseModel):
+    """A generic signed webhook source of one trigger path (#2506): created off."""
+
+    trigger_path: TriggerPath
+    name: str = Field(min_length=1, max_length=120)
+    subject_kind: SubjectKind = "asset"
+    mapping: WebhookMapping
+
+
+class WebhookSourceUpdate(BaseModel):
+    """The switch, name or mapping of a webhook source; the fields left out are kept."""
+
+    enabled: bool | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    subject_kind: SubjectKind | None = None
+    mapping: WebhookMapping | None = None
+
+
+async def _webhook_source(db: AsyncSession, source_id: uuid.UUID) -> Any:
+    from app.models.ctem_webhook_source import CtemWebhookSource
+
+    row = await db.get(CtemWebhookSource, source_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Webhook source not found")
+    return row
+
+
+def _with_url(item: dict[str, Any]) -> dict[str, Any]:
+    item["receiver_url"] = f"{settings.base_url.rstrip('/')}{item['receiver_path']}"
+    return item
+
+
+@router.get("/webhook-sources")
+async def list_ctem_webhook_sources(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """The generic signed webhook sources of the trigger paths (#2506), never their secrets."""
+    _require_xtm_one()
+    from app.services import ctem_webhook_sources as webhook_sources
+
+    return {"sources": [_with_url(webhook_sources.to_dict(r)) for r in await webhook_sources.list_sources(db)]}
+
+
+@router.post("/webhook-sources")
+async def create_ctem_webhook_source(
+    body: WebhookSourceCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Create a webhook source, off; the answer carries its ``secret`` once, never again."""
+    _require_xtm_one()
+    from app.services import ctem_webhook_sources as webhook_sources
+
+    try:
+        row, secret = await webhook_sources.create(
+            db,
+            trigger_path=body.trigger_path,
+            name=body.name,
+            subject_kind=body.subject_kind,
+            mapping=body.mapping.model_dump(),
+            created_by=user.id,
+        )
+    except webhook_sources.WebhookSourceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await db.commit()
+    return {**_with_url(webhook_sources.to_dict(row)), "secret": secret}
+
+
+@router.patch("/webhook-sources/{source_id}")
+async def update_ctem_webhook_source(
+    source_id: uuid.UUID,
+    body: WebhookSourceUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Switch a webhook source on or off, rename it or change its mapping."""
+    _require_xtm_one()
+    from app.services import ctem_webhook_sources as webhook_sources
+
+    row = await _webhook_source(db, source_id)
+    try:
+        if body.mapping is not None:
+            row.mapping = webhook_sources.clean_mapping(body.mapping.model_dump())
+        if body.name is not None or body.subject_kind is not None:
+            row.name = webhook_sources.check_new(
+                row.trigger_path, body.name or row.name, body.subject_kind or row.subject_kind
+            )
+            row.subject_kind = body.subject_kind or row.subject_kind
+    except webhook_sources.WebhookSourceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if body.enabled is not None:
+        row.enabled = body.enabled
+    await db.commit()
+    return _with_url(webhook_sources.to_dict(row))
+
+
+@router.post("/webhook-sources/{source_id}/rotate")
+async def rotate_ctem_webhook_source(
+    source_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """A new secret for the source; the old one is refused from now on. The answer carries it once."""
+    _require_xtm_one()
+    from app.services import ctem_webhook_sources as webhook_sources
+
+    row = await _webhook_source(db, source_id)
+    secret = webhook_sources.rotate(row)
+    await db.commit()
+    return {**_with_url(webhook_sources.to_dict(row)), "secret": secret}
+
+
+class WebhookSourceTest(BaseModel):
+    """A sample of the JSON the tool posts, mapped without recording anything."""
+
+    sample: dict[str, Any] | list[Any]
+
+
+@router.post("/webhook-sources/{source_id}/test")
+async def test_ctem_webhook_source(
+    source_id: uuid.UUID,
+    body: WebhookSourceTest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """What the source's mapping reads in *sample*: the id, label and severity, or why it reads no id. Records nothing."""
+    _require_xtm_one()
+    from app.services import ctem_webhook_sources as webhook_sources
+
+    row = await _webhook_source(db, source_id)
+    try:
+        mapped = webhook_sources.map_payload(row.mapping, body.sample)
+    except webhook_sources.WebhookSourceError as exc:
+        return {"ok": False, "reason": str(exc)}
+    return {"ok": True, "id": mapped.external_id, "label": mapped.label, "severity": mapped.severity}
+
+
+@router.delete("/webhook-sources/{source_id}")
+async def delete_ctem_webhook_source(
+    source_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Delete a webhook source: its receiver answers 404 from now on; the signals it recorded stay."""
+    _require_xtm_one()
+    row = await _webhook_source(db, source_id)
+    await db.delete(row)
+    await db.commit()
+    return {"deleted": True}
+
+
 @router.get("")
 async def list_ctem_signals(
     state: SignalState | None = Query(default=None),
@@ -271,8 +459,14 @@ async def record_ctem_signal(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Record one signal for the caller; the same dedupe key again moves ``last_seen_at``."""
+    """Record one signal for the caller; the same dedupe key again moves ``last_seen_at``.
+
+    A CTEM decide right (or an administrator) only (#2441): a view right is read only.
+    """
     _require_xtm_one()
+    reason = await ctem_access.refusal(db, user, write=True)
+    if reason is not None:
+        raise HTTPException(status_code=403, detail=reason)
     organization_id = await _organization_id(db)
     try:
         row, created = await signals.record_signal(
@@ -421,9 +615,6 @@ async def triage_ctem_signals(
     if bool(body.ids) == (body.filter is not None):
         raise HTTPException(status_code=422, detail="Give either ids or a filter")
     organization_id = await _organization_id(db)
-    if await ctem_access.level(db, user) == "view":
-        # A CTEM view right is strictly read only (#1748): no triage.
-        raise HTTPException(status_code=403, detail=ctem_access.VIEW_ONLY_MESSAGE)
     rows = await signals.select_signals(
         db,
         organization_id=organization_id,

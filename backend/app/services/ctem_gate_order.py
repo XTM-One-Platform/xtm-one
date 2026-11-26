@@ -89,9 +89,9 @@ def waited_refusal(gate: str, case_id: str, open_keys: set[str]) -> str | None:
     """Why a ``waited`` gate event of *case_id* is refused, else ``None``. Pure.
 
     *open_keys* are the correlation keys of the open ``needs_human`` items of the
-    case (:func:`open_gate_item_keys`). A gate with keys of its own needs one of
-    them; a gate without (``ctem.production_change``, ``ctem.accept_risk``,
-    ``ctem.close_without_retest``) needs any open ``ctem:`` decision of the case.
+    case (:func:`open_gate_item_keys`). A gate with keys of its own (every gate of
+    the catalog since #2464) needs one of them, so ``decision_filed`` is per gate;
+    a gate outside the catalog needs any open ``ctem:`` decision of the case.
     """
     keys = waited_item_keys(gate, case_id)
     if keys and any(key in open_keys for key in keys):
@@ -114,13 +114,15 @@ async def open_gate_item_keys(db: Any, case_id: str) -> set[str]:
     exists (a key, never its content), the same read as the stall sweep
     (``ctem_case_stall._waits_on_someone``).
     """
-    from sqlalchemy import select
+    from sqlalchemy import or_, select
 
     from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
+    from app.services.ctem_decision_groups import GROUPED_REASON_LEAD
 
     rows = await db.execute(
         select(WorkItem.correlation_key).where(
-            WorkItem.needs_human.is_(True),
+            # A grouped decision waits on its group's card (#2451): it is filed all the same.
+            or_(WorkItem.needs_human.is_(True), WorkItem.blocked_reason.like(f"{GROUPED_REASON_LEAD}%")),
             WorkItem.status.not_in(WORK_ITEM_TERMINAL_STATUSES),
             WorkItem.correlation_key.like("ctem:%" + case_id),
         )

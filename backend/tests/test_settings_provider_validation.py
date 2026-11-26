@@ -546,3 +546,110 @@ def test_an_unknown_validation_capability_is_still_refused(
 
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"] == ["body", "capability"]
+
+
+def _fails_discovery(error: str) -> type:
+    class _Fails:
+        def __init__(self, api_key: str):
+            pass
+
+        async def list_models_grouped(self):
+            raise RuntimeError(error)
+
+    return _Fails
+
+
+def test_validation_says_why_model_discovery_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    response = _validate_route(monkeypatch, _fails_discovery("upstream said 418"), "openai").post(
+        "/api/v1/settings/llm-providers/validate",
+        json={"provider": "openai", "api_key": "sk-x", "capability": "reasoning"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["connection_ok"] is False
+    assert "upstream said 418" in body["message"]
+    assert "jwks" not in body["message"]
+
+
+def test_a_gateway_in_jwt_mode_is_told_to_reach_the_platform_jwks(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.api.v1 import settings as settings_api
+
+    monkeypatch.setattr(settings_api, "xtm_issuer", lambda: "https://xtm.example.com")
+    error = "Error code: 503 - {'error': {'type': 'gateway_overloaded'}}"
+    response = _validate_route(monkeypatch, _fails_discovery(error), "filigran_gateway").post(
+        "/api/v1/settings/llm-providers/validate",
+        json={"provider": "filigran_gateway", "api_key": "https://gw.example.com", "capability": "reasoning"},
+    )
+
+    message = response.json()["message"]
+    assert "gateway_overloaded" in message
+    assert "https://xtm.example.com/xtm/auth/jwks" in message
+    assert "gateway token" not in message
+
+
+def test_a_gateway_with_a_token_has_it_redacted_and_no_jwks_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    token = "secret-gateway-token-123"
+    response = _validate_route(monkeypatch, _fails_discovery(f"401 bad token {token}"), "filigran_gateway").post(
+        "/api/v1/settings/llm-providers/validate",
+        json={"provider": "filigran_gateway", "api_key": f"https://gw.example.com||||{token}", "capability": "reasoning"},
+    )
+
+    message = response.json()["message"]
+    assert token not in message and "401 bad token ***" in message
+    assert "jwks" not in message
+
+
+def test_a_secret_a_vault_reference_resolved_to_is_never_echoed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.api.v1 import settings as settings_api
+
+    client = _validate_route(monkeypatch, _fails_discovery("bad key sk-vault-secret-1234"), "openai")
+
+    async def _resolve(value: str) -> str:
+        return "sk-vault-secret-1234"
+
+    monkeypatch.setattr(settings_api, "resolve_secret_text", _resolve)
+    response = client.post(
+        "/api/v1/settings/llm-providers/validate",
+        json={"provider": "openai", "api_key": "a-reference", "capability": "reasoning"},
+    )
+
+    message = response.json()["message"]
+    assert "sk-vault-secret-1234" not in message and "bad key ***" in message
+
+
+def test_a_failed_probe_still_says_why_discovery_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.api.v1 import settings as settings_api
+
+    class _Fails:
+        def __init__(self, api_key: str):
+            pass
+
+        async def list_embedding_models(self) -> list[str]:
+            raise RuntimeError("models route answered 503")
+
+    client = _validate_route(monkeypatch, _Fails, "litellm")
+    monkeypatch.setattr(
+        settings_api, "_probe_openai_compatible_connection", AsyncMock(return_value=(False, "No route found."))
+    )
+    response = client.post(
+        "/api/v1/settings/llm-providers/validate",
+        json={"provider": "litellm", "api_key": "k||https://llm.example.com", "capability": "embedding"},
+    )
+
+    message = response.json()["message"]
+    assert "No route found." in message and "models route answered 503" in message
+
+
+def test_resolve_models_hints_the_gateway_jwks_without_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.api.v1 import settings as settings_api
+
+    monkeypatch.setattr(settings_api, "xtm_issuer", lambda: "")
+    response = _validate_route(monkeypatch, _fails_discovery("503 gateway_overloaded"), "filigran_gateway").post(
+        "/api/v1/settings/llm-providers/resolve-models",
+        json={"provider": "filigran_gateway", "api_key": "https://gw.example.com"},
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "503 gateway_overloaded" in detail and "its /xtm/auth/jwks endpoint" in detail

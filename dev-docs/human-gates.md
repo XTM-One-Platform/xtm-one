@@ -124,6 +124,25 @@ widened):
   `ANSWERED ... (keeps waiting)` note) and leaves the item as it was, still
   blocked on the person with its ask and blockers: no status change, no
   dispatch to the owner's inbox. Any other option releases the item as before.
+  The platform never clears `needs_human` on a keeps_waiting answer: the
+  owning agent moves the item to an observable wait (`blocked_on` /
+  `blocked_on_refs`) or re-asks with a new ask. Until then the decision card
+  shows the recorded answer (#2500): "Answered: <label> by <who>, <when>" and
+  what the item still waits for, header "Answer recorded", the options folded
+  behind "Change the answer"; the toast says the answer is recorded and the
+  item keeps waiting. The same keeps_waiting option sent again with the same
+  words is a repeat: nothing is written, no second note. Such an item no
+  longer waits for the person: the "Waiting for me" filter, its count and the
+  notice leave it out (`answered_keeps_waiting_clause` in
+  `_waits_for_person_clause`), the "Waiting for you" inbox
+  (`GET /decisions/waiting`, `decision_inbox.waiting_for`) leaves its open
+  decision row out with the same clause, so the view and the count read one
+  source of truth, and the list row drops its "Waiting for you" badge and the
+  person part of "Waits for" (`waitsForReader`, `answeredKeepsWaiting`). The
+  decision row itself stays open. A new ask (an ask that differs from the
+  stored one while the item still waits for a person) or a new gate
+  (`needs_human` set again) drops `payload.answer`: the earlier answer no
+  longer stands and the item waits for the person again everywhere.
 - A work item that reaches `done` or `cancelled` (`complete_work_item`,
   `update_work_item` status) no longer waits for a person (#1719): its
   `needs_human` and ask are cleared in the same write, its open decision is

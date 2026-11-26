@@ -58,6 +58,7 @@ import { exactCount, formatCount } from "@/lib/number-format";
 import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } from "./ctem/case-loop";
 import { CaseTicketChip } from "./ctem/case-ticket";
+import { acceptanceMaxDay } from "./ctem/case-acceptance";
 import { keyVersion } from "./ctem/case-version";
 import { CaseAttackPath } from "./ctem/CaseAttackPath";
 import { CaseExploitation } from "./ctem/CaseExploitation";
@@ -68,6 +69,7 @@ import { CaseAnalystReview } from "./ctem/CaseAnalystReview";
 import { CaseValidation } from "./ctem/CaseValidation";
 import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseMobilization } from "./ctem/CaseMobilization";
+import { CaseWaitingGates } from "./ctem/CaseWaitingGates";
 import { APPLIED_CHANGE_KIND_LABEL, appliedChangeKindLabel, isAppliedChangeKind } from "./ctem/case-mobilization";
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseAffectedAssets } from "./ctem/CaseAffectedAssets";
@@ -304,7 +306,7 @@ export default function CtemCaseDetail() {
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [reason, setReason] = useState("");
   const [evidence, setEvidence] = useState("");
-  const [expiry, setExpiry] = useState(inDays(90));
+  const [expiry, setExpiry] = useState(acceptanceMaxDay);
   const [formError, setFormError] = useState<string | null>(null);
   // The SLA countdown of the header moves without a reload (#892).
   const now = useNow(60_000);
@@ -496,7 +498,7 @@ export default function CtemCaseDetail() {
   const open = (kind: DialogKind) => {
     setReason("");
     setEvidence("");
-    setExpiry(inDays(90));
+    setExpiry(acceptanceMaxDay());
     setFormError(null);
     setSplitTitle("");
     setDialog(kind);
@@ -866,6 +868,9 @@ export default function CtemCaseDetail() {
         </p>
       )}
 
+      {/* Every waiting decision, whoever works the case (#2464), first: a gate no section owns is answered here. */}
+      <CaseWaitingGates state={kase.state} gates={kase.gates} history={kase.history} personName={personName} />
+
       {kase.state !== "resolved" && kase.state !== "accepted_risk" && (
         <CaseWorkCard
           work={work}
@@ -884,13 +889,13 @@ export default function CtemCaseDetail() {
 
         <CaseAnalystReview caseId={kase.id} pkg={kase.threat_package} history={kase.history} gates={kase.gates} personName={personName} />
 
-        <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} gates={kase.gates} personName={personName} />
+        <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} gates={kase.gates} personName={personName} scenario={kase.scenario} />
 
         <CaseRemediationDecision caseId={kase.id} history={kase.history} gates={kase.gates} personName={personName} />
 
         <CaseTreatmentPlan plan={kase.treatment_plan} />
 
-        <CaseMobilization history={kase.history} tickets={kase.tickets} />
+        <CaseMobilization history={kase.history} tickets={kase.tickets} gates={kase.gates} personName={personName} />
       </CaseLoopProvider>
 
       <Card>
@@ -1029,6 +1034,7 @@ export default function CtemCaseDetail() {
                   aria-labelledby={settingsFieldLabelId("case-expiry")}
                   aria-describedby={settingsFieldHintId("case-expiry")}
                   min={inDays(1)}
+                  max={acceptanceMaxDay()}
                   value={expiry}
                   onChange={setExpiry}
                 />

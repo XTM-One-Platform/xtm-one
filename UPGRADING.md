@@ -5,6 +5,18 @@ upgrade and rollback procedures live in the documentation site
 ([Deployment > Upgrade](docs/docs/deployment/upgrade.md)); this file documents
 releases that need special attention.
 
+## `evaluations.speed_tolerance` is dropped
+
+**No action needed.** The migration `e686spdtol01` drops the `evaluations.speed_tolerance` column, which no release since `e1780evp001` reads or writes. Every evaluation keeps its tolerance in `performance_tolerance`, and an exported package that names `speed_tolerance` still imports into it.
+
+## A user's email is changed by an administrator only
+
+**No migration, no configuration change.**
+
+- **Changed**: people can no longer change their own email from their profile: `PUT /api/v1/settings/preferences` answers `422` when it carries a new address. The other Filigran platforms find a person's account by this email, so an unproven address could take over someone else's account there.
+- **New**: an administrator changes it from the user's page (`Email` card), or with `PUT /api/v1/users/{user_id}/email` and `{"email": ...}`, SSO accounts included. It works without a mail server; with one, the old and the new address are told of the change.
+- **Reset links**: a password reset link stops working once the account's email is no longer the address it was sent to.
+
 ## The Filigran AI Gateway's throttle backs assignments off
 
 **No migration, no configuration change.**
@@ -126,7 +138,7 @@ releases that need special attention.
 - **An evaluation saved there** keeps its resume secret in clear, which its callbacks no longer read, and its tolerance in `speed_tolerance` only. Set both again on that evaluation once the rollout ends.
 - **Appending a dataset entry, or linking a dataset to an evaluation, there** can fail with a `500` until the replica is replaced: positions are unique from this release, and the previous code could append at a taken one.
 
-`speed_tolerance` is kept for that window, with the values copied into `performance_tolerance`; a later release removes it.
+`speed_tolerance` was kept for that window, with the values copied into `performance_tolerance`; *`evaluations.speed_tolerance` is dropped* below removes it.
 
 ## Existing evaluations and datasets need a family before they run
 

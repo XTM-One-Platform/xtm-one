@@ -33,7 +33,7 @@ beforeEach(() => {
     paths: [
       {
         id: "new_exposure", label: "New exposure", default_lens: "outside", listener: true, counts: { watchlist: 1, case_opened: 1 }, configured: true,
-        status: "connected", sources: [{ provider: "opencti", kind: "listener", event: "", bound: true }],
+        status: "enabled", sources: [{ provider: "opencti", kind: "listener", event: "", bound: true }],
       },
       {
         id: "credential_leak", label: LONG, default_lens: "world", listener: true, counts: {}, configured: false,

@@ -17,7 +17,8 @@ import { AboutDialog } from "./AboutDialog";
 import { Tip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/lib/relative-time";
-import { canMarkAllRead as anyReadable, decisionSource, hasUnreadApproval, isWaitingDecision, notificationSubtitle, readsOnOpen } from "@/lib/notification-kinds";
+import { canMarkAllRead as anyReadable, badgeCount, badgeText, decisionSource, hasUnreadApproval, isWaitingDecision, notificationSubtitle, readsOnOpen } from "@/lib/notification-kinds";
+import { waitingForMePath } from "@/lib/task-routes";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useDesktopBridge, useRunnersEnabled } from "@/hooks/useDesktop";
 import { useTick } from "@/hooks/useTick";
@@ -82,7 +83,12 @@ export function Header() {
   const allNotifs = feed?.items ?? [];
   // A decision still waiting stays unread until answered, whatever is opened
   // or marked (#991); opening or dismissing any other entry reads it (#901).
-  const unreadNotifs = allNotifs.filter((item) => item.unread);
+  // The badge counts every decision waiting on the person, the Home notice's
+  // count, never only the page the menu lists (#2453).
+  const unreadTotal = badgeCount(feed);
+  const waitingTotal = feed?.waiting_decision_total ?? 0;
+  const waitingShown = allNotifs.filter((item) => item.source === "work_item" && isWaitingDecision(item)).length;
+  const unreadLabel = t_i18n("{count, plural, one {# unread notification} other {# unread notifications}}", { count: unreadTotal });
   const canMarkAllRead = anyReadable(allNotifs);
 
   const markAllRead = useCallback(() => markRead.mutate(), [markRead]);
@@ -143,14 +149,15 @@ export function Header() {
         <div className="relative" ref={notifsRef}>
           {/* Not an IconButton: the bell carries a count badge as a second child,
               and IconButton renders exactly one icon. It keeps an explicit name. */}
-          <Button variant="ghost" size="icon" aria-label={t_i18n("Notifications")} className="relative h-8 w-8" onClick={() => { setShowNotifs(!showNotifs); setShowUser(false); }}>
+          <Button variant="ghost" size="icon" aria-label={unreadTotal > 0 ? `${t_i18n("Notifications")}, ${unreadLabel}` : t_i18n("Notifications")} title={unreadTotal > 0 ? unreadLabel : undefined} className="relative h-8 w-8" onClick={() => { setShowNotifs(!showNotifs); setShowUser(false); }}>
             <Bell className="h-4 w-4" />
-            {unreadNotifs.length > 0 && (
-              <span className={cn(
-                "absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold",
+            {unreadTotal > 0 && (
+              /* A visual cap only (99+): the exact count is in the button's name and title. */
+              <span data-testid="notification-badge" className={cn(
+                "absolute -top-0.5 -right-0.5 flex h-4 min-w-4 px-0.5 items-center justify-center rounded-full text-[9px] font-bold",
                 hasUnreadApproval(allNotifs) ? "bg-feedback-alert-primary text-on-feedback-fill animate-pulse" : "bg-accent text-negative-primary",
               )}>
-                {unreadNotifs.length}
+                {badgeText(unreadTotal)}
               </span>
             )}
           </Button>
@@ -166,6 +173,17 @@ export function Header() {
                   <button className="content-caption text-default-secondary hover:text-default-primary" onClick={() => { navigate("/operations/executions?filter=notifications"); setShowNotifs(false); }}>{t_i18n("View all")}</button>
                 </div>
               </div>
+              {waitingTotal > waitingShown && (
+                /* The menu lists the newest decisions; every one waiting, the oldest
+                   included, is in the paginated Waiting for me list (#2453). */
+                <button
+                  data-testid="notification-waiting-total"
+                  className="w-full px-4 py-2 text-left content-caption font-medium text-feedback-warning-primary border-b border-elevation-subtle-soft hover:bg-elevation-hover"
+                  onClick={() => { navigate(waitingForMePath()); setShowNotifs(false); }}
+                >
+                  {t_i18n("{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}", { count: waitingTotal })}
+                </button>
+              )}
               <div className="max-h-96 overflow-y-auto">
                 {allNotifs.length > 0 ? allNotifs.map((item) => {
                   // One decision kind, three sources (#842, S4): the run's hand,

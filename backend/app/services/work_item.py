@@ -50,8 +50,9 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import String, and_, case, cast, delete, false, func, not_, or_, select, true, update
+from sqlalchemy import String, and_, case, cast, delete, false, func, literal, not_, or_, select, true, update
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.config import settings
 from app.core.json_sql import when_json_parseable
@@ -2434,7 +2435,40 @@ async def create_work_item(
             run_person_id=getattr(writer, "run_person_id", None),
             run_person_chosen=bool(getattr(writer, "run_person_chosen", False)),
         )
+        # A CTEM decision of a kind already asked of the same person joins one grouped card (#2451).
+        grouped = None
+        new_item_id = uuid.uuid4()
+        if needs_human and key:
+            from app.services import ctem_decision_groups
+
+            if ctem_decision_groups.case_id_of(key) is not None:
+                grouped = await ctem_decision_groups.join_group(
+                    db,
+                    member_id=new_item_id,
+                    correlation_key=key,
+                    title=title,
+                    priority=priority,
+                    due_at=_parse_due(due_at),
+                    owner_agent_id=owner_uuid,
+                    created_by_agent_id=creator_uuid,
+                    user_id=user_uuid,
+                    workspace_id=workspace_id,
+                    is_company_managed=is_company_managed,
+                    waits_for_user_id=waits_for,
+                    waits_for_group_ids=waits_for_groups,
+                    now=now,
+                )
+            if grouped is not None:
+                group_item = grouped[0]
+                # It waits on its group, without a card of its own: the group's answer reopens it.
+                needs_human = None
+                status = "blocked"
+                blockers = [str(group_item.id)]
+                reason = f"{ctem_decision_groups.GROUPED_REASON_LEAD}{group_item.id}"
+                # The person is asked by the group's card alone.
+                waits_for, waits_for_groups = None, None
         item = WorkItem(
+            id=new_item_id,
             user_id=user_uuid,
             waits_for_user_id=waits_for,
             waits_for_group_ids=waits_for_groups,
@@ -2477,6 +2511,11 @@ async def create_work_item(
         from types import SimpleNamespace
 
         events = created_events(item, writer=SimpleNamespace(agent_id=creator_uuid, run_id=None))
+        if grouped is not None and grouped[1]:
+            events = [
+                *created_events(grouped[0], writer=SimpleNamespace(agent_id=creator_uuid, run_id=None)),
+                *events,
+            ]
 
     await _publish(events)
     if blockers:
@@ -2995,8 +3034,10 @@ async def update_work_item(
             item.blocked_reason = reason
         if needs_human is not None:
             if human and not stored_human:
-                # A new decision gate: watched afresh for being opened (#2390).
+                # A new decision gate: watched afresh for being opened (#2390), and
+                # an answer to an earlier gate no longer stands for it (#2500).
                 clear_decision_marks(item)
+                item.payload = _without_answer(item.payload)
             item.needs_human = human
             if not human and ask is None:
                 # The card goes with the decision it asked for (#762).
@@ -3012,7 +3053,13 @@ async def update_work_item(
 
             # The sources the reader opens, from the item's own text when the agent gave none (#834).
             completed = await _complete_case_ask(db, item.correlation_key, new_ask)
+            asked_before = getattr(item, "ask", None)
             item.ask = with_source_links(completed, item.description, item.payload)
+            if human and item.ask != asked_before:
+                # A new ask is a new question: the answer recorded on the previous one
+                # (a keep-waiting answer included) no longer stands, so the item waits
+                # for the person again in the list, its count and the inbox (#2500).
+                item.payload = _without_answer(item.payload)
         if item.status != "blocked" and previous_status == "blocked":
             # No longer blocked: what it waited for no longer applies. An item put
             # back to work keeps the pull requests it still waited for, so a
@@ -5160,6 +5207,27 @@ async def _refuse_decided_for_group_member(
     raise WorkItemNotWaitingError(_not_waiting_message(decided))
 
 
+def _without_answer(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    """*payload* without its ``answer`` (a copy when there is one to drop). Pure."""
+    if isinstance(payload, dict) and "answer" in payload:
+        return {k: v for k, v in payload.items() if k != "answer"}
+    return payload
+
+
+def _repeats_kept_answer(payload: object, key: str | None, words: str) -> bool:
+    """Whether *key* and *words* repeat the answer already stored on the item (#2500). Pure.
+
+    A keep-waiting answer leaves the card open on its recorded answer; the
+    same option with the same words sent again is the person confirming what
+    the card shows, never a new answer.
+    """
+    stored = payload.get("answer") if isinstance(payload, dict) else None
+    if not isinstance(stored, dict) or not key:
+        return False
+    same_option = str(stored.get("option") or "").casefold() == key.casefold()
+    return same_option and (stored.get("text") or "") == words
+
+
 async def answer_work_item(
     work_item_id: str,
     *,
@@ -5179,7 +5247,9 @@ async def answer_work_item(
     cleared and the item goes back to ``open``, unclaimed, so its owner
     agent's inbox takes it at once with the answer in its context. An option
     marked ``keeps_waiting`` records the answer and the note alone: the item
-    stays blocked on the person with its ask, nothing is dispatched (#1719).
+    stays blocked on the person with its ask, nothing is dispatched (#1719);
+    the same keep-waiting answer sent again (same option, same words) writes
+    nothing, so a second click never stacks a second note (#2500).
 
     Raises :class:`WorkItemNotWaitingError` when the item does not wait for
     a person (not ``needs_human``, or finished) and ``ValueError`` for an
@@ -5239,6 +5309,12 @@ async def answer_work_item(
             answer["text"] = words
         if answered_by:
             answer["answered_by"] = answered_by
+        from app.services.decision_ask import keeps_waiting
+
+        if keeps_waiting(chosen) and _repeats_kept_answer(item.payload, key, words):
+            # The card already shows this answer (#2500): nothing new to record.
+            await db.rollback()
+            return await _read_back(work_item_id, user_id=user_id, writer=writer)
         payload = dict(item.payload or {})
         payload.pop("_dispatch_attempts", None)
         payload["answer"] = answer
@@ -5252,8 +5328,6 @@ async def answer_work_item(
                 db, uid, item, action="answer", summary=f"Answered work item {item.title}: {said}"
             )
         who = f" by {answered_by}" if answered_by else ""
-        from app.services.decision_ask import keeps_waiting
-
         if keeps_waiting(chosen):
             # "Keep waiting" (#1719): the answer is recorded, the item stays as it
             # is, still waiting with its ask and blockers, and nothing dispatches it.
@@ -5264,8 +5338,23 @@ async def answer_work_item(
             return await _read_back(work_item_id, user_id=user_id, writer=writer)
         note = stamped_note(f"ANSWERED{who}: {said}", now)
         item.description = f"{note}\n\n{item.description}" if item.description else note
+        fanned: list[uuid.UUID] = []
+        from app.services import ctem_decision_groups
+
+        if ctem_decision_groups.is_group_key(item.correlation_key) and key:
+            # One answer to a grouped CTEM decision answers each case it lists (#2451).
+            fanned, still_waiting = await ctem_decision_groups.fan_out(db, item, option=key, answer=answer, note=note)
+            if still_waiting:
+                item.last_activity_at = now
+                await db.commit()
+                for fanned_id in fanned:
+                    await publish_transition(fanned_id, previous_status="blocked", note=note, answered=True)
+                return await _read_back(work_item_id, user_id=user_id, writer=writer)
         previous_status = item.status
-        item.status = "open"
+        item.status = "done" if fanned else "open"
+        if fanned:
+            item.completed_at = now
+            item.result = f"Answered for {len(fanned)} grouped case(s): {said}"
         item.claimed_by_agent_id = None
         item.claimed_by_run_id = None
         item.claimed_at = None
@@ -5283,7 +5372,10 @@ async def answer_work_item(
             await db.commit()
         finally:
             answer_actor.reset(token)
-    await publish_transition(wid, previous_status=previous_status, note=note, answered=True)
+    for fanned_id in fanned:
+        await publish_transition(fanned_id, previous_status="blocked", note=note, answered=True)
+    # A group answered whole is done: its cases carry the answer, nothing reopens it.
+    await publish_transition(wid, previous_status=previous_status, note=note, answered=not fanned)
     return await _read_back(work_item_id, user_id=user_id, writer=writer)
 
 
@@ -6411,6 +6503,25 @@ async def _resolved_recipients(
     )
 
 
+def answered_keeps_waiting_clause() -> ColumnElement[bool]:
+    """SQL: the item's ``payload.answer.option`` is a ``keeps_waiting`` option of its ask (#2500).
+
+    The frontend's ``answeredKeepsWaiting`` in SQL: the answer is recorded and
+    the item keeps waiting for its agent, so the person owes nothing more.
+    The stored option is the ask option's own key (:func:`answer_work_item`),
+    so a containment test matches it. Never NULL: a row without an ask or an
+    answer, or whose JSON PostgreSQL cannot parse, reads false.
+    """
+    option = cast(WorkItem.payload, JSONB)["answer"]["option"]
+    kept = cast(WorkItem.ask, JSONB)["options"].contains(
+        func.jsonb_build_array(
+            func.jsonb_build_object(literal("key", String), option, literal("keeps_waiting", String), true())
+        )
+    )
+    guarded = when_json_parseable(WorkItem.payload, when_json_parseable(WorkItem.ask, kept))
+    return func.coalesce(guarded, false())
+
+
 def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):
     """SQL: a non-terminal item of *user_uuid* that waits for that person.
 
@@ -6422,14 +6533,21 @@ def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):
 
     A ``needs_human`` item waits for its recipient (``waits_for_user_id``),
     else its user, else every administrator when it names nobody (#11893,
-    :func:`app.services.work_item_recipient.recipient_clause`).
+    :func:`app.services.work_item_recipient.recipient_clause`). One the
+    person already answered with a ``keeps_waiting`` option waits for its
+    agent, not for them (#2500, :func:`answered_keeps_waiting_clause`; the
+    decisions inbox applies the same clause, ``decision_inbox.waiting_for``).
     """
     from app.services.work_item_recipient import recipient_clause
 
     return and_(
         WorkItem.action_mode.is_(None),
         or_(
-            and_(WorkItem.needs_human.is_(True), recipient_clause(user_uuid)),
+            and_(
+                WorkItem.needs_human.is_(True),
+                not_(answered_keeps_waiting_clause()),
+                recipient_clause(user_uuid),
+            ),
             and_(
                 WorkItem.user_id == user_uuid,
                 WorkItem.owner_agent_id.is_(None),
@@ -6483,16 +6601,21 @@ async def work_items_waiting_for_person(*, user_id: str | None) -> dict:
     return {"count": int(count or 0), "oldest": oldest}
 
 
-async def list_work_items_waiting_for_person(*, user_id: str | None, limit: int) -> list[dict]:
+async def list_work_items_waiting_for_person(*, user_id: str | None, limit: int, offset: int = 0) -> list[dict]:
     """The items the dashboard notice counts, newest wait first, for the bell.
+
+    *offset* pages past the first *limit* rows (#2453): the bell's page holds
+    the newest, the next pages reach the oldest decision still waiting.
 
     The same population as :func:`work_items_waiting_for_person` (one clause,
     :func:`_waits_for_person_clause`), so the bell, the notice and the
     Operations "Waiting for me" view never disagree. Each row is ``{id, title,
     question, deadline, since}``: *question* and *deadline* come from the
     structured ask alone, never from ``blocked_reason``, which agents write for
-    agents (#776); a legacy item without an ask has neither. An item leaves the
-    list the moment it is answered, so its bell entry clears with it.
+    agents (#776); a legacy item without an ask has neither. *deadline* is the
+    ask's, else the item's ``due_at`` (#2453): an item with a due date always
+    says when to answer by. An item leaves the list the moment it is answered,
+    so its bell entry clears with it.
     """
     from app.core.database import async_session
 
@@ -6507,20 +6630,23 @@ async def list_work_items_waiting_for_person(*, user_id: str | None, limit: int)
         readable, _ = await _workspace_tiers(db, str(uid))
         rows = (
             await db.execute(
-                select(WorkItem.id, WorkItem.title, WorkItem.ask, since)
+                select(WorkItem.id, WorkItem.title, WorkItem.ask, since, WorkItem.due_at)
                 .where(
                     WorkItem.status.in_(WORK_ITEM_OPEN_STATUSES),
                     _waits_for_person_clause(uid, now),
                     _visible_clause(uid, readable),
                 )
-                .order_by(since.desc())
+                .order_by(since.desc(), WorkItem.id.desc())
+                .offset(max(0, offset))
                 .limit(limit)
             )
         ).all()
     waiting: list[dict] = []
-    for item_id, title, ask, stamp in rows:
+    for item_id, title, ask, stamp, due_at in rows:
         question = ask.get("question") if isinstance(ask, dict) else None
         deadline = ask.get("deadline") if isinstance(ask, dict) else None
+        if not (isinstance(deadline, str) and deadline) and due_at is not None:
+            deadline = due_at.isoformat()
         waiting.append(
             {
                 "id": str(item_id),
@@ -7370,13 +7496,15 @@ async def _complete_case_ask(db: Any, correlation_key: object, ask: Any) -> Any:
     """
     if not ask:
         return ask
-    from app.services import ctem_case_assets, ctem_control_measurement
+    from app.services import ctem_case_assets, ctem_control_measurement, ctem_validation_scenario
     from app.services.ctem_version_match import complete_gate_ask
 
     # The assets line goes first, then the version match above it: the version match leads the card.
     ask = await ctem_case_assets.complete_gate_ask(db, correlation_key, ask)
     ask = await complete_gate_ask(db, correlation_key, ask)
-    return await ctem_control_measurement.complete_gate_ask(db, correlation_key, ask)
+    ask = await ctem_control_measurement.complete_gate_ask(db, correlation_key, ask)
+    # A validation card links its scenario and package, and states a scenario that is not playable (#2468).
+    return await ctem_validation_scenario.complete_gate_ask(db, correlation_key, ask)
 
 
 def _ux_review_of(correlation_key: object, title: object) -> dict[str, Any] | None:

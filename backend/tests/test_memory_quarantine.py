@@ -295,6 +295,7 @@ class TestAssignmentPrompt:
 
         agent = Agent(
             name="BigMemory",
+            user_id=uuid.uuid4(),
             memory_short_term_enabled=True,
             memory_medium_term_enabled=True,
             memory_persistent_enabled=False,

@@ -94,11 +94,12 @@ test("deprecated labels are replaced by feature", () => {
   });
 });
 
-test("security titles and Aikido findings carry the security label", () => {
-  assert.deepEqual(plan(issue("fix(security): restrict access", ["bug"], "Bug")).add, ["security"]);
-  assert.deepEqual(plan(issue("security: IDOR in several endpoints", ["bug"], "Bug")).add, ["security"]);
+test("a security title never gets the security label, and an Aikido finding is a bug", () => {
+  // The security label is retired (see security-label-guard.yml): the sync never adds it.
+  assert.deepEqual(plan(issue("fix(security): restrict access", ["bug"], "Bug")).add, []);
+  assert.deepEqual(plan(issue("security: IDOR in several endpoints", ["bug"], "Bug")).add, []);
   assert.deepEqual(changes(plan(issue("Path traversal attack possible - xtm-one", ["Aikido", "critical"]))), {
-    add: ["bug", "security"],
+    add: ["bug"],
     remove: [],
     type: "Bug",
   });
@@ -210,7 +211,7 @@ test("the workflow starts a run for exactly the labels and actions the rules rea
     return JSON.parse(match[1]);
   };
 
-  for (const label of [...sync.TYPE_LABELS, ...sync.DEPRECATED_LABELS, "security", "Aikido"]) {
+  for (const label of [...sync.TYPE_LABELS, ...sync.DEPRECATED_LABELS, "Aikido"]) {
     assert.ok(sync.WATCHED_LABELS.includes(label), label);
   }
   const labels = allowList("github.event.label.name");

@@ -727,6 +727,11 @@ async def create_assignment(
     fleet_error = await fleet_scope_error(body.trigger_type, body.trigger_config, agent.id)
     if fleet_error is not None:
         raise HTTPException(status_code=422, detail=fleet_error)
+    from app.services.platform_events import ctem_event_error
+
+    ctem_error = await ctem_event_error(body.trigger_type, body.trigger_config, user.id)
+    if ctem_error is not None:
+        raise HTTPException(status_code=422, detail=ctem_error)
     from app.services.trigger_provisioning import provision_spec_error
 
     # A provision block the scheduler pass would refuse is refused now (#970).
@@ -3913,9 +3918,11 @@ async def list_platform_events(user: User = Depends(get_current_user)) -> list[d
     The trigger picker reads it; it is the same catalog the agent builder's
     ``list_platform_events`` tool reads, so the two never drift.
     """
+    from app.services import ctem_access
     from app.services.platform_events import catalog
 
-    return catalog()
+    # The CTEM signal and case events only for a person with a CTEM right (#2441).
+    return catalog(ctem=await ctem_access.wires_ctem(user.id))
 
 
 @router.get("/platform-event-watches")
@@ -4212,6 +4219,11 @@ async def update_assignment(
         fleet_error = await fleet_scope_error(saved_type, body.trigger_config, assignment.agent_id)
         if fleet_error is not None:
             raise HTTPException(status_code=422, detail=fleet_error)
+        from app.services.platform_events import ctem_event_error
+
+        ctem_error = await ctem_event_error(saved_type, body.trigger_config, assignment.user_id or user.id)
+        if ctem_error is not None:
+            raise HTTPException(status_code=422, detail=ctem_error)
     # A work_item inbox's parallel runs, judged as it will be saved:
     # a config sent alone keeps the stored type.
     if saved_type == "work_item" and body.trigger_config is not None:

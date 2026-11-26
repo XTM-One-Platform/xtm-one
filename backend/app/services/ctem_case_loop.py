@@ -429,7 +429,7 @@ async def open_from_signal(
         db.add(case)
         await db.flush()
         db.add(_event(case.id, rules.SYSTEM_ACTOR, "created", now, to_value=fix.key, reason=f"signal {signal.id}"))
-        # #1736 slice 3: the owner comes from the asset or asset group owner, else the instance default.
+        # #1736 slice 3, #2452: the asset or asset group owner, else the instance default, else the CTEM decider.
         from app.services.ctem_case_owner import owner_for_signal
 
         owner, how = await owner_for_signal(db, signal)
@@ -1391,9 +1391,14 @@ async def sweep(
         "announced": 0,
         "stalled": 0,
         "retired": 0,
+        "owned": 0,
     }
     if await case_opening.may_open_waiting(db, vertical):
         await open_waiting(db, vertical=vertical, events=events, now=now, counts=counts)
+    # #2452: an open case never waits with no owner; the cases opened before the decider fallback get it.
+    from app.services.ctem_case_owner import backfill_owners
+
+    counts["owned"] = await backfill_owners(db, now=now, actor=rules.SYSTEM_ACTOR)
     # ctem-autoresolve-archived-asset: a case on an asset the inventory archived or removed closes, its
     # decisions cancelled, before the SLA pass escalates it.
     from app.services.ctem_case_asset_retire import close_retired_asset_cases

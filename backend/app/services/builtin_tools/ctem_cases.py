@@ -32,7 +32,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ctem_case import CASE_STATES
+from app.models.ctem_case import CASE_STATES, CLOSED_STATES
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._shared import logger
@@ -203,6 +203,66 @@ def _written(event: Any) -> dict[str, Any]:
     }
 
 
+async def _compact_write(
+    db: AsyncSession, case: Any, *, state_before: str | None, known: set[Any], **recorded: Any
+) -> dict[str, Any]:
+    """The compact answer of a validation or ticket write (#2473), never the whole case re-read.
+
+    The case id, title and state after the write, whether that state moved, what this call
+    recorded (*recorded*) and the history events it added; ``get_ctem_case`` reads the rest.
+    A history read that fails after the commit leaves ``history_written`` empty.
+    """
+    from app.services import ctem_cases_store as store
+
+    written: list[dict[str, Any]] = []
+    try:
+        after = (await store.events_of(db, [case.id])).get(case.id, [])
+        written = [_written(e) for e in after if e.id not in known]
+    except Exception:
+        logger.info("CTEM case write: written events unreadable for %s", case.id, exc_info=True)
+    answer: dict[str, Any] = {
+        "id": str(case.id),
+        "title": case.title,
+        "state": case.state,
+        "state_changed": case.state != state_before,
+    }
+    if case.state != state_before:
+        answer["previous_state"] = state_before
+        answer["resolution_kind"] = getattr(case, "resolution_kind", None)
+    answer.update(recorded)
+    answer["history_written"] = written
+    return answer
+
+
+def _recorded_validation(case: Any, provider: str, ref: str) -> dict[str, Any] | None:
+    """The stored validation entry of *(provider, ref)* with its index, as the write keeps it (#2473)."""
+    wanted = ((provider or "").strip()[:40], (ref or "").strip()[:300])
+    entries = list(getattr(case, "validations", None) or [])
+    for index in range(len(entries) - 1, -1, -1):
+        entry = entries[index]
+        if (entry.get("provider"), entry.get("ref")) == wanted:
+            shown = {
+                k: entry.get(k)
+                for k in ("provider", "kind", "ref", "result", "reported_result", "conclusive", "evidence_type", "at")
+                if entry.get(k) is not None
+            }
+            if entry.get("mitigation_only"):
+                shown["mitigation_only"] = True
+            if entry.get("run_order"):
+                shown["run_order"] = entry["run_order"]
+            return {"index": index, **shown}
+    return None
+
+
+def _recorded_ticket(case: Any, integration: str, key: str) -> dict[str, Any] | None:
+    """The stored ticket reference of *(integration, key)*, as the write keeps it (#2473)."""
+    wanted = ((integration or "").strip()[:80], (key or "").strip()[:120])
+    for entry in reversed(list(getattr(case, "tickets", None) or [])):
+        if (entry.get("integration"), entry.get("key")) == wanted:
+            return {k: entry.get(k) for k in ("integration", "key", "url", "status", "at") if entry.get(k) is not None}
+    return None
+
+
 def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The four case tools, acting for *user_id*; every write is recorded with *agent_id* as actor.
 
@@ -256,6 +316,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         version_history.with_asset_count(rendered, events)
         # The detection gaps from the whole history (#2393), never the newest page alone.
         rendered["detection_gaps"] = view_of.detection_gaps_of(events)
+        from app.services import ctem_case_assets as case_assets
+
+        # Each attached host's module ids, rows stored before #2448 included: asset_id is the inventory id.
+        await case_assets.enrich_source_ids(db, rendered.get("assets"))
+        # The hosts the issues name, resolved to their inventory id and module ids in one lookup (#2492).
+        await case_assets.resolve_named_rows(db, getattr(case, "organization_id", None), rendered.get("assets"))
         return case, rows, rendered
 
     async def _view_only(db: AsyncSession, rows: list[Any], vertical: str) -> str | None:
@@ -265,7 +331,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
 
         if await view_of.acts_on_case(db, str(scope), rows, vertical):
             return None
-        return f"Refused: {ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
+        reason = await ctem_access.refusal(db, str(scope), write=True)
+        return f"Refused: {reason or ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
 
     async def _list(
         state: str = "",
@@ -420,9 +487,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
 
                 view = await view_of.viewer_view(db, str(scope), vertical)
                 visible = set(view.open_ids)
-                if await ctem_access.level(db, scope) == "view":
-                    # A CTEM view right is strictly read only (#1748).
-                    return f"Refused: {ctem_access.VIEW_ONLY_MESSAGE} Nothing was changed."
+                refused = await ctem_access.refusal(db, scope, write=True)
+                if refused is not None:
+                    # Checked at call time for the person the turn or run acts for (#1748, #2441).
+                    return f"Refused: {refused} Nothing was changed."
                 pending = case_loop.PendingEvents()
                 case = await store.create_manual_case(
                     db,
@@ -460,6 +528,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         treatment_plan: dict[str, Any] | None = None,
         threat_package: dict[str, Any] | None = None,
         applied_change: dict[str, Any] | None = None,
+        scenario: dict[str, Any] | None = None,
     ) -> str:
         from app.core.database import async_session
         from app.services import ctem_case_loop as case_loop
@@ -489,6 +558,20 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 refused = await _view_only(db, rows, vertical)
                 if refused:
                     return refused
+                if (
+                    isinstance(gate, dict)
+                    and str(gate.get("outcome") or "") == "answered"
+                    and not state
+                    and case.state in CLOSED_STATES
+                ):
+                    # A closed case waits on nobody (#2494): an answer that arrives after the
+                    # close is not applied, so no ticket, launch or move follows it.
+                    return (
+                        f"Refused: case {case.id} is closed ({case.state}); the answer to gate "
+                        f"{str(gate.get('key') or '')!r} is not applied and its decision was cancelled "
+                        "at the close. Run nothing it covered; reopen the case first if the work must go on. "
+                        "Nothing was changed."
+                    )
                 before = (await store.events_of(db, [case.id])).get(case.id, [])
                 known = {e.id for e in before}
                 unchanged: list[str] = []
@@ -571,6 +654,13 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     case_loop.record_threat_package(
                         db, case, threat_package, view_of.threat_package_of(history), actor=agent_id
                     )
+                if scenario is not None:
+                    from app.services import ctem_validation_scenario as case_scenario
+
+                    history = (await store.events_of(db, [case.id])).get(case.id, [])
+                    case_scenario.record_scenario(
+                        db, case, scenario, case_scenario.scenario_of(history), actor=agent_id
+                    )
                 await db.commit()
                 committed = True
                 # A compact answer (#2092): what this call wrote, never the whole case re-read
@@ -602,6 +692,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                                     ("treatment_plan", treatment_plan),
                                     ("threat_package", threat_package),
                                     ("applied_change", applied_change),
+                                    ("scenario", scenario),
                                 )
                                 if value not in (None, "") and name not in unchanged
                             ),
@@ -646,6 +737,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         if wanted is None:
             return "case_id must be the id list_ctem_cases answers."
         pending = case_loop.PendingEvents()
+        committed = False
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
@@ -657,6 +749,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 refused = await _view_only(db, shown[1], vertical)
                 if refused:
                     return refused
+                from app.services import ctem_cases_store as store
+
+                case = shown[0]
+                state_before = case.state
+                known = {e.id for e in (await store.events_of(db, [case.id])).get(case.id, [])}
                 await case_loop.record_validation(
                     db,
                     shown[0],
@@ -673,10 +770,16 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     events=pending,
                 )
                 await db.commit()
+                committed = True
                 await case_loop.publish_pending(pending)
-                refreshed = await _shown(db, wanted, org_id, vertical)
-                answer: dict[str, Any] = {"updated": refreshed[2] if refreshed else {"id": str(wanted)}}
-                newest = (shown[0].validations or [{}])[-1]
+                # A compact answer (#2473): what this call wrote, never the whole case re-read.
+                recorded = _recorded_validation(case, provider, ref)
+                answer: dict[str, Any] = {
+                    "updated": await _compact_write(
+                        db, case, state_before=state_before, known=known, validation=recorded
+                    )
+                }
+                newest = recorded or {}
                 if untested:
                     answer["not_tested"] = untested
                 if result in rules.PASSING_RESULTS and newest.get("conclusive") is False:
@@ -696,6 +799,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             return f"Refused: {exc}. Nothing was changed."
         except Exception:
             logger.warning("CTEM case validation failed", exc_info=True)
+            if committed:
+                # The write is in (#2473): never report a failure for a committed validation.
+                return _dump({"updated": {"id": str(wanted), "committed": True}})
             return "Error: the validation could not be recorded right now. Say so; nothing was changed."
 
     async def _ticket(case_id: str, integration: str = "", key: str = "", url: str = "", status: str = "open") -> str:
@@ -706,6 +812,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         wanted = _uuid(case_id)
         if wanted is None:
             return "case_id must be the id list_ctem_cases answers."
+        committed = False
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
@@ -717,16 +824,28 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 refused = await _view_only(db, shown[1], vertical)
                 if refused:
                     return refused
+                from app.services import ctem_cases_store as store
+
+                case = shown[0]
+                state_before = case.state
+                known = {e.id for e in (await store.events_of(db, [case.id])).get(case.id, [])}
                 case_loop.record_ticket(
-                    db, shown[0], integration=integration, key=key, url=url or None, status=status, actor=agent_id
+                    db, case, integration=integration, key=key, url=url or None, status=status, actor=agent_id
                 )
                 await db.commit()
-                refreshed = await _shown(db, wanted, org_id, vertical)
-                return _dump({"updated": refreshed[2] if refreshed else {"id": str(wanted)}})
+                committed = True
+                # A compact answer (#2473): the ticket recorded, never the whole case re-read.
+                recorded = _recorded_ticket(case, integration, key)
+                return _dump(
+                    {"updated": await _compact_write(db, case, state_before=state_before, known=known, ticket=recorded)}
+                )
         except rules.CaseRuleError as exc:
             return f"Refused: {exc}. Nothing was changed."
         except Exception:
             logger.warning("CTEM case ticket failed", exc_info=True)
+            if committed:
+                # The write is in (#2473): never report a failure for a committed ticket reference.
+                return _dump({"updated": {"id": str(wanted), "committed": True}})
             return "Error: the ticket reference could not be recorded right now. Say so; nothing was changed."
 
     async def _remediation(
@@ -1304,7 +1423,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="get_ctem_case",
             description=(
                 "Read one CTEM case: its fix, its member issues with their source product and id, "
-                "assets, primary assets and its latest history. A null count is unknown for you, never none."
+                "assets, primary assets and its latest history. A null count is unknown for you, never none. "
+                "An asset's asset_id is the inventory id; its id in a source product is in source_ids[].external_id."
             ),
             input_schema={
                 "type": "object",
@@ -1339,8 +1459,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         ToolDefinition(
             name="update_ctem_case",
             description=(
-                "Change a CTEM case: owner, due date, note, state with its reason, triage exploitation or "
-                "attack path, a loop gate, treatment plan, threat package, or a change applied through an "
+                "Change a CTEM case: owner, due date, note, state with its reason, exploitation, attack "
+                "path, gate, treatment plan, threat package, scenario, or a change applied through an "
                 "integration (gate ctem.production_change); these move the status. resolved needs evidence, "
                 "reopening a reason; accepted_risk and dismissed need a person."
             ),
@@ -1357,7 +1477,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "resolution_kind": {"type": "string"},
                     "exploitation": {
                         "type": "array",
-                        "description": "Per supporting asset: techniques in attack order, exposure, reading. Replaces the stored one.",
+                        "description": "Per supporting asset: techniques in attack order, exposure, reading. Replaces it.",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -1387,8 +1507,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "gate": {
                         "type": "object",
                         "description": (
-                            "A gate of the fleet's catalog: passed automatically (by: level or pin), "
-                            "waited, or answered (by: who, option)."
+                            "A catalog gate: passed_automatically (by: level|pin), waited, answered (by, option)."
                         ),
                         "properties": {
                             "key": {"type": "string", "description": "The gate key, e.g. ctem.mobilize."},
@@ -1401,8 +1520,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "treatment_plan": {
                         "type": "object",
                         "description": (
-                            "The risk treatment plan the remediation decision created for this case, as the "
-                            "plan tool answered it: its id, name and Link url."
+                            "The remediation decision's risk treatment plan, as the plan tool answered: id, name, Link url."
                         ),
                         "properties": {
                             "id": {"type": "string"},
@@ -1414,9 +1532,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "threat_package": {
                         "type": "object",
                         "description": (
-                            "The Grouping the review step drafted for this case (id, name, page url) and its "
-                            "requested coverage_id. A url not live is replaced by the draft page; refused while "
-                            "the analyst review is not approved."
+                            "The Grouping the review drafted (id, name, page url) and its coverage_id. A url not "
+                            "live becomes the draft page; refused until the analyst review approves."
                         ),
                         "properties": {
                             "grouping_id": {"type": "string"},
@@ -1426,11 +1543,17 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         },
                         "required": ["grouping_id"],
                     },
+                    "scenario": {
+                        "type": "object",
+                        "description": (
+                            "Validation scenario: scenario_id, name, url, techniques_total, techniques_playable, "
+                            "playable_tests."
+                        ),
+                    },
                     "applied_change": {
                         "type": "object",
                         "description": (
-                            "A fix applied through a bound integration, read back: what was pushed, the ids "
-                            "returned and how to revert it."
+                            "A fix applied through a bound integration, read back: pushed, ids, how to revert."
                         ),
                         "properties": {
                             "integration": {"type": "string"},

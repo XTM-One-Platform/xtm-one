@@ -12,7 +12,7 @@ import { renderWithProviders } from "@/testing/providers";
 import { CTEM_CASE_LIST_KEY } from "@/hooks/api/useCtemCasesApi";
 import CtemCaseDetail from "./CtemCaseDetail";
 
-const state = vi.hoisted(() => ({ notFound: false, aggregatesRestricted: false, loading: false }));
+const state = vi.hoisted(() => ({ notFound: false, aggregatesRestricted: false, loading: false, waitingGate: false }));
 
 vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useAuthApi")>()),
@@ -39,7 +39,33 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
             remediation_kind: "version",
             product_label: "Apache HTTP Server",
             fixed_version: "2.4.62",
-            state: "needs_attention",
+            state: state.waitingGate ? "waiting_decision" : "needs_attention",
+            ...(state.waitingGate
+              ? {
+                  gates: [
+                    {
+                      key: "ctem.accept_risk",
+                      phase: null,
+                      status: "waiting",
+                      asked_at: "2026-11-26T06:00:00Z",
+                      asked_of: { type: "admins", name: null },
+                      asked_by_agent: null,
+                      deadline: null,
+                      answered_at: null,
+                      answered_by: null,
+                      surface: null,
+                      option: null,
+                      comment: null,
+                      reason: null,
+                      passed_at: null,
+                      wait_seconds: 600,
+                      decision_id: null,
+                      work_item_id: null,
+                      decision_filed: false,
+                    },
+                  ],
+                }
+              : {}),
             state_since: null,
             owner_user_id: "u1",
             due_at: null,
@@ -138,6 +164,15 @@ describe("CtemCaseDetail restricted members (#11613)", () => {
     expect(screen.queryByText("All visible to you")).not.toBeInTheDocument();
     expect(screen.queryByText("On the issues you can see")).not.toBeInTheDocument();
     state.aggregatesRestricted = false;
+  });
+
+  it("draws the waiting decisions once, above the work card (#2477 UX round 2, B1)", () => {
+    state.notFound = false;
+    state.waitingGate = true;
+    page();
+    expect(screen.getAllByTestId("ctem-case-waiting-gates")).toHaveLength(1);
+    expect(screen.getAllByTestId("ctem-case-waiting-gate")).toHaveLength(1);
+    state.waitingGate = false;
   });
 
   it("answers a case the caller sees nothing of with the not-found page", () => {

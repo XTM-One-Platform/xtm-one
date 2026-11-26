@@ -59,9 +59,9 @@ describe("organization profile tabs", () => {
     expect(tabOfField("approval_threshold")).toBe("risk");
     expect(tabOfField("ticketing.project")).toBe("risk");
     expect(tabOfField("sector")).toBe("organization");
-    // The PIR list moved to the Prioritization policy of CTEM > Inventory (#1889).
+    // The PIRs are the Intelligence policy's of CTEM > Inventory (#2435).
     expect(tabOfField("pir_ids")).toBe("exposure");
-    expect(profileFieldHref("pir_ids")).toBe("/ctem/inventory/exposure?card=prioritization_policy");
+    expect(profileFieldHref("pir_ids")).toBe("/ctem/inventory/exposure?card=intelligence_policy");
     expect(tabOfField("accepted_risks")).toBe("exposure");
     expect(tabOfField("enterprise_knowledge")).toBe("organization");
     expect(tabOfField("unknown_field")).toBeNull();

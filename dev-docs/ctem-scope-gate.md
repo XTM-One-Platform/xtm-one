@@ -14,8 +14,16 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
 
 - After a signal is first recorded, by the API, the agent tool or a listener.
   A new sighting of a known signal re-runs it only when the signal is
-  unmatched (`to_validate`). A failure leaves the signal `new`; it never
-  refuses the signal.
+  unmatched (`to_validate`). A failure is retried once with local reads only
+  (no OpenCTI or OpenCRQ call); a second failure leaves the signal `new`; it
+  never refuses the signal. A remote read on this path never commits the
+  gate's session (it decides inside a savepoint) and is bounded in time. The
+  bulk CVE prefetch (`prepare_cve_reads`, no savepoint open) still hands the
+  pooled connection back during its OpenCTI reads.
+- On the case sweep tick, the signals still `new` past a 10-minute grace (a
+  record-time failure, a case-delete release whose background re-decision
+  was lost), 500 per case sweep, oldest first, each in its own savepoint
+  (`recheck_new`): nothing waits "for reconcile" for good.
 - After a profile change (assets, groups, primary assets, owned domains, tech
   stack, shipped products): the autonomous tick decides again the unmatched
   signals last decided before the newest profile version, 500 per tick

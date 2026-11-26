@@ -153,51 +153,14 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("shows the PIR score thresholds with their defaults and edits them as whole numbers from 0 to 100 (CTEM-08-UI)", async () => {
-    mockApi();
-    const { unmount } = renderWithProviders(<Harness initial={BASE} editing={false} />);
-    const card = screen.getByTestId("settings.organization.prioritization-policy");
-    expect(within(card).getByText("PIR score minimum: vulnerabilities")).toBeTruthy();
-    expect(within(card).getByText("70")).toBeTruthy();
-    expect(within(card).getByText("75")).toBeTruthy();
-    // The defaults alone never make a policy "set".
-    expect(within(card).getByText(/No policy yet/)).toBeTruthy();
-    unmount();
-
-    let last: ProfileForm | null = null;
-    const validity = vi.fn();
-    renderWithProviders(<Harness initial={BASE} editing onChange={(form) => (last = form)} onScoreValidity={validity} />);
-    const vuln = screen.getByRole("textbox", { name: "PIR score minimum: vulnerabilities" }) as HTMLInputElement;
-    expect(vuln.placeholder).toBe("70");
-    fireEvent.change(vuln, { target: { value: "60" } });
-    expect(last!.prioritization_policy?.pir_min_score_vulnerability).toBe(60);
-    fireEvent.change(vuln, { target: { value: "60.5" } });
-    expect(vuln.getAttribute("aria-invalid")).toBe("true");
-    await waitFor(() => expect(validity).toHaveBeenLastCalledWith(true));
-    fireEvent.change(vuln, { target: { value: "101" } });
-    expect(screen.getByRole("alert").textContent).toBe("Type a whole number from 0 to 100, or leave it empty for the default.");
-    expect(last!.prioritization_policy?.pir_min_score_vulnerability).toBe(60);
-    fireEvent.change(vuln, { target: { value: "" } });
-    expect(last!.prioritization_policy?.pir_min_score_vulnerability).toBeUndefined();
-    const threat = screen.getByRole("textbox", { name: "PIR score minimum: threat activity" });
-    fireEvent.change(threat, { target: { value: "90" } });
-    expect(last!.prioritization_policy?.pir_min_score_threat).toBe(90);
-    // Every field of the policy card explains itself (#1000 UX round 1 B1):
-    // CVSS, EPSS, both PIR scores, primary asset criticality, KEV, Internet exposure.
-    const card2 = screen.getByTestId("settings.organization.prioritization-policy");
-    expect(within(card2).getAllByRole("img", { name: "About this field" })).toHaveLength(7);
-  });
-
-  it("counts a customized PIR threshold as a set policy, a default one not (#1000 review)", () => {
+  it("draws no PIR score minimum and counts a stored one as no policy: each PIR has its own on the Intelligence policy (#2435)", () => {
     mockApi();
     const empty = { cvss_min: null, epss_min: null, kev_always_in: true, internet_exposure_required: false, min_primary_asset_criticality: "", exclusions: [], accepted_risks: [] };
-    const atDefault: ProfileForm = { ...BASE, prioritization_policy: { ...empty, pir_min_score_vulnerability: 70, pir_min_score_threat: 75 } };
-    const { unmount } = renderWithProviders(<Harness initial={atDefault} editing={false} />);
-    expect(within(screen.getByTestId("settings.organization.prioritization-policy")).getByText(/No policy yet/)).toBeTruthy();
-    unmount();
-    const custom: ProfileForm = { ...BASE, prioritization_policy: { ...empty, pir_min_score_vulnerability: 60 } };
-    renderWithProviders(<Harness initial={custom} editing={false} />);
-    expect(within(screen.getByTestId("settings.organization.prioritization-policy")).queryByText(/No policy yet/)).toBeNull();
+    const stored: ProfileForm = { ...BASE, prioritization_policy: { ...empty, pir_min_score_vulnerability: 60, pir_min_score_threat: 90 } };
+    renderWithProviders(<Harness initial={stored} editing={false} />);
+    const card = screen.getByTestId("settings.organization.prioritization-policy");
+    expect(within(card).queryByText(/PIR score minimum/)).toBeNull();
+    expect(within(card).getByText(/No policy yet/)).toBeTruthy();
   });
 
   it("ignores the policy keys the backend adds with their defaults (scope, SLA) when telling a set policy", () => {
@@ -207,10 +170,6 @@ describe("OrganizationExposureCards (#11543 S3)", () => {
     const form = { ...BASE, prioritization_policy: stored } as ProfileForm;
     renderWithProviders(<Harness initial={form} editing={false} />);
     expect(within(screen.getByTestId("settings.organization.prioritization-policy")).getByText(/No policy yet/)).toBeTruthy();
-  });
-
-  it("maps a refused PIR score to its field", () => {
-    expect(exposureIssueFromRefusal(BASE, "prioritization_policy.pir_min_score_threat: Input should be less than or equal to 100")).toMatchObject({ section: "score", field: "pir_min_score_threat" });
   });
 
   it("picks an asset group among the Asset groups rows or None, never free text (UX B2, #11781)", async () => {

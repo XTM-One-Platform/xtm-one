@@ -28,7 +28,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import Any
 
@@ -454,6 +454,7 @@ async def _with_cve_software(
     primary_assets: Any,
     *,
     remote: bool = True,
+    release: bool = False,
 ) -> gate.SignalFacts:
     """*facts* with the software OpenCTI relates to the CVEs the signal names (#2171).
 
@@ -462,6 +463,8 @@ async def _with_cve_software(
     owner's, as :func:`_scenarios_for`), once per session and CVE list. Never raises.
     *remote* False reads nothing, remote or local: only what this session already
     read (:func:`prepare_cve_reads`) is used, else *facts* are answered unchanged.
+    *release* True (the bulk prefetch, no savepoint open) hands the pooled
+    connection back during the OpenCTI call; the record-time gate never does (#2516).
     """
     from app.services import ctem_cve_software
 
@@ -480,7 +483,9 @@ async def _with_cve_software(
             fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
         reader = scenario_reader(row, fallback)
         found, how = await _session_cached(
-            db, ("cve_software", reader, tuple(cves)), lambda: ctem_cve_software.cve_software(db, reader, cves)
+            db,
+            ("cve_software", reader, tuple(cves)),
+            lambda: ctem_cve_software.cve_software(db, reader, cves, release=release),
         )
     except Exception:
         logger.warning("CTEM scope gate: CVE software not read for %s", getattr(row, "id", "?"), exc_info=True)
@@ -521,7 +526,8 @@ async def prepare_cve_reads(
                 primary_assets = links[org]
             else:
                 primary_assets = await _session_cached(db, ("links", org), partial(_primary_assets, db, org))
-            await _with_cve_software(db, row, facts, profile, primary_assets)
+            # No savepoint is open here: release the connection during the OpenCTI I/O (#2518 review).
+            await _with_cve_software(db, row, facts, profile, primary_assets, release=True)
         except Exception:
             logger.warning("CTEM scope gate: CVE read not prepared for %s", getattr(row, "id", "?"), exc_info=True)
 
@@ -598,8 +604,10 @@ async def evaluate(
 async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: bool) -> Any:
     """The gate on a signal just recorded, then its case (#857); a failure never refuses the signal.
 
-    A gate failure leaves it ``new`` for an on-demand pass; a case that could
-    not be opened leaves it ``confirmed`` for the scheduled sweep. Answers the
+    A gate failure is retried once with local reads only (no OpenCTI or OpenCRQ
+    call); a second failure leaves it ``new`` for :func:`recheck_new`, the
+    scheduled pass. A case that could not be opened leaves it ``confirmed`` for
+    the scheduled sweep. Answers the
     case events to raise once the caller has committed
     (``ctem_case_loop.publish_pending``).
     """
@@ -630,9 +638,22 @@ async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: b
         async with db.begin_nested():
             await evaluate(db, row)
     except Exception:
-        logger.warning("CTEM scope gate not run on signal %s; it stays new", getattr(row, "id", "?"), exc_info=True)
-        recorded(None)
-        return pending
+        logger.warning(
+            "CTEM scope gate failed on signal %s; deciding it again without remote reads",
+            getattr(row, "id", "?"),
+            exc_info=True,
+        )
+        try:
+            async with db.begin_nested():
+                await evaluate(db, row, remote_reads=False)
+        except Exception:
+            logger.warning(
+                "CTEM scope gate not run on signal %s; it stays new for the scheduled recheck",
+                getattr(row, "id", "?"),
+                exc_info=True,
+            )
+            recorded(None)
+            return pending
     verdict = signals.verdict_of(row.state)
     try:
         # #1951: nothing opens while an administrator paused case opening; the signal waits confirmed.
@@ -752,8 +773,15 @@ async def recheck_parked(
     return await _decide_again(db, rows, now=now)
 
 
-async def _decide_again(db: AsyncSession, rows: list[CtemSignal], *, now: datetime | None = None) -> dict[str, int]:
-    """*rows* decided again, the profile, link index and OpenCRQ read once per organization and reader."""
+async def _decide_again(
+    db: AsyncSession, rows: list[CtemSignal], *, now: datetime | None = None, isolate: bool = False
+) -> dict[str, int]:
+    """*rows* decided again, the profile, link index and OpenCRQ read once per organization and reader.
+
+    *isolate* decides each row in its own savepoint: a row the gate cannot decide
+    is logged, its ``updated_at`` moved so it waits one grace before the next try
+    (never starving the batch), and counted under ``failed``; the others still land. (#2516)
+    """
     counts: dict[str, int] = {}
     profiles: dict[uuid.UUID, Any] = {}
     links: dict[uuid.UUID, Any] = {}
@@ -769,7 +797,8 @@ async def _decide_again(db: AsyncSession, rows: list[CtemSignal], *, now: dateti
         reader = scenario_reader(row, fallback)
         if reader not in by_reader:
             by_reader[reader] = await read_scenarios(db, user_id=reader)
-        await evaluate(
+        decide = partial(
+            evaluate,
             db,
             row,
             profile=profiles[row.organization_id],
@@ -778,8 +807,58 @@ async def _decide_again(db: AsyncSession, rows: list[CtemSignal], *, now: dateti
             now=at,
             remote_reads=False,
         )
+        if not isolate:
+            await decide()
+            counts[row.state] = counts.get(row.state, 0) + 1
+            continue
+        row_id = getattr(row, "id", "?")
+        try:
+            async with db.begin_nested():
+                await decide()
+        except Exception:
+            logger.warning("CTEM scope gate: signal %s not decided by the recheck", row_id, exc_info=True)
+            row.updated_at = at
+            counts["failed"] = counts.get("failed", 0) + 1
+            continue
         counts[row.state] = counts.get(row.state, 0) + 1
     return counts
+
+
+#: How long a signal may stay ``new`` before :func:`recheck_new` decides it.
+UNDECIDED_GRACE = timedelta(minutes=10)
+#: How many ``new`` signals one case sweep decides (the CVE reads are taken in bulk up front).
+RECHECK_NEW_BATCH = RECHECK_BATCH
+
+
+async def recheck_new(
+    db: AsyncSession,
+    *,
+    now: datetime | None = None,
+    batch: int = RECHECK_NEW_BATCH,
+    grace: timedelta = UNDECIDED_GRACE,
+) -> dict[str, int]:
+    """The signals still ``new`` past *grace*, decided, *batch* per call, oldest first.
+
+    A signal whose record-time gate failed, or that a case delete released
+    (``ctem_case_delete._release_signals``) and whose background re-decision
+    never ran (a task lost to a pod restart), would otherwise wait "for
+    reconcile" for good: nothing else re-gates ``new``. The gate never decides
+    ``new``, so a decided signal leaves the selection; ``updated_at`` moves on
+    each decision, so a signal is read at most once per *grace*. The CVE reads are taken
+    before any row is written (:func:`prepare_cve_reads`). The caller commits.
+    """
+    at = now or datetime.now(UTC)
+    rows = list(
+        (
+            await db.execute(
+                select(CtemSignal)
+                .where(CtemSignal.state == "new", CtemSignal.updated_at < at - grace)
+                .order_by(CtemSignal.updated_at)
+                .limit(max(1, int(batch)))
+            )
+        ).scalars()
+    )
+    return await _decide_again(db, rows, now=at, isolate=True)
 
 
 #: The watchlist reasons an inventory link or a software change can lift (#1591 S3).

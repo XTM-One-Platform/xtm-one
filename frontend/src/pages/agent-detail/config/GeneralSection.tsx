@@ -73,10 +73,6 @@ import { ICON_MAP, OUTPUT_FORMATS, OUTPUT_FORMAT_CONFIG, REASONING_EFFORT_LEVELS
 import { ALL_HANDOVER_TYPES, consultsBackgroundDelegator, editedHandoverType, handoverTypeParts, shownHandoverType } from "@/lib/handover-types";
 import type { Agent, AvailableModel, Integration, LLMProvider, OrganizationContextMode, ProviderCatalogItem, ToolRef } from "@/types";
 import { OrganizationContextModeSelect, useOrganizationContextEffectiveLabel } from "@/components/organization-context-mode-select";
-import {
-  OrganizationContextCategoriesSelect,
-  useOrganizationContextCategoriesLabel,
-} from "@/components/organization-context-categories-select";
 import { useUpdateAgent, usePipelineTools, useAgentPersonaVersions } from "@/hooks/api/useAgentApi";
 import { useCredentialSharingConfirm } from "@/hooks/useCredentialSharingConfirm";
 import { useToast } from "@/components/ui/toast";
@@ -324,8 +320,6 @@ type GeneralSectionProps = {
   setReasoningEffort: (v: string | null) => void;
   organizationContextMode: OrganizationContextMode;
   setOrganizationContextMode: (v: OrganizationContextMode) => void;
-  organizationContextCategories: string[] | null;
-  setOrganizationContextCategories: (v: string[] | null) => void;
   maxIterations: number | null;
   setMaxIterations: (v: number | null) => void;
   persona: string;
@@ -427,8 +421,6 @@ export function GeneralSection({
   setReasoningEffort,
   organizationContextMode,
   setOrganizationContextMode,
-  organizationContextCategories,
-  setOrganizationContextCategories,
   maxIterations,
   setMaxIterations,
   persona,
@@ -498,7 +490,6 @@ export function GeneralSection({
   const { t_i18n, intl } = useFormatter();
   const routingModel = useRoutingModelLabel();
   const organizationContextInEffect = useOrganizationContextEffectiveLabel("agent", agent.organization_context_mode ?? "inherit");
-  const organizationCategoriesInEffect = useOrganizationContextCategoriesLabel("agent", agent.organization_context_categories ?? null);
   const navigate = useNavigate();
   const personaRef = useRef<HTMLTextAreaElement>(null);
   const guardrailsRef = useRef<HTMLTextAreaElement>(null);
@@ -734,7 +725,7 @@ export function GeneralSection({
                 </div>
               </SettingsField>
               </div>
-              <div className="grid items-start gap-4 sm:grid-cols-3" data-testid="agent-general-selects">
+              <div className="grid items-start gap-4 sm:grid-cols-2" data-testid="agent-general-selects">
               {/* Reasoning Effort */}
               <SettingsField
                 id={REASONING_EFFORT_FIELD_ID}
@@ -748,7 +739,7 @@ export function GeneralSection({
                 )}
               >
                 <Select value={reasoningEffort || "__default__"} onValueChange={(v) => setReasoningEffort(v === "__default__" ? null : v)}>
-                  <SelectTrigger id={REASONING_EFFORT_FIELD_ID} aria-describedby={settingsFieldHintId(REASONING_EFFORT_FIELD_ID)}>
+                  <SelectTrigger id={REASONING_EFFORT_FIELD_ID} className="w-full" aria-describedby={settingsFieldHintId(REASONING_EFFORT_FIELD_ID)}>
                     <SelectValue placeholder={t_i18n("Platform default")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -765,15 +756,6 @@ export function GeneralSection({
               <div className="min-w-0">
                 <OrganizationContextModeSelect scope="agent" value={organizationContextMode} onChange={setOrganizationContextMode} />
               </div>
-              {organizationContextMode !== "off" && (
-                <div className="min-w-0">
-                  <OrganizationContextCategoriesSelect
-                    scope="agent"
-                    value={organizationContextCategories}
-                    onChange={setOrganizationContextCategories}
-                  />
-                </div>
-              )}
               </div>
 
               <SettingsField
@@ -940,9 +922,6 @@ export function GeneralSection({
                 </OverviewTile>
                 <OverviewTile label={t_i18n("Organization context")} span={AGENT_OVERVIEW_SPANS.organizationContext} hint={organizationContextInEffect} testId="agent.organization-context-read">
                   {t_i18n(ORGANIZATION_CONTEXT_MODE_LABELS[agent.organization_context_mode ?? "inherit"])}
-                </OverviewTile>
-                <OverviewTile label={t_i18n("Preloaded organization categories")} span={AGENT_OVERVIEW_SPANS.organizationCategories} hint={organizationCategoriesInEffect} testId="agent.organization-categories-read">
-                  {agent.organization_context_categories == null ? t_i18n("Inherit") : t_i18n("Set on this agent")}
                 </OverviewTile>
                 <OverviewTile label={t_i18n("Max Iterations")} span={AGENT_OVERVIEW_SPANS.maxIterations}>
                   {agent.max_iterations !== null && agent.max_iterations !== undefined ? <span className="content-base font-mono-plex">{agent.max_iterations}</span> : <TruncatedText text={t_i18n("Default ({value})", { value: platformMaxIterations })} className="content-base text-default-secondary italic" />}
@@ -1565,6 +1544,7 @@ export function GeneralSection({
                 agent={agent}
                 integrations={integrations}
                 sharedGroupIds={sharedGroupIds}
+                sharedUserIds={userSharing.userIds}
                 currentUserId={currentUserId}
                 disabled={isPending}
                 onLend={onLendIntegrations}

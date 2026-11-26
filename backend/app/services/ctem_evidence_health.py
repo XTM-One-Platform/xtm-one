@@ -248,7 +248,13 @@ async def run_pass(
                 lens="inside",
                 subject_label=gap.subject_label,
                 observed_at=at,
-                evidence={**gap.evidence, "reason": gap.reason, **_asset_link(reader, gap)},
+                evidence={
+                    **gap.evidence,
+                    "reason": gap.reason,
+                    **_asset_link(reader, gap),
+                    # #2436: the source that recorded it, counted apart on the signal sources view.
+                    ctem_signals.SOURCE_KEY_EVIDENCE: f"{PROVIDER}:pass",
+                },
                 dedupe_key=gap.dedupe_key,
             ),
             recorded_via="listener",

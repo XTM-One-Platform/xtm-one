@@ -49,6 +49,7 @@ export const PROFILE_CARD_TAB = {
   assets_exposure: "exposure",
   asset_groups: "exposure",
   prioritization_policy: "exposure",
+  intelligence_policy: "exposure",
   outside_lens: "exposure",
   evidence_health: "exposure",
   enterprise_knowledge: "organization",
@@ -69,6 +70,7 @@ export const INVENTORY_CARD_PATH: Partial<Record<ProfileCard, string>> = {
   assets_exposure: "/ctem/inventory",
   // The settings cards have their own Inventory tab (#1511), never an edit view opened by URL only.
   prioritization_policy: "/ctem/inventory/exposure",
+  intelligence_policy: "/ctem/inventory/exposure",
   outside_lens: "/ctem/inventory/exposure",
   evidence_health: "/ctem/inventory/exposure",
   asset_groups: "/ctem/inventory/asset-groups",
@@ -84,7 +86,7 @@ export function profileCardHref(card: ProfileCard, params: URLSearchParams = new
 
 /**
  * Every field of the profile (a form key or a contract path) and the card that edits it.
- * pir_names travels with pir_ids, edited on the Prioritization policy beside the PIR score thresholds (#1889);
+ * pir_ids and pir_names derive from the PIRs enabled on the Intelligence policy (#2435), one minimum score each;
  * posture_target is set on the CTEM governance page and only carried by the form, so it opens the exposure tab,
  * where the policy lives.
  */
@@ -100,8 +102,8 @@ export const PROFILE_FIELD_CARD = {
   annual_loss_threshold: "risk_appetite",
   approval_threshold: "risk_appetite",
   ticketing: "ticketing",
-  pir_ids: "prioritization_policy",
-  pir_names: "prioritization_policy",
+  pir_ids: "intelligence_policy",
+  pir_names: "intelligence_policy",
   primary_assets: "primary_assets",
   shipped_products: "shipped_products",
   software: "software",

@@ -33,11 +33,14 @@ describe("OrganizationContextInjectionCard", () => {
     expect(screen.queryByRole("switch")).toBeNull();
   });
 
-  it("reads the preloaded categories at rest, None by default", async () => {
+  it("offers no preloaded categories, at rest or on Edit (#2443)", async () => {
     renderWithProviders(<OrganizationContextInjectionCard />);
     const card = await screen.findByTestId("settings.organization.injection");
-    await waitFor(() => expect(card.textContent).toContain("Preloaded organization categories"));
-    expect(card.textContent).toContain("None");
+    await waitFor(() => expect(card.textContent).toContain("On"));
+    expect(card.textContent).not.toContain("Preloaded organization categories");
+    fireEvent.click(screen.getByRole("button", { name: "Edit organization context in agents" }));
+    await screen.findByRole("switch", { name: /Use organization context in every agent/ });
+    expect(card.textContent).not.toContain("Preloaded organization categories");
   });
 
   it("turns it off for every agent that inherits on Save", async () => {
@@ -46,7 +49,7 @@ describe("OrganizationContextInjectionCard", () => {
     fireEvent.click(await screen.findByRole("switch", { name: /Use organization context in every agent/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
-      expect(put).toHaveBeenCalledWith("/organization-context/injection", { enabled: false, categories: [] }),
+      expect(put).toHaveBeenCalledWith("/organization-context/injection", { enabled: false }),
     );
     await waitFor(() => expect(screen.queryByRole("switch")).toBeNull());
   });

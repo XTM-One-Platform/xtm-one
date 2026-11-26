@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Response, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1986,6 +1986,148 @@ async def list_organization_pirs(
         unavailable=unavailable,  # type: ignore[arg-type]
         opencti_url=opencti_url,
     )
+
+
+class IntelligencePolicyPir(BaseModel):
+    """One PIR of the Intelligence policy (#2435): what OpenCTI says, and the organization's policy on it."""
+
+    id: str
+    pir_id: str
+    integration_id: str | None
+    name: str
+    description: str
+    pir_type: str
+    criteria_summary: str
+    question: str
+    owner: str
+    review_cadence: str
+    primary_assets: list[str]
+    min_score: int
+    enabled: bool
+    last_seen_at: str | None
+    gone_at: str | None
+
+
+class IntelligencePolicyReadError(BaseModel):
+    """One OpenCTI whose PIRs a refresh could not read, and why."""
+
+    integration_id: str
+    integration: str
+    reason: str
+
+
+class IntelligencePolicyResponse(BaseModel):
+    pirs: list[IntelligencePolicyPir]
+    total: int
+    #: Set by a refresh: the OpenCTIs it could not read (their rows are kept as they were).
+    errors: list[IntelligencePolicyReadError] = Field(default_factory=list)
+
+
+class IntelligencePolicyPatch(BaseModel):
+    """The policy fields of one PIR; a field left out is kept. OpenCTI's own fields are never written here."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: str | None = Field(default=None, max_length=1000)
+    owner: str | None = Field(default=None, max_length=200)
+    review_cadence: str | None = None
+    primary_assets: list[str] | None = Field(default=None, max_length=50)
+    min_score: int | None = Field(default=None, ge=0, le=100)
+    enabled: bool | None = None
+
+
+def _policy_pir(row: Any) -> IntelligencePolicyPir:
+    return IntelligencePolicyPir(
+        id=str(row.id),
+        pir_id=row.pir_id,
+        integration_id=str(row.integration_id) if row.integration_id else None,
+        name=row.name or row.pir_id,
+        description=row.description or "",
+        pir_type=row.pir_type or "",
+        criteria_summary=row.criteria_summary or "",
+        question=row.question or "",
+        owner=row.owner or "",
+        review_cadence=row.review_cadence or "",
+        primary_assets=list(row.primary_assets or []),
+        min_score=int(row.min_score),
+        enabled=bool(row.enabled),
+        last_seen_at=row.last_seen_at.isoformat() if row.last_seen_at else None,
+        gone_at=row.gone_at.isoformat() if row.gone_at else None,
+    )
+
+
+@router.get("/intelligence-policy", response_model=IntelligencePolicyResponse)
+async def get_intelligence_policy(
+    search: str = "",
+    offset: int = 0,
+    limit: int = 25,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> IntelligencePolicyResponse:
+    """The stored OpenCTI PIRs with the policy on each (#2435), enabled first, searchable, paged."""
+    from app.services.organization_pirs import list_rows
+
+    rows = await list_rows(db)
+    needle = search.strip().casefold()
+    if needle:
+        rows = [r for r in rows if needle in f"{r.name} {r.pir_id} {r.owner} {r.question}".casefold()]
+    offset, limit = max(offset, 0), min(max(limit, 1), 200)
+    return IntelligencePolicyResponse(pirs=[_policy_pir(r) for r in rows[offset : offset + limit]], total=len(rows))
+
+
+@router.patch("/intelligence-policy/{row_id}", response_model=IntelligencePolicyPir)
+async def patch_intelligence_policy_pir(
+    row_id: uuid.UUID,
+    body: IntelligencePolicyPatch,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> IntelligencePolicyPir:
+    """Write the policy of one PIR (administrators): question, owner, cadence, primary assets, minimum, enabled.
+
+    The next provisioning pass reads it: a PIR disabled here leaves the PIR
+    playbook, its row stays. 404 for an unknown row, 422 for a bad value.
+    """
+    from datetime import UTC, datetime
+
+    from app.models.organization_pir import OrganizationPir
+    from app.services.organization_pirs import PirPolicyError, apply_edit
+
+    row = await db.get(OrganizationPir, row_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="PIR not found in the Intelligence policy")
+    try:
+        apply_edit(row, body.model_dump(exclude_none=True), datetime.now(UTC))
+    except PirPolicyError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    await db.commit()
+    await db.refresh(row)
+    return _policy_pir(row)
+
+
+@router.post("/intelligence-policy/refresh", response_model=IntelligencePolicyResponse)
+async def refresh_intelligence_policy(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> IntelligencePolicyResponse:
+    """Read the PIRs of every connected OpenCTI now, as the calling administrator first (administrators).
+
+    The background refresh does it hourly. An OpenCTI that could not be read
+    is answered in ``errors`` with the reason, never silently.
+    """
+    from app.services.organization_pirs import list_rows, refresh_all
+
+    result = await refresh_all(db, acting_user_id=admin.id)
+    await db.commit()
+    rows = await list_rows(db)
+    errors = [
+        IntelligencePolicyReadError(
+            integration_id=integration_id,
+            integration=result.get("names", {}).get(integration_id, "OpenCTI"),
+            reason=reason,
+        )
+        for integration_id, reason in result.get("errors", {}).items()
+    ]
+    return IntelligencePolicyResponse(pirs=[_policy_pir(r) for r in rows[:25]], total=len(rows), errors=errors)
 
 
 class AiDraftProposal(BaseModel):

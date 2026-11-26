@@ -601,7 +601,12 @@ async def run_pass(
                 lens="outside",
                 subject_label=f"{finding.host}: {finding.reason}",
                 observed_at=at,
-                evidence={**finding.evidence, "reason": finding.reason},
+                # #2436: the pass that recorded it, counted apart on the signal sources view.
+                evidence={
+                    **finding.evidence,
+                    "reason": finding.reason,
+                    ctem_signals.SOURCE_KEY_EVIDENCE: f"{reader.provider}:pass",
+                },
                 dedupe_key=finding.dedupe_key,
             ),
             recorded_via="listener",

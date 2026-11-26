@@ -129,8 +129,89 @@ describe("CaseValidation", () => {
     expect(screen.getByTestId("ctem-case-validation-option").textContent).toBe("Option A");
   });
 
+  it("shows the reported result, the note and what would make an inconclusive pass conclusive (#2466)", () => {
+    const row = {
+      ...SAFE,
+      result: "inconclusive" as const,
+      reported_result: "not_exposed" as const,
+      conclusive: false,
+      evidence_type: "validation",
+      note: "Unauthenticated external scan, 0 findings, no version read",
+      run_order: undefined,
+    };
+    renderWithProviders(<CaseValidation caseId="c1" validations={[row]} history={[]} />);
+    const badge = screen.getByTestId("ctem-case-validation-result");
+    expect(badge.textContent).toBe("Not exposed, not conclusive");
+    expect(badge.getAttribute("data-tone")).toBe("neutral");
+    expect(screen.getByTestId("ctem-case-validation-note").textContent).toBe("Unauthenticated external scan, 0 findings, no version read");
+    expect(screen.getByTestId("ctem-case-validation-hint").textContent).toContain("an authenticated scan or an agent");
+    expect(screen.getByTestId("ctem-case-validation-run").querySelector('[data-tone="green"]')).toBeNull();
+  });
+
+  it("keeps a bare Inconclusive with no hint when the reported word or the evidence type is absent", () => {
+    renderWithProviders(<CaseValidation caseId="c1" validations={[{ ...SAFE, result: "inconclusive" }]} history={[]} />);
+    expect(screen.getByTestId("ctem-case-validation-result").textContent).toBe("Inconclusive");
+    expect(screen.queryByTestId("ctem-case-validation-hint")).toBeNull();
+  });
+
+  it("renders conclusive, failed and pending rows as before, with no note or hint line", () => {
+    const rows = [
+      { ...SAFE, ref: "a", result: "passed" as const, conclusive: true, evidence_type: "remediation", note: null },
+      { ...SAFE, ref: "b", result: "failed" as const },
+      { ...SAFE, ref: "c", result: "pending" as const },
+    ];
+    renderWithProviders(<CaseValidation caseId="c1" validations={rows} history={[]} />);
+    const words = screen.getAllByTestId("ctem-case-validation-result").map((b) => [b.textContent, b.getAttribute("data-tone")]);
+    expect(words).toEqual(
+      expect.arrayContaining([
+        ["Passed", "green"],
+        ["Failed", "red"],
+        ["Pending", "yellow"],
+      ]),
+    );
+    expect(screen.queryByTestId("ctem-case-validation-note")).toBeNull();
+    expect(screen.queryByTestId("ctem-case-validation-hint")).toBeNull();
+  });
+
   it("says a case not validated yet, never blank", () => {
     renderWithProviders(<CaseValidation caseId="c1" validations={[]} history={[]} />);
     expect(screen.getByText(/once the case is validated|once the case is prioritized|writes in OpenCRQ/)).toBeTruthy();
+  });
+
+  // #2468: the scenario link, like the threat package's, and its playability.
+  const SCENARIO_URL = "https://aev.example.com/tenant-1/admin/scenarios/3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
+
+  it("links the scenario in OpenAEV and states it is not playable", () => {
+    const scenario = { restricted: false, url: SCENARIO_URL, name: "APT-X", techniques_total: 12, techniques_playable: 1, techniques_missing: 11, playable: false };
+    renderWithProviders(<CaseValidation caseId="c1" validations={[]} history={[]} scenario={scenario} />);
+    const link = screen.getByTestId("ctem-case-scenario-link");
+    expect(link.getAttribute("href")).toBe(SCENARIO_URL);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(screen.getByTestId("ctem-case-scenario-not-playable").textContent).toContain("11 of 12");
+  });
+
+  it("shows no row for a case without a scenario, and no link for a restricted one", () => {
+    const { unmount } = renderWithProviders(<CaseValidation caseId="c1" validations={[SAFE]} history={[]} scenario={null} />);
+    expect(screen.queryByTestId("ctem-case-validation-scenario")).toBeNull();
+    unmount();
+    renderWithProviders(
+      <CaseValidation caseId="c1" validations={[SAFE]} history={[]} scenario={{ restricted: true, playable: true, techniques_total: 4, techniques_missing: 0 }} />,
+    );
+    expect(screen.queryByTestId("ctem-case-scenario-link")).toBeNull();
+    expect(screen.queryByTestId("ctem-case-validation-scenario")).toBeNull();
+  });
+
+  it("never leaves the card blank: the reason shows with a scenario and no validation yet", () => {
+    const reason = /prove whether the exposure is real/;
+    const playable = { restricted: false, url: SCENARIO_URL, name: "APT-X", techniques_total: 4, techniques_playable: 4, techniques_missing: 0, playable: true };
+    const { unmount } = renderWithProviders(<CaseValidation caseId="c1" validations={[]} history={[]} scenario={playable} />);
+    expect(screen.getByTestId("ctem-case-scenario-link")).toBeTruthy();
+    expect(screen.getByText(reason)).toBeTruthy();
+    unmount();
+    renderWithProviders(
+      <CaseValidation caseId="c1" validations={[]} history={[]} scenario={{ restricted: true, playable: true, techniques_total: 4, techniques_missing: 0 }} />,
+    );
+    expect(screen.queryByTestId("ctem-case-scenario-link")).toBeNull();
+    expect(screen.getByText(reason)).toBeTruthy();
   });
 });

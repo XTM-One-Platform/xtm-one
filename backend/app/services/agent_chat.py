@@ -1362,33 +1362,24 @@ async def _turn_trace_tool_ids(
     """The trace suites a turn wires: the one rule, whatever carries them.
 
     Trace inspection reads the agent's own traces, every user's conversations
-    with it (``_own_trace_reader``).
-
-    - The work of an A2A partner's task gets none, whatever identity it runs
-      as (``a2a.partner_scope``).
-    - A suite the agent carries itself was chosen by whoever configured it.
-    - A suite a chat session or a flow's tool node adds, and the full surface
-      ``agent_builder`` implies, are wired only for someone who may read the
-      agent's traces (``traces.may_read_agent_traces``).
+    with it (``_own_trace_reader``), so a suite is wired only for someone who
+    may read the agent's traces (``traces.may_read_agent_traces``), the rule
+    its Chats tab follows. That holds for a suite the agent carries itself, one
+    a chat session or a flow's tool node adds, and the full surface
+    ``agent_builder`` implies. The work of an A2A partner's task gets none,
+    whatever identity it runs as (``a2a.partner_scope``).
     """
     from app.a2a.partner_scope import in_partner_task
-    from app.services.builtin_tool_aliases import runtime_builtin_tool_ids
     from app.services.builtin_tools.traces import TRACE_SUITE_IDS, may_read_agent_traces
 
     if in_partner_task():
         return set()
-    named = TRACE_SUITE_IDS.intersection(agent_builtin_tool_ids)
-    # The agent's own list, read through the ``observability`` group and its
-    # [DEPRECATED] trace ids, so a migrated row carries what it did.
-    carried = named.intersection(
-        runtime_builtin_tool_ids(agent.builtin_tool_ids, getattr(agent, "builtin_allowed_tools", None))
-    )
-    gated = named - carried
+    wired = set(TRACE_SUITE_IDS.intersection(agent_builtin_tool_ids))
     if "agent_builder" in agent_builtin_tool_ids:
-        gated |= TRACE_SUITE_IDS - named
-    if gated and await may_read_agent_traces(db, user_record, agent, user_group_ids):
-        return carried | gated
-    return carried
+        wired |= TRACE_SUITE_IDS
+    if wired and await may_read_agent_traces(db, user_record, agent, user_group_ids):
+        return wired
+    return set()
 
 
 def _platform_builder_actor(user_id: str) -> tuple[str, bool]:
@@ -4682,34 +4673,32 @@ async def run_agent_chat(
                 composite.add_tools(
                     *build_user_admin_tools(user_id=user_id, caller_is_admin=_caller_admin, agent_name=agent.name)
                 )
+            # No CTEM tool of any kind for a person with no CTEM right (#2441): the
+            # built-in CTEM agents' tools and the ctem group (former ctem_read / ctem_repair ids, #2443).
+            from app.services import ctem_access as _ctem_access
+
+            _ctem_ok = await _ctem_access.wires_ctem(user_id)
             # The CTEM case tools (#11545): the Remediation Coordinator and
             # the Mobilization Analyst, as the person asking, XTM One only.
             from app.services.builtin_tools import build_ctem_case_tools, offers_ctem_case_tools
 
-            if offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_case_tools(user_id=user_id, agent_id=str(agent.id)))
             # The CTEM signal tools (#826): the CTEM agents that see a trigger first.
             from app.services.builtin_tools import build_ctem_signal_tools, offers_ctem_signal_tools
 
-            if offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=user_id))
-            # The read-only CTEM group (#1337): bound on any agent, the reads the
-            # CTEM agents above do not already carry.
-            from app.services.builtin_tools import ctem_read_tools_for
-
-            ctem_read = ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
-            if ctem_read is not None:
-                composite.add_tools(*ctem_read)
             # The CTEM group (#1748): the signal and case tools on any agent, the owner's rights.
             from app.services.builtin_tools import ctem_tools_for
 
-            ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=user_id) if _ctem_ok else None
             if ctem_group is not None:
                 composite.add_tools(*ctem_group)
-            # The CTEM administrator repairs (#1778): the CTEM case agents, or the group bound.
+            # The attack surface passes read (#1778, #2443): the CTEM case agents not bound to ctem.
             from app.services.builtin_tools import ctem_repair_tools_for
 
-            ctem_repair = ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=user_id)
+            ctem_repair = ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=user_id) if _ctem_ok else None
             if ctem_repair is not None:
                 composite.add_tools(*ctem_repair)
             # The learned skill (#914): a built-in agent records durable lessons.
@@ -4919,8 +4908,15 @@ async def run_agent_chat(
         # synthetic input on an enrolled machine. Runner targeting deliberately
         # runs as the acting user (``is_admin=False``): an agent reaches the
         # user's own + company-managed + group-shared runners, never another
-        # user's private machine, whatever the caller's role.
-        if _app_settings.runners_enabled and "computer_use" in agent_builtin_tool_ids:
+        # user's private machine, whatever the caller's role. A partner's A2A
+        # task never gets it (``partner_scope.withhold_runner_tools``).
+        from app.a2a.partner_scope import withhold_runner_tools
+
+        if (
+            _app_settings.runners_enabled
+            and "computer_use" in agent_builtin_tool_ids
+            and not withhold_runner_tools(composite)
+        ):
             from app.api.v1.helpers import get_user_group_ids
             from app.services.builtin_tools import build_computer_use_tools
 

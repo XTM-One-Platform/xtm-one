@@ -160,36 +160,45 @@ def threshold_for(policy: Any, kind: str) -> int:
 PIR_FLOOR_KEY = "pir_floor_met"
 
 
-def pir_floor_met(pirs: object, threshold: int) -> bool:
-    """Whether one PIR match (``[{pir_id, score_at_delivery}]``) reaches *threshold*. Pure.
+def pir_floor_met(pirs: object, threshold: int, own: Mapping[str, int] | None = None) -> bool:
+    """Whether one PIR match (``[{pir_id, score_at_delivery}]``) reaches its minimum. Pure.
 
-    The score is the one at delivery, possibly the previous one (see
-    ``ctem_signal_listeners._pir_matches``): the run it starts reads the live
-    score before acting. No PIR match is below the floor.
+    Each PIR is held to its own minimum in *own* (the Intelligence policy,
+    #2435), else to *threshold*. The score is the one at delivery, possibly the
+    previous one (see ``ctem_signal_listeners._pir_matches``): the run it
+    starts reads the live score before acting. No PIR match is below the floor.
     """
+    own = own or {}
     for pir in pirs if isinstance(pirs, list) else []:
         score = pir.get("score_at_delivery") if isinstance(pir, Mapping) else None
-        if isinstance(score, int | float) and not isinstance(score, bool) and score >= threshold:
+        pir_id = pir.get("pir_id") if isinstance(pir, Mapping) else None
+        floor = own.get(pir_id, threshold) if isinstance(pir_id, str) else threshold
+        if isinstance(score, int | float) and not isinstance(score, bool) and score >= floor:
             return True
     return False
 
 
-def pir_drop_reason(kind: str, threshold: int, live_scores: Mapping[str, float | None]) -> str | None:
+def pir_drop_reason(
+    kind: str, threshold: int, live_scores: Mapping[str, float | None], own: Mapping[str, int] | None = None
+) -> str | None:
     """Why the PIR score rule drops a delivery, from the live score per PIR (``None``: the run starts).
 
-    Pure. The run starts when the entity reaches *threshold* in at least one
-    PIR; a PIR whose score could not be read counts as below.
+    Pure. The run starts when the entity reaches, in at least one PIR, that
+    PIR's own minimum in *own* (the Intelligence policy, #2435), else
+    *threshold*; a PIR whose score could not be read counts as below.
     """
     if not kind:
         return None
     if not live_scores:
         return "pir_min_score: the delivery names no PIR the entity is flagged in"
-    known = [s for s in live_scores.values() if isinstance(s, int | float) and not isinstance(s, bool)]
-    if any(s >= threshold for s in known):
+    own = own or {}
+    known = {pid: s for pid, s in live_scores.items() if isinstance(s, int | float) and not isinstance(s, bool)}
+    if any(s >= own.get(pid, threshold) for pid, s in known.items()):
         return None
     if not known:
         return "pir_min_score: the live PIR score could not be read from OpenCTI"
-    return f"pir_min_score: {kind} PIR score {max(known):g} is below the policy threshold {threshold}"
+    pid, best = max(known.items(), key=lambda kv: kv[1])
+    return f"pir_min_score: {kind} PIR score {best:g} is below the policy threshold {own.get(pid, threshold)}"
 
 
 async def _live_gql(db: Any, trigger_config: object, agent: Any, receiver_integration_id: Any) -> Any:
@@ -282,7 +291,8 @@ async def pir_filter_reason(
     gql = await _live_gql(db, trigger_config, agent, receiver_integration_id)
     if isinstance(gql, str):
         return f"pir_min_score: {gql}"
-    return pir_drop_reason(kind, threshold, await live_pir_scores(gql, entity_id, pir_ids))
+    own = getattr(profile, "pir_min_scores", None) or {}
+    return pir_drop_reason(kind, threshold, await live_pir_scores(gql, entity_id, pir_ids), own)
 
 
 async def filter_reason(

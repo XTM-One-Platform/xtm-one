@@ -213,7 +213,12 @@ def test_the_opencti_live_listener_source_covers_every_opencti_listener_row():
             continue
         for kind in row.object_types:
             name = kind.split(":")[-1]
-            aliases = {"threat-actor": "threat-actor-group", "sighting": "stix-sighting-relationship"}
+            # ``sighting:indicator`` (#2436) is a sighting whose target is an indicator.
+            aliases = {
+                "threat-actor": "threat-actor-group",
+                "sighting": "stix-sighting-relationship",
+                "indicator": "stix-sighting-relationship",
+            }
             assert name in wanted or aliases.get(name) in wanted, kind
 
 
@@ -329,8 +334,11 @@ def test_a_sighting_of_a_vulnerability_records_a_routable_signal():
         "vulnerability--9",
     )
     assert routing_facts(fields["evidence"])["sighted"] is True
+    # #2436: an indicator sighting is the indicator sighting source of path 2, never path 1.
     other = {"type": "create", "data": {"id": "sighting--2", "type": "sighting", "sighting_of_ref": "indicator--1"}}
-    assert listeners.match("opencti", "create", other) is None
+    found = listeners.match("opencti", "create", other)
+    assert found is not None
+    assert (found[0].trigger_path, found[0].source) == ("relevant_threat", "indicator_sighting")
 
 
 class SourceDb:

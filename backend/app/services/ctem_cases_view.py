@@ -26,13 +26,14 @@ that viewer is what they see.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
 import time
 import uuid
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
@@ -60,6 +61,10 @@ RESTRICTED = "Restricted"
 LIST_BUILD_WAIT_SECONDS = 2.0
 #: The retry delay a list read names when the view is still building after that wait.
 LIST_RETRY_AFTER_SECONDS = 30
+#: How often a list read waiting on a build another pod holds looks for its result (#2232).
+LIST_POLL_SECONDS = 0.25
+#: Decoded views kept per worker, by the digest of their stored JSON (#2232).
+DECODED_VIEWS_MAX = 16
 #: How long a viewer's previous view answers a list read, marked stale, while the new one builds (#2232):
 #: a build after a case-opening drain outlived :data:`VIEW_TTL_SECONDS` on ctem.one, leaving only a 503,
 #: and an hour still left a 503 when rollouts killed the builds in flight: any age beats an empty list.
@@ -119,6 +124,9 @@ class ViewerView:
     #: True when this viewer's own OpenCTI read is available (CTEM-16-UI, #1115): only
     #: then are the name, ids and link of a case's threat package shown.
     opencti: bool = False
+    #: True when this viewer's own OpenAEV read is available (#2468): only then are the
+    #: name, id and link of a case's validation scenario shown.
+    openaev: bool = False
     #: The member ids of the shared cases this view's read was given (#2113): a product member
     #: outside it belongs to a case opened after the view was built, never judged by it. ``None``
     #: for a view cached before the field (judged as before).
@@ -175,6 +183,7 @@ class ViewerView:
                 "no_access": self.no_access,
                 "opencrq": self.opencrq,
                 "opencti": self.opencti,
+                "openaev": self.openaev,
                 "judged": sorted(self.judged) if self.judged is not None else None,
                 "built_at": self.built_at.isoformat() if self.built_at else None,
             }
@@ -198,6 +207,7 @@ class ViewerView:
             no_access=bool(data.get("no_access", False)),
             opencrq=bool(data.get("opencrq", False)),
             opencti=bool(data.get("opencti", False)),
+            openaev=bool(data.get("openaev", False)),
             judged=set(judged) if isinstance(judged, list) else None,
             built_at=datetime.fromisoformat(built) if isinstance(built, str) and built else None,
         )
@@ -279,8 +289,8 @@ SIGNAL_SOURCE = "signal"
 
 async def signal_members(db: Any, user_id: str) -> set[str]:
     """The ``signal:<id>`` members *user_id* may read: every case-bound signal for an
-    administrator or a CTEM view or decide right (``services/ctem_access.py``), else the
-    signals recorded for them (the rule of ``GET /ctem-signals``).
+    administrator or a CTEM view or decide right (``services/ctem_access.py``), else none
+    (#2441: no CTEM without a right, the rule of ``GET /ctem-signals``).
 
     A case opened from a signal with no product issue (a path without a CVE) is
     then visible to whoever sees the signal that opened it, never to nobody.
@@ -296,7 +306,7 @@ async def signal_members(db: Any, user_id: str) -> set[str]:
         user is not None and await ctem_access.group_right(db, user_id) is not None
     )
     if not whole:
-        query = query.where(CtemSignal.recorded_by == str(user_id))
+        return set()
     try:
         ids = (await db.execute(query)).scalars()
     except Exception:
@@ -319,6 +329,13 @@ def start_timing() -> dict[str, float]:
 @asynccontextmanager
 async def timed(phase: str) -> AsyncIterator[None]:
     """Add the duration of the block to *phase* of the request's timings, when they are started."""
+    with timed_sync(phase):
+        yield
+
+
+@contextmanager
+def timed_sync(phase: str) -> Iterator[None]:
+    """:func:`timed` for a block with no await (a decode, a filter, a sort)."""
     start = time.perf_counter()
     try:
         yield
@@ -374,7 +391,7 @@ async def viewer_view(
     return replace(view, signals=signals, signal_details=details)
 
 
-def _pivot_id(signal: CtemSignal, evidence: dict[str, Any]) -> str | None:
+def _pivot_id(signal: Any, evidence: dict[str, Any]) -> str | None:
     """The module id a row pivots to when the signal carries no link, or None (never a guessed page).
 
     An OpenCTI signal names an OpenCTI object by its id; an OpenAEV one is a finding only when a
@@ -390,7 +407,7 @@ def _pivot_id(signal: CtemSignal, evidence: dict[str, Any]) -> str | None:
     return None
 
 
-def signal_detail(signal: CtemSignal) -> dict[str, Any]:
+def signal_detail(signal: Any) -> dict[str, Any]:
     """What a signal member is, as a case row names it (#1936): never its id as a label."""
     from app.services.ctem_signals import PATH_CATALOG, provider_name
 
@@ -435,11 +452,30 @@ async def signal_details(db: Any, members: set[str]) -> dict[str, dict[str, Any]
     if not ids:
         return {}
     try:
-        rows = (await db.execute(select(CtemSignal).where(CtemSignal.id.in_(ids)))).scalars().all()
+        # The columns a row names, never whole ORM objects (#2232): every case-bound signal is read
+        # on each list read, and building thousands of tracked instances blocked the event loop.
+        query = select(*(getattr(CtemSignal, name) for name in _DETAIL_COLUMNS)).where(CtemSignal.id.in_(ids))
+        rows = (await db.execute(query)).all()
     except Exception:
         logger.info("CTEM cases: signal details unreadable", exc_info=True)
         return {}
-    return {f"{SIGNAL_SOURCE}:{s.id}": signal_detail(s) for s in rows}
+    with timed_sync("signal-details"):
+        return {f"{SIGNAL_SOURCE}:{s.id}": signal_detail(s) for s in rows}
+
+
+#: The ``CtemSignal`` columns :func:`signal_detail` reads.
+_DETAIL_COLUMNS = (
+    "id",
+    "subject_label",
+    "subject_ref",
+    "subject_kind",
+    "trigger_path",
+    "lens",
+    "source_provider",
+    "source_external_id",
+    "evidence",
+    "first_seen_at",
+)
 
 
 #: Issue ids per ``IN`` list of the source signal read (#1986): far under every engine's parameter cap.
@@ -497,11 +533,47 @@ async def _singleflight(key: str) -> AsyncIterator[None]:
             _build_locks.pop(key, None)
 
 
+#: Decoded views by the digest of their stored JSON (#2232): a view of ~2.5k issues is decoded once
+#: per worker, not on every list read; a rebuilt view has another digest and is decoded again.
+_decoded: dict[bytes, ViewerView] = {}
+
+
+def _copy_view(view: ViewerView) -> ViewerView:
+    """A copy whose collections a caller may change without touching the memo (the issues are immutable)."""
+    return replace(
+        view,
+        issues=dict(view.issues),
+        open_ids=set(view.open_ids),
+        unavailable=set(view.unavailable),
+        missing=list(view.missing),
+        reasons=dict(view.reasons),
+        judged=set(view.judged) if view.judged is not None else None,
+    )
+
+
+def _decode_view(raw: str | bytes) -> ViewerView:
+    """The view stored as *raw*, decoded once per worker (#2232); phase ``decode``, or ``decode-memo``."""
+    data = raw.encode() if isinstance(raw, str) else raw
+    digest = hashlib.blake2b(data, digest_size=16).digest()
+    found = _decoded.get(digest)
+    if found is None:
+        with timed_sync("decode"):
+            found = ViewerView.from_json(data)
+        while len(_decoded) >= DECODED_VIEWS_MAX:
+            _decoded.pop(next(iter(_decoded)))
+        _decoded[digest] = found
+    else:
+        mark("decode", "memo")
+    with timed_sync("copy"):
+        return _copy_view(found)
+
+
 async def _cached_view(client: Any, user_id: str, vertical: str, generation: str) -> ViewerView | None:
     try:
-        cached = await client.get(_view_key(user_id, vertical, generation))
+        async with timed("redis"):
+            cached = await client.get(_view_key(user_id, vertical, generation))
         if cached:
-            return ViewerView.from_json(cached)
+            return _decode_view(cached)
     except Exception:
         logger.info("CTEM cases: view cache unreadable for %s", user_id, exc_info=True)
     return None
@@ -561,13 +633,14 @@ async def _older_view(
     if not latest or (str(latest) == generation and not same_generation):
         return None
     try:
-        previous = await client.get(_previous_key(user_id, vertical))
+        async with timed("redis"):
+            previous = await client.get(_previous_key(user_id, vertical))
     except Exception:
         logger.info("CTEM cases: previous view unreadable for %s", user_id, exc_info=True)
         previous = None
     if previous:
         try:
-            return ViewerView.from_json(previous)
+            return _decode_view(previous)
         except Exception:
             logger.info("CTEM cases: previous view unreadable for %s", user_id, exc_info=True)
     # A pointer written before #2232: its view sits under the generation's own key.
@@ -591,11 +664,18 @@ async def _list_view(client: Any, user_id: str, vertical: str, generation: str) 
         # The cases opened since it was built have members it never judged (#2113): unjudged, never hidden.
         older.stale = True
         return older
+    deadline = time.perf_counter() + LIST_BUILD_WAIT_SECONDS
     task = _revalidate(user_id, vertical, generation)
     if task is not None:
         # Waited on, never cancelled nor raised: a failed or slow build leaves the answer to the cache.
         await asyncio.wait({task}, timeout=LIST_BUILD_WAIT_SECONDS)
     built = await _cached_view(client, user_id, vertical, generation)
+    # Another pod holds the build (#2232): its task here ends at once, so the read looks for the
+    # view that pod writes for the rest of the wait, instead of a 503 while it lands (ctem.one,
+    # overview at 22:39:20Z on 25 Nov 2026, the view written one second later).
+    while built is None and (left := deadline - time.perf_counter()) > 0:
+        await asyncio.sleep(min(LIST_POLL_SECONDS, left))
+        built = await _cached_view(client, user_id, vertical, generation)
     if built is not None:
         mark("cache", "built")
         return built
@@ -1039,7 +1119,12 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     path_label = signal.get("trigger_path_label") if signal is not None else None
     # A treatment plan's name and OpenCRQ link go to a viewer who reads OpenCRQ only (#1068).
     # A threat package's Grouping and coverage go to a viewer who reads OpenCTI only (#1115).
-    hidden = (row.kind == "treatment_plan" and not view.opencrq) or (row.kind == "threat_package" and not view.opencti)
+    # A validation scenario's name and OpenAEV link go to a viewer who reads OpenAEV only (#2468).
+    hidden = (
+        (row.kind == "treatment_plan" and not view.opencrq)
+        or (row.kind == "threat_package" and not view.opencti)
+        or (row.kind == "scenario" and not view.openaev)
+    )
     named: dict[str, Any] = {}
     if row.kind == "threat_package":
         # ``from`` holds the coverage id, never a previous value (#2429): named alongside.
@@ -1062,18 +1147,19 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     }
 
 
-def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, Any]:
+def case_position(events: list[CtemCaseEvent], view: ViewerView, owner: object = None) -> dict[str, Any]:
     """Where one case stands, from the history this viewer is served (#1503).
 
     ``phase``: its CTEM phase (the list's grouping and the Kanban by phase);
-    ``waiting_on``: the gate it waits on, who and since when (``None`` when none);
+    ``waiting_on``: the gate it waits on, who and since when (``None`` when none); who is a person's
+    id: the one the gate names, else the case *owner* (#2452, ``ctem_case_audit.open_wait``);
     ``stalled_since``: when the sweep found it waiting on nobody, while that is still its newest
     event (``None`` once anything happened to the case after it, #1736).
     """
     served = [_event(row, view) for row in events if row.kind != VERSIONS_KIND]
     return {
         "phase": audit.current_phase(served),
-        "waiting_on": audit.open_wait(served),
+        "waiting_on": audit.open_wait(served, owner),
         "stalled_since": audit.stalled_since(served),
     }
 
@@ -1349,6 +1435,7 @@ def hydrate(
         _visible_issue(r, view.issues.get(_member_id(r)), view.signal_details.get(_member_id(r))) for r in visible
     ] + [{"restricted": True} for _ in range(restricted)]
     from app.services import ctem_case_assets as case_assets
+    from app.services import ctem_validation_scenario as case_scenario
 
     return {
         **head,
@@ -1362,6 +1449,7 @@ def hydrate(
         "attack_path": attack_path_for(case, view),
         "treatment_plan": treatment_plan_for(events, view),
         "threat_package": threat_package_for(events, view, sla_due_at=case.sla_due_at),
+        "scenario": case_scenario.scenario_for(events, view),
     }
 
 
@@ -1558,16 +1646,15 @@ def reaches_primary_asset(rows: list[CtemCaseIssue], view: ViewerView, primary_a
 
 
 async def acts_on_case(db: Any, user: Any, rows: list[CtemCaseIssue], vertical: str) -> bool:
-    """Whether *user_id* may change a case they see (#1748).
+    """Whether *user_id* may change a case they see (#1748, #2441).
 
-    An administrator or a CTEM decide right: every case they see, read and
-    write. A CTEM view right is strictly read only (Sam, 24 Nov 2026): every
-    case write is refused. Without a right, the cases their own read shows.
+    An administrator or a CTEM decide right only: a view right is strictly
+    read only (Sam, 24 Nov 2026) and no right is no CTEM at all (#2441).
     *rows* and *vertical* are kept for the callers' symmetry with the read.
     """
     from app.services import ctem_access
 
-    return await ctem_access.level(db, user) != "view"
+    return await ctem_access.may_decide(db, user)
 
 
 def owner_sees(rows: list[CtemCaseIssue], owner_view: ViewerView) -> bool:
@@ -1591,6 +1678,11 @@ async def user_sees_case(db: Any, user_id: Any, case_id: Any, vertical: Any = No
         case_uuid = uuid.UUID(str(case_id))
         uuid.UUID(str(user_id))
     except (ValueError, TypeError):
+        return False
+    from app.services import ctem_access
+
+    # No CTEM without a right (#2441), re-read at delivery time.
+    if await ctem_access.level(db, str(user_id)) is None:
         return False
     primary = await get_primary(db)
     if primary is None:

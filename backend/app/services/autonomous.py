@@ -1791,6 +1791,13 @@ async def _run_autonomous_tick_inner() -> int:
                 # again first, so the sweep below opens their cases grouped by case key.
                 from app.services import ctem_scope_gate_store
 
+                # The signals still new past the grace (a record-time gate that failed, a
+                # case-delete release whose background re-decision was lost): decided here,
+                # so none waits "for reconcile" for good.
+                undecided = await ctem_scope_gate_store.recheck_new(db)
+                await db.commit()
+                if undecided:
+                    logger.info("CTEM signals left new decided by the scheduled recheck: %s", undecided)
                 rechecked = await ctem_scope_gate_store.recheck_parked(db)
                 await db.commit()
                 if rechecked:
@@ -1803,6 +1810,11 @@ async def _run_autonomous_tick_inner() -> int:
                 from app.services.ctem_case_routing import catch_up
 
                 counts["caught_up"] = await catch_up()
+                # Per-case decisions of a groupable kind asked of one person, folded into one card (#2451).
+                from app.services import ctem_decision_groups
+
+                counts["decisions_grouped"] = await ctem_decision_groups.consolidate(db)
+                await db.commit()
                 if any(counts.values()):
                     logger.info("CTEM case sweep: %s", counts)
         except Exception as e:
@@ -2852,6 +2864,16 @@ async def _run_autonomous_tick_inner() -> int:
                 logger.info("Organization context: %d scheduled sync(s) ran", synced)
         except Exception as e:
             logger.error("Organization sync scheduler error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
+
+        # --- 9a'. The Intelligence policy's PIRs, read from every connected OpenCTI (#2435) ---
+        # No model call, no configuration: at most once an hour per process.
+        try:
+            from app.services.organization_pirs import refresh_if_due
+
+            await refresh_if_due(db)
+        except Exception as e:
+            logger.error("Intelligence policy refresh error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
         # --- 9b. Settle applied improvement proposals (#1044, #8256) ---

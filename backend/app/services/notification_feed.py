@@ -488,12 +488,70 @@ async def save_read_state(
 # ── The feed ─────────────────────────────────────────────────────────────────
 
 
-async def build_feed(db: AsyncSession, user: Any, *, limit: int = FEED_WINDOW) -> dict[str, Any]:
-    """The person's notifications, newest urgent first, each marked read or not."""
+async def build_feed(
+    db: AsyncSession,
+    user: Any,
+    *,
+    limit: int = FEED_WINDOW,
+    offset: int = 0,
+    decisions_only: bool = False,
+) -> dict[str, Any]:
+    """The person's notifications, newest urgent first, each marked read or not.
+
+    The page is bounded by *limit*; the totals are not (#2453):
+    ``waiting_decision_total`` is the count the Home notice shows (one source,
+    :func:`app.services.work_item.work_items_waiting_for_person`), and
+    ``unread_total`` is that count plus the other unread entries of the page,
+    so the bell's badge never stops at the page size. *offset* pages the
+    waiting decisions (newest first) and ``next_offset`` names the next page, or
+    ``None`` past the last; *decisions_only* leaves the runs and activity out.
+    """
+    from app.core.feature_flags import is_feature_enabled
+    from app.services.work_item import list_work_items_waiting_for_person, work_items_waiting_for_person
+
+    offset = max(0, int(offset or 0))
+    items: list[NotificationItem] = []
+    if not decisions_only and offset == 0:
+        flows_enabled = is_feature_enabled("FLOW_BUILDER")
+        items += await _run_and_activity_items(db, user, limit=limit, flows_enabled=flows_enabled)
+    waiting_total = 0
+    waiting_page = 0
+    if getattr(user, "notify_waiting_work_items", True) is not False:
+        waiting = await list_work_items_waiting_for_person(user_id=str(user.id), limit=limit, offset=offset)
+        waiting_page = len(waiting)
+        items += [i for row in waiting if (i := present_waiting_work_item(row)) is not None]
+        waiting_total = int((await work_items_waiting_for_person(user_id=str(user.id))).get("count") or 0)
+    merged = await mark_waiting_flow_asks(db, merge_items(items))
+    read_at, dismissed_list = await load_read_state(db, user.id)
+    dismissed = set(dismissed_list)
+    payload = []
+    unread = 0
+    unread_other = 0
+    for item in merged:
+        flag = is_unread(item, read_at=read_at, dismissed=dismissed)
+        unread += int(flag)
+        if flag and not item.id.startswith(WORK_ITEM_WAITING_PREFIX):
+            unread_other += 1
+        payload.append({**item.as_dict(), "unread": flag})
+    # The total can lag the page by a write between the two reads: never below it.
+    waiting_total = max(waiting_total, offset + waiting_page)
+    next_offset = offset + waiting_page if offset + waiting_page < waiting_total and waiting_page else None
+    return {
+        "items": payload,
+        "unread_count": unread,
+        "read_at": read_at.isoformat() if read_at else None,
+        "waiting_decision_total": waiting_total,
+        "unread_total": unread_other + waiting_total,
+        "next_offset": next_offset,
+    }
+
+
+async def _run_and_activity_items(
+    db: AsyncSession, user: Any, *, limit: int, flows_enabled: bool
+) -> list[NotificationItem]:
+    """The runs and activity rows of the bell's first page (newest *limit* of each)."""
     from app.api.v1.activity import list_activity
     from app.api.v1.assignments import list_all_runs
-    from app.core.feature_flags import is_feature_enabled
-    from app.services.work_item import list_work_items_waiting_for_person
 
     runs = await list_all_runs(
         limit=limit,
@@ -514,26 +572,13 @@ async def build_feed(db: AsyncSession, user: Any, *, limit: int = FEED_WINDOW) -
     activity_rows = await list_activity(
         user=user, db=db, limit=limit, offset=0, activity_type=",".join(BELL_ACTIVITY_TYPES)
     )
-    flows_enabled = is_feature_enabled("FLOW_BUILDER")
     items: list[NotificationItem] = [i for run in runs if (i := present_run(run)) is not None]
     items += [
         i
         for row in activity_rows
         if (i := present_activity(_ActivityView.of(row), flows_enabled=flows_enabled)) is not None
     ]
-    if getattr(user, "notify_waiting_work_items", True) is not False:
-        waiting = await list_work_items_waiting_for_person(user_id=str(user.id), limit=limit)
-        items += [i for row in waiting if (i := present_waiting_work_item(row)) is not None]
-    merged = await mark_waiting_flow_asks(db, merge_items(items))
-    read_at, dismissed_list = await load_read_state(db, user.id)
-    dismissed = set(dismissed_list)
-    payload = []
-    unread = 0
-    for item in merged:
-        flag = is_unread(item, read_at=read_at, dismissed=dismissed)
-        unread += int(flag)
-        payload.append({**item.as_dict(), "unread": flag})
-    return {"items": payload, "unread_count": unread, "read_at": read_at.isoformat() if read_at else None}
+    return items
 
 
 @dataclass(frozen=True, slots=True)

@@ -65,26 +65,59 @@ from ._common import (
     scoped_safe_request,
     stored_targets_line,
     tool_client,
+    ui_tenant_id,
 )
 from .read_scope import area_scope, count_text, with_scope
 
 logger = logging.getLogger(__name__)
 
-#: Human labels for the expectations an inject declares in ``inject_content``.
-#: A technical attack inject with no expectation EXECUTES but MEASURES nothing,
-#: so the Scenario Creator scores its technical steps on prevention + detection.
-#: The names mirror what OpenAEV's own UI shows on the inject.
-_INJECT_EXPECTATION_NAMES = {
-    "PREVENTION": "Prevented by security control",
-    "DETECTION": "Detected by security control",
-    "VULNERABILITY": "Vulnerability confirmed",
-    "MANUAL": "Manual validation",
-    "ARTICLE": "Article read",
-    "CHALLENGE": "Challenge solved",
+#: OpenAEV's own default name per expectation type, as
+#: ``io.openaev.expectation.ExpectationBuilderService`` builds it (VULNERABILITY
+#: is ``ExpectationType.VULNERABILITY.successLabel``). Used only for a type the
+#: injector contract does not offer: a type it offers keeps the contract's own
+#: object, name included, exactly as-is (#2480). XTM One never writes a name
+#: of its own: VULNERABILITY has inverted polarity (SUCCESS = not vulnerable),
+#: so a home-made label such as "Vulnerability confirmed" read the opposite way.
+_OPENAEV_DEFAULT_EXPECTATION_NAMES = {
+    "PREVENTION": "Prevention",
+    "DETECTION": "Detection",
+    "LOGGING": "Logging",
+    "VULNERABILITY": "Not vulnerable",
+    "CHALLENGE": "Expect targets to complete the challenge(s)",
+    "ARTICLE": "Expect targets to read the article(s)",
+    "MANUAL": "Manual expectation",
 }
 
 
-def _build_inject_expectations(types: list[str]) -> list[dict[str, Any]]:
+def _contract_offered_expectations(content_json: str | None) -> dict[str, dict[str, Any]]:
+    """The contract's own expectation object per type, first one of each type.
+
+    Read from the ``key == "expectations"`` field of ``injector_contract_content``:
+    ``availableExpectations`` first, then the legacy ``predefinedExpectations``.
+    Malformed or absent content returns ``{}``.
+    """
+    if not content_json:
+        return {}
+    try:
+        content = json.loads(content_json)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(content, dict) or not isinstance(content.get("fields"), list):
+        return {}
+    offered: dict[str, dict[str, Any]] = {}
+    for field in content["fields"]:
+        if not isinstance(field, dict) or field.get("key") != "expectations":
+            continue
+        for list_key in ("availableExpectations", "predefinedExpectations"):
+            for expectation in field.get(list_key) or []:
+                if isinstance(expectation, dict) and isinstance(expectation.get("expectation_type"), str):
+                    offered.setdefault(expectation["expectation_type"], expectation)
+    return offered
+
+
+def _build_inject_expectations(
+    types: list[str], offered: dict[str, dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
     """Turn expectation TYPE names into ``inject_content.expectations`` objects.
 
     The scenario-creator wires native injects (e.g. HTTP Request) whose contract
@@ -92,23 +125,26 @@ def _build_inject_expectations(types: list[str]) -> list[dict[str, Any]]:
     stack the inject must carry its own DETECTION / PREVENTION expectations, and
     OpenAEV only keeps the contract's predefined ones when ``inject_content`` has
     no ``expectations`` key (``putIfAbsent``), so these REPLACE the default.
-    Score defaults to 100 (the platform's own predefined value) and the platform
-    scope is left empty, i.e. "any security platform".
+
+    A type the contract offers (``offered``, from ``_contract_offered_expectations``)
+    is the contract's own object, its name unchanged; the generic object below
+    only fills the keys it leaves out. A type it does not offer gets OpenAEV's
+    default name for the type (``_OPENAEV_DEFAULT_EXPECTATION_NAMES``), score
+    100 and an empty platform scope, i.e. "any security platform".
     """
     expectations: list[dict[str, Any]] = []
     for expectation_type in types:
-        expectations.append(
-            {
-                "expectation_type": expectation_type,
-                "expectation_name": _INJECT_EXPECTATION_NAMES.get(
-                    expectation_type, expectation_type.title()
-                ),
-                "expectation_description": "",
-                "expectation_score": 100,
-                "expectation_expectation_group": False,
-                "expectation_expected_security_platform_types": [],
-            }
-        )
+        expectation: dict[str, Any] = {
+            "expectation_type": expectation_type,
+            "expectation_name": _OPENAEV_DEFAULT_EXPECTATION_NAMES.get(expectation_type, expectation_type),
+            "expectation_description": "",
+            "expectation_score": 100,
+            "expectation_expectation_group": False,
+            "expectation_expected_security_platform_types": [],
+        }
+        if offered and expectation_type in offered:
+            expectation.update(offered[expectation_type])
+        expectations.append(expectation)
     return expectations
 
 
@@ -652,7 +688,7 @@ def register_core(
         items = data.get("content", [])
         return format_entity_list(
             items,
-            partial(_fmt_scenario, base_url=base_url),
+            partial(_fmt_scenario, base_url=base_url, tenant_id=await ui_tenant_id(hdrs)),
             noun="scenario",
             total=data.get("totalElements"),
             empty_msg=f"No scenarios found{' for ' + repr(search) if search else ''}.",
@@ -695,7 +731,7 @@ def register_core(
                     except ValueError:
                         count = None
                 data = {**data, SCENARIO_INJECT_COUNT_KEY: count}
-        return _fmt_scenario(data, base_url)
+        return _fmt_scenario(data, base_url, await ui_tenant_id(hdrs))
 
     # ── 12. Create scenario ───────────────────────────────────────────
 
@@ -804,7 +840,7 @@ def register_core(
             return err
         resp = _require_response(resp)
         data = resp.json()
-        return f"Scenario {scenario_id} updated.\n" + _fmt_scenario(data, base_url)
+        return f"Scenario {scenario_id} updated.\n" + _fmt_scenario(data, base_url, await ui_tenant_id(hdrs))
 
     # ── 14. Delete scenario ───────────────────────────────────────────
 
@@ -1017,6 +1053,38 @@ def register_core(
             if isinstance(p, dict) and isinstance(p.get("security_platform_type"), str)
         }
 
+    async def _contract_content_json(contract_id: str) -> str | None:
+        """The contract's ``injector_contract_content`` JSON, ``None`` when it
+        cannot be read (logged, so an inject named with OpenAEV's defaults
+        instead of the contract's own names can be traced to it)."""
+        try:
+            async with tool_client(hdrs, timeout=15) as client:
+                resp, err = await scoped_safe_request(
+                    client,
+                    "get",
+                    f"{base_url}/api/injector_contracts/{contract_id}",
+                    _PROVIDER,
+                    "fetch injector contract expectations",
+                    headers=hdrs,
+                )
+            if err or resp is None:
+                logger.warning(
+                    "Could not read injector contract %s for its expectations (%s); "
+                    "types it offers get OpenAEV's default names",
+                    contract_id,
+                    err or "no response",
+                )
+                return None
+            content_json = resp.json().get("injector_contract_content")
+        except Exception:
+            logger.warning(
+                "Failed to read contract %s expectations; types it offers get OpenAEV's default names",
+                contract_id,
+                exc_info=True,
+            )
+            return None
+        return content_json if isinstance(content_json, str) else None
+
     async def _contract_expectations_default(contract_id: str) -> tuple[list[dict[str, Any]], str]:
         """Expectations to default this contract's inject to, and a line for the
         tool answer (empty when nothing was left out).
@@ -1029,32 +1097,8 @@ def register_core(
         keeps its predefined expectations, and the failure is logged so an
         unscored inject can be traced to it.
         """
-        try:
-            async with tool_client(hdrs, timeout=15) as client:
-                resp, err = await scoped_safe_request(
-                    client,
-                    "get",
-                    f"{base_url}/api/injector_contracts/{contract_id}",
-                    _PROVIDER,
-                    "fetch injector contract for expectations default",
-                    headers=hdrs,
-                )
-            if err or resp is None:
-                logger.warning(
-                    "Could not read injector contract %s to default its inject's "
-                    "expectations (%s); the inject keeps the contract's predefined ones",
-                    contract_id,
-                    err or "no response",
-                )
-                return [], ""
-            content_json = resp.json().get("injector_contract_content")
-        except Exception:
-            logger.warning(
-                "Failed to resolve contract %s expectations; the inject keeps the "
-                "contract's predefined ones",
-                contract_id,
-                exc_info=True,
-            )
+        content_json = await _contract_content_json(contract_id)
+        if content_json is None:
             return [], ""
         defaults = _contract_default_expectations(content_json)
         if defaults:
@@ -1138,7 +1182,11 @@ def register_core(
                     "omit it to keep the injector contract's predefined "
                     "expectations."
                 )
-            inject_content["expectations"] = _build_inject_expectations(resolved_types)
+            # Each type is the contract's own expectation object, its name as
+            # the contract writes it (#2480); a type the contract does not
+            # offer gets OpenAEV's default for the type.
+            offered = _contract_offered_expectations(await _contract_content_json(injector_contract_id))
+            inject_content["expectations"] = _build_inject_expectations(resolved_types, offered)
         elif not inject_content.get("expectations"):
             # An empty list counts as absent, as OpenAEV's setExpectations does.
             default_expectations, expectations_note = await _contract_expectations_default(injector_contract_id)

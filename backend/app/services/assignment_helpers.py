@@ -27,6 +27,7 @@ import logging
 import re
 import uuid
 from collections.abc import Collection
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -270,22 +271,22 @@ def _consume_self_heal_task(task: asyncio.Task) -> None:
         )
 
 
-def _schedule_memory_self_heal(agent: Agent) -> None:
+def _schedule_memory_self_heal(agent: Agent, scope_id: str | None) -> None:
     """Fire-and-forget an automatic memory self-heal pass for *agent*.
 
     Called when the combined memory context breaches the assignment prompt
-    cap.  ``auto_heal_agent_memory`` is throttled per agent via
+    cap.  ``auto_heal_agent_memory`` throttles its agent-wide hygiene per agent and its compression per lane via
     Redis, opens its own DB session, and never raises — so scheduling it
-    from the run setup path is safe and cheap.  Assignment runs use the
-    agent-level memory scope (``scope_id=None``), which is what the heal
-    pass compresses.
+    from the run setup path is safe and cheap.  *scope_id* is the lane the
+    run reads (``assignment_memory_scope``), whose medium-term summary the
+    heal pass compresses.
     """
     from app.services.persistent_memory import auto_heal_agent_memory
 
     # Name the task with the agent id so the done-callback failure log can
     # be correlated back to the agent that scheduled it.
     task = asyncio.create_task(
-        auto_heal_agent_memory(str(agent.id)),
+        auto_heal_agent_memory(str(agent.id), scope_id=scope_id),
         name=f"memory-self-heal-{agent.id}",
     )
     _self_heal_tasks.add(task)
@@ -845,6 +846,69 @@ def _build_elements_context(element_bindings: dict) -> dict[str, str]:
     return elements_context
 
 
+def assignment_memory_scope(
+    run_user_id: uuid.UUID | str | None, agent_owner_id: uuid.UUID | str | None
+) -> str | None:
+    """The agent-memory lane an assignment run reads and writes: its acting user's.
+
+    The acting user is the run's identity (``run.user_id``), else the agent's
+    owner. A run never writes the agent-level lane: what it consolidates
+    reaches the durable pool every user's chat with the agent reads, and its
+    summary can hold what the acting user's own integrations and knowledge
+    bases returned. ``None`` when the run has no user at all: no lane.
+    """
+    acting = run_user_id or agent_owner_id
+    return str(acting) if acting else None
+
+
+async def store_assignment_agent_memory(
+    *,
+    agent_id: str,
+    scope_id: str | None,
+    source: str,
+    summary: str,
+    consolidate: bool,
+    llm: Any,
+    model: str | None,
+    is_company_managed: bool,
+    background_tasks: set[asyncio.Task],
+) -> None:
+    """Store a run's summary in its lane (``assignment_memory_scope``).
+
+    When the lane reaches its consolidation threshold and *consolidate* is
+    set, the consolidation runs detached, held in *background_tasks*, and
+    persists in the same user scope. A run with no lane stores nothing.
+    """
+    if scope_id is None:
+        return
+    from app.services.agent_memory import (
+        CONSOLIDATION_THRESHOLD,
+        consolidate_memory,
+        store_short_term_memory,
+    )
+
+    counter = await store_short_term_memory(
+        agent_id,
+        source=source,
+        summary=summary,
+        source_type="assignment",
+        scope_id=scope_id,
+    )
+    if consolidate and counter >= CONSOLIDATION_THRESHOLD:
+        # asyncio only holds weak references: the set keeps the task alive.
+        task = asyncio.create_task(
+            consolidate_memory(
+                agent_id,
+                llm,
+                scope_id=scope_id,
+                is_company_managed=is_company_managed,
+                model=model,
+            )
+        )
+        background_tasks.add(task)
+        task.add_done_callback(background_tasks.discard)
+
+
 async def _load_memory_context(
     db: AsyncSession,
     agent: Agent,
@@ -853,6 +917,8 @@ async def _load_memory_context(
 ) -> tuple[str, str]:
     """Load agent and user memory context for the assignment prompt.
 
+    The agent's Redis tiers are read from the run's lane
+    (``assignment_memory_scope``), never the agent-level one.
     Runs independent memory loads concurrently where possible.
     When *query* is provided (the rendered assignment prompt), persistent
     facts are selected by semantic relevance to it instead of pure recency.
@@ -864,11 +930,14 @@ async def _load_memory_context(
     async def _load_agent_mem() -> str:
         if not (agent.memory_short_term_enabled or agent.memory_medium_term_enabled):
             return ""
+        scope_id = assignment_memory_scope(user_id, agent.user_id)
+        if scope_id is None:
+            return ""
         try:
             from app.services.agent_memory import format_memory_for_prompt, load_memory
 
             return format_memory_for_prompt(
-                await load_memory(str(agent.id)), agent_label=agent.name
+                await load_memory(str(agent.id), scope_id=scope_id), agent_label=agent.name
             )
         except Exception as e:
             logger.warning(
@@ -961,10 +1030,10 @@ async def _load_memory_context(
         # Self-healing: schedule an automatic per-agent maintenance
         # pass (persistent-tier prune/cap/consolidate/re-embed + Redis
         # medium-term compression) instead of asking operators to run it
-        # manually from a log line no user ever sees.  Throttled per agent
+        # manually from a log line no user ever sees.  Throttled per agent and lane
         # inside auto_heal_agent_memory, so this is a cheap no-op on
         # subsequent runs within the throttle window.
-        _schedule_memory_self_heal(agent)
+        _schedule_memory_self_heal(agent, assignment_memory_scope(user_id, agent.user_id))
         logger.warning(
             "Agent '%s' combined memory context (%d chars) exceeds cap "
             "(%d chars) for assignment run — truncating for this run and "

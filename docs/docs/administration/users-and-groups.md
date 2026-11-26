@@ -34,7 +34,7 @@ The same dialog lists the `Pending invitations`, with their role and expiry. Rev
 
 An account is either an administrator or a user. `Promote` and `Demote`, at the top of the user's page, switch the role. The change applies on the person's next request.
 
-The bootstrap administrator, the account set by `ADMIN_EMAIL` in the deployment, carries the `Platform Admin` badge. It cannot be demoted, disabled or deleted, its email cannot be changed from its profile, and every restart makes it an administrator again (see [Local accounts](../deployment/authentication.md#local-accounts)).
+The bootstrap administrator, the account set by `ADMIN_EMAIL` in the deployment, carries the `Platform Admin` badge. It cannot be demoted, disabled or deleted, its email cannot be changed nor given to another account, and every restart makes it an administrator again (see [Local accounts](../deployment/authentication.md#local-accounts)).
 
 When the platform has no account yet, the first account registered becomes an administrator.
 
@@ -50,6 +50,14 @@ When the platform has no account yet, the first account registered becomes an ad
 - the audit log entries of their own actions go with the account. The entry of the deletion, written under your name, stays.
 
 You cannot disable or delete your own account. Prefer `Disable` when you may need the account or its history again.
+
+## Email address
+
+People cannot change their own email address: the other Filigran platforms (OpenCTI, OpenAEV, OpenCRQ) find a person's account by it. The `Email` card of the user's page changes it, for local and SSO accounts alike, to an address no other account has and, when `Allowed Domains` is set, in one of those domains. The change applies at once:
+
+- when the platform sends email, the old and the new address are both told of the change, without a link;
+- password reset links already sent to the old address stop working;
+- the audit log records the old and the new address.
 
 ## Passwords
 
@@ -132,6 +140,7 @@ The `Auto join` card's `Single sign-on users join this group` switch (default: o
 - **Only single sign-on.** Local accounts, accounts provisioned through SCIM and accounts created through the API join only when they sign in through single sign-on.
 - **With SAML group mapping.** The mapping manages only the memberships it created, so it never removes one that auto join added, even when the assertion does not name the group.
 - **Removing someone.** An administrator can remove a member from the `Members` tab; while the switch stays on, the next single sign-on adds them again.
+- **CTEM Viewers.** The group XTM One seeds for CTEM read access has the switch on. Every account, however it is created, joins it once, at its creation; single sign-on does not add anyone to it again, so a person an administrator removes stays removed. Switching it off keeps it off.
 
 Switching it on adds nobody at once: each person joins at their next single sign-on. Switching it off removes nobody. Both are recorded in the audit log with the previous value.
 

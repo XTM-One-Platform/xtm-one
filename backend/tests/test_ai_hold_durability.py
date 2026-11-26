@@ -333,6 +333,7 @@ async def test_the_hold_ends_when_a_held_run_starts(monkeypatch):
     execute = AsyncMock(return_value=None)
     monkeypatch.setattr(assignment_engine, "execute_assignment_run", execute)
     monkeypatch.setattr(assignment_adapter, "_bind_memory_chain", AsyncMock(return_value=None))
+    monkeypatch.setattr(assignment_adapter, "_run_trigger_payload", AsyncMock(return_value=None))
 
     result = await assignment_adapter.AssignmentAdapter().execute(
         AdapterContext(db=_Session([SimpleNamespace(status="completed")]), worker_id="w1"),

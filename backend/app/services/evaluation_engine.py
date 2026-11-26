@@ -127,6 +127,7 @@ from app.services.evaluation.run_ownership import (
 from app.services.evaluation.sandbox_cases import SANDBOX_KEY, agent_sandbox_case
 from app.services.evaluation.sandbox_cases import case_ref as sandbox_case_ref
 from app.services.evaluation.scorers.registry import judge_enabled
+from app.services.evaluation.settings import SUB_SCORE_WEIGHTS
 from app.services.evaluation_continuation import (
     PARKED_EPISODE_STATUSES,
     TERMINAL_EPISODE_STATUSES,
@@ -369,15 +370,6 @@ def _integration_providers_from_tool_defs(defs: list["ToolDefinition"]) -> set[s
         if provider:
             providers.add(provider)
     return providers
-
-
-SUB_SCORE_WEIGHTS = {
-    "tool_selection_quality": 0.20,
-    "response_completeness": 0.20,
-    "response_accuracy": 0.20,
-    "instruction_adherence": 0.20,
-    "coherence": 0.20,
-}
 
 
 def _build_judge_verdict_schema() -> dict:

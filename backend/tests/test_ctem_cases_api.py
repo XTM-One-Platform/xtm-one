@@ -38,6 +38,10 @@ class _Db:
     def add(self, row):
         self.added.append(row)
 
+    async def execute(self, _query: object) -> SimpleNamespace:
+        # A close reads the case's open items and timers (#2494): none in this fake session.
+        return SimpleNamespace(scalars=lambda: [])
+
 
 def _case(**kw) -> CtemCase:
     base = {
@@ -72,7 +76,7 @@ HIDDEN = rules.SourceIssue(
 @pytest.fixture
 def api(monkeypatch):
     """One shared case with two issues: the caller sees vuln--1 only; ``admin`` sees both; ``other`` neither."""
-    seen = SimpleNamespace(db=_Db(), user=SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None))
+    seen = SimpleNamespace(db=_Db(), user=SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None, is_admin=False))
     seen.admin = uuid.uuid4()
     seen.case = _case()
     rows = [
@@ -134,6 +138,13 @@ def api(monkeypatch):
     monkeypatch.setattr(ctem_case_gate_records_view, "gate_records", _gate_records)
     # XTM One mode: the platform mode of the test settings already is xtm_one.
     monkeypatch.setattr(api_module, "_require_xtm_one", lambda: None)
+
+    async def _decide(_db: object, _user_id: object) -> str:
+        return "decide"  # no CTEM without a right (#2441): the caller holds decide unless a test says otherwise
+
+    from app.services import ctem_access
+
+    monkeypatch.setattr(ctem_access, "group_right", _decide)
 
     @asynccontextmanager
     async def _detail_session() -> AsyncIterator[_Db]:
@@ -240,7 +251,7 @@ async def test_a_viewer_sees_the_shared_case_with_only_their_issues_and_restrict
 
 
 async def test_a_wider_viewer_sees_every_issue_of_the_same_case(api):
-    api.user = SimpleNamespace(id=api.admin, ctem_vertical=None)
+    api.user = SimpleNamespace(id=api.admin, ctem_vertical=None, is_admin=False)
     async with api.client as client:
         detail = (await client.get(f"/api/v1/ctem-cases/{api.case.id}")).json()
     assert [i["name"] for i in detail["issues"]] == ["CVE-2026-1", "CVE-2026-2"] and detail["restricted_count"] == 0
@@ -248,7 +259,7 @@ async def test_a_wider_viewer_sees_every_issue_of_the_same_case(api):
 
 async def test_a_case_with_no_visible_issue_is_absent_and_404(api):
     """#11613: absent from the list and the counts (a count is data), 404 on read and change."""
-    api.user = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None)
+    api.user = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None, is_admin=False)
     async with api.client as client:
         listed = (await client.get("/api/v1/ctem-cases")).json()
         read = await client.get(f"/api/v1/ctem-cases/{api.case.id}")
@@ -481,6 +492,58 @@ async def test_a_bulk_accept_risk_without_a_reason_writes_nothing(api):
     body = response.json()
     assert body["updated"] == [] and "reason" in body["failed"][0]["reason"]
     assert api.case.state == "new" and api.db.added == []
+
+
+@pytest.fixture
+def closes(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, str]]:
+    """Records each close's cancel of the case's open work (#2494), as the store calls it."""
+    from app.services import ctem_case_delete
+
+    seen: list[tuple[Any, str]] = []
+
+    async def _cancel(_db: object, case: Any, *, item_result: str, **_kw: object) -> tuple[list[Any], list[Any]]:
+        seen.append((case.id, item_result))
+        return [], []
+
+    monkeypatch.setattr(ctem_case_delete, "cancel_case_work", _cancel)
+    return seen
+
+
+async def test_a_patch_accepting_risk_cancels_the_open_work_of_the_case(
+    api: SimpleNamespace, closes: list[tuple[Any, str]]
+) -> None:
+    """#2494: the single PATCH into a closed state cancels the case's gates, loop items and timers."""
+    async with api.client as client:
+        response = await client.patch(
+            f"/api/v1/ctem-cases/{api.case.id}",
+            json={
+                "state": "accepted_risk",
+                "owner_user_id": str(api.user.id),
+                "reason": "WAF rule in place",
+                "accepted_until": (NOW + timedelta(days=30)).isoformat(),
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert [case_id for case_id, _ in closes] == [api.case.id]
+    assert "moved to accepted_risk" in closes[0][1] and str(api.user.id) in closes[0][1]
+
+
+async def test_a_bulk_resolve_cancels_the_open_work_and_a_bulk_start_does_not(
+    api: SimpleNamespace, closes: list[tuple[Any, str]]
+) -> None:
+    """#2494: the bulk endpoint closes through the same path; a move between open states cancels nothing."""
+    async with api.client as client:
+        started = await client.post(
+            "/api/v1/ctem-cases/bulk",
+            json={"case_ids": [str(api.case.id)], "state": "remediating", "owner_user_id": str(api.user.id)},
+        )
+        assert started.status_code == 200 and closes == []
+        resolved = await client.post(
+            "/api/v1/ctem-cases/bulk",
+            json={"case_ids": [str(api.case.id)], "state": "resolved", "evidence": "CHG-1234 deployed"},
+        )
+    assert resolved.status_code == 200 and resolved.json()["updated"] == [str(api.case.id)]
+    assert [case_id for case_id, _ in closes] == [api.case.id] and "moved to resolved" in closes[0][1]
 
 
 async def test_a_merge_needs_every_case_visible_to_the_caller(api, monkeypatch):

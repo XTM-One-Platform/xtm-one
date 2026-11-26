@@ -18,7 +18,7 @@ This page covers how to turn the widget on, where to get the embed code, what vi
 2. In the `Web Exposure` card, marked `Danger Zone`, turn on `Expose on Web`.
 3. If XTM One shows what the change lends to new people, read it and select `Enable` to go on. See [Sharing and access](resources/sharing-and-access.md#when-you-are-asked).
 
-The card then shows a `Live` badge, and `Get Embed Code` appears. On the `Agents` list, the agent carries the `Web Exposure` indicator, and you can filter the list on it.
+The card then shows a `Live` badge, and `Get Embed Code` appears for the people who can edit the agent: the embed code chats as the agent's owner, so the people it is shared with read-only see the widget is live, not its code. On the `Agents` list, the agent carries the `Web Exposure` indicator, and you can filter the list on it.
 
 Turn `Expose on Web` off to stop the widget on every site that uses it. The embed code does not change: when you turn the switch back on, the pages that still carry the old code work again.
 

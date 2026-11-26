@@ -36,6 +36,7 @@ NOT_A_TYPED_SECRET: dict[tuple[str, str], str] = {
     ("presentation_public_links", "token_enc"): "a public link token the platform generates",
     ("video_public_links", "token_enc"): "a public link token the platform generates",
     ("custom_dashboard_public_links", "token_enc"): "a public link token the platform generates",
+    ("ctem_webhook_sources", "secret_enc"): "an HMAC signing secret the platform generates, shown once",
     ("platform_registrations", "enterprise_license_pem_enc"): "a license document, not a credential",
     ("secret_vault_providers", "credentials_enc"): "what opens a vault: it cannot itself be read from one",
 }

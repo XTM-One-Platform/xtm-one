@@ -82,6 +82,7 @@ const CASE_EVENT_ICON: Readonly<Record<string, IconName>> = {
   treatment_plan: "wrench",
   threat_package: "package-check",
   applied_change: "send",
+  scenario: "custom/openaev",
   run: "bot",
 };
 

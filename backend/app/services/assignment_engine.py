@@ -104,8 +104,10 @@ from app.services.assignment_helpers import (
     _publish_run_status,
     _render_prompt,
     _warn_unresolved_placeholders,
+    assignment_memory_scope,
     resolve_assignment_kb_access,
     select_best_result_summary,
+    store_assignment_agent_memory,
 )
 from app.services.assignment_pause import (
     OWNER_DEACTIVATED_RESUME_ERROR,
@@ -4508,6 +4510,39 @@ async def _report_refused_continuation(
         logger.warning("Could not report the refused %s of assignment %s", kind, assignment.id, exc_info=True)
 
 
+async def _add_run_trace_tools(
+    composite: Any,
+    db: AsyncSession,
+    agent: Agent,
+    agent_builtin_tool_ids: list[str],
+    acting_user_id: _uuid.UUID | None,
+) -> None:
+    """Wire the trace suites of a run: the chat turn's rule, for the user it acts as.
+
+    A trace suite reads every user's conversations with the agent, so a run
+    wires one, carried or implied by ``agent_builder``, only when the user it
+    acts as may read the agent's chats (``agent_chat._turn_trace_tool_ids``).
+    That user is whoever triggered the run, else its run-as user or owner
+    (``_execution_identity``), so a viewer who triggers a run reads no trace
+    their Chats tab hides.
+    """
+    from app.models.user import User
+    from app.services.agent_chat import _add_trace_tools, _turn_trace_tool_ids
+    from app.services.builtin_tools.traces import TRACE_SUITE_IDS
+
+    # Most runs carry no trace suite: they read no user for it.
+    if "agent_builder" not in agent_builtin_tool_ids and not TRACE_SUITE_IDS.intersection(agent_builtin_tool_ids):
+        return
+    acting_user =await db.get(User, acting_user_id) if acting_user_id else None
+    _add_trace_tools(
+        composite,
+        db,
+        str(acting_user_id) if acting_user_id else "",
+        agent,
+        await _turn_trace_tool_ids(db, acting_user, agent, agent_builtin_tool_ids),
+    )
+
+
 @company_managed_run_scoped
 @known_secrets_scoped("run_id")
 async def execute_assignment_run(
@@ -6558,7 +6593,13 @@ async def execute_assignment_run(
             # mirroring the tool / KB scoping model. Visibility runs as the
             # run's user (``is_admin=False``); a company-managed run with no
             # owner reaches company-managed runners only.
-            if settings.runners_enabled and "computer_use" in agent_builtin_tool_ids:
+            from app.a2a.partner_scope import withhold_runner_tools
+
+            if (
+                settings.runners_enabled
+                and "computer_use" in agent_builtin_tool_ids
+                and not withhold_runner_tools(composite)
+            ):
                 from app.api.v1.helpers import get_user_group_ids
                 from app.services.builtin_tools import build_computer_use_tools
 
@@ -6676,37 +6717,31 @@ async def execute_assignment_run(
                 # The person the run acts for scopes the enterprise knowledge passages (#11543).
                 composite.add_tools(*build_organization_context_tool(user_id=run.user_id, agent=agent))
 
+            # --- No CTEM tool for a run acting for a person with no CTEM right (#2441) ---
+            from app.services import ctem_access as _ctem_access
+
+            _ctem_ok = bool(run.user_id) and await _ctem_access.wires_ctem(run.user_id)
             # --- CTEM case tools (#11545): the CTEM remediation agents, XTM One only ---
             from app.services.builtin_tools import build_ctem_case_tools, offers_ctem_case_tools
 
-            if run.user_id and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_case_tools(user_id=str(run.user_id), agent_id=str(agent.id)))
             # --- CTEM signal tools (#826): the CTEM agents that see a trigger first ---
             from app.services.builtin_tools import build_ctem_signal_tools, offers_ctem_signal_tools
 
-            if run.user_id and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=str(run.user_id)))
-            # --- Read-only CTEM group (#1337): bound on any agent, as the run's user ---
-            from app.services.builtin_tools import ctem_read_tools_for
-
-            _ctem_read = (
-                ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
-            )
-            if _ctem_read is not None:
-                composite.add_tools(*_ctem_read)
             # --- CTEM group (#1748): signal and case tools on any agent, the run user's rights ---
             from app.services.builtin_tools import ctem_tools_for
 
-            _ctem_group = (
-                ctem_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
-            )
+            _ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
             if _ctem_group is not None:
                 composite.add_tools(*_ctem_group)
-            # --- CTEM administrator repairs (#1778): the CTEM case agents, or the group bound ---
+            # --- Attack surface passes read (#1778, #2443): the CTEM case agents not bound to ctem ---
             from app.services.builtin_tools import ctem_repair_tools_for
 
             _ctem_repair = (
-                ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
+                ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
             )
             if _ctem_repair is not None:
                 composite.add_tools(*_ctem_repair)
@@ -6915,25 +6950,8 @@ async def execute_assignment_run(
                 )
                 composite.add_tools(doc_defs, doc_exec)
 
-            if "inspect_my_traces" in agent_builtin_tool_ids or "inspect_agent_traces" in agent_builtin_tool_ids:
-                from app.services.builtin_tools import build_trace_tools
-
-                trace_defs, trace_exec = build_trace_tools(
-                    db,
-                    str(effective_user_id) if effective_user_id else "",
-                    str(agent.id),
-                    supervision_target_agent_ids=agent.trace_supervision_target_agent_ids,
-                    # Only the supervision grant lets an admin run identity's
-                    # privilege reach another agent's payloads; self-inspection
-                    # alone must not.
-                    allow_cross_agent="inspect_agent_traces" in agent_builtin_tool_ids,
-                )
-                if "inspect_my_traces" not in agent_builtin_tool_ids:
-                    trace_defs = [d for d in trace_defs if d.name != "inspect_my_traces"]
-                if "inspect_agent_traces" not in agent_builtin_tool_ids:
-                    trace_defs = [d for d in trace_defs if d.name != "inspect_agent_traces"]
-                if trace_defs:
-                    composite.add_tools(trace_defs, trace_exec)
+            # --- Trace inspection (self + supervision, and agent_builder's alias) ---
+            await _add_run_trace_tools(composite, db, agent, agent_builtin_tool_ids, effective_user_id)
 
             if "fimi_analytics" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import build_fimi_analytics_composite
@@ -6967,7 +6985,6 @@ async def execute_assignment_run(
                 from app.services.builtin_tools import (
                     build_agent_builder_tool,
                     build_evaluation_tools,
-                    build_trace_tools,
                 )
 
                 # The run acts as ``effective_user_id``: an admin-only
@@ -6986,41 +7003,6 @@ async def execute_assignment_run(
                 ab_defs = [d for d in ab_defs if caller_may_run(d.name, is_admin=_acting_is_admin)]
                 composite.add_tools(ab_defs, ab_exec)
 
-                # Platform built-in alias: agent_builder implies the full
-                # trace inspection surface. Legacy trace ids stay
-                # authoritative for the tools they already registered above;
-                # the alias only fills in the trace tools still missing.
-                _missing_trace_tools = {
-                    "inspect_my_traces",
-                    "inspect_agent_traces",
-                } - set(agent_builtin_tool_ids)
-                if _missing_trace_tools:
-                    from app.services.builtin_tools.traces import (
-                        TRACE_PAYLOAD_TOOL_NAME,
-                    )
-
-                    trace_defs, trace_exec = build_trace_tools(
-                        db,
-                        str(effective_user_id) if effective_user_id else "",
-                        str(agent.id),
-                        supervision_target_agent_ids=agent.trace_supervision_target_agent_ids,
-                        # This alias grants the full inspection surface,
-                        # supervision included, so the admin branch applies here.
-                        allow_cross_agent=True,
-                    )
-                    # ``get_trace_payload`` is not a selectable id — it is the
-                    # fetch that makes the inspection tools' bounded previews
-                    # readable in full, so it comes along with whichever of them
-                    # this alias adds. ``add_tools`` is last-write-wins by name,
-                    # so re-adding one already registered above is a no-op.
-                    trace_defs = [
-                        d
-                        for d in trace_defs
-                        if d.name in _missing_trace_tools
-                        or d.name == TRACE_PAYLOAD_TOOL_NAME
-                    ]
-                    if trace_defs:
-                        composite.add_tools(trace_defs, trace_exec)
 
                 ev_defs, ev_exec = build_evaluation_tools(
                     db,
@@ -9435,6 +9417,7 @@ async def execute_assignment_run(
                     _agent_medium: bool = agent.memory_medium_term_enabled,
                     _agent_company: bool = agent.is_company_managed,
                     _user_id: str | None = str(run.user_id) if run.user_id else None,
+                    _agent_scope: str | None = assignment_memory_scope(run.user_id, agent.user_id),
                     _user_enabled: bool = agent.memory_user_enabled,
                     _summary: str = loop_result.content,
                     _assignment_name: str = assignment.name,
@@ -9448,33 +9431,17 @@ async def execute_assignment_run(
                     # ``trigger_assignment(continues_run=...)`` enforces.
                     if _agent_short:
                         try:
-                            from app.services.agent_memory import (
-                                consolidate_memory,
-                                store_short_term_memory,
-                            )
-
-                            counter = await store_short_term_memory(
-                                _agent_id,
+                            await store_assignment_agent_memory(
+                                agent_id=_agent_id,
+                                scope_id=_agent_scope,
                                 source=_assignment_name,
                                 summary=_summary,
-                                source_type="assignment",
+                                consolidate=_agent_medium,
+                                llm=_llm,
+                                model=_model,
+                                is_company_managed=_agent_company,
+                                background_tasks=_background_tasks,
                             )
-                            if counter >= 5 and _agent_medium:
-                                # Keep a strong reference: asyncio only holds
-                                # weak refs, so a bare create_task can be GC'd
-                                # mid-run once the parent task completes.
-                                _consolidate_task = asyncio.create_task(
-                                    consolidate_memory(
-                                        _agent_id,
-                                        _llm,
-                                        is_company_managed=_agent_company,
-                                        model=_model,
-                                    )
-                                )
-                                _background_tasks.add(_consolidate_task)
-                                _consolidate_task.add_done_callback(
-                                    _background_tasks.discard
-                                )
                         except Exception as mem_err:
                             logger.warning(
                                 "Failed to store agent memory (agent=%s): %s",
@@ -10433,6 +10400,16 @@ def _acting_identity(user_id: _uuid.UUID | None, agent: Agent | None) -> _uuid.U
     return user_id or (agent.user_id if agent else None)
 
 
+def _with_partner_scope(payload: dict | None) -> dict | None:
+    """*payload* recording the partner-task scope a partner's task starts the run in, and no other.
+
+    The assignment worker reopens it (``orchestration_adapters.assignment``), so
+    the run gets what the task's own turn gets (``a2a.partner_scope``)."""
+    from app.a2a.partner_scope import partner_scoped_payload
+
+    return partner_scoped_payload(payload)
+
+
 async def trigger_assignment(
     assignment: Assignment,
     agent: Agent,
@@ -10526,6 +10503,7 @@ async def trigger_assignment(
         await hear_integration_event(trigger_context)
     await _refuse_if_ai_disabled(assignment)
     await _refuse_if_group_ai_disabled(_run_person(assignment, triggered_by_user_id, agent))
+    payload = _with_partner_scope(payload)
 
     # Defense-in-depth: reject disabled assignments/agents early
     if not assignment.enabled:
@@ -11348,6 +11326,8 @@ async def trigger_or_queue_assignment(
     """
     await _refuse_if_ai_disabled(assignment)
     await _refuse_if_group_ai_disabled(_run_person(assignment, None, agent))
+    # Before any path: a delivery folded into a waiting run merges its payload.
+    payload = _with_partner_scope(payload)
 
     if not assignment.enabled:
         raise ValueError(f"Assignment '{assignment.name}' is disabled")
@@ -11978,6 +11958,7 @@ async def _create_queued_run(
     run_visible_to_all = assignment.is_company_managed and not resolve_hide_runs(
         agent, assignment
     )
+    payload = _with_partner_scope(payload)
     run = AssignmentRun(
         assignment_id=assignment.id,
         agent_id=assignment.agent_id,

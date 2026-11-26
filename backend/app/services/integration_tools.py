@@ -2363,12 +2363,23 @@ async def _generate_platform_jwt(
     audience_url:
         The target platform's identity (becomes the ``aud`` claim), as
         :func:`app.core.platform_identity.platform_token_audience` resolves it.
+
+    Only a user gets one: the target platform matches the token's email to one
+    of its users. A non-user caller (``/mcp/global`` with the platform key acts
+    as ``mcp_endpoint.GLOBAL_KEY_CALLER``, an anonymous caller) is refused
+    before any lookup, and answers ``None``.
     """
+    from app.core.utils import safe_uuid
     from app.core.xtm_auth import issue_xtm_jwt
     from app.models.user import User
 
+    caller = safe_uuid(user_id)
+    if caller is None:
+        logger.info("No platform JWT for %r: not a user", user_id)
+        return None
+
     result = await db.execute(
-        select(User.email).where(User.id == uuid.UUID(user_id))
+        select(User.email).where(User.id == caller)
     )
     row = result.one_or_none()
     if not row:
@@ -2377,7 +2388,7 @@ async def _generate_platform_jwt(
 
     (email,) = row
     return issue_xtm_jwt(
-        user_id=uuid.UUID(user_id),
+        user_id=caller,
         user_email=email,
         audience_url=audience_url,
     )

@@ -177,6 +177,8 @@ interface PickupWording {
   waiting?: boolean;
   pullRequest?: { number: number } | null;
   pullRequests?: { repo: string; number: number }[] | null;
+  /** A keeps_waiting option of the current ask is answered (#2500): no "Waiting for a decision". */
+  answered?: boolean;
 }
 
 /**
@@ -187,11 +189,14 @@ interface PickupWording {
 export function pickupWording(
   t_i18n: Translate,
   locale: string,
-  { state, blockedOn, waiting = false, pullRequest, pullRequests }: PickupWording,
+  { state, blockedOn, waiting = false, pullRequest, pullRequests, answered = false }: PickupWording,
 ): { label: string; tip: string } {
   let label = t_i18n(PICKUP_LABELS[state]);
   let tip = label;
-  if (state === "blocked_on_items" && blockedOn) {
+  if (state === "waiting_for_person" && answered) {
+    label = t_i18n("Answer recorded");
+    tip = label;
+  } else if (state === "blocked_on_items" && blockedOn) {
     label = waiting
       ? t_i18n("Waits for {count, plural, one {# item} other {# items}}", { count: blockedOn })
       : t_i18n("Blocked on {count, plural, one {# item} other {# items}}", { count: blockedOn });
@@ -230,6 +235,7 @@ export function WorkItemPickupBadge({
   waiting = false,
   pullRequest,
   pullRequests,
+  answered = false,
   compact = false,
 }: {
   state: WorkItemPickupState;
@@ -238,12 +244,14 @@ export function WorkItemPickupBadge({
   waiting?: boolean;
   pullRequest?: { number: number } | null;
   pullRequests?: { repo: string; number: number }[] | null;
+  /** A keeps_waiting option of the current ask is answered (#2500). */
+  answered?: boolean;
   /** The icon alone, its label in a tooltip (a fixed-height list row). */
   compact?: boolean;
 }) {
   const { t_i18n, locale } = useFormatter();
   const Icon = PICKUP_ICONS[state];
-  const { label, tip } = pickupWording(t_i18n, locale, { state, blockedOn, waiting, pullRequest, pullRequests });
+  const { label, tip } = pickupWording(t_i18n, locale, { state, blockedOn, waiting, pullRequest, pullRequests, answered });
   if (compact) {
     return (
       <Tip content={tip}>
