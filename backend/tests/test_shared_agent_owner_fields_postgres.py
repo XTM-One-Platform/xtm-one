@@ -334,10 +334,49 @@ async def test_making_a_company_managed_agent_private_unlinks_everyone_else() ->
             "handover_agent_ids": False,
             "handover_types": False,
             "handover_conditions": False,
-            # The roster follows who the agent's owner reaches: an admin.
+            # Only an admin edits a company-managed agent's roster.
             "work_item_owner_agent_ids": True,
         }
         assert await _references(sessions, admins_id, target_id) == ALL_KEPT
+
+
+async def test_a_company_managed_agent_keeps_a_company_managed_target_its_creator_does_not_reach() -> None:
+    """An admin writes a company-managed agent's references, so its creator's
+    own reach takes nothing from it."""
+    async with _database() as sessions:
+        async with sessions() as db:
+            admin = await _user(db, "Admin", admin=True)
+            marie = await _user(db, "Marie")
+            soc = await _group(db, "SOC")
+            cti = await _group(db, "CTI")
+            target = _agent(
+                admin,
+                "Onboarding",
+                is_company_managed=True,
+                access_restricted=True,
+                shared_group_ids=[str(soc.id)],
+                shared_group_permissions={str(soc.id): "read_only"},
+            )
+            db.add(target)
+            await db.flush()
+            # Created by Marie, who is in neither group.
+            company = _pointing_at(marie, "Company desk", target, is_company_managed=True)
+            maries = _pointing_at(marie, "Marie desk", target)
+            db.add_all([company, maries])
+            await db.commit()
+            target_id, company_id, maries_id = target.id, company.id, maries.id
+
+        async with _client(sessions, admin) as client:
+            widened = await client.put(
+                f"/api/v1/agents/{target_id}",
+                json={
+                    "shared_group_ids": [str(soc.id), str(cti.id)],
+                    "shared_group_permissions": {str(soc.id): "read_only", str(cti.id): "read_only"},
+                },
+            )
+            assert widened.status_code == 200, widened.text
+        assert await _references(sessions, company_id, target_id) == ALL_KEPT
+        assert await _references(sessions, maries_id, target_id) == ALL_GONE
 
 
 async def test_leaving_a_group_unlinks_the_agents_of_its_former_member() -> None:

@@ -337,12 +337,14 @@ async def unlink_agent_from_lost_holders(db: AsyncSession, agent: Agent) -> int:
     """Take *agent* off the handover targets and work-item rosters of the
     agents that may no longer name it, in place; returns how many changed.
 
-    A holder keeps it while the holder's owner still reaches it
+    A personal holder keeps it while the holder's owner still reaches it
     (:func:`visible_to_user_column_clause`, the tiers a write adding it is
     checked with: an administrator reaches every agent). A company-managed
-    holder also loses it as a handover target once *agent* is no longer
-    company-managed (:func:`validate_company_managed_bindings`). The handover
-    type and condition maps follow (:func:`retain_agent_bindings`).
+    holder is edited by administrators only, so its owner's reach takes
+    nothing from it: it loses *agent* as a handover target once *agent* is
+    no longer company-managed (:func:`validate_company_managed_bindings`),
+    and keeps it on its work-item roster. The handover type and condition
+    maps follow (:func:`retain_agent_bindings`).
     """
     target = str(agent.id)
     # The query below reads the audience this request just wrote.
@@ -365,9 +367,12 @@ async def unlink_agent_from_lost_holders(db: AsyncSession, agent: Agent) -> int:
     ).all()
     changed = 0
     for holder, reached in holders:
-        lost = set(AGENT_REFERENCE_FIELDS) if not reached else set()
-        if holder.is_company_managed and not agent.is_company_managed:
-            lost.add("handover_agent_ids")
+        lost: set[str] = set()
+        if holder.is_company_managed:
+            if not agent.is_company_managed:
+                lost.add("handover_agent_ids")
+        elif not reached:
+            lost.update(AGENT_REFERENCE_FIELDS)
         keep: dict[str, set[str]] = {}
         for field in lost:
             named = {canonical_id(i) for i in getattr(holder, field) or []}
