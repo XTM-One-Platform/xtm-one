@@ -1854,6 +1854,9 @@ def legacy_dump(profile: OrganizationProfile) -> dict[str, Any]:
     if not dumped.get("pir_details"):
         # #1773: a profile with no PIR detail dumps as before.
         dumped.pop("pir_details", None)
+    if not dumped.get("pir_min_scores"):
+        # #2435: a profile with no per-PIR minimum score dumps as before.
+        dumped.pop("pir_min_scores", None)
     if not dumped.get("shipped_products"):
         # #1432: a profile that ships nothing dumps as before.
         dumped.pop("shipped_products", None)
