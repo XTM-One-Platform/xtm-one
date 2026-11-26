@@ -235,7 +235,8 @@ def test_reader_fills_keys_a_contract_item_leaves_out():
     assert defaults == [
         {
             "expectation_type": "DETECTION",
-            "expectation_name": "Detected by security control",
+            # OpenAEV's default name for the type (#2480), never a home-made one.
+            "expectation_name": "Detection",
             "expectation_description": "",
             "expectation_score": 100,
             "expectation_expectation_group": False,
