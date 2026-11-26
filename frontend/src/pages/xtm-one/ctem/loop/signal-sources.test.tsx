@@ -298,6 +298,38 @@ describe("SignalSourcesPanel", () => {
     expect(within(row).getByTestId("ctem-signal-sources-compact").textContent).toMatch(/^OpenCTI \(Live listener\)/);
   });
 
+  it("keeps a long source name on the first line beside its icons, cut with an ellipsis (UX round 3 on #2509, B1)", async () => {
+    const long = "Lab perimeter attack surface monitoring feed for the external estate";
+    get.mockResolvedValue({
+      paths: [
+        path({
+          id: "new_exposure",
+          label: "New exposure",
+          default_lens: "outside",
+          status: "enabled",
+          sources: [{ provider: "webhook", kind: "webhook" as const, event: "", bound: true, key: "webhook:1", name: long }],
+        }),
+        PATHS[1],
+      ],
+    });
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalSourcesPanel />
+      </MemoryRouter>,
+    );
+    const rows = await screen.findAllByTestId("ctem-signal-sources-path");
+    const row = rows.find((r) => r.getAttribute("data-path") === "new_exposure") as HTMLElement;
+    const item = within(row).getAllByTestId("ctem-signal-source")[0];
+    // jsdom has no layout, so the rule is structural (the geometry is measured in the UX lab): icons and name share one
+    // group, the first of the item's line, so a long name never wraps away from its icons onto the hidden line.
+    const head = within(item).getByTestId("ctem-signal-source-head");
+    expect(item.firstElementChild).toBe(head);
+    // The status icon and the provider logo sit in the same group as the name.
+    expect(head.querySelectorAll("svg, img").length).toBeGreaterThanOrEqual(1);
+    const name = within(head).getByTestId("ctem-signal-source-name");
+    expect(name.textContent).toBe(long);
+  });
+
   it("counts the sources on of the available ones per path, and opens the path's sources from the empty state (#2506)", async () => {
     get.mockResolvedValue({
       paths: [

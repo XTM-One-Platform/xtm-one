@@ -160,12 +160,15 @@ function SourceItem({
         data-off={source.off ? true : undefined}
         data-state={state}
       >
-        {icon && <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden data-testid="ctem-signal-source-status-icon" />}
-        <ProviderLogo provider={source.provider} className="size-4 shrink-0" decorative />
-        {/* The name keeps its own width (up to 12rem); a caption that does not fit whole wraps onto the hidden second
-            line instead of being cut, the tooltip carrying it (UX round 2 on #2509, B1). */}
-        <span className={cn("max-w-48 shrink-0 truncate", !source.bound && "text-default-secondary")} data-testid="ctem-signal-source-name">
-          {name}
+        {/* Icons and name stay together on line 1 whatever the name's length: the group is the first item of the line, so
+            it never wraps, and the name shrinks with an ellipsis inside it (up to 12rem); only a caption that does not fit
+            whole wraps onto the hidden second line, the tooltip carrying it (UX rounds 2 and 3 on #2509, B1). */}
+        <span className="inline-flex min-w-0 max-w-full flex-nowrap items-center gap-x-1.5" data-testid="ctem-signal-source-head">
+          {icon && <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden data-testid="ctem-signal-source-status-icon" />}
+          <ProviderLogo provider={source.provider} className="size-4 shrink-0" decorative />
+          <span className={cn("min-w-0 max-w-48 truncate", !source.bound && "text-default-secondary")} data-testid="ctem-signal-source-name">
+            {name}
+          </span>
         </span>
         <span className="shrink-0 whitespace-nowrap content-caption text-default-secondary">{sourceKindText(t_i18n, source)}</span>
         {state === "off" && <span className="shrink-0 whitespace-nowrap content-caption text-default-secondary">{t_i18n("Off")}</span>}
