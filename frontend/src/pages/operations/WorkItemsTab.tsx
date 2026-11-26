@@ -785,11 +785,13 @@ export default function WorkItemsTab({
     if (blockers.length) {
       facts.push({ label: t_i18n("Waits for"), tone: "warning", value: <WorkItemBlockers blockers={blockers} /> });
     }
-    if (item.status === "blocked" && (pendingBlockedRefs(item).length || item.blocked_reason?.trim() || item.needs_human)) {
+    // A keeps_waiting answer is recorded: the item no longer waits for the person (#2500).
+    const waitsForPerson = !!item.needs_human && !answeredKeepsWaiting(item);
+    if (item.status === "blocked" && (pendingBlockedRefs(item).length || item.blocked_reason?.trim() || waitsForPerson)) {
       facts.push({
         label: blockers.length ? t_i18n("Also waits for") : t_i18n("Waits for"),
         tone: "warning",
-        value: <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={!!item.needs_human && !answeredKeepsWaiting(item)} />,
+        value: <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={waitsForPerson} />,
       });
     }
     if (context?.owner_agent) {
@@ -858,8 +860,9 @@ export default function WorkItemsTab({
     const pullRequests = pullRequestsOf(item.payload);
     const facts = factsOf(item);
     const blockers = item.status === "blocked" ? listedBlockers(item) : [];
+    const waitsForPerson = !!item.needs_human && !answeredKeepsWaiting(item);
     const waitsOnRefs =
-      item.status === "blocked" && (pendingBlockedRefs(item).length > 0 || !!item.blocked_reason?.trim() || !!item.needs_human);
+      item.status === "blocked" && (pendingBlockedRefs(item).length > 0 || !!item.blocked_reason?.trim() || waitsForPerson);
     // The meta column shows the owner, then the key, the references or the due date;
     // line 2 shows what it waits for. "+N" counts the facts left to the hover card.
     // The priority is always on line 1; the pickup, stale and visibility facts
@@ -1028,7 +1031,7 @@ export default function WorkItemsTab({
                   {blockers.length ? (
                     <WorkItemBlockers blockers={blockers} nowrap />
                   ) : (
-                    <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={!!item.needs_human && !answeredKeepsWaiting(item)} nowrap />
+                    <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={waitsForPerson} nowrap />
                   )}
                 </div>
               ) : (

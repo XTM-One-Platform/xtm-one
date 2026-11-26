@@ -11,7 +11,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import { ToastProvider } from "@/components/ui/toast";
 import { renderWithProviders, testQueryClient } from "@/testing/providers";
-import { answeredKeepsWaiting, canClose, canRequeue, pullRequestsOf, visiblePayload, waitsForSomeone } from "@/lib/work-item-context";
+import { answeredKeepsWaiting, canClose, canRequeue, pullRequestsOf, visiblePayload, waitsForReader, waitsForSomeone } from "@/lib/work-item-context";
 import type { WorkItem, WorkItemContext } from "@/types";
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -897,6 +897,9 @@ describe("the work item detail", () => {
     // Any other option, or a finished item, is not a recorded keeps_waiting answer.
     expect(answeredKeepsWaiting({ ...answeredItem, payload: { answer: { option: "ship", answered_at: "2026-11-26T09:00:00Z" } } })).toBe(false);
     expect(answeredKeepsWaiting({ ...answeredItem, status: "done" })).toBe(false);
+    // The list's Waiting for you badge reads the same rule (#2500, UX round 2 B2).
+    expect(waitsForReader({ ...answeredItem, scheduled: null }, answeredItem.user_id ?? undefined)).toBe(false);
+    expect(waitsForReader({ ...answeredItem, payload: {}, scheduled: null }, answeredItem.user_id ?? undefined)).toBe(true);
     openDialog(answeredItem, { close: vi.fn() });
     const pickup = screen.getByTestId("work-item-pickup");
     expect(pickup.textContent).toContain("Answer recorded");

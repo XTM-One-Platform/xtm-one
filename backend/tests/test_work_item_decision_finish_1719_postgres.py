@@ -58,7 +58,8 @@ async def test_a_keep_waiting_answer_records_it_and_leaves_the_item_waiting() ->
             person = await _make_user(session, email="keep@example.com")
             agent = await _make_agent(session)
             item = _asked(person, agent, "keep")
-            session.add(item)
+            unanswered = _asked(person, agent, "unanswered")
+            session.add_all([item, unanswered])
             await session.commit()
             item_id = str(item.id)
 
@@ -84,7 +85,9 @@ async def test_a_keep_waiting_answer_records_it_and_leaves_the_item_waiting() ->
     assert kept["blocked_reason"] == "ship decision"
     assert kept["payload"]["answer"]["option"] == "wait"
     assert "ANSWERED by Person: [wait] Keep waiting (keeps waiting)" in kept["description"].splitlines()[0]
+    # The answered item waits for its agent now (#2500): only the unanswered one counts.
     assert waiting["count"] == 1
+    assert waiting["oldest"]["title"] == "unanswered"
     # A later answer that decides still releases it to the owner.
     assert shipped["status"] == "open"
     assert shipped["needs_human"] is False

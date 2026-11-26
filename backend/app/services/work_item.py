@@ -50,8 +50,9 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import String, and_, case, cast, delete, false, func, not_, or_, select, true, update
+from sqlalchemy import String, and_, case, cast, delete, false, func, literal, not_, or_, select, true, update
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.config import settings
 from app.core.json_sql import when_json_parseable
@@ -6487,6 +6488,25 @@ async def _resolved_recipients(
     )
 
 
+def _answered_keeps_waiting_clause() -> ColumnElement[bool]:
+    """SQL: the item's ``payload.answer.option`` is a ``keeps_waiting`` option of its ask (#2500).
+
+    The frontend's ``answeredKeepsWaiting`` in SQL: the answer is recorded and
+    the item keeps waiting for its agent, so the person owes nothing more.
+    The stored option is the ask option's own key (:func:`answer_work_item`),
+    so a containment test matches it. Never NULL: a row without an ask or an
+    answer, or whose JSON PostgreSQL cannot parse, reads false.
+    """
+    option = cast(WorkItem.payload, JSONB)["answer"]["option"]
+    kept = cast(WorkItem.ask, JSONB)["options"].contains(
+        func.jsonb_build_array(
+            func.jsonb_build_object(literal("key", String), option, literal("keeps_waiting", String), true())
+        )
+    )
+    guarded = when_json_parseable(WorkItem.payload, when_json_parseable(WorkItem.ask, kept))
+    return func.coalesce(guarded, false())
+
+
 def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):
     """SQL: a non-terminal item of *user_uuid* that waits for that person.
 
@@ -6498,14 +6518,20 @@ def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):
 
     A ``needs_human`` item waits for its recipient (``waits_for_user_id``),
     else its user, else every administrator when it names nobody (#11893,
-    :func:`app.services.work_item_recipient.recipient_clause`).
+    :func:`app.services.work_item_recipient.recipient_clause`). One the
+    person already answered with a ``keeps_waiting`` option waits for its
+    agent, not for them (#2500, :func:`_answered_keeps_waiting_clause`).
     """
     from app.services.work_item_recipient import recipient_clause
 
     return and_(
         WorkItem.action_mode.is_(None),
         or_(
-            and_(WorkItem.needs_human.is_(True), recipient_clause(user_uuid)),
+            and_(
+                WorkItem.needs_human.is_(True),
+                not_(_answered_keeps_waiting_clause()),
+                recipient_clause(user_uuid),
+            ),
             and_(
                 WorkItem.user_id == user_uuid,
                 WorkItem.owner_agent_id.is_(None),

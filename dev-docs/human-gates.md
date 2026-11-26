@@ -131,7 +131,12 @@ widened):
   what the item still waits for, header "Answer recorded", the options folded
   behind "Change the answer"; the toast says the answer is recorded and the
   item keeps waiting. The same keeps_waiting option sent again with the same
-  words is a repeat: nothing is written, no second note.
+  words is a repeat: nothing is written, no second note. Such an item no
+  longer waits for the person: the "Waiting for me" filter, its count and the
+  notice leave it out (`_answered_keeps_waiting_clause` in
+  `_waits_for_person_clause`), and the list row drops its "Waiting for you"
+  badge and the person part of "Waits for" (`waitsForReader`,
+  `answeredKeepsWaiting`).
 - A work item that reaches `done` or `cancelled` (`complete_work_item`,
   `update_work_item` status) no longer waits for a person (#1719): its
   `needs_human` and ask are cleared in the same write, its open decision is
