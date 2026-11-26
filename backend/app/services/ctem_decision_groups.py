@@ -58,7 +58,8 @@ CASE_APPROVE = "approve"
 CASE_DECLINE = "decline"
 
 _CONTEXT_CHARS = 800
-_NUMBERS = re.compile(r"\b(\d+)(?:\s*-\s*(\d+))?\b")
+#: A card number or range standing alone ("4", "7-9"), never digits inside a word such as "host-12".
+_NUMBERS = re.compile(r"(?<![\w-])(\d+)(?:\s*-\s*(\d+))?(?![\w-])")
 
 _QUESTIONS: dict[str, str] = {
     FIRST_MEASURE: "Launch the first measurement of {n} asset(s) that have no test evidence yet?",
@@ -151,6 +152,7 @@ def build_ask(kind: str, members: Sequence[Mapping[str, Any]], *, cases_url: str
         mix[str(member.get("severity") or "unrated")] = mix.get(str(member.get("severity") or "unrated"), 0) + 1
     mix_text = ", ".join(f"{count} {sev}" for sev, count in sorted(mix.items()))
     lead = f"{n} case(s) ({mix_text}). {_ASKS.get(kind, '')}".strip()
+    # The card shows the head of the list; the numbers past it follow the same order on the cases list.
     lines: list[str] = []
     used = len(lead) + 2
     for index, member in enumerate(members):
@@ -168,8 +170,8 @@ def build_ask(kind: str, members: Sequence[Mapping[str, Any]], *, cases_url: str
             {
                 "key": APPROVE_SELECTED,
                 "label": "Approve selected",
-                "effect": "Name the case numbers of the list in the answer (e.g. 1, 4, 7-9): only those move on, "
-                "the rest stay in this decision.",
+                "effect": "Name the case numbers shown on this card (e.g. 1, 4, 7-9): only those move on; "
+                "the rest stay in this decision and the card then lists the next ones.",
             },
             {"key": DECLINE_ALL, "label": "Decline all", "effect": "Every case is parked with your reason."},
             {
@@ -344,11 +346,23 @@ async def consolidate(db: AsyncSession, *, now: datetime | None = None, limit: i
     is closed, no notification) and waits on the group, blocked; a re-run finds
     no such item left and changes nothing. The caller commits.
     """
-    from sqlalchemy import or_
+    from sqlalchemy import String, cast, literal, or_
 
+    from app.models.ctem_case import CtemCase
     from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
 
     now = now or datetime.now(UTC)
+    case_key = cast(CtemCase.id, String)
+    # Only the gates of first-measure cases are read, so ungroupable gates never fill the batch.
+    groupable_case = (
+        select(CtemCase.id)
+        .where(
+            CtemCase.trigger_path == "control_decay",
+            CtemCase.title.ilike("%for the first time%"),
+            or_(*(WorkItem.correlation_key == literal(p, String) + case_key for p in GROUPABLE_PREFIXES)),
+        )
+        .exists()
+    )
     rows = (
         (
             await db.execute(
@@ -357,6 +371,7 @@ async def consolidate(db: AsyncSession, *, now: datetime | None = None, limit: i
                     WorkItem.needs_human.is_(True),
                     WorkItem.status.not_in(WORK_ITEM_TERMINAL_STATUSES),
                     or_(*(WorkItem.correlation_key.like(f"{p}%") for p in GROUPABLE_PREFIXES)),
+                    groupable_case,
                 )
                 .order_by(WorkItem.created_at)
                 .limit(limit)

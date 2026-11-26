@@ -93,3 +93,4 @@ def test_approve_selected_reads_the_card_numbers_and_ranges() -> None:
     assert [m["case_id"] for m in chosen] == [members[0]["case_id"], members[3]["case_id"], members[4]["case_id"]]
     assert groups.selected_members(members, "all of them") == []
     assert groups.selected_members(members, "9") == []
+    assert groups.selected_members(members, "skip host-2 and kibana3") == []
