@@ -21899,6 +21899,7 @@
   "The PIRs could not be read: {reason}": "Les PIR n'ont pas pu être lus : {reason}",
   "{enabled, plural, one {# PIR enabled in signals} other {# PIRs enabled in signals}} of {total}": "{enabled, plural, one {# PIR activé dans les signaux} other {# PIR activés dans les signaux}} sur {total}",
   "No PIR yet. The PIRs of every connected OpenCTI appear here after the next refresh.": "Aucun PIR pour l'instant. Les PIR de chaque OpenCTI connecté apparaissent ici après la prochaine actualisation.",
+  "{integration}: the PIRs could not be read. {reason}": "{integration} : les PIR n'ont pas pu être lus. {reason}",
   "PIR policy: {name}": "Politique du PIR : {name}",
   "The question this PIR answers, who owns it, its minimum score and whether it drives signals. OpenCTI keeps the PIR itself.": "La question à laquelle ce PIR répond, son responsable, son score minimum et s'il déclenche des signaux. OpenCTI conserve le PIR lui-même.",
   "PIR policy saved": "Politique du PIR enregistrée",
