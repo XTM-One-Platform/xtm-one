@@ -3023,6 +3023,10 @@ CTEM_SHARED_GATE_PREFIXES: tuple[str, ...] = (
     "ctem:validation:",
     # ctem.remediation.decision, filed by the platform (ctem_cases.py).
     "ctem:remediation:",
+    # ctem.production_change, ctem.accept_risk and ctem.close_without_retest, read by the case page (#2464).
+    "ctem:production-change:",
+    "ctem:accept-risk:",
+    "ctem:close-without-retest:",
 )
 CTEM_F1_GATE_PREFIXES: tuple[str, ...] = (
     *CTEM_SHARED_GATE_PREFIXES,

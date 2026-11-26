@@ -68,6 +68,7 @@ import { CaseAnalystReview } from "./ctem/CaseAnalystReview";
 import { CaseValidation } from "./ctem/CaseValidation";
 import { CaseTreatmentPlan } from "./ctem/CaseTreatmentPlan";
 import { CaseMobilization } from "./ctem/CaseMobilization";
+import { CaseWaitingGates } from "./ctem/CaseWaitingGates";
 import { APPLIED_CHANGE_KIND_LABEL, appliedChangeKindLabel, isAppliedChangeKind } from "./ctem/case-mobilization";
 import { CaseRunningVersions } from "./ctem/CaseRunningVersions";
 import { CaseAffectedAssets } from "./ctem/CaseAffectedAssets";
@@ -866,6 +867,9 @@ export default function CtemCaseDetail() {
         </p>
       )}
 
+      {/* Every waiting decision, whoever works the case (#2464), first: a gate no section owns is answered here. */}
+      <CaseWaitingGates state={kase.state} gates={kase.gates} history={kase.history} personName={personName} />
+
       {kase.state !== "resolved" && kase.state !== "accepted_risk" && (
         <CaseWorkCard
           work={work}
@@ -890,7 +894,7 @@ export default function CtemCaseDetail() {
 
         <CaseTreatmentPlan plan={kase.treatment_plan} />
 
-        <CaseMobilization history={kase.history} tickets={kase.tickets} />
+        <CaseMobilization history={kase.history} tickets={kase.tickets} gates={kase.gates} personName={personName} />
       </CaseLoopProvider>
 
       <Card>

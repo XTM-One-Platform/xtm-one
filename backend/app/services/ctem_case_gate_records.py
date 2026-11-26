@@ -53,6 +53,10 @@ GATE_ITEM_PREFIXES: dict[str, tuple[str, ...]] = {
     "ctem.validation.non_readonly": ("ctem:validation:", "ctem:f2:validate:"),
     "ctem.remediation.decision": ("ctem:remediation:",),
     "ctem.mobilize": ("ctem:f1:case-mobilize:", "ctem:f2:mobilize:"),
+    # #2464: every gate of the catalog has its own key, so its record names its item and the page answers it.
+    "ctem.production_change": ("ctem:production-change:",),
+    "ctem.accept_risk": ("ctem:accept-risk:",),
+    "ctem.close_without_retest": ("ctem:close-without-retest:",),
 }
 
 _DECISION_STATUS = {"open": WAITING, "answered": ANSWERED, "expired": EXPIRED, "cancelled": CANCELLED}

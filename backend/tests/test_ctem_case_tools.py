@@ -444,6 +444,8 @@ async def test_a_gate_pass_is_written_on_the_case_and_an_unknown_gate_is_refused
         ("ctem.mobilize", "ctem:f1:case-mobilize:"),
         ("ctem.mobilize", "ctem:f2:mobilize:"),
         ("ctem.accept_risk", "ctem:accept-risk:"),
+        ("ctem.production_change", "ctem:production-change:"),
+        ("ctem.close_without_retest", "ctem:close-without-retest:"),
     ],
 )
 async def test_a_waited_gate_needs_its_open_decision_item(

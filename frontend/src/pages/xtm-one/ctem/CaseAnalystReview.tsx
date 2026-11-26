@@ -19,12 +19,11 @@ import { CASE_SECTION_ICON, CaseCardTitleText } from "./case-icons";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import { mayAnswerCaseGate } from "@/lib/ctem-access";
 import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseThreatPackage } from "@/hooks/api/useCtemCasesApi";
-import { useWorkItems } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { safeExternalUrl } from "@/lib/utils";
-import { waitsForAnswer } from "@/lib/work-item-context";
 import { GATE_CARD_STATUS_LABEL, latestGate } from "./case-gates";
+import { useGateDecisionItem } from "./CaseGateDecision";
 import { REVIEW_GATE, REVIEW_STAGE_LABEL, reviewAnswerer, reviewDecisionKey, reviewStage } from "./case-review";
 import { CaseSectionReason } from "./CaseSectionReason";
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
@@ -50,8 +49,9 @@ export function CaseAnalystReview({
   // The decision record wins over the case event: an answered decision never reads as waiting (#1518).
   const record = gateRecordOf(gates, REVIEW_GATE);
   const waiting = record ? record.status === "waiting" : gate?.to === "waited";
-  const items = useWorkItems({ correlation_key: reviewDecisionKey(caseId), open_only: true, limit: 1 }, waiting);
-  const item = waiting ? ((items.data ?? []).find(waitsForAnswer) ?? null) : null;
+  // The decision item, by the record's own work item (#2464), the key only on an API that names none.
+  const items = useGateDecisionItem(record, waiting, reviewDecisionKey(caseId));
+  const item = items.item;
   const stage = reviewStage(pkg);
   const href = pkg && !pkg.restricted ? safeExternalUrl(pkg.url ?? undefined) : undefined;
   const name = pkg && !pkg.restricted ? pkg.name || t_i18n("Unnamed Grouping") : null;
@@ -153,7 +153,7 @@ export function CaseAnalystReview({
         {waiting && item && (
           <WorkItemDecisionCard item={item} inCase canAnswer={mayAnswerCaseGate(item, user, Boolean(isAdmin))}
               readOnlyNote={t_i18n("Only an administrator or a member of a group with View and decide can answer this decision.")}
-              onAnswered={() => items.refetch()}
+              onAnswered={items.refetch}
             />
         )}
         {waiting && !item && !items.isLoading && record?.decision_filed === false && (

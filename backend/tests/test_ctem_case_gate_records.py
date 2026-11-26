@@ -62,6 +62,19 @@ def test_item_keys_cover_the_shared_gate_prefixes() -> None:
     assert keys[f"ctem:review:{CASE}"] == "ctem.analyst_review"
     assert keys[f"ctem:validation:{CASE}"] == "ctem.validation.non_readonly"
     assert keys[f"ctem:remediation:{CASE}"] == "ctem.remediation.decision"
+    # #2464: the gates no section of the page owns have a key too, so their record names its item.
+    assert keys[f"ctem:production-change:{CASE}"] == "ctem.production_change"
+    assert keys[f"ctem:accept-risk:{CASE}"] == "ctem.accept_risk"
+    assert keys[f"ctem:close-without-retest:{CASE}"] == "ctem.close_without_retest"
+
+
+def test_every_catalog_gate_has_its_item_key() -> None:
+    from app.agents.builtin_agents import CTEM_SHARED_GATE_PREFIXES
+    from app.agents.builtin_fleet_docs import CTEM_GATE_KEYS
+
+    assert set(CTEM_GATE_KEYS) <= set(gates.GATE_ITEM_PREFIXES), set(CTEM_GATE_KEYS) - set(gates.GATE_ITEM_PREFIXES)
+    for gate in ("ctem.production_change", "ctem.accept_risk", "ctem.close_without_retest"):
+        assert set(gates.GATE_ITEM_PREFIXES[gate]) <= set(CTEM_SHARED_GATE_PREFIXES), gate
 
 
 def test_answered_on_the_decision_without_a_case_event_is_answered() -> None:
