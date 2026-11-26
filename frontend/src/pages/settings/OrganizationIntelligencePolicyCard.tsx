@@ -100,6 +100,21 @@ export function draftPatch(pir: IntelligencePolicyPir, draft: PirPolicyDraft): R
   return patch;
 }
 
+/**
+ * Column widths (px, `layout="fixed"`): Name takes what is left and every long text is cut on
+ * one line with the shared tooltip, so the table never scrolls sideways inside the card at
+ * 1080 (about 230 px left for Name) or 1728 (UX r2 B1 on #2444).
+ */
+const COLUMN_WIDTHS = {
+  source: 180,
+  owner: 180,
+  review_cadence: 140,
+  primary_assets: 200,
+  min_score: 130,
+  enabled: 150,
+  last_seen_at: 170,
+} as const;
+
 interface Props {
   /** The landing anchor of a `?card=intelligence_policy` link. */
   id: string;
@@ -152,8 +167,25 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
       sortValue: (pir) => pir.name.toLowerCase(),
       csv: (pir) => pir.name,
     },
-    { key: "source", header: "Source", cell: (pir) => sourceOf(pir), sortValue: (pir) => sourceOf(pir), csv: (pir) => sourceOf(pir), hideBelow: "6xl", hideable: true },
-    { key: "owner", header: "Owner", cell: (pir) => textCell(pir.owner), sortValue: (pir) => pir.owner.toLowerCase(), csv: (pir) => pir.owner, hideable: true },
+    {
+      key: "source",
+      header: "Source",
+      cell: (pir) => textCell(sourceOf(pir)),
+      sortValue: (pir) => sourceOf(pir),
+      csv: (pir) => sourceOf(pir),
+      hideBelow: "6xl",
+      hideable: true,
+      width: COLUMN_WIDTHS.source,
+    },
+    {
+      key: "owner",
+      header: "Owner",
+      cell: (pir) => textCell(pir.owner),
+      sortValue: (pir) => pir.owner.toLowerCase(),
+      csv: (pir) => pir.owner,
+      hideable: true,
+      width: COLUMN_WIDTHS.owner,
+    },
     {
       key: "review_cadence",
       header: "Review cadence",
@@ -162,6 +194,7 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
       csv: (pir) => cadenceText(pir.review_cadence),
       hideBelow: "4xl",
       hideable: true,
+      width: COLUMN_WIDTHS.review_cadence,
     },
     {
       key: "primary_assets",
@@ -170,6 +203,7 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
       csv: (pir) => pir.primary_assets.join(", "),
       hideBelow: "7xl",
       hideable: true,
+      width: COLUMN_WIDTHS.primary_assets,
     },
     {
       key: "min_score",
@@ -179,6 +213,7 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
       cell: (pir) => <span className="font-mono">{pir.min_score}</span>,
       sortValue: (pir) => pir.min_score,
       csv: (pir) => pir.min_score,
+      width: COLUMN_WIDTHS.min_score,
     },
     {
       key: "enabled",
@@ -199,6 +234,7 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
         ),
       sortValue: (pir) => (pir.enabled ? 1 : 0),
       csv: (pir) => (pir.enabled ? "yes" : "no"),
+      width: COLUMN_WIDTHS.enabled,
     },
     {
       key: "last_seen_at",
@@ -208,6 +244,7 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
       csv: (pir) => pir.last_seen_at ?? "",
       hideBelow: "8xl",
       hideable: true,
+      width: COLUMN_WIDTHS.last_seen_at,
     },
   ];
 
@@ -261,6 +298,7 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
           <DataTable
             rows={rows}
             columns={columns}
+            layout="fixed"
             rowKey={(pir) => pir.id}
             searchFields={(pir) => [pir.name, pir.owner, pir.question, pir.pir_id]}
             filters={[
