@@ -24,6 +24,7 @@ from app.api.v1 import groups as groups_module
 from app.models.audit_log import AuditLog
 from app.models.group import Group, GroupMember
 from app.models.user import User
+from app.services import ctem_groups
 from app.services.group_auto_join import join_auto_join_groups
 from tests.scratch_database import ALL_TABLES, scratch_database
 
@@ -130,6 +131,60 @@ async def test_no_auto_join_group_writes_nothing():
             assert await join_auto_join_groups(db, user, provider="SAML") == set()
             await db.commit()
         assert await _memberships(scratch.sessions, dana.id) == {}
+
+
+async def test_the_seeded_viewers_group_is_never_rejoined_at_a_sign_in_after_a_removal() -> None:
+    """#2478: "CTEM Viewers" has auto join on, served at account creation only, so an
+    administrator's removal holds at the next sign-in; an ordinary auto join group
+    still takes the person in."""
+    async with _scratch("autojoinviewers") as scratch:
+        dana = _user("dana")
+        async with scratch.sessions() as db:
+            viewers = Group(name="CTEM Viewers", auto_join=True, seed_key=ctem_groups.VIEWERS_KEY)
+            db.add_all([dana, viewers, Group(name="Everyone", auto_join=True)])
+            await db.flush()
+            user = await db.get(User, dana.id)
+            assert await ctem_groups.join_viewers_at_creation(db, user) is True
+            await db.commit()
+        assert await _memberships(scratch.sessions, dana.id) == {"CTEM Viewers": "manual"}
+
+        # An administrator removes Dana from the seeded group.
+        async with scratch.sessions() as db:
+            row = (
+                await db.execute(
+                    select(GroupMember).where(GroupMember.user_id == dana.id, GroupMember.group_id == viewers.id)
+                )
+            ).scalar_one()
+            await db.delete(row)
+            await db.commit()
+
+        for provider in ("OIDC", "SAML"):
+            async with scratch.sessions() as db:
+                user = await db.get(User, dana.id)
+                await join_auto_join_groups(db, user, provider=provider)
+                await db.commit()
+            assert await _memberships(scratch.sessions, dana.id) == {"Everyone": "auto_join"}
+
+
+async def test_the_first_seed_creates_viewers_with_auto_join_on_and_operators_off() -> None:
+    async with _scratch("autojoinseed") as scratch:
+        async with scratch.sessions() as db:
+            assert await ctem_groups.seed_ctem_groups(db, platform_mode="xtm_one") == 2
+        async with scratch.sessions() as db:
+            rows = dict((await db.execute(select(Group.seed_key, Group.auto_join))).all())
+        assert rows == {ctem_groups.VIEWERS_KEY: True, ctem_groups.OPERATORS_KEY: False}
+
+        # A toggle-off by an administrator survives the next boot seed.
+        async with scratch.sessions() as db:
+            group = (await db.execute(select(Group).where(Group.seed_key == ctem_groups.VIEWERS_KEY))).scalar_one()
+            group.auto_join = False
+            await db.commit()
+        async with scratch.sessions() as db:
+            assert await ctem_groups.seed_ctem_groups(db, platform_mode="xtm_one") == 0
+        async with scratch.sessions() as db:
+            assert (
+                await db.execute(select(Group.auto_join).where(Group.seed_key == ctem_groups.VIEWERS_KEY))
+            ).scalar_one() is False
 
 
 async def test_the_saml_mapping_never_removes_or_takes_over_an_auto_join_membership():
