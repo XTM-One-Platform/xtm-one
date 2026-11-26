@@ -8,7 +8,19 @@ particular and the case could wait on nobody. The owner now comes, in order:
 1. from the inventory: the ``owner`` of an affected asset's records, else the
    ``owner`` of an asset group one of those records belongs to;
 2. from the instance default ``CTEM_CASE_DEFAULT_OWNER`` (an email);
-3. else none (the loop's ask still names a person or a team).
+3. else the person who decides CTEM (#2452): the same people a case gate's
+   decision item reaches (``work_item_recipient``): the active members of the
+   groups granting ``decide`` with notify on, else the active administrators;
+   the seed account (``ADMIN_EMAIL``) only when it is the sole candidate. Of
+   several, the first by account creation, then id: a stable rule, its count
+   written in the reason of the ``owner`` case event;
+4. else none (an instance with no active administrator).
+
+The owner is set at the opening, by this code, never by the loop agent: a
+loop that writes the same owner again changes nothing. The case sweep gives
+an open case with no owner and no ``owner`` event the decider the same way
+(:func:`backfill_owners`): one ``owner`` event per case, no notification,
+and a second pass changes nothing; an owner a person cleared stays cleared.
 
 An owner is a platform account: the inventory's ``owner`` text and the
 default are matched to an active user by email, case-insensitive. A name
@@ -41,6 +53,9 @@ MAX_ASSETS = 50
 FROM_ASSET = "asset owner"
 FROM_GROUP = "asset group owner"
 FROM_DEFAULT = "instance default owner"
+FROM_DECIDER = "CTEM decider"
+#: Most unowned open cases one sweep gives an owner (#2452).
+BACKFILL_BATCH = 500
 
 
 def _key(value: object) -> str:
@@ -85,10 +100,110 @@ def pick_owner(
     return None, None
 
 
-async def owner_for_signal(db: AsyncSession, signal: Any) -> tuple[uuid.UUID | None, str | None]:
-    """The owner a case opened from *signal* starts with, read from the inventory and the default.
+def pick_decider(
+    deciders: Iterable[tuple[uuid.UUID, str]], admins: Iterable[tuple[uuid.UUID, str]], seed_email: str = ""
+) -> tuple[uuid.UUID | None, str | None]:
+    """The CTEM decider a case falls back to (pure, #2452).
 
-    One savepoint: an inventory or user read that fails answers ``(None, None)`` and the case opens without owner.
+    *deciders* and *admins* are ``(user id, email)`` of active accounts, already
+    ordered by account creation then id. The decide groups' members first, else
+    the administrators; the seed account only when it is the only one. Answers
+    ``(user id, reason)``, ``(None, None)`` when nobody decides.
+    """
+    seed = (seed_email or "").strip().lower()
+    for people, source in ((list(deciders), "decide group member"), (list(admins), "administrator")):
+        unique = list(dict.fromkeys(people))
+        persons = [p for p in unique if (p[1] or "").strip().lower() != seed] or unique
+        if persons:
+            how = f"{FROM_DECIDER} ({source}"
+            how += ")" if len(persons) == 1 else f", first of {len(persons)} by account creation)"
+            return persons[0][0], how
+    return None, None
+
+
+async def decider_owner(db: AsyncSession) -> tuple[uuid.UUID | None, str | None]:
+    """The person who decides CTEM, by :func:`pick_decider`; ``(None, None)`` when the read fails."""
+    from app.core.config import settings
+    from app.models.group import Group, GroupMember
+    from app.models.user import User
+
+    order = (User.created_at.asc(), User.id.asc())
+    try:
+        async with db.begin_nested():
+            deciders = (
+                await db.execute(
+                    select(User.id, User.email)
+                    .join(GroupMember, GroupMember.user_id == User.id)
+                    .join(Group, Group.id == GroupMember.group_id)
+                    .where(Group.ctem_access == "decide", Group.ctem_notify.is_(True), User.is_active.is_(True))
+                    .order_by(*order)
+                )
+            ).all()
+            admins = (
+                await db.execute(
+                    select(User.id, User.email).where(User.role == "admin", User.is_active.is_(True)).order_by(*order)
+                )
+            ).all()
+    except Exception:  # never fails a case opening or a sweep
+        logger.info("CTEM decider unavailable", exc_info=True)
+        return None, None
+    return pick_decider(
+        [(r[0], str(r[1] or "")) for r in deciders],
+        [(r[0], str(r[1] or "")) for r in admins],
+        str(settings.admin_email or ""),
+    )
+
+
+async def owner_for_signal(db: AsyncSession, signal: Any) -> tuple[uuid.UUID | None, str | None]:
+    """The owner a case opened from *signal* starts with: inventory, default, else the CTEM decider (#2452)."""
+    owner, how = await _inventory_owner(db, signal)
+    if owner is not None:
+        return owner, how
+    return await decider_owner(db)
+
+
+async def backfill_owners(db: AsyncSession, *, now: Any, actor: str = "system") -> int:
+    """Give the CTEM decider to each open case with no owner and no ``owner`` event; how many. The caller commits.
+
+    Idempotent: the ``owner`` event it writes keeps the case out of the next pass, and so does an owner a
+    person set or cleared. No platform event, no notification: the case's open decision is unchanged.
+    """
+    from sqlalchemy import exists
+
+    from app.models.ctem_case import OPEN_STATES, CtemCase, CtemCaseEvent
+
+    owned_once = exists().where(CtemCaseEvent.case_id == CtemCase.id, CtemCaseEvent.kind == "owner")
+    cases = (
+        (
+            await db.execute(
+                select(CtemCase)
+                .where(CtemCase.state.in_(OPEN_STATES), CtemCase.owner_user_id.is_(None), ~owned_once)
+                .order_by(CtemCase.created_at.asc())
+                .limit(BACKFILL_BATCH)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not cases:
+        return 0
+    owner, how = await decider_owner(db)
+    if owner is None:
+        return 0
+    for case in cases:
+        case.owner_user_id = owner
+        db.add(
+            CtemCaseEvent(
+                case_id=case.id, actor=actor, kind="owner", at=now, to_value=str(owner), reason=f"{how}, backfill"
+            )
+        )
+    return len(cases)
+
+
+async def _inventory_owner(db: AsyncSession, signal: Any) -> tuple[uuid.UUID | None, str | None]:
+    """The owner read from the inventory and the default.
+
+    One savepoint: an inventory or user read that fails answers ``(None, None)``.
     """
     from app.models.organization_asset_record import OrganizationAssetGroup, OrganizationAssetRecord
     from app.models.user import User

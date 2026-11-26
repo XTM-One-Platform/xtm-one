@@ -66,7 +66,11 @@ def _quiet(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
     async def forget(_vertical: str) -> None:
         return None
 
+    async def no_backfill(_db: Any, **_k: Any) -> int:
+        return 0
+
     monkeypatch.setattr(ctem_case_owner, "owner_for_signal", no_owner)
+    monkeypatch.setattr(ctem_case_owner, "backfill_owners", no_backfill)
     monkeypatch.setattr(loop, "_resolved_on_inventory", not_resolved)
     monkeypatch.setattr(ctem_loop_stream, "publish_case_updates", no_frames)
     monkeypatch.setattr(platform_events, "publish", publish)

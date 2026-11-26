@@ -791,7 +791,11 @@ then the existing AI assessment and facts grid unchanged.
   decision, Closed, All) and the toggles (`?c_q=`: Mine, Unassigned, Overdue,
   Critical and high). A case Waiting for decision says what it waits on, who
   and since when (the "Waits on" column; `waiting_on` on each list row: the
-  newest unanswered waiting gate, `ctem_case_audit.open_wait`).
+  newest unanswered waiting gate, `ctem_case_audit.open_wait`). One derivation
+  of who (#2452): `waiting_on.by` is the person the gate names (a user id),
+  else the case owner, who receives its decision; owned and unowned cases read
+  alike, and "A decision" is left only for a case with no owner, which the case
+  sweep no longer leaves open (`ctem_case_owner.backfill_owners`).
 - **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
   (quick filters, search and filters applied) at `/ctem/cases` or as columns
   at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.

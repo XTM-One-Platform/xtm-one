@@ -499,6 +499,16 @@ async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
         return 0
 
     monkeypatch.setattr(ctem_case_asset_retire, "close_retired_asset_cases", none_retired)
+    from app.services import ctem_case_owner
+
+    async def no_decider(_db):
+        return None, None
+
+    async def none_owned(_db, **_k) -> int:
+        return 0
+
+    monkeypatch.setattr(ctem_case_owner, "decider_owner", no_decider)
+    monkeypatch.setattr(ctem_case_owner, "backfill_owners", none_owned)
     events = loop.PendingEvents()
     counts = await loop.sweep(db, events=events, now=NOW)
     assert counts == {
@@ -509,6 +519,7 @@ async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
         "announced": 0,
         "stalled": 0,
         "retired": 0,
+        "owned": 0,
     }
     bad.expired = False
     assert bad.state == "confirmed" and good.state == "case_opened"
