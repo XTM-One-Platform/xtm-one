@@ -625,7 +625,8 @@ async def _pir_floor(db: Any, organization_id: Any, pirs: object) -> bool:
         logger.warning("CTEM relevance floor: the organization profile was not read", exc_info=True)
         profile = None
     policy = getattr(profile, "prioritization_policy", None)
-    return pir_floor_met(pirs, threshold_for(policy, "threat"))
+    # Each PIR's own minimum from the Intelligence policy (#2435), the global threat minimum otherwise.
+    return pir_floor_met(pirs, threshold_for(policy, "threat"), getattr(profile, "pir_min_scores", None) or {})
 
 
 async def note_tracked_organizations(payload: Mapping[str, Any], organization_ids: list[str], *, verified: bool) -> int:

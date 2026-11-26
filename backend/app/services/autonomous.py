@@ -2854,6 +2854,16 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Organization sync scheduler error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        # --- 9a'. The Intelligence policy's PIRs, read from every connected OpenCTI (#2435) ---
+        # No model call, no configuration: at most once an hour per process.
+        try:
+            from app.services.organization_pirs import refresh_if_due
+
+            await refresh_if_due(db)
+        except Exception as e:
+            logger.error("Intelligence policy refresh error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
+
         # --- 9b. Settle applied improvement proposals (#1044, #8256) ---
         # No model call: a verdict and, on a regression, a rollback. Runs with
         # AI, evaluation or Platform Health off too (#5503), so a change applied

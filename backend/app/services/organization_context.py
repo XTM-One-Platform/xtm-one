@@ -1003,6 +1003,10 @@ class OrganizationProfile(BaseModel):
     #: What each PIR asks, its owner, cadence and the primary assets it serves, by PIR id (#1773).
     #: Not a contract field; shown to agents only when filled.
     pir_details: dict[str, PirDetail] = Field(default_factory=dict, max_length=100)
+    #: The minimum PIR score of each PIR of ``pir_ids``, by PIR id (#2435): answered from the
+    #: Intelligence policy (``services/organization_pirs.py``); a PIR without one uses the policy's
+    #: global minimum of its kind. Not a contract field.
+    pir_min_scores: dict[str, int] = Field(default_factory=dict, max_length=500)
     risk_appetite: RiskAppetite = Field(default_factory=RiskAppetite)
     loaded_hourly_rate: float | None = Field(default=None, ge=0)
     currency: str = Field(default="", max_length=3)
@@ -1419,10 +1423,12 @@ async def hydrated_profile(db: AsyncSession, row: OrganizationContextVersion | N
     capped at 5,000 assets (``profile_lists``), the bound the readers had.
     """
     from app.services import organization_asset_records as records
+    from app.services.organization_pirs import overlay_profile
 
     profile = parse_profile(row.profile if row else {})
     if row is None or row.organization_id is None or not await records.is_imported(db, row.organization_id):
-        return profile
+        # The PIR fields come from the Intelligence policy once PIRs are stored (#2435).
+        return await overlay_profile(db, profile) if row is not None else profile
     asset_rows, group_rows, _truncated = await records.profile_lists(db, row.organization_id, cap=PROFILE_ASSET_CAP)
     assets: list[AssetEntry] = []
     for value in asset_rows:
@@ -1436,7 +1442,7 @@ async def hydrated_profile(db: AsyncSession, row: OrganizationContextVersion | N
             groups.append(AssetGroupEntry.model_validate(value))
         except ValueError:
             continue
-    return profile.model_copy(update={"assets_exposure": assets, "asset_groups": groups})
+    return await overlay_profile(db, profile.model_copy(update={"assets_exposure": assets, "asset_groups": groups}))
 
 
 async def current_profile(

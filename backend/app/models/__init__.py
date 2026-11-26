@@ -103,6 +103,7 @@ import app.models.organization
 import app.models.organization_asset
 import app.models.organization_asset_record
 import app.models.organization_context
+import app.models.organization_pir
 import app.models.platform_build
 import app.models.platform_event_task_watch
 import app.models.platform_health_snapshot
