@@ -351,9 +351,9 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
     "work_item.needs_human_unseen": {
         "description": (
             "A decision gate (needs_human) waited work_item_decision_unseen_hours hours and nobody opened it "
-            "(services/work_item_decision_reach.py): every active administrator was notified in the bell, once per "
-            "gate. The payload carries waiting_since, unseen_hours, waits_for_user_id, waits_for_group_ids and "
-            "notified_admin_ids."
+            "(services/work_item_decision_reach.py): its recipient was reminded in the bell, once per gate, and the "
+            "administrators only when nobody can answer it. The payload carries waiting_since, unseen_hours, "
+            "waits_for_user_id, waits_for_group_ids, reminded_user_ids, no_recipient_reason and notified_admin_ids."
         ),
         "filter_keys": (*_WORK_ITEM_KEYS, "unseen_hours"),
     },
