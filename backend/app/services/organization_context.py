@@ -1205,9 +1205,9 @@ def missing_for_run(missing: list[str], *, ctem_work: bool) -> list[str]:
 
 def holds_ctem_tools(agent: object) -> bool:
     """Whether *agent* holds CTEM tools: a built-in CTEM case or signal agent, or the ``ctem`` group bound (a former ``ctem_read`` id included, #2443)."""
-    from app.services.builtin_tools.ctem_cases import CTEM_CASE_AGENT_SLUGS
     from app.services.builtin_tool_aliases import current_group_id
     from app.services.builtin_tools.ctem import CTEM_GROUP
+    from app.services.builtin_tools.ctem_cases import CTEM_CASE_AGENT_SLUGS
     from app.services.builtin_tools.ctem_signals import CTEM_SIGNAL_AGENT_SLUGS
 
     if agent is None:

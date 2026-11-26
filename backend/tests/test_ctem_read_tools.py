@@ -26,8 +26,8 @@ import pytest
 from app.core.config import settings
 from app.models.ctem_case import CtemCaseEvent
 from app.services import ctem_case_versions
-from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
 from app.services.builtin_tool_aliases import canonical_builtin_selection, current_group_id, runtime_builtin_tool_ids
+from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
 from app.services.builtin_tools import (
     AGENT_KEYED_BUILTIN_TOOL_IDS,
     build_ctem_tools,
@@ -35,9 +35,9 @@ from app.services.builtin_tools import (
     offers_ctem_tools,
 )
 from app.services.builtin_tools.ctem_read import empty_sections, opened_by
-from app.services.organization_inventory_query import compact_asset
 from app.services.builtin_tools.ctem_signals import _since
 from app.services.ctem_signals import provider_name, to_dict
+from app.services.organization_inventory_query import compact_asset
 from app.tools.base import ToolCall
 from tests.test_ctem_case_tools import AGENT, env  # noqa: F401  (the shared fixture)
 

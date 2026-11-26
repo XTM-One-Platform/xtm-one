@@ -32,7 +32,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from app.tools.base import CallableToolExecutor, ToolDefinition
+from app.tools.base import ToolDefinition
 
 from ._shared import logger
 

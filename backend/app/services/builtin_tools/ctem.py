@@ -50,9 +50,8 @@ _SOURCE = f"builtin:{CTEM_GROUP}"
 
 def _names() -> tuple[str, ...]:
     from .ctem_cases import CTEM_CASE_TOOL_NAMES
-    from .ctem_signals import CTEM_SIGNAL_TOOL_NAMES
-
     from .ctem_repair import PASSES_TOOL
+    from .ctem_signals import CTEM_SIGNAL_TOOL_NAMES
 
     return (*CTEM_SIGNAL_TOOL_NAMES, TRIAGE_TOOL, *CTEM_CASE_TOOL_NAMES, PASSES_TOOL)
 
