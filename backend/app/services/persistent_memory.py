@@ -38,7 +38,7 @@ Memory hygiene (added for long-running agents):
       dimensions no longer match the platform embedding target.
   13. ``run_memory_maintenance()`` – orchestrates all hygiene tasks for all agents.
   14. ``get_memory_health()`` – per-agent memory statistics for the health endpoint.
-  15. ``auto_heal_agent_memory()`` – reactive, throttled per-agent self-heal
+  15. ``auto_heal_agent_memory()`` – reactive, throttled (per agent and lane) self-heal
       (persistent-tier hygiene + Redis medium-term compression) triggered
       when an agent's combined memory block exceeds the assignment prompt
       memory budget.
@@ -4151,13 +4151,11 @@ async def auto_heal_agent_memory(agent_id: str, *, scope_id: str | None = None) 
     from app.core.redis import redis_client
 
     agent_key = f"agent_mem_autoheal:{agent_id}"
-    lane_key = f"{agent_key}:scope:{scope_id}" if scope_id else agent_key
+    lane_key = f"{agent_key}:scope:{scope_id or 'agent'}"
     try:
         redis = await redis_client()
         hygiene = bool(await redis.set(agent_key, "1", nx=True, ex=_AUTO_HEAL_THROTTLE_SECONDS))
-        compress = hygiene if lane_key == agent_key else bool(
-            await redis.set(lane_key, "1", nx=True, ex=_AUTO_HEAL_THROTTLE_SECONDS)
-        )
+        compress = bool(await redis.set(lane_key, "1", nx=True, ex=_AUTO_HEAL_THROTTLE_SECONDS))
     except Exception as e:
         # Redis being unavailable must not turn into an unthrottled LLM
         # storm — skip the pass, the hourly scheduler still covers hygiene.
@@ -4169,7 +4167,7 @@ async def auto_heal_agent_memory(agent_id: str, *, scope_id: str | None = None) 
         return False
     if not (hygiene or compress):
         return False
-    acquired = list(dict.fromkeys(k for k, held in ((agent_key, hygiene), (lane_key, compress)) if held))
+    acquired = [k for k, held in ((agent_key, hygiene), (lane_key, compress)) if held]
 
     logger.info("Running automatic memory self-heal for agent %s", agent_id)
 

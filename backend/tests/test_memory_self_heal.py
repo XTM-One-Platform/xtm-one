@@ -236,7 +236,9 @@ class _FakeSessionFactory:
 async def test_auto_heal_skipped_when_throttled():
     """A second heal within the throttle window must be a no-op — no DB
     session, no hygiene calls, no LLM."""
-    fake_redis = _FakeRedis({f"agent_mem_autoheal:{AGENT_ID}": "1"})
+    fake_redis = _FakeRedis(
+        {f"agent_mem_autoheal:{AGENT_ID}": "1", f"agent_mem_autoheal:{AGENT_ID}:scope:agent": "1"}
+    )
 
     async def fake_redis_client():
         return fake_redis
@@ -286,10 +288,13 @@ async def test_the_agent_wide_hygiene_runs_once_per_window_and_each_lane_compres
         assert await auto_heal_agent_memory(AGENT_ID, scope_id="user-a") is True
         assert await auto_heal_agent_memory(AGENT_ID, scope_id="user-b") is True
         assert await auto_heal_agent_memory(AGENT_ID, scope_id="user-a") is False
+        # The agent-level lane has its own compression throttle too.
+        assert await auto_heal_agent_memory(AGENT_ID, scope_id=None) is True
+        assert await auto_heal_agent_memory(AGENT_ID, scope_id=None) is False
 
     mock_prune.assert_awaited_once()
     mock_facts.assert_awaited_once()
-    assert [c.kwargs["scope_id"] for c in mock_compress.await_args_list] == ["user-a", "user-b"]
+    assert [c.kwargs["scope_id"] for c in mock_compress.await_args_list] == ["user-a", "user-b", None]
 
 
 @pytest.mark.asyncio
@@ -381,11 +386,11 @@ async def test_auto_heal_failure_shortens_throttle_ttl():
         ran = await auto_heal_agent_memory(AGENT_ID)
 
     assert ran is False
-    # The throttle key was claimed, then its TTL shortened on failure.
-    key = f"agent_mem_autoheal:{AGENT_ID}"
-    assert key in fake_redis.store
+    # Both throttle keys were claimed, then their TTL shortened on failure.
+    keys = [f"agent_mem_autoheal:{AGENT_ID}", f"agent_mem_autoheal:{AGENT_ID}:scope:agent"]
+    assert all(key in fake_redis.store for key in keys)
     assert fake_redis.expire_calls == [
-        (key, persistent_memory_mod._AUTO_HEAL_FAILURE_RETRY_SECONDS)
+        (key, persistent_memory_mod._AUTO_HEAL_FAILURE_RETRY_SECONDS) for key in keys
     ]
 
 
