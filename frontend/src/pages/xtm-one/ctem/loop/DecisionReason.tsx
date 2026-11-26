@@ -301,6 +301,12 @@ export function decisionInputs(decision: CtemDecisionRecord | null | undefined, 
     // UX r1 B3 on #1796: the names the record matched, next to the primary assets reached below.
     { key: "primary_assets_named", label: t_i18n("Primary assets named"), value: list(reconcile.primary_assets_named) },
     { key: "software", label: t_i18n("Software"), value: list(reconcile.products) },
+    // #2523: an unmatched signal names the software the gate tried, so a reader sees why nothing matched.
+    {
+      key: "software_tried",
+      label: t_i18n("Software tried"),
+      value: decision.reason_code === "subject_unresolved" ? list(reconcile.software_refs) : "",
+    },
     { key: "owned_domain", label: t_i18n("Owned domain"), value: domains },
     { key: "criticality", label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
     // #1591 S3: the primary assets reached and their chains, then the one threshold and where it comes from.

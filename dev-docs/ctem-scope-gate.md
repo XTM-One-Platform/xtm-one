@@ -86,6 +86,23 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
    `remote_reads=False` from the session cache. `record_ctem_signal` names the
    evidence keys the gate reads and answers a `hint` when the gate left the
    signal `subject_unresolved` and its evidence holds none of them.
+   **Threat subjects read from OpenCTI** (#2523): the OpenCTI listener records a
+   threat (`intrusion-set`, `threat-actor`, `threat-actor-group`, `campaign`,
+   `malware`) from the event payload alone, so its evidence holds none of the
+   lists above. A threat that resolves to nothing on its evidence has its
+   OpenCTI id (the source external id, else `evidence.stix_id`) read with the
+   recorder's own access, as the CVE read: the Software it `targets` or `uses`
+   (the threat as source) and the Software that `has` each Vulnerability it
+   targets (at most 50) join the software references
+   (`reconcile.threat_software`, name and CPE, at most 200).
+   `reconcile.threat_lookup` says how the read went, with the CVE read's values
+   (`null` when not needed). The read is bounded (200 relations, 15 s), cached
+   per session, reader and threat id, never raises, and follows the CVE read's
+   paths: the record-time gate reads inside its savepoint without releasing the
+   connection, the bulk passes (the hourly `recheck_new` included) take it up
+   front in `prepare_cve_reads` with the connection released (#2516). The loop
+   trace's Reconcile step lists `software_refs` as "Software tried" when the
+   decision is `subject_unresolved`.
    **Shipped products** (`shipped_products`, what the organization ships,
    apart from the tech stack it runs): a software reference or a CPE of the
    evidence (`software`, `cpe`; the OpenCTI vulnerability listener copies

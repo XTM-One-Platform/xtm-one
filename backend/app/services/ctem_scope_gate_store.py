@@ -493,6 +493,85 @@ async def _with_cve_software(
     return replace(facts, cve_software=tuple(found), cve_lookup=how)
 
 
+#: #2523: the OpenCTI types a threat signal is recorded from (the ``relevant_threat`` listener).
+THREAT_STIX_TYPES: frozenset[str] = frozenset(
+    {"intrusion-set", "threat-actor", "threat-actor-group", "campaign", "malware"}
+)
+
+
+def threat_opencti_id(facts: gate.SignalFacts) -> str:
+    """#2523: the OpenCTI id of a threat signal's subject, ``""`` when it has none (pure).
+
+    Only an OpenCTI-recorded threat of :data:`THREAT_STIX_TYPES` carries one: its
+    source external id (the internal id, #2505), else the STIX id of its evidence.
+    """
+    if facts.subject_kind != "threat" or facts.source_provider != "opencti":
+        return ""
+    evidence = facts.evidence if isinstance(facts.evidence, dict) else {}
+    if str(evidence.get("stix_type") or "").strip().lower() not in THREAT_STIX_TYPES:
+        return ""
+    return str(facts.source_external_id or evidence.get("stix_id") or "").strip()
+
+
+async def _with_threat_software(
+    db: AsyncSession,
+    row: CtemSignal,
+    facts: gate.SignalFacts,
+    profile: Any,
+    primary_assets: Any,
+    *,
+    remote: bool = True,
+    release: bool = False,
+) -> gate.SignalFacts:
+    """*facts* with the software OpenCTI says the threat targets or uses (#2523).
+
+    Read only for an OpenCTI threat (:func:`threat_opencti_id`) that resolves to
+    nothing on its evidence alone, with the recorder's own OpenCTI access, once
+    per session, reader and threat id. Never raises. *remote* and *release* as
+    :func:`_with_cve_software`.
+    """
+    from app.services import ctem_cve_software, ctem_threat_software
+
+    threat_id = threat_opencti_id(facts)
+    if not threat_id or gate.resolve(profile, facts, primary_assets).resolved:
+        return facts
+    if not remote:
+        fallback = _session_hit(db, ("fallback_reader",))
+        hit = _session_hit(db, ("threat_software", scenario_reader(row, fallback), threat_id))
+        if hit is None:
+            return facts
+        found, how = hit
+        return replace(facts, threat_software=tuple(found), threat_lookup=how)
+    try:
+        async with db.begin_nested():
+            fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
+        reader = scenario_reader(row, fallback)
+        found, how = await _session_cached(
+            db,
+            ("threat_software", reader, threat_id),
+            lambda: ctem_threat_software.threat_software(db, reader, threat_id, release=release),
+        )
+    except Exception:
+        logger.warning("CTEM scope gate: threat software not read for %s", getattr(row, "id", "?"), exc_info=True)
+        found, how = (), ctem_cve_software.LOOKUP_FAILED
+    return replace(facts, threat_software=tuple(found), threat_lookup=how)
+
+
+async def _with_remote_software(
+    db: AsyncSession,
+    row: CtemSignal,
+    facts: gate.SignalFacts,
+    profile: Any,
+    primary_assets: Any,
+    *,
+    remote: bool = True,
+    release: bool = False,
+) -> gate.SignalFacts:
+    """*facts* with the OpenCTI software reads the gate takes: the CVEs' (#2171), then the threat's (#2523)."""
+    facts = await _with_cve_software(db, row, facts, profile, primary_assets, remote=remote, release=release)
+    return await _with_threat_software(db, row, facts, profile, primary_assets, remote=remote, release=release)
+
+
 async def prepare_cve_reads(
     db: AsyncSession,
     rows: list[CtemSignal],
@@ -500,7 +579,7 @@ async def prepare_cve_reads(
     profiles: dict[uuid.UUID, Any] | None = None,
     links: dict[uuid.UUID, Any] | None = None,
 ) -> None:
-    """Take the OpenCTI CVE software reads of *rows* now, before any of them is written (#2171 review).
+    """Take the OpenCTI software reads of *rows* now (CVEs #2171, threats #2523), before any row is written.
 
     A bulk pass (:func:`evaluate_open`, :func:`recheck_parked`, :func:`recheck_held`,
     :func:`triage`) decides many signals in one transaction; its earlier rows'
@@ -527,7 +606,7 @@ async def prepare_cve_reads(
             else:
                 primary_assets = await _session_cached(db, ("links", org), partial(_primary_assets, db, org))
             # No savepoint is open here: release the connection during the OpenCTI I/O (#2518 review).
-            await _with_cve_software(db, row, facts, profile, primary_assets, release=True)
+            await _with_remote_software(db, row, facts, profile, primary_assets, release=True)
         except Exception:
             logger.warning("CTEM scope gate: CVE read not prepared for %s", getattr(row, "id", "?"), exc_info=True)
 
@@ -578,7 +657,7 @@ async def evaluate(
         scenarios = await _scenarios_for(db, row)
     facts = facts_of(row)
     if isinstance(facts, gate.SignalFacts):
-        facts = await _with_cve_software(db, row, facts, profile, primary_assets, remote=remote_reads)
+        facts = await _with_remote_software(db, row, facts, profile, primary_assets, remote=remote_reads)
     decision = gate.decide(
         profile,
         facts,
