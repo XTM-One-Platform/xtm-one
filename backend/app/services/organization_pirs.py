@@ -132,11 +132,96 @@ def apply_read(
     return created
 
 
-async def _read_integration(db: AsyncSession, integration: Any) -> list[dict[str, Any]] | str:
-    """Every PIR one OpenCTI integration answers, or why it could not be read."""
+#: Identities tried at most per OpenCTI before its read is reported failed.
+MAX_IDENTITIES = 5
+
+
+def is_seed_account(user: Any) -> bool:
+    """Whether *user* is the technical seed account (``ADMIN_EMAIL``): never the identity of a PIR read. Pure."""
+    from app.core.config import settings
+
+    email = str(getattr(user, "email", "") or "").strip().lower()
+    return bool(email) and email == str(settings.admin_email or "").strip().lower()
+
+
+def ordered_identities(
+    acting: Any,
+    run_as: list[Any],
+    admins: list[Any],
+    owner: Any,
+    *,
+    per_user: bool = True,
+) -> list[Any]:
+    """The users a PIR read tries, in order, each once, the seed account and inactive users left out. Pure.
+
+    The administrator who clicked Refresh now first; then the run-as users of
+    the integration's OpenCTI signal sources; then the active administrators;
+    the integration's owner last. The seed account owns company-managed rows
+    but has no OpenCTI user, so a read as it is refused (same rule as #2422).
+    An integration that does not call OpenCTI per user (*per_user* false: one
+    static key) keeps the seed account last, when nobody else is left.
+    """
+    chosen: list[Any] = []
+    seen: set[Any] = set()
+    seed: Any = None
+    for user in [acting, *run_as, *admins, owner]:
+        if user is None or user.id in seen or not getattr(user, "is_active", False):
+            continue
+        if is_seed_account(user):
+            seed = seed or user
+            continue
+        seen.add(user.id)
+        chosen.append(user)
+    if not per_user and not chosen and seed is not None:
+        chosen.append(seed)
+    return chosen[:MAX_IDENTITIES]
+
+
+async def _identities(db: AsyncSession, integration: Any, acting_user_id: uuid.UUID | None) -> list[Any]:
+    from app.models.ctem_signal_source import CtemSignalSource
+    from app.models.user import User
+
+    async def user(user_id: Any) -> Any:
+        return await db.get(User, user_id) if user_id else None
+
+    sources = (
+        (
+            await db.execute(
+                select(CtemSignalSource.run_as_user_id)
+                .where(
+                    CtemSignalSource.provider == "opencti",
+                    CtemSignalSource.integration_id == integration.id,
+                    CtemSignalSource.run_as_user_id.is_not(None),
+                )
+                .order_by(CtemSignalSource.enabled.desc(), CtemSignalSource.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    admins = (
+        (
+            await db.execute(
+                select(User).where(User.role == "admin", User.is_active.is_(True)).order_by(User.created_at).limit(20)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    run_as = [await user(user_id) for user_id in dict.fromkeys(sources)]
+    return ordered_identities(
+        await user(acting_user_id),
+        run_as,
+        list(admins),
+        await user(getattr(integration, "user_id", None)),
+        per_user=getattr(integration, "auth_type", None) == "platform_managed",
+    )
+
+
+async def _read_as(db: AsyncSession, integration: Any, user_id: Any) -> list[dict[str, Any]] | str:
+    """Every PIR one OpenCTI integration answers to *user_id*, or why it could not be read."""
     from app.services.opencti_trigger_provisioning import integration_gql
 
-    user_id = getattr(integration, "user_id", None) or await _an_administrator(db)
     connection = await integration_gql(db, integration, user_id, timeout=30)
     if isinstance(connection, str):
         return connection
@@ -156,14 +241,25 @@ async def _read_integration(db: AsyncSession, integration: Any) -> list[dict[str
     return nodes
 
 
-async def _an_administrator(db: AsyncSession) -> uuid.UUID | None:
-    from app.models.user import User
-
-    return (
-        await db.execute(
-            select(User.id).where(User.role == "admin", User.is_active.is_(True)).order_by(User.created_at).limit(1)
+async def _read_integration(
+    db: AsyncSession, integration: Any, acting_user_id: uuid.UUID | None = None
+) -> list[dict[str, Any]] | str:
+    """Every PIR one OpenCTI answers, read as the first identity it accepts, or why none could read it."""
+    reasons: list[str] = []
+    for person in await _identities(db, integration, acting_user_id):
+        try:
+            nodes = await _read_as(db, integration, person.id)
+        except Exception as exc:  # one identity's failure never stops the next one
+            nodes = f"unreachable: {format_exception_message(exc)[:200]}"
+        if not isinstance(nodes, str):
+            return nodes
+        reasons.append(f"{person.email}: {nodes}")
+    if not reasons:
+        return (
+            "no identity to read the PIRs with: enable an OpenCTI signal source with a run-as user, "
+            "or refresh as an administrator who has an OpenCTI account"
         )
-    ).scalar()
+    return "; ".join(reasons)[:1000]
 
 
 async def _opencti_integrations(db: AsyncSession) -> list[Any]:
@@ -186,20 +282,26 @@ async def _opencti_integrations(db: AsyncSession) -> list[Any]:
     )
 
 
-async def refresh_all(db: AsyncSession, *, now: datetime | None = None) -> dict[str, Any]:
+async def refresh_all(
+    db: AsyncSession, *, now: datetime | None = None, acting_user_id: uuid.UUID | None = None
+) -> dict[str, Any]:
     """Read the PIRs of every connected OpenCTI and store them; the caller commits.
 
-    One integration that cannot be read never touches its rows (no PIR is
-    marked gone on a failed read) and never stops the others. Answers
-    ``{"read": n, "added": n, "errors": {integration_id: reason}}``.
+    *acting_user_id* is the administrator who asked for the refresh, tried
+    first (:func:`ordered_identities`). One integration that cannot be read
+    never touches its rows (no PIR is marked gone on a failed read) and never
+    stops the others. Answers ``{"read": n, "added": n, "errors":
+    {integration_id: reason}, "names": {integration_id: name}}``.
     """
     now = now or datetime.now(UTC)
     rows = list((await db.execute(select(OrganizationPir))).scalars().all())
     read = added = 0
     errors: dict[str, str] = {}
+    names: dict[str, str] = {}
     for integration in await _opencti_integrations(db):
+        names[str(integration.id)] = str(getattr(integration, "name", "") or "OpenCTI")
         try:
-            nodes = await _read_integration(db, integration)
+            nodes = await _read_integration(db, integration, acting_user_id)
         except Exception as exc:  # one OpenCTI never stops the refresh of another
             nodes = f"unreachable: {format_exception_message(exc)[:200]}"
         if isinstance(nodes, str):
@@ -211,7 +313,7 @@ async def refresh_all(db: AsyncSession, *, now: datetime | None = None) -> dict[
         rows += created
         read += len(nodes)
         added += len(created)
-    return {"read": read, "added": added, "errors": errors}
+    return {"read": read, "added": added, "errors": errors, "names": names}
 
 
 async def refresh_if_due(db: AsyncSession, *, now: datetime | None = None) -> bool:
@@ -222,8 +324,10 @@ async def refresh_if_due(db: AsyncSession, *, now: datetime | None = None) -> bo
         return False
     _last_refresh = now
     try:
-        await refresh_all(db, now=now)
+        result = await refresh_all(db, now=now)
         await db.commit()
+        for integration_id, reason in result["errors"].items():
+            logger.warning("Intelligence policy: PIRs of OpenCTI %s not read: %s", integration_id, reason)
     except Exception as exc:
         await db.rollback()
         logger.warning("Intelligence policy: PIR refresh failed: %s", format_exception_message(exc))
