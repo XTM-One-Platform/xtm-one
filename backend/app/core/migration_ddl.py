@@ -73,6 +73,19 @@ def set_lock_timeout(conn, timeout: str = DEFAULT_LOCK_TIMEOUT) -> None:
     )
 
 
+def column_exists(conn, table: str, column: str) -> bool:
+    """Whether *table* of the active schema has *column*: the idempotency probe of a column change."""
+    return bool(
+        conn.execute(
+            sa.text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = current_schema() AND table_name = :table AND column_name = :column"
+            ),
+            {"table": table, "column": column},
+        ).scalar()
+    )
+
+
 def terminate_lock_holders(conn, table: str) -> None:
     """Terminate every same-role session holding any lock on *table*.
 

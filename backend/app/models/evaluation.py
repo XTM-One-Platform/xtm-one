@@ -161,9 +161,7 @@ class Evaluation(Base):
 
     # Overall Performance's shared victory zone, in % of the best value:
     # runs inside it tie at 100, the rest scale linearly to 0 at the worst. Every
-    # performance metric uses it; quality metrics, absolute, never do. The server
-    # default covers a replica still writing only ``speed_tolerance`` during a
-    # rolling deploy.
+    # performance metric uses it; quality metrics, absolute, never do.
     performance_tolerance: Mapped[float] = mapped_column(
         Float, nullable=False, default=5.0, server_default=sa.text("5.0")
     )
