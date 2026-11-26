@@ -889,7 +889,7 @@ export default function CtemCaseDetail() {
 
         <CaseAnalystReview caseId={kase.id} pkg={kase.threat_package} history={kase.history} gates={kase.gates} personName={personName} />
 
-        <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} gates={kase.gates} personName={personName} />
+        <CaseValidation caseId={kase.id} validations={kase.validations} history={kase.history} gates={kase.gates} personName={personName} scenario={kase.scenario} />
 
         <CaseRemediationDecision caseId={kase.id} history={kase.history} gates={kase.gates} personName={personName} />
 
