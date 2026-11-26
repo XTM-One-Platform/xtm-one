@@ -3062,9 +3062,18 @@ CTEM_CONTROL_MEASUREMENT_RULE = (
     "the measurement, and never counted as reusable evidence. Several options may be offered, the "
     "recommended one first; each says whether it is permanent or one-off, what it measures, and what "
     "OpenCRQ will update (the technique test result, or CVE findings) and will not (other controls; "
-    "nothing from a port-only scan). Nothing applies at all (no integration and no OpenAEV path): the "
-    "decision says no measuring source connected, names it as the root cause and the integration to "
-    "connect, no scan."
+    "nothing from a port-only scan). Before you recommend, compare what a pass of each option proves "
+    "with what closes the case, and say it in the option's effect: 'closes the case' or 'does not close "
+    "the case'. A never_measured case closes only when OpenCRQ books a first measurement for the asset "
+    "(a DETECTION or PREVENTION expectation result on a covered technique, or CVE findings from a scan "
+    "that reads versions); a clean unauthenticated scan gives it nothing to book, so its pass does not "
+    "close the case, and OpenCRQ never takes an OpenAEV result written back by you as evidence. An option "
+    "whose pass does not close the case is never the recommended one; when no option on the instance can "
+    "close it, the first and only decision is the structural one (connect a source that reads versions "
+    "or measures the control), any interim scan offered inside that same decision as an extra that does "
+    "not close the case, never as a gate of its own before it. Nothing applies at all (no integration "
+    "and no OpenAEV path): the decision says no measuring source connected, names it as the root cause "
+    "and the integration to connect, no scan."
 )
 
 #: The reconciliation step of a ``control_decay`` case (#2354): "no current evidence in OpenCRQ"
@@ -3121,7 +3130,9 @@ def _case_assignment(common: dict[str, Any], *, fleet_key: str, owner_filter: di
             "one case: work it exactly as below, under its own work item and its own gates; never "
             "merge two cases' loops into one item. The case "
             "is the record of this loop: read it first with "
-            "get_ctem_case. On ctem_case.opened or ctem_case.reopened: own the case's loop "
+            "get_ctem_case. A case asset's asset_id is the inventory id: compare an OpenAEV or OpenCTI id "
+            "with its source_ids[].external_id, never with asset_id. "
+            "On ctem_case.opened or ctem_case.reopened: own the case's loop "
             f"under the work item keyed `{fleet_key}:case:` followed by the case_id (create "
             "it owned by you when no open item has that key; when one is open, add a note "
             "to it and stop, never a second loop), set the case in_progress, run your loop "
@@ -3239,10 +3250,6 @@ CTEM_OPENAEV_LOOP_EVENTS: tuple[str, ...] = (
     "critical_asset_reached",
     # CTEM-27: an asset unseen past the tenant's threshold is a path 6 signal.
     "asset_stale",
-    # #2436: a finding created on an asset (path 5) and an asset a scan found (path 7),
-    # both recorded only once an administrator switches their source on.
-    "finding_created",
-    "asset_created",
 )
 #: A key no OpenAEV delivery carries: the trigger provisions and listens, never runs.
 CTEM_LISTEN_ONLY_FILTER: dict[str, Any] = {"_ctem_listen_only": {"exists": True}}
