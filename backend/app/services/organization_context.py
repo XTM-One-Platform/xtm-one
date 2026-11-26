@@ -835,7 +835,7 @@ class EvidenceHealthPass(BaseModel):
 
 
 #: One source of a trigger path as ``provider:kind`` (``ctem_signal_sources.source_key``).
-_SOURCE_KEY = re.compile(r"^[a-z0-9_-]{1,40}:(listener|pass|pir_playbook)(:[a-z0-9_]{1,40})?$")
+_SOURCE_KEY = re.compile(r"^[a-z0-9_-]{1,40}:(listener|pass|pir_playbook)$")
 
 
 class SignalSourcesSettings(BaseModel):
@@ -844,48 +844,22 @@ class SignalSourcesSettings(BaseModel):
     Every connected source feeds every path it can by default. ``excluded``
     names, per trigger path, the sources (``provider:kind``) an administrator
     took off that path alone: an excluded source records nothing on it and is
-    not bound on it, while it keeps feeding its other paths. ``included`` names
-    the sources off by default (#2436) an administrator switched on for a path.
-    ``pirs`` names, per path a PIR playbook feeds, the OpenCTI PIRs it listens
-    to (#2436): a path absent takes its default (``ctem_signal_sources.pir_selection``),
-    an empty list provisions no playbook for that path.
-    Set from the Sources tab of CTEM > Signals.
+    not bound on it, while it keeps feeding its other paths. Set from the
+    Sources tab of CTEM > Signals.
     """
 
     model_config = _Strict
 
     excluded: dict[str, list[str]] = Field(default_factory=dict)
-    included: dict[str, list[str]] = Field(default_factory=dict)
-    pirs: dict[str, list[str]] = Field(default_factory=dict)
 
-    @field_validator("pirs")
-    @classmethod
-    def _clean_pirs(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
-        from app.services.ctem_signal_sources import PIR_PATHS
-
-        out: dict[str, list[str]] = {}
-        for path, ids in value.items():
-            if path not in PIR_PATHS:
-                raise ValueError(f"{path!r} is not a trigger path a PIR playbook feeds")
-            cleaned: list[str] = []
-            for pid in ids:
-                pid = str(pid).strip()
-                if not pid or len(pid) > 100:
-                    raise ValueError(f"{pid!r} is not a PIR id")
-                if pid not in cleaned:
-                    cleaned.append(pid)
-            # An empty list is kept: it switches the path's playbook off.
-            out[path] = sorted(cleaned)
-        return out
-
-    @field_validator("excluded", "included")
+    @field_validator("excluded")
     @classmethod
     def _clean_excluded(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
-        from app.services.ctem_signal_sources import PATH_SOURCES
+        from app.services.ctem_signal_sources import PATH_SOURCES, source_key
 
         out: dict[str, list[str]] = {}
         for path, keys in value.items():
-            known = {s.key for s in PATH_SOURCES.get(path, ())}
+            known = {source_key(s.provider, s.kind) for s in PATH_SOURCES.get(path, ())}
             if not known:
                 raise ValueError(f"{path!r} is not a trigger path with a source")
             cleaned: list[str] = []
@@ -1230,15 +1204,16 @@ def missing_for_run(missing: list[str], *, ctem_work: bool) -> list[str]:
 
 
 def holds_ctem_tools(agent: object) -> bool:
-    """Whether *agent* holds CTEM tools: a built-in CTEM case or signal agent, or the ``ctem_read`` group bound."""
+    """Whether *agent* holds CTEM tools: a built-in CTEM case or signal agent, or the ``ctem`` group bound (a former ``ctem_read`` id included, #2443)."""
+    from app.services.builtin_tool_aliases import current_group_id
+    from app.services.builtin_tools.ctem import CTEM_GROUP
     from app.services.builtin_tools.ctem_cases import CTEM_CASE_AGENT_SLUGS
-    from app.services.builtin_tools.ctem_read import CTEM_READ_GROUP
     from app.services.builtin_tools.ctem_signals import CTEM_SIGNAL_AGENT_SLUGS
 
     if agent is None:
         return False
     groups = getattr(agent, "builtin_tool_ids", None)
-    if isinstance(groups, (list, tuple, set, frozenset)) and CTEM_READ_GROUP in groups:
+    if isinstance(groups, (list, tuple, set, frozenset)) and CTEM_GROUP in {current_group_id(str(g)) for g in groups}:
         return True
     slug = getattr(agent, "slug", None) or ""
     return bool(getattr(agent, "is_builtin", False)) and slug in (CTEM_CASE_AGENT_SLUGS | CTEM_SIGNAL_AGENT_SLUGS)
