@@ -251,7 +251,21 @@ export type DecisionInput = {
   names?: string[];
   /** UX r2 B7 on #1995: the names are a floor (the record's list was cut), so the count reads "At least". */
   capped?: boolean;
+  /** UX r1 B1 on #2533: what the names count ("assets" by default, "software" for the software tried). */
+  noun?: "assets" | "software";
 };
+
+/**
+ * UX r1 B2 on #2533: why the software of the signal was never read from OpenCTI, from the record's
+ * `threat_lookup` then `cve_lookup` (#2523 / #2171); empty when the read went through or was not needed.
+ */
+function softwareNotRead(reconcile: NonNullable<CtemDecisionRecord["reconcile"]>, t_i18n: Translate): string {
+  const lookup = [reconcile.threat_lookup, reconcile.cve_lookup].find((value) => typeof value === "string" && value && value !== "read");
+  if (lookup === "no OpenCTI access") return t_i18n("Not read: no OpenCTI access");
+  if (lookup === "OpenCTI did not answer") return t_i18n("Not read: OpenCTI did not answer");
+  if (lookup === "no reader") return t_i18n("Not read: no OpenCTI reader");
+  return "";
+}
 
 /**
  * Whether the matched asset list of a record is shorter than what it matched (UX r2 B7 on #1995):
@@ -288,6 +302,11 @@ export function decisionInputs(decision: CtemDecisionRecord | null | undefined, 
   const assetsCapped = assetNames.length > 0 && matchedAssetsCapped(reconcile, assetNames.length);
   const matched = list(assetNames) || (decision.reconcile && !domains ? t_i18n("None matched") : "");
   const reached = primaryAssetsRow(decision, t_i18n);
+  // #2523: an unmatched signal names the software the gate tried, so a reader sees why nothing matched;
+  // UX r1 B2 on #2533: a read that never happened says so instead of an empty row.
+  const unresolved = decision.reason_code === "subject_unresolved";
+  const triedNames = unresolved && Array.isArray(reconcile.software_refs) ? [...new Set(reconcile.software_refs.filter(Boolean).map(String))] : [];
+  const notRead = unresolved ? softwareNotRead(reconcile, t_i18n) : "";
   const rows: DecisionInput[] = [
     { key: "lenses", label: t_i18n("Lenses"), value: lenses },
     { key: "confidence", label: t_i18n("Confidence"), value: level(reconcile.confidence) },
@@ -301,12 +320,15 @@ export function decisionInputs(decision: CtemDecisionRecord | null | undefined, 
     // UX r1 B3 on #1796: the names the record matched, next to the primary assets reached below.
     { key: "primary_assets_named", label: t_i18n("Primary assets named"), value: list(reconcile.primary_assets_named) },
     { key: "software", label: t_i18n("Software"), value: list(reconcile.products) },
-    // #2523: an unmatched signal names the software the gate tried, so a reader sees why nothing matched.
     {
       key: "software_tried",
       label: t_i18n("Software tried"),
-      value: decision.reason_code === "subject_unresolved" ? list(reconcile.software_refs) : "",
+      value: list(triedNames) || notRead,
+      names: triedNames.length > 0 ? triedNames : undefined,
+      noun: "software",
     },
+    // UX r1 B2 on #2533: names were tried from the evidence, but the OpenCTI read of more never happened.
+    { key: "software_not_read", label: t_i18n("OpenCTI software read"), value: triedNames.length > 0 ? notRead : "" },
     { key: "owned_domain", label: t_i18n("Owned domain"), value: domains },
     { key: "criticality", label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
     // #1591 S3: the primary assets reached and their chains, then the one threshold and where it comes from.
@@ -364,13 +386,23 @@ function criticalityAgainstThreshold(scope: CtemDecisionRecord["scope"], t_i18n:
  * "2.5K assets: pay-api-01, vpn-gw-01, vpn-gw-lyon, +2.5K": the count compact, the first names,
  * the rest counted; a capped list reads "At least 5K assets: ..." (UX r2 B7 on #1995), never a cut length as the total.
  */
-function listSummary(names: readonly string[], locale: string, t_i18n: Translate, capped = false): string {
+export function listSummary(
+  names: readonly string[],
+  locale: string,
+  t_i18n: Translate,
+  capped = false,
+  noun: "assets" | "software" = "assets",
+): string {
   const shown = names.slice(0, LIST_INPUT_NAMES).join(", ");
   const rest = names.length - LIST_INPUT_NAMES;
   const values = { total: formatCount(locale, names.length), count: names.length, names: shown };
-  const head = capped
-    ? t_i18n("At least {total} {count, plural, one {asset} other {assets}}: {names}", values)
-    : t_i18n("{total} {count, plural, one {asset} other {assets}}: {names}", values);
+  // UX r1 B1 on #2533: the software tried are counted as software, never as assets.
+  const head =
+    noun === "software"
+      ? t_i18n("{total} {count, plural, one {software name} other {software names}}: {names}", values)
+      : capped
+        ? t_i18n("At least {total} {count, plural, one {asset} other {assets}}: {names}", values)
+        : t_i18n("{total} {count, plural, one {asset} other {assets}}: {names}", values);
   return rest > 0 ? `${head}, ${t_i18n("+{count} more", { count: formatCount(locale, rest) })}` : head;
 }
 
@@ -397,7 +429,7 @@ export function DecisionInputs({ decision, omit = [] }: { decision: CtemDecision
             <dd className="min-w-0" data-testid={`ctem-decision-input-${input.key}`}>
               <Tip content={input.value}>
                 <span className={cn("block truncate", TIP_WRAP_FOCUS_RING)} tabIndex={0}>
-                  {listSummary(input.names, intl.locale, t_i18n, input.capped)}
+                  {listSummary(input.names, intl.locale, t_i18n, input.capped, input.noun)}
                 </span>
               </Tip>
             </dd>

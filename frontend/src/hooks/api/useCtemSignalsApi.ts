@@ -35,6 +35,9 @@ export interface CtemDecisionRecord {
     products?: string[];
     /** #1720 / #2523: every software reference the gate tried against the inventory and shipped products. */
     software_refs?: string[];
+    /** #2171 / #2523: how the OpenCTI software read went ("read", "no reader", "no OpenCTI access", "OpenCTI did not answer"). */
+    cve_lookup?: string | null;
+    threat_lookup?: string | null;
     lenses?: string[];
     confidence?: string;
   } & Record<string, unknown>;
