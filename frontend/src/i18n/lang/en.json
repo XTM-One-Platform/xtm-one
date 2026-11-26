@@ -21916,5 +21916,8 @@
   "The PIR policy was not saved: {reason}": "The PIR policy was not saved: {reason}",
   "In OpenCTI": "In OpenCTI",
   "Listed": "Listed",
-  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent."
+  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.",
+  "Open scenario": "Open scenario",
+  "{total, plural, one {Not playable: {missing} of # technique has no payload} other {Not playable: {missing} of # techniques have no payload}}": "{total, plural, one {Not playable: {missing} of # technique has no payload} other {Not playable: {missing} of # techniques have no payload}}",
+  "Recorded the validation scenario": "Recorded the validation scenario"
 }

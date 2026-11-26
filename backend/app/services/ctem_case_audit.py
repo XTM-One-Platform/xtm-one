@@ -82,6 +82,8 @@ KIND_PHASE: dict[str, str] = {
     "attack_path": STAGE_PRIORITIZATION,
     "threat_package": STAGE_PRIORITIZATION,
     "validation": STAGE_VALIDATION,
+    # The OpenAEV scenario of the validation and its playability (#2468).
+    "scenario": STAGE_VALIDATION,
     "source_event": STAGE_VALIDATION,
     "retest_requested": STAGE_VALIDATION,
     "issue_closed": STAGE_VALIDATION,
