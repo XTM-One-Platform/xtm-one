@@ -21916,5 +21916,7 @@
   "The PIR policy was not saved: {reason}": "PIR ポリシーは保存されませんでした: {reason}",
   "In OpenCTI": "OpenCTI 内",
   "Listed": "掲載中",
-  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "判定可能にするには、資産上で稼働中のバージョンを読み取るチェック（認証付きスキャンまたはエージェント）を実行してください。"
+  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "判定可能にするには、資産上で稼働中のバージョンを読み取るチェック（認証付きスキャンまたはエージェント）を実行してください。",
+  "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, other {未読の通知 # 件}}",
+  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, other {あなたを待っている判断 # 件をすべて表示}}"
 }

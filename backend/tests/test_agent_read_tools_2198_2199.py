@@ -47,11 +47,14 @@ async def test_the_bell_answers_the_acting_person_feed_and_nobody_else(monkeypat
     other = SimpleNamespace(id=uuid.uuid4(), is_active=True)
     seen: list = []
 
-    async def _feed(_db, user, *, limit):
-        seen.append((user.id, limit))
+    async def _feed(_db, user, *, limit, offset=0, decisions_only=False):
+        seen.append((user.id, limit, offset, decisions_only))
         return {
             "items": [{"id": "work_item:x", "kind": "decision", "title": "Answer it", "unread": True}],
             "unread_count": 1,
+            "waiting_decision_total": 551,
+            "unread_total": 552,
+            "next_offset": 50,
         }
 
     import app.core.database as database
@@ -60,8 +63,12 @@ async def test_the_bell_answers_the_acting_person_feed_and_nobody_else(monkeypat
     monkeypatch.setattr(database, "async_session", _session(_Db({me.id: me, other.id: other})))
     monkeypatch.setattr(feed, "build_feed", _feed)
     answer = await bell.build_list_my_notifications(str(me.id))(limit=500)
-    assert seen == [(me.id, bell.MAX_LIMIT)]
-    assert "Answer it" in answer and "1 unread" in answer
+    assert seen == [(me.id, bell.MAX_LIMIT, 0, False)]
+    # #2453: the totals are the whole bell's, the next page is named.
+    assert "Answer it" in answer and "551 decision(s) waiting in all" in answer
+    assert "552 unread in all" in answer and "offset=50" in answer
+    await bell.build_list_my_notifications(str(me.id))(limit=50, offset=50)
+    assert seen[-1] == (me.id, 50, 50, True)
 
 
 @pytest.mark.asyncio
