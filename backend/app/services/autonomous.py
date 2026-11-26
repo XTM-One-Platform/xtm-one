@@ -1791,6 +1791,13 @@ async def _run_autonomous_tick_inner() -> int:
                 # again first, so the sweep below opens their cases grouped by case key.
                 from app.services import ctem_scope_gate_store
 
+                # The signals still new past the grace (a record-time gate that failed, a
+                # case-delete release whose background re-decision was lost): decided here,
+                # so none waits "for reconcile" for good.
+                undecided = await ctem_scope_gate_store.recheck_new(db)
+                await db.commit()
+                if undecided:
+                    logger.info("CTEM signals left new decided by the scheduled recheck: %s", undecided)
                 rechecked = await ctem_scope_gate_store.recheck_parked(db)
                 await db.commit()
                 if rechecked:

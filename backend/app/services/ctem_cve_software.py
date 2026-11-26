@@ -16,6 +16,7 @@ the gate records it (``reconcile.cve_lookup``) instead of guessing.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from typing import Any
@@ -31,6 +32,8 @@ logger = logging.getLogger(__name__)
 MAX_CVES = 20
 #: Most ``has`` relations read for those CVEs.
 MAX_RELATIONS = 200
+#: Seconds the whole OpenCTI read of one signal may take; past it the gate decides without it.
+LOOKUP_TIMEOUT_SECONDS = 15.0
 
 LOOKUP_READ = "read"
 LOOKUP_NO_READER = "no reader"
@@ -110,7 +113,9 @@ async def cve_software(db: AsyncSession, reader: uuid.UUID | None, cves: list[st
     from app.services.ctem_metrics_collector import _user_creds
 
     try:
-        cred = await _user_creds(db, str(reader), "opencti")
+        # release=False: the gate decides inside a savepoint; a commit here closed it and
+        # left every CVE-only signal undecided ("Can't operate on closed transaction").
+        cred = await _user_creds(db, str(reader), "opencti", release=False)
     except Exception as exc:  # unreadable credentials: nothing is guessed
         logger.info("CTEM scope gate: OpenCTI access unreadable: %s", format_exception_message(exc))
         return (), LOOKUP_NO_ACCESS
@@ -118,8 +123,14 @@ async def cve_software(db: AsyncSession, reader: uuid.UUID | None, cves: list[st
         return (), LOOKUP_NO_ACCESS
     base_url, headers = cred
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            found = await read_cve_software(client, base_url, attach_probe(headers, base_url), cves[:MAX_CVES])
+        async with httpx.AsyncClient(timeout=LOOKUP_TIMEOUT_SECONDS) as client:
+            found = await asyncio.wait_for(
+                read_cve_software(client, base_url, attach_probe(headers, base_url), cves[:MAX_CVES]),
+                timeout=LOOKUP_TIMEOUT_SECONDS,
+            )
+    except TimeoutError:
+        logger.warning("CTEM scope gate: OpenCTI CVE lookup timed out after %ss", LOOKUP_TIMEOUT_SECONDS)
+        found = None
     except Exception as exc:
         logger.warning("CTEM scope gate: OpenCTI CVE lookup failed: %s", format_exception_message(exc))
         found = None

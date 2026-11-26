@@ -413,8 +413,9 @@ async def decide_released(signal_ids: list[uuid.UUID], *, sessions: Any = None) 
     Runs in its own sessions, :data:`DECIDE_BATCH` signals per transaction, the
     OpenCRQ read once per reader per batch (``_decide_again``). A released signal
     is never put in a case here: the scheduled case sweep groups the confirmed
-    ones by fix key. A failure leaves the rest ``new`` for the on-demand gate pass
-    (POST /ctem-signals/evaluate). Answers how many were decided.
+    ones by fix key. A failure, or a task lost to a restart, leaves the rest
+    ``new``: the scheduled ``ctem_scope_gate_store.recheck_new`` decides them on
+    the next case sweep past its grace. Answers how many were decided.
     """
     from app.models.ctem_signal import CtemSignal
     from app.services import ctem_scope_gate_store as gate_store
