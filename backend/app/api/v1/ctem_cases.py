@@ -276,7 +276,7 @@ async def list_ctem_cases(
     async with view_of.timed("history"):
         history = await store.events_of(db, [uuid.UUID(row["id"]) for row in rows])
     for row in rows:
-        row.update(view_of.case_position(history.get(uuid.UUID(row["id"]), []), view))
+        row.update(view_of.case_position(history.get(uuid.UUID(row["id"]), []), view, row.get("owner_user_id")))
         # How the case came to be (#1723): the list's "Opened by" filter, the same reading as bulk-delete.
         row["opened_by"] = case_delete.origin(history.get(uuid.UUID(row["id"]), []))
         # Issues that name no asset: the inventory count, else "unknown" with its reason (#1694).

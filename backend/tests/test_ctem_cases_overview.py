@@ -105,7 +105,7 @@ def test_a_phase_counts_its_open_and_waiting_cases_and_lists_the_waiting_first(m
     view = _view(*(_issue(f"v-{i}", pa_rows=("Payments",) if i == 2 else ()) for i in range(3)))
     phase_of = {first.id: "remediation", second.id: "remediation", third.id: "prioritization"}
 
-    def _position(events, _view):
+    def _position(events, _view, _owner=None):
         case_id = events[0].case_id
         return {
             "phase": phase_of[case_id],
@@ -131,7 +131,7 @@ def test_a_phase_lists_five_cases_at_most(monkeypatch):
     cases = [_case("new", since=NOW - timedelta(hours=i)) for i in range(7)]
     pairs = [(c, [_member(c, f"v-{i}")]) for i, c in enumerate(cases)]
     view = _view(*(_issue(f"v-{i}") for i in range(7)))
-    monkeypatch.setattr(view_of, "case_position", lambda _e, _v: {"phase": "discovery", "waiting_on": None})
+    monkeypatch.setattr(view_of, "case_position", lambda _e, _v, _o=None: {"phase": "discovery", "waiting_on": None})
     out = overview.build(pairs, view, {c.id: [] for c in cases}, now=NOW)
     discovery = out["phases"]["discovery"]
     assert discovery["open"] == 7
