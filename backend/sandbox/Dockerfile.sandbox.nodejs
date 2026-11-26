@@ -9,7 +9,7 @@
 # No Jupyter / code-interpreter.sh entrypoint — designed for
 # sandbox.commands.run() executions only (plain Python subprocess execution).
 
-FROM docker.io/library/node:24-slim@sha256:8cabefbd444809cf0e319b5831c65da1ea202200ca552a5e75fd7938a6f86658
+FROM docker.io/library/node:25-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370
 
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 

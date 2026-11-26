@@ -152,7 +152,7 @@ USER sandboxuser
 # Debian trixie, as python:3.14-slim: apt.sandbox.dev.runtime.txt names trixie
 # packages (libmagic1t64), and the interpreter copied into nodejs-dev below
 # links against trixie's glibc. node:24-slim is bookworm and fails both.
-FROM docker.io/library/node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS node-builder
+FROM docker.io/library/node:25-trixie-slim@sha256:aabbe39553d15ede8a97cc60c9e1a97034ff772afcf696ea42b94e7f5f2ec71b AS node-builder
 
 ENV COREPACK_HOME=/opt/corepack \
     YARN_ENABLE_GLOBAL_CACHE=true \
@@ -173,7 +173,7 @@ RUN corepack enable \
 # Stage 4: nodejs-dev - Node 24, yarn from the corepack cache, the yarn global
 # cache, git. Non-root (the image's own node user, 1000).
 # ---------------------------------------------------------------------------
-FROM docker.io/library/node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS nodejs-dev
+FROM docker.io/library/node:25-trixie-slim@sha256:aabbe39553d15ede8a97cc60c9e1a97034ff772afcf696ea42b94e7f5f2ec71b AS nodejs-dev
 
 ARG RUNTIME_APT_FILE=backend/sandbox/apt.sandbox.dev.runtime.txt
 
