@@ -21912,5 +21912,8 @@
   "Type a whole number from 0 to 100.": "Type a whole number from 0 to 100.",
   "The PIR policy was not saved: {reason}": "The PIR policy was not saved: {reason}",
   "In OpenCTI": "In OpenCTI",
-  "Listed": "Listed"
+  "Listed": "Listed",
+  "Open scenario": "Open scenario",
+  "{total, plural, one {Not playable: {missing} of # technique has no payload} other {Not playable: {missing} of # techniques have no payload}}": "{total, plural, one {Not playable: {missing} of # technique has no payload} other {Not playable: {missing} of # techniques have no payload}}",
+  "Recorded the validation scenario": "Recorded the validation scenario"
 }
