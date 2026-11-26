@@ -34,6 +34,7 @@ describe("SignalsPurgeAction", () => {
   beforeEach(() => {
     state.isAdmin = true;
     state.started = [];
+    state.info = { counts: { signals: 4400, cases: 37 }, confirm_word: "PURGE", job: null };
   });
 
   it("is not drawn for a non-administrator", () => {
@@ -62,5 +63,70 @@ describe("SignalsPurgeAction", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: code } });
     fireEvent.click(screen.getByRole("button", { name: "Purge" }));
     expect(state.started).toEqual([{ confirm: "PURGE", resync: true }]);
+  });
+
+  // #2539: a job whose process restarted is read back interrupted (failed): a new purge can start.
+  it("offers a new purge after an interrupted job and says why it stopped", () => {
+    const steps = { state: "done", counts: {} };
+    state.info = {
+      ...state.info,
+      job: {
+        id: "j9",
+        state: "failed",
+        interrupted: true,
+        intake_paused: false,
+        resync: false,
+        step: "purge",
+        steps: { pause: steps, purge: { state: "failed", counts: { cases: 12 } }, resync: { state: "skipped", counts: {} }, resume: { state: "done", counts: {} } },
+        error: "interrupted",
+        started_at: "2026-11-26T17:00:00Z",
+        finished_at: null,
+      },
+    };
+    renderWithProviders(<SignalsPurgeAction />);
+    fireEvent.click(screen.getByTestId("ctem-signals-purge"));
+    expect(screen.getByTestId("ctem-signals-purge-preview")).toBeTruthy();
+    expect(screen.queryByTestId("ctem-signals-purge-progress")).toBeNull();
+    const code = screen.getByTestId("confirm-challenge-code").textContent ?? "";
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: code } });
+    fireEvent.click(screen.getByRole("button", { name: "Purge" }));
+    expect(state.started).toEqual([{ confirm: "PURGE", resync: false }]);
+    expect(screen.getByText("Purge interrupted")).toBeTruthy();
+    // UX B1: the pause expired, so the dialog says intake runs again and the resume step is done.
+    expect(screen.getByTestId("ctem-signals-purge-progress").textContent).toContain("Signal intake is running again.");
+    expect(screen.getByTestId("ctem-signals-purge-step-resume").getAttribute("data-state")).toBe("done");
+  });
+
+  // #2539 UX B1: the pause key outlived the job lock: the dialog says intake is still paused.
+  it("says intake is still paused when an interrupted job left its pause", () => {
+    state.info = {
+      ...state.info,
+      job: {
+        id: "j12",
+        state: "failed",
+        interrupted: true,
+        intake_paused: true,
+        resync: true,
+        step: "purge",
+        steps: {
+          pause: { state: "done", counts: {} },
+          purge: { state: "failed", counts: {} },
+          resync: { state: "pending", counts: {} },
+          resume: { state: "pending", counts: {} },
+        },
+        error: "interrupted",
+        started_at: "2026-11-26T17:00:00Z",
+        finished_at: null,
+      },
+    };
+    renderWithProviders(<SignalsPurgeAction />);
+    fireEvent.click(screen.getByTestId("ctem-signals-purge"));
+    const code = screen.getByTestId("confirm-challenge-code").textContent ?? "";
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: code } });
+    fireEvent.click(screen.getByRole("button", { name: "Purge" }));
+    const progress = screen.getByTestId("ctem-signals-purge-progress").textContent ?? "";
+    expect(progress).toContain("Signal intake is still paused.");
+    expect(progress).not.toContain("Signal intake is running again.");
+    expect(screen.getByTestId("ctem-signals-purge-step-resume").getAttribute("data-state")).toBe("pending");
   });
 });

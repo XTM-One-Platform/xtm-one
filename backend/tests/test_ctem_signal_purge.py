@@ -185,6 +185,68 @@ async def test_intake_resumes_after_a_forced_failure(redis: _Redis, monkeypatch:
 
 
 @pytest.mark.asyncio
+async def test_a_running_status_whose_job_lock_expired_reads_back_interrupted(redis: _Redis) -> None:
+    """#2539: the pod restarted mid-job, the lock expired, the status was left running."""
+    status = purge.new_status("j9", SimpleNamespace(id=uuid.UUID(ADMIN)), resync=False)
+    status["step"] = "purge"
+    status["steps"]["pause"]["state"] = "done"
+    status["steps"]["purge"] = {"state": "running", "counts": {"cases": 12}}
+    await purge._write_status(status)
+    assert purge.JOB_LOCK_KEY not in redis.data
+
+    read = await purge.read_status()
+    assert read is not None and read["state"] == "failed" and read["interrupted"] is True
+    assert read["error"] == purge.INTERRUPTED_ERROR
+    assert read["steps"]["purge"] == {"state": "failed", "counts": {"cases": 12}}
+    assert read["steps"]["pause"]["state"] == "done"
+    # The intake pause expired with the lock: intake runs again, so the resume step is true as done.
+    assert purge.PAUSE_KEY not in redis.data
+    assert read["intake_paused"] is False
+    assert read["steps"]["resume"]["state"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_an_interrupted_job_without_the_pause_skips_its_pending_resync(redis: _Redis) -> None:
+    """#2539 UX B1: a resync that never started is skipped once intake runs again."""
+    status = purge.new_status("j11", SimpleNamespace(id=uuid.UUID(ADMIN)), resync=True)
+    status["step"] = "purge"
+    status["steps"]["pause"]["state"] = "done"
+    status["steps"]["purge"]["state"] = "running"
+    await purge._write_status(status)
+
+    read = await purge.read_status()
+    assert read is not None and read["interrupted"] is True and read["intake_paused"] is False
+    assert read["steps"]["resync"]["state"] == "skipped"
+    assert read["steps"]["resume"]["state"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_an_interrupted_job_whose_pause_is_still_there_keeps_resume_pending(redis: _Redis) -> None:
+    """#2539 UX B1: the pause key outlives the lock: intake is still paused and the status says so."""
+    status = purge.new_status("j12", SimpleNamespace(id=uuid.UUID(ADMIN)), resync=True)
+    status["step"] = "purge"
+    status["steps"]["pause"]["state"] = "done"
+    status["steps"]["purge"]["state"] = "running"
+    await purge._write_status(status)
+    redis.data[purge.PAUSE_KEY] = "1"
+
+    read = await purge.read_status()
+    assert read is not None and read["interrupted"] is True and read["intake_paused"] is True
+    assert read["steps"]["resume"]["state"] == "pending"
+    assert read["steps"]["resync"]["state"] == "pending"
+    assert read["steps"]["purge"]["state"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_a_running_status_with_its_job_lock_stays_running(redis: _Redis) -> None:
+    status = purge.new_status("j10", SimpleNamespace(id=uuid.UUID(ADMIN)), resync=False)
+    await purge._write_status(status)
+    redis.data[purge.JOB_LOCK_KEY] = "1"
+    read = await purge.read_status()
+    assert read is not None and read["state"] == "running" and "interrupted" not in read
+
+
+@pytest.mark.asyncio
 async def test_a_failed_resync_still_resumes_intake(redis: _Redis, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
     _patch_steps(monkeypatch, calls)

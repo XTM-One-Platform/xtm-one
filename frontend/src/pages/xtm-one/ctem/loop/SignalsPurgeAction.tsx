@@ -154,12 +154,20 @@ export function SignalsPurgeAction() {
             <DialogTitle className="text-base">
               {running || !job
                 ? t_i18n("Purging all signals")
-                : job.state === "failed"
-                  ? t_i18n("Purge failed")
-                  : t_i18n("Purge finished")}
+                : job.interrupted
+                  ? t_i18n("Purge interrupted")
+                  : job.state === "failed"
+                    ? t_i18n("Purge failed")
+                    : t_i18n("Purge finished")}
             </DialogTitle>
             <DialogDescription className="content-base leading-relaxed">
-              {running || !job ? t_i18n("You can close this dialog: the purge goes on.") : (job.error ?? t_i18n("Signal intake is running again."))}
+              {running || !job
+                ? t_i18n("You can close this dialog: the purge goes on.")
+                : job.interrupted
+                  ? `${t_i18n("The purge stopped before its end because its process restarted. You can start a new purge.")} ${
+                      job.intake_paused ? t_i18n("Signal intake is still paused.") : t_i18n("Signal intake is running again.")
+                    }`
+                  : (job.error ?? t_i18n("Signal intake is running again."))}
             </DialogDescription>
           </DialogHeader>
           {job && (

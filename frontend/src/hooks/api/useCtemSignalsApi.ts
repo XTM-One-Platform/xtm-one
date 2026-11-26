@@ -354,6 +354,10 @@ export interface CtemSignalPurgeJob {
   step: "pause" | "purge" | "resync" | "resume";
   steps: Record<"pause" | "purge" | "resync" | "resume", { state: CtemSignalPurgeStepState; counts: Record<string, unknown> }>;
   error: string | null;
+  /** The job stopped before its end, its process restarted (#2539): read back failed, a new purge can start. */
+  interrupted?: boolean;
+  /** With interrupted: signal intake is still paused (its pause key not yet expired); false: intake runs again. */
+  intake_paused?: boolean;
   started_at: string;
   finished_at: string | null;
 }
