@@ -72,7 +72,7 @@ HIDDEN = rules.SourceIssue(
 @pytest.fixture
 def api(monkeypatch):
     """One shared case with two issues: the caller sees vuln--1 only; ``admin`` sees both; ``other`` neither."""
-    seen = SimpleNamespace(db=_Db(), user=SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None))
+    seen = SimpleNamespace(db=_Db(), user=SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None, is_admin=False))
     seen.admin = uuid.uuid4()
     seen.case = _case()
     rows = [
@@ -134,6 +134,13 @@ def api(monkeypatch):
     monkeypatch.setattr(ctem_case_gate_records_view, "gate_records", _gate_records)
     # XTM One mode: the platform mode of the test settings already is xtm_one.
     monkeypatch.setattr(api_module, "_require_xtm_one", lambda: None)
+
+    async def _decide(_db: object, _user_id: object) -> str:
+        return "decide"  # no CTEM without a right (#2441): the caller holds decide unless a test says otherwise
+
+    from app.services import ctem_access
+
+    monkeypatch.setattr(ctem_access, "group_right", _decide)
 
     @asynccontextmanager
     async def _detail_session() -> AsyncIterator[_Db]:
@@ -240,7 +247,7 @@ async def test_a_viewer_sees_the_shared_case_with_only_their_issues_and_restrict
 
 
 async def test_a_wider_viewer_sees_every_issue_of_the_same_case(api):
-    api.user = SimpleNamespace(id=api.admin, ctem_vertical=None)
+    api.user = SimpleNamespace(id=api.admin, ctem_vertical=None, is_admin=False)
     async with api.client as client:
         detail = (await client.get(f"/api/v1/ctem-cases/{api.case.id}")).json()
     assert [i["name"] for i in detail["issues"]] == ["CVE-2026-1", "CVE-2026-2"] and detail["restricted_count"] == 0
@@ -248,7 +255,7 @@ async def test_a_wider_viewer_sees_every_issue_of_the_same_case(api):
 
 async def test_a_case_with_no_visible_issue_is_absent_and_404(api):
     """#11613: absent from the list and the counts (a count is data), 404 on read and change."""
-    api.user = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None)
+    api.user = SimpleNamespace(id=uuid.uuid4(), ctem_vertical=None, is_admin=False)
     async with api.client as client:
         listed = (await client.get("/api/v1/ctem-cases")).json()
         read = await client.get(f"/api/v1/ctem-cases/{api.case.id}")
