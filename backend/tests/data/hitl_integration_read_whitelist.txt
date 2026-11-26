@@ -1073,6 +1073,7 @@ linkedin:get_linkedin_post_statistics
 linkedin:get_linkedin_profile
 linkedin:list_linkedin_organizations
 linkedin:list_linkedin_posts
+lmstudio:list_lmstudio_models
 logrhythm:get_logrhythm_alarm
 logrhythm:get_logrhythm_case
 logrhythm:get_logrhythm_status
