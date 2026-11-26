@@ -53,6 +53,7 @@ import { useFormatter } from "@/i18n";
 import { ListPageHeader } from "@/components/ui/list-page-header";
 import { DecisionReason, decisionSentence, SIGNAL_STATE_LABEL } from "./ctem/loop/DecisionReason";
 import { SignalSourcesPanel } from "./ctem/loop/SignalSourcesPanel";
+import { SignalsPurgeAction } from "./ctem/loop/SignalsPurgeAction";
 import { CaseOpeningSwitch } from "./ctem/CaseOpeningSwitch";
 import { signalProviderName } from "./ctem/loop/SignalLoopTrace";
 import { LoopTraceSheet } from "./ctem/loop/LoopTraceSheet";
@@ -96,6 +97,8 @@ function SignalsListPage() {
         infoLabel={t_i18n("About signals")}
         actions={
           // Same audience as the page: a reader sees the sources too, each Connect is gated in the panel.
+          // The purge (#2528) is icon-only and administrators only, after the labelled action (13.af).
+          <>
           <Button variant="secondary" className="gap-1.5" asChild>
             <Link to={SIGNAL_SOURCES_PATH} data-testid="ctem-signals-sources">
               <Icon name="satellite-dish" size={16} aria-hidden /> {t_i18n("Sources")}
@@ -106,6 +109,8 @@ function SignalsListPage() {
               )}
             </Link>
           </Button>
+          <SignalsPurgeAction />
+          </>
         }
       />
       <SignalsSummaryStrip />
