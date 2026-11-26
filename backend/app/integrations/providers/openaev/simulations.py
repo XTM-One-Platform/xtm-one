@@ -10,7 +10,9 @@
   membership (``ScenarioApi``). Scenario create/update/delete remain in the
   core tools.
 * ``export_openaev_scenario`` - export a scenario to a portable ``.zip``
-  archive (the artifact a user imports on another platform).
+  archive (the artifact a user imports on another platform); with
+  ``neutralise_targets`` its lab targets are replaced by example hosts before
+  it leaves XTM One (``export_targets``).
 * ``import_openaev_scenario`` - import a scenario from such an archive and
   report ``missingActions`` (the injector capabilities the target lacks).
 
@@ -19,6 +21,7 @@ Simulations EXECUTE against live assets - launch/status are real actions.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any
@@ -55,6 +58,7 @@ from ._common import (
     simulation_results_answer,
     tool_client,
 )
+from .export_targets import ExportNeutraliseError, neutralise_export
 from .injects import stored_inject_input
 from .read_scope import area_scope, count_text, with_scope
 
@@ -550,6 +554,7 @@ def register(
         scenario_id: str = "",
         with_teams: bool = False,
         with_scope_definition: bool = True,
+        neutralise_targets: bool = False,
     ) -> str | ToolResult:
         if not scenario_id:
             return "scenario_id is required."
@@ -591,12 +596,36 @@ def register(
         # id-derived name is also cleaner for the stored file.
         safe_id = re.sub(r"[^A-Za-z0-9._-]", "_", str(scenario_id))[:64] or "scenario"
         content_type = (fetched.content_type or "").split(";", 1)[0].strip() or "application/zip"
+        data = fetched.data
+        notes: list[str] = []
+        if _as_bool(neutralise_targets):
+            # The lab keeps its real target; the archive that leaves XTM One for a public
+            # catalogue names only example hosts. An export that cannot be read is never
+            # delivered as is: the caller asked for a neutralised one.
+            try:
+                neutralised = await asyncio.to_thread(neutralise_export, data)
+            except ExportNeutraliseError as exc:
+                return ToolResult(
+                    tool_call_id="",
+                    content=f"Error: the lab targets of scenario {safe_id} could not be "
+                    f"neutralised ({exc}); the export was not delivered.",
+                    is_error=True,
+                )
+            data = neutralised.data
+            notes.append(
+                f"Neutralised {neutralised.replaced} lab target value(s): the archive names "
+                "only example hosts (host.example.com, 192.0.2.10, user@example.com)."
+                if neutralised.replaced
+                else "No lab target needed neutralising: the archive already names only "
+                "example hosts."
+            )
         return await deliver_file(
-            data=fetched.data,
+            data=data,
             filename=f"openaev-scenario-{safe_id}.zip",
             content_type=content_type,
             source="OpenAEV",
             persist_file_fn=persist_file_fn,
+            notes=notes,
             mark_unstored=False,
         )
 
@@ -782,7 +811,10 @@ def register(
                 "the scenario JSON) - the artifact a user imports on another platform. "
                 "Player data and variable values are never included (the export is "
                 "safe to share). Args: scenario_id (required); optional with_teams "
-                "(default false) and with_scope_definition (default true)."
+                "(default false), with_scope_definition (default true) and "
+                "neutralise_targets (default false): set true when the export will be "
+                "published; the lab keeps its real target, the published archive names "
+                "only example hosts."
             ),
             input_schema={
                 "type": "object",
@@ -790,6 +822,15 @@ def register(
                     "scenario_id": {"type": "string"},
                     "with_teams": {"type": "boolean", "default": False},
                     "with_scope_definition": {"type": "boolean", "default": True},
+                    "neutralise_targets": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "Set true when the export will be published: the HTTP URLs, "
+                            "manual scan targets and sender that name a lab host are "
+                            "replaced by example hosts in the delivered archive."
+                        ),
+                    },
                 },
                 "required": ["scenario_id"],
             },
