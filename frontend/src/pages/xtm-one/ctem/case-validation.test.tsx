@@ -200,4 +200,18 @@ describe("CaseValidation", () => {
     expect(screen.queryByTestId("ctem-case-scenario-link")).toBeNull();
     expect(screen.queryByTestId("ctem-case-validation-scenario")).toBeNull();
   });
+
+  it("never leaves the card blank: the reason shows with a scenario and no validation yet", () => {
+    const reason = /prove whether the exposure is real/;
+    const playable = { restricted: false, url: SCENARIO_URL, name: "APT-X", techniques_total: 4, techniques_playable: 4, techniques_missing: 0, playable: true };
+    const { unmount } = renderWithProviders(<CaseValidation caseId="c1" validations={[]} history={[]} scenario={playable} />);
+    expect(screen.getByTestId("ctem-case-scenario-link")).toBeTruthy();
+    expect(screen.getByText(reason)).toBeTruthy();
+    unmount();
+    renderWithProviders(
+      <CaseValidation caseId="c1" validations={[]} history={[]} scenario={{ restricted: true, playable: true, techniques_total: 4, techniques_missing: 0 }} />,
+    );
+    expect(screen.queryByTestId("ctem-case-scenario-link")).toBeNull();
+    expect(screen.getByText(reason)).toBeTruthy();
+  });
 });

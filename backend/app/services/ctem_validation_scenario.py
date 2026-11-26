@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 SCENARIO_KIND = "scenario"
 #: The first words of the card of a scenario that is not playable.
 NOT_PLAYABLE_LEAD = "Scenario not playable:"
+#: The question of a card whose scenario is not playable: none of its options launches it (#2468).
+NOT_PLAYABLE_QUESTION = "The scenario cannot test this threat: how should the case be validated?"
 _MAX_CONTEXT_CHARS = 800
 _MAX_TESTS_CHARS = 200
 #: ``playable/total``, the ``from`` value of a scenario event.
@@ -248,6 +250,7 @@ def complete_ask(
         rest = str(out.get("context") or "").strip()
         if not rest.startswith(NOT_PLAYABLE_LEAD):
             out["context"] = fit(f"{head}\n{rest}" if rest else head, _MAX_CONTEXT_CHARS)
+        out["question"] = NOT_PLAYABLE_QUESTION
         out["options"] = [dict(o) for o in NOT_PLAYABLE_OPTIONS]
         out["recommendation"] = "A"
     return out
@@ -283,4 +286,7 @@ async def complete_gate_ask(
     package = view_of.threat_package_of(events)
     if found is None and package is None:
         return ask
-    return complete_ask(ask, found, package, getattr(case, "title", None))
+    # The threat is what the scenario emulates: the threat package, else the scenario itself; never
+    # the case title, which names the remediation (UX round 1 of #2485).
+    threat = (package or {}).get("name") or (found or {}).get("name") or None
+    return complete_ask(ask, found, package, threat)

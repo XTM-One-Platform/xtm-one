@@ -143,6 +143,9 @@ def test_not_playable_card_states_it_and_never_recommends_a_launch() -> None:
     labels = " ".join(o["label"] for o in out["options"]).lower()
     assert "complete" in labels and "manually" in labels and "reject" in labels and "launch" not in labels
     assert out["recommendation"] == "A"
+    # The launch question is replaced: none of the options launches the scenario.
+    assert out["question"] == scenario_mod.NOT_PLAYABLE_QUESTION
+    assert "launch" not in out["question"].lower()
     urls = [link["url"] for link in out["links"]]
     assert URL in urls and _PACKAGE["url"] in urls
     # Applied twice, the card does not grow.
@@ -155,8 +158,16 @@ def test_playable_card_is_unchanged_but_linked() -> None:
     found = scenario_mod.scenario_of([_event(r) for r in db.added])
     out = scenario_mod.complete_ask(_ASK, found, None, "APT-X")
     assert out["context"] == _ASK["context"] and out["options"] == _ASK["options"]
+    assert out["question"] == _ASK["question"]
     assert out["recommendation"] == "A"
     assert [link["url"] for link in out["links"]] == [URL]
+
+
+def test_not_playable_line_without_a_threat_name_says_the_threat() -> None:
+    db, case = _Db(), _case()
+    _record(db, case)
+    found = scenario_mod.scenario_of([_event(r) for r in db.added])
+    assert scenario_mod.not_playable_line(found, None).endswith("not the threat.")
 
 
 def test_newest_scenario_wins() -> None:

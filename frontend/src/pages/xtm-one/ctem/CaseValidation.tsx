@@ -144,7 +144,7 @@ export function CaseValidation({
             )}
           </div>
         )}
-        {rows.length === 0 && !gate && !record && !scenario && (
+        {rows.length === 0 && !gate && !record && (
           <CaseSectionReason
             own={t_i18n("Checks in OpenAEV that prove whether the exposure is real, once the case is prioritized.")}
             source="openaev"
