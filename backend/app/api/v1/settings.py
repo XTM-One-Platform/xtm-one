@@ -106,6 +106,7 @@ from app.core.database import get_db
 from app.core.email_domains import parse_allowed_domains
 from app.core.security import decrypt_stored_value, decrypt_value, encrypt_value
 from app.core.utils import format_exception_message, normalize_language, safe_uuid
+from app.core.xtm_auth import XTM_JWKS_PATH, xtm_issuer
 from app.llm.custom_openai_provider import CustomOpenAIProvider
 from app.llm.decisions import DECISION_LISTING_TIMEOUT_SECONDS
 from app.llm.env_models import models_env_locked, models_env_var
@@ -1947,22 +1948,32 @@ async def resolve_models_with_key(
             provider=body.provider, models=models, model_groups=groups
         )
     except Exception as e:
-        message = format_exception_message(e)
-        gateway_token = (
-            parse_gateway_credential(api_key).token
-            if body.provider == "filigran_gateway"
-            else None
-        )
-        # A gateway may echo the token it rejected.
-        message = redact_token(message, gateway_token)
-        logger.warning("Failed to resolve models for %s: %s", body.provider, message)
-        detail = f"Failed to fetch models: {message}"
-        if body.provider == "filigran_gateway" and not gateway_token:
-            detail += (
-                " — check that the gateway trusts this platform's BASE_URL as an "
-                "issuer and can reach its /xtm/auth/jwks endpoint."
-            )
-        raise HTTPException(status_code=400, detail=detail) from e
+        reason, hint = _discovery_failure(body.provider, body.api_key, api_key, e)
+        logger.warning("Failed to resolve models for %s: %s", body.provider, reason)
+        raise HTTPException(status_code=400, detail=f"Failed to fetch models: {reason}{hint}") from e
+
+
+def _discovery_failure(provider: str, typed_key: str, api_key: str, exc: Exception) -> tuple[str, str]:
+    """Why model discovery failed, fit to show an admin, and a hint for a gateway in JWT mode.
+
+    A provider may echo the key it rejected: what a vault reference resolved to, and a gateway token, are hidden.
+    """
+    reason = format_exception_message(exc)
+    typed = set(typed_key.split("||"))
+    for resolved in api_key.split("||"):
+        if resolved.strip() and resolved not in typed:
+            reason = redact_token(reason, resolved.strip())
+    if provider != "filigran_gateway":
+        return reason, ""
+    token = parse_gateway_credential(api_key).token
+    reason = redact_token(reason, token)
+    if token:
+        return reason, ""
+    jwks = f"{xtm_issuer()}{XTM_JWKS_PATH}" if xtm_issuer() else f"its {XTM_JWKS_PATH} endpoint"
+    return reason, (
+        " — check that the gateway trusts this platform's BASE_URL as an "
+        f"issuer and can reach {jwks}, or use a gateway token instead."
+    )
 
 
 # Providers that can ONLY do embeddings and expose no model-discovery API, so
@@ -2280,6 +2291,8 @@ async def validate_provider_with_key(
     # A provider serving one capability (an embedding server, a voice
     # generator) is validated for it, whatever flow added it.
     capability = getattr(provider_cls, "only_capability", None) or body.capability
+    # Why model discovery failed, shown when nothing else validates the provider.
+    discovery_error: str | None = None
 
     try:
         # Attribute gateway calls to the admin performing the validation.
@@ -2311,11 +2324,13 @@ async def validate_provider_with_key(
                 message="Provider validated and models discovered successfully.",
             )
     except Exception as exc:
+        reason, hint = _discovery_failure(body.provider, body.api_key, api_key, exc)
+        discovery_error = reason + hint
         logger.info(
             "Provider validation model discovery failed for %s/%s: %s",
             body.provider,
             capability,
-            format_exception_message(exc),
+            reason,
         )
         from app.llm.speech import SpeechGenerationError
         from app.llm.video import VideoGenerationError
@@ -2360,6 +2375,7 @@ async def validate_provider_with_key(
                 else (
                     "Unable to validate embedding provider connectivity. "
                     f"{message}"
+                    + (f" Model discovery failed: {discovery_error}" if discovery_error else "")
                 )
             ),
         )
@@ -2371,7 +2387,9 @@ async def validate_provider_with_key(
         models_supported=False,
         models=[],
         message=(
-            "Unable to validate provider for this capability. "
+            f"Unable to validate provider for this capability. Model discovery failed: {discovery_error}"
+            if discovery_error
+            else "Unable to validate provider for this capability. "
             "Model discovery failed and no fallback validation is available."
         ),
     )
