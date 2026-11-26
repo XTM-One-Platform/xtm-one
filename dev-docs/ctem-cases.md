@@ -48,6 +48,13 @@ progress, resolved, accepted risk).
    from the viewer's OWN source read (their JWT, the same reads recompute
    makes; `services/ctem_cases_view.py`), cached per user and vertical for
    5 minutes. XTM One mirrors no group, role, marking, organization or scope.
+   Reaching cases at all needs a CTEM right (#2441, `services/ctem_access.py`):
+   an administrator, or a member of a group granting `view` (read) or
+   `decide` (read and change); anyone else gets 403 and no CTEM menu, tool or
+   trigger. The seeded "CTEM Viewers" group holds every account, "CTEM
+   Operators" starts empty. A case gate waits for the `decide` groups that
+   have an active member (`ctem_access.gate_recipient`); with none, the
+   routing of the person the run acts for, never every administrator.
    - A case with no issue the viewer sees is absent from their list and their
      counts (a count is data) and answers 404 (`No case` for a tool).
    - A member issue the viewer cannot see is a row `{"restricted": true}`,
@@ -1174,8 +1181,10 @@ bound to, wired by `ctem_tools_for` in `agent_chat` and `assignment_engine`
 after `ctem_read`, XTM One mode only. The reach is the acting person's CTEM
 right (`services/ctem_access.py`, #1748): an administrator or a `decide` right
 reads and acts on the organization's signals and cases, a `view` right reads
-them and every write is refused with the view-only message, anyone else works
-on the signals they recorded and the cases their own read shows.
+them and every write is refused with the view-only message, checked at call
+time for the person the turn or background run acts for, whatever tools the
+agent carries (#2441). A person with no right gets no CTEM tool at all
+(`ctem_access.wires_ctem`).
 `triage_ctem_signals` reaches exactly what `list_ctem_signals` reads
 (`reader_scope`, agent reach): an administrator kept to their own by strict
 admin access for agent tools or the Platform Health reach triages only their

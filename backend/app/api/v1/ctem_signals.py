@@ -5,7 +5,8 @@
 XTM One mode only, no model call. ``POST`` records a signal for the caller,
 idempotent on its dedupe key (the same key again answers ``created: false``
 with ``last_seen_at`` moved). An administrator reads every signal of the
-organization; anyone else reads the signals recorded for them. The rules are
+organization, as does a member of a group with a CTEM view or decide right;
+anyone else gets 403 on every route (#2441). The rules are
 ``services/ctem_signals.py``; the design ``dev-docs/ctem-signals.md``.
 """
 
@@ -68,13 +69,34 @@ def _require_xtm_one() -> None:
 
 
 async def _reader(db: AsyncSession, user: User) -> str | None:
-    """``None`` reads the organization (an administrator, a CTEM view or decide right); else the caller's own signals."""
-    return await ctem_access.signal_reader(db, user)
+    """``None``: the organization's signals (an administrator, a CTEM view or decide right); 403 without a right (#2441)."""
+    try:
+        return await ctem_access.signal_reader(db, user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
 
 
 async def _writer(db: AsyncSession, user: User) -> str | None:
-    """``None`` acts on the organization's signals (an administrator, a CTEM decide right); else the caller's own."""
-    return await ctem_access.signal_writer(db, user)
+    """``None``: acts on the organization's signals (an administrator, a CTEM decide right); else 403 (#2441)."""
+    try:
+        return await ctem_access.signal_writer(db, user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
+
+
+async def _require_ctem_right(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> None:
+    """Every route of the signal API: 403 for a person with no CTEM right (#2441), in XTM One mode."""
+    if settings.is_copilot_like:
+        return  # each route answers its own 404 there
+    reason = await ctem_access.refusal(db, user, write=False)
+    if reason is not None:
+        raise HTTPException(status_code=403, detail=reason)
+
+
+router.dependencies.append(Depends(_require_ctem_right))
 
 
 async def _organization_id(db: AsyncSession) -> uuid.UUID:
@@ -107,6 +129,125 @@ async def list_ctem_signal_paths(
         activity = await signals.activity_by_path(db, organization_id=primary.id, recorded_by=reader, since=since)
     bound = await bound_sources(db, user.id)
     return {"paths": signals.path_catalog(counts, bound=bound, activity=activity)}
+
+
+class SignalSourceEnable(BaseModel):
+    """Switch one platform signal source on (#2434): its integration and the user it provisions as."""
+
+    provider: str = Field(min_length=1, max_length=40)
+    kind: str = Field(min_length=1, max_length=20)
+    integration_id: uuid.UUID
+    run_as_user_id: uuid.UUID
+
+
+@router.get("/sources")
+async def list_ctem_signal_sources(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """The platform signal sources XTM One provisions, with switch, run-as, status and reason (#2434).
+
+    One row per provisioned ``(provider, kind)`` and connected integration of
+    that provider; a source never switched on reads ``off``.
+    """
+    _require_xtm_one()
+    from sqlalchemy import select
+
+    from app.models.ctem_signal_source import CtemSignalSource
+    from app.models.integration import Integration
+    from app.services import ctem_platform_sources as platform_sources
+
+    providers = sorted({p for p, _ in platform_sources.PROVISIONED})
+    integrations = (
+        (
+            await db.execute(
+                select(Integration).where(Integration.provider.in_(providers)).order_by(Integration.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    stored = {
+        (r.provider, r.kind, str(r.integration_id)): r
+        for r in (await db.execute(select(CtemSignalSource))).scalars().all()
+    }
+    out: list[dict[str, Any]] = []
+    for (provider, kind), spec in platform_sources.PROVISIONED.items():
+        for integration in integrations:
+            if integration.provider != provider:
+                continue
+            row = stored.get((provider, kind, str(integration.id)))
+            item = (
+                platform_sources.to_dict(row)
+                if row is not None
+                else {
+                    "id": None,
+                    "provider": provider,
+                    "kind": kind,
+                    "integration_id": str(integration.id),
+                    "enabled": False,
+                    "run_as_user_id": None,
+                    "status": "off",
+                    "reason": None,
+                    "reason_code": None,
+                    "reason_params": {},
+                    "checked_at": None,
+                }
+            )
+            item["integration_name"] = integration.name
+            item["integration_connected"] = integration.status == "connected"
+            item["label"] = spec.label
+            out.append(item)
+    return {"sources": out}
+
+
+@router.post("/sources/enable")
+async def enable_ctem_signal_source(
+    body: SignalSourceEnable,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Switch a source on as the run-as user and provision it at once; 400 with the exact reason when it cannot.
+
+    The 400 ``detail`` is ``{code, params, message}`` (``ctem_platform_sources.reason_code``):
+    the UI renders the code in the reader's language, ``message`` is the English line.
+    """
+    _require_xtm_one()
+    from app.services import ctem_platform_sources as platform_sources
+
+    try:
+        row = await platform_sources.enable(
+            db,
+            provider=body.provider,
+            kind=body.kind,
+            integration_id=body.integration_id,
+            run_as_user_id=body.run_as_user_id,
+        )
+    except platform_sources.SourceRefusedError as exc:
+        await db.commit()
+        code, params = platform_sources.reason_code(str(exc))
+        raise HTTPException(status_code=400, detail={"code": code, "params": params, "message": str(exc)}) from exc
+    await db.commit()
+    return platform_sources.to_dict(row)
+
+
+@router.post("/sources/{source_id}/disable")
+async def disable_ctem_signal_source(
+    source_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Switch a source off and remove what it provisioned in the source platform."""
+    _require_xtm_one()
+    from app.models.ctem_signal_source import CtemSignalSource
+    from app.services import ctem_platform_sources as platform_sources
+
+    row = await db.get(CtemSignalSource, source_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Signal source not found")
+    await platform_sources.disable(db, row)
+    await db.commit()
+    return platform_sources.to_dict(row)
 
 
 @router.get("")
@@ -152,8 +293,14 @@ async def record_ctem_signal(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Record one signal for the caller; the same dedupe key again moves ``last_seen_at``."""
+    """Record one signal for the caller; the same dedupe key again moves ``last_seen_at``.
+
+    A CTEM decide right (or an administrator) only (#2441): a view right is read only.
+    """
     _require_xtm_one()
+    reason = await ctem_access.refusal(db, user, write=True)
+    if reason is not None:
+        raise HTTPException(status_code=403, detail=reason)
     organization_id = await _organization_id(db)
     try:
         row, created = await signals.record_signal(
@@ -302,9 +449,6 @@ async def triage_ctem_signals(
     if bool(body.ids) == (body.filter is not None):
         raise HTTPException(status_code=422, detail="Give either ids or a filter")
     organization_id = await _organization_id(db)
-    if await ctem_access.level(db, user) == "view":
-        # A CTEM view right is strictly read only (#1748): no triage.
-        raise HTTPException(status_code=403, detail=ctem_access.VIEW_ONLY_MESSAGE)
     rows = await signals.select_signals(
         db,
         organization_id=organization_id,

@@ -622,6 +622,10 @@ async def register(
         # instead of leaking a 500.  Mirrors ``register_with_invitation``.
         await db.rollback()
         raise HTTPException(status_code=409, detail="Email already registered") from exc
+    # Every new account joins "CTEM Viewers" once, at its creation (#2441).
+    from app.services.ctem_groups import join_viewers_at_creation
+
+    await join_viewers_at_creation(db, user)
     await log_audit(
         db,
         user=user,
@@ -733,6 +737,10 @@ async def register_with_invitation(
         # Lost a race against a concurrent registration for the same email.
         await db.rollback()
         raise HTTPException(status_code=409, detail="Email already registered") from exc
+    # Every new account joins "CTEM Viewers" once, at its creation (#2441).
+    from app.services.ctem_groups import join_viewers_at_creation
+
+    await join_viewers_at_creation(db, user)
 
     # Audit the registration first so the row is part of the same transaction
     # as the user creation — a single commit point keeps both atomic.

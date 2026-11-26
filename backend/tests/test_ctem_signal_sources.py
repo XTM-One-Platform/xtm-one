@@ -30,6 +30,23 @@ def test_status_never_reads_connected_without_a_bound_source() -> None:
     assert sources.path_status([{"bound": True, "off": True}]) == "connected"
 
 
+def test_one_status_per_path_a_provisioned_source_says_it() -> None:
+    """UX round 1 on #2442, B1: a connected provider whose provisioned source is off reads Not set up,
+    never Not connected; a source in error turns the path to Error, over any bound source."""
+    bound = sources.BoundSources()
+    bound.not_set_up.add(("openaev", "listener"))
+    row = sources.path_sources("proven_exploitable", bound)
+    assert row[0]["not_set_up"] is True and row[0]["error_count"] == 0
+    assert sources.path_status(row) == "not_set_up"
+
+    bound = sources.BoundSources({("openaev", "listener")})
+    bound.error[("openaev", "listener")] = 1
+    row = sources.path_sources("new_exposure", bound)
+    assert row[0]["error_count"] == 1
+    assert sources.path_status(row) == "error"
+    assert sources.path_status([{"bound": False, "not_set_up": True}, {"bound": False, "off": True}]) == "not_set_up"
+
+
 def test_a_source_off_reads_off_and_never_bound() -> None:
     bound = sources.BoundSources({("opencti", "listener")})
     bound.off.add(("opencrq", "pass"))
@@ -56,6 +73,8 @@ def test_the_catalog_carries_sources_status_and_activity() -> None:
         "event": sources.PATH_SOURCES["code_flaw"][0].event,
         "bound": False,
         "off": False,
+        "not_set_up": False,
+        "error_count": 0,
         "excluded": False,
         "available": False,
         "also_feeds": ["credential_leak"],

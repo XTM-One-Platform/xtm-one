@@ -2842,15 +2842,24 @@ _CTEM_F2_COMMON: dict = {
     "timeout_seconds": 900,
 }
 _CTEM_F2_TRIAGE_PROMPT = (
-    "A vulnerability signal arrived from OpenCTI (the event is in the trigger "
-    "payload: the Vulnerability or the sighting of one). Run the fleet loop on "
-    "it: read the organization context, hand the CVE to the Vulnerability "
-    "Triage Analyst, stop with the reason when nothing the organization runs "
-    "is affected, else record it with record_ctem_signal (trigger_path "
-    "new_vulnerability, the CVE and the matched assets as subject, the OpenCTI "
-    "id as source). The scope gate opens or joins its case, and the case "
-    "event runs the loop: do not start it here. " + CTEM_CASE_NEVER_WRITES_COUNTERS + " {priority}"
+    "A vulnerability signal from OpenCTI was recorded (signal_id and verdict are in the trigger "
+    "payload). Read it with list_ctem_signals signal_id, then the vulnerability it names in "
+    "OpenCTI. Run the fleet loop on it: read the organization context, hand the CVE to the "
+    "Vulnerability Triage Analyst and stop with the reason when nothing the organization runs "
+    "is affected. The signal is already recorded and the scope gate already opened or joined "
+    "its case: never record it again, and the case event runs the loop, so do not start it "
+    "here. " + CTEM_CASE_NEVER_WRITES_COUNTERS + " {priority}"
 )
+#: The signal the F2 triage runs hear (#2434): a vulnerability OpenCTI delivered to a platform
+#: signal source, never a trigger an assignment provisions; each run adds its own routing fact.
+_CTEM_F2_SIGNAL_FILTER: dict[str, Any] = {"trigger_path": "new_vulnerability", "source_provider": "opencti"}
+
+
+def _ctem_f2_on_signal(facts: dict[str, Any]) -> dict[str, Any]:
+    """The ``ctem_signal.recorded`` subscription of one F2 triage run, *facts* its routing filter."""
+    return {"event": "ctem_signal.recorded", "filter": {**_CTEM_F2_SIGNAL_FILTER, **facts}, "scope": "all"}
+
+
 CTEM_F2_ASSIGNMENTS: list[dict] = [
     {
         **_CTEM_F2_COMMON,
@@ -2859,18 +2868,8 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "Triages a vulnerability that enters the CISA KEV list or whose EPSS "
             "score crosses 0.5, against the organization's software inventory."
         ),
-        "trigger_type": "integration_event",
-        "trigger_config": {
-            "provider": "opencti",
-            "provision": {
-                "fleet": _CTEM_F2_FLEET,
-                "purpose": "KEV or EPSS jump",
-                "entity_types": ["Vulnerability"],
-                "cisa_kev": True,
-                "min_epss_score": 0.5,
-                "event_types": ["create", "update"],
-            },
-        },
+        "trigger_type": "platform_event",
+        "trigger_config": _ctem_f2_on_signal({"any": [{"facts.kev": True}, {"facts.epss_high": True}]}),
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(priority=""),
     },
     {
@@ -2881,19 +2880,10 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "System the organization runs, whatever its KEV or EPSS: the source must name a "
             "software product or an asset of the profile, checked before any model call."
         ),
-        "trigger_type": "integration_event",
-        "trigger_config": {
-            "provider": "opencti",
-            "runs_in_profile": "source",
-            "provision": {
-                "fleet": _CTEM_F2_FLEET,
-                "purpose": "Vulnerability on software we run",
-                "relationship_types": ["has"],
-                "from_types": ["Software", "Infrastructure", "System"],
-                "to_types": ["Vulnerability"],
-                "event_types": ["create"],
-            },
-        },
+        "trigger_type": "platform_event",
+        # The scope gate already read the software against the inventory: a discarded signal
+        # names nothing the organization runs, so it starts no run (the former runs_in_profile).
+        "trigger_config": _ctem_f2_on_signal({"facts.software_named": True, "verdict": {"not_in": ["discarded"]}}),
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
             priority=(
                 "The relationship's source is in the organization's software inventory or assets (checked "
@@ -2909,19 +2899,9 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
             "live PIR score reaches the prioritization policy's threshold for vulnerabilities "
             "(70 by default, editable in Settings), checked before any model call."
         ),
-        "trigger_type": "integration_event",
-        "trigger_config": {
-            "provider": "opencti",
-            "pir_min_score": "policy",
-            "provision": {
-                "fleet": _CTEM_F2_FLEET,
-                "purpose": "Vulnerability flagged in a PIR",
-                "mode": "pir_playbook",
-                "entity_types": ["Vulnerability"],
-                "organization_context": ["pir_ids"],
-                "pir_min_score": 1,
-            },
-        },
+        "trigger_type": "platform_event",
+        # The policy threshold is read when the signal is recorded (pir_floor_met, #1678).
+        "trigger_config": _ctem_f2_on_signal({"facts.pir_flagged": True, "pir_floor_met": True}),
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
             priority=(
                 "The vulnerability is flagged in an organization PIR at or above the policy's threshold "
@@ -2933,17 +2913,8 @@ CTEM_F2_ASSIGNMENTS: list[dict] = [
         **_CTEM_F2_COMMON,
         "name": "Vulnerability sighted",
         "description": "Triages, at higher priority, a vulnerability sighted in the organization's data.",
-        "trigger_type": "integration_event",
-        "trigger_config": {
-            "provider": "opencti",
-            "provision": {
-                "fleet": _CTEM_F2_FLEET,
-                "purpose": "Vulnerability sighted",
-                "entity_types": ["stix-sighting-relationship"],
-                "from_types": ["Vulnerability"],
-                "event_types": ["create"],
-            },
-        },
+        "trigger_type": "platform_event",
+        "trigger_config": _ctem_f2_on_signal({"facts.sighted": True}),
         "prompt": _CTEM_F2_TRIAGE_PROMPT.format(
             priority="A sighting is evidence of presence: rank it above an unsighted CVE of the same score."
         ),

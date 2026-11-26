@@ -266,6 +266,7 @@ _CTEM_SIGNAL_KEYS = (
     "verdict",
     "case_id",
     "pir_floor_met",
+    "facts",
 )
 _VIDEO_KEYS = (
     "job_kind",
@@ -577,10 +578,10 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "A CTEM signal was seen for the first time (services/ctem_signals.py), after the scope gate gave it "
             "its first verdict; a re-sighting raises nothing. Payload: signal_id, trigger_path, lens, "
             "source_provider, subject_kind, verdict (confirmed, to_validate, watchlist, discarded, or null when "
-            "the gate did not run), case_id, pir_floor_met (a relevant threat's PIR score reached the policy threshold); "
+            "the gate did not run), case_id, pir_floor_met (a PIR score reached the policy threshold), "
+            "facts (kev, epss_high, sighted, software_named, pir_flagged: yes/no); "
             "read the signal with list_ctem_signals signal_id. Heard only when the user the "
-            "subscription runs as reads the signal (an administrator, or its recorder; a listener's signal is "
-            "an administrator's only)."
+            "subscription runs as holds a CTEM view right or more (or is an administrator), read at delivery."
         ),
         "filter_keys": _CTEM_SIGNAL_KEYS,
     },
@@ -739,12 +740,46 @@ def rearm_watch(config: Any) -> Any:
     return {k: v for k, v in config.items() if k not in (FIRED_EVENT_KEY, FIRED_AT_KEY)}
 
 
-def catalog() -> list[dict[str, Any]]:
-    """The platform events, sorted, each with its description and filter keys."""
+#: The platform events about CTEM signals and cases (#2441): offered and saved
+#: only for a person with a CTEM view right or more.
+CTEM_EVENT_PREFIXES: tuple[str, ...] = ("ctem_signal.", "ctem_case.")
+
+
+def is_ctem_event(name: object) -> bool:
+    """Whether *name* is a CTEM signal or case event (#2441)."""
+    return isinstance(name, str) and name.startswith(CTEM_EVENT_PREFIXES)
+
+
+def catalog(*, ctem: bool = True) -> list[dict[str, Any]]:
+    """The platform events, sorted, each with its description and filter keys.
+
+    *ctem* false leaves out the CTEM signal and case events (#2441): the catalog
+    of a person with no CTEM right.
+    """
     return [
         {"event": name, "description": spec["description"], "filter_keys": list(spec["filter_keys"])}
         for name, spec in sorted(PLATFORM_EVENTS.items())
+        if ctem or not is_ctem_event(name)
     ]
+
+
+async def ctem_event_error(trigger_type: object, trigger_config: object, user_id: object) -> str | None:
+    """The refusal for a trigger naming a CTEM event when *user_id* holds no CTEM right (#2441).
+
+    Judged on the trigger as it will be saved, after :func:`trigger_config_error`.
+    """
+    if trigger_type != TRIGGER_TYPE or not isinstance(trigger_config, dict):
+        return None
+    if not any(is_ctem_event(n) for n in event_names(trigger_config)):
+        return None
+    from app.services import ctem_access
+
+    if await ctem_access.wires_ctem(user_id):
+        return None
+    return (
+        "Invalid trigger_config: the CTEM signal and case events need a CTEM view right or more "
+        f"for the person the assignment runs for. {ctem_access.NO_ACCESS_MESSAGE}"
+    )
 
 
 # -- Payload builders ------------------------------------------------------------
@@ -1657,12 +1692,25 @@ async def user_reads_object(user_id: str, payload: Mapping[str, Any]) -> bool:
         return False
 
 
+def _dropped_counter() -> Any:
+    from app.core.metrics import get_or_create_counter
+
+    return get_or_create_counter(
+        "xtmone_platform_event_object_dropped_total",
+        "Viewer-checked platform event deliveries dropped because a user of the subscription "
+        "does not read the object (a CTEM right withdrawn included, #2441), by object type.",
+        ["object_type", "reason"],
+    )
+
+
 async def can_read_object(sub: Subscription, payload: Mapping[str, Any], cache: dict[str, bool]) -> bool:
     """Whether *sub* may hear a viewer-checked event (#933); any other event: yes.
 
     Each user of :func:`object_identities` must read the object, decided by
     the object's own per-viewer view; *cache* keeps one answer per user and
-    event across the subscriptions of one dispatch.
+    event across the subscriptions of one dispatch. The run-as user's CTEM
+    right is read at delivery time (#2441): a delivery dropped here is counted
+    with its reason and logged.
     """
     if not is_viewer_checked(payload):
         return True
@@ -1670,6 +1718,17 @@ async def can_read_object(sub: Subscription, payload: Mapping[str, Any], cache: 
         if user not in cache:
             cache[user] = await user_reads_object(user, payload)
         if not cache[user]:
+            kind = str(payload.get("object_type") or "unknown")
+            try:
+                _dropped_counter().labels(object_type=kind, reason="not_readable_by_run_as").inc()
+            except Exception:  # a metric never blocks a delivery decision
+                logger.debug("Platform event: the dropped-delivery counter is unavailable", exc_info=True)
+            logger.info(
+                "Platform event: %s delivery to subscription %s dropped: %s does not read the object",
+                kind,
+                getattr(sub, "assignment_id", None),
+                user,
+            )
             return False
     return True
 

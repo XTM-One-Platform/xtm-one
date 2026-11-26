@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from app.models.ctem_case import CtemCase, CtemCaseEvent, CtemCaseIssue
 from app.models.ctem_signal import CtemSignal
 from app.services import ctem_cases_view as view_of
@@ -186,9 +188,20 @@ def test_a_signal_only_case_stays_hidden_from_who_cannot_see_the_signal() -> Non
     assert listed == [] and counts == {}
 
 
-async def test_signal_members_reads_the_callers_own_signals_unless_admin() -> None:
+async def test_signal_members_reads_every_case_signal_with_a_right_and_none_without(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2441: no own-signals fallback; an administrator or a view/decide right reads them all."""
+    from app.services import ctem_access
+
     seen: list[str] = []
     member = uuid.uuid4()
+    rights: dict[str, str | None] = {}
+
+    async def group_right(_db: Any, user_id: object) -> str | None:
+        return rights.get(str(user_id))
+
+    monkeypatch.setattr(ctem_access, "group_right", group_right)
 
     class _Db:
         def __init__(self, user: Any) -> None:
@@ -201,10 +214,15 @@ async def test_signal_members_reads_the_callers_own_signals_unless_admin() -> No
             seen.append(str(query))
             return SimpleNamespace(scalars=lambda: [member])
 
-    caller = uuid.uuid4()
-    assert await view_of.signal_members(_Db(SimpleNamespace(role="user", is_admin=False)), str(caller)) == {
+    no_right, viewer = uuid.uuid4(), uuid.uuid4()
+    rights[str(viewer)] = "view"
+    assert await view_of.signal_members(_Db(SimpleNamespace(role="user", is_admin=False)), str(no_right)) == set()
+    assert seen == []
+    assert await view_of.signal_members(_Db(SimpleNamespace(role="user", is_admin=False)), str(viewer)) == {
         f"signal:{member}"
     }
-    assert "recorded_by" in seen[-1]
-    await view_of.signal_members(_Db(SimpleNamespace(role="admin", is_admin=True)), str(caller))
+    assert "recorded_by" not in seen[-1]
+    assert await view_of.signal_members(_Db(SimpleNamespace(role="admin", is_admin=True)), str(no_right)) == {
+        f"signal:{member}"
+    }
     assert "recorded_by" not in seen[-1]

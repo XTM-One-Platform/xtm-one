@@ -446,6 +446,33 @@ def verdict_of(state: str | None) -> str | None:
     return state if state in VERDICTS else None
 
 
+#: The EPSS score from which a vulnerability counts as a jump (the former trigger's ``min_epss_score``).
+EPSS_JUMP = 0.5
+
+
+def routing_facts(evidence: Any) -> dict[str, bool]:
+    """The yes/no facts a fleet routes a signal on (#2434), read from its evidence; no value travels.
+
+    ``kev`` (CISA KEV), ``epss_high`` (EPSS at or above :data:`EPSS_JUMP`), ``sighted``
+    (an OpenCTI sighting of the vulnerability), ``software_named`` (the delivery names the
+    software or asset it starts from) and ``pir_flagged`` (an organization PIR flags it).
+    """
+    ev = evidence if isinstance(evidence, dict) else {}
+    epss = ev.get("epss_score")
+    try:
+        epss_high = not isinstance(epss, bool) and float(epss) >= EPSS_JUMP
+    except (TypeError, ValueError):
+        epss_high = False
+    kev = ev.get("cisa_kev")
+    return {
+        "kev": kev is True or (isinstance(kev, str) and kev.strip().lower() == "true"),
+        "epss_high": epss_high,
+        "sighted": ev.get("stix_type") == "sighting",
+        "software_named": bool(ev.get("software")),
+        "pir_flagged": bool(ev.get("pir")),
+    }
+
+
 def signal_event_data(
     signal: CtemSignal, *, verdict: str | None = None, triaged: bool = False, previous_verdict: str | None = None
 ) -> dict[str, Any]:
@@ -458,6 +485,7 @@ def signal_event_data(
     from a confirmed signal); else the signal's own. A ``triaged`` payload always
     carries ``previous_verdict`` (``null``: the signal had none yet).
     """
+    evidence = getattr(signal, "evidence", None) or {}
     data: dict[str, Any] = {
         "signal_id": str(signal.id),
         "trigger_path": signal.trigger_path,
@@ -468,7 +496,9 @@ def signal_event_data(
         "case_id": str(signal.case_id) if signal.case_id else None,
         # #1678: the relevance floor a seeded run filters on (true only for a relevant threat
         # whose PIR score at delivery reached the policy threshold); no evidence value travels.
-        "pir_floor_met": (getattr(signal, "evidence", None) or {}).get("pir_floor_met") is True,
+        "pir_floor_met": evidence.get("pir_floor_met") is True,
+        # #2434: the routing facts a fleet filters on instead of a provisioned trigger of its own.
+        "facts": routing_facts(evidence),
         "object_type": "ctem_signal",
         "object_id": str(signal.id),
         "participant_agent_ids": [],
@@ -485,10 +515,10 @@ def signal_event_id(name: str, signal: CtemSignal, marker: str) -> str:
 
 
 async def user_reads_signal(db: AsyncSession, user_id: str, signal_id: Any) -> bool:
-    """Whether *user_id* reads the signal *signal_id*: an administrator, a CTEM view or decide
-    right (``services/ctem_access.py``), or the signal's own recorder.
+    """Whether *user_id* reads the signal *signal_id*: an administrator or a CTEM view or decide
+    right (``services/ctem_access.py``), re-read at delivery time.
 
-    The signal API's rule: a listener's signal (``system``) is read only with one of those rights.
+    The signal API's rule (#2441): no CTEM without a right, a person's own signals included.
     """
     from app.models.user import User
     from app.services import ctem_access
@@ -501,8 +531,6 @@ async def user_reads_signal(db: AsyncSession, user_id: str, signal_id: Any) -> b
     recorded_by = (await db.execute(select(CtemSignal.recorded_by).where(CtemSignal.id == sid))).scalar_one_or_none()
     if recorded_by is None:
         return False
-    if recorded_by == str(uid):
-        return True
     user = await db.get(User, uid)
     if bool(getattr(user, "is_admin", False)):
         return True
@@ -522,9 +550,10 @@ def path_catalog(
     path that is neither reads "not configured", never 0 (CTEM-30, #937).
 
     Every path also carries ``description`` and its ``sources``
-    (``ctem_signal_sources``), each ``bound`` per *bound*, and ``status``:
-    ``connected``, ``not_connected`` or ``agents_api`` (no source: agents and
-    the API only, never connected). With *activity* (:func:`activity_by_path`):
+    (``ctem_signal_sources``), each ``bound`` per *bound*, and ``status``
+    (``ctem_signal_sources.path_status``): ``error``, ``connected``,
+    ``not_set_up``, ``off``, ``not_connected`` or ``agents_api`` (no source:
+    agents and the API only, never connected). With *activity* (:func:`activity_by_path`):
     ``count_30d`` and ``last_signal_at`` (#1189).
     """
     from app.services.ctem_signal_listeners import paths_with_listener

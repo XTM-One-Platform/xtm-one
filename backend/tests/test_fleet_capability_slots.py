@@ -229,6 +229,48 @@ def test_notification_binds_several_channels() -> None:
     assert out == {"chat": ["c1"], "mail": ["m1"]}
 
 
+def test_every_capability_binds_several_integrations() -> None:
+    """#2424: an agent holds several integrations of one kind (Jira and ServiceNow, two EDRs)."""
+    catalog = {**_CATALOG, "snow": {"integration_types": ["itsm"]}, "edr_two": {"integration_types": ["xdr"]}}
+    out = slots.bindings_set(
+        "Mobilization", "ticketing", {"chat": ["c1"]}, [_ref("t1", "ticketer"), _ref("s1", "snow")], catalog
+    )
+    assert out == {"chat": ["c1"], "ticketer": ["t1"], "snow": ["s1"]}
+    edr = slots.bindings_set(
+        "Hunt", "edr_xdr", {}, [_ref("e1", "edr_vendor"), _ref("e2", "edr_vendor"), _ref("x1", "edr_two")], catalog
+    )
+    assert edr == {"edr_vendor": ["e1", "e2"], "edr_two": ["x1"]}
+    states = {s.capability: s for s in slots.slot_states("Hunt", edr, [], catalog)}
+    assert states["edr_xdr"].state == slots.SLOT_FILLED
+    assert sorted(b.integration_id for b in states["edr_xdr"].bound) == ["e1", "e2", "x1"]
+
+
+def test_removing_one_of_two_keeps_the_other_bound() -> None:
+    """#2424: removing a chip unbinds that integration alone."""
+    bindings = {"ticketer": ["t1", "t2"], "chat": ["c1"]}
+    assert slots.bindings_set("Mobilization", "ticketing", bindings, [_ref("t2", "ticketer")], _CATALOG) == {
+        "ticketer": ["t2"],
+        "chat": ["c1"],
+    }
+    assert slots.bindings_without("Mobilization", "ticketing", bindings, "t1", _CATALOG) == {
+        "ticketer": ["t2"],
+        "chat": ["c1"],
+    }
+    # A one-click bind adds to what the slot holds, it never replaces it.
+    added = slots.bindings_with("Mobilization", "ticketing", {"ticketer": "t1"}, _ref("t3", "ticketer"), _CATALOG)
+    assert added == {"ticketer": ["t1", "t3"]}
+
+
+def test_a_stored_single_binding_reads_unchanged() -> None:
+    """#2424: a slot stored with one integration (a scalar or a one-item list) loads as it was."""
+    connected = [_ref("t1", "ticketer")]
+    for stored in ({"ticketer": "t1"}, {"ticketer": ["t1"]}):
+        states = slots.slot_states("Mobilization", stored, connected, _CATALOG)
+        ticketing = next(s for s in states if s.capability == "ticketing")
+        assert ticketing.state == slots.SLOT_FILLED
+        assert [b.integration_id for b in ticketing.bound] == ["t1"]
+
+
 def _member(mid: str, *, can_edit: bool = True) -> slots.TypeMember:
     return slots.TypeMember(
         member_id=mid,

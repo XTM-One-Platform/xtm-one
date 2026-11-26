@@ -366,6 +366,72 @@ export function useOrganizationPirs(enabled: boolean) {
   });
 }
 
+/** One PIR of the Intelligence policy (#2435): what OpenCTI says of it, and the organization's policy on it. */
+export interface IntelligencePolicyPir {
+  /** The stored row's id, the PATCH target. */
+  id: string;
+  /** The OpenCTI PIR id. */
+  pir_id: string;
+  integration_id: string | null;
+  name: string;
+  description: string;
+  pir_type: string;
+  criteria_summary: string;
+  question: string;
+  owner: string;
+  review_cadence: string;
+  primary_assets: string[];
+  min_score: number;
+  enabled: boolean;
+  last_seen_at: string | null;
+  /** Set when OpenCTI no longer lists the PIR: the row stays, shown as gone. */
+  gone_at: string | null;
+}
+
+export interface IntelligencePolicyResponse {
+  pirs: IntelligencePolicyPir[];
+  total: number;
+}
+
+export type IntelligencePolicyPatch = Partial<
+  Pick<IntelligencePolicyPir, "question" | "owner" | "review_cadence" | "primary_assets" | "min_score" | "enabled">
+>;
+
+const INTELLIGENCE_POLICY_KEY = [...KEY, "intelligence-policy"] as const;
+
+/** The stored OpenCTI PIRs (#2435), filled by the hourly refresh: no sync to configure. Read by every user. */
+export function useIntelligencePolicy() {
+  return useQuery<IntelligencePolicyResponse>({
+    queryKey: INTELLIGENCE_POLICY_KEY,
+    queryFn: () => api.get("/organization-context/intelligence-policy?limit=200"),
+    staleTime: 60_000,
+  });
+}
+
+/** Write the policy of one PIR (administrators); the profile is read again, its pir_ids derive from the enabled PIRs. */
+export function usePatchIntelligencePolicyPir() {
+  const qc = useQueryClient();
+  return useMutation<IntelligencePolicyPir, Error, { id: string; patch: IntelligencePolicyPatch }>({
+    mutationFn: ({ id, patch }) => api.patch(`/organization-context/intelligence-policy/${id}`, patch),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+    },
+  });
+}
+
+/** Read the PIRs of every connected OpenCTI now (administrators); the background refresh does it hourly. */
+export function useRefreshIntelligencePolicy() {
+  const qc = useQueryClient();
+  return useMutation<IntelligencePolicyResponse, Error, void>({
+    mutationFn: () => api.post("/organization-context/intelligence-policy/refresh", {}),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+    },
+  });
+}
+
 /** One field change of a stored proposal (#9484 S-a2; CTEM-30 "propose scope"): nothing changes until an administrator accepts it. */
 export interface OrganizationContextFieldProposal {
   /** A contract path, such as "prioritization_policy.scope_min_criticality". */

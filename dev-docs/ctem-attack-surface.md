@@ -173,9 +173,10 @@ loop trace shows their evidence as raw lines.
   integration's owner (as the CTEM ticketing sync), listed in the credential
   gate (`tests/test_integration_credential_gate.py`). The token only reads the
   outside view of the owned domains and ranges.
-- The signals are recorded by `system`: only an administrator reads them
-  (`ctem-signals.md`, visibility). A user who is not an administrator sees no
-  outside-lens signal.
+- The signals are recorded by `system`: an administrator or a member of a
+  group with a CTEM view or decide right reads them (`ctem-signals.md`,
+  visibility, #2441). A person with no CTEM right sees no outside-lens signal
+  and no CTEM page at all.
 - The owned domains, the ranges and the pass settings are profile fields: only
   the profile edit right changes them.
 
