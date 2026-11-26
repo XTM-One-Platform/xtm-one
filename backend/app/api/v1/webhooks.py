@@ -4765,14 +4765,13 @@ async def receive_ctem_webhook_source(source_id: str, request: Request) -> dict:
     records one signal on its path (``ctem_webhook_sources.receive``); fleets
     subscribe through ``ctem_signal.recorded``. No run starts here.
     """
+    from app.api.v1.helpers import parse_path_id
     from app.models.ctem_webhook_source import CtemWebhookSource
     from app.services import ctem_case_loop, ctem_scope_gate_store
     from app.services import ctem_webhook_sources as webhook_sources
     from app.services.ctem_loop_stream import publish_signal_update
 
-    source_uuid = safe_uuid(source_id)
-    if source_uuid is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="webhook source not found")
+    source_uuid = parse_path_id(source_id, not_found_detail="webhook source not found")
     await enforce_rate_limit(
         request,
         "webhook-ctem-source",
