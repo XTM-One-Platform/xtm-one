@@ -21918,5 +21918,13 @@
   "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {Voir la # décision qui vous attend} other {Voir les # décisions qui vous attendent}}",
   "Open scenario": "Ouvrir le scénario",
   "{total, plural, one {Not playable: {missing} of # technique has no payload} other {Not playable: {missing} of # techniques have no payload}}": "{total, plural, one {Non jouable : {missing} sur # technique n’a pas de charge utile} other {Non jouable : {missing} sur # techniques n’ont pas de charge utile}}",
-  "Recorded the validation scenario": "A enregistré le scénario de validation"
+  "Recorded the validation scenario": "A enregistré le scénario de validation",
+  "Answer recorded": "Réponse enregistrée",
+  "Answered: {option} by {person}, {date}.": "Réponse : {option} par {person}, {date}.",
+  "Answered: {option}, {date}.": "Réponse : {option}, {date}.",
+  "Change the answer": "Changer la réponse",
+  "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.": "En attente de la fin de {count, plural, one {# autre étape} other {# autres étapes}}.",
+  "Still waiting: {agent} asks again when there is something new to decide.": "Toujours en attente : {agent} redemandera dès qu'il y aura du nouveau à décider.",
+  "Still waiting: its agent asks again when there is something new to decide.": "Toujours en attente : son agent redemandera dès qu'il y aura du nouveau à décider.",
+  "Your answer is recorded; the work item keeps waiting.": "Votre réponse est enregistrée ; l'élément de travail reste en attente."
 }
