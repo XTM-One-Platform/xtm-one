@@ -128,9 +128,38 @@ const READ_ONLY_PICKUP_EXPLANATIONS = {
  * The explanation of a pickup state for this reader: the read-only sentence
  * when the reader may not change the item and the state has one.
  */
-export function pickupExplanation(state: WorkItemPickupState, canWrite: boolean | undefined): string {
+export function pickupExplanation(state: WorkItemPickupState, canWrite: boolean | undefined, answered = false): string {
+  if (answered && state === "waiting_for_person") return ANSWERED_PICKUP_EXPLANATIONS.waiting_for_person;
   const readOnly: Partial<Record<WorkItemPickupState, string>> = READ_ONLY_PICKUP_EXPLANATIONS;
   return (canWrite === false && readOnly[state]) || PICKUP_EXPLANATIONS[state];
+}
+
+/**
+ * What an item waiting for a person says once a keeps_waiting option was
+ * answered (#2500): the answer is recorded and the item keeps waiting, so the
+ * dialog never says it goes back to its agent when the card is answered.
+ * Read by `t_i18n(pickupExplanation(state, canWrite, answered), ...)`.
+ * @i18n-keys
+ */
+const ANSWERED_PICKUP_EXPLANATIONS = {
+  waiting_for_person: "Your answer is recorded; it keeps waiting until {agent} asks again.",
+} as const satisfies Partial<Record<WorkItemPickupState, string>>;
+
+/**
+ * Whether the person already answered the current ask with an option that
+ * keeps the item waiting (#1719, #2500): `payload.answer.option` names a
+ * `keeps_waiting` option of the ask on an item that still needs a person.
+ * The pickup badge, its explanation and "Waits for" then stop asking for a
+ * decision. Pure.
+ */
+export function answeredKeepsWaiting(item: Pick<WorkItem, "needs_human" | "status" | "ask" | "payload">): boolean {
+  if (!waitsForAnswer(item)) return false;
+  const answer = (item.payload as { answer?: unknown } | null | undefined)?.answer;
+  if (!answer || typeof answer !== "object") return false;
+  const { option, answered_at: at } = answer as Record<string, unknown>;
+  if (typeof option !== "string" || !option || typeof at !== "string" || !at) return false;
+  const folded = option.toLowerCase();
+  return !!item.ask?.options?.some((o) => o.keeps_waiting === true && o.key.toLowerCase() === folded);
 }
 
 /**

@@ -21926,5 +21926,6 @@
   "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.": "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.",
   "Still waiting: {agent} asks again when there is something new to decide.": "Still waiting: {agent} asks again when there is something new to decide.",
   "Still waiting: its agent asks again when there is something new to decide.": "Still waiting: its agent asks again when there is something new to decide.",
-  "Your answer is recorded; the work item keeps waiting.": "Your answer is recorded; the work item keeps waiting."
+  "Your answer is recorded; the work item keeps waiting.": "Your answer is recorded; the work item keeps waiting.",
+  "Your answer is recorded; it keeps waiting until {agent} asks again.": "Your answer is recorded; it keeps waiting until {agent} asks again."
 }

@@ -76,7 +76,7 @@ import { formatList } from "@/lib/format-list";
 import {
   BADGE_TIP_FOCUS, PRIORITY_LABELS, STATUS_LABELS, blockedKind, blockedReason, canClose, canRequeue, cancelledBlockers,
   listedBlockers, offersMarkDone, pullRequestsOf, unfinishedBlockers, waitingPullRequestCount, waitsForSomeone,
-  blockedWithoutReason, pendingBlockedRefs, waitsForReader,
+  blockedWithoutReason, pendingBlockedRefs, waitsForReader, answeredKeepsWaiting,
 } from "@/lib/work-item-context";
 import { BlockedStatusBadge } from "@/components/work-items/BlockedStatusBadge";
 import { WaitingForYouBadge } from "@/components/work-items/WaitingForYouBadge";
@@ -789,7 +789,7 @@ export default function WorkItemsTab({
       facts.push({
         label: blockers.length ? t_i18n("Also waits for") : t_i18n("Waits for"),
         tone: "warning",
-        value: <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={!!item.needs_human} />,
+        value: <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={!!item.needs_human && !answeredKeepsWaiting(item)} />,
       });
     }
     if (context?.owner_agent) {
@@ -822,6 +822,7 @@ export default function WorkItemsTab({
         waiting: blockedKind(item) === "waiting",
         pullRequest: context?.pickup.pull_request,
         pullRequests: context?.pickup.pull_requests,
+        answered: answeredKeepsWaiting(item),
       });
       facts.push({ label: t_i18n("Who acts on it"), value: tip, testId: "work-item-fact-pickup" });
     }
@@ -1001,6 +1002,7 @@ export default function WorkItemsTab({
                     waiting={blockedKind(item) === "waiting"}
                     pullRequest={context?.pickup.pull_request}
                     pullRequests={context?.pickup.pull_requests}
+                    answered={answeredKeepsWaiting(item)}
                     compact
                   />
                 )}
@@ -1026,7 +1028,7 @@ export default function WorkItemsTab({
                   {blockers.length ? (
                     <WorkItemBlockers blockers={blockers} nowrap />
                   ) : (
-                    <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={!!item.needs_human} nowrap />
+                    <WorkItemBlockedWhy refs={pendingBlockedRefs(item)} reason={item.blocked_reason} needsHuman={!!item.needs_human && !answeredKeepsWaiting(item)} nowrap />
                   )}
                 </div>
               ) : (

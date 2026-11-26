@@ -11,7 +11,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import { ToastProvider } from "@/components/ui/toast";
 import { renderWithProviders, testQueryClient } from "@/testing/providers";
-import { canClose, canRequeue, pullRequestsOf, visiblePayload, waitsForSomeone } from "@/lib/work-item-context";
+import { answeredKeepsWaiting, canClose, canRequeue, pullRequestsOf, visiblePayload, waitsForSomeone } from "@/lib/work-item-context";
 import type { WorkItem, WorkItemContext } from "@/types";
 
 vi.mock("@/hooks/useAuth", () => ({
@@ -869,6 +869,41 @@ describe("the work item detail", () => {
     expect(screen.getByTestId("work-item-pickup").textContent).toContain("Waiting for a decision");
     expect(screen.queryByText(/not picked up/)).toBeNull();
     expect(screen.getByText("Mark done")).toBeTruthy();
+  });
+
+  // #2500 UX round 1 B1: after a keeps_waiting answer "Who acts on it" no
+  // longer says it waits for a decision nor goes back once the card is answered.
+  it("says the answer is recorded in Who acts on it after a keeps_waiting answer", () => {
+    const ask = {
+      question: "Ship it?",
+      options: [
+        { key: "ship", label: "Ship", effect: "ships" },
+        { key: "later", label: "Later", effect: "waits", keeps_waiting: true },
+      ],
+      recommendation: "ship",
+    };
+    const waiting = {
+      status: "blocked" as const,
+      needs_human: true,
+      ask,
+      context: context({ pickup: { ...context().pickup, state: "waiting_for_person" as const, auto_cancel_at: null } }),
+    };
+    expect(answeredKeepsWaiting(item(waiting as Partial<WorkItem>))).toBe(false);
+    const answeredItem = item({
+      ...waiting,
+      payload: { answer: { option: "LATER", label: "Later", answered_by: "Ada", answered_at: "2026-11-26T09:00:00Z" } },
+    } as Partial<WorkItem>);
+    expect(answeredKeepsWaiting(answeredItem)).toBe(true);
+    // Any other option, or a finished item, is not a recorded keeps_waiting answer.
+    expect(answeredKeepsWaiting({ ...answeredItem, payload: { answer: { option: "ship", answered_at: "2026-11-26T09:00:00Z" } } })).toBe(false);
+    expect(answeredKeepsWaiting({ ...answeredItem, status: "done" })).toBe(false);
+    openDialog(answeredItem, { close: vi.fn() });
+    const pickup = screen.getByTestId("work-item-pickup");
+    expect(pickup.textContent).toContain("Answer recorded");
+    expect(pickup.textContent).not.toContain("Waiting for a decision");
+    expect(screen.queryByText(/goes back to .* once the decision card is answered/)).toBeNull();
+    expect(screen.getByText(/Your answer is recorded; it keeps waiting until .* asks again\./)).toBeTruthy();
+    expect(screen.queryByTestId("work-item-blocked-person")).toBeNull();
   });
 
   // #864 UX round 1 B1: a person's decision plus an item it waits for keeps
