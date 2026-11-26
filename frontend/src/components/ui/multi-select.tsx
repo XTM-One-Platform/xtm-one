@@ -30,6 +30,7 @@ import {
   ComboboxTrigger,
 } from "@filigran/design-system";
 import { ScrollableComboboxContent } from "@/components/ui/scrollable-combobox-content";
+import { Tip } from "@/components/ui/tooltip";
 import { useFormatter } from "@/i18n";
 import { fieldHeightClasses } from "@/lib/field-height-classes";
 import { matchesQuery, sortByLabel } from "@/lib/select-options";
@@ -87,6 +88,15 @@ const LOCKED_CHIP_HIDING = {
   2: "[&>li:nth-child(-n+2)]:hidden",
 } as const;
 
+/**
+ * The wrapped chip row of a locked field holds every chip to the field's width: the row, each item,
+ * the chip and its label body may shrink, so a long label ends in the chip's ellipsis (its tooltip
+ * carries the whole name) and no chip runs under the clear and open controls or past the field
+ * (UX r1 B2 of #2428).
+ */
+const BOUNDED_CHIP_ROW =
+  "min-w-0 max-w-full [&>li]:min-w-0 [&>li]:max-w-full [&>li>span]:max-w-full [&>li>span>:first-child]:min-w-0";
+
 export function MultiSelect({
   options,
   selected,
@@ -121,6 +131,7 @@ export function MultiSelect({
   );
   const lockedSelected = value.filter((option) => option.locked);
   const onlyLocked = lockedSelected.length > 0 && lockedSelected.length === value.length;
+  const lockedLabel = lockedSelected.map((option) => option.label).join(", ");
   const hasIcons = options.some((option) => option.icon);
 
   const handleChange = (next: MultiSelectOption | MultiSelectOption[] | null) => {
@@ -167,7 +178,11 @@ export function MultiSelect({
       >
         <ComboboxChips
           aria-label={ariaLabel ?? placeholder}
-          className={lockedSelected.length > 0 ? LOCKED_CHIP_HIDING[Math.min(lockedSelected.length, 2) as 1 | 2] : undefined}
+          className={
+            lockedSelected.length > 0
+              ? cn(BOUNDED_CHIP_ROW, LOCKED_CHIP_HIDING[Math.min(lockedSelected.length, 2) as 1 | 2])
+              : undefined
+          }
           overflowLabel={(count, labels) => t_i18n("+{count} more: {labels}", { count, labels: labels.join(", ") })}
         />
         {/* The visible placeholder switches to the search hint as soon as
@@ -179,15 +194,26 @@ export function MultiSelect({
             `htmlFor` to the input, so the label the user can already see would
             do this job. That means moving the visible label into this component
             at every call site — recorded as a follow-up. */}
-        <ComboboxInput
-          id={id}
-          aria-label={ariaLabel ?? placeholder}
-          aria-describedby={ariaDescribedBy}
-          // Only locked values: the field reads them, whole, as its value (UX r1 B1 of #1376).
-          placeholder={
-            onlyLocked ? lockedSelected.map((option) => option.label).join(", ") : selected.length ? searchPlaceholder : placeholder
-          }
-        />
+        {onlyLocked ? (
+          // Only locked values: the field reads them as its value (UX r1 B1 of #1376), cut with an
+          // ellipsis and read whole in the shared tooltip on hover and focus (UX r1 B1 of #2428).
+          <Tip content={lockedLabel}>
+            <ComboboxInput
+              id={id}
+              aria-label={ariaLabel ?? placeholder}
+              aria-describedby={ariaDescribedBy}
+              placeholder={lockedLabel}
+              className="truncate"
+            />
+          </Tip>
+        ) : (
+          <ComboboxInput
+            id={id}
+            aria-label={ariaLabel ?? placeholder}
+            aria-describedby={ariaDescribedBy}
+            placeholder={selected.length ? searchPlaceholder : placeholder}
+          />
+        )}
         <ComboboxControls>
           {!disabled && !onlyLocked && <ComboboxClear />}
           <ComboboxTrigger />
