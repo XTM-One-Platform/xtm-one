@@ -36,11 +36,14 @@ PLATFORM_IDENTIFIER = "xtmone"
 
 #: The HTTP header an assertion travels in.
 ASSERTION_HEADER = "XTM-Hub-Platform-Assertion"
+#: The ``typ`` of every assertion's header: it names what the JWT is for, so a
+#: JWT made for another use is never taken for an assertion.
+ASSERTION_TYPE = "xtm-hub-platform+jwt"
 #: The ``aud`` of every assertion: a constant, not a URL, because the URL a
 #: platform reaches the Hub on differs between deployments.
 ASSERTION_AUDIENCE = "xtm-hub"
-#: How long an assertion lives; the Hub refuses one signed for longer.
-ASSERTION_TTL = timedelta(minutes=5)
+#: How long an assertion lives: one call, its ``jti`` single-use on the Hub.
+ASSERTION_TTL = timedelta(seconds=60)
 
 #: The key version an instance starts at (``PlatformSettings.xtm_hub_key_version``).
 DEFAULT_KEY_VERSION = XTM_HUB_DEFAULT_KEY_VERSION
@@ -76,13 +79,17 @@ class XtmHubKey:
             "use": "sig",
         }
 
-    def sign_assertion(self, platform_id: uuid.UUID | str) -> str:
+    def sign_assertion(self, platform_id: uuid.UUID | str, *, htu: str | None = None) -> str:
         """A fresh assertion for one Hub call, as *platform_id*.
 
-        Header ``{alg: EdDSA, kid, typ: JWT}``; claims ``iss`` (the platform
-        id), ``aud`` (``xtm-hub``), ``iat``, ``exp`` (``iat`` + 5 minutes), a
-        unique ``jti`` the Hub refuses to see twice, and ``identifier``.
+        Header ``{alg: EdDSA, kid, typ: xtm-hub-platform+jwt}``; claims ``iss``
+        (the platform id), ``aud`` (``xtm-hub``), ``iat``, ``exp`` (``iat`` +
+        60 seconds), a unique ``jti`` the Hub refuses to see twice, and
+        ``identifier``. *htu*, for a download only, is the request path the
+        assertion is good for: a path, never a host or a query string.
         """
+        if htu is not None and (not htu.startswith("/") or "?" in htu or "#" in htu):
+            raise ValueError("An assertion's htu is a request path: /..., without a query or a fragment")
         now = datetime.now(UTC).replace(microsecond=0)
         payload: dict[str, Any] = {
             "iss": str(platform_id),
@@ -92,11 +99,13 @@ class XtmHubKey:
             "jti": str(uuid.uuid4()),
             "identifier": PLATFORM_IDENTIFIER,
         }
+        if htu is not None:
+            payload["htu"] = htu
         return jwt.encode(
             payload,
             self._private_key,
             algorithm="EdDSA",
-            headers={"kid": self.kid, "typ": "JWT"},
+            headers={"kid": self.kid, "typ": ASSERTION_TYPE},
         )
 
 
