@@ -21918,5 +21918,13 @@
   "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {Ver la # decisión que le espera} other {Ver las # decisiones que le esperan}}",
   "Open scenario": "Abrir escenario",
   "{total, plural, one {Not playable: {missing} of # technique has no payload} other {Not playable: {missing} of # techniques have no payload}}": "{total, plural, one {No ejecutable: {missing} de # técnica no tiene carga útil} other {No ejecutable: {missing} de # técnicas no tienen carga útil}}",
-  "Recorded the validation scenario": "Registró el escenario de validación"
+  "Recorded the validation scenario": "Registró el escenario de validación",
+  "Answer recorded": "Respuesta registrada",
+  "Answered: {option} by {person}, {date}.": "Respuesta: {option} de {person}, {date}.",
+  "Answered: {option}, {date}.": "Respuesta: {option}, {date}.",
+  "Change the answer": "Cambiar la respuesta",
+  "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.": "En espera de que termine{count, plural, one { # paso más} other {n # pasos más}}.",
+  "Still waiting: {agent} asks again when there is something new to decide.": "Sigue en espera: {agent} volverá a preguntar cuando haya algo nuevo que decidir.",
+  "Still waiting: its agent asks again when there is something new to decide.": "Sigue en espera: su agente volverá a preguntar cuando haya algo nuevo que decidir.",
+  "Your answer is recorded; the work item keeps waiting.": "Tu respuesta está registrada; el elemento de trabajo sigue en espera."
 }
