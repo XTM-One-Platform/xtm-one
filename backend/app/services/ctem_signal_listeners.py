@@ -180,6 +180,33 @@ def _opencti_object(payload: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
     return kind, data
 
 
+#: The OpenCTI extension of a stream event's STIX object, which carries the platform's internal id.
+OPENCTI_EXTENSION = "extension-definition--ea279b3e-5c71-4632-ac08-831c66a786ba"
+
+
+def opencti_internal_id(data: Mapping[str, Any]) -> str:
+    """#2505: the OpenCTI internal id of a delivered object, its STIX ``id`` when the extension is absent.
+
+    The STIX id is the object's current ``standard_id``, which changes when the entity
+    is renamed to another spelling or merged; the internal id stays, so a signal keyed
+    on it is the same signal across those changes.
+    """
+    extensions = data.get("extensions")
+    extension = extensions.get(OPENCTI_EXTENSION) if isinstance(extensions, Mapping) else None
+    internal = _text(extension.get("id")) if isinstance(extension, Mapping) else ""
+    return internal or _text(data.get("id"))
+
+
+def _stix_ids(data: Mapping[str, Any], evidence: dict[str, Any]) -> None:
+    """#2505: the STIX id and the earlier STIX ids of the object into *evidence*, for display only."""
+    stix_id = _text(data.get("id"))
+    if stix_id:
+        evidence["stix_id"] = stix_id
+    earlier = [s.strip()[:200] for s in data.get("x_opencti_stix_ids") or [] if isinstance(s, str) and s.strip()]
+    if earlier:
+        evidence["stix_ids"] = earlier[:20]
+
+
 #: Where an OpenCTI account or address observable carries the identity, first found wins.
 _IDENTITY_KEYS = ("value", "account_login", "user_id", "display_name")
 
@@ -201,7 +228,8 @@ def _identity_signal(kind: str, data: Mapping[str, Any], payload: Mapping[str, A
     meta = payload.get("_opencti_event")
     if isinstance(meta, dict) and _text(meta.get("message")):
         evidence["message"] = _text(meta.get("message"))[:500]
-    return {"external_id": _text(data.get("id")) or None, "ref": ref, "label": ref, "evidence": evidence}
+    _stix_ids(data, evidence)
+    return {"external_id": opencti_internal_id(data) or None, "ref": ref, "label": ref, "evidence": evidence}
 
 
 def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -213,7 +241,7 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
         return None
     if row.subject_kind == "identity":
         return _identity_signal(kind, data, payload)
-    external_id = _text(data.get("id"))
+    external_id = opencti_internal_id(data)
     if kind == "sighting:indicator":
         return _indicator_sighting_signal(external_id, data, payload)
     if kind.startswith("relationship:") or kind == "sighting":
@@ -248,6 +276,7 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
     meta = payload.get("_opencti_event")
     if isinstance(meta, dict) and _text(meta.get("message")):
         evidence["message"] = _text(meta.get("message"))[:500]
+    _stix_ids(data, evidence)
     return {"external_id": external_id or None, "ref": ref, "label": label, "evidence": evidence}
 
 
@@ -278,6 +307,7 @@ def _indicator_sighting_signal(
     if isinstance(meta, dict) and _text(meta.get("message")):
         evidence["message"] = _text(meta.get("message"))[:500]
         label = evidence["message"][:300]
+    _stix_ids(data, evidence)
     return {"external_id": external_id, "ref": target, "label": label, "evidence": evidence}
 
 
@@ -821,6 +851,7 @@ async def note_tracked_organizations(payload: Mapping[str, Any], organization_id
     from app.services.organizations import get_organization, get_primary
 
     recorded = 0
+    internal_id = opencti_internal_id(data)
     try:
         async with async_session() as db:
             primary = await get_primary(db)
@@ -853,7 +884,7 @@ async def note_tracked_organizations(payload: Mapping[str, Any], organization_id
                         trigger_path="third_party_event",
                         lens="world",
                         source_provider="opencti",
-                        source_external_id=f"{_text(data.get('id'))}:{tracked.id}" if data.get("id") else None,
+                        source_external_id=f"{internal_id}:{tracked.id}" if internal_id else None,
                         subject_kind="third_party",
                         subject_ref=tracked.name,
                         subject_label=tracked.name,
