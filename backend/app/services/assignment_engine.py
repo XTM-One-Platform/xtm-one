@@ -779,23 +779,32 @@ def _format_missing_integration_notice(
     if not missing_bindings:
         return ""
 
+    from app.services.integration_credentials import unavailable_integration_reasons
+
     seen: set[tuple[str, str]] = set()
     labels: list[str] = []
     for entry in missing_bindings:
-        provider = (
-            _sanitize_binding_label((entry.get("provider") or "").strip())
-            or "unknown"
-        )
-        integration_id = _sanitize_binding_label(
-            (entry.get("integration_id") or "").strip()
-        )
-        key = (provider, integration_id)
+        # A binding withheld for a known reason is said as chat says it,
+        # by provider only where its name is not the run's to read.
+        reasons = unavailable_integration_reasons([entry])
+        if reasons:
+            [(label, reason)] = reasons.items()
+            key = (_sanitize_binding_label(label), reason)
+            text = f"{key[0]} ({reason})"
+        else:
+            provider = (
+                _sanitize_binding_label((entry.get("provider") or "").strip())
+                or "unknown"
+            )
+            integration_id = _sanitize_binding_label(
+                (entry.get("integration_id") or "").strip()
+            )
+            key = (provider, integration_id)
+            text = f"{provider} ({integration_id})" if integration_id else provider
         if key in seen:
             continue
         seen.add(key)
-        labels.append(
-            f"{provider} ({integration_id})" if integration_id else provider
-        )
+        labels.append(text)
 
     if not labels:
         return ""
@@ -5980,19 +5989,47 @@ async def execute_assignment_run(
             # Integration tools: the run's bindings, resolved for the person
             # it acts for (chat's rule).
             try:
-                _run_bindings = await _resolve_run_integration_bindings(
-                    db, agent=agent, assignment=assignment, effective_user_id=effective_user_id
-                )
+                # A savepoint: a failed read leaves the run's transaction usable.
+                async with db.begin_nested():
+                    _run_bindings = await _resolve_run_integration_bindings(
+                        db, agent=agent, assignment=assignment, effective_user_id=effective_user_id
+                    )
             except Exception:
-                # As a failed integration build below: the run goes on without them.
+                # As a failed integration build below: the run goes on without
+                # them, and both the model and the deliverable say so.
                 logger.error(
                     "Assignment %s: integration bindings not resolved; the run has no integration tools",
                     assignment.name,
                     exc_info=True,
                 )
-                from app.services.integration_tools import AgentIntegrationBindings
+                from app.services.integration_tools import AgentIntegrationBindings, flatten_bindings
 
                 _run_bindings = AgentIntegrationBindings({}, {}, [])
+                _unresolved = [
+                    {"provider": provider, "integration_id": ""}
+                    for provider in dict.fromkeys(
+                        [
+                            *(
+                                key.split("#")[0]
+                                for key in flatten_bindings(
+                                    agent.integration_bindings
+                                    if assignment.integration_bindings is None
+                                    else assignment.integration_bindings
+                                )
+                            ),
+                            *(agent.integration_template_bindings or []),
+                        ]
+                    )
+                ]
+                if _unresolved:
+                    from app.services.prompt_guard import insert_before_safety_anchor
+
+                    integration_notice = _format_missing_integration_notice(
+                        _unresolved, agent.output_format or "markdown"
+                    )
+                    system_message = insert_before_safety_anchor(
+                        system_message, _format_missing_integration_prompt_note(_unresolved)
+                    )
             effective_bindings = _run_bindings.bindings
             binding_origin_map = _run_bindings.origins
 

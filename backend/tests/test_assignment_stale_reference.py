@@ -985,6 +985,8 @@ async def test_a_run_whose_bindings_cannot_be_resolved_runs_without_integration_
     assert run.status == "completed", run.error
     failing.assert_awaited_once()
     built.assert_not_awaited()
+    # The deliverable says so, as after a failed build.
+    assert "Tool Availability Notice" in run.result_summary
 
 
 @pytest.mark.asyncio

@@ -111,3 +111,15 @@ def test_format_missing_integration_prompt_note():
     assert '"not\\"ion"' in note
 
     assert _format_missing_integration_prompt_note([]) == ""
+
+
+def test_a_withheld_binding_is_said_with_its_reason_by_provider_only():
+    from app.services.integration_credentials import invisible_binding, no_person_binding
+
+    hidden = {**invisible_binding("jira", uuid.uuid4()), "integration_name": "Owner's Jira"}
+    nobody = no_person_binding("github", uuid.uuid4())
+    notice = _format_missing_integration_notice([hidden, hidden, nobody], "markdown")
+
+    assert notice.count("jira (the acting user cannot see it)") == 1
+    assert "github (the run acts for no person it could be checked against)" in notice
+    assert "Owner's Jira" not in notice and hidden["integration_id"] not in notice

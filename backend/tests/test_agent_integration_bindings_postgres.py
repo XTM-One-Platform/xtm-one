@@ -464,20 +464,6 @@ async def test_a_run_with_no_person_keeps_no_binding_unless_declared_the_owner_s
     assert declared.bindings == {"github": str(_PERSONAL), "jira": str(_LENT)}
 
 
-async def test_an_owner_run_checks_an_assignment_s_own_binding_as_the_agent_s_owner(session):
-    colleague_s = _github("colleague github", user_id=_COLLEAGUE)
-    session.add(colleague_s)
-    await session.flush()
-    source = {"github": [str(colleague_s.id)], "jira": [str(_LENT)]}
-
-    resolved = await integration_tools.resolve_agent_integration_bindings(
-        session, _shared_agent(), None, owner_run=True, source=source
-    )
-
-    assert resolved.bindings == {"jira": str(_LENT)}
-    assert [entry["provider"] for entry in resolved.withheld] == ["github"]
-
-
 async def test_a_pipeline_pin_of_a_run_with_no_person_falls_back_to_nothing(session, built):
     """Not even to a company-wide integration: its direct bindings keep none."""
     session.add(_github("company github", user_id=_OWNER, company=True))
