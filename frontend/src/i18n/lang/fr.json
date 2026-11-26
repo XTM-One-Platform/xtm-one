@@ -21915,5 +21915,13 @@
   "This gate waits for a person: the decision is in their Waiting for you list.": "Cette validation attend une personne : la décision est dans sa liste En attente de vous.",
   "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "Pour le rendre concluant, lancez un contrôle qui lit la version en service sur l'actif : un scan authentifié ou un agent.",
   "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, one {# notification non lue} other {# notifications non lues}}",
-  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {Voir la # décision qui vous attend} other {Voir les # décisions qui vous attendent}}"
+  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {Voir la # décision qui vous attend} other {Voir les # décisions qui vous attendent}}",
+  "Answer recorded": "Réponse enregistrée",
+  "Answered: {option} by {person}, {date}.": "Réponse : {option} par {person}, {date}.",
+  "Answered: {option}, {date}.": "Réponse : {option}, {date}.",
+  "Change the answer": "Changer la réponse",
+  "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.": "En attente de la fin de {count, plural, one {# autre étape} other {# autres étapes}}.",
+  "Still waiting: {agent} asks again when there is something new to decide.": "Toujours en attente : {agent} redemandera dès qu'il y aura du nouveau à décider.",
+  "Still waiting: its agent asks again when there is something new to decide.": "Toujours en attente : son agent redemandera dès qu'il y aura du nouveau à décider.",
+  "Your answer is recorded; the work item keeps waiting.": "Votre réponse est enregistrée ; l'élément de travail reste en attente."
 }
