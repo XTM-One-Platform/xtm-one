@@ -8256,7 +8256,7 @@ def build_agent_builder_tool(
                 ctem_err = await ctem_event_error(
                     trigger_type or assignment.trigger_type,
                     assignment.trigger_config if parsed_config is None else parsed_config,
-                    assignment.user_id or user_id,
+                    getattr(assignment, "user_id", None) or user_id,
                 )
                 if ctem_err is not None:
                     return f"{ctem_err} Nothing was saved."
