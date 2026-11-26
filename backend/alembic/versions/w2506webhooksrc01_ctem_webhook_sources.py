@@ -3,7 +3,7 @@
 A fresh table: an existing tenant has no row, so nothing it records changes.
 
 Revision ID: w2506webhooksrc01
-Revises: e684cbkeys01
+Revises: e686spdtol01
 Create Date: 2026-11-26 11:00:00.000000
 """
 
@@ -18,7 +18,7 @@ from app.core.migration_ddl import set_lock_timeout
 revision: str = "w2506webhooksrc01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "e684cbkeys01"
+down_revision: str | Sequence[str] | None = "e686spdtol01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
