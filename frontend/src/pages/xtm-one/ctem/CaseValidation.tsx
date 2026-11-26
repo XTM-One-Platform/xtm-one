@@ -45,6 +45,23 @@ const RESULT_TONE: Record<keyof typeof RESULT_LABEL, HotTone> = {
   inconclusive: "neutral",
 };
 
+/**
+ * The word of an inconclusive pass, with the result the check reported (#2466):
+ * "clean but not proof" never reads like "failed" or "no data". @i18n-keys
+ */
+const REPORTED_INCONCLUSIVE_LABEL = {
+  passed: "Passed, not conclusive",
+  not_exposed: "Not exposed, not conclusive",
+} as const;
+
+/** The badge word of a validation reference: the reported result kept on an inconclusive pass (#2466). */
+function resultLabel(v: { result: string; reported_result?: string }): string | null {
+  if (v.result === "inconclusive" && v.reported_result && v.reported_result in REPORTED_INCONCLUSIVE_LABEL) {
+    return REPORTED_INCONCLUSIVE_LABEL[v.reported_result as keyof typeof REPORTED_INCONCLUSIVE_LABEL];
+  }
+  return v.result in RESULT_LABEL ? RESULT_LABEL[v.result as keyof typeof RESULT_LABEL] : null;
+}
+
 /** The icon of each result, before its word (#1679, point 5). */
 const RESULT_ICON: Record<keyof typeof RESULT_LABEL, IconName> = {
   passed: "circle-check",
@@ -154,6 +171,9 @@ export function CaseValidation({
         {rows.length > 0 && (
           <ul className="space-y-2" aria-label={t_i18n("Validation runs")}>
             {rows.map((v, index) => {
+              const label = resultLabel(v);
+              // A detection or behaviour test that reported a pass on a patch or upgrade case (#1500, #2466).
+              const needsVersionRead = v.result === "inconclusive" && v.evidence_type === "validation";
               return (
                 <li key={`${v.ref}-${index}`} className="flex min-w-0 flex-col gap-1" data-testid="ctem-case-validation-run">
                   <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -161,13 +181,13 @@ export function CaseValidation({
                       {v.provider in PROVIDER_ICON && <CaseIcon name={PROVIDER_ICON[v.provider as keyof typeof PROVIDER_ICON]} />}
                       {PROVIDER_NAMES[v.provider] ?? v.provider}
                     </span>
-                    {v.result in RESULT_LABEL ? (
+                    {label ? (
                       <ToneBadge
                         tone={RESULT_TONE[v.result as keyof typeof RESULT_LABEL]}
                         icon={<CaseIcon name={RESULT_ICON[v.result as keyof typeof RESULT_LABEL]} />}
                         data-testid="ctem-case-validation-result"
                       >
-                        {t_i18n(RESULT_LABEL[v.result as keyof typeof RESULT_LABEL])}
+                        {t_i18n(label)}
                       </ToneBadge>
                     ) : (
                       <ToneBadge tone="neutral" icon={<CaseIcon name={RESULT_ICON.inconclusive} />} data-testid="ctem-case-validation-result">
@@ -180,6 +200,16 @@ export function CaseValidation({
                       </span>
                     )}
                   </span>
+                  {v.note && (
+                    <span className="min-w-0 text-default-secondary" data-testid="ctem-case-validation-note">
+                      <TruncatedText text={v.note} />
+                    </span>
+                  )}
+                  {needsVersionRead && (
+                    <span className="text-default-secondary" data-testid="ctem-case-validation-hint">
+                      {t_i18n("To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.")}
+                    </span>
+                  )}
                   {v.run_order && v.run_order.length > 0 && (
                     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="inline-flex items-center gap-1.5 text-default-secondary">
