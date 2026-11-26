@@ -1,8 +1,8 @@
 {
   "_comment": "The sandbox images published by XTM-One-Platform/release build-push-sandbox.yml and the SHA-256 of their build inputs at that version, per family: the custom-tools images (images=custom-tools, version and inputs) and the toolchain images (images=toolchain, the toolchain object, the five stages of Dockerfile.sandbox.toolchain under one version) and the dev images of sandbox_run_command (images=dev, the dev object: sandbox-python-dev and sandbox-nodejs-dev, the stages of Dockerfile.sandbox.dev with the stores of .xtm-one/stores.py, under one version). check-published-images.py holds the inputs, the versions and the app default (_OPENSANDBOX_DEFAULT_IMAGES) together; a merge to main that changes a version publishes that family (sandbox-image-pin.yml).",
-  "version": "0.8",
+  "version": "0.9",
   "inputs": {
-    "sandbox-python": "dcf36d1ce4648fd82c7a001a1ca3a386d6fe3ac80cd0604c5d8fc89ef2adba4e",
+    "sandbox-python": "4e5ee12b8758bc3608eb703bbc6150d80b1f208900206fe91821762bf0d091cd",
     "sandbox-nodejs": "615dd0a03104ee5549ef85f732fbe070b91e22c07ede7f4cd4626ad981dd5230"
   },
   "toolchain": {

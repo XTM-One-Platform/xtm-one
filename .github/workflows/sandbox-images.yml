@@ -334,6 +334,46 @@ jobs:
           print(f'ok: frame at {frame.time:.2f} s decoded in process, grey {grey}')
           "
 
+      # code_interpreter reads a PDF a user attached with pypdf (form and
+      # signature fields) and renders a page with pypdfium2 (PDFium bundled in
+      # the wheel, no system library). A 2-page PDF with one text field and one
+      # empty signature field is written in memory inside the image with no
+      # network, its fields read back with their type, and page 1 rendered to
+      # a PNG.
+      - name: PDF round trip
+        if: matrix.image == 'sandbox-python'
+        run: |
+          docker run --rm --network none --entrypoint python3 "${{ matrix.image }}:ci" -c "
+          import io, sys, pypdf, pypdfium2
+          from pypdf.generic import ArrayObject, DictionaryObject, FloatObject, NameObject as N, NumberObject, TextStringObject
+          w = pypdf.PdfWriter()
+          for _ in range(2):
+              w.add_blank_page(width=200, height=200)
+          page = w.pages[0]
+          def field(ft, name, rect):
+              return w._add_object(DictionaryObject({
+                  N('/Type'): N('/Annot'), N('/Subtype'): N('/Widget'), N('/FT'): N(ft),
+                  N('/T'): TextStringObject(name), N('/F'): NumberObject(4),
+                  N('/Rect'): ArrayObject([FloatObject(v) for v in rect]),
+                  N('/P'): page.indirect_reference,
+              }))
+          fields = ArrayObject([field('/Tx', 'name', (10, 150, 190, 170)), field('/Sig', 'signature', (10, 100, 190, 140))])
+          page[N('/Annots')] = fields
+          w._root_object[N('/AcroForm')] = DictionaryObject({N('/Fields'): fields, N('/SigFlags'): NumberObject(1)})
+          buf = io.BytesIO()
+          w.write(buf)
+          r = pypdf.PdfReader(io.BytesIO(buf.getvalue()))
+          got = {k: v.get('/FT') for k, v in (r.get_fields() or {}).items()}
+          if len(r.pages) != 2 or got != {'name': '/Tx', 'signature': '/Sig'}:
+              sys.exit(f'FAIL: {len(r.pages)} pages, fields {got}')
+          png = io.BytesIO()
+          pypdfium2.PdfDocument(buf.getvalue())[0].render(scale=2).to_pil().save(png, format='PNG')
+          size = len(png.getvalue())
+          if size == 0 or not png.getvalue().startswith(b'\\x89PNG'):
+              sys.exit('FAIL: no PNG written')
+          print(f'ok: 2 pages, fields {got} read back by pypdf, page 1 rendered by pypdfium2 to a {size}-byte PNG')
+          "
+
   sandbox-nodejs-smoke-test:
     name: Sandbox image (sandbox-nodejs)
     needs: changes
