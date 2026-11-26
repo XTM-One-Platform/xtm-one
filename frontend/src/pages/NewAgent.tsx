@@ -255,7 +255,7 @@ export default function NewAgent() {
                 <div>
                   <p className="content-base font-medium">{t_i18n("Organization context")}</p>
                   <p className="content-compact text-default-secondary">
-                    {t_i18n("The agent knows your organization: a short profile in its prompt and a tool to read the rest.")}
+                    {t_i18n("The agent knows your organization: a short profile in its prompt and tools to read the rest.")}
                   </p>
                 </div>
               </div>
