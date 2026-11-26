@@ -283,6 +283,8 @@ def unseen_event_id(item: Any) -> str:
 SUMMARY_LISTED = 10
 #: Why the administrators are told about a gate addressed to nobody but them.
 ADDRESSED_TO_ADMINS = "it is addressed to the administrators"
+#: Why the administrators are told about a group gate none of whose members is active.
+NO_ACTIVE_GROUP_MEMBER = "no active member is left in its recipient groups"
 
 
 def reminder_targets(*, person: Any, group_ids: Any, reason: str | None) -> tuple[str, Any]:
@@ -438,9 +440,6 @@ async def raise_unseen_decisions(*, now: datetime | None = None, limit: int = UN
                 if item is None:
                     await db.rollback()
                     continue
-                payload = dict(item.payload or {})
-                payload[UNSEEN_MARK_KEY] = now.isoformat()
-                item.payload = payload
                 person = item.waits_for_user_id or item.user_id
                 groups = list(item.waits_for_group_ids or []) or None
                 reason = (
@@ -452,9 +451,16 @@ async def raise_unseen_decisions(*, now: datetime | None = None, limit: int = UN
                     reminded = [str(target)]
                 elif kind == "groups":
                     reminded = await _group_member_ids(db, target)
-                await _remind(db, reminded, item, hours=hours)
+                    if not reminded:
+                        kind, target = "admins", NO_ACTIVE_GROUP_MEMBER
                 if kind == "admins":
+                    # Marked with the administrators' summary, in its transaction (below).
                     to_admins.append((item, str(target)))
+                else:
+                    await _remind(db, reminded, item, hours=hours)
+                    payload = dict(item.payload or {})
+                    payload[UNSEEN_MARK_KEY] = now.isoformat()
+                    item.payload = payload
                 data = work_item_data(item, previous_status=item.status)
                 since = _aware(item.last_activity_at)
                 data["waiting_since"] = since.isoformat() if since else None
@@ -472,17 +478,40 @@ async def raise_unseen_decisions(*, now: datetime | None = None, limit: int = UN
                 continue
             events.append((data, event_id))
         if to_admins:
+            # The summary and the marks of its gates share one transaction: a failed
+            # send leaves the gates unmarked, so the next tick retries them.
+            taken: list[tuple[Any, str]] = []
+            admins: list[str] = []
             try:
-                admins = await _notify_admins(db, to_admins, hours=hours)
+                for item, reason in to_admins:
+                    locked = (
+                        await db.execute(
+                            select(WorkItem).where(WorkItem.id == item.id, *clause).with_for_update(skip_locked=True)
+                        )
+                    ).scalar_one_or_none()
+                    if locked is None:
+                        continue
+                    payload = dict(locked.payload or {})
+                    payload[UNSEEN_MARK_KEY] = now.isoformat()
+                    locked.payload = payload
+                    taken.append((locked, reason))
+                admins = await _notify_admins(db, taken, hours=hours)
                 await db.commit()
             except Exception as exc:
                 logger.warning("Unseen decisions summary not sent: %s", format_exception_message(exc))
                 await db.rollback()
-                admins = []
-            alerted = {str(item.id) for item, _ in to_admins}
-            for data, _ in events:
-                if data.get("work_item_id") in alerted:
+                taken = []
+            pending = {str(item.id) for item, _ in to_admins}
+            alerted = {str(item.id) for item, _ in taken}
+            kept: list[tuple[dict[str, Any], str]] = []
+            for data, event_id in events:
+                work_item_id = data.get("work_item_id")
+                if work_item_id in pending and work_item_id not in alerted:
+                    continue
+                if work_item_id in alerted:
                     data["notified_admin_ids"] = admins
+                kept.append((data, event_id))
+            events = kept
     for data, event_id in events:
         await publish(UNSEEN_EVENT, data, event_id=event_id)
     return len(events)

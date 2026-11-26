@@ -212,13 +212,19 @@ class _Rows:
 
 
 class _UnseenSession:
-    """First execute: the gate ids; then per id the locked re-read (recipient reads are patched)."""
+    """First execute: the gate ids; then per id the locked re-read (recipient reads are patched).
+
+    Then the administrators' phase locks again each gate it marks, in sweep order.
+    """
 
     def __init__(self, gates, rereads=None):
         rereads = gates if rereads is None else rereads
         self._results = [_Rows([g.id for g in gates])]
         for r in rereads:
             self._results.append(_Rows([r] if r else []))
+        for r in rereads:
+            if r:
+                self._results.append(_Rows([r]))
         self.commits = 0
         self.rollbacks = 0
 
@@ -366,6 +372,56 @@ async def test_five_gates_nobody_can_answer_make_one_summary_per_administrator(m
         assert kw["extra_data"]["work_item_ids"] == [str(g.id) for g in gates]
         assert all(f"Decision {n}" in kw["summary"] for n in range(5))
     assert len(published) == 5
+
+
+@pytest.mark.asyncio
+async def test_a_group_with_no_active_member_falls_back_to_the_administrators(monkeypatch):
+    group = uuid.uuid4()
+    gate = _gate(waits_for_user_id=None, waits_for_group_ids=[str(group)])
+    admins = [uuid.uuid4()]
+    session = _UnseenSession([gate])
+    published, notified = [], []
+    _patch(monkeypatch, session, published, notified, admins=admins, members={str(group): []})
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 1
+
+    assert [u for u, _ in notified] == [str(admins[0])]
+    assert work_item_decision_reach.NO_ACTIVE_GROUP_MEMBER in notified[0][1]["summary"]
+    data = published[0][1]
+    assert data["no_recipient_reason"] == work_item_decision_reach.NO_ACTIVE_GROUP_MEMBER
+    assert data["notified_admin_ids"] == [str(admins[0])] and data["reminded_user_ids"] == []
+    assert gate.payload[UNSEEN_MARK_KEY] == _NOW.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_administrator_summary_leaves_the_gate_unmarked_for_the_next_tick(monkeypatch):
+    from app.services import notify
+
+    gate = _gate()
+    session = _UnseenSession([gate])
+    published, notified = [], []
+    reasons = {str(gate.waits_for_user_id): "the recipient has never signed in"}
+    _patch(monkeypatch, session, published, notified, admins=[uuid.uuid4()], reasons=reasons)
+
+    async def _broken(_db, _user_id, **_kwargs):
+        raise RuntimeError("bell down")
+
+    monkeypatch.setattr(notify, "notify_web_user", _broken)
+    committed_marks = []
+    real_commit = session.commit
+
+    async def _commit():
+        committed_marks.append(UNSEEN_MARK_KEY in (gate.payload or {}))
+        await real_commit()
+
+    session.commit = _commit
+
+    assert await work_item_decision_reach.raise_unseen_decisions(now=_NOW) == 0
+
+    # The only commit is the per-gate one, before any mark: the rolled-back
+    # summary transaction held the mark, so the next tick takes the gate again.
+    assert committed_marks == [False]
+    assert published == [] and session.rollbacks == 1
 
 
 @pytest.mark.asyncio
