@@ -193,6 +193,6 @@ async def test_tool_archives_the_keys_under_the_path_not_the_top_level_ones(monk
 def test_the_tool_schema_says_unset_keys_and_list_ops_are_relative_to_path():
     tools, _ = build_shared_state_tools(SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4()))
     schema = next(t for t in tools if t.name == "set_shared_state").input_schema["properties"]
-    assert "relative to" in schema["path"]["description"]
+    assert "unset_keys apply under it" in schema["path"]["description"]
     assert "under path" in schema["unset_keys"]["description"]
     assert "unset_keys" in schema["confirm_trim"]["description"]
