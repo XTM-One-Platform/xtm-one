@@ -2182,8 +2182,8 @@ export interface Agent {
    *  it is shared with (their chats with it only); null lends nothing.
    *  Written with `lent_integration_ids` on PUT /agents/{id}, owner only. */
   integration_lending?: { integration_ids: string[]; set_by: string; set_at: string } | null;
-  /** The owner's personal integrations this group-shared agent binds that
-   *  none of its groups gets otherwise, sent by GET /agents/{id} to a viewer
+  /** The owner's personal integrations this shared agent binds that not
+   *  every one of its groups and people gets otherwise, sent by GET /agents/{id} to a viewer
    *  who may edit it (an editor cannot read the owner's rows). */
   shared_personal_integrations?: { id: string; name: string; provider: string }[] | null;
   /** The integrations it binds that its owner can no longer see: its runs

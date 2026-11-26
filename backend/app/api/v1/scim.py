@@ -539,6 +539,10 @@ async def _change_members(
     for uid in to_add:
         db.add(GroupMember(group_id=group.id, user_id=uid, added_by=None, source=SCIM_SOURCE))
     await db.flush()
+    if removed:
+        from app.services.agent_bindings import unlink_agents_shared_with_group
+
+        await unlink_agents_shared_with_group(db, group.id)
     return to_add, removed
 
 

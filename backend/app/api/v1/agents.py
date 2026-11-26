@@ -157,6 +157,7 @@ from app.models.user import User
 from app.services import builtin_customer_layer
 from app.services.agent_bindings import (
     BINDING_MODELS,
+    agent_audience,
     derive_available_channel_types,
     filter_integration_bindings,
     retain_agent_bindings,
@@ -164,6 +165,7 @@ from app.services.agent_bindings import (
     revert_company_managed_to_private,
     sanitize_handover_config,
     strip_personal_bindings,
+    unlink_agent_from_lost_holders,
     validate_channel_config,
     validate_company_managed_bindings,
     validate_handover_conditions,
@@ -1833,6 +1835,7 @@ async def update_agent(
         )
 
     old_name = agent.name
+    audience_before = agent_audience(agent)
     versioned_before = versioned_agent_values(agent)
     stored_work_item_owner_agent_ids = list(agent.work_item_owner_agent_ids or [])
     stored_trace_supervision_target_agent_ids = list(agent.trace_supervision_target_agent_ids or [])
@@ -2420,6 +2423,10 @@ async def update_agent(
             .where(Assignment.agent_id == agent.id)
             .values(user_id=agent.user_id)
         )
+
+    # Whoever no longer reaches the agent stops naming it from their agents.
+    if agent_audience(agent) != audience_before:
+        await unlink_agent_from_lost_holders(db, agent)
 
     # Public catalog toggle (admin-only for company-managed entities)
     if body.is_public_catalog is not None:
@@ -4648,7 +4655,8 @@ def _to_response(
         disable_chat=a.disable_chat,
         hide_runs=bool(getattr(a, "hide_runs", False)),
         web_enabled=a.web_enabled,
-        web_token=a.web_token,
+        # The public widget link runs the agent as its owner.
+        web_token=a.web_token if can_manage else None,
         web_suggested_prompts=a.web_suggested_prompts or [],
         web_uploads_enabled=bool(getattr(a, "web_uploads_enabled", False)),
         assignment_count=assignment_count,

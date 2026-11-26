@@ -1163,11 +1163,17 @@ async def prune_group_grants(db: AsyncSession, group_id: uuid.UUID) -> int:
     (``provider_access.apply_provider_access``). Group grants are matched
     exactly, as :func:`get_group_permission` matches them; the text
     ``contains`` only narrows which rows are loaded. LLMProviderConfig has
-    group ids and no permission map.
+    group ids and no permission map. The members' agents then stop naming the
+    pruned agents they no longer reach
+    (``agent_bindings.unlink_lost_holders_of``).
     """
+    from app.models.agent import Agent
+    from app.services.agent_bindings import unlink_lost_holders_of
+
     await db.execute(select(Group.id).where(Group.id == group_id).with_for_update())
     target = str(group_id)
     changed = 0
+    pruned_agents: list[Agent] = []
 
     for model_cls in share_grant_models("shared_group_ids"):
         result = await db.execute(
@@ -1189,7 +1195,10 @@ async def prune_group_grants(db: AsyncSession, group_id: uuid.UUID) -> int:
                 entity.shared_group_permissions = {
                     key: value for key, value in perms.items() if key != target
                 } or None
+            if isinstance(entity, Agent):
+                pruned_agents.append(entity)
             changed += 1
+    await unlink_lost_holders_of(db, pruned_agents)
     return changed
 
 
@@ -3463,7 +3472,10 @@ def visible_to_user_column_clause(model_cls: type[VisibilityQueryable], user_id_
 
     return or_(
         and_(
-            exists().where(User.id == user_id_column, User.role == "admin"),
+            # Correlated explicitly, as the group tier is: nested under another
+            # subquery, auto-correlation would add the table of
+            # *user_id_column* to this FROM and match any administrator.
+            exists().where(User.id == user_id_column, User.role == "admin").correlate_except(User),
             *([hidden] if (hidden := hidden_rows_excluded(model_cls)) is not None else []),
         ),
         shared_with_user_column_clause(model_cls, user_id_column),

@@ -5758,6 +5758,10 @@ def build_agent_builder_tool(
                     "permission to edit it."
                 )
 
+            from app.services.agent_bindings import (
+                agent_audience,
+                unlink_agent_from_lost_holders,
+            )
             from app.services.agent_config_versioning import (
                 INITIAL_COMMIT_MESSAGE,
                 record_agent_version_changes,
@@ -5767,6 +5771,7 @@ def build_agent_builder_tool(
 
             # What the REST update versions, versioned here too.
             versioned_before = versioned_agent_values(agent)
+            audience_before = agent_audience(agent)
             updated: list[str] = []
             text_read_back = ""
             if text_mode != "replace":
@@ -7479,6 +7484,10 @@ def build_agent_builder_tool(
                         summary=f"Changed who can use agent '{agent.name}' through an agent",
                         details={"slug": agent.slug, **_share_audit},
                     )
+            # Whoever no longer reaches the agent stops naming it from their
+            # agents, as on the REST update.
+            if agent_audience(agent) != audience_before:
+                await unlink_agent_from_lost_holders(_db, agent)
             _audience = await _agent_audience_lines(_db, agent) if _share_lines else []
 
             try:
