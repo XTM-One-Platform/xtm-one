@@ -26,13 +26,14 @@ that viewer is what they see.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
 import time
 import uuid
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
@@ -60,6 +61,10 @@ RESTRICTED = "Restricted"
 LIST_BUILD_WAIT_SECONDS = 2.0
 #: The retry delay a list read names when the view is still building after that wait.
 LIST_RETRY_AFTER_SECONDS = 30
+#: How often a list read waiting on a build another pod holds looks for its result (#2232).
+LIST_POLL_SECONDS = 0.25
+#: Decoded views kept per worker, by the digest of their stored JSON (#2232).
+DECODED_VIEWS_MAX = 16
 #: How long a viewer's previous view answers a list read, marked stale, while the new one builds (#2232):
 #: a build after a case-opening drain outlived :data:`VIEW_TTL_SECONDS` on ctem.one, leaving only a 503,
 #: and an hour still left a 503 when rollouts killed the builds in flight: any age beats an empty list.
@@ -319,6 +324,13 @@ def start_timing() -> dict[str, float]:
 @asynccontextmanager
 async def timed(phase: str) -> AsyncIterator[None]:
     """Add the duration of the block to *phase* of the request's timings, when they are started."""
+    with timed_sync(phase):
+        yield
+
+
+@contextmanager
+def timed_sync(phase: str) -> Iterator[None]:
+    """:func:`timed` for a block with no await (a decode, a filter, a sort)."""
     start = time.perf_counter()
     try:
         yield
@@ -374,7 +386,7 @@ async def viewer_view(
     return replace(view, signals=signals, signal_details=details)
 
 
-def _pivot_id(signal: CtemSignal, evidence: dict[str, Any]) -> str | None:
+def _pivot_id(signal: Any, evidence: dict[str, Any]) -> str | None:
     """The module id a row pivots to when the signal carries no link, or None (never a guessed page).
 
     An OpenCTI signal names an OpenCTI object by its id; an OpenAEV one is a finding only when a
@@ -390,7 +402,7 @@ def _pivot_id(signal: CtemSignal, evidence: dict[str, Any]) -> str | None:
     return None
 
 
-def signal_detail(signal: CtemSignal) -> dict[str, Any]:
+def signal_detail(signal: Any) -> dict[str, Any]:
     """What a signal member is, as a case row names it (#1936): never its id as a label."""
     from app.services.ctem_signals import PATH_CATALOG, provider_name
 
@@ -435,11 +447,30 @@ async def signal_details(db: Any, members: set[str]) -> dict[str, dict[str, Any]
     if not ids:
         return {}
     try:
-        rows = (await db.execute(select(CtemSignal).where(CtemSignal.id.in_(ids)))).scalars().all()
+        # The columns a row names, never whole ORM objects (#2232): every case-bound signal is read
+        # on each list read, and building thousands of tracked instances blocked the event loop.
+        query = select(*(getattr(CtemSignal, name) for name in _DETAIL_COLUMNS)).where(CtemSignal.id.in_(ids))
+        rows = (await db.execute(query)).all()
     except Exception:
         logger.info("CTEM cases: signal details unreadable", exc_info=True)
         return {}
-    return {f"{SIGNAL_SOURCE}:{s.id}": signal_detail(s) for s in rows}
+    with timed_sync("signal-details"):
+        return {f"{SIGNAL_SOURCE}:{s.id}": signal_detail(s) for s in rows}
+
+
+#: The ``CtemSignal`` columns :func:`signal_detail` reads.
+_DETAIL_COLUMNS = (
+    "id",
+    "subject_label",
+    "subject_ref",
+    "subject_kind",
+    "trigger_path",
+    "lens",
+    "source_provider",
+    "source_external_id",
+    "evidence",
+    "first_seen_at",
+)
 
 
 #: Issue ids per ``IN`` list of the source signal read (#1986): far under every engine's parameter cap.
@@ -497,11 +528,47 @@ async def _singleflight(key: str) -> AsyncIterator[None]:
             _build_locks.pop(key, None)
 
 
+#: Decoded views by the digest of their stored JSON (#2232): a view of ~2.5k issues is decoded once
+#: per worker, not on every list read; a rebuilt view has another digest and is decoded again.
+_decoded: dict[bytes, ViewerView] = {}
+
+
+def _copy_view(view: ViewerView) -> ViewerView:
+    """A copy whose collections a caller may change without touching the memo (the issues are immutable)."""
+    return replace(
+        view,
+        issues=dict(view.issues),
+        open_ids=set(view.open_ids),
+        unavailable=set(view.unavailable),
+        missing=list(view.missing),
+        reasons=dict(view.reasons),
+        judged=set(view.judged) if view.judged is not None else None,
+    )
+
+
+def _decode_view(raw: str | bytes) -> ViewerView:
+    """The view stored as *raw*, decoded once per worker (#2232); phase ``decode``, or ``decode-memo``."""
+    data = raw.encode() if isinstance(raw, str) else raw
+    digest = hashlib.blake2b(data, digest_size=16).digest()
+    found = _decoded.get(digest)
+    if found is None:
+        with timed_sync("decode"):
+            found = ViewerView.from_json(data)
+        while len(_decoded) >= DECODED_VIEWS_MAX:
+            _decoded.pop(next(iter(_decoded)))
+        _decoded[digest] = found
+    else:
+        mark("decode", "memo")
+    with timed_sync("copy"):
+        return _copy_view(found)
+
+
 async def _cached_view(client: Any, user_id: str, vertical: str, generation: str) -> ViewerView | None:
     try:
-        cached = await client.get(_view_key(user_id, vertical, generation))
+        async with timed("redis"):
+            cached = await client.get(_view_key(user_id, vertical, generation))
         if cached:
-            return ViewerView.from_json(cached)
+            return _decode_view(cached)
     except Exception:
         logger.info("CTEM cases: view cache unreadable for %s", user_id, exc_info=True)
     return None
@@ -561,13 +628,14 @@ async def _older_view(
     if not latest or (str(latest) == generation and not same_generation):
         return None
     try:
-        previous = await client.get(_previous_key(user_id, vertical))
+        async with timed("redis"):
+            previous = await client.get(_previous_key(user_id, vertical))
     except Exception:
         logger.info("CTEM cases: previous view unreadable for %s", user_id, exc_info=True)
         previous = None
     if previous:
         try:
-            return ViewerView.from_json(previous)
+            return _decode_view(previous)
         except Exception:
             logger.info("CTEM cases: previous view unreadable for %s", user_id, exc_info=True)
     # A pointer written before #2232: its view sits under the generation's own key.
@@ -591,11 +659,18 @@ async def _list_view(client: Any, user_id: str, vertical: str, generation: str) 
         # The cases opened since it was built have members it never judged (#2113): unjudged, never hidden.
         older.stale = True
         return older
+    deadline = time.perf_counter() + LIST_BUILD_WAIT_SECONDS
     task = _revalidate(user_id, vertical, generation)
     if task is not None:
         # Waited on, never cancelled nor raised: a failed or slow build leaves the answer to the cache.
         await asyncio.wait({task}, timeout=LIST_BUILD_WAIT_SECONDS)
     built = await _cached_view(client, user_id, vertical, generation)
+    # Another pod holds the build (#2232): its task here ends at once, so the read looks for the
+    # view that pod writes for the rest of the wait, instead of a 503 while it lands (ctem.one,
+    # overview at 22:39:20Z on 25 Nov 2026, the view written one second later).
+    while built is None and (left := deadline - time.perf_counter()) > 0:
+        await asyncio.sleep(min(LIST_POLL_SECONDS, left))
+        built = await _cached_view(client, user_id, vertical, generation)
     if built is not None:
         mark("cache", "built")
         return built

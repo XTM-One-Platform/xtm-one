@@ -934,8 +934,19 @@ loop, and the read logs the time of each phase (stack and relations, remediation
 issues). With none, the read waits
 `LIST_BUILD_WAIT_SECONDS` (2 s, #2139: a 503 held 10 s was no fail-fast answer) for that build, then answers 503 with
 `Retry-After` (`LIST_RETRY_AFTER_SECONDS`, 30 s): never a whole view build on
-the request (400 s on a large tenant). Event visibility (`user_sees_case`)
+the request (400 s on a large tenant). When another pod holds the build, the wait
+looks for the view that pod writes every `LIST_POLL_SECONDS` (#2232), so the
+overview no longer answers 503 while the view lands. Event visibility (`user_sees_case`)
 reads the case's own members, like the case page.
+
+List latency on a warm view (#2232): a kept view is decoded once per worker
+(`_decoded`, keyed by the digest of its stored JSON, `DECODED_VIEWS_MAX` entries)
+and each read gets its own copy; the signal details read only the columns a row
+names, never the ORM objects. The list and the overview answer `Server-Timing`
+phases: `refresh`, `cases`, `view` (`redis`, `decode` or `decode-memo`, `copy`),
+`signals` (`signal-details`), `gone`, `rows`, `history`, `position`,
+`visibility`, `extras` for the list; `cases`, `view`, `signals`, `history`,
+`build` for the overview.
 
 ### 7.3 Case page `/ctem/cases/:id`
 
