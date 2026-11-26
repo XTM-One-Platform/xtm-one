@@ -59,4 +59,21 @@ describe("PIR selection of a path (#2436)", () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave.mock.calls[0][0].signal_sources.pirs).toEqual({ relevant_threat: [] });
   });
+
+  it("lists the thresholds in the chips' name order, never the id order (A1 of #2436, #2506)", () => {
+    const client = testQueryClient();
+    client.setQueryData(["organization-context", "intelligence-policy"], {
+      pirs: [pir("p1", "Zeta campaign"), pir("p2", "Alpha actors"), pir("p3", "Mid supply chain")],
+      total: 3,
+    });
+    renderWithProviders(
+      <MemoryRouter>
+        <PirSelection path={{ id: "relevant_threat" } as CtemSignalPath} profile={undefined} isAdmin saving={false} onSave={vi.fn()} />
+      </MemoryRouter>,
+      client,
+    );
+    expect(screen.getByTestId("ctem-path-source-pirs-thresholds").textContent).toBe(
+      "Each PIR records at its own minimum score: Alpha actors (50), Mid supply chain (50), Zeta campaign (50)",
+    );
+  });
 });

@@ -13,6 +13,7 @@ import type { CtemSignalPath } from "@/hooks/api/useCtemSignalsApi";
 import { type OrganizationProfile, useIntelligencePolicy } from "@/hooks/api/useOrganizationContextApi";
 import { useFormatter } from "@/i18n";
 import { profileFieldHref } from "@/lib/organization-profile-tabs";
+import { sortByLabel } from "@/lib/select-options";
 import { pirSelection, withPirSelection } from "./signal-sources";
 
 export function PirSelection({
@@ -28,7 +29,7 @@ export function PirSelection({
   saving: boolean;
   onSave: (next: Partial<OrganizationProfile>, done: string) => void;
 }) {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, locale } = useFormatter();
   const navigate = useNavigate();
   const { data } = useIntelligencePolicy();
   const enabled = (data?.pirs ?? []).filter((p) => p.enabled && !p.gone_at);
@@ -68,7 +69,10 @@ export function PirSelection({
             {pirIds.length === 0
               ? t_i18n("No playbook is provisioned for this path.")
               : t_i18n("Each PIR records at its own minimum score: {list}", {
-                  list: pirIds.map((id) => `${byId.get(id)?.name ?? id} (${byId.get(id)?.min_score ?? 0})`).join(", "),
+                  // In the chips' order, by name, never the id order (UX advisory A1 of #2436, #2506).
+                  list: sortByLabel(pirIds, (id) => byId.get(id)?.name ?? id, locale)
+                    .map((id) => `${byId.get(id)?.name ?? id} (${byId.get(id)?.min_score ?? 0})`)
+                    .join(", "),
                 })}
           </span>
           {isAdmin && !isDefault && (
