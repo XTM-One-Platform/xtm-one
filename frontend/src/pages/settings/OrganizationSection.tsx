@@ -32,7 +32,6 @@ import { DataTable, type DataTableColumn, type DataTableFilter, type SortValue }
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   SettingsCard,
@@ -52,7 +51,7 @@ import { useAgenticAIEnabled, useIsXtmOne } from "@/hooks/usePlatformConfig";
 import { useAiActionDisabled } from "@/hooks/useAiDisabled";
 import { OrganizationAiDraftDialog } from "./OrganizationAiDraftDialog";
 import { OrganizationAssetsImportDialog } from "./OrganizationAssetsImportDialog";
-import { OrganizationImportDialog, PROFILE_IMPORT_SECTIONS } from "./OrganizationImportDialog";
+import { OrganizationIntelligencePolicyCard } from "./OrganizationIntelligencePolicyCard";
 import { EXPOSURE_SECTIONS, type ExposureCard, type ExposureIssue, OrganizationExposureCards, exposureIssueFromRefusal, exposureIssues } from "./OrganizationExposureCards";
 import { primeOrganizationOnboarding } from "@/lib/organization-onboarding";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
@@ -86,14 +85,12 @@ import {
   fromForm,
   toForm,
 } from "@/lib/organization-profile";
-import { distinctName, OrganizationPirsView, pirLabels, PirsUnreadable, usePirText } from "./OrganizationPirs";
 import { OrganizationTicketingSync } from "./OrganizationTicketingSync";
 import { type BulkField, type ListEditColumn, ListSaveBar, OrganizationListEditor } from "./OrganizationListEditor";
 import { OrganizationListPasteDialog } from "./OrganizationListPasteDialog";
 import { addRow, addRows, attentionCount, changeCounts, committedValues, type EditRow, fieldSuggestions, isRepository, LIST_ISSUES, LIST_RULES, rowIssues, startRows } from "@/lib/organization-list-edit";
 import type { PasteSpec } from "@/lib/organization-list-paste";
 import { TrackedOrganizations } from "./TrackedOrganizations";
-import { OrganizationSourcesSyncs } from "./OrganizationSourcesSyncs";
 import { useSyncedRemoval } from "./OrganizationSyncedRemoval";
 import { ProviderLogo } from "@/components/ui/provider-logo";
 import { columnEditable, LOCAL_FIELDS, SOURCE_KIND_LABELS, sourceKind, sourcePlatform, type Provenance } from "@/lib/organization-provenance";
@@ -103,7 +100,6 @@ import { OrganizationProposalsCard } from "./OrganizationProposalsCard";
 import { OrganizationEvidenceHealthCard } from "./OrganizationEvidenceHealthCard";
 import { OrganizationOutsideLensCard } from "./OrganizationOutsideLensCard";
 import { OrganizationFxRatesCard } from "./OrganizationFxRatesCard";
-import { OrganizationPirDetailsDialog } from "./OrganizationPirDetailsDialog";
 import {
   PROFILE_CARD_PARAM,
   PROFILE_CARD_TAB,
@@ -332,32 +328,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     }
   }, [locale]);
   const countryName = (code: string) => regionNames?.of(code) ?? code;
-  // Read in view mode too (#9615): a saved PIR is named, never shown by its id; cached 5 minutes.
+  // The OpenCTI PIR names, saved with pir_ids on a whole-form Save so the profile names them when OpenCTI cannot (#9615).
   const pirs = useOrganizationPirs(!reader);
-  const pirText = usePirText();
-  const savedPirs = useMemo(
-    () => pirLabels(current?.pir_ids ?? [], current?.pir_names ?? {}, pirs.data, pirs.isLoading),
-    [current?.pir_ids, current?.pir_names, pirs.data, pirs.isLoading],
-  );
-  // A saved PIR without a name while OpenCTI's list is on its way: a skeleton, never placeholder text (#11589).
-  const pirsLoading = savedPirs.some((pir) => pir.state === "loading");
-  const savedPirIds = current?.pir_ids;
-  // The PIR whose details dialog is open (#1974), from its row on the Prioritization policy card.
-  const [pirDetails, setPirDetails] = useState<{ id: string; name: string } | null>(null);
-  const missingPirs = useMemo(
-    () => savedPirs.filter((pir) => pir.state === "missing" && savedPirIds?.includes(pir.id)),
-    [savedPirs, savedPirIds],
-  );
-  const pirOptions = useMemo(() => {
-    const known = new Map((pirs.data?.pirs ?? []).map((pir) => [pir.id, pir.name]));
-    // A saved PIR OpenCTI does not list stays a choice under its last known name and state, never its id.
-    for (const pir of savedPirs) if (!known.has(pir.id)) known.set(pir.id, pirText(pir));
-    // One choice per id; two PIRs of the same name are told apart by the start of their id (#11589).
-    const rows = [...known].map(([id, name]) => ({ id, name }));
-    return rows.map((row) => ({ value: row.id, label: distinctName(row, rows) }));
-  }, [pirs.data, savedPirs, pirText]);
-  // OpenCTI was asked and did not answer, or answered an error: the names shown are the saved ones.
-  const pirsUnreadable = pirs.isError || pirs.data?.unavailable === "unreadable";
   const { data: integrations = [] } = useIntegrations();
   const ticketingIntegrations = integrations.filter((integration) => integration.provider in TICKETING_PROJECT_ELEMENT);
   const ticketingIntegration = ticketingIntegrations.find(
@@ -372,13 +344,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     [current?.currency],
   );
   const currencySuffix = current?.currency || t_i18n("currency");
-  // An empty list is "none in OpenCTI" only when OpenCTI answered (UX round 2 B4).
-  const pirsEmptyLabel =
-    pirs.data?.unavailable === "not_connected"
-      ? t_i18n("The PIRs could not be listed: OpenCTI is not connected.")
-      : pirs.data?.unavailable
-        ? t_i18n("The PIRs could not be listed: OpenCTI did not answer.")
-        : t_i18n("No PIR in OpenCTI");
   const dirty = editing && JSON.stringify(withLists(form)) !== JSON.stringify(saved);
   // The open form as a profile, for "With AI" from the form: its proposals are reviewed against what is typed.
   const formProfile = useMemo(() => {
@@ -454,10 +419,7 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       ? edit.form.prioritization_policy
         ? { ...base, prioritization_policy: { ...(base.prioritization_policy ?? edit.form.prioritization_policy), accepted_risks: edit.form.prioritization_policy.accepted_risks } }
         : base
-      : edit.card === "prioritization_policy"
-        ? // The PIR list is edited on the Prioritization policy card (#1889).
-          { ...base, prioritization_policy: edit.form.prioritization_policy, pir_ids: edit.form.pir_ids, pir_names: edit.form.pir_names }
-        : { ...base, [edit.card]: edit.form[edit.card] };
+      : { ...base, [edit.card]: edit.form[edit.card] };
   const exposureDirty = (edit: { card: ExposureCard; form: ProfileForm }) =>
     saved !== null && JSON.stringify(exposureSaved(edit, saved)) !== JSON.stringify(saved);
   const saveExposure = () => {
@@ -486,9 +448,8 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
     };
     // The asset and group rows are written through their own row APIs on CTEM > Inventory (#1752 slice 3b): never here.
     if (field === "assets_exposure" || field === "asset_groups") return;
-    // The Prioritization policy carries the PIR list with it (#1889); every other card patches its field alone.
-    const withPirs = field === "prioritization_policy" ? { pir_ids: parsed.profile.pir_ids, pir_names: parsed.profile.pir_names } : {};
-    patch.mutate({ fields: { [field]: parsed.profile[field], ...withPirs }, based_on_version: data.version ?? null }, options);
+    // Every card patches its field alone; the PIRs are the Intelligence policy's own rows (#2435).
+    patch.mutate({ fields: { [field]: parsed.profile[field] }, based_on_version: data.version ?? null }, options);
   };
   // One list card in edit (#12256): the other cards stay as they read; the form is not opened.
   const startListEdit = (key: ListKey) => {
@@ -529,20 +490,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const updateExposure = (patch: Partial<ProfileForm>) => {
     setRefusedIssue(null);
     setExposureEdit((prev) => (prev ? { ...prev, form: { ...prev.form, ...patch } } : prev));
-  };
-  // A PIR OpenCTI no longer has, taken out from the read view: the Prioritization policy card opens in
-  // edit without it (#1889), Save writes it.
-  const removePir = (id: string) => {
-    if (!data) return;
-    if (form) {
-      setForm({ ...form, pir_ids: form.pir_ids.filter((pir) => pir !== id) });
-      return;
-    }
-    if (cardOpen) return;
-    const base = toForm(data.profile);
-    setCheckExposure(false);
-    setRefusedIssue(null);
-    setExposureEdit({ card: "prioritization_policy", form: { ...base, pir_ids: base.pir_ids.filter((pir) => pir !== id) } });
   };
   const stopEditing = () => {
     setFocusAfter({ targets: [byTestId("settings.organization.edit")] });
@@ -646,8 +593,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [aiGateOpen, setAiGateOpen] = useState(false);
   const [assetsImportOpen, setAssetsImportOpen] = useState(false);
-  // The OpenCTI PIR import of the Prioritization policy card (#1938): the PIRs section alone.
-  const [pirImportOpen, setPirImportOpen] = useState(false);
   // The chat onboarding (#11224): a new chat with the default assistant interviews for the fields left.
   const startOnboarding = () => {
     if (!aiAvailable) {
@@ -1353,108 +1298,12 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
   // The fields not filled that Settings still draws (#1690): the Business, Technology and Exposure fields are
   // reported on CTEM > Inventory, and Copilot mode reports none (Sam: "we don't care").
   const missing = xtmOne ? (data?.missing_fields ?? []).filter((path) => { const owner = tabOfField(path); return owner !== null && !isInventoryTab(owner); }) : [];
-  /**
-   * The PIR list on the Prioritization policy card (#1889): it filters the PIR playbooks beside the two PIR
-   * score thresholds. Read mode: the names as wrapped chips linked to OpenCTI (#9615); edit: the picker.
-   */
-  const pirList = (pirEditing: boolean, pirForm: ProfileForm, pirUpdate: (patch: Partial<ProfileForm>) => void) =>
-    !pirEditing ? (
-      <SettingsReadField
-        label={t_i18n("Priority intelligence requirements (PIRs)")}
-        info={help("pir_ids").info}
-        wide
-        value={
-          <OrganizationPirsView
-            pirs={savedPirs}
-            list={pirs.data}
-            unreadable={pirsUnreadable}
-            retrying={pirs.isFetching}
-            onRetry={() => void pirs.refetch()}
-            onRemove={removePir}
-            details={data?.profile.pir_details}
-            onDetails={(id, name) => setPirDetails({ id, name })}
-          />
-        }
-      />
-    ) : (
-      <SettingsField
-        id={`${fieldId}-pir_ids`}
-        label={t_i18n("Priority intelligence requirements (PIRs)")}
-        wide
-        {...help("pir_ids")}
-        helper={
-          pirs.data?.unavailable === "not_connected"
-            ? t_i18n("The PIRs of OpenCTI could not be listed: the saved ones are kept.")
-            : t_i18n(FIELD_HELP.pir_ids.helper)
-        }
-      >
-        <div className="flex flex-col gap-1.5">
-          {pirsLoading ? (
-            // The picker waits for the names: its chips would otherwise read a placeholder (#11589).
-            <div
-              className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-sm border border-elevation-subtle-soft px-2 py-1.5"
-              role="status"
-              aria-busy="true"
-              aria-label={t_i18n("Loading the PIR names")}
-              data-testid="settings.organization.pirs-loading"
-            >
-              {savedPirs.slice(0, 8).map((pir) => (
-                <Skeleton key={pir.id} className="h-6 w-32 rounded-sm" />
-              ))}
-            </div>
-          ) : (
-            <MultiSelect
-              id={`${fieldId}-pir_ids`}
-              aria-label={t_i18n("Priority intelligence requirements (PIRs)")}
-              aria-describedby={settingsFieldHintId(`${fieldId}-pir_ids`)}
-              options={pirOptions}
-              selected={pirForm.pir_ids}
-              onToggle={(id) => pirUpdate({ pir_ids: pirForm.pir_ids.includes(id) ? pirForm.pir_ids.filter((p) => p !== id) : [...pirForm.pir_ids, id] })}
-              placeholder={t_i18n("Pick the PIRs")}
-              searchPlaceholder={t_i18n("Search a PIR")}
-              emptyOptionsLabel={pirsEmptyLabel}
-              noMatchLabel={t_i18n("No matching PIR")}
-            />
-          )}
-          {/* Edit mode says it too, with Retry, as read mode does (#11589). */}
-          {pirsUnreadable && <PirsUnreadable retrying={pirs.isFetching} onRetry={() => void pirs.refetch()} />}
-          {/* The picker's chips cut a long label at 250 px and take no title (library Chip):
-              a PIR OpenCTI no longer has is also written out whole here (UX round 1 B2). */}
-          {missingPirs.length > 0 && (
-            <ul className="flex flex-col gap-0.5 content-compact text-default-secondary" data-testid="settings.organization.pirs-missing" aria-label={t_i18n("PIR no longer in OpenCTI")}>
-              {missingPirs.map((pir) => (
-                <li key={pir.id} className="break-words">{pirText(pir)}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </SettingsField>
-    );
-  /**
-   * The OpenCTI PIR sources and syncs, under the PIR list of the Prioritization policy (#1938): the profile scope of
-   * the syncs (section pirs). Off only while the policy itself is being saved, never for another card's edit. Never
-   * mounted for a reader: the syncs and sources routes are administrators-only (a 403 would reach the card).
-   */
-  const policySaving = patch.isPending || save.isPending;
-  const pirSources = reader ? undefined : (
-    <OrganizationSourcesSyncs
-      variant="section"
-      scope="profile"
-      title={t_i18n("PIR sources")}
-      description={t_i18n("The OpenCTI imports and syncs that keep the PIR list up to date.")}
-      onAddSource={() => setPirImportOpen(true)}
-      disabled={policySaving}
-      disabledReason={t_i18n("Wait for the prioritization policy to be saved.")}
-    />
-  );
   /** The exposure cards a tab draws (#12329): the exposure tab three, the knowledge tab one. */
   const exposureCards = (cards: readonly (typeof EXPOSURE_SECTIONS)[number][]) =>
     current && (
       <OrganizationExposureCards
         cards={cards}
         readOnly={reader}
-        pirList={pirList}
-        pirSources={pirSources}
         current={!editing && exposureEdit ? exposureEdit.form : current}
         editing={editing}
         fieldId={fieldId}
@@ -2089,6 +1938,10 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
             {full && <OrganizationProposalsCard />}
             {/* The asset and group tables are CTEM > Inventory's, on the row APIs (#1752 slice 3b). */}
             {exposureCards((["prioritization_policy"] as const).filter(show))}
+            {/* The OpenCTI PIRs, each with its own minimum score and signals switch (#2435). */}
+            {show("intelligence_policy") && (
+              <OrganizationIntelligencePolicyCard id={`${fieldId}-intelligence_policy`} fold={cardFold("intelligence_policy", null)} />
+            )}
             {/* Owned domains, address ranges and the outside lens pass (CTEM-26 slice 2, #1140). */}
             {show("outside_lens") && <OrganizationOutsideLensCard id={`${fieldId}-outside_lens`} fold={cardFold("outside_lens", null)} />}
             {/* The OpenCRQ evidence health pass, on by default (#1344): the signal sources' Turn on lands here. */}
@@ -2131,13 +1984,6 @@ export function OrganizationSection({ embed }: { embed?: OrganizationEmbed } = {
       {assetsImportOpen && <OrganizationAssetsImportDialog open={assetsImportOpen} onOpenChange={setAssetsImportOpen} />}
       {pasteFor && listOpen(pasteFor) && pasteDialog(pasteFor)}
       {synced.element}
-      {pirImportOpen && <OrganizationImportDialog open={pirImportOpen} onOpenChange={setPirImportOpen} sections={PROFILE_IMPORT_SECTIONS} />}
-      <OrganizationPirDetailsDialog
-        pirId={pirDetails?.id ?? null}
-        pirName={pirDetails?.name ?? ""}
-        canEdit={!reader}
-        onOpenChange={(open) => !open && setPirDetails(null)}
-      />
       <AgenticGateDialogControlled open={aiGateOpen} onOpenChange={setAiGateOpen} feature={t_i18n("Continue onboarding in chat")} />
     </div>
   );

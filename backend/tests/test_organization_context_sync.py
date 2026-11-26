@@ -56,7 +56,8 @@ def _sync(**kwargs) -> SimpleNamespace:
 
 
 def test_syncable_sections_are_the_import_sections_only():
-    assert set(osync.SYNCABLE_SECTIONS) == set(imp.SECTION_SOURCES)
+    # #2435: the PIRs are read by the Intelligence policy's background refresh, never synced.
+    assert set(osync.SYNCABLE_SECTIONS) == set(imp.SECTION_SOURCES) - {"pirs"}
     for typed in ("name", "sector", "regions", "size", "currency", "risk_appetite"):
         with pytest.raises(osync.SyncRefusedError):
             osync.validate(
@@ -66,14 +67,17 @@ def test_syncable_sections_are_the_import_sections_only():
 
 def test_validate_refuses_a_source_that_cannot_feed_the_section_and_a_bad_schedule():
     ok = {"frequency": "daily", "hour": 6, "minute": 0, "weekday": 0, "timezone": "UTC"}
-    osync.validate(section="pirs", source="opencti", **ok)
+    osync.validate(section="primary_assets", source="opencrq", **ok)
     osync.validate(section="all", source="", **ok)
     with pytest.raises(osync.SyncRefusedError, match="cannot feed"):
-        osync.validate(section="pirs", source="openaev", **ok)
+        osync.validate(section="primary_assets", source="openaev", **ok)
     with pytest.raises(osync.SyncRefusedError, match="time zone"):
-        osync.validate(section="pirs", source="opencti", **{**ok, "timezone": "Mars/Olympus"})
+        osync.validate(section="primary_assets", source="opencrq", **{**ok, "timezone": "Mars/Olympus"})
     with pytest.raises(osync.SyncRefusedError, match="hour"):
-        osync.validate(section="pirs", source="opencti", **{**ok, "hour": 24})
+        osync.validate(section="primary_assets", source="opencrq", **{**ok, "hour": 24})
+    # #2435: a PIR sync is refused, the Intelligence policy refreshes the PIRs itself.
+    with pytest.raises(osync.SyncRefusedError, match="section must be one of"):
+        osync.validate(section="pirs", source="opencti", **ok)
 
 
 def test_next_run_daily_in_the_sync_time_zone():

@@ -1183,24 +1183,33 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   primary organization profile, so an object such as `{"pir_ids": [...]}` is
   refused. A subset of the profile PIRs is not supported: the playbook
   listens to every PIR of the profile; narrow the PIRs in the profile.
-- Trigger rule "PIR score thresholds" (CTEM-08):
+- Trigger rule "PIR score thresholds" (CTEM-08, per PIR since #2435):
   `trigger_config.pir_min_score: "policy"` (beside `provision`, never sent
-  to OpenCTI) holds a PIR playbook delivery (below) to the threshold of the
-  primary profile's prioritization policy: `pir_min_score_vulnerability`
-  (default 70) for a Vulnerability, `pir_min_score_threat` (default 75) for
-  threat activity (intrusion set, threat actor, campaign, malware). Both are
-  policy settings, bounded 0 to 100, never constants. The delivered score
-  lags one change, so the receiver re-reads the entity's live
-  `pirInformation(pirId)` for each delivered PIR with the trigger's OpenCTI
-  integration and starts the run when one PIR reaches the threshold; a score
-  it cannot read drops the delivery naming why (a narrowing rule never widens
-  on an outage). A delivery whose entity is not of the listener's
-  `provision.entity_types` is dropped too, since one playbook per listener
-  delivers every flag of the profile PIRs, and so is any type the policy has
-  no threshold for (a report, an indicator): the rule fails closed. Seeded
-  on "Vulnerability flagged in a PIR" (F2) and "Threat activity flagged in a PIR" (F1), both opt-in;
-  the playbook keeps `pir_min_score` 1 so the policy, not the provisioned
-  object, holds the threshold and an edit in Settings needs no reprovision.
+  to OpenCTI) holds a PIR playbook delivery (below) to the minimum score of
+  each delivered PIR on the Intelligence policy (`organization_pirs`, one row
+  per OpenCTI PIR, refreshed hourly from every connected OpenCTI by the
+  scheduler, `services/organization_pirs.py`). Only the PIRs enabled in
+  signals count: the hydrated profile derives `pir_ids`, `pir_names`,
+  `pir_details` and `pir_min_scores` from the enabled rows, so
+  `organization_context: ["pir_ids"]` resolves to them and a PIR disabled on
+  the policy leaves the playbook at the next provisioning pass. A PIR with no
+  stored row falls back to the policy's former `pir_min_score_vulnerability`
+  (default 70) or `pir_min_score_threat` (default 75), kept on the profile
+  for one release. The delivered score lags one change, so the receiver
+  re-reads the entity's live `pirInformation(pirId)` for each delivered PIR
+  with the trigger's OpenCTI integration and starts the run when one PIR
+  reaches its own minimum; a score it cannot read drops the delivery naming
+  why (a narrowing rule never widens on an outage). A delivery whose entity
+  is not of the listener's `provision.entity_types` is dropped too, since one
+  playbook per listener delivers every flag of the enabled PIRs, and so is
+  any type the policy has no threshold for (a report, an indicator): the rule
+  fails closed. Seeded on "Vulnerability flagged in a PIR" (F2) and "Threat
+  activity flagged in a PIR" (F1), both opt-in. The playbook carries one
+  `pir_score` filter per distinct minimum (a nested group of the PIR ids that
+  share it), so OpenCTI already drops a flag below its PIR's minimum; the
+  receiver check stays for the lag. Migration `i2435pirpolicy01` carried the
+  profile PIRs as enabled rows with their details and the former threat
+  minimum, and removed the `pirs` organization syncs.
 - PIR flags (CTEM-05): `provision.mode: "pir_playbook"` (with
   `organization_context: ["pir_ids"]`, required) provisions an OpenCTI
   playbook instead of a live trigger; `provision.pir_ids` (OpenCTI ids of
