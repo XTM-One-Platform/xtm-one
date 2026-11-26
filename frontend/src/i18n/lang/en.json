@@ -21915,5 +21915,13 @@
   "This gate waits for a person: the decision is in their Waiting for you list.": "This gate waits for a person: the decision is in their Waiting for you list.",
   "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.",
   "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, one {# unread notification} other {# unread notifications}}",
-  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}"
+  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}",
+  "Answer recorded": "Answer recorded",
+  "Answered: {option} by {person}, {date}.": "Answered: {option} by {person}, {date}.",
+  "Answered: {option}, {date}.": "Answered: {option}, {date}.",
+  "Change the answer": "Change the answer",
+  "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.": "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.",
+  "Still waiting: {agent} asks again when there is something new to decide.": "Still waiting: {agent} asks again when there is something new to decide.",
+  "Still waiting: its agent asks again when there is something new to decide.": "Still waiting: its agent asks again when there is something new to decide.",
+  "Your answer is recorded; the work item keeps waiting.": "Your answer is recorded; the work item keeps waiting."
 }

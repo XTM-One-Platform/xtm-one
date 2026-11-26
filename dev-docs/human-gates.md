@@ -124,6 +124,14 @@ widened):
   `ANSWERED ... (keeps waiting)` note) and leaves the item as it was, still
   blocked on the person with its ask and blockers: no status change, no
   dispatch to the owner's inbox. Any other option releases the item as before.
+  The platform never clears `needs_human` on a keeps_waiting answer: the
+  owning agent moves the item to an observable wait (`blocked_on` /
+  `blocked_on_refs`) or re-asks with a new ask. Until then the decision card
+  shows the recorded answer (#2500): "Answered: <label> by <who>, <when>" and
+  what the item still waits for, header "Answer recorded", the options folded
+  behind "Change the answer"; the toast says the answer is recorded and the
+  item keeps waiting. The same keeps_waiting option sent again with the same
+  words is a repeat: nothing is written, no second note.
 - A work item that reaches `done` or `cancelled` (`complete_work_item`,
   `update_work_item` status) no longer waits for a person (#1719): its
   `needs_human` and ask are cleared in the same write, its open decision is

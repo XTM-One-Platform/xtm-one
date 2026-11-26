@@ -67,10 +67,17 @@ async def test_a_keep_waiting_answer_records_it_and_leaves_the_item_waiting() ->
             kept = await wi_service.answer_work_item(
                 item_id, user_id=uid, option="WAIT", answered_by="Person", writer=writer
             )
+            # The same answer again (#2500): no second note, the first answer kept.
+            again = await wi_service.answer_work_item(
+                item_id, user_id=uid, option="wait", answered_by="Other", writer=writer
+            )
             waiting = await wi_service.work_items_waiting_for_person(user_id=uid)
             shipped = await wi_service.answer_work_item(item_id, user_id=uid, option="ship", writer=writer)
 
-    assert kept is not None and shipped is not None
+    assert kept is not None and shipped is not None and again is not None
+    assert again["description"] == kept["description"]
+    assert again["payload"]["answer"] == kept["payload"]["answer"]
+    assert again["needs_human"] is True
     assert kept["status"] == "blocked"
     assert kept["needs_human"] is True
     assert kept["ask"]["question"] == "Ship the patch now?"

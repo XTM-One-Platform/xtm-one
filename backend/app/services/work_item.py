@@ -5198,6 +5198,20 @@ async def _refuse_decided_for_group_member(
     raise WorkItemNotWaitingError(_not_waiting_message(decided))
 
 
+def _repeats_kept_answer(payload: object, key: str | None, words: str) -> bool:
+    """Whether *key* and *words* repeat the answer already stored on the item (#2500). Pure.
+
+    A keep-waiting answer leaves the card open on its recorded answer; the
+    same option with the same words sent again is the person confirming what
+    the card shows, never a new answer.
+    """
+    stored = payload.get("answer") if isinstance(payload, dict) else None
+    if not isinstance(stored, dict) or not key:
+        return False
+    same_option = str(stored.get("option") or "").casefold() == key.casefold()
+    return same_option and (stored.get("text") or "") == words
+
+
 async def answer_work_item(
     work_item_id: str,
     *,
@@ -5217,7 +5231,9 @@ async def answer_work_item(
     cleared and the item goes back to ``open``, unclaimed, so its owner
     agent's inbox takes it at once with the answer in its context. An option
     marked ``keeps_waiting`` records the answer and the note alone: the item
-    stays blocked on the person with its ask, nothing is dispatched (#1719).
+    stays blocked on the person with its ask, nothing is dispatched (#1719);
+    the same keep-waiting answer sent again (same option, same words) writes
+    nothing, so a second click never stacks a second note (#2500).
 
     Raises :class:`WorkItemNotWaitingError` when the item does not wait for
     a person (not ``needs_human``, or finished) and ``ValueError`` for an
@@ -5277,6 +5293,12 @@ async def answer_work_item(
             answer["text"] = words
         if answered_by:
             answer["answered_by"] = answered_by
+        from app.services.decision_ask import keeps_waiting
+
+        if keeps_waiting(chosen) and _repeats_kept_answer(item.payload, key, words):
+            # The card already shows this answer (#2500): nothing new to record.
+            await db.rollback()
+            return await _read_back(work_item_id, user_id=user_id, writer=writer)
         payload = dict(item.payload or {})
         payload.pop("_dispatch_attempts", None)
         payload["answer"] = answer
@@ -5290,8 +5312,6 @@ async def answer_work_item(
                 db, uid, item, action="answer", summary=f"Answered work item {item.title}: {said}"
             )
         who = f" by {answered_by}" if answered_by else ""
-        from app.services.decision_ask import keeps_waiting
-
         if keeps_waiting(chosen):
             # "Keep waiting" (#1719): the answer is recorded, the item stays as it
             # is, still waiting with its ask and blockers, and nothing dispatches it.

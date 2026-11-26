@@ -6,6 +6,7 @@ import pytest
 
 from app.services.builtin_tools.work_items import _blocked_why_lines
 from app.services.decision_ask import ask_lines, keeps_waiting, normalize_ask
+from app.services.work_item import _repeats_kept_answer
 
 _ASK = {
     "question": "Ship the patch now?",
@@ -24,6 +25,18 @@ def test_an_option_may_keep_its_item_waiting() -> None:
     assert not keeps_waiting(ship) and "keeps_waiting" not in ship
     assert keeps_waiting(wait)
     assert "    - [wait] Keep waiting (keeps it waiting)" in ask_lines(ask)
+
+
+def test_the_same_kept_answer_again_is_a_repeat() -> None:
+    """Same option (any case) and same words repeat the stored answer; anything else is new (#2500)."""
+    payload = {"answer": {"option": "wait", "label": "Keep waiting", "answered_at": "2026-11-26T09:00:00+00:00"}}
+    assert _repeats_kept_answer(payload, "WAIT", "")
+    assert not _repeats_kept_answer(payload, "wait", "one more week")
+    assert not _repeats_kept_answer(payload, "ship", "")
+    assert not _repeats_kept_answer({}, "wait", "")
+    assert not _repeats_kept_answer(payload, None, "")
+    worded = {"answer": {"option": "wait", "text": "one more week"}}
+    assert _repeats_kept_answer(worded, "wait", "one more week")
 
 
 def test_keeps_waiting_is_a_boolean() -> None:
