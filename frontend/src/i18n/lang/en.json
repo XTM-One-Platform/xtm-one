@@ -21965,5 +21965,7 @@
   "The other platforms find your account by this address: a code sent to the new one proves it is yours.": "The other platforms find your account by this address: a code sent to the new one proves it is yours.",
   "Send code": "Send code",
   "If {email} can be used, a 6-digit code was sent to it. It works once, within 10 minutes.": "If {email} can be used, a 6-digit code was sent to it. It works once, within 10 minutes.",
-  "Ask for a new code": "Ask for a new code"
+  "Ask for a new code": "Ask for a new code",
+  "This account's email is set by ADMIN_EMAIL: it cannot be changed here.": "This account's email is set by ADMIN_EMAIL: it cannot be changed here.",
+  "The platform sends no email: ask an administrator to change your email.": "The platform sends no email: ask an administrator to change your email."
 }

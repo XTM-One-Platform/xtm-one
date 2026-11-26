@@ -216,6 +216,11 @@ class TestARequestIsRefused:
         await _refused(_ask(_user(sso_provider="oidc"), "jane.doe@corp.com"), 400)
         assert not env.mail and not env.redis.store
 
+    async def test_for_an_account_scim_provisioned_or_linked(self, env):
+        # Its identity provider's next sync would write its own address back.
+        await _refused(_ask(_user(scim_external_id="idp-42"), "jane.doe@corp.com"), 400)
+        assert not env.mail and not env.redis.store
+
     async def test_under_impersonation(self, env):
         user = _user()
         user.impersonated_by = str(uuid.uuid4())
@@ -241,10 +246,6 @@ class TestARequestIsRefused:
         env.domains.append("corp.com")
         await _refused(_ask(_user(), "jane@elsewhere.example"), 400)
         assert not env.mail and not env.redis.store
-
-    async def test_for_an_address_exempt_from_the_terms_of_use(self, env, monkeypatch):
-        monkeypatch.setattr("app.core.config.settings.terms_of_use_exempt_emails", "robot@corp.com")
-        await _refused(_ask(_user(), "Robot@Corp.com"), 400)
 
     async def test_for_the_current_address(self, env):
         await _refused(_ask(_user(), " JANE@corp.com "), 400)
@@ -322,6 +323,7 @@ class TestAFreeAddressGetsACode:
             _SECRET.encode(), f"email-change\x00{user.id}\x00jane.doe@corp.com\x00{code}".encode(), hashlib.sha256
         ).hexdigest()
         assert stored["mac"] == expected and stored["email"] == "jane.doe@corp.com"
+        assert stored["from"] == "jane@corp.com"
         assert env.redis.ttls[key] == 600
 
     async def test_another_users_code_does_not_confirm(self, env):
@@ -363,6 +365,25 @@ class TestATakenAddressGetsNoCode:
 
         await _refused(_confirm(user, first), 400)
         assert user.email == "jane@corp.com"
+
+    async def test_an_address_exempt_from_the_terms_of_use_answers_the_same_and_gets_no_code(self, env, monkeypatch):
+        monkeypatch.setattr("app.core.config.settings.terms_of_use_exempt_emails", "robot@corp.com")
+        user = _user()
+        await _ask(user, "jane.doe@corp.com")
+
+        answer = await _ask(user, "Robot@Corp.com")
+
+        assert answer == {"status": "pending"}
+        assert len(env.mail) == 1, "no code, no notice"
+        assert not any(k.startswith("emailchange:") for k in env.redis.store), "the pending change is dropped"
+
+    async def test_an_exempt_address_is_not_told_apart_before_the_password_and_the_limits(self, env, monkeypatch):
+        monkeypatch.setattr("app.core.config.settings.terms_of_use_exempt_emails", "robot@corp.com")
+        user = _user()
+        await _refused(_ask(user, "robot@corp.com", password="a-guess"), 401)
+        await _ask(user, "robot@corp.com")
+        await _ask(user, "robot@corp.com")
+        await _refused(_ask(user, "robot@corp.com"), 429)
 
     async def test_the_admin_email_address_is_taken_even_with_no_account_holding_it(self, env, monkeypatch):
         monkeypatch.setattr("app.core.config.settings.admin_email", "admin@corp.com")
@@ -433,6 +454,29 @@ class TestTheConfirmation:
         await _refused(_confirm(user, _code_in(env.mail[0])), 400)
         assert user.email == "jane@corp.com" and not env.audits
 
+    async def test_an_address_exempt_from_the_terms_of_use_in_between_is_refused(self, env, monkeypatch):
+        user = _user()
+        await _ask(user, "jane.doe@corp.com")
+        monkeypatch.setattr("app.core.config.settings.terms_of_use_exempt_emails", "jane.doe@corp.com")
+        await _refused(_confirm(user, _code_in(env.mail[0])), 400)
+        assert user.email == "jane@corp.com" and not env.audits
+
+    async def test_a_domain_no_longer_allowed_is_refused(self, env):
+        user = _user()
+        await _ask(user, "jane.doe@elsewhere.example")
+        env.domains.append("corp.com")
+        await _refused(_confirm(user, _code_in(env.mail[0])), 400)
+        assert user.email == "jane@corp.com" and not env.audits
+
+    async def test_a_change_started_from_an_address_changed_since_is_dropped(self, env):
+        # An administrator changed the email while the code was on its way.
+        user = _user()
+        await _ask(user, "jane.doe@corp.com")
+        user.email = "jane.roe@corp.com"
+        await _refused(_confirm(user, _code_in(env.mail[0])), 400)
+        assert user.email == "jane.roe@corp.com" and not env.audits
+        assert f"emailchange:{user.id}" not in env.redis.store
+
     async def test_the_unique_index_refuses_a_race(self, env):
         user = _user()
         await _ask(user, "jane.doe@corp.com")
@@ -450,6 +494,36 @@ class TestTheConfirmation:
 
     async def test_for_an_sso_account(self, env):
         await _refused(_confirm(_user(sso_provider="saml"), "123456"), 400)
+
+    async def test_for_an_account_scim_linked_since_the_request(self, env):
+        user = _user()
+        await _ask(user, "jane.doe@corp.com")
+        user.scim_external_id = "idp-42"
+        await _refused(_confirm(user, _code_in(env.mail[0])), 400)
+        assert user.email == "jane@corp.com"
+
+
+class TestTheProfileIsTold:
+    """``GET /auth/me`` reports ``email_change_blocked``, so the profile offers no change the routes refuse."""
+
+    @pytest.mark.parametrize(
+        ("extra", "blocked"),
+        [
+            ({}, None),
+            ({"sso_provider": "oidc"}, "identity_provider"),
+            ({"scim_external_id": "idp-42"}, "identity_provider"),
+        ],
+    )
+    def test_the_reason_follows_the_account(self, env, extra, blocked):
+        assert settings_api.email_change_blocked(_user(**extra)) == blocked
+
+    def test_the_platform_admin(self, env, monkeypatch):
+        monkeypatch.setattr("app.core.config.settings.admin_email", "jane@corp.com")
+        assert settings_api.email_change_blocked(_user()) == "platform_admin"
+
+    def test_without_smtp(self, env, monkeypatch):
+        monkeypatch.setattr("app.services.email.is_email_configured", lambda: False)
+        assert settings_api.email_change_blocked(_user()) == "no_email"
 
 
 class TestTheRateLimits:

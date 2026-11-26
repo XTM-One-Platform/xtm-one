@@ -21965,5 +21965,7 @@
   "The other platforms find your account by this address: a code sent to the new one proves it is yours.": "他のプラットフォームはこのアドレスであなたのアカウントを見つけます。新しいアドレスに送信されるコードで、そのアドレスがあなたのものであることを確認します。",
   "Send code": "コードを送信",
   "If {email} can be used, a 6-digit code was sent to it. It works once, within 10 minutes.": "{email} が使用可能な場合、6桁のコードが送信されました。コードは10分以内に1回だけ使用できます。",
-  "Ask for a new code": "新しいコードをリクエスト"
+  "Ask for a new code": "新しいコードをリクエスト",
+  "This account's email is set by ADMIN_EMAIL: it cannot be changed here.": "このアカウントのメールアドレスは ADMIN_EMAIL で設定されているため、ここでは変更できません。",
+  "The platform sends no email: ask an administrator to change your email.": "プラットフォームはメールを送信しません。メールアドレスの変更は管理者に依頼してください。"
 }

@@ -5,8 +5,9 @@
  *
  * The other Filigran platforms find a person's account by this address, so a
  * new one is proven before it is written: the person gives it with their
- * current password, then types the code sent to it. An SSO account's address
- * belongs to its identity provider: the row is read-only and says so.
+ * current password, then types the code sent to it. When the platform would
+ * refuse the change (an address the identity provider owns, the ADMIN_EMAIL
+ * account, no mail server), the row is read-only and says why.
  */
 
 import { useState } from "react";
@@ -17,12 +18,14 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { useConfirmEmailChange, useRequestEmailChange } from "@/hooks/api/useAuthApi";
 import { useFormatter } from "@/i18n";
+import type { EmailChangeBlocked } from "@/types";
 
 type Step = "idle" | "address" | "code";
 
-export function EmailRow({ email, ssoProvider, impersonated }: {
+export function EmailRow({ email, blocked, impersonated }: {
   email: string;
-  ssoProvider?: string | null;
+  /** Why the change is refused (`email_change_blocked` on `/auth/me`), or null. */
+  blocked?: EmailChangeBlocked | null;
   /** An administrator acting as this person: the change is refused, so it is not offered. */
   impersonated: boolean;
 }) {
@@ -73,7 +76,12 @@ export function EmailRow({ email, ssoProvider, impersonated }: {
     );
   };
 
-  const canChange = !ssoProvider && !impersonated;
+  const canChange = !blocked && !impersonated;
+  const blockedReason: Record<EmailChangeBlocked, string> = {
+    identity_provider: t_i18n("Your identity provider manages your email: change it there."),
+    platform_admin: t_i18n("This account's email is set by ADMIN_EMAIL: it cannot be changed here."),
+    no_email: t_i18n("The platform sends no email: ask an administrator to change your email."),
+  };
 
   return (
     <div className="px-5 py-3.5" data-testid="profile.email-row">
@@ -82,9 +90,7 @@ export function EmailRow({ email, ssoProvider, impersonated }: {
         <span className="content-base font-medium shrink-0 w-36" data-testid="profile.info-row-label">{t_i18n("Email")}</span>
         <div className="flex-1 min-w-0">
           <span className="content-base">{email}</span>
-          {ssoProvider && (
-            <p className="content-compact text-default-secondary">{t_i18n("Your identity provider manages your email: change it there.")}</p>
-          )}
+          {blocked && <p className="content-compact text-default-secondary">{blockedReason[blocked]}</p>}
         </div>
         {canChange && step === "idle" && (
           <Button variant="secondary" className="gap-1.5" data-testid="profile.email-change" onClick={() => setStep("address")}>

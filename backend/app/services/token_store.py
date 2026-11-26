@@ -299,8 +299,8 @@ def email_change_address_bucket(email: str) -> str:
     return _secret_mac("email-change-address", email.strip().lower())
 
 
-async def create_email_change(*, user_id: Any, email: str) -> str:
-    """Start an email change of *user_id* to *email*. Returns the 6-digit code to send.
+async def create_email_change(*, user_id: Any, email: str, from_email: str) -> str:
+    """Start an email change of *user_id* from *from_email* to *email*. Returns the 6-digit code to send.
 
     It replaces the user's pending change, whatever its address: the previous
     code stops working and its wrong-code count does not carry over."""
@@ -309,6 +309,7 @@ async def create_email_change(*, user_id: Any, email: str) -> str:
     payload = {
         "id": secrets.token_hex(16),
         "email": email,
+        "from": from_email.strip().lower(),
         "mac": _email_change_mac(user_id, email, code),
         "created_at": datetime.now(UTC).isoformat(),
     }
@@ -323,10 +324,12 @@ async def drop_email_change(user_id: Any) -> None:
     await r.delete(_EMAIL_CHANGE_PREFIX + str(user_id))
 
 
-async def consume_email_change(*, user_id: Any, code: str) -> str | None:
+async def consume_email_change(*, user_id: Any, code: str, current_email: str) -> str | None:
     """The new address of *user_id*'s pending change when *code* is its code, else ``None``.
 
-    A match consumes the change. Every try counts, the right one included,
+    A change started from another address than *current_email* (changed
+    meanwhile by an administrator or SCIM) is dropped unread. A match consumes
+    the change. Every try counts, the right one included,
     and atomically: once :data:`EMAIL_CHANGE_MAX_ATTEMPTS` tries are spent
     the change is dropped, however many arrive at once. A change replaced
     by a newer request between the read and the match is not consumed."""
@@ -336,6 +339,9 @@ async def consume_email_change(*, user_id: Any, code: str) -> str | None:
     if not raw:
         return None
     pending = json.loads(raw)
+    if pending.get("from") != current_email.strip().lower():
+        await r.eval(DELETE_IF_EQUAL_LUA, 1, key, raw)
+        return None
     tries = int(
         await r.eval(INCR_EXPIRE_LUA, 1, _EMAIL_CHANGE_ATTEMPTS_PREFIX + pending["id"], EMAIL_CHANGE_TTL_SECONDS)
     )

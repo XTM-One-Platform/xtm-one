@@ -4794,22 +4794,56 @@ EMAIL_CHANGE_REQUESTS_PER_HOUR = 3
 _EMAIL_ADDRESS = TypeAdapter(EmailStr)
 
 
+#: Why a person cannot change their own email (:func:`email_change_blocked`): the answer of both routes.
+_EMAIL_CHANGE_BLOCKED: dict[str, tuple[int, str]] = {
+    "identity_provider": (400, "The email of this account is managed by your identity provider"),
+    "platform_admin": (400, "The platform admin account's email is set by ADMIN_EMAIL and cannot be changed"),
+    "no_email": (503, "The platform sends no email: ask an administrator to change your email"),
+}
+
+
+def email_change_blocked(user: User) -> str | None:
+    """Why *user* cannot change their own email (a key of ``_EMAIL_CHANGE_BLOCKED``), or ``None``.
+
+    The rule both self-service routes apply and ``GET /auth/me`` reports, so
+    the profile offers no change it would refuse. An identity provider owns the
+    address of an SSO account and of one SCIM provisioned or linked: its next
+    sync writes its own address back. Platform administrator standing follows
+    ``ADMIN_EMAIL``, and the boot finds the account by it.
+    """
+    from app.services import email as email_service
+
+    if user.sso_provider or getattr(user, "scim_external_id", None):
+        return "identity_provider"
+    if is_platform_admin(user):
+        return "platform_admin"
+    if not email_service.is_email_configured():
+        return "no_email"
+    return None
+
+
 def _refuse_self_service_email_change(user: User) -> None:
     """What refuses both steps of a self-service email change, before anything is read."""
-    if user.sso_provider:
-        raise HTTPException(
-            status_code=400,
-            detail="The email of an SSO account is managed by your identity provider",
-        )
     if getattr(user, "impersonated_by", None) is not None:
         raise HTTPException(status_code=403, detail="Cannot change the email while impersonating")
-    # Platform administrator standing follows ADMIN_EMAIL, and the boot finds
-    # the account by it.
-    if is_platform_admin(user):
-        raise HTTPException(
-            status_code=400,
-            detail="The platform admin account's email is set by ADMIN_EMAIL and cannot be changed",
-        )
+    blocked = email_change_blocked(user)
+    if blocked is not None:
+        status_code, detail = _EMAIL_CHANGE_BLOCKED[blocked]
+        raise HTTPException(status_code=status_code, detail=detail)
+
+
+async def _email_change_target_refused(db: AsyncSession, user: User, email: str) -> bool:
+    """Whether *email* is no address *user* may take, whoever holds it: the
+    allowed domains, ``ADMIN_EMAIL`` and the Terms of Use exemptions."""
+    from app.core.config import settings as app_settings
+    from app.core.sso_helpers import get_sso_config
+
+    if not email_domain_allowed(email, (await get_sso_config(db)).allowed_domain_list):
+        return True
+    if admin_email_change_refusal(user, email) is not None:
+        return True
+    # An exempt address skips the Terms of Use gate for the account holding it.
+    return app_settings.terms_of_use_exempt(email)
 
 
 @router.post("/email-change", status_code=status.HTTP_202_ACCEPTED)
@@ -4824,19 +4858,15 @@ async def request_email_change(
 
     The same 202 whether or not another account holds the address: a free
     address gets the code, a taken one gets no code and its holder a notice
-    naming nobody. Either way the user's pending change is replaced. The
+    naming nobody. ``ADMIN_EMAIL`` and a Terms of Use exempt address get the
+    same 202 and no code, past both limits and the password, so a session
+    cannot probe them. Either way the user's pending change is replaced. The
     emails go out after the answer, so its timing does not tell either.
     """
-    from app.core.config import settings as app_settings
     from app.core.sso_helpers import get_sso_config
     from app.services import email as email_service
 
     _refuse_self_service_email_change(user)
-    if not email_service.is_email_configured():
-        raise HTTPException(
-            status_code=503,
-            detail="The platform sends no email: ask an administrator to change your email",
-        )
     try:
         email = str(_EMAIL_ADDRESS.validate_python(body.email.strip())).strip().lower()
     except ValidationError:
@@ -4849,10 +4879,6 @@ async def request_email_change(
             status_code=400,
             detail=f"Email addresses are restricted to: {', '.join(domain_list)}",
         )
-    # An address exempt from the Terms of Use gate is not self-service: taking
-    # it would skip the gate for this account.
-    if app_settings.terms_of_use_exempt(email):
-        raise HTTPException(status_code=400, detail="This email address cannot be used")
 
     # Charged before the password check: it bounds password guesses here too.
     await enforce_rate_limit(
@@ -4875,8 +4901,7 @@ async def request_email_change(
     holder = (
         await db.execute(select(User.email).where(func.lower(User.email) == email, User.id != user.id))
     ).scalar_one_or_none()
-    # The ADMIN_EMAIL address is no account's to take, held yet or not.
-    if holder is not None or admin_email_change_refusal(user, email) is not None:
+    if holder is not None or await _email_change_target_refused(db, user, email):
         await token_store.drop_email_change(user.id)
         if holder is not None:
             html, text = email_service.email_change_address_taken_email()
@@ -4888,7 +4913,7 @@ async def request_email_change(
                 text=text,
             )
     else:
-        code = await token_store.create_email_change(user_id=user.id, email=email)
+        code = await token_store.create_email_change(user_id=user.id, email=email, from_email=user.email)
         html, text = email_service.email_change_code_email(code, token_store.EMAIL_CHANGE_TTL_SECONDS // 60)
         background.add_task(
             email_service.send_email, to=email, subject="Your email change code", html=html, text=text
@@ -4914,7 +4939,9 @@ async def confirm_email_change(
     from app.services.mfa import _normalize_totp_code
 
     _refuse_self_service_email_change(user)
-    email = await token_store.consume_email_change(user_id=user.id, code=_normalize_totp_code(body.code))
+    email = await token_store.consume_email_change(
+        user_id=user.id, code=_normalize_totp_code(body.code), current_email=user.email
+    )
     if email is None:
         raise HTTPException(
             status_code=400,
@@ -4924,7 +4951,7 @@ async def confirm_email_change(
     holder = (
         await db.execute(select(User.id).where(func.lower(User.email) == email, User.id != user.id))
     ).scalar_one_or_none()
-    if holder is not None or admin_email_change_refusal(user, email) is not None:
+    if holder is not None or await _email_change_target_refused(db, user, email):
         raise taken
     old_email = user.email
     user.email = email

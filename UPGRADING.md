@@ -11,7 +11,7 @@ releases that need special attention.
 
 - **New**: people change their email again from their profile (`Email`, `Change`): they type the new address and their current password, then the six-digit code sent to the new address (`POST /api/v1/settings/email-change`, then `POST /api/v1/settings/email-change/confirm`). The code works once within 10 minutes, five wrong codes void it, and three requests an hour are allowed per person and per address. The old address is told of the change.
 - **Needs SMTP**: without a mail server the route answers `503`; an administrator changes the email from the user's page, as before.
-- **SSO accounts**: their identity provider manages the address; they cannot change it themselves.
+- **SSO and SCIM accounts**: their identity provider manages the address; they cannot change it themselves.
 - `PUT /api/v1/settings/preferences` still answers `422` for a new address.
 
 ## `evaluations.speed_tolerance` is dropped

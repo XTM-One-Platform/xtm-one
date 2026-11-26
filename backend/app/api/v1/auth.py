@@ -244,6 +244,10 @@ class UserResponse(BaseModel):
     copilot_dashboard_layout: dict[str, Any] | None = None
     role: str
     sso_provider: str | None = None
+    # Why the person cannot change their own email (`identity_provider`,
+    # `platform_admin`, `no_email`), or null when they can
+    # (`settings.email_change_blocked`).
+    email_change_blocked: str | None = None
     default_agent_id: str | None = None
     # The custom dashboard shown on /dashboard instead of the platform's (null: the platform's).
     home_dashboard_id: str | None = None
@@ -1117,6 +1121,8 @@ async def me(
         except Exception as exc:
             logger.warning("Failed to resolve impersonation claim: %s", format_exception_message(exc))
 
+    from app.api.v1.settings import email_change_blocked
+
     group_ids = await get_user_group_ids(db, user.id)
     terms_of_use = await _build_terms_state(db, user)
     ai_groups = await disabling_group_names(db, user.id)
@@ -1146,6 +1152,7 @@ async def me(
         copilot_dashboard_layout=getattr(user, "copilot_dashboard_layout", None),
         role=user.role,
         sso_provider=user.sso_provider,
+        email_change_blocked=email_change_blocked(user),
         default_agent_id=str(user.default_agent_id) if user.default_agent_id else None,
         # Off, the platform's home: a stored custom one is not offered.
         home_dashboard_id=(

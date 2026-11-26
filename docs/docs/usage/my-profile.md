@@ -61,9 +61,9 @@ The other Filigran platforms (OpenCTI, OpenAEV, OpenCRQ) find your account by yo
 
 You stay signed in, and from then on you sign in with the new address. The old address is told of the change, and password reset links already sent to it stop working. You can ask for three codes an hour.
 
-When the new address already belongs to another account, no code is sent and nothing changes: the page answers the same way, so it never tells whether an address has an account.
+When the new address already belongs to another account, or is one the platform keeps for itself, no code is sent and nothing changes: the page answers the same way, so it never tells whether an address has an account.
 
-The change needs a platform that sends email; otherwise, and for anything else, an administrator changes your email for you. If you sign in with SSO, your identity provider manages your email: the row is read-only.
+The change needs a platform that sends email; otherwise, and for anything else, an administrator changes your email for you. If you sign in with SSO, or your identity provider creates your account (SCIM), it manages your email: the row is read-only and says why, as it does for the `ADMIN_EMAIL` account and on a platform that sends no email.
 
 If you use SSO, the page shows that clearly so you know sign-in is handled by your identity provider.
 

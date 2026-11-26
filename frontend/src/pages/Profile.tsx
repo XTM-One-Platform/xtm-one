@@ -262,7 +262,7 @@ export default function Profile() {
                   </div>
                 ) : null}
 
-                <EmailRow email={user.email} ssoProvider={user.sso_provider} impersonated={!!user.impersonated_by_id} />
+                <EmailRow email={user.email} blocked={user.email_change_blocked} impersonated={!!user.impersonated_by_id} />
 
                 <InfoRow icon={Globe} label={t_i18n("Timezone")} editing={editing} fieldId="profile-timezone">
                   {editing ? (

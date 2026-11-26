@@ -21965,5 +21965,7 @@
   "The other platforms find your account by this address: a code sent to the new one proves it is yours.": "Las demás plataformas encuentran su cuenta por esta dirección: un código enviado a la nueva demuestra que es suya.",
   "Send code": "Enviar código",
   "If {email} can be used, a 6-digit code was sent to it. It works once, within 10 minutes.": "Si {email} se puede usar, se le envió un código de 6 dígitos. Funciona una vez, durante 10 minutos.",
-  "Ask for a new code": "Solicitar un código nuevo"
+  "Ask for a new code": "Solicitar un código nuevo",
+  "This account's email is set by ADMIN_EMAIL: it cannot be changed here.": "El correo de esta cuenta lo define ADMIN_EMAIL: no se puede cambiar aquí.",
+  "The platform sends no email: ask an administrator to change your email.": "La plataforma no envía correos: pida a un administrador que cambie su correo."
 }
