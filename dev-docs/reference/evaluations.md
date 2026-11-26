@@ -36,7 +36,7 @@ evaluation_runs.placebo_comparison_id ··> evaluation_placebo_comparisons
 | `evaluation_agents` | The evaluation's subjects: an agent or a flow (`flow_id`, #8257), exactly one (`ck_evaluation_agents_one_subject`). Unique `(evaluation_id, agent_id)`, partial unique `(evaluation_id, flow_id)`. `is_baseline`, at most one per evaluation (partial unique `uq_eval_agent_baseline`). `output_extractor`, `tags`. A flow subject: `dev-docs/health-evaluation.md`. |
 | `evaluation_datasets` | Unique `(evaluation_id, dataset_id)`. `position` unique per evaluation, appended under a lock on the evaluation row. |
 | `evaluation_result_traces` | `trace_id` without FK. `trace_role` CHECK `agent`/`judge`/`auxiliary`. Unique `(result_id, trace_id)` and `(result_id, trace_order)`. |
-| `evaluation_episodes` | One per run and entry, unique `(run_id, entry_id)`. `correlation_id` unique, `eval:{run_id}:{entry_id}`. `entry_id` FK CASCADE on `dataset_entries`. `first_turn_details` (JSONB): `version_entry_id` and the first turn's `execution_details` without judge and quality, from which a resume builds the result (§12). |
+| `evaluation_episodes` | One per run and entry, unique `(run_id, entry_id)`. `correlation_id` unique, `eval:{run_id}:{entry_id}`. `entry_id` FK CASCADE on `dataset_entries`. `idempotency_key` is the latest accepted callback key, `superseded_idempotency_keys` (JSONB list) the ones before it. `first_turn_details` (JSONB): `version_entry_id` and the first turn's `execution_details` without judge and quality, from which a resume builds the result (§12). |
 | `evaluation_run_params` | Unique `(run_id, key)`; `source` CHECK `auto`/`evaluation`/`manual` (§13). |
 
 **Legacy columns**: `evaluations.quality_weight` (ignored on write, never served); `evaluations.quality_source` (only `judge`: create and update refuse `f1`, a stored, imported or copied row may hold it, and is then read as `judge`: the pages, both run comparisons and the persona loop show and compare Judge Quality, and a new run logs `quality_source` `judge`; the agent tools' evaluation summary serves the stored setting as it is); `speed_score`, `overall_score`, `f1_score` on runs and results, never written by scoring, and `f1_score` neither shown by the pages nor served by the agent tools. A result's `f1_score` is cleared only when a resumed callback replaces the answer it scored.
@@ -759,14 +759,14 @@ No JWT, no AI gate (the episode was already dispatched). The signature is compar
 | 400 | no `resume_secret` is set |
 | 401 | `X-Signature` missing or wrong |
 | 410 | the episode was closed before any callback was applied: the payload is **not** applied and this is **not** a duplicate; the detail names the episode and its status |
-| 200 `{accepted: true, duplicate: true, episode_id, status}` | the key equals the episode's stored `idempotency_key`; or the episode is `completed`; or it was closed after an earlier callback was applied. Nothing is enqueued |
+| 200 `{accepted: true, duplicate: true, episode_id, status}` | the episode already accepted this key, the latest or an earlier one; or the episode is `completed`; or it was closed after an earlier callback was applied. Nothing is enqueued |
 | 200 `{accepted: true, duplicate: false, episode_id, status}` | accepted |
 
 ### Acceptance
 
-- In one transaction: store `idempotency_key` and `callback_payload`, set the episode `resumed`, clear its deadline, and create one orchestration execution `{adapter: "evaluation", payload: {kind: "resume_episode", episode_id, idempotency_key}}` with deadline = (`timeout_seconds`, else 3600) + `orchestration_grace_seconds`; the worker is woken after the commit.
+- In one transaction: store `idempotency_key` and `callback_payload` (the previous key moves to `superseded_idempotency_keys`), set the episode `resumed`, clear its deadline, and create one orchestration execution `{adapter: "evaluation", payload: {kind: "resume_episode", episode_id, idempotency_key}}` with deadline = (`timeout_seconds`, else 3600) + `orchestration_grace_seconds`; the worker is woken after the commit.
 - `idempotency_key` is the duplicate key and a generation token: a different key on an episode still `resumed` is a new generation, accepted with its own execution, and an older execution's failure handling never closes a newer generation's episode.
-- Only the latest accepted key counts as a duplicate: a validly signed replay of an earlier callback, while the episode is still `resumed`, is accepted again and overwrites the stored payload.
+- Every accepted key counts as a duplicate: a validly signed replay of an earlier callback leaves the stored payload unchanged.
 
 ### Processing (`process_resume_episode`)
 
