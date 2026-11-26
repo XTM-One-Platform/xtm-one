@@ -14,10 +14,9 @@ from typing import Any
 
 import pytest
 
-from app.services import ctem_cve_software
+from app.services import ctem_cve_software, ctem_threat_software
 from app.services import ctem_scope_gate as gate
 from app.services import ctem_scope_gate_store as store
-from app.services import ctem_threat_software
 from app.services import organization_context as oc
 
 TODAY = date(2026, 11, 26)
