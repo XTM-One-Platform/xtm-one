@@ -67,6 +67,18 @@ def test_an_import_reads_every_setting():
     assert set(evaluations_api._imported_settings({}, "full_loop")) == set(EVALUATION_SETTINGS)
 
 
+@pytest.mark.parametrize(
+    ("package", "expected"),
+    [
+        pytest.param({"speed_tolerance": 7.5}, 7.5, id="older-package"),
+        pytest.param({"speed_tolerance": 7.5, "performance_tolerance": 2.0}, 2.0, id="current-name-wins"),
+        pytest.param({"speed_tolerance": None}, 5.0, id="null-takes-the-default"),
+    ],
+)
+def test_an_import_reads_an_older_packages_speed_tolerance(package, expected):
+    assert evaluations_api._imported_settings(package, "full_loop")["performance_tolerance"] == expected
+
+
 def test_an_export_writes_every_setting():
     exported = evaluations_api._exported_settings(Evaluation(name="E", trigger_config={}))
     assert set(exported) == set(EVALUATION_SETTINGS)

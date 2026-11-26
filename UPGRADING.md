@@ -14,6 +14,10 @@ releases that need special attention.
 - **SSO accounts**: their identity provider manages the address; they cannot change it themselves.
 - `PUT /api/v1/settings/preferences` still answers `422` for a new address.
 
+## `evaluations.speed_tolerance` is dropped
+
+**No action needed.** The migration `e686spdtol01` drops the `evaluations.speed_tolerance` column, which no release since `e1780evp001` reads or writes. Every evaluation keeps its tolerance in `performance_tolerance`, and an exported package that names `speed_tolerance` still imports into it.
+
 ## A user's email is changed by an administrator only
 
 **No migration, no configuration change.**
@@ -143,7 +147,7 @@ releases that need special attention.
 - **An evaluation saved there** keeps its resume secret in clear, which its callbacks no longer read, and its tolerance in `speed_tolerance` only. Set both again on that evaluation once the rollout ends.
 - **Appending a dataset entry, or linking a dataset to an evaluation, there** can fail with a `500` until the replica is replaced: positions are unique from this release, and the previous code could append at a taken one.
 
-`speed_tolerance` is kept for that window, with the values copied into `performance_tolerance`; a later release removes it.
+`speed_tolerance` was kept for that window, with the values copied into `performance_tolerance`; *`evaluations.speed_tolerance` is dropped* below removes it.
 
 ## Existing evaluations and datasets need a family before they run
 
