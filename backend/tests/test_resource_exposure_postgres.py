@@ -748,12 +748,13 @@ async def test_switching_to_per_user_takes_nothing_back_from_the_agent_s_audienc
     per_user = {"integration_bindings": {}, "integration_template_bindings": ["github"]}
     for name, extra, assignment in (
         ("Configured", {"shared_group_permissions": {str(TEAM): "config"}}, False),
+        ("Configured with runs", {"shared_group_permissions": {str(TEAM): "config"}}, True),
         ("Chat only", {}, False),
     ):
         integ = await _add(db, _integration(name=name))
         agent = await _add(db, _agent(integration_bindings={"github": [str(integ.id)]}, **_team(**extra)))
         if assignment:
-            await _add(db, _assignment(agent))
+            await _add(db, _assignment(agent, user_id=BOB))
         assert (await _preview(db, "agent", agent, per_user))["items"] == [], name
 
 
@@ -1056,11 +1057,24 @@ async def test_the_headline_counts_who_acts_with_the_account_not_the_agent_s_cha
     assert agent_path["notes"] == ["chat_uses_own_integration"]
 
 
+async def test_an_agent_that_also_pins_its_binding_in_a_pipeline_step_lends_it_to_no_one_it_chats_with(db):
+    """A pipeline pin is checked like a binding: the team's chats use their own."""
+    integ = await _add(db, _integration())
+    iid = str(integ.id)
+    pin = {"source": "integration", "integration_id": iid}
+    await _add(db, _agent(integration_bindings={"github": [iid]}, prepare_tool_ref=pin, **_team()))
+
+    result = await ex.resource_exposure(db, "integration", integ, viewer_id=ALICE, viewer_is_admin=False)
+
+    [agent_path] = [p for p in result["paths"] if p["kind"] == "agent"]
+    assert sorted(agent_path["reasons"]) == ["binding", "pipeline"]
+    assert _people(agent_path["lent"]) == {"Alice"} and agent_path["lent"]["groups"] == []
+    assert agent_path["notes"] == ["chat_uses_own_integration"]
+
+
 async def test_a_company_agent_never_lends_its_binding_to_everyone(db):
     integ = await _add(db, _integration())
-    agent = await _add(
-        db, _agent(is_company_managed=True, integration_bindings={"github": [str(integ.id)]}, **_team())
-    )
+    agent = await _add(db, _agent(is_company_managed=True, integration_bindings={"github": [str(integ.id)]}, **_team()))
 
     async def reached() -> dict:
         return (await ex.resource_exposure(db, "integration", integ, viewer_id=ALICE, viewer_is_admin=False))["reached"]

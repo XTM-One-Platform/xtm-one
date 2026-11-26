@@ -1190,11 +1190,12 @@ def _per_user_request(assignment: Any, agent: Any) -> tuple[uuid.UUID | None, se
     """(whom an assignment's runs act as, the providers they resolve per user),
     or ``None`` when its runs resolve nothing that way.
 
-    The assignment engine's rule: a company-managed assignment acts as its
-    run-as user, any other as its agent's owner, and with neither as nobody
-    (company-wide integrations only); a per-user fan-out acts as each user in
-    turn with what that user may use, so it lends nobody's; a provider the run
-    has a fixed binding for is not resolved per user.
+    The assignment engine's rule (``assignment_engine._execution_identity``):
+    a run nobody starts acts as the assignment's run-as user (company-managed
+    only), else its own user, else its agent's owner, and with none as nobody
+    (company-wide integrations only); a per-user fan-out acts as each user
+    in turn with what that user may use, so it lends nobody's; a provider the
+    run has a fixed binding for is not resolved per user.
     """
     if assignment is None or agent is None:
         return None
@@ -1207,7 +1208,8 @@ def _per_user_request(assignment: Any, agent: Any) -> tuple[uuid.UUID | None, se
     company = bool(getattr(agent, "is_company_managed", False))
     if not providers or (company and getattr(assignment, "run_as_all_users", False)):
         return None
-    acting = normalize_acting_user_id(getattr(assignment, "run_as_user_id", None)) if company else None
+    run_as = normalize_acting_user_id(getattr(assignment, "run_as_user_id", None)) if company else None
+    acting = run_as or normalize_acting_user_id(getattr(assignment, "user_id", None))
     return acting or normalize_acting_user_id(getattr(agent, "user_id", None)), providers
 
 
@@ -1575,7 +1577,11 @@ async def _add_per_user_references(
         owner_ids = sorted({owner for owner, _ in personal}, key=str)
         carriers.append(
             and_(
-                or_(Assignment.run_as_user_id.in_(owner_ids), Agent.user_id.in_(owner_ids)),
+                or_(
+                    Assignment.run_as_user_id.in_(owner_ids),
+                    Assignment.user_id.in_(owner_ids),
+                    Agent.user_id.in_(owner_ids),
+                ),
                 _contains_any((Agent.integration_template_bindings,), sorted({p for _, p in personal})),
             )
         )
@@ -1689,10 +1695,9 @@ def _callers(audience: Audience) -> Audience:
 
 
 #: How an agent holds an integration its chats drop for someone who cannot
-#: see it (``integration_tools.shadow_invisible_bindings`` reads the agent's
-#: ``integration_bindings``): a pipeline step loads its integration whoever
-#: chats, and what the agent attaches is read on the attachment's own terms.
-_CHAT_SHADOWED_REASONS = frozenset({REASON_BINDING})
+#: see it (``integration_tools.shadow_invisible_bindings``): its bindings and
+#: its pipeline pins; what it attaches is read on the attachment's own terms.
+_CHAT_SHADOWED_REASONS = frozenset({REASON_BINDING, REASON_PIPELINE})
 
 
 def _override_uses_own(kind: str, resource: Any, ref: Reference) -> bool:

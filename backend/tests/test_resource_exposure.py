@@ -261,6 +261,8 @@ def test_an_assignment_resolves_per_user_bindings_as_whom_it_runs_as():
     assert ex._per_user_request(plain, agent) == (ALICE, {"github", "jira"})
     overridden = SimpleNamespace(run_as_user_id=None, run_as_all_users=False, integration_bindings={"github": [I1]})
     assert ex._per_user_request(overridden, agent) == (ALICE, {"jira"})
+    added = SimpleNamespace(user_id=CAROL, run_as_user_id=None, run_as_all_users=False, integration_bindings=None)
+    assert ex._per_user_request(added, agent) == (CAROL, {"github", "jira"})
     company = SimpleNamespace(**{**vars(agent), "is_company_managed": True})
     assert ex._per_user_request(plain, company) == (BOB, {"github", "jira"})
     fan_out = SimpleNamespace(run_as_user_id=None, run_as_all_users=True, integration_bindings=None)
@@ -447,10 +449,10 @@ async def test_an_integration_shared_without_its_account_lends_it_only_as_its_ho
     [
         # Bound: a chat turn drops it for whoever cannot see it.
         pytest.param(ex.RESOURCE_INTEGRATION, {ex.REASON_BINDING}, "shared", True, id="bound"),
-        # A pipeline step loads its integration whoever chats.
-        pytest.param(ex.RESOURCE_INTEGRATION, {ex.REASON_PIPELINE}, "shared", False, id="pipeline"),
+        # A pipeline pin is checked like a binding.
+        pytest.param(ex.RESOURCE_INTEGRATION, {ex.REASON_PIPELINE}, "shared", True, id="pipeline"),
         pytest.param(
-            ex.RESOURCE_INTEGRATION, {ex.REASON_BINDING, ex.REASON_PIPELINE}, "shared", False, id="bound_and_pipeline"
+            ex.RESOURCE_INTEGRATION, {ex.REASON_BINDING, ex.REASON_PIPELINE}, "shared", True, id="bound_and_pipeline"
         ),
         # What it attaches is read on the attachment's own terms.
         pytest.param(
