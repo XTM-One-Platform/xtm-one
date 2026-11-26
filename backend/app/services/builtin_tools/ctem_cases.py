@@ -1530,7 +1530,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     "scenario": {
                         "type": "object",
                         "description": (
-                            "OpenAEV scenario: scenario_id, name, url, techniques_total, techniques_playable, "
+                            "Validation scenario: scenario_id, name, url, techniques_total, techniques_playable, "
                             "playable_tests."
                         ),
                     },
