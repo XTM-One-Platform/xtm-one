@@ -1204,15 +1204,16 @@ def missing_for_run(missing: list[str], *, ctem_work: bool) -> list[str]:
 
 
 def holds_ctem_tools(agent: object) -> bool:
-    """Whether *agent* holds CTEM tools: a built-in CTEM case or signal agent, or the ``ctem_read`` group bound."""
+    """Whether *agent* holds CTEM tools: a built-in CTEM case or signal agent, or the ``ctem`` group bound (a former ``ctem_read`` id included, #2443)."""
+    from app.services.builtin_tool_aliases import current_group_id
+    from app.services.builtin_tools.ctem import CTEM_GROUP
     from app.services.builtin_tools.ctem_cases import CTEM_CASE_AGENT_SLUGS
-    from app.services.builtin_tools.ctem_read import CTEM_READ_GROUP
     from app.services.builtin_tools.ctem_signals import CTEM_SIGNAL_AGENT_SLUGS
 
     if agent is None:
         return False
     groups = getattr(agent, "builtin_tool_ids", None)
-    if isinstance(groups, (list, tuple, set, frozenset)) and CTEM_READ_GROUP in groups:
+    if isinstance(groups, (list, tuple, set, frozenset)) and CTEM_GROUP in {current_group_id(str(g)) for g in groups}:
         return True
     slug = getattr(agent, "slug", None) or ""
     return bool(getattr(agent, "is_builtin", False)) and slug in (CTEM_CASE_AGENT_SLUGS | CTEM_SIGNAL_AGENT_SLUGS)

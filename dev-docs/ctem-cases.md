@@ -1161,20 +1161,33 @@ profile tool, acting for the person the turn or run acts for. Tests:
 `tests/test_ctem_case_tools.py`, `tests/test_ctem_cases_postgres.py`
 (manual split survives a recompute).
 
-### 8.1 Read-only on any agent: the `ctem_read` group
+### 8.1 One CTEM group on any agent: `ctem` (#1748, #2443)
 
-Any agent can be granted the reads through the built-in group `ctem_read`
-(`backend/app/services/builtin_tools/ctem_read.py`): `list_ctem_signals`,
-`list_ctem_cases` and `get_ctem_case`, no write function. Bound like any
-other suite, wired by `ctem_read_tools_for` in `agent_chat` and
-`assignment_engine` when a person is acted for, XTM One mode only. The rules
-are the case tools' own: the case renders through that person's source read,
-a case they see none of does not exist. A built-in CTEM agent that already
-carries a function keeps its own; the group adds only what it lacks.
-`get_ctem_case` there also answers `opened_by` (actor, time and how, from the
-oldest `created` event), `history_total` and `empty_sections` (the reason each
-empty section is empty). `list_ctem_cases` and `get_ctem_case` answer the
-same `scope` block as `list_ctem_signals` (`dev-docs/ctem-signals.md`
+The built-in group `ctem` (`backend/app/services/builtin_tools/ctem.py`)
+offers every signal tool (`record_ctem_signal`, `record_ctem_signals`,
+`list_ctem_signals`), `triage_ctem_signals` (dismiss, restore or re-check, the
+`POST /ctem-signals/triage` rule), every case tool and the administrator read
+`list_ctem_attack_surface_passes` to any agent it is bound to, wired by
+`ctem_tools_for` in `agent_chat` and `assignment_engine`, XTM One mode only.
+The reach is the acting person's CTEM right (`services/ctem_access.py`,
+#1748): an administrator or a `decide` right reads and acts on the
+organization's signals and cases, a `view` right reads them and every write is
+refused with the view-only message, checked at call time for the person the
+turn or background run acts for, whatever tools the agent carries (#2441). A
+person with no right gets no CTEM tool at all (`ctem_access.wires_ctem`).
+`triage_ctem_signals` reaches exactly what `list_ctem_signals` reads
+(`reader_scope`, agent reach): an administrator kept to their own by strict
+admin access for agent tools or the Platform Health reach triages only their
+own signals. `delete_ctem_cases` and the passes read stay administrator only.
+A function the agent already carries by its built-in slug stays its own; the
+group never offers it twice.
+
+The case rules are the case tools' own: a case renders through that person's
+source read, a case they see none of does not exist. `get_ctem_case`
+(`ctem_read.build_case_read`) also answers `opened_by` (actor, time and how,
+from the oldest `created` event), `history_total` and `empty_sections` (the
+reason each empty section is empty). `list_ctem_cases` and `get_ctem_case`
+answer the same `scope` block as `list_ctem_signals` (`dev-docs/ctem-signals.md`
 section 5, #1359) for the signal members of a case, read by the case view's
 rule (`ctem_cases_view.signal_members`, the admin flag alone); under `own`,
 `hidden_by_scope` counts the case-bound signals the person does not see:
@@ -1182,54 +1195,30 @@ across the organization for `list_ctem_cases`, bound to that case alone for
 `get_ctem_case` (its note then says "on this case"). `list_ctem_cases` also
 answers `scope.hidden_cases`, the open cases the person is refused, and
 `scope.unjudged_cases` with `scope.view`, the ones their view could not judge
-now (#2113, scope-limited aggregates above); a `null`
-aggregate on a case means unknown for this reader, never none (section on
-scope-limited aggregates above).
-Tests: `tests/test_ctem_read_tools.py`.
+now (#2113); a `null` aggregate on a case means unknown for this reader, never
+none (section on scope-limited aggregates above).
 
-### 8.1bis Signals and cases on any agent: the `ctem` group
+`list_ctem_attack_surface_passes` (`ctem_repair.py`) serves
+`GET /ctem-signals/attack-surface/passes` for an administrator (anyone else
+gets that fact and nothing runs). The built-in CTEM case agents (section 8)
+carry it by their slug when they are not bound to `ctem`.
+Tests: `tests/test_ctem_group_tools.py`, `tests/test_ctem_read_tools.py`,
+`tests/test_ctem_repair_tools.py`.
 
-The built-in group `ctem` (`backend/app/services/builtin_tools/ctem.py`)
-offers every signal tool (`record_ctem_signal`, `record_ctem_signals`,
-`list_ctem_signals`), `triage_ctem_signals` (dismiss, restore or re-check, the
-`POST /ctem-signals/triage` rule) and every case tool to any agent it is
-bound to, wired by `ctem_tools_for` in `agent_chat` and `assignment_engine`
-after `ctem_read`, XTM One mode only. The reach is the acting person's CTEM
-right (`services/ctem_access.py`, #1748): an administrator or a `decide` right
-reads and acts on the organization's signals and cases, a `view` right reads
-them and every write is refused with the view-only message, checked at call
-time for the person the turn or background run acts for, whatever tools the
-agent carries (#2441). A person with no right gets no CTEM tool at all
-(`ctem_access.wires_ctem`).
-`triage_ctem_signals` reaches exactly what `list_ctem_signals` reads
-(`reader_scope`, agent reach): an administrator kept to their own by strict
-admin access for agent tools or the Platform Health reach triages only their
-own signals. Administrator
-operations (`delete_ctem_cases`, the `ctem_repair` group) stay administrator
-only. A function the agent already carries (by its built-in slug or through
-`ctem_read`) stays its own; the group never offers it twice.
-Tests: `tests/test_ctem_group_tools.py`.
+### 8.2 Former groups `ctem_read` and `ctem_repair` (#2443)
 
-### 8.2 Administrator repairs: the `ctem_repair` group
-
-Three administrator routes have agent tools in the built-in group
-`ctem_repair` (`backend/app/services/builtin_tools/ctem_repair.py`), the same
-service functions and answers as the routes:
-
-| Tool | Route |
-| --- | --- |
-| `list_ctem_attack_surface_passes` | `GET /ctem-signals/attack-surface/passes` |
-| `repair_ctem_attack_surface_new_hosts` | `POST /ctem-signals/attack-surface/repair-new-hosts` |
-| `repair_ctem_threat_packages` | `POST /ctem-cases/threat-packages/repair` |
-
-The group is wired for the built-in CTEM case agents (section 8) and for any
-agent it is bound to, through `ctem_repair_tools_for` in `agent_chat` and
-`assignment_engine`, in XTM One mode only. It acts for the person the turn or
-run acts for, who must be an administrator, as on the routes; anyone else gets
-that fact and nothing runs. A repair defaults to a dry run that writes nothing
-and answers the counts and the ids; `dry_run` false applies it. There is no
-approval card: the agent reads the dry run and decides.
-Tests: `tests/test_ctem_repair_tools.py`.
+`ctem_read` (#1337) and `ctem_repair` (#1778) are [DEPRECATED] ids of `ctem`
+(`RENAMED_BUILTIN_GROUPS` in `services/builtin_tool_aliases.py`): an API call,
+an agent import or a stored row naming one is read as `ctem`, an allow list
+keyed by one applies to `ctem`, and migration `s2443ctemgrp01` rewrites the
+stored agent and assignment bindings. A former read-only binding never writes
+beyond the acting person's right: the writes are checked at call time (#2441).
+The inventory read `list_ctem_assets` (#1782) is replaced by the organization
+inventory functions (`search_assets`, `get_asset`, `lookup_assets`, whose rows
+keep each source's `source_ids`, #2385). The two one-off repairs
+(`POST /ctem-signals/attack-surface/repair-new-hosts`,
+`POST /ctem-cases/threat-packages/repair`) left the agent surface and stay
+administrator REST routes.
 
 ## 9. UX decisions (round 1, 13 Nov 2026)
 

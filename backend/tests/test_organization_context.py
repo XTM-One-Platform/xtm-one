@@ -133,15 +133,19 @@ async def test_save_refuses_an_unknown_source():
 
 
 def test_the_tool_is_core_read_only_and_survives_a_deny_list():
+    from app.services.builtin_tools.inventory_query import INVENTORY_QUERY_TOOLS
+
     definitions, executor = build_organization_context_tool()
-    assert [d.name for d in definitions] == [ORGANIZATION_CONTEXT_TOOL]
-    assert definitions[0].core is True
+    # The inventory query functions ride with the profile read (#2443), each core like it.
+    assert [d.name for d in definitions] == [ORGANIZATION_CONTEXT_TOOL, *INVENTORY_QUERY_TOOLS]
+    assert all(d.core for d in definitions)
     # Optional arguments only: a tracked organization (#9157), a category by page (#11533); none reads the primary.
     assert set(definitions[0].input_schema["properties"]) == {"organization", "category", "query", "offset", "limit"}
     assert definitions[0].input_schema["required"] == []
-    assert set(executor.tool_names) == {ORGANIZATION_CONTEXT_TOOL}
+    assert set(executor.tool_names) == {ORGANIZATION_CONTEXT_TOOL, *INVENTORY_QUERY_TOOLS}
     assert [d.name for d in apply_tool_deny_list(definitions, [ORGANIZATION_CONTEXT_TOOL])] == [
-        ORGANIZATION_CONTEXT_TOOL
+        ORGANIZATION_CONTEXT_TOOL,
+        *INVENTORY_QUERY_TOOLS,
     ]
 
 

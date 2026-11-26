@@ -43,7 +43,7 @@ def test_the_loop_persona_reconciles_a_control_decay_case_before_the_loop() -> N
         assert state in section
     # The sources: OpenAEV on the asset, EDR / device-management coverage, what OpenCRQ holds.
     assert "OpenAEV results on the asset" in section
-    assert '"assets_exposure"' in section and "source:" in section
+    assert "`get_asset` with the asset name" in section and "sources" in section
     assert "get_opencrq_control_validation" in section
     # A control found: record it in OpenCRQ through one remediation decision, never a scan.
     assert "`ctem:remediation:` followed by the case id" in section
@@ -63,7 +63,7 @@ def test_the_case_prompt_names_the_reconciliation_and_the_record_in_opencrq_outc
     step = ba.CTEM_CONTROL_DECAY_RECONCILE
     assert "control_decay" in step and "never_measured" in step
     assert "before any validation, scan or new control is proposed" in step
-    assert "assets_exposure" in step and "get_opencrq_control_validation" in step
+    assert "get_asset with the asset name" in step and "get_opencrq_control_validation" in step
     assert "record it in OpenCRQ" in step and "never a scan" in step
     assert "put a control in place" in step
     assert "found, not found, not readable" in step

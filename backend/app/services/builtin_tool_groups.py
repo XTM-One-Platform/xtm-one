@@ -247,28 +247,9 @@ BUILTIN_TOOL_GROUPS: tuple[BuiltinToolGroup, ...] = (
         # STIX bundle validator and FIMI analytics merged here.
         aliases=("stix_bundle_validator", "fimi_analytics"),
     ),
-    BuiltinToolGroup(
-        # Read-only CTEM signals and cases for any agent (#1337), as the person
-        # the turn or run acts for, with the CTEM routes' permission model.
-        id="ctem_read",
-        name="CTEM Read",
-        tagline="Read the CTEM signals and cases the person you act for can see, read-only",
-        detail="Lets the agent list the CTEM signals with their evidence, list the CTEM cases with their counts by state, and read one case with its issues, history, who opened it and why each empty section is empty. It acts for the person the turn or run acts for, with the same rules as the CTEM pages: a case they cannot see does not exist for the agent, an issue they cannot see is a Restricted row. It writes nothing. XTM One mode only.",
-        category="security",
-        icon="ScanEye",
-        agent_keyed=True,
-    ),
-    BuiltinToolGroup(
-        # CTEM administrator repairs (#1778): the attack surface pass summary and
-        # repair and the threat package repair, the REST routes' admin scope.
-        id="ctem_repair",
-        name="CTEM Repair",
-        tagline="Read the attack surface passes and run the CTEM repairs, administrators",
-        detail="Lets the agent read the latest attack surface passes (what each read covered, hosts observed, signals per path), discard the new-host signals raised without a complete previous read, and correct the threat packages stored with a Grouping page whose Grouping is not live. A repair defaults to a dry run that writes nothing and answers the counts and the ids. It acts for the person the turn or run acts for, who must be an administrator, as on the REST routes. XTM One mode only.",
-        category="security",
-        icon="Stethoscope",
-        agent_keyed=True,
-    ),
+    # [DEPRECATED] ``ctem_read`` (#1337) and ``ctem_repair`` (#1778) are renamed into
+    # ``ctem`` (#2443, RENAMED_BUILTIN_GROUPS); every function checks the acting
+    # person's CTEM right at call time (#2441).
     BuiltinToolGroup(
         # CTEM signal and case tools on any agent (#1748): the owner's CTEM rights
         # (administrator, decide, view or own signals) decide the reach.

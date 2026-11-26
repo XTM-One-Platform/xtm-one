@@ -4683,7 +4683,7 @@ async def run_agent_chat(
                     *build_user_admin_tools(user_id=user_id, caller_is_admin=_caller_admin, agent_name=agent.name)
                 )
             # No CTEM tool of any kind for a person with no CTEM right (#2441): the
-            # built-in CTEM agents' tools and the ctem / ctem_read / ctem_repair groups.
+            # built-in CTEM agents' tools and the ctem group (former ctem_read / ctem_repair ids, #2443).
             from app.services import ctem_access as _ctem_access
 
             _ctem_ok = await _ctem_access.wires_ctem(user_id)
@@ -4698,20 +4698,13 @@ async def run_agent_chat(
 
             if _ctem_ok and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=user_id))
-            # The read-only CTEM group (#1337): bound on any agent, the reads the
-            # CTEM agents above do not already carry.
-            from app.services.builtin_tools import ctem_read_tools_for
-
-            ctem_read = ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=user_id) if _ctem_ok else None
-            if ctem_read is not None:
-                composite.add_tools(*ctem_read)
             # The CTEM group (#1748): the signal and case tools on any agent, the owner's rights.
             from app.services.builtin_tools import ctem_tools_for
 
             ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=user_id) if _ctem_ok else None
             if ctem_group is not None:
                 composite.add_tools(*ctem_group)
-            # The CTEM administrator repairs (#1778): the CTEM case agents, or the group bound.
+            # The attack surface passes read (#1778, #2443): the CTEM case agents not bound to ctem.
             from app.services.builtin_tools import ctem_repair_tools_for
 
             ctem_repair = ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=user_id) if _ctem_ok else None

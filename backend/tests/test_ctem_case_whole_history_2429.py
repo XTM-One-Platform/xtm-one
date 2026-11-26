@@ -30,7 +30,7 @@ from app.models.ctem_case import CtemCaseEvent, CtemCaseIssue
 from app.services import ctem_case_versions
 from app.services import ctem_cases_view as view_of
 from app.services.builtin_tools import ctem_cases as tools_module
-from app.services.builtin_tools.ctem_read import build_ctem_read_tools
+from app.services.builtin_tools.ctem import build_ctem_tools
 from app.tools.base import ToolCall
 from tests.test_ctem_case_tools import AGENT, ISSUE, _case, env  # noqa: F401 (fixture)
 
@@ -76,7 +76,7 @@ def busy(env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespa
     env.db.added.extend(sorted(old + later, key=lambda e: e.at, reverse=True))
 
     async def _read(name: str, **args: Any) -> str:
-        _, executor = build_ctem_read_tools(user_id=str(env.user_id), agent_id=AGENT)
+        _, executor = build_ctem_tools(user_id=str(env.user_id), agent_id=AGENT)
         result = await executor.execute_tool(ToolCall(id="r1", name=name, arguments=args))
         return result.content if isinstance(result.content, str) else str(result.content)
 
