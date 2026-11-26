@@ -129,6 +129,50 @@ describe("CaseValidation", () => {
     expect(screen.getByTestId("ctem-case-validation-option").textContent).toBe("Option A");
   });
 
+  it("shows the reported result, the note and what would make an inconclusive pass conclusive (#2466)", () => {
+    const row = {
+      ...SAFE,
+      result: "inconclusive" as const,
+      reported_result: "not_exposed" as const,
+      conclusive: false,
+      evidence_type: "validation",
+      note: "Unauthenticated external scan, 0 findings, no version read",
+      run_order: undefined,
+    };
+    renderWithProviders(<CaseValidation caseId="c1" validations={[row]} history={[]} />);
+    const badge = screen.getByTestId("ctem-case-validation-result");
+    expect(badge.textContent).toBe("Not exposed, not conclusive");
+    expect(badge.getAttribute("data-tone")).toBe("neutral");
+    expect(screen.getByTestId("ctem-case-validation-note").textContent).toBe("Unauthenticated external scan, 0 findings, no version read");
+    expect(screen.getByTestId("ctem-case-validation-hint").textContent).toContain("an authenticated scan or an agent");
+    expect(screen.getByTestId("ctem-case-validation-run").querySelector('[data-tone="green"]')).toBeNull();
+  });
+
+  it("keeps a bare Inconclusive with no hint when the reported word or the evidence type is absent", () => {
+    renderWithProviders(<CaseValidation caseId="c1" validations={[{ ...SAFE, result: "inconclusive" }]} history={[]} />);
+    expect(screen.getByTestId("ctem-case-validation-result").textContent).toBe("Inconclusive");
+    expect(screen.queryByTestId("ctem-case-validation-hint")).toBeNull();
+  });
+
+  it("renders conclusive, failed and pending rows as before, with no note or hint line", () => {
+    const rows = [
+      { ...SAFE, ref: "a", result: "passed" as const, conclusive: true, evidence_type: "remediation", note: null },
+      { ...SAFE, ref: "b", result: "failed" as const },
+      { ...SAFE, ref: "c", result: "pending" as const },
+    ];
+    renderWithProviders(<CaseValidation caseId="c1" validations={rows} history={[]} />);
+    const words = screen.getAllByTestId("ctem-case-validation-result").map((b) => [b.textContent, b.getAttribute("data-tone")]);
+    expect(words).toEqual(
+      expect.arrayContaining([
+        ["Passed", "green"],
+        ["Failed", "red"],
+        ["Pending", "yellow"],
+      ]),
+    );
+    expect(screen.queryByTestId("ctem-case-validation-note")).toBeNull();
+    expect(screen.queryByTestId("ctem-case-validation-hint")).toBeNull();
+  });
+
   it("says a case not validated yet, never blank", () => {
     renderWithProviders(<CaseValidation caseId="c1" validations={[]} history={[]} />);
     expect(screen.getByText(/once the case is validated|once the case is prioritized|writes in OpenCRQ/)).toBeTruthy();

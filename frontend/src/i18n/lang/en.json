@@ -8763,6 +8763,7 @@
   "Recommendation": "Recommendation",
   "Critical": "Critical",
   "Passed": "Passed",
+  "Passed, not conclusive": "Passed, not conclusive",
   "Needs immediate action": "Needs immediate action",
   "Should be reviewed": "Should be reviewed",
   "For your information": "For your information",
@@ -20098,6 +20099,7 @@
   "Escalated: SLA breached": "Escalated: SLA breached",
   "Stalled: waiting on nobody": "Stalled: waiting on nobody",
   "Not exposed": "Not exposed",
+  "Not exposed, not conclusive": "Not exposed, not conclusive",
   "Reopened: re-test failed": "Reopened: re-test failed",
   "Closed on passing re-test": "Closed on passing re-test",
   "Escalated": "Escalated",
@@ -21912,5 +21914,6 @@
   "Type a whole number from 0 to 100.": "Type a whole number from 0 to 100.",
   "The PIR policy was not saved: {reason}": "The PIR policy was not saved: {reason}",
   "In OpenCTI": "In OpenCTI",
-  "Listed": "Listed"
+  "Listed": "Listed",
+  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent."
 }
