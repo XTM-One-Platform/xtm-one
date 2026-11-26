@@ -91,6 +91,10 @@ What diverges, read on main:
   recipient such an agent names is kept only when it is a decider (run person,
   acting user, administrator, home fleet owner, CTEM `decide` member for CTEM
   work); the seed account or anyone else is dropped and this routing applies.
+  The seed account (`ADMIN_EMAIL`) is the platform administrator: when it is
+  the run's chosen person (it triggered the run, or the assignment runs as it)
+  it stays the decider, routed to alone and accepted as an explicit recipient;
+  it is excluded only as the assignment owner standing in (the fallback).
 - An `awaiting_human` run counts in the assignment's blocking statuses
   (`assignment_dispatch`), so a routinely pausing scheduled run holds its
   assignment's queue while it waits.

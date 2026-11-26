@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 
 import { MultiSelect } from "@/components/ui/multi-select";
 import { renderWithProviders } from "@/testing/providers";
@@ -51,6 +51,21 @@ describe("MultiSelect with a locked option", () => {
     renderWithProviders(<Picker initial={["builtin:in_app"]} />);
     expect(screen.getByRole("combobox", { name: "Notification" })).toHaveAttribute("placeholder", "In XTM One only");
     expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+  });
+
+  it("keeps the whole locked value readable in the shared tooltip (UX r1 B1 of #2428)", () => {
+    renderWithProviders(<Picker initial={["builtin:in_app"]} />);
+    const input = screen.getByRole("combobox", { name: "Notification" });
+    // The ellipsis and the chip bounds (B1, B2) are layout: the UX lab round proves them.
+    // The whole label stays the field's value and the shared Tip is the input's trigger.
+    expect(input).toHaveAttribute("placeholder", "In XTM One only");
+    expect(input).toHaveAttribute("data-state", "closed");
+  });
+
+  it("lists every chip of a locked row in the field's chip list (UX r1 B2 of #2428)", () => {
+    renderWithProviders(<Picker initial={["builtin:in_app", "i1"]} />);
+    const row = screen.getByRole("list", { name: "Notification" });
+    expect(within(row).getByText("Microsoft Teams")).toBeInTheDocument();
   });
 
   it("keeps a remove control on the other values, never on the locked one", () => {

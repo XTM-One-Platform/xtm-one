@@ -907,6 +907,9 @@ def build_work_item_tools(
     # file owner, empty for a company-managed run): who its decisions wait
     # for when nobody is named (#2422).
     run_person_id: str | None = None,
+    # That person is the run's triggering or run-as user (not the owner
+    # standing in): the decider even when it is the seed account.
+    run_person_chosen: bool = False,
 ) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """Build the work-item + delegate-to-assignment tools for an agent.
 
@@ -933,6 +936,7 @@ def build_work_item_tools(
         agent_id=agent_id,
         acting_admin=acting_admin,
         run_person_id=run_person_id or None,
+        run_person_chosen=run_person_chosen,
     )
 
     def _refused(exc: CompanyManagedWriteRefusedError, work_item_id: str = "") -> str:
