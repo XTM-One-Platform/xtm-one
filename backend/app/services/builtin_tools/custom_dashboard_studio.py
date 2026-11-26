@@ -65,10 +65,10 @@ _SAMPLE_CHARS = 4_000
 _CREATED_ID = re.compile(r"ID: `([0-9a-fA-F-]{36})`")
 #: What a feed's answer ends with, by shape: the run's JSON the source reads.
 _FEED_SHAPES = {
-    "number": '{"value": <number>}',
-    "series": '{"series": [{"name": "...", "points": [{"x": "<ISO date or label>", "y": <number>}]}]}',
-    "distribution": '{"items": [{"label": "...", "value": <number>}]}',
-    "rows": '[{"<column>": <value>, ...}, ...]',
+    "number": '{"value": NUMBER}',
+    "series": '{"series": [{"name": "...", "points": [{"x": "ISO_DATE_OR_LABEL", "y": NUMBER}]}]}',
+    "distribution": '{"items": [{"label": "...", "value": NUMBER}]}',
+    "rows": '[{"COLUMN": VALUE, ...}, ...]',
 }
 #: Sources previewed without a widget added before each preview reminds the agent to build what reads data.
 PREVIEWS_BEFORE_A_WIDGET = 8
@@ -502,7 +502,7 @@ def build_dashboard_studio_tools(
         viz_type = visualization["type"]
         draws_data = viz_type in DATA_TYPES
         if not draws_data and viz_type not in CONTENT_TYPES:
-            return _error("visualization.type must be a type of dashboard_catalog, or an xtm.<widget kind> holding its own content.")
+            return _error("visualization.type must be a type of dashboard_catalog, or an xtm.WIDGET_KIND holding its own content.")
         if draws_data and (source is None) == (source_id is None):
             return _error("A visualization drawing data takes either 'source' (a new data source) or 'source_id' (one of the dashboard's).")
         working = await _working(dashboard_id, need="edit")

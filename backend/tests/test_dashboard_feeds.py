@@ -156,7 +156,7 @@ async def test_a_feed_is_an_assignment_made_by_the_agent_builder_and_a_widget_re
     assert answer.is_error is False, answer.content
     created = dict(calls)["create_assignment"]
     assert (created["trigger_type"], created["trigger_config"]) == ("schedule", '{"cron": "0 7 * * *"}')
-    assert '{"value": <number>}' in created["prompt"] and KB in created["prompt"]
+    assert '{"value": NUMBER}' in created["prompt"] and KB in created["prompt"]
     assert calls[1] == ("trigger_assignment", {"assignment_id": assignment_id})
     assert added[0]["source"]["options"] == {"assignment_id": assignment_id, "shape": "series", "history": 30}
     assert added[0]["visualization"]["type"] == "xtm.line"

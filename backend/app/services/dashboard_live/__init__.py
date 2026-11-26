@@ -135,7 +135,7 @@ SHAPE_FORMS: dict[str, str] = {
     "number": '{"value": n, "change"?: n}',
     "series": '{"series": [{"name", "points": [{"x", "y"}]}]}',
     "distribution": '{"items": [{"label", "value"}]}',
-    "rows": '{"columns": [{"key", "label"}], "rows": [{<key>: value}]}',
+    "rows": '{"columns": [{"key", "label"}], "rows": [{KEY: value}]}',
     "geo": '{"points": [{"label", "lat", "lon", "value"}], "regions": [{"code", "label", "value"}]}',
     "graph": (
         '{"nodes": [{"id", "label", "group"?, "value"?, "kind"?: start|action|condition|operator|asset, "technique"?, '

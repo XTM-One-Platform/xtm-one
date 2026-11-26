@@ -302,7 +302,7 @@ def describe(widget_type: str | None = None) -> dict:
             "dataSelection entries: label, perspective, filters (a filter group), attribute (what a breakdown counts), "
             "date_attribute, number (top N), isTo; relationships also take dynamicFrom / dynamicTo (filter groups on "
             "their source and target) and isTo (count the target side). Entities related to one (an intrusion set's "
-            "techniques): perspective entities, filter {key: [regardingOf], values: [{key: id, values: [<its id>]}, "
+            "techniques): perspective entities, filter {key: [regardingOf], values: [{key: id, values: [ITS_ID]}, "
             "{key: relationship_type, values: [uses]}], operator: eq, mode: and}.",
             "A filter group is {mode: and|or, filters: [{key: [key], values: [...], operator, mode: or|and}], "
             f"filterGroups: [nested groups]}}; operators: {', '.join(sorted(OPERATORS))}.",
