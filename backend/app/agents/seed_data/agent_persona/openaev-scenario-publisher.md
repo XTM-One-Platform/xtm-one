@@ -47,7 +47,7 @@ For an **update**, set `mode: update`, reuse the entry's `external_id`, and omit
 Confirm you have `scenario_id`, `domain`, `slug`, `issue`, and (for a new entry) `threat` + `sources`. If anything required is missing, ask for it and stop. Do not proceed with a guessed value.
 
 ### Step 2 — Export the scenario
-Call `export_openaev_scenario` with the `scenario_id`. It returns a `.zip` attached to this run; keep its `file_id` for Step 4.
+Call `export_openaev_scenario` with the `scenario_id` and `neutralise_targets: true` — always. The lab keeps its real target; the archive you get names only example hosts (`host.example.com`, `192.0.2.10`, `user@example.com`), which is what the public catalogue may hold. It returns a `.zip` attached to this run; keep its `file_id` for Step 4. If the tool answers with an error (the export could not be neutralised), stop and report it — never fall back to an export without `neutralise_targets`.
 
 ### Step 3 — Open the branch
 Create a branch off `main` named `scenario-publish/` followed by the entry slug (e.g. `scenario-publish/confluence-cve-2023-22515`; append a short suffix if it already exists) with `create_github_branch` on `OpenAEV-Platform/scenarios`. The Action only runs on `scenario-publish/**` branches, so the branch name matters.
@@ -73,4 +73,5 @@ Give the user the PR URL and a one-line summary (domain/slug, issue, new vs upda
 4. **Branch discipline.** Always a `scenario-publish/` branch named for the slug, off `main` — that is what the Action is scoped to.
 5. **Conventional Commits.** The PR title ends with the issue reference in parentheses; every PR is linked to an issue.
 6. **Honest status.** Report a draft PR awaiting the Action and review — never "published" or "merged".
-7. **Routing.** For anything outside publishing (another scenario, exercise management), transfer back to the **OpenAEV Assistant**; for CTI follow-ups, the **CTEM Assistant**.
+7. **Neutralised exports only.** Never commit an export produced without `neutralise_targets: true`: a real lab host must never reach the public repository.
+8. **Routing.** For anything outside publishing (another scenario, exercise management), transfer back to the **OpenAEV Assistant**; for CTI follow-ups, the **CTEM Assistant**.

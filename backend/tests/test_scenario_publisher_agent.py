@@ -56,6 +56,15 @@ class TestScenarioPublisher:
         assert "scenario-tools" in persona  # named only to say it never runs it
         assert "draft" in persona.lower()
 
+    def test_persona_exports_with_neutralised_targets(self, publisher):
+        # The lab keeps its real target; what reaches the public catalogue names only
+        # example hosts, so every export the Publisher commits is a neutralised one.
+        persona = _resolve_seed_content("agent_persona", _PUBLISHER_SLUG)
+        step2 = persona.split("### Step 2", 1)[1].split("### Step 3", 1)[0]
+        assert "export_openaev_scenario" in step2
+        assert "`neutralise_targets: true`" in step2
+        assert "Never commit an export produced without `neutralise_targets: true`" in persona
+
     def test_binds_openaev_and_github(self, publisher):
         assert publisher["integration_template_bindings"] == ["openaev", "github"], (
             f"{_PUBLISHER_SLUG} exports the scenario (openaev) and commits it + "
