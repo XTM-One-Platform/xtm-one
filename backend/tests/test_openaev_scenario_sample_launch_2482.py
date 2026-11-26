@@ -54,7 +54,9 @@ class _OpenAEV:
         self.calls: list[tuple[str, str]] = []
         self.fail_put = fail_put
 
-    async def api(self, base_url, headers, method, path, action, **kw):
+    async def api(
+        self, base_url: str, headers: dict[str, str], method: str, path: str, action: str, **kw: Any
+    ) -> tuple[_Resp | None, str | None]:
         self.calls.append((method, path))
         parts = path.strip("/").split("/")
         if method == "post" and path.endswith("/exercise/running"):
