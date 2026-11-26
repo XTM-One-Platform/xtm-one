@@ -8762,6 +8762,7 @@
   "Recommendation": "Recomendación",
   "Critical": "Crítico",
   "Passed": "Superado",
+  "Passed, not conclusive": "Superado, no concluyente",
   "Needs immediate action": "Requiere una acción inmediata",
   "Should be reviewed": "Debe revisarse",
   "For your information": "Para su información",
@@ -20098,6 +20099,7 @@
   "Escalated: SLA breached": "Escalado: SLA incumplido",
   "Stalled: waiting on nobody": "Estancado: sin nadie a cargo",
   "Not exposed": "No expuesto",
+  "Not exposed, not conclusive": "No expuesto, no concluyente",
   "Reopened: re-test failed": "Reabierto: la nueva prueba falló",
   "Closed on passing re-test": "Cerrado tras una nueva prueba superada",
   "Escalated": "Escalado",
@@ -21899,6 +21901,7 @@
   "The PIRs could not be read: {reason}": "No se pudieron leer los PIR: {reason}",
   "{enabled, plural, one {# PIR enabled in signals} other {# PIRs enabled in signals}} of {total}": "{enabled, plural, one {# PIR activado en las señales} other {# PIR activados en las señales}} de {total}",
   "No PIR yet. The PIRs of every connected OpenCTI appear here after the next refresh.": "Aún no hay ningún PIR. Los PIR de cada OpenCTI conectado aparecen aquí tras la próxima actualización.",
+  "{integration}: the PIRs could not be read. {reason}": "{integration}: no se pudieron leer los PIR. {reason}",
   "PIR policy: {name}": "Política del PIR: {name}",
   "The question this PIR answers, who owns it, its minimum score and whether it drives signals. OpenCTI keeps the PIR itself.": "La pregunta que responde este PIR, su responsable, su puntuación mínima y si genera señales. OpenCTI conserva el PIR en sí.",
   "PIR policy saved": "Política del PIR guardada",
@@ -21913,10 +21916,7 @@
   "The PIR policy was not saved: {reason}": "La política del PIR no se guardó: {reason}",
   "In OpenCTI": "En OpenCTI",
   "Listed": "Listado",
-  "a group": "un grupo",
-  "everyone in the company": "toda la empresa",
-  "the administrators": "los administradores",
-  "Waits for {name}: {gate}": "Espera a {name}: {gate}",
-  "No decision was filed for this gate, so nobody can answer it yet. The fleet files it the next time it runs this case.": "No se registró ninguna decisión para este control, así que nadie puede responderla todavía. La flota la registra la próxima vez que procese este caso.",
-  "This gate waits for a person: the decision is in their Waiting for you list.": "Este control espera a una persona: la decisión está en su lista Esperándote."
+  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "Para que sea concluyente, ejecute una comprobación que lea la versión en ejecución en el activo: un escaneo autenticado o un agente.",
+  "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, one {# notificación sin leer} other {# notificaciones sin leer}}",
+  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {Ver la # decisión que le espera} other {Ver las # decisiones que le esperan}}"
 }
