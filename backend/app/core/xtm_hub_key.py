@@ -1,32 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""XTM One's signing key on the XTM Hub.
+"""The Ed25519 key XTM One signs its XTM Hub assertions with.
 
-The XTM Hub is moving every product from the platform token received at
-registration to one Ed25519 key pair per product instance: the instance signs
-a short, single-use assertion for every Hub call (header
-``XTM-Hub-Platform-Assertion``) and the Hub stores only the public key.
-
-The key is never generated nor stored: it is derived from ``SECRET_KEY`` with
-HKDF-SHA256 (empty salt, the convention of :func:`app.core.xtm_auth._hkdf_derive`)
-on a label of its own, ``xtmone:xtm-hub:platform-assertion::v<version>``, so
-every replica derives the same key and ``SECRET_KEY`` - already the root of the
-Fernet key of every stored secret - stays the one secret to protect. The label
-differs from the xtm-auth key's (``xtm:jwt:ed25519:seed::v1``, public at
-``/xtm/auth/jwks``): the Hub key can be replaced alone, and a token made for one
-use is never valid for the other.
-
-The version is the instance setting ``PlatformSettings.xtm_hub_key_version``
-(1 until changed). A new version - or a new ``SECRET_KEY`` - gives a new key,
-which the Hub learns only when an administrator registers the platform again:
-there is no rotation API.
-
-While ``SECRET_KEY`` is guessable (:func:`app.core.security.secret_key_is_guessable`)
-anyone could derive the key and sign as this instance, so no key is produced:
-:class:`XtmHubKeyUnavailableError`.
-
-Nothing calls the Hub with it yet: signing the Hub calls, enrolling the key
-and registering with it come next.
+Derived from ``SECRET_KEY`` (HKDF on ``xtmone:xtm-hub:platform-assertion::v<version>``),
+never stored; a new ``SECRET_KEY`` or ``PlatformSettings.xtm_hub_key_version``
+gives a new key, which the Hub learns only through a new registration. No key
+while ``SECRET_KEY`` is guessable. Telling the admin when the key no longer
+matches the registered one comes with the code that signs the Hub calls.
 """
 
 from __future__ import annotations
@@ -48,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.security import secret_key_is_guessable
 from app.core.xtm_auth import _hkdf_derive
-from app.models.platform_settings import PlatformSettings
+from app.models.platform_settings import XTM_HUB_DEFAULT_KEY_VERSION, PlatformSettings
 
 #: The identifier XTM One registers under on the Hub (``platformIdentifier``),
 #: carried by every assertion as ``identifier``.
@@ -63,7 +43,7 @@ ASSERTION_AUDIENCE = "xtm-hub"
 ASSERTION_TTL = timedelta(minutes=5)
 
 #: The key version an instance starts at (``PlatformSettings.xtm_hub_key_version``).
-DEFAULT_KEY_VERSION = 1
+DEFAULT_KEY_VERSION = XTM_HUB_DEFAULT_KEY_VERSION
 
 _LABEL = "xtmone:xtm-hub:platform-assertion"
 
@@ -143,9 +123,7 @@ def derive_key(version: int) -> XtmHubKey:
         )
     seed = _hkdf_derive(secret.encode("utf-8"), info=f"{_LABEL}::v{version}".encode("ascii"))
     private_key = Ed25519PrivateKey.from_private_bytes(seed)
-    public_key_raw = private_key.public_key().public_bytes(
-        encoding=Encoding.Raw, format=PublicFormat.Raw
-    )
+    public_key_raw = private_key.public_key().public_bytes(encoding=Encoding.Raw, format=PublicFormat.Raw)
     return XtmHubKey(
         version=version,
         kid=_jwk_thumbprint(public_key_raw),

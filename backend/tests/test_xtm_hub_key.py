@@ -10,10 +10,9 @@ from unittest.mock import AsyncMock
 import jwt as pyjwt
 import pytest
 
-from app.core import xtm_hub_key
+from app.core import xtm_auth, xtm_hub_key
 from app.core.config import settings
 from app.core.security import PUBLISHED_SECRET_KEYS
-from app.core.xtm_auth import get_jwks_payload
 from app.core.xtm_hub_key import (
     ASSERTION_AUDIENCE,
     PLATFORM_IDENTIFIER,
@@ -63,8 +62,9 @@ class TestDerivation:
         assert derive_key(1).public_key_raw != before.public_key_raw
 
     def test_the_key_is_not_the_xtm_auth_key(self):
-        xtm_auth_x = get_jwks_payload()["keys"][0]["x"]
-        assert all(derive_key(version).public_jwk()["x"] != xtm_auth_x for version in (1, 2))
+        # Both derived from the same (patched) SECRET_KEY: only the labels differ.
+        _, _, xtm_auth_public_key_raw = xtm_auth._derive_ed25519_keypair()
+        assert all(derive_key(version).public_key_raw != xtm_auth_public_key_raw for version in (1, 2))
 
     @pytest.mark.parametrize("version", [0, -1, 1.0, "1", True, None])
     def test_a_version_that_is_not_a_positive_integer_is_refused(self, version):
@@ -144,6 +144,14 @@ class TestInstanceSetting:
         assert not column.nullable
         assert column.server_default.arg == "1"
         assert column.default.arg == 1
+
+    def test_the_database_refuses_a_version_below_one(self):
+        checks = {
+            c.name: str(c.sqltext)
+            for c in PlatformSettings.__table__.constraints
+            if c.name == "ck_platform_settings_xtm_hub_key_version_positive"
+        }
+        assert checks == {"ck_platform_settings_xtm_hub_key_version_positive": "xtm_hub_key_version >= 1"}
 
     async def test_the_key_follows_the_stored_version(self):
         db = SimpleNamespace(scalar=AsyncMock(return_value=3))
