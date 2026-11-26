@@ -6676,21 +6676,25 @@ async def execute_assignment_run(
                 # The person the run acts for scopes the enterprise knowledge passages (#11543).
                 composite.add_tools(*build_organization_context_tool(user_id=run.user_id, agent=agent))
 
+            # --- No CTEM tool for a run acting for a person with no CTEM right (#2441) ---
+            from app.services import ctem_access as _ctem_access
+
+            _ctem_ok = bool(run.user_id) and await _ctem_access.wires_ctem(run.user_id)
             # --- CTEM case tools (#11545): the CTEM remediation agents, XTM One only ---
             from app.services.builtin_tools import build_ctem_case_tools, offers_ctem_case_tools
 
-            if run.user_id and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_case_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_case_tools(user_id=str(run.user_id), agent_id=str(agent.id)))
             # --- CTEM signal tools (#826): the CTEM agents that see a trigger first ---
             from app.services.builtin_tools import build_ctem_signal_tools, offers_ctem_signal_tools
 
-            if run.user_id and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
+            if _ctem_ok and offers_ctem_signal_tools(agent.slug, is_builtin=agent.is_builtin):
                 composite.add_tools(*build_ctem_signal_tools(user_id=str(run.user_id)))
             # --- Read-only CTEM group (#1337): bound on any agent, as the run's user ---
             from app.services.builtin_tools import ctem_read_tools_for
 
             _ctem_read = (
-                ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
+                ctem_read_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
             )
             if _ctem_read is not None:
                 composite.add_tools(*_ctem_read)
@@ -6698,7 +6702,7 @@ async def execute_assignment_run(
             from app.services.builtin_tools import ctem_tools_for
 
             _ctem_group = (
-                ctem_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
+                ctem_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
             )
             if _ctem_group is not None:
                 composite.add_tools(*_ctem_group)
@@ -6706,7 +6710,7 @@ async def execute_assignment_run(
             from app.services.builtin_tools import ctem_repair_tools_for
 
             _ctem_repair = (
-                ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if run.user_id else None
+                ctem_repair_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
             )
             if _ctem_repair is not None:
                 composite.add_tools(*_ctem_repair)

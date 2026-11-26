@@ -193,6 +193,26 @@ async def signal_writer(db: Any, user: object) -> str | None:
     raise NoCtemAccess(NO_ACCESS_MESSAGE)
 
 
+async def wires_ctem(user_id: object) -> bool:
+    """Whether a turn or run acting for *user_id* is offered any CTEM tool (#2441).
+
+    Read once per turn or run, in its own session, before the CTEM groups
+    (``ctem``, ``ctem_read``, ``ctem_repair``) and the built-in CTEM agents'
+    tools are wired: without a view right or more, none is. Fails closed.
+    """
+    from app.core.config import settings
+    from app.core.database import async_session
+
+    if settings.is_copilot_like or not user_id:
+        return False
+    try:
+        async with async_session() as db:
+            return await level(db, str(user_id)) is not None
+    except Exception:
+        logger.warning("CTEM access: the right of %s is unreadable, no CTEM tool wired", user_id, exc_info=True)
+        return False
+
+
 async def refusal(db: Any, user: object, *, write: bool) -> str | None:
     """Why *user* may not read (``write`` false) or change CTEM signals and cases, ``None`` when they may.
 
