@@ -21,3 +21,11 @@ cryptography==50.0.0
 # the FFmpeg libraries), so code_interpreter reads a frame with no ffmpeg binary
 # and no subprocess (both absent from the distroless image).
 av==19.0.2
+# PDF: pypdf (BSD-3-Clause, pure Python) reads the structure of a PDF a user
+# attached: AcroForm fields, /Sig signature fields (signer name, signing time,
+# /ByteRange, /Contents), text, images; pypdfium2 (BSD-3-Clause / Apache-2.0)
+# renders a page to a PIL image, its wheel bundles PDFium (no system library,
+# fits the distroless image). Same pins as backend/pyproject.toml; PyMuPDF is
+# left out on purpose (AGPL).
+pypdf==6.21.4
+pypdfium2==5.13.0

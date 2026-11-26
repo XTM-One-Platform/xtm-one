@@ -1110,6 +1110,43 @@ describe("Work Items quick filters", () => {
     expect(read?.search).toBeUndefined();
   });
 
+  it("counts the inbox rows on the chip while the decisions read switch is on (#2522)", () => {
+    // The inbox seed: a run tool approval, a needs_human work item and a flow ask, the rows the
+    // view lists. The work items count (2 in this mock: the needs_human item and an ownerless
+    // past-due item, which is no decision) is not what the chip shows any more.
+    const row = (id: string, kind: string, source_type: string) => ({
+      id, kind, source_type, source_id: id, question: id, ask: {}, origin: null, agent: null, asked_at: null, deadline: null, link: "/",
+    });
+    WAITING = {
+      data: {
+        enabled: true,
+        reason: null,
+        items: [row("run:a", "tool_approval", "run"), row("work_item:b", "work_item", "work_item"), row("flow_run:c", "flow_ask", "flow_run")],
+      },
+      isLoading: false,
+      isError: false,
+    };
+    try {
+      renderTab();
+      const chip = within(screen.getByRole("group", { name: "Quick filters" })).getByRole("button", { name: /Waiting for me/ });
+      expect(chip.textContent).toContain("3");
+      expect(chip.textContent).not.toContain("2");
+      // The view lists the same three rows (#2522: chip = rows).
+      fireEvent.click(chip);
+      expect(screen.getByTestId("waiting-for-you")).toBeTruthy();
+      expect(within(screen.getByTestId("waiting-for-you")).getAllByRole("row").length - 1).toBe(3);
+    } finally {
+      WAITING = SWITCH_OFF;
+    }
+  });
+
+  it("keeps the work items count on the chip while the switch is off (#2522)", () => {
+    renderTab();
+    const chip = within(screen.getByRole("group", { name: "Quick filters" })).getByRole("button", { name: /Waiting for me/ });
+    expect(chip.textContent).toContain("2");
+    expect(lastWaitingCountRead()).toMatchObject({ open_only: true, waiting_for_me: true });
+  });
+
   it("counts inside a locked fleet when an administrator reads scope=all (#1499)", () => {
     IS_ADMIN = true;
     try {

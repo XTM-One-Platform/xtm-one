@@ -1780,6 +1780,21 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("CTEM case expiry error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+        # CTEM signals still new past the grace (a record-time gate that failed, a
+        # case-delete release whose background re-decision was lost): decided on
+        # their own short cadence (#2530), batch after batch within a time budget,
+        # so a backlog drains in minutes and none waits "for reconcile" for good.
+        # Rules only, no model call; no case is opened here.
+        try:
+            from app.services import ctem_scope_gate_store
+
+            if await ctem_scope_gate_store.recheck_new_due():
+                undecided = await ctem_scope_gate_store.drain_new(db)
+                if undecided:
+                    logger.info("CTEM signals left new decided by the scheduled recheck: %s", undecided)
+        except Exception as e:
+            logger.error("CTEM new-signal recheck error: %s", format_exception_message(e), exc_info=True)
+            await db.rollback()
         # CTEM case loop (#857): open the cases of confirmed signals still
         # waiting, escalate SLA breaches once. Rules only, no model call;
         # its own cadence (CTEM_CASE_SWEEP_SECONDS, default hourly).

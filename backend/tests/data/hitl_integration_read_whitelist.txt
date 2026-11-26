@@ -1005,6 +1005,7 @@ intel471:search_intel471_situation_reports
 intel471:search_intel471_spot_reports
 intel471:search_intel471_yara
 intune:intune_compliance_overview
+intune:intune_get_app_assignments
 intune:intune_get_app_install_status
 intune:intune_get_compliance_policy
 intune:intune_get_compliance_policy_device_statuses

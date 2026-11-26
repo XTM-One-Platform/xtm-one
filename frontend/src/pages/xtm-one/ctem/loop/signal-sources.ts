@@ -91,7 +91,7 @@ export function connectedProviders(paths: readonly Pick<CtemSignalPath, "sources
  * up (its provider is connected, the source itself is not, e.g. the PIR playbook of a connected
  * OpenCTI), or not connected (no integration of its provider here).
  */
-type SourceState = "error" | "bound" | "excluded" | "off" | "not_set_up" | "not_connected";
+export type SourceState = "error" | "bound" | "excluded" | "off" | "not_set_up" | "not_connected";
 
 export function sourceState(source: CtemSignalPathSource, connected: ReadonlySet<string>): SourceState {
   // A source XTM One provisions in error on one of its integrations reads Error, as its platform line does (#2442 UX r1 B1).
@@ -99,7 +99,41 @@ export function sourceState(source: CtemSignalPathSource, connected: ReadonlySet
   if (source.bound) return "bound";
   if (source.excluded) return "excluded";
   if (source.off) return "off";
+  // A webhook source is never "not connected": it has its own receiver, off until switched on (#2506).
+  if (source.kind === "webhook") return "off";
   return connected.has(source.provider) ? "not_set_up" : "not_connected";
+}
+
+/**
+ * The one state word of a source wherever it is listed, the path list and the path detail alike (UX advisory A4 of
+ * #2436, #2506): its state on the path, except that a source XTM One provisions reads Error or On from its platform
+ * lines when they say so. A provisioned source with every line off keeps "Not set up", never a second word.
+ */
+export function sourceDisplayState(
+  source: CtemSignalPathSource,
+  connected: ReadonlySet<string>,
+  platform: readonly { provider: string; kind: string; status: string }[] = [],
+): SourceState {
+  const state = sourceState(source, connected);
+  if (state === "not_connected" || state === "excluded") return state;
+  const own = platform.filter((s) => s.provider === source.provider && s.kind === source.kind);
+  if (own.some((s) => s.status === "error")) return "error";
+  if (own.some((s) => s.status === "connected")) return "bound";
+  return state;
+}
+
+/** The signed request a tool sends to a webhook source (#2506), the secret left as $SECRET: never the real one in a copied command. */
+export function signedRequestExample(url: string, header: string): string {
+  return [
+    `BODY='{"event":{"id":"evt-1","host":"vpn.example.com","severity":"high"}}'`,
+    `SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | sed 's/^.* //')`,
+    `curl -X POST '${url}' -H 'Content-Type: application/json' -H "${header}: sha256=$SIG" -d "$BODY"`,
+  ].join("\n");
+}
+
+/** The display name of a source: a webhook source by its own name, any other by its provider (#2506). */
+export function sourceDisplayName(source: Pick<CtemSignalPathSource, "provider" | "kind" | "name">, providerName: (provider: string) => string): string {
+  return source.kind === "webhook" && source.name ? source.name : providerName(source.provider);
 }
 
 /**
@@ -152,11 +186,12 @@ export function connectHref(source: Pick<CtemSignalPathSource, "provider" | "kin
 
 /**
  * The first source a path should connect: a pass turned off first (Turn on is one click),
- * then a listener, then a pass, then the playbook.
+ * then a listener, then a pass, then the playbook. A signed webhook source is never one: it is switched on
+ * from its own row of the path table, and has no integration page to open.
  */
 export function connectTarget(path: Pick<CtemSignalPath, "sources">): CtemSignalPathSource | null {
   // A source an administrator excluded from the path is a choice, never a source to connect.
-  const unbound = (path.sources ?? []).filter((s) => !s.bound && !s.excluded);
+  const unbound = (path.sources ?? []).filter((s) => !s.bound && !s.excluded && s.kind !== "webhook");
   const off = unbound.find((s) => s.off);
   if (off) return off;
   const order = ["listener", "pass", "pir_playbook"];
@@ -298,6 +333,7 @@ export const SOURCE_KIND_LABEL = {
   listener: "Live listener",
   pass: "Scheduled pass",
   pir_playbook: "PIR playbook",
+  webhook: "Signed webhook",
 } as const satisfies Record<CtemSignalPathSource["kind"], string>;
 
 /**

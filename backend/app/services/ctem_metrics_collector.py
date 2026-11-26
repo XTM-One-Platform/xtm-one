@@ -110,7 +110,7 @@ def _closure_pct(closed: int, total: int) -> float:
 
 
 async def _user_creds(
-    db: AsyncSession, user_id: str, provider: str
+    db: AsyncSession, user_id: str, provider: str, *, release: bool = True
 ) -> tuple[str, dict[str, str]] | None:
     """Resolve ``(base_url, auth_headers)`` for *provider*, scoped to *user_id*.
 
@@ -119,6 +119,10 @@ async def _user_creds(
     integration this mints a per-user Ed25519 JWT (the user's identity), so the
     platform returns data scoped to that user. Returns ``None`` when the product
     is not registered or no token can be minted (e.g. no user context).
+
+    *release* False keeps the caller's transaction open: a caller inside a
+    savepoint (the CTEM scope gate, which decides a signal in ``begin_nested``)
+    must never have its session committed under it.
     """
     # Deterministic + non-fatal: there is no uniqueness constraint on
     # (provider, is_company_managed), so use order_by + limit(1) / first()
@@ -178,7 +182,8 @@ async def _user_creds(
     # that external I/O. Pinning it was the root cause of the dashboard pool
     # exhaustion under concurrent loads. SQLAlchemy transparently re-acquires a
     # connection on the session's next use (the post-collection snapshot write).
-    await release_db_connection_before_loop(db)
+    if release:
+        await release_db_connection_before_loop(db)
     return base_url, {
         "Authorization": f"Bearer {api_token}",
         "Content-Type": "application/json",

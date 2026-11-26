@@ -95,6 +95,15 @@ describe("signal source rules", () => {
     expect(connectTarget({ sources: [{ provider: "aikido", kind: "listener", event: "", bound: false }, off] })).toBe(off);
   });
 
+  it("never offers an off webhook source as Connect or Turn on: it is switched on from its own row (#2509 review)", () => {
+    const hook = { provider: "webhook", kind: "webhook" as const, event: "", bound: false, off: true, key: "webhook:w-1", name: "Scanner" };
+    expect(connectTarget({ sources: [hook] })).toBeNull();
+    const listener = { provider: "aikido", kind: "listener" as const, event: "", bound: true };
+    expect(connectTarget({ sources: [listener, hook] })).toBeNull();
+    const unboundListener = { provider: "censys", kind: "listener" as const, event: "", bound: false };
+    expect(connectTarget({ sources: [hook, unboundListener] })).toBe(unboundListener);
+  });
+
   it("keeps Turn on of a profile pass for administrators: a reader gets no button for it (UX round 1 on #1356, B3)", () => {
     expect(connectNeedsAdmin({ provider: "opencrq", kind: "pass" })).toBe(true);
     expect(connectNeedsAdmin({ provider: "shodan", kind: "pass" })).toBe(true);
@@ -158,7 +167,7 @@ describe("SignalSourcesPanel", () => {
     expect(statusOf(cardRows)).toEqual({ code_flaw: "not_connected", third_party_event: "enabled", blind_spot: "agents_api" });
   });
 
-  it("lists only what feeds a path here: an unconnected provider is folded into +N possible, never beside a bound one (#1401)", async () => {
+  it("lists only what feeds a path here: an unconnected provider is never listed nor counted as possible (#1401, #2506)", async () => {
     const outside = path({
       id: "new_exposure",
       label: "New exposure",
@@ -215,32 +224,139 @@ describe("SignalSourcesPanel", () => {
     const listed = (id: string) => within(row(id)).getAllByTestId("ctem-signal-source").map((s) => s.getAttribute("data-provider"));
 
     expect(listed("new_exposure")).toEqual(["shodan"]);
-    expect(within(row("new_exposure")).getByTestId("ctem-signal-sources-possible").getAttribute("data-providers")).toBe("gti");
-    expect(within(row("new_exposure")).getByTestId("ctem-signal-sources-possible").textContent).toBe("+1 possible");
+    // #2506: no "+N possible" anywhere in the view.
+    expect(screen.queryByTestId("ctem-signal-sources-possible")).toBeNull();
+    expect(screen.queryByTestId("ctem-signal-sources-compact-possible")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/possible/i);
     expect(listed("credential_leak")).toEqual(["opencti"]);
-    expect(within(row("credential_leak")).getByTestId("ctem-signal-sources-possible").getAttribute("data-providers")).toBe("aikido");
-    // The compact line under 4xl says the same: the bound source, then the count of possible ones.
     expect(within(row("credential_leak")).getByTestId("ctem-signal-sources-compact").textContent).not.toContain("Aikido");
-    expect(within(row("credential_leak")).getByTestId("ctem-signal-sources-compact-possible").textContent).toBe("+1 possible");
 
-    // A pass turned off is kept, marked Off, with its Turn on.
-    const off = within(row("control_decay")).getByTestId("ctem-signal-source");
-    expect(off.getAttribute("data-off")).toBe("true");
-    expect(off.textContent).toContain("Off");
-    expect(within(row("control_decay")).queryByTestId("ctem-signal-sources-possible")).toBeNull();
+    // A pass turned off, alone on its path: the path has no source on, so it says so and opens its sources.
+    expect(within(row("control_decay")).queryByTestId("ctem-signal-source")).toBeNull();
+    expect(within(row("control_decay")).getAllByTestId("ctem-signal-sources-none-on")[0].textContent).toContain(
+      "No source on: nothing records this path",
+    );
 
     // A source of a connected provider not set up is listed with its own words, never folded as "Not connected".
+    // The wide cell keeps one line: the first source, the second folded into "+1 more" (UX round 1 on #2509, B1).
     const vulnSources = within(row("new_vulnerability")).getAllByTestId("ctem-signal-source");
-    expect(vulnSources.map((s) => s.getAttribute("data-state"))).toEqual(["bound", "not_set_up"]);
-    expect(vulnSources[1].textContent).toContain("Not set up");
-    expect(within(row("new_vulnerability")).queryByTestId("ctem-signal-sources-possible")).toBeNull();
-    expect(within(row("new_vulnerability")).getByTestId("ctem-signal-sources-compact").textContent).not.toContain("possible");
+    expect(vulnSources.map((s) => s.getAttribute("data-state"))).toEqual(["bound"]);
+    expect(within(row("new_vulnerability")).getByTestId("ctem-signal-sources-more").textContent).toBe("+1 more");
+    expect(within(row("new_vulnerability")).getByTestId("ctem-signal-sources-compact").textContent).toContain("Not set up");
 
-    // Nothing live: the possible sources stay listed, muted, under Not connected, with Connect on the first.
-    const code = within(row("code_flaw")).getByTestId("ctem-signal-source");
-    expect(code.getAttribute("data-possible")).toBe("true");
+    // Nothing on: the empty state, and Connect on the first source still offered as the row's action.
+    expect(within(row("code_flaw")).queryByTestId("ctem-signal-source")).toBeNull();
+    expect(within(row("code_flaw")).getAllByTestId("ctem-signal-sources-none-on").length).toBeGreaterThan(0);
     expect(within(row("code_flaw")).getByText("Not connected")).toBeTruthy();
     expect(within(row("code_flaw")).getByRole("button", { name: "Connect" })).toBeTruthy();
+  });
+
+  it("keeps a path with many sources to one line: the first one, then +N more (UX round 1 on #2509, B1)", async () => {
+    const many = path({
+      id: "new_exposure",
+      label: "New exposure",
+      default_lens: "outside",
+      status: "enabled",
+      sources: [
+        { provider: "shodan", kind: "pass", event: "A new host or port", bound: true },
+        ...[1, 2, 3, 4].map((n) => ({ provider: "webhook", kind: "webhook" as const, event: "", bound: true, key: `webhook:${n}`, name: `Hook ${n}` })),
+      ],
+    });
+    get.mockResolvedValue({ paths: [many, PATHS[1]] });
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalSourcesPanel />
+      </MemoryRouter>,
+    );
+    const rows = await screen.findAllByTestId("ctem-signal-sources-path");
+    const row = rows.find((r) => r.getAttribute("data-path") === "new_exposure") as HTMLElement;
+    expect(within(row).getAllByTestId("ctem-signal-source")).toHaveLength(1);
+    expect(within(row).getByTestId("ctem-signal-sources-more").textContent).toBe("+4 more");
+    // A folded source is not drawn on the row: it is in the tooltip of "+4 more".
+    expect(within(row).queryByText("Hook 4")).toBeNull();
+  });
+
+  it("shows a source that is on first, its name whole in its own span (UX round 2 on #2509, B1 and A2)", async () => {
+    const mixed = path({
+      id: "new_exposure",
+      label: "New exposure",
+      default_lens: "outside",
+      status: "enabled",
+      sources: [
+        { provider: "opencti", kind: "pir_playbook", event: "A PIR match", bound: false },
+        { provider: "opencti", kind: "listener", event: "A new vulnerability", bound: true },
+        { provider: "webhook", kind: "webhook" as const, event: "", bound: true, key: "webhook:1", name: "Lab VPN appliance alerts" },
+      ],
+    });
+    get.mockResolvedValue({ paths: [mixed, PATHS[1]] });
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalSourcesPanel />
+      </MemoryRouter>,
+    );
+    const rows = await screen.findAllByTestId("ctem-signal-sources-path");
+    const row = rows.find((r) => r.getAttribute("data-path") === "new_exposure") as HTMLElement;
+    const shown = within(row).getAllByTestId("ctem-signal-source");
+    expect(shown.map((s) => s.getAttribute("data-state"))).toEqual(["bound"]);
+    const name = within(shown[0]).getByTestId("ctem-signal-source-name");
+    // The name is its own element, the captions after it (the width rule is measured in the UX lab, not here).
+    expect(name.textContent).toBe("OpenCTI");
+    expect(shown[0].textContent?.startsWith("OpenCTI")).toBe(true);
+    expect(within(row).getByTestId("ctem-signal-sources-more").textContent).toBe("+2 more");
+    // The folded line lists the sources that are on first too.
+    expect(within(row).getByTestId("ctem-signal-sources-compact").textContent).toMatch(/^OpenCTI \(Live listener\)/);
+  });
+
+  it("keeps a long source name on the first line beside its icons, cut with an ellipsis (UX round 3 on #2509, B1)", async () => {
+    const long = "Lab perimeter attack surface monitoring feed for the external estate";
+    get.mockResolvedValue({
+      paths: [
+        path({
+          id: "new_exposure",
+          label: "New exposure",
+          default_lens: "outside",
+          status: "enabled",
+          sources: [{ provider: "webhook", kind: "webhook" as const, event: "", bound: true, key: "webhook:1", name: long }],
+        }),
+        PATHS[1],
+      ],
+    });
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalSourcesPanel />
+      </MemoryRouter>,
+    );
+    const rows = await screen.findAllByTestId("ctem-signal-sources-path");
+    const row = rows.find((r) => r.getAttribute("data-path") === "new_exposure") as HTMLElement;
+    const item = within(row).getAllByTestId("ctem-signal-source")[0];
+    // jsdom has no layout, so the rule is structural (the geometry is measured in the UX lab): icons and name share one
+    // group, the first of the item's line, so a long name never wraps away from its icons onto the hidden line.
+    const head = within(item).getByTestId("ctem-signal-source-head");
+    expect(item.firstElementChild).toBe(head);
+    // The status icon and the provider logo sit in the same group as the name.
+    expect(head.querySelectorAll("svg, img").length).toBeGreaterThanOrEqual(1);
+    const name = within(head).getByTestId("ctem-signal-source-name");
+    expect(name.textContent).toBe(long);
+  });
+
+  it("counts the sources on of the available ones per path, and opens the path's sources from the empty state (#2506)", async () => {
+    get.mockResolvedValue({
+      paths: [
+        { ...PATHS[0], sources_enabled: 1, sources_available: 2 },
+        { ...PATHS[1], sources_enabled: 0, sources_available: 0 },
+      ],
+    });
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalSourcesPanel />
+      </MemoryRouter>,
+    );
+    const rows = await screen.findAllByTestId("ctem-signal-sources-path");
+    const row = (id: string) => rows.find((r) => r.getAttribute("data-path") === id) as HTMLElement;
+    expect(within(row("new_vulnerability")).getByTestId("ctem-signal-sources-on-count").textContent).toBe("1 of 2");
+    expect(within(row("code_flaw")).getByTestId("ctem-signal-sources-on-count").textContent).toBe("0 of 0");
+    fireEvent.click(within(row("code_flaw")).getByTestId("ctem-signal-sources-open-sources"));
+    expect(screen.getByTestId("ctem-path-sources").getAttribute("data-path")).toBe("code_flaw");
   });
 
   it("opens the Signals tab on the path clicked, never the whole list (davidloiret review on #1194)", async () => {

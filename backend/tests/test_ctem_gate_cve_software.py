@@ -118,8 +118,8 @@ async def test_cve_software_without_a_reader_reads_nothing():
 async def test_the_store_reads_the_cve_software_only_for_an_unresolved_cve_signal(monkeypatch):
     seen: list[tuple] = []
 
-    async def fake_cve_software(db, reader, cves):
-        seen.append((reader, tuple(cves)))
+    async def fake_cve_software(db, reader, cves, *, release=False):
+        seen.append((reader, tuple(cves), release))
         return ("Metabase",), "read"
 
     async def no_fallback(db):
@@ -140,7 +140,8 @@ async def test_the_store_reads_the_cve_software_only_for_an_unresolved_cve_signa
     row = SimpleNamespace(id="s1", recorded_by=str(recorder))
     facts = await store._with_cve_software(db, row, _threat(), _profile(), None)
     assert facts.cve_software == ("Metabase",) and facts.cve_lookup == "read"
-    assert seen == [(recorder, ("CVE-2023-38646",))]
+    # The record-time gate runs inside a savepoint: it never releases the connection.
+    assert seen == [(recorder, ("CVE-2023-38646",), False)]
     # Resolved without it (a software subject in the inventory): no read.
     software = gate.SignalFacts(
         trigger_path="new_vulnerability",
@@ -161,8 +162,10 @@ async def test_a_bulk_pass_reads_the_cve_software_up_front_and_never_in_its_loop
     """#2171 review: the bulk re-decide paths read OpenCTI before any row is written, never inside the loop."""
     seen: list[tuple[Any, ...]] = []
 
-    async def fake_cve_software(db: Any, reader: Any, cves: list[str]) -> tuple[tuple[str, ...], str]:
-        seen.append((reader, tuple(cves)))
+    async def fake_cve_software(
+        db: Any, reader: Any, cves: list[str], *, release: bool = False
+    ) -> tuple[tuple[str, ...], str]:
+        seen.append((reader, tuple(cves), release))
         return ("Metabase",), "read"
 
     async def no_fallback(db: Any) -> None:
@@ -188,7 +191,8 @@ async def test_a_bulk_pass_reads_the_cve_software_up_front_and_never_in_its_loop
     assert await store._with_cve_software(db, row, threat, _profile(), None, remote=False) is threat
     assert seen == []
     await store.prepare_cve_reads(db, [row, row], profiles={org: _profile()}, links={org: None})
-    assert seen == [(recorder, ("CVE-2023-38646",))]
+    # The bulk prefetch opens no savepoint: it hands the connection back during the read (#2520).
+    assert seen == [(recorder, ("CVE-2023-38646",), True)]
     facts = await store._with_cve_software(db, row, threat, _profile(), None, remote=False)
     assert facts.cve_software == ("Metabase",) and facts.cve_lookup == "read"
     assert len(seen) == 1

@@ -47,6 +47,17 @@ function useRunAsLabel(userId: string | null): string {
   return user.full_name?.trim() || user.email;
 }
 
+/** The run-as users of a path table row (#2506), by name: one, or the first and how many more. */
+export function RunAsName({ ids }: { ids: string }) {
+  const [first, ...rest] = ids.split(",");
+  const name = useRunAsLabel(first);
+  return (
+    <span className="truncate" data-testid="ctem-path-source-run-as">
+      {rest.length > 0 ? `${name} +${rest.length}` : name}
+    </span>
+  );
+}
+
 /** The enable dialog of one source on one integration: the run-as user, then Turn on. */
 export function PlatformSourceEnableDialog({
   source,

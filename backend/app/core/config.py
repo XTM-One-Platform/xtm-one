@@ -38,7 +38,7 @@ _PROMETHEUS_TOKEN_MIN_LENGTH = 16
 # or the published xtmone/sandbox-* images retagged. The version is the one of
 # backend/sandbox/published-images.json (check-published-images.py holds them
 # together); a merge that bumps it there publishes it (sandbox-image-pin.yml).
-_OPENSANDBOX_DEFAULT_IMAGES = {"python": "sandbox-python:0.8", "nodejs": "sandbox-nodejs:0.8"}
+_OPENSANDBOX_DEFAULT_IMAGES = {"python": "sandbox-python:0.9", "nodejs": "sandbox-nodejs:0.9"}
 
 # Default per-pod reconciler heartbeat path. Derived from the platform temp dir
 # so it resolves to ``/tmp/reconciler_heartbeat`` on Linux containers
