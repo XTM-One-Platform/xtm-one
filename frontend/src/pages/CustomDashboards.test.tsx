@@ -3,7 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 
 import { renderWithProviders } from "@/testing/providers";
@@ -28,12 +28,23 @@ const BOARDS = [
   board("c", "Their board", { user_id: "u2", is_shared: true, permission: "read_only", updated_at: "2026-10-24T10:00:00Z" }),
 ];
 
+/** The studio route: what the create dialog handed it (`DashboardStudioLaunch`). */
+function Studio() {
+  const { state } = useLocation();
+  return (
+    <>
+      <p>studio of the new dashboard</p>
+      <pre data-testid="launch">{JSON.stringify(state ?? {})}</pre>
+    </>
+  );
+}
+
 function draw(path = "/dashboards") {
   return renderWithProviders(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/dashboards" element={<CustomDashboards />} />
-        <Route path="/dashboards/:id/studio" element={<p>studio of the new dashboard</p>} />
+        <Route path="/dashboards/:id/studio" element={<Studio />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -50,15 +61,43 @@ describe("CustomDashboards", () => {
   it("creates an empty dashboard from its name and description, then opens it in the studio", async () => {
     api.post.mockResolvedValue({ id: ID, title: "Weekly board" });
     draw();
-    fireEvent.click(await screen.findByRole("button", { name: "Create" }));
-    const buttons = screen.getAllByRole("button", { name: "Create" });
-    const create = buttons[buttons.length - 1] as HTMLButtonElement;
+    // One main button, as Videos and Presentations: its dialog also starts an empty dashboard.
+    fireEvent.click(await screen.findByRole("button", { name: "New dashboard" }));
+    const create = (await screen.findByTestId("dashboards.create.blank")) as HTMLButtonElement;
     expect(create.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "  Weekly board " } });
     fireEvent.change(screen.getByLabelText("Description"), { target: { value: "For the **SOC**" } });
     fireEvent.click(create);
     expect(await screen.findByText("studio of the new dashboard")).toBeTruthy();
     expect(api.post.mock.calls).toEqual([["/custom-dashboards", { title: "Weekly board", description: "For the **SOC**" }]]);
+    expect(JSON.parse(screen.getByTestId("launch").textContent ?? "")).toEqual({});
+  });
+
+  it("creates a dashboard with the assistant: the studio opens with the brief to send and the agent that builds it", async () => {
+    const builder = {
+      id: "ag1", name: "Builder", enabled: true, disable_chat: false, is_company_managed: false,
+      builtin_tool_ids: ["custom_dashboards"], builtin_allowed_tools: null,
+    }; // prettier-ignore
+    api.get.mockImplementation(async (path: string) =>
+      path === "/auth/me" ? { id: "u1", home_dashboard_id: null } : path.startsWith("/agents") ? [builder] : [],
+    );
+    api.post.mockResolvedValue({ id: ID, title: "SOC brief" });
+    draw();
+    // The list's main button opens the same dialog, on the assistant's side.
+    fireEvent.click(await screen.findByRole("button", { name: "New dashboard" }));
+    const assist = (await screen.findByTestId("dashboards.create.assistant")) as HTMLButtonElement;
+    expect(assist.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "SOC brief" } });
+    fireEvent.change(screen.getByTestId("dashboards.create.brief"), { target: { value: "Critical detections by day" } });
+    await waitFor(() => expect(assist.disabled).toBe(false));
+    expect(screen.getByTestId("dashboards.create.request").textContent).toContain("Critical detections by day");
+    fireEvent.click(assist);
+    expect(await screen.findByText("studio of the new dashboard")).toBeTruthy();
+    expect(api.post.mock.calls).toEqual([["/custom-dashboards", { title: "SOC brief" }]]);
+    expect(JSON.parse(screen.getByTestId("launch").textContent ?? "")).toEqual({
+      send: 'Build the dashboard "SOC brief":\n\nCritical detections by day',
+      agentId: "ag1",
+    });
   });
 
   it("imports a file as a new dashboard and opens it in the studio", async () => {
@@ -167,7 +206,7 @@ describe("CustomDashboards", () => {
 
   it("offers no review of public links to someone who is not an administrator", async () => {
     draw();
-    await screen.findByRole("button", { name: "Create" });
+    await screen.findByRole("button", { name: "New dashboard" });
     expect(screen.queryByRole("button", { name: "Public links" })).toBeNull();
   });
 
@@ -175,7 +214,7 @@ describe("CustomDashboards", () => {
     flags.studio = false;
     draw();
     await waitFor(() => expect(api.get).toHaveBeenCalled());
-    expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Widget packs" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Import" })).toBeNull();
   });
 });

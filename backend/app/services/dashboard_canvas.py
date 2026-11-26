@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""What an absolute layout of a dashboard (a canvas, like Splunk's) holds besides visualizations.
+"""What an absolute layout of a dashboard (a canvas in pixels) holds besides visualizations.
 
 A tab whose layout is ``absolute`` is a canvas in pixels::
 

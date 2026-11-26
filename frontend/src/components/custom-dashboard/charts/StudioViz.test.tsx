@@ -131,6 +131,42 @@ describe("StudioViz", () => {
     expect(screen.getByText("Intrusion set")).toBeTruthy();
   }, 20_000);
 
+  it("draws an Attack Flow: an action's card names its tactic and technique, a condition its branches, an operator AND / OR", async () => {
+    flowModes.length = 0;
+    const flow = ok({
+      shape: "graph",
+      data: {
+        nodes: [
+          { id: "f", label: "Operation Dream Job", group: null, value: null, kind: "start" },
+          { id: "a1", label: "Spearphishing Link", group: null, value: null, kind: "action", technique: "T1566.002", tactic: "initial-access" },
+          { id: "c", label: "Macro enabled", group: null, value: null, kind: "condition" },
+          { id: "o", label: "OR", group: null, value: null, kind: "operator", operator: "OR" },
+          { id: "a2", label: "[T1204] User Execution", group: null, value: null, kind: "action", technique: "T1204" },
+          { id: "w", label: "Workstation", group: null, value: null, kind: "asset" },
+        ],
+        edges: [
+          { source: "f", target: "a1", label: null, value: null },
+          { source: "a1", target: "c", label: null, value: null },
+          { source: "c", target: "o", label: "true", value: null },
+          { source: "o", target: "a2", label: null, value: null },
+          { source: "a2", target: "w", label: null, value: null },
+        ],
+      },
+    });
+    draw(flow, "attackflow");
+    const canvas = await screen.findByTestId("attack-flow", {}, { timeout: 15_000 });
+    expect(await within(canvas).findByText("Spearphishing Link", {}, { timeout: 15_000 })).toBeTruthy();
+    expect(within(canvas).getByText("initial-access")).toBeTruthy();
+    expect(within(canvas).getByText("T1566.002")).toBeTruthy();
+    expect(within(canvas).getByText("Condition")).toBeTruthy();
+    expect(within(canvas).getByText("OR")).toBeTruthy();
+    expect(within(canvas).getByText("Asset")).toBeTruthy();
+    // The id a platform puts before a technique's name is not said twice.
+    expect(within(canvas).getByText("User Execution")).toBeTruthy();
+    expect(canvas.querySelectorAll("[data-flow-kind]")).toHaveLength(6);
+    expect(flowModes.length).toBeGreaterThan(0);
+  }, 20_000);
+
   it("draws a link graph from a table's columns as stages", async () => {
     const rows = ok({
       shape: "rows",

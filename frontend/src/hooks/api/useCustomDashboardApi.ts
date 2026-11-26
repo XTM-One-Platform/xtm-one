@@ -419,6 +419,34 @@ export function useAskDataSource(dashboardId: string | undefined) {
 }
 
 /**
+ * Refresh now: a source refreshed on the server read again by the platform, as
+ * its publisher (`POST .../data-sources/<id>/refresh`, at most every 30 s); the
+ * widgets drawing it read the new snapshot.
+ */
+export function useRefreshSnapshot(dashboardId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sourceId: string) =>
+      api.post<WidgetData>(`/custom-dashboards/${dashboardId}/data-sources/${encodeURIComponent(sourceId)}/refresh`, {}),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [...DASHBOARDS_KEY, dashboardId, "widget-data"] }),
+  });
+}
+
+/**
+ * The open pages of a dashboard, told a source has a new snapshot
+ * (`dashboard.source_updated` on the activity stream): its widgets, and that
+ * source's own reads, are read again.
+ */
+export function invalidateDashboardSource(qc: ReturnType<typeof useQueryClient>, dashboardId: string, sourceId: string | undefined) {
+  return qc.invalidateQueries({
+    queryKey: [...DASHBOARDS_KEY, dashboardId],
+    predicate: (query) =>
+      query.queryKey[2] === "widget-data" || (query.queryKey[2] === "source-data" && (!sourceId || query.queryKey[3] === sourceId)),
+  });
+}
+
+/**
  * The data of one data source of a stored dashboard (a visualization's
  * annotations), read like `useWidgetData`: by its id, from the stored
  * definition, with the viewer's own access.

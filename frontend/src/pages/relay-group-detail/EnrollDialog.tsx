@@ -42,6 +42,7 @@ import { COPY_FEEDBACK_DELAY } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { RelayEnrollmentKeyCreated, RelayGroup } from "@/types";
 import {
+  binaryCommand,
   installCommand,
   targetNeedsReusableKey,
   type RelayTarget,
@@ -272,9 +273,21 @@ export function EnrollDialog({
                       : t_i18n("Run on the machine (it installs a system service):")}
               </p>
               {missingInstaller ? (
-                <p className="content-caption text-feedback-warning-primary">
-                  {t_i18n("This deployment does not serve the relay installers (a source build). Use the Docker image, or install the binary from a release.")}
-                </p>
+                <>
+                  <p className="content-caption text-feedback-warning-primary">
+                    {t_i18n("This deployment does not serve the relay installers (a source build): with the relay binary on the machine (built from source or from a release), run:")}
+                  </p>
+                  <CopyBlock
+                    text={binaryCommand(target, {
+                      serverUrl,
+                      enrollmentKey: created.key,
+                      destinations,
+                      name,
+                      scripts,
+                    })}
+                    multiline
+                  />
+                </>
               ) : (
                 <CopyBlock text={command ?? ""} multiline={target === "docker" || target === "kubernetes"} />
               )}

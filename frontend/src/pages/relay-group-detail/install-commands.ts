@@ -182,6 +182,27 @@ export function installCommand(target: RelayTarget, input: InstallCommandInput):
   }
 }
 
+/**
+ * The commands for a relay binary already on the machine (built from source, or unpacked from a release): enroll
+ * once, then run it in the foreground with its allow-list (`relay.toml`, or `XTM_RELAY_ALLOWED_DESTINATIONS`). What a
+ * deployment that serves no installer offers, so the key - shown once - is never lost.
+ */
+export function binaryCommand(target: RelayTarget, input: InstallCommandInput): string {
+  const name = input.name?.trim();
+  if (target === "windows") {
+    return [
+      `$env:XTM_RELAY_ALLOWED_DESTINATIONS = ${psQuote(destinationList(input.destinations))}`,
+      `.\\xtm-one-relay.exe enroll --server-url ${psQuote(trimSlash(input.serverUrl))} --key ${psQuote(input.enrollmentKey)}${name ? ` --name ${psQuote(name)}` : ""}`,
+      ".\\xtm-one-relay.exe run",
+    ].join("\n");
+  }
+  return [
+    `export XTM_RELAY_ALLOWED_DESTINATIONS=${shQuote(destinationList(input.destinations))}`,
+    `xtm-one-relay enroll --server-url ${shQuote(trimSlash(input.serverUrl))} --key ${shQuote(input.enrollmentKey)}${name ? ` --name ${shQuote(name)}` : ""}`,
+    "xtm-one-relay run",
+  ].join("\n");
+}
+
 /** Whether a target enrolls several relays with one key (it needs a reusable key). */
 export function targetNeedsReusableKey(target: RelayTarget, replicas = 1): boolean {
   return target === "kubernetes" && replicas > 1;

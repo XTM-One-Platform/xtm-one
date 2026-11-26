@@ -2911,6 +2911,20 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Sandbox copy purge error: %s", format_exception_message(e), exc_info=True)
 
+        # --- 9b9. Dashboard data sources refreshed on the server ---
+        # No model call (a source that needs one is never refreshed on the server);
+        # one indexed read when nothing is due, then a bounded batch, each source read
+        # as its publisher (``dashboard_refresh``).
+        try:
+            from app.core.feature_flags import is_feature_enabled
+
+            if is_feature_enabled("DASHBOARD_STUDIO"):
+                from app.services.dashboard_refresh import refresh_due
+
+                await refresh_due(async_session)
+        except Exception as e:
+            logger.error("Dashboard source refresh error: %s", format_exception_message(e), exc_info=True)
+
         # --- 9c0. Component versions of the connected platforms ---
         # No model call; nothing is read while no assignment subscribes to
         # integration.version.changed, one read per platform every 5 minutes.

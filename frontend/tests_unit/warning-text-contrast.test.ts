@@ -361,6 +361,7 @@ function isTranslucentAmberBox(line: string): boolean {
 const TRANSLUCENT_AMBER_BOXES: Record<string, number> = {
   "components/InviteUserDialog.tsx": 1,
   "components/auth/DesktopSignIn.tsx": 1,
+  "components/custom-dashboard/NewDashboardDialog.tsx": 1,
   "components/integrations/openapi/openapi-integration-form.tsx": 1,
   "components/investigation/SourcePackPicker.tsx": 1,
   "components/layout/Header.tsx": 2,

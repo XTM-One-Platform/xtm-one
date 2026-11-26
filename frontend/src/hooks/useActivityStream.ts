@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { checkSession } from "@/hooks/api/useAuthApi";
+import { invalidateDashboardSource } from "@/hooks/api/useCustomDashboardApi";
 import { clickerKey } from "@/hooks/api/usePresentationClicker";
 import { API_BASE, endSession, getToken } from "@/lib/api";
 import { streamRetry } from "@/lib/activity-stream-retry";
@@ -70,6 +71,8 @@ export function useActivityStream() {
         presentation_id?: string;
         signal_id?: string;
         case_id?: string;
+        dashboard_id?: string;
+        source_id?: string;
       } | null = null;
       try {
         parsed = JSON.parse(event.data as string);
@@ -113,6 +116,13 @@ export function useActivityStream() {
         }
         // The Operations → Executions cross-flow feed.
         qc.invalidateQueries({ queryKey: ["flow-runs-global"] });
+        return;
+      }
+
+      // A dashboard source refreshed on the server has a new snapshot
+      // (`dashboard_refresh_events.py`): ids only, the page reads it again.
+      if (parsed?.type === "dashboard.source_updated") {
+        if (parsed.dashboard_id) void invalidateDashboardSource(qc, parsed.dashboard_id, parsed.source_id);
         return;
       }
 

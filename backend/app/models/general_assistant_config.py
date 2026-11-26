@@ -44,6 +44,8 @@ from app.tools.wait_policy import (  # noqa: F401  (re-exported for the API laye
 # agent that ...", and the platform builder acts as that person, through the
 # REST API's own permission checks. ``video_studio`` joins so every
 # person can record a demo and produce a video from the General Assistant,
+# ``custom_dashboards`` so the Dashboard Studio has an assistant out of the
+# box (its tool is built only while ``DASHBOARD_STUDIO`` is on),
 # and ``generate_report`` too, so it writes the report the default
 # assistants write. ``platform_insights`` joins as well; ``general_chat`` wires
 # it for administrators only (``ADMIN_ONLY_GA_BUILTIN_TOOL_IDS``).
@@ -52,7 +54,7 @@ from app.tools.wait_policy import (  # noqa: F401  (re-exported for the API laye
 # env-driven boot seed in ``main.py``); admins can remove any of them later.
 # A tool added here reaches the platforms whose row already exists only
 # through a migration (``g5209gadefault``, ``v5774gadflt02``, ``r5931gareport``,
-# ``g6258gainsights``, ``f7030fleetsga``, ``q8317gadflt``).
+# ``g6258gainsights``, ``f7030fleetsga``, ``q8317gadflt``, ``s1925gadash01``).
 # It is THE default set of both default assistants: the CTEM
 # Assistant seed (``builtin_agents.py``, the General Assistant in XTM One
 # mode) carries exactly these ids, pinned by
@@ -71,6 +73,7 @@ DEFAULT_GA_BUILTIN_TOOL_IDS: tuple[str, ...] = (
     "agent_builder",
     "web_fetch",
     "video_studio",
+    "custom_dashboards",
     "generate_report",
     "platform_insights",
     "fleets",

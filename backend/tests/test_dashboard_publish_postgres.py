@@ -242,9 +242,13 @@ async def test_a_dashboard_reading_an_entity_input_goes_to_opencti_as_a_custom_v
     filters = [w["dataSelection"][0]["filters"]["filters"] for w in manifest["widgets"].values()]
     assert [{"key": ["objects"], "values": ["SELF_ID"], "operator": "eq", "mode": "or"}] in filters
     assert "$entity$" not in exported.text
-    # As a dashboard, the widget reading the entity is left out rather than sent with a $entity$ filter.
+    # As a dashboard, the entity input is one of its variables: the widget reading it is kept, its filter
+    # naming the variable as OpenCTI does ($var:<id>), never with a $entity$ filter.
     dashboard_manifest = json.loads(base64.b64decode(as_dashboard.json()["configuration"]["manifest"]))
-    assert (len(dashboard_manifest["widgets"]), "$entity$" in as_dashboard.text) == (1, False)
+    assert (len(dashboard_manifest["widgets"]), "$entity$" in as_dashboard.text) == (2, False)
+    [variable] = dashboard_manifest["variables"]
+    assert (variable["type"], variable["entityTypes"]) == ("entity", ["Country"])
+    assert f"$var:{variable['id']}" in json.dumps(dashboard_manifest["widgets"])
     assert no_input.status_code == 422 and "no OpenCTI entity input" in no_input.json()["detail"]
     assert published.status_code == 200, published.text
     assert published.json()["publication"]["remote_url"] == "https://cti.example/dashboard/settings/customization/entity_types/Country/custom-views/cv-9"

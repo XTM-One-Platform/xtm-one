@@ -18,8 +18,10 @@ One entry point, :func:`read_source`, for every type of the definition
 ``dashboard_live``, ``assignment`` the answer of the assignment's last
 completed run the viewer may see, ``variable`` the value of a variable the
 viewer may read (never a secret one), ``ask`` the answer of the question the
-viewer last asked the agent (:func:`ask_agent`), ``derived`` another source's
-result through ``dashboard_pipeline``.
+viewer last asked the agent (:func:`ask_agent`), ``integration`` the answer of a
+read tool of an integration the viewer may use, called with fixed arguments,
+``knowledge`` a table kept in a knowledge base document the viewer reads,
+``derived`` another source's result through ``dashboard_pipeline``.
 
 The answer is ``{"status": "ok", "shape", "data", "fetched_at"}`` or
 ``{"status": "error", "code"}`` with a fixed code (:data:`ERROR_CODES`): the
@@ -71,6 +73,19 @@ _STEPS = TypeAdapter(list[Step])
 _FENCE = re.compile(r"^\s*```(?:json)?\s*\n(.*?)\n?```\s*$", re.DOTALL)
 
 
+class SourceError(LiveError):
+    """A source that cannot be read now, with its own codes (:data:`ERROR_CODES`) besides the live widgets' ones.
+
+    ``dashboard_live.LiveError`` folds a code it does not know into ``upstream_error``: an answer that does not fit
+    its shape would then read as a platform that failed, and the remedy offered would be the wrong one.
+    """
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        if code in ERROR_CODES:
+            self.code = code
+
+
 def _error(code: str) -> dict:
     return {"status": "error", "code": code}
 
@@ -89,7 +104,7 @@ def _at_path(value: Any, path: str | None) -> Any:
         elif isinstance(value, list) and part.isdigit() and int(part) < len(value):
             value = value[int(part)]
         else:
-            raise LiveError("invalid_result")
+            raise SourceError("invalid_result")
     return value
 
 
@@ -103,13 +118,34 @@ def _as_shape_input(shape: str, value: Any) -> dict:
         return value
     if isinstance(value, list):
         if shape == "distribution":
-            return {"items": value}
+            return {"items": _items_of(value)}
         if shape == "series":
             return {"series": value}
         if shape == "rows":
             keys = list(dict.fromkeys(k for row in value if isinstance(row, dict) for k in row if k != "_url"))
-            return {"columns": [{"key": k} for k in keys], "rows": value}
-    raise LiveError("invalid_result")
+            return {"columns": [{"key": k, **({"kind": "number"} if _numeric(value, k) else {})} for k in keys], "rows": value}
+    raise SourceError("invalid_result")
+
+
+def _numeric(rows: list, key: str) -> bool:
+    """Whether every row that has *key* holds a number there (a table's count column)."""
+    cells = [row[key] for row in rows if isinstance(row, dict) and row.get(key) not in (None, "")]
+    return bool(cells) and all(isinstance(c, int | float) and not isinstance(c, bool) for c in cells)
+
+
+def _items_of(rows: list) -> list:
+    """A distribution's items from a list: as written when they carry ``label`` and ``value``, else the rows of a
+    table read by their columns - the first that is not a number labels each item, the first number is its value
+    (a ``severity,count`` table). :class:`SourceError` ``invalid_result`` when a table has no such pair."""
+    records = [row for row in rows if isinstance(row, dict)]
+    if not records or all("label" in row and "value" in row for row in records):
+        return rows
+    keys = list(dict.fromkeys(k for row in records for k in row if not str(k).startswith("_") and k != "link"))
+    value_key = next((k for k in keys if _numeric(records, k)), None)
+    label_key = next((k for k in keys if k != value_key and not _numeric(records, k)), None)
+    if value_key is None or label_key is None:
+        raise SourceError("invalid_result")
+    return [{**({"link": row["link"]} if "link" in row else {}), "label": row.get(label_key), "value": row.get(value_key)} for row in records]
 
 
 def _json_in(raw: str) -> Any:
@@ -126,7 +162,7 @@ def _json_in(raw: str) -> Any:
             return json.loads(candidate)
         except (ValueError, TypeError):
             continue
-    raise LiveError("invalid_result")
+    raise SourceError("invalid_result")
 
 
 def answer_data(answer: str | None, shape: str, path: str | None) -> dict:
@@ -146,7 +182,7 @@ def answer_data(answer: str | None, shape: str, path: str | None) -> dict:
     try:
         return closed_static_data(shape, _as_shape_input(shape, _at_path(parsed, path)))
     except (TypeError, ValueError, KeyError, AttributeError) as exc:
-        raise LiveError("invalid_result") from exc
+        raise SourceError("invalid_result") from exc
 
 
 # ── Each type ────────────────────────────────────────────────────────────────
@@ -166,7 +202,8 @@ async def _assignment(db: AsyncSession, user_id: uuid.UUID, options: dict) -> di
     assignment = await find_user_assignment(db, user_id, str(options.get("assignment_id")), await _group_ids(db, user_id))
     if assignment is None:
         return _error("access_denied")
-    run = (
+    history = options.get("history")
+    runs = (
         await db.execute(
             select(AssignmentRun)
             .where(
@@ -176,9 +213,12 @@ async def _assignment(db: AsyncSession, user_id: uuid.UUID, options: dict) -> di
                 run_visible_filter(user_id),
             )
             .order_by(AssignmentRun.created_at.desc())
-            .limit(1)
+            .limit(int(history) if history else 1)
         )
-    ).scalar_one_or_none()
+    ).scalars().all()
+    if history:
+        return _trend(assignment, list(reversed(runs)), options)
+    run = runs[0] if runs else None
     if run is None or not (run.result_summary or "").strip():
         return _error("no_result")
     shape = options.get("shape") or "text"
@@ -209,6 +249,23 @@ def _variables_disabled() -> bool:
     from app.core.security_options import security_option
 
     return bool(security_option("disable_custom_variables"))
+
+
+def _trend(assignment, runs: list, options: dict) -> dict:
+    """The figure of each run's answer (at ``path``) as one series over the runs' completion times, oldest first;
+    a run whose answer holds no figure is left out."""
+    points = []
+    for run in runs:
+        try:
+            value = answer_data(run.result_summary, "number", options.get("path")).get("value")
+        except LiveError:
+            continue
+        if isinstance(value, int | float):
+            points.append({"x": (run.completed_at or run.created_at).isoformat(), "y": value})
+    if not points:
+        return _error("no_result")
+    name = options.get("path") or getattr(assignment, "name", "") or "value"
+    return _ok("series", closed_static_data("series", {"series": [{"name": str(name)[:80], "points": points}]}), runs[-1].completed_at)
 
 
 async def _variable(db: AsyncSession, user_id: uuid.UUID, options: dict) -> dict:
@@ -279,15 +336,22 @@ async def read_source(
     tokens: dict | None = None,
     fresh: bool = False,
     marking_ceiling: tuple[str, ...] = (),
+    use_snapshots: bool = True,
 ) -> dict:
     """One data source of *definition* as *user_id* sees it, *tokens* put in (see the module docstring); *fresh*,
-    a platform read again rather than its answer kept a minute; under a published link's *marking_ceiling*."""
+    a platform read again rather than its answer kept a minute; under a published link's *marking_ceiling*.
+
+    A source refreshed on the server (``refreshMode`` ``server`` / ``manual``) of a stored dashboard
+    (*dashboard_id*) is its snapshot, read with its publisher's access (``dashboard_refresh``); the scheduler
+    reading it passes *use_snapshots* off, and a published link's ceiling always reads it as the link does.
+    """
     from app.services.dashboard_tokens import TokensWaitingError
 
     try:
         return await _read_source(
-            db, user_id, definition, source_id, range_key, dashboard_id, depth, tokens or {}, fresh, marking_ceiling
-        )
+            db, user_id, definition, source_id, range_key, dashboard_id, depth, tokens or {}, fresh, marking_ceiling,
+            use_snapshots and not marking_ceiling,
+        )  # fmt: skip
     except TokensWaitingError:
         return _error("waiting")
 
@@ -303,6 +367,7 @@ async def _read_source(
     tokens: dict,
     fresh: bool = False,
     marking_ceiling: tuple[str, ...] = (),
+    use_snapshots: bool = False,
 ) -> dict:
     from app.services.dashboard_definition import MAX_CHAIN_DEPTH, optional_tokens
     from app.services.dashboard_live import read_widget_data, request_for
@@ -313,6 +378,12 @@ async def _read_source(
         return _error("unsupported")
     options = source.get("options") if isinstance(source.get("options"), dict) else {}
     kind = source.get("type")
+    if use_snapshots and dashboard_id is not None:
+        from app.services.dashboard_refresh import snapshot_of
+
+        snapshot = await snapshot_of(db, dashboard_id, source_id, source)
+        if snapshot is not None:
+            return snapshot
     if kind == "static":
         return _ok(str(options.get("shape")), options.get("data") or {})
     if kind == "platform":
@@ -333,10 +404,15 @@ async def _read_source(
         return await _variable(db, user_id, options)
     if kind == "ask":
         return await _ask(dashboard_id, source_id, user_id, options)
+    if kind == "integration":
+        return await _integration(db, user_id, options, fresh=fresh)
+    if kind == "knowledge":
+        return await _knowledge(db, user_id, options)
     if kind == "derived":
         parent = await _read_source(
-            db, user_id, definition, str(options.get("extends")), range_key, dashboard_id, depth + 1, tokens, fresh, marking_ceiling
-        )
+            db, user_id, definition, str(options.get("extends")), range_key, dashboard_id, depth + 1, tokens, fresh, marking_ceiling,
+            use_snapshots,
+        )  # fmt: skip
         if parent.get("status") != "ok":
             return parent
         steps = put_in_filters(options.get("steps") or [], tokens)
@@ -344,10 +420,252 @@ async def _read_source(
             shape, data = run_pipeline(_STEPS.validate_python(steps), parent["shape"], parent["data"])
         except (PipelineError, ValidationError, LiveError, ValueError, TypeError, KeyError) as exc:
             logger.info("Derived source %s: %s", source_id, str(exc)[:200])
-            return _error("invalid_result")
+            # Which step does not apply and why, in the pipeline's own closed words: what the studio tells the agent
+            # writing it (``describe_read``); a viewer's page reads the code alone.
+            reason = str(exc)[:240] if isinstance(exc, PipelineError) else None
+            return {**_error("invalid_result"), **({"detail": reason} if reason else {})}
         # A derived result is not what the module draws: its presentation stays with its parent.
         return {**parent, "shape": shape, "data": data, "presentation": None}
     return _error("unsupported")
+
+
+# ── An integration's read tool ───────────────────────────────────────────────
+
+#: How long a read tool may take before the source answers ``timeout``.
+INTEGRATION_TIMEOUT_SECONDS = 30
+#: How much of what an integration tool answered in error goes with the code, as ``detail``.
+DETAIL_CHARS = 300
+
+
+#: The statuses of an integration a source can read through.
+_USABLE_STATUSES = ("connected", "configured")
+
+
+async def _integration_tools(db: AsyncSession, user_id: uuid.UUID, integration_id: object):
+    """The tools of the integration *user_id* may use with their own credential: ``(definitions, executor)``;
+    :class:`LiveError` (a fixed code) otherwise."""
+    from fastapi import HTTPException
+
+    from app.api.v1.helpers import get_user_integration
+    from app.services.integration_tools import BindingBasis, ToolBindings, build_integration_tools
+    from app.services.integration_user_credentials import usable_credential_holder
+
+    try:
+        integration = await get_user_integration(db, user_id, str(integration_id), await _group_ids(db, user_id))
+        await usable_credential_holder(db, integration, user_id)
+    except HTTPException as exc:
+        raise SourceError("integration_unavailable" if exc.status_code == 404 else "access_denied") from None
+    if integration.status not in _USABLE_STATUSES:
+        raise SourceError("integration_unavailable")
+    return await build_integration_tools(
+        db,
+        ToolBindings({integration.provider: str(integration.id)}, basis=BindingBasis.CALLER_CHECKED, reason="the dashboard reader's own integration access"),
+        context={"source": "dashboard", "integration": integration.name, "credential_user_id": str(user_id)},
+    )
+
+
+async def read_tools(db: AsyncSession, user_id: uuid.UUID, integration_id: object) -> list:
+    """The tools of an integration an ``integration`` source may call for *user_id*: those that only read."""
+    from app.services.tool_classification import definition_tool_type
+
+    definitions, _executor = await _integration_tools(db, user_id, integration_id)
+    return [d for d in definitions if definition_tool_type(d) == "read"]
+
+
+async def readable_integrations(db: AsyncSession, user_id: uuid.UUID) -> list:
+    """The integrations *user_id* sees that a source can read through (connected or configured), by name."""
+    from sqlalchemy import select
+
+    from app.api.v1.helpers import user_visible_filter
+    from app.models.integration import Integration
+
+    rows = await db.execute(
+        select(Integration)
+        .where(Integration.status.in_(_USABLE_STATUSES), user_visible_filter(Integration, user_id, await _group_ids(db, user_id)))
+        .order_by(Integration.name)
+    )
+    return list(rows.scalars())
+
+
+async def readable_documents(db: AsyncSession, user_id: uuid.UUID, knowledge_base_id: object = None) -> list[tuple]:
+    """``(knowledge base, document)`` pairs *user_id* reads - in one base when *knowledge_base_id* is given -,
+    the same visibility a ``knowledge`` source reads with (:func:`_readable_document`)."""
+    from sqlalchemy import select
+
+    from app.api.v1.helpers import user_visible_filter
+    from app.models.knowledge_base import KnowledgeBase, KnowledgeDocument
+
+    query = (
+        select(KnowledgeBase, KnowledgeDocument)
+        .join(KnowledgeDocument, KnowledgeDocument.knowledge_base_id == KnowledgeBase.id)
+        .where(user_visible_filter(KnowledgeBase, user_id, await _group_ids(db, user_id)))
+        .order_by(KnowledgeBase.name, KnowledgeDocument.filename)
+    )
+    if knowledge_base_id is not None:
+        query = query.where(KnowledgeBase.id == knowledge_base_id)
+    return [(kb, doc) for kb, doc in (await db.execute(query)).all()]
+
+
+async def _read_tool(db: AsyncSession, user_id: uuid.UUID, integration_id: object, tool: str):
+    """The integration *user_id* may use with their own credential and its read tool *tool*:
+    ``(definition, executor)``; :class:`LiveError` (a fixed code) otherwise."""
+    from app.services.tool_classification import definition_tool_type
+
+    definitions, executor = await _integration_tools(db, user_id, integration_id)
+    definition = next((d for d in definitions if d.name == tool), None)
+    if definition is None:
+        raise SourceError("integration_unavailable")
+    if definition_tool_type(definition) != "read":
+        # A dashboard only reads: a tool that may change something is never called from one.
+        raise SourceError("unsupported")
+    return definition, executor
+
+
+async def _integration(db: AsyncSession, user_id: uuid.UUID, options: dict, *, fresh: bool = False) -> dict:
+    import asyncio
+
+    from app.services.dashboard_live import _cache_get, _cache_set, _enforce_rate, _Slot
+    from app.tools.agent_loop import validate_tool_arguments
+    from app.tools.base import ToolCall
+
+    tool = str(options.get("tool") or "")
+    arguments = options.get("arguments") if isinstance(options.get("arguments"), dict) else {}
+    key = "dash:integration:" + hashlib.sha256(
+        json.dumps([str(user_id), str(options.get("integration_id")), tool, arguments, options.get("shape"), options.get("path")], sort_keys=True, default=str).encode()
+    ).hexdigest()
+    if not fresh:
+        cached = await _cache_get(key)
+        if cached is not None:
+            return cached
+    try:
+        definition, executor = await _read_tool(db, user_id, options.get("integration_id"), tool)
+        if validate_tool_arguments(tool, arguments, definition.input_schema):
+            raise SourceError("invalid_result")
+        await _enforce_rate(user_id)
+        async with _Slot(str(user_id)):
+            result = await asyncio.wait_for(
+                executor.execute_tool(ToolCall(id="dashboard", name=tool, arguments=arguments)), timeout=INTEGRATION_TIMEOUT_SECONDS
+            )
+    except LiveError as exc:
+        return _error(exc.code)
+    except TimeoutError:
+        return _error("timeout")
+    except Exception as exc:
+        logger.warning("Integration source failed (%s): %r", tool, str(exc)[:200])
+        return _error("upstream_error")
+    if result.is_error:
+        # What the tool said goes with the code: "nothing found" and "wrong argument" call for different fixes.
+        said = str(result.content).strip().removeprefix("Error:").strip()[:DETAIL_CHARS]
+        logger.info("Integration source %s answered an error: %s", tool, said[:200])
+        return {**_error("upstream_error"), **({"detail": said} if said else {})}
+    try:
+        answer = _ok(str(options.get("shape") or "rows"), answer_data(result.content, str(options.get("shape") or "rows"), options.get("path")))
+    except LiveError as exc:
+        return _error(exc.code)
+    await _cache_set(key, answer)
+    return answer
+
+
+# ── A table kept in a knowledge base ─────────────────────────────────────────
+
+_MD_RULE = re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$")
+_NUMBER = re.compile(r"^-?\d+(?:\.\d+)?$")
+
+
+def _cell(value: str) -> Any:
+    text = value.strip()
+    if _NUMBER.match(text):
+        return float(text) if "." in text else int(text)
+    return text
+
+
+def _rows_of(header: list[str], lines: list[list[str]]) -> list[dict]:
+    return [{name: _cell(cells[i]) if i < len(cells) else "" for i, name in enumerate(header)} for cells in lines]
+
+
+def table_value(text: str, table_format: str = "auto") -> Any:
+    """What a document's table holds: JSON as written, or the rows of JSON lines, CSV or a Markdown table.
+
+    :class:`LiveError` ``invalid_result`` when it is none of them.
+    """
+    import csv
+    import io
+
+    body = text.strip()
+    if table_format in ("auto", "json"):
+        try:
+            return _json_in(body)
+        except LiveError:
+            if table_format == "json":
+                raise
+    lines = [line for line in body.splitlines() if line.strip()]
+    if table_format in ("auto", "jsonl") and lines:
+        try:
+            values = [json.loads(line) for line in lines]
+            if all(isinstance(v, dict) for v in values):
+                return values
+        except ValueError:
+            pass
+        if table_format == "jsonl":
+            raise SourceError("invalid_result")
+    if table_format in ("auto", "markdown"):
+        table = [line.strip() for line in lines if line.strip().startswith("|")]
+        if len(table) >= 2 and _MD_RULE.match(table[1]):
+            split = [[c.strip() for c in row.strip("|").split("|")] for row in table]
+            return _rows_of(split[0], [r for r in split[2:]])
+        if table_format == "markdown":
+            raise SourceError("invalid_result")
+    if table_format in ("auto", "csv") and len(lines) >= 2 and "," in lines[0]:
+        parsed = list(csv.reader(io.StringIO("\n".join(lines))))
+        return _rows_of([h.strip() for h in parsed[0]], parsed[1:])
+    raise SourceError("invalid_result")
+
+
+async def _readable_document(db: AsyncSession, user_id: uuid.UUID, options: dict):
+    """The knowledge base document *user_id* reads, or :class:`LiveError`."""
+    from fastapi import HTTPException
+    from sqlalchemy import select
+
+    from app.api.v1.helpers import get_user_knowledge_base
+    from app.models.knowledge_base import KnowledgeDocument
+
+    try:
+        kb = await get_user_knowledge_base(db, user_id, str(options.get("knowledge_base_id")), await _group_ids(db, user_id))
+    except HTTPException:
+        raise SourceError("access_denied") from None
+    document = (
+        await db.execute(
+            select(KnowledgeDocument).where(
+                KnowledgeDocument.id == uuid.UUID(str(options.get("document_id"))), KnowledgeDocument.knowledge_base_id == kb.id
+            )
+        )
+    ).scalar_one_or_none()
+    if document is None:
+        raise SourceError("access_denied")
+    return document
+
+
+async def _knowledge(db: AsyncSession, user_id: uuid.UUID, options: dict) -> dict:
+    from app.services.kb_sections import SectionError, find_section
+
+    try:
+        document = await _readable_document(db, user_id, options)
+        text = document.content or ""
+        if options.get("section"):
+            try:
+                heading = find_section(text, options["section"])
+            except SectionError:
+                return _error("invalid_result")
+            text = text[heading.start : heading.end]
+            # The heading line is the section's name, not a row.
+            text = text.split("\n", 1)[1] if "\n" in text else ""
+        shape = str(options.get("shape") or "rows")
+        value = _at_path(table_value(text, str(options.get("format") or "auto")), options.get("path"))
+        return _ok(shape, closed_static_data(shape, _as_shape_input(shape, value)), document.updated_at if getattr(document, "updated_at", None) else None)
+    except LiveError as exc:
+        return _error(exc.code)
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return _error("invalid_result")
 
 
 # ── Asking an agent ──────────────────────────────────────────────────────────
@@ -479,6 +797,20 @@ async def check_source_references(db: AsyncSession, user_id: uuid.UUID | None, p
             agent = await _visible_agent(db, user_id, options.get("agent_id"))
             if agent is None or agent.enabled is False or getattr(agent, "disable_chat", False):
                 raise DashboardSpecError(f"Data source '{sid}': agent_id is not an agent you can chat with.")
+        elif kind == "integration":
+            try:
+                await _read_tool(db, user_id, options.get("integration_id"), str(options.get("tool") or ""))
+            except LiveError as exc:
+                reason = {
+                    "unsupported": "it is not a tool that only reads",
+                    "access_denied": "you cannot use this integration with your own account",
+                }.get(exc.code, "it is not a tool of an integration you can use")
+                raise DashboardSpecError(f"Data source '{sid}': tool '{options.get('tool')}': {reason}.") from None
+        elif kind == "knowledge":
+            try:
+                await _readable_document(db, user_id, options)
+            except LiveError:
+                raise DashboardSpecError(f"Data source '{sid}': document_id is not a document of a knowledge base you read.") from None
         elif kind == "variable":
             if _variables_disabled():
                 raise DashboardSpecError(f"Data source '{sid}': custom variables are disabled on this platform.")

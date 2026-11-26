@@ -281,6 +281,27 @@ async def test_read_schema_refuses_an_integration_the_person_cannot_use(monkeypa
     assert answer == {"status": "error", "code": "integration_unavailable"}
 
 
+async def test_a_search_narrows_the_lists_a_platform_answers_whole(monkeypatch, transport):
+    # filterKeysSchema has no search: the agent looking for ``regardingOf`` asked with one and got every key.
+    from app.services import dashboard_live, platform_access
+
+    async def client(db, user_id, integration_id, source):
+        return CTI
+
+    async def nothing(*_a, **_k):
+        return None
+
+    monkeypatch.setattr(platform_access, "resolve_platform_client", client)
+    monkeypatch.setattr(dashboard_live, "_cache_get", nothing)
+    monkeypatch.setattr(dashboard_live, "_cache_set", nothing)
+    monkeypatch.setattr(dashboard_live, "_enforce_rate", nothing)
+    transport({"data": FILTER_KEYS}, {"data": FILTER_KEYS})
+    narrowed = await schema.read_schema(None, uuid.uuid4(), uuid.uuid4(), "opencti", "filter_keys", {"perspective": "entities", "search": "AUTH"})
+    whole = await schema.read_schema(None, uuid.uuid4(), uuid.uuid4(), "opencti", "filter_keys", {"perspective": "entities"})
+    assert [k["key"] for k in narrowed["items"]] == ["createdBy"]
+    assert len(whole["items"]) > 1
+
+
 async def test_opencrq_answers_its_metric_catalog_without_asking_it():
     from app.services.dashboard_platform.opencrq import METRICS
 
@@ -366,3 +387,31 @@ def test_every_new_editor_widget_is_kept_as_written(source, native):
         if native["widget_config"]["widget_configuration_type"] in ("structural-histogram", "list"):
             expected["widget_config"].setdefault("limit", 100)
         assert _without_defaults(checked) == expected
+
+
+async def test_an_export_page_gets_its_entity_inputs_named(monkeypatch):
+    """An export's page has no session to search a platform: its entity input showed the entity's id."""
+    cti = str(uuid.uuid4())
+    asked: list[tuple] = []
+
+    async def _read(db, user_id, integration_id, source, kind, params):
+        asked.append((str(integration_id), source, kind, params))
+        return {"status": "ok", "items": [{"value": "is-1", "label": "Lazarus Group"}, {"value": "other", "label": "Not asked"}]}
+
+    monkeypatch.setattr(schema, "read_schema", _read)
+    definition = {
+        "inputs": {
+            "pick": {"type": "input.entity", "token": "actor", "defaultValue": "is-1",
+                     "options": {"source": "opencti", "integration_id": cti, "entityTypes": ["Intrusion-Set"]}},
+            "none": {"type": "input.entity", "token": "unset", "options": {"source": "opencti", "integration_id": cti, "entityTypes": ["Country"]}},
+            "text": {"type": "input.text", "token": "q", "defaultValue": "is-1"},
+        }
+    }  # fmt: skip
+    assert await schema.entity_input_names(None, uuid.uuid4(), definition) == {"is-1": "Lazarus Group"}
+    assert asked == [(cti, "opencti", "entities", {"types": ["Intrusion-Set"], "ids": ["is-1"]})]
+
+    async def _refused(*_a):
+        return {"status": "error", "code": "access_denied"}
+
+    monkeypatch.setattr(schema, "read_schema", _refused)
+    assert await schema.entity_input_names(None, uuid.uuid4(), definition) == {}

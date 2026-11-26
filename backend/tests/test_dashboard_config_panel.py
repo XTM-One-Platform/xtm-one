@@ -1,7 +1,7 @@
 """What the Dashboard Studio's configuration panel and toolbar write, as the definition keeps it.
 
 The panel (``frontend/src/components/custom-dashboard/viz-config.ts``) writes a
-colour by ranges as Splunk's ``> majorValue | rangeValue(<key>EditorConfig)``
+colour by ranges as the dynamic option ``> majorValue | rangeValue(<key>EditorConfig)``
 with the ranges in the visualization's ``context``, series colours, gauge
 ranges, a trellis, the panel chrome, a type switched with the options the new
 type takes; the toolbar adds a chart on sample data written in the dashboard

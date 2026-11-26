@@ -49,6 +49,7 @@ import { VizNote } from "./VizNote";
 
 const MapViz = lazy(() => import("./MapViz"));
 const GraphViz = lazy(() => import("./GraphViz"));
+const AttackFlow = lazy(() => import("./AttackFlow"));
 
 type OkData = Extract<WidgetData, { status: "ok" }>;
 
@@ -161,6 +162,13 @@ export default function StudioViz({
         </Suspense>
       );
     }
+    case "attackflow":
+      if (data.shape !== "graph" || data.data.nodes.length === 0) return misfit("graph");
+      return (
+        <Suspense fallback={lazyFallback}>
+          <Measured height={height}>{(box) => <AttackFlow graph={data.data} width={box.width} height={box.height} />}</Measured>
+        </Suspense>
+      );
     case "sankey": {
       const graph = data.shape === "graph" ? data.data : data.shape === "rows" ? rowsToGraph(data.data, options) : null;
       if (!graph || graph.edges.length === 0) return misfit("graph");

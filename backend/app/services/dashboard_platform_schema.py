@@ -35,6 +35,9 @@ Each is one :func:`read_schema` call, ``kind`` naming the question:
                           (an OpenCTI custom view's "current entity").
 ========================  =====================================================
 
+The platform lists entity types, filter keys, attributes and saved filters
+whole: a ``search`` narrows them here, on the key and its label.
+
 The same rules as reading a widget: the person's own access to the
 integration (``platform_access.resolve_platform_client``, no admin bypass),
 the per-person rate and concurrency limits and the bounded transport of
@@ -62,6 +65,8 @@ from app.services.dashboard_live.opencti_entities import entity_label
 logger = logging.getLogger(__name__)
 
 KINDS = ("entity_types", "filter_keys", "attributes", "values", "labels", "entities", "saved_filters")
+# The kinds a platform answers whole, whatever ``search`` says.
+_LISTED_WHOLE = ("entity_types", "filter_keys", "attributes", "saved_filters")
 MAX_ITEMS = 500
 MAX_VALUES = 100
 
@@ -470,9 +475,51 @@ async def read_schema(
     except Exception as exc:
         logger.warning("Dashboard schema failed (%s %s %s): %r", source, integration_id, kind, str(exc)[:200])
         return {"status": "error", "code": "upstream_error"}
+    if kind in _LISTED_WHOLE and params.get("search"):
+        # The platform lists these whole: ``search`` narrows them here, on the key and its label.
+        needle = str(params["search"]).lower()
+        items = [i for i in items if any(needle in str(i.get(f) or "").lower() for f in ("value", "key", "label"))]
     result: dict[str, Any] = {"status": "ok", "items": items}
     await _cache_set(key, result)
     return result
 
 
-__all__ = ["AEV_ENTITIES", "AEV_VALUE_ENDPOINTS", "KINDS", "read_schema"]
+async def entity_input_names(db: AsyncSession, user_id: uuid.UUID, definition: dict) -> dict[str, str]:
+    """The names of the entities the dashboard's entity inputs start on (``dashboard_tokens.starting_tokens``),
+    by id, read as *user_id* reads them: what a page without a session (an export's) shows in place of the ids.
+
+    An input its integration or its platform does not name keeps its id: nothing here fails the page.
+    """
+    from app.services.dashboard_tokens import starting_tokens
+
+    try:
+        tokens = starting_tokens(definition)
+    except ValueError:
+        return {}
+    names: dict[str, str] = {}
+    for entry in (definition.get("inputs") or {}).values():
+        if not isinstance(entry, dict) or entry.get("type") != "input.entity":
+            continue
+        options = entry.get("options") or {}
+        value = tokens.get(str(entry.get("token")))
+        ids = [value] if isinstance(value, str) else value if isinstance(value, list) else []
+        integration = _uuid(options.get("integration_id"))
+        source = options.get("source")
+        if not ids or integration is None or source not in ("opencti", "openaev", "opencrq"):
+            continue
+        params = {"types": [str(t) for t in options.get("entityTypes") or []][:10] or None, "ids": [str(i) for i in ids][:50]}
+        result = await read_schema(db, user_id, integration, source, "entities", {k: v for k, v in params.items() if v})
+        for item in result.get("items") or [] if result.get("status") == "ok" else []:
+            if isinstance(item, dict) and item.get("value") in ids and item.get("label"):
+                names[str(item["value"])] = str(item["label"])
+    return names
+
+
+def _uuid(value: object) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        return None
+
+
+__all__ = ["AEV_ENTITIES", "AEV_VALUE_ENDPOINTS", "KINDS", "entity_input_names", "read_schema"]

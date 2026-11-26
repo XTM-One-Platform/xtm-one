@@ -277,7 +277,7 @@ test("a tab switches between a grid and a canvas; a canvas holding elements stay
   assert.deepEqual(canvas.layout.layoutDefinitions.grid, {
     type: "absolute",
     options: { width: 1440, height: 960 },
-    structure: [{ item: "brief", type: "block", position: { x: 0, y: 0, w: 1440, h: 144 } }],
+    structure: [{ item: "brief", type: "block", position: { x: 0, y: 0, w: 1440, h: 328 } }],
   });
   const back = setTabType(canvas, "grid", "grid")! as Raw;
   assert.deepEqual(back.layout.layoutDefinitions.grid.structure, [{ item: "brief", type: "block", position: { x: 0, y: 0, w: 12, h: 4 } }]);

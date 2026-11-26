@@ -10495,6 +10495,12 @@ async def trigger_assignment(
     an assignment that is not company-managed and whose owner's account is
     deactivated.
     """
+    if trigger_context and trigger_context.get("type") in ("integration_event", "webhook"):
+        # The dashboard sources read again on this integration event, whatever becomes of the run
+        # (``dashboard_refresh``: no model call, so before the AI gates).
+        from app.services.dashboard_refresh import hear_integration_event
+
+        await hear_integration_event(trigger_context)
     await _refuse_if_ai_disabled(assignment)
     await _refuse_if_group_ai_disabled(_run_person(assignment, triggered_by_user_id, agent))
     payload = _with_partner_scope(payload)

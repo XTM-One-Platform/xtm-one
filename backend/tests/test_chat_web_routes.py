@@ -582,7 +582,9 @@ def test_a_new_session_is_a_new_conversation(monkeypatch):
 def restore(monkeypatch):
     from app.api.v1 import platform as platform_module
 
-    async def _window(_db, _user, conv, *, supports_artifacts):
+    async def _window(_db, _user, conv, *, supports_artifacts, keep_dashboards=False):
+        # The web panel draws a dashboard's marker as the dashboard: always kept here.
+        assert keep_dashboards is True
         return platform_module.PlatformChatSessionResponse(conversation_id=str(conv.id), messages=[]), True
 
     monkeypatch.setattr(platform_module, "restore_chat_session_window", _window)

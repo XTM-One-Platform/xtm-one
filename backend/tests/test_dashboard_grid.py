@@ -28,23 +28,24 @@ def test_widgets_without_a_layout_are_placed_in_rows_by_their_width():
         {"title": "T", "widgets": [_text("a", width="half"), _text("b", width="third"), _text("c", width="third"), _text("d")]}
     )
     assert _cells(spec) == [
-        ("a", {"x": 0, "y": 0, "w": 6, "h": 4}),
-        ("b", {"x": 6, "y": 0, "w": 4, "h": 4}),
-        ("c", {"x": 0, "y": 4, "w": 4, "h": 4}),
-        ("d", {"x": 0, "y": 8, "w": 12, "h": 4}),
+        ("a", {"x": 0, "y": 0, "w": 6, "h": 2}),
+        ("b", {"x": 6, "y": 0, "w": 4, "h": 2}),
+        ("c", {"x": 0, "y": 2, "w": 4, "h": 2}),
+        ("d", {"x": 0, "y": 4, "w": 12, "h": 2}),
     ]
 
 
 def test_a_new_widget_without_a_layout_goes_below_the_placed_ones():
     widgets = [_text("a", layout={"x": 6, "y": 2, "w": 6, "h": 5}), _text("b", width="half")]
-    assert [w["layout"] for w in fill_layouts(widgets)] == [{"x": 6, "y": 2, "w": 6, "h": 5}, {"x": 0, "y": 7, "w": 6, "h": 4}]
+    assert [w["layout"] for w in fill_layouts(widgets)] == [{"x": 6, "y": 2, "w": 6, "h": 5}, {"x": 0, "y": 7, "w": 6, "h": 2}]
 
 
 def test_a_platform_widget_is_as_tall_as_its_view():
-    assert default_rows({"kind": "platform", "view": "number"}) == 6
-    assert default_rows({"kind": "platform", "view": "table"}) == 8
-    assert default_rows({"kind": "platform", "view": "line", "size": "l"}) == 10
-    assert default_rows({"kind": "platform", "view": None}) == 4
+    # Rows of OpenCTI's grid (82 px).
+    assert default_rows({"kind": "platform", "view": "number"}) == 3
+    assert default_rows({"kind": "platform", "view": "table"}) == 4
+    assert default_rows({"kind": "platform", "view": "line", "size": "l"}) == 5
+    assert default_rows({"kind": "platform", "view": None}) == 2
 
 
 def test_widgets_are_stored_in_reading_order():
@@ -100,9 +101,9 @@ def test_a_move_re_flows_the_grid_in_the_new_order_keeping_sizes():
     spec = validate_spec({"title": "T", "widgets": [_text("a", width="half"), _text("b", width="half"), _text("c")]})
     moved = apply_operations(spec, [{"op": "move", "id": "c", "after": "start"}])
     assert _cells(moved) == [
-        ("c", {"x": 0, "y": 0, "w": 12, "h": 4}),
-        ("a", {"x": 0, "y": 4, "w": 6, "h": 4}),
-        ("b", {"x": 6, "y": 4, "w": 6, "h": 4}),
+        ("c", {"x": 0, "y": 0, "w": 12, "h": 2}),
+        ("a", {"x": 0, "y": 2, "w": 6, "h": 2}),
+        ("b", {"x": 6, "y": 2, "w": 6, "h": 2}),
     ]
 
 
@@ -120,7 +121,7 @@ def test_an_older_dashboard_is_shown_placed_without_changing_what_is_stored():
     stored = {"title": "T", "widgets": [{"kind": "text", "id": "a", "body": "a", "width": "half"}]}
     before = copy.deepcopy(stored)
     shown = with_layouts(stored)
-    assert shown["widgets"][0]["layout"] == {"x": 0, "y": 0, "w": 6, "h": 4}
+    assert shown["widgets"][0]["layout"] == {"x": 0, "y": 0, "w": 6, "h": 2}
     assert stored == before
 
 

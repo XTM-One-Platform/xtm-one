@@ -31,15 +31,15 @@ import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { DashboardLayout } from "@/types";
 import {
+  DEFAULT_GRID_ROWS,
   GRID_COLUMNS,
-  GRID_MARGIN,
-  GRID_ROW_HEIGHT,
   MAX_WIDGET_HEIGHT,
   addWidget,
   isDefaultLayout,
   readingOrder,
   removeWidget,
   withGridItems,
+  type GridRows,
   type WidgetRegistry,
 } from "./layout";
 import { keyboardMove, keyboardResize } from "./grid-keyboard";
@@ -112,6 +112,7 @@ export function DashboardGrid<Id extends string>({
   selection,
   hideEditBar = false,
   configure,
+  rows = DEFAULT_GRID_ROWS,
 }: {
   /** The dashboard's widgets, with their default places and minimum sizes. */
   registry: WidgetRegistry<Id>;
@@ -138,6 +139,8 @@ export function DashboardGrid<Id extends string>({
    *  dev-docs/ctem-stage-viz.md 8.3): a gear on their edit handle opens them,
    *  and "Overridden" marks the ones that set a value of their own. */
   configure?: { ids: readonly Id[]; overridden: ReadonlySet<Id>; onOpen: (id: Id) => void };
+  /** The rows' height and gap: the platform's dashboards keep their own, a custom dashboard takes OpenCTI's. */
+  rows?: GridRows;
 }) {
   const { t_i18n } = useFormatter();
   const { width, mounted, containerRef } = useContainerWidth({ measureBeforeMount: true });
@@ -357,8 +360,8 @@ export function DashboardGrid<Id extends string>({
             layout={gridLayout}
             gridConfig={{
               cols: GRID_COLUMNS,
-              rowHeight: GRID_ROW_HEIGHT,
-              margin: [GRID_MARGIN, GRID_MARGIN],
+              rowHeight: rows.rowHeight,
+              margin: [rows.margin, rows.margin],
               containerPadding: [0, 0],
             }}
             dragConfig={{ enabled: editing, cancel: `.${NO_DRAG}` }}

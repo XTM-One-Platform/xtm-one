@@ -15,7 +15,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /**
  * The `lineArea` and `bars` kinds: area, line, column and bar charts, with
- * Splunk Dashboard Studio's options: stack modes, overlay series and a second
+ * their options: stack modes, overlay series and a second
  * axis, data labels, legend, axis titles / scale / bounds, null handling,
  * series and point colours, annotations from a secondary data source, a brush
  * to zoom, and long series downsampled to the width they are drawn in.

@@ -13,7 +13,7 @@
 
 """Tokens of a dashboard: the values its inputs set, put into its data sources.
 
-Like Splunk Dashboard Studio, a definition refers to a token as ``$name$``
+A definition refers to a token as ``$name$``
 (``$name|s$`` and the other filters are the page's: they say how a value is
 written into text or a URL). The page holds the tokens - inputs, buttons,
 defaults, computed expressions, the viewer's environment, a source's result -
@@ -28,8 +28,8 @@ bounded). The server puts them into the source, never into query text:
   or JSON fields;
 - a platform source's ``range``: a range key, or the token holding one.
 
-A source that uses a token with no value waits (code ``waiting``), as a
-Splunk search waits for its input - but for an optional token (an entity
+A source that uses a token with no value waits (code ``waiting``) until
+its input is set - but for an optional token (an entity
 input that is not required): a filter whose values are only such tokens, none
 set, is left out, as OpenAEV reads a dashboard parameter nobody picked.
 """
@@ -78,6 +78,36 @@ class TokenValues(BaseModel):
             if isinstance(value, list) and len(value) > MAX_LIST:
                 raise ValueError(f"token '{name}' holds more than {MAX_LIST} values")
         return values
+
+
+def default_tokens(definition: dict) -> dict[str, Any]:
+    """The tokens a page starts with: ``defaults.tokens.default``, then each input's ``defaultValue`` - what a
+    published link's snapshot, an export and an agent checking the dashboard read it with, as a viewer opening it."""
+
+    tokens: dict[str, Any] = {}
+    defaults = ((definition.get("defaults") or {}).get("tokens") or {}).get("default") or {}
+    for name, entry in defaults.items():
+        value = entry.get("value") if isinstance(entry, dict) else None
+        if NAME_RE.match(str(name)) and value is not None:
+            tokens[str(name)] = value
+    for entry in (definition.get("inputs") or {}).values():
+        token, value = entry.get("token"), entry.get("defaultValue")
+        if isinstance(token, str) and NAME_RE.match(token) and value is not None:
+            tokens[token] = value
+    cleaned: dict[str, Any] = {}
+    for name, value in tokens.items():
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int | float):
+            value = str(value)
+        if isinstance(value, str) or (isinstance(value, list) and all(isinstance(v, str) for v in value)):
+            cleaned[name] = value
+    return cleaned
+
+
+def starting_tokens(definition: dict) -> dict[str, Any]:
+    """:func:`default_tokens`, bounded as a page's tokens are (:class:`TokenValues`); ``ValueError`` when they are not."""
+    return TokenValues(values=default_tokens(definition)).values
 
 
 def names_in(value: object) -> set[str]:

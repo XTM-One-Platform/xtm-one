@@ -23,6 +23,7 @@ PINNED_GROUPS = {
     "generate_presentation",
     "generate_report",
     "video_studio",
+    "custom_dashboards",
     "design",
     "code_interpreter",
     "web",
@@ -102,3 +103,23 @@ def test_the_migration_revises_the_previous_head():
     migration = _migration()
     assert migration.revision == "q8317gadflt"
     assert migration.down_revision == "p8270platgrp"
+
+
+def _dashboards_migration():
+    path = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "s1925gadash01_add_custom_dashboards_to_ga_tools.py"
+    spec = importlib.util.spec_from_file_location("s1925gadash01", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_dashboards_migration_adds_the_dashboard_tool_once():
+    migration = _dashboards_migration()
+    assert set(migration.ADDED_TOOL_IDS) <= set(DEFAULT_GA_BUILTIN_TOOL_IDS)
+    added = json.loads(migration.with_added_tools(json.dumps(["generate_file"])))
+    assert added == ["generate_file", "custom_dashboards"]
+    assert migration.with_added_tools(json.dumps(added)) is None
+    assert json.loads(migration.with_added_tools(None)) == ["custom_dashboards"]
+    assert migration.with_added_tools("{}") is None
+    assert migration.with_added_tools("not json") is None

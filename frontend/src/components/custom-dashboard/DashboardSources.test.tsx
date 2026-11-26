@@ -175,8 +175,54 @@ describe("DashboardDataSourcesPanel", () => {
       ["Assignment answer", "false"],
       ["Question to an agent", "false"],
       ["Variable", "false"],
+      ["Integration tool", "false"],
+      ["Knowledge base table", "false"],
       ["Derived (steps on a source)", "false"],
     ]);
+  });
+
+  it("creates a knowledge base table read on the server every hour, with the writer's access", async () => {
+    api.get.mockImplementation(async (path: string) =>
+      path.startsWith("/knowledge-bases/kb1/documents")
+        ? [{ id: "doc1", filename: "weekly.md" }]
+        : path.startsWith("/knowledge-bases")
+          ? [{ id: "kb1", name: "SOC data" }]
+          : [],
+    );
+    const edit = open();
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Knowledge base table" }));
+    const dialog = screen.getByTestId("dashboard.sources.new");
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Name" }), { target: { value: "Severity" } });
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "Knowledge base" }));
+    fireEvent.click(await screen.findByRole("option", { name: "SOC data" }));
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "Document" }));
+    fireEvent.click(await screen.findByRole("option", { name: "weekly.md" }));
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Section (optional)" }), { target: { value: "Weekly" } });
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "Read" }));
+    fireEvent.click(await screen.findByRole("option", { name: "On the server, every…" }));
+    expect(within(dialog).getByText(/even those who could not read it themselves/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "Every" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Hour" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(edit.mock.calls.map(([operations]) => operations)).toEqual([
+        [
+          {
+            op: "set",
+            path: "dataSources.ds_severity",
+            value: {
+              type: "knowledge",
+              name: "Severity",
+              options: {
+                knowledge_base_id: "kb1", document_id: "doc1", format: "auto", section: "Weekly", shape: "rows",
+                refreshMode: "server", refresh: "1h",
+              },
+            },
+          },
+        ],
+      ]),
+    );
   });
 
   it("creates a platform widget and places it at once, drawn as its module draws it", async () => {
@@ -229,7 +275,7 @@ describe("DashboardDataSourcesPanel", () => {
     expect(operations[1].value.layoutDefinitions.main.structure.at(-1)).toEqual({
       item: "viz_spare",
       type: "block",
-      position: { x: 0, y: 8, w: 6, h: 6 },
+      position: { x: 0, y: 8, w: 6, h: 3 },
     });
   });
 });

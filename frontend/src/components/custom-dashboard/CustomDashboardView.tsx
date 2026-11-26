@@ -45,6 +45,7 @@ import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type Rea
 import { AlertTriangle, Maximize2, X } from "lucide-react";
 
 import { DashboardGrid } from "@/components/dashboard-grid/DashboardGrid";
+import { OPENCTI_GRID_ROWS } from "@/components/dashboard-grid/layout";
 import { WidgetSizeContext } from "@/components/dashboard-grid/widget-size-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -138,24 +139,32 @@ function ExpandButton({ widget, onExpand, className, shown = false }: { widget: 
   );
 }
 
+/** A title with its first letter raised, in the reader's locale rules (`toLocaleUpperCase`). */
+function firstUpper(text: string): string {
+  return text ? text.charAt(0).toLocaleUpperCase() + text.slice(1) : text;
+}
+
 /** The title as its module writes it when the widget draws with that module's look (OpenCTI, OpenAEV), else XTM One's. */
 function WidgetTitle({ widget, tokens }: { widget: DashboardWidget; tokens: Tokens }) {
   const { t_i18n } = useFormatter();
   const { titleStyle, headerTitle } = frameTitleOptions(widget, useDrawnResult(widget));
   const header = headerTitle ? headerTitleKey(headerTitle) : undefined;
+  const text = header ? t_i18n(header) : (headerTitle ?? fillOrKeep(widget.title ?? "", tokens));
   return (
     <h2
       className={cn(
         "min-w-0",
         // OpenCTI's title wraps onto a second line rather than ending in "...".
         titleStyle === "capitalize" ? "line-clamp-2 break-words" : "truncate",
-        titleStyle === "capitalize" && "capitalize content-compact font-normal text-default-secondary",
+        // The module's quiet title, with its first letter raised - not every word's, which a sentence in French
+        // ("Répartition des malwares par type") or any language would read as a heading in English title case.
+        titleStyle === "capitalize" && "content-compact font-normal text-default-secondary",
         titleStyle === "caps" && "font-heading text-[11px] font-semibold uppercase tracking-[0.08em] text-default-primary opacity-85",
         !titleStyle && "content-base font-semibold text-default-primary",
       )}
       data-title-style={titleStyle ?? "default"}
     >
-      {header ? t_i18n(header) : (headerTitle ?? fillOrKeep(widget.title ?? "", tokens))}
+      {titleStyle === "capitalize" ? firstUpper(text) : text}
     </h2>
   );
 }
@@ -413,6 +422,7 @@ export function CustomDashboardView({
         title={t_i18n("Rearrange the dashboard")}
         editing={Boolean(editing)}
         minWidth={DASHBOARD_GRID_MIN_WIDTH}
+        rows={OPENCTI_GRID_ROWS}
         hideEditBar={editing?.embedded}
         onChange={(next) => {
           if (!next || !editing) return;

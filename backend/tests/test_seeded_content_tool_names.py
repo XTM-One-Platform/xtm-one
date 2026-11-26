@@ -135,7 +135,12 @@ def test_the_citation_pattern_reads_a_backticked_tool_name():
     ]
 
 
-def test_every_tool_a_seeded_skill_or_persona_cites_is_registered():
+def test_every_tool_a_seeded_skill_or_persona_cites_is_registered(monkeypatch):
+    from app.core.config import settings
+
+    # A seeded skill may be offered only behind a feature flag (``FEATURE_GATED_BUILTIN_SKILLS``), with the
+    # tools of that feature: every feature is on, so its tools are registered whatever the deployment runs.
+    monkeypatch.setattr(settings, "enabled_features", "*")
     known = _integration_tool_names() | _builtin_tool_names() | _agent_loop_tool_names()
     unknown = sorted(
         {

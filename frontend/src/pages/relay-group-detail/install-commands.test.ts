@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 
 import {
   RELAY_TARGETS,
+  binaryCommand,
   destinationList,
   installCommand,
   psQuote,
@@ -84,4 +85,18 @@ test("the container commands keep the state on a volume and pin the served versi
 test("only a multi-replica target needs a reusable key", () => {
   for (const target of RELAY_TARGETS) assert.equal(targetNeedsReusableKey(target), false);
   assert.equal(targetNeedsReusableKey("kubernetes", 2), true);
+});
+
+test("without an installer, the binary's own enroll and run commands carry the key, once, in its quotes", () => {
+  const none = { ...INPUT, scripts: { sh: null, ps1: null }, name: "mac local" };
+  const unix = binaryCommand("macos", { ...none, enrollmentKey: "rlenr-a'b" });
+  assert.deepEqual(unix.split("\n"), [
+    "export XTM_RELAY_ALLOWED_DESTINATIONS='splunk.corp.local:8089,*.tanium.corp:443'",
+    "xtm-one-relay enroll --server-url 'https://xtm-one.example.com' --key 'rlenr-a'\\''b' --name 'mac local'",
+    "xtm-one-relay run",
+  ]);
+  const windows = binaryCommand("windows", none).split("\n");
+  assert.equal(windows[0], "$env:XTM_RELAY_ALLOWED_DESTINATIONS = 'splunk.corp.local:8089,*.tanium.corp:443'");
+  assert.match(windows[1], /^\.\\xtm-one-relay\.exe enroll --server-url 'https:\/\/xtm-one\.example\.com' --key 'rlenr-test-key' --name 'mac local'$/);
+  assert.equal(windows[2], ".\\xtm-one-relay.exe run");
 });

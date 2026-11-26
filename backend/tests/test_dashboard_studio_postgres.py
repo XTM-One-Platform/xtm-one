@@ -32,7 +32,8 @@ from app.models.chat import Conversation
 from app.models.custom_dashboard import CustomDashboard
 from app.models.integration import Integration
 from app.models.user import User
-from app.services.custom_dashboard_spec import validate_spec
+from app.services.dashboard_definition import from_widgets
+from app.services.dashboard_native import to_native
 from app.services.dashboard_studio import load_dashboard_studio_context
 from tests.scratch_database import ALL_TABLES, scratch_database
 
@@ -83,7 +84,7 @@ async def _world():
             db.add_all([owner, viewer, stranger])
             await db.flush()
             dashboard = CustomDashboard(
-                user_id=owner.id, title="Threat board", widget_count=2, revision=1, spec=validate_spec(_SPEC),
+                user_id=owner.id, title="Threat board", widget_count=2, revision=1, spec=to_native(from_widgets(_SPEC)),
                 shared_user_ids=[str(viewer.id)], shared_user_permissions={str(viewer.id): "read_only"},
             )  # fmt: skip
             cti = Integration(name="Lab <b>CTI</b>", provider="opencti", auth_type="api_key", user_id=owner.id)
@@ -147,7 +148,7 @@ async def test_the_turn_context_follows_the_callers_own_tier(dashboard_studio_en
     prompt = owner.prompt()
     assert f"dashboard_id: {ids['dashboard']}" in prompt
     assert "- The user has selected widget score" in prompt
-    assert "  - score [xtm.score, 0,0 12x7] Exposure score" in prompt
+    assert "  - score [xtm.score, 0,0 12x3] Exposure score" in prompt
     assert str(ids["cti"]) not in prompt and str(ids["foreign"]) not in prompt
     assert (viewer.can_edit, viewer.focused_widget) == (False, None)
     assert "READ-ONLY" in viewer.prompt()

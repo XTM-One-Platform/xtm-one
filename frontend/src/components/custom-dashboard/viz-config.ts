@@ -14,8 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The Dashboard Studio's configuration of one visualization, like Splunk
- * Dashboard Studio's configuration panel - what `VisualizationConfig` shows
+ * The Dashboard Studio's configuration of one visualization, its
+ * configuration panel - what `VisualizationConfig` shows
  * and writes.
  *
  * - The types a visualization can switch to: those drawing the same shape of
@@ -25,13 +25,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *   the server refuses any other).
  * - The fields of its "Data display" and "Coloring" sections, by type
  *   (`displayFields`, `colorFields`), labelled from the label tables below.
- * - A colour set by ranges (Splunk's `> majorValue | rangeValue(config)` with
+ * - A colour set by ranges (the dynamic option `> majorValue | rangeValue(config)` with
  *   the config in the visualization's `context`): `readColorRule`,
  *   `colorRuleOptions`.
  * - The writes: `setVisualization`, `setOptions` (a field emptied is removed),
  *   `applyOperations` (the server's `set` and `delete` operations, applied to
  *   a definition), `addChart` (a visualization on sample data written in the
- *   dashboard, Splunk's test data) and `addInput`.
+ *   dashboard, as test data) and `addInput`.
  * - Where it sits (`placementOf`) and its place set from the Position fields
  *   (`setPlacement`: cells of the grid, pixels of a canvas).
  *
@@ -53,7 +53,7 @@ const SHAPE_VIEWS: Record<string, readonly string[]> = {
   distribution: ["distribution", "donut", "hbar", "bar", "treemap", "radar", "polar", "wordcloud"],
   rows: ["list", "table", "scatter", "bubble", "punchcard", "timeline", "linkgraph", "networkgraph", "sankey", "parallel"],
   geo: ["map", "choroplethsvg"],
-  graph: ["networkgraph", "linkgraph", "sankey"],
+  graph: ["networkgraph", "linkgraph", "sankey", "attackflow"],
   events: ["timeline"],
   tree: ["treemap"],
   outcomes: ["outcomematrix", "pathgraph", "exposureconsole", "scoregauge", "ringgauge", "domaincards"],
@@ -92,6 +92,7 @@ export const TYPE_LABELS = {
   "xtm.choropleth.svg": "Choropleth SVG",
   "xtm.linkgraph": "Link graph",
   "xtm.networkgraph": "Network graph",
+  "xtm.attackflow": "Attack flow",
   "xtm.sankey": "Sankey diagram",
   "xtm.parallelcoordinates": "Parallel coordinates",
   "xtm.timeline": "Timeline",
@@ -147,7 +148,7 @@ const LOOK = [
 ]; // prettier-ignore
 
 /** The maps, graphs and flows (`STUDIO_VIZ_TYPES`): their options are kept as written. */
-const STUDIO_TYPES = ["xtm.map", "xtm.choropleth.svg", "xtm.linkgraph", "xtm.networkgraph", "xtm.sankey", "xtm.parallelcoordinates", "xtm.timeline", "xtm.treemap"];
+const STUDIO_TYPES = ["xtm.map", "xtm.choropleth.svg", "xtm.linkgraph", "xtm.networkgraph", "xtm.sankey", "xtm.parallelcoordinates", "xtm.timeline", "xtm.treemap", "xtm.attackflow"];
 
 type Group = "plain" | "xy" | "pie" | "polar" | "radar" | "wordcloud" | "heatmap" | "scatter" | "single" | "icon" | "radial" | "gauge" | "table" | "outcome" | "studio";
 
@@ -512,7 +513,7 @@ function readRanges(value: unknown): ColorRange[] | null {
   return out;
 }
 
-/** The context entry holding the ranges of the colour option `key` (Splunk's `<key>EditorConfig`). */
+/** The context entry holding the ranges of the colour option `key` (`<key>EditorConfig`). */
 const rangesKey = (key: string): string => `${key}EditorConfig`;
 
 /** How the colour option `key` is set: not at all (the theme's), one colour, ranges of a value, or another expression. */
@@ -675,7 +676,7 @@ export const ADDABLE_TYPES: VizType[] = VIZ_TYPES.filter((type) => sampleShape(t
 
 /**
  * `definition` with a chart of `type` on sample data written in the dashboard
- * (a static source of its own, Splunk's test data), below the others in the
+ * (a static source of its own, as test data), below the others in the
  * layout `layoutId`; or `null` when no sample suits the type.
  */
 export function addChart(definition: Raw, type: string, layoutId: string | null, sourceName: string): { definition: Raw; id: string } | null {

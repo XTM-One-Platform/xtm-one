@@ -244,6 +244,9 @@ _BASES = {
     "integrations/providers/openapi.py": {"CALLER_CHECKED"},
     # Platform Health's module reads, as the "Run checks as" user it checked.
     "services/builtin_tools/health_modules.py": {"CALLER_CHECKED"},
+    # A dashboard integration source, read with the reader's own access and
+    # credential (``get_user_integration`` + ``usable_credential_holder``).
+    "services/dashboard_sources.py": {"CALLER_CHECKED"},
     # AgentIntegrationBindings.tool_bindings
     "services/integration_tools.py": {"RESOLVED"},
 }

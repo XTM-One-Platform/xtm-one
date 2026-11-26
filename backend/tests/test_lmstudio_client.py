@@ -466,3 +466,42 @@ async def test_the_connection_test_says_what_is_missing():
         ProbeContext(provider="lmstudio", name="GPU box", token=None, extra={}, integration=_integration(base_url=None))
     )
     assert (result.status, result.message) == ("error", f"GPU box: {client.PUBLIC_MESSAGES['no_base_url']}")
+
+
+# ---------------------------------------------------------------------------
+# The agent tool (and a dashboard's integration source)
+# ---------------------------------------------------------------------------
+
+
+async def test_the_models_tool_reads_through_the_route_and_answers_json():
+    from app.services.tool_classification import definition_tool_type
+    from app.tools.base import CallableToolExecutor, ToolCall
+
+    executor = CallableToolExecutor()
+    [definition] = client.build_tools("http://gpu-host:1234||lm-token", executor)
+    assert definition.name == "list_lmstudio_models" and definition_tool_type(definition) == "read"
+    route = _Route(lambda request: _json(_LISTING))
+    with egress_route(route):
+        every = json.loads((await executor.execute_tool(ToolCall(id="a", name=definition.name, arguments={}))).content)
+        loaded = json.loads(
+            (await executor.execute_tool(ToolCall(id="b", name=definition.name, arguments={"loaded_only": True}))).content
+        )
+    assert route.seen[0].headers["authorization"] == "Bearer lm-token"
+    assert (every["count"], every["loaded"]) == (2, 1)
+    assert every["models"][0] == {
+        "model": "GPT-OSS 20B", "key": "openai/gpt-oss-20b", "type": "llm", "publisher": "openai",
+        "architecture": "gpt-oss", "params": "20B", "quantization": "MXFP4", "size_gb": 12.11,
+        "max_context_length": 131072, "loaded_instances": 1, "vision": False, "tool_use": True,
+    }  # fmt: skip
+    assert [m["key"] for m in loaded["models"]] == ["openai/gpt-oss-20b"]
+
+
+async def test_the_models_tool_says_why_it_reads_nothing_and_needs_a_server():
+    from app.tools.base import CallableToolExecutor, ToolCall
+
+    assert client.build_tools("||lm-token", CallableToolExecutor()) == []
+    executor = CallableToolExecutor()
+    [definition] = client.build_tools("http://gpu-host:1234||", executor)
+    # No relay route: the fixed sentence, never a call.
+    answer = await executor.execute_tool(ToolCall(id="a", name=definition.name, arguments={}))
+    assert answer.content.startswith("Error: ")
