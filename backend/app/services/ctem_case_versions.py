@@ -37,10 +37,10 @@ import uuid
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from sqlalchemy import ColumnElement, Select, func, or_, select
+from sqlalchemy import ColumnElement, Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.organization_asset import OrganizationAsset, OrganizationAssetSoftware
+from app.models.organization_asset import OrganizationAsset, OrganizationAssetSoftware, OrganizationSoftware
 from app.services import ctem_fixed_version as fixed_versions
 
 logger = logging.getLogger(__name__)
@@ -114,16 +114,20 @@ def publisher_key(value: str | None) -> str:
 
 
 def product_keys(product_label: str | None) -> tuple[str, ...]:
-    """The product keys a case label may stand for: the whole label, then without its vendor word.
+    """The product keys a case label may stand for: the whole label, then every word suffix of it.
 
     ``Microsoft Windows`` matches software stored as product ``Microsoft Windows``
-    or as vendor ``Microsoft`` and product ``Windows``.
+    or as vendor ``Microsoft`` and product ``Windows``; ``Node.js Foundation Node.js``
+    matches vendor ``Node.js Foundation`` and product ``Node.js`` (#2450): a vendor of
+    several words is stripped too. The whole label stays first (the publisher-prefixed
+    pattern of :func:`product_filter` reads it), so the read covers every row
+    :func:`matches_case` accepts, which still decides.
     """
     label = _key(product_label)
     if not label:
         return ()
-    parts = label.split(" ", 1)
-    return (label, parts[1]) if len(parts) == 2 else (label,)
+    words = label.split(" ")
+    return tuple(" ".join(words[start:]) for start in range(len(words)))
 
 
 #: Case product labels (folded) that name an operating system, and the ``os_family`` the
@@ -811,6 +815,44 @@ async def inventory_platforms(
         logger.info("CTEM inventory platforms unavailable", exc_info=True)
         return {}
     return await asyncio.to_thread(inventory_platform_sets, rows, wanted)
+
+
+async def software_asset_count(db: AsyncSession, organization_id: uuid.UUID, product_label: str | None) -> int:
+    """The assets the organization software named *product_label* counts (#2450), ``0`` when none or unreadable.
+
+    The profile's software row whose shown name (``vendor product``) is the case's label, read on its
+    own ``vendor_key`` / ``product_key``: a language package row (the SDK of a repository) is not the
+    product running (#2223). When it counts assets and the case read none, the match failed: the
+    case says so, never that no asset runs the product.
+    """
+    label = _key(product_label)
+    if not label:
+        return 0
+    software, soft = OrganizationSoftware, OrganizationAssetSoftware
+    try:
+        async with db.begin_nested():
+            count = (
+                await db.execute(
+                    select(func.count(func.distinct(soft.asset_id)))
+                    .join(
+                        software,
+                        and_(
+                            software.organization_id == soft.organization_id,
+                            software.vendor_key == soft.vendor_key,
+                            software.product_key == soft.product_key,
+                        ),
+                    )
+                    .where(
+                        soft.organization_id == organization_id,
+                        software.name_key == label[:300],
+                        ~language_package_row(soft),
+                    )
+                )
+            ).scalar()
+    except Exception:  # the inventory never breaks a case read
+        logger.info("CTEM software asset count unavailable", exc_info=True)
+        return 0
+    return int(count or 0)
 
 
 async def inventory_sources(db: AsyncSession, organization_id: uuid.UUID) -> list[str] | None:
