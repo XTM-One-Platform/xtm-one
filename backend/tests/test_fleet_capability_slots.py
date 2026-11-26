@@ -14,8 +14,10 @@ import pytest
 
 from app.agents.builtin_fleets import BUILTIN_FLEETS
 from app.api.v1.integration_catalog import PROVIDER_CATALOG
+from app.integrations.providers.defender import build_tools as defender_build_tools
 from app.services import fleet_capability_slots as slots
 from app.services.fleet_capability_slots import IntegrationRef, SlotBindingRefusedError
+from app.tools.base import CallableToolExecutor
 
 _CATALOG = {
     "ticketer": {"integration_types": ["ticketing"]},
@@ -357,6 +359,16 @@ def test_defender_fills_siem_beside_sentinel_and_stays_an_edr_xdr() -> None:
     siem = slots.providers_for("siem", PROVIDER_CATALOG)
     assert {"defender", "sentinel"} <= siem
     assert "defender" in slots.providers_for("edr_xdr", PROVIDER_CATALOG)
+
+
+def test_defender_fills_the_vulnerability_scanner_and_keeps_edr_xdr_and_siem() -> None:
+    """Defender Vulnerability Management (TVM) makes Defender XDR a vulnerability scanner too."""
+    assert "defender" in slots.providers_for("scanner", PROVIDER_CATALOG)
+    assert "defender" in slots.providers_for("edr_xdr", PROVIDER_CATALOG)
+    assert "defender" in slots.providers_for("siem", PROVIDER_CATALOG)
+    # The TVM reads a scanner consumer needs are Defender tools.
+    scanner_reads = {"list_defender_vulnerabilities", "list_defender_machine_vulnerabilities", "list_defender_software"}
+    assert scanner_reads <= {tool.name for tool in defender_build_tools("t||c||s", CallableToolExecutor())}
 
 
 def test_both_reasons_are_listed_and_the_type_reads_not_usable() -> None:

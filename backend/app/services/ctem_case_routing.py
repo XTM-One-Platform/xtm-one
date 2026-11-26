@@ -231,12 +231,18 @@ async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime | None])
     event got no answer from it), and neither does a run that expired in the
     queue before any worker started it (``skipped``, ``expired_not_started``,
     #2234): its case is asked again by the next pass.
+
+    A batch run (and the remainder run a split hands the rest of its list to)
+    names only its first case in its context: every case its payload lists
+    counts as that run's case, so a case further down a waiting batch is never
+    asked again while the batch waits (#2447).
     """
     if not asks:
         return set()
     from sqlalchemy import ColumnElement, or_
 
     from app.models.assignment import Assignment, AssignmentRun
+    from app.services import event_batching
     from app.services.assignment_engine import ACTIVE_RUN_STATUSES, QUEUED_RUN_STATUS
     from app.services.orchestration_adapters.assignment import EXPIRED_NOT_STARTED_STOP_REASON
 
@@ -248,7 +254,7 @@ async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime | None])
         in_window = or_(in_window, AssignmentRun.created_at >= min(asked_times))
     rows = (
         await db.execute(
-            select(object_id, AssignmentRun.created_at, AssignmentRun.status)
+            select(object_id, AssignmentRun.created_at, AssignmentRun.status, AssignmentRun.trigger_payload)
             .join(Assignment, Assignment.id == AssignmentRun.assignment_id)
             .where(
                 Assignment.name == CTEM_CASE_ASSIGNMENT_NAME,
@@ -258,21 +264,27 @@ async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime | None])
                     AssignmentRun.stop_reason.is_(None),
                     AssignmentRun.stop_reason != EXPIRED_NOT_STARTED_STOP_REASON,
                 ),
-                object_id.in_(sorted(asks)),
+                or_(
+                    object_id.in_(sorted(asks)),
+                    # A batch run lists cases past its head in its payload alone (#2447).
+                    AssignmentRun.trigger_payload["batch"].as_string() == "true",
+                ),
             )
         )
     ).all()
     answered: set[str] = set()
-    for cid, created, status in rows:
-        if str(cid) not in asks:
-            continue
-        if status in waiting:
-            answered.add(str(cid))
-            continue
-        asked_at = asks[str(cid)]
-        created = _aware(created)
-        if asked_at is not None and created is not None and created >= asked_at:
-            answered.add(str(cid))
+    for cid, created, status, payload in rows:
+        carried = {str(cid)} if cid else set()
+        if isinstance(payload, dict):
+            carried |= event_batching.carried_object_ids(payload)
+        for case_id in carried & asks.keys():
+            if status in waiting:
+                answered.add(case_id)
+                continue
+            asked_at = asks[case_id]
+            created_at = _aware(created)
+            if asked_at is not None and created_at is not None and created_at >= asked_at:
+                answered.add(case_id)
     return answered
 
 

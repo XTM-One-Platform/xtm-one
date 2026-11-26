@@ -203,6 +203,66 @@ def _written(event: Any) -> dict[str, Any]:
     }
 
 
+async def _compact_write(
+    db: AsyncSession, case: Any, *, state_before: str | None, known: set[Any], **recorded: Any
+) -> dict[str, Any]:
+    """The compact answer of a validation or ticket write (#2473), never the whole case re-read.
+
+    The case id, title and state after the write, whether that state moved, what this call
+    recorded (*recorded*) and the history events it added; ``get_ctem_case`` reads the rest.
+    A history read that fails after the commit leaves ``history_written`` empty.
+    """
+    from app.services import ctem_cases_store as store
+
+    written: list[dict[str, Any]] = []
+    try:
+        after = (await store.events_of(db, [case.id])).get(case.id, [])
+        written = [_written(e) for e in after if e.id not in known]
+    except Exception:
+        logger.info("CTEM case write: written events unreadable for %s", case.id, exc_info=True)
+    answer: dict[str, Any] = {
+        "id": str(case.id),
+        "title": case.title,
+        "state": case.state,
+        "state_changed": case.state != state_before,
+    }
+    if case.state != state_before:
+        answer["previous_state"] = state_before
+        answer["resolution_kind"] = getattr(case, "resolution_kind", None)
+    answer.update(recorded)
+    answer["history_written"] = written
+    return answer
+
+
+def _recorded_validation(case: Any, provider: str, ref: str) -> dict[str, Any] | None:
+    """The stored validation entry of *(provider, ref)* with its index, as the write keeps it (#2473)."""
+    wanted = ((provider or "").strip()[:40], (ref or "").strip()[:300])
+    entries = list(getattr(case, "validations", None) or [])
+    for index in range(len(entries) - 1, -1, -1):
+        entry = entries[index]
+        if (entry.get("provider"), entry.get("ref")) == wanted:
+            shown = {
+                k: entry.get(k)
+                for k in ("provider", "kind", "ref", "result", "reported_result", "conclusive", "evidence_type", "at")
+                if entry.get(k) is not None
+            }
+            if entry.get("mitigation_only"):
+                shown["mitigation_only"] = True
+            if entry.get("run_order"):
+                shown["run_order"] = entry["run_order"]
+            return {"index": index, **shown}
+    return None
+
+
+def _recorded_ticket(case: Any, integration: str, key: str) -> dict[str, Any] | None:
+    """The stored ticket reference of *(integration, key)*, as the write keeps it (#2473)."""
+    wanted = ((integration or "").strip()[:80], (key or "").strip()[:120])
+    for entry in reversed(list(getattr(case, "tickets", None) or [])):
+        if (entry.get("integration"), entry.get("key")) == wanted:
+            return {k: entry.get(k) for k in ("integration", "key", "url", "status", "at") if entry.get(k) is not None}
+    return None
+
+
 def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefinition], CallableToolExecutor]:
     """The four case tools, acting for *user_id*; every write is recorded with *agent_id* as actor.
 
@@ -256,6 +316,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         version_history.with_asset_count(rendered, events)
         # The detection gaps from the whole history (#2393), never the newest page alone.
         rendered["detection_gaps"] = view_of.detection_gaps_of(events)
+        from app.services import ctem_case_assets as case_assets
+
+        # Each attached host's module ids, rows stored before #2448 included: asset_id is the inventory id.
+        await case_assets.enrich_source_ids(db, rendered.get("assets"))
         return case, rows, rendered
 
     async def _view_only(db: AsyncSession, rows: list[Any], vertical: str) -> str | None:
@@ -648,6 +712,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         if wanted is None:
             return "case_id must be the id list_ctem_cases answers."
         pending = case_loop.PendingEvents()
+        committed = False
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
@@ -659,6 +724,11 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 refused = await _view_only(db, shown[1], vertical)
                 if refused:
                     return refused
+                from app.services import ctem_cases_store as store
+
+                case = shown[0]
+                state_before = case.state
+                known = {e.id for e in (await store.events_of(db, [case.id])).get(case.id, [])}
                 await case_loop.record_validation(
                     db,
                     shown[0],
@@ -675,10 +745,16 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     events=pending,
                 )
                 await db.commit()
+                committed = True
                 await case_loop.publish_pending(pending)
-                refreshed = await _shown(db, wanted, org_id, vertical)
-                answer: dict[str, Any] = {"updated": refreshed[2] if refreshed else {"id": str(wanted)}}
-                newest = (shown[0].validations or [{}])[-1]
+                # A compact answer (#2473): what this call wrote, never the whole case re-read.
+                recorded = _recorded_validation(case, provider, ref)
+                answer: dict[str, Any] = {
+                    "updated": await _compact_write(
+                        db, case, state_before=state_before, known=known, validation=recorded
+                    )
+                }
+                newest = recorded or {}
                 if untested:
                     answer["not_tested"] = untested
                 if result in rules.PASSING_RESULTS and newest.get("conclusive") is False:
@@ -698,6 +774,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             return f"Refused: {exc}. Nothing was changed."
         except Exception:
             logger.warning("CTEM case validation failed", exc_info=True)
+            if committed:
+                # The write is in (#2473): never report a failure for a committed validation.
+                return _dump({"updated": {"id": str(wanted), "committed": True}})
             return "Error: the validation could not be recorded right now. Say so; nothing was changed."
 
     async def _ticket(case_id: str, integration: str = "", key: str = "", url: str = "", status: str = "open") -> str:
@@ -708,6 +787,7 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
         wanted = _uuid(case_id)
         if wanted is None:
             return "case_id must be the id list_ctem_cases answers."
+        committed = False
         try:
             async with async_session() as db:
                 org_id, vertical = await _context(db)
@@ -719,16 +799,28 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 refused = await _view_only(db, shown[1], vertical)
                 if refused:
                     return refused
+                from app.services import ctem_cases_store as store
+
+                case = shown[0]
+                state_before = case.state
+                known = {e.id for e in (await store.events_of(db, [case.id])).get(case.id, [])}
                 case_loop.record_ticket(
-                    db, shown[0], integration=integration, key=key, url=url or None, status=status, actor=agent_id
+                    db, case, integration=integration, key=key, url=url or None, status=status, actor=agent_id
                 )
                 await db.commit()
-                refreshed = await _shown(db, wanted, org_id, vertical)
-                return _dump({"updated": refreshed[2] if refreshed else {"id": str(wanted)}})
+                committed = True
+                # A compact answer (#2473): the ticket recorded, never the whole case re-read.
+                recorded = _recorded_ticket(case, integration, key)
+                return _dump(
+                    {"updated": await _compact_write(db, case, state_before=state_before, known=known, ticket=recorded)}
+                )
         except rules.CaseRuleError as exc:
             return f"Refused: {exc}. Nothing was changed."
         except Exception:
             logger.warning("CTEM case ticket failed", exc_info=True)
+            if committed:
+                # The write is in (#2473): never report a failure for a committed ticket reference.
+                return _dump({"updated": {"id": str(wanted), "committed": True}})
             return "Error: the ticket reference could not be recorded right now. Say so; nothing was changed."
 
     async def _remediation(
@@ -1306,7 +1398,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
             name="get_ctem_case",
             description=(
                 "Read one CTEM case: its fix, its member issues with their source product and id, "
-                "assets, primary assets and its latest history. A null count is unknown for you, never none."
+                "assets, primary assets and its latest history. A null count is unknown for you, never none. "
+                "An asset's asset_id is the inventory id; its id in a source product is in source_ids[].external_id."
             ),
             input_schema={
                 "type": "object",

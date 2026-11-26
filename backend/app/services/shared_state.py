@@ -1681,6 +1681,47 @@ def write_at_path(value: dict, path: list[str], patch: dict, *, replace: bool = 
     return out
 
 
+def apply_unset_keys(
+    value: dict[str, Any],
+    keys: Sequence[str],
+    path: list[str],
+    removed: list[str],
+    *,
+    guard_chars: int | None = None,
+) -> dict[str, Any] | None:
+    """Answer a copy of *value* without *keys* of the object under *path* (#2449).
+
+    The keys are relative to *path* like the list changes of the same call: the
+    top-level keys of *value* without a path, the keys of the object under it
+    with one, every sibling and every other level kept. *removed* receives the
+    keys removed, dotted under the path (``a.b``); a missing key, or a path that
+    does not reach an object, removes nothing and answers ``None``. With
+    *guard_chars*, an unset dropping more JSON characters than that is refused
+    with :class:`ValueError` and *value* is left untouched.
+    """
+    held = value_at_path(value, path) if path else value
+    if not isinstance(held, dict):
+        return None
+    gone = [k for k in keys if k in held]
+    if not gone:
+        return None
+    if guard_chars is not None and guard_chars >= 0:
+        dropped = value_size({k: held[k] for k in gone})
+        if dropped > guard_chars:
+            where = f" under {'.'.join(path)!r}" if path else ""
+            raise ValueError(
+                f"unset_keys would drop {dropped} characters ({', '.join(gone)}{where}), over "
+                f"{guard_chars} without an archive: pass archive_key to keep a copy, or "
+                "confirm_trim=true to drop them; nothing was written"
+            )
+    kept = {k: v for k, v in held.items() if k not in gone}
+    prefix = ".".join(path) + "." if path else ""
+    removed.extend(prefix + k for k in gone)
+    if not path:
+        return kept
+    return write_at_path(value, path, kept, replace=True)
+
+
 def _stale_after() -> timedelta | None:
     """The active-entry staleness window, or ``None`` when staleness is disabled.
 
@@ -2453,6 +2494,7 @@ async def upsert_state(
     retention: dict | None = None,
     archive_fit: bool = False,
     path_appends: Sequence[tuple[Sequence[str], list[Any]]] | None = None,
+    unset_guard_chars: int | None = None,
 ) -> dict:
     """Create or update the shared-state entry for ``key`` (idempotent).
 
@@ -2515,8 +2557,13 @@ async def upsert_state(
     then keeps only the newest N items of each named list (``trimmed``
     in ``list_changes``); ``guard_trim`` refuses a trim larger than what the
     call appends to that list (:func:`apply_list_ops`). ``unset_keys`` removes
-    those top-level keys from the value (a missing one is ignored; the answer
-    names the removed ones in ``unset_keys``). ``expect_dropped`` is what the
+    those keys from the value, relative to ``path`` like the list changes
+    (#2449): the keys of the object under the path, or the top-level keys
+    without a path (a missing one is ignored; the answer names the removed
+    ones in ``unset_keys``, dotted under the path). ``unset_guard_chars``
+    refuses an unset dropping more JSON characters than that, nothing written
+    (:func:`apply_unset_keys`); the tool passes it when nothing archives the
+    keys and the caller did not confirm. ``expect_dropped`` is what the
     caller archived from the value it read: the write is refused when the
     removals and trims, under the row lock, would drop anything else, so an
     item never leaves the list without its copy. ``unique_by`` makes an append replace the object
@@ -2596,8 +2643,9 @@ async def upsert_state(
     fold = _fold_shape(fold)
     value_path = parse_value_path(path)
     path_list_ops = bool(value_path) and bool(append or remove or keep_last or update or fold)
-    if value_path and value is None and not path_list_ops:
-        raise ValueError("path needs a value to write under it, or list changes to apply under it")
+    unset = [k for k in dict.fromkeys(unset_keys or []) if isinstance(k, str) and k]
+    if value_path and value is None and not path_list_ops and not unset:
+        raise ValueError("path needs a value to write under it, or list changes or unset_keys to apply under it")
     hold_action = (hold or "").strip().lower() or None
     if hold_action is not None and hold_action not in SHARED_STATE_HOLD_ACTIONS:
         raise ValueError("hold must be 'take' or 'release'")
@@ -2614,7 +2662,6 @@ async def upsert_state(
     condition = None if terminal_condition is None else (terminal_condition.strip()[:500] or "")
     list_changes: dict[str, dict[str, int]] = {}
     replaced_items: dict[str, list[dict[str, Any]]] = {}
-    unset = [k for k in dict.fromkeys(unset_keys or []) if isinstance(k, str) and k]
     unset_done: list[str] = []
     # Dated notes the hold check writes with the change (a takeover).
     hold_notes: list[str] = []
@@ -2761,9 +2808,9 @@ async def upsert_state(
         unset_done.clear()
         if unset:
             base = new_value if new_value is not None else dict(state.value or {})
-            unset_done.extend(k for k in unset if k in base)
-            if unset_done:
-                new_value = {k: v for k, v in base.items() if k not in unset_done}
+            unset_value = apply_unset_keys(base, unset, value_path, unset_done, guard_chars=unset_guard_chars)
+            if unset_value is not None:
+                new_value = unset_value
         archive_trimmed.clear()
         rolled_out.clear()
         held_open.clear()

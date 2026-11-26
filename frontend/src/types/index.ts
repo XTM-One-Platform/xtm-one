@@ -12758,8 +12758,15 @@ export type NotificationDecisionSource = "run" | "flow_run" | "work_item";
 
 export interface NotificationFeed {
   items: NotificationItem[];
+  /** The unread entries of this page. */
   unread_count: number;
   read_at: string | null;
+  /** Every decision waiting on the person: the Home notice's count, not the page's (#2453). */
+  waiting_decision_total?: number;
+  /** What the badge counts: every waiting decision plus the other unread entries (#2453). */
+  unread_total?: number;
+  /** The `offset` of the next page of waiting decisions; null past the last (#2453). */
+  next_offset?: number | null;
 }
 
 /** A phone the person linked (`models/mobile_device.py`). */

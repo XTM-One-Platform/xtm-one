@@ -177,7 +177,13 @@ Common rules:
   case opened from a signal starts with an owner (`services/ctem_case_owner.py`):
   the owner of an affected asset's records, else of one of their asset groups,
   else `CTEM_CASE_DEFAULT_OWNER`, matched to an active account by email only;
-  an `owner` case event records how it was found. Which fleet runs a case
+  else the CTEM decider (#2452): an active member of a group granting `decide`
+  with notify on, else an active administrator, the seed account only when it
+  is the sole one, the first by account creation then id; an `owner` case event
+  records how it was found. The owner is set at the opening by this code, never
+  by the loop agent; the case sweep gives the decider to an open case with no
+  owner and no `owner` event (`backfill_owners`, idempotent, no notification),
+  so an owner a person cleared stays cleared. Which fleet runs a case
   is declared on the fleet (#1966, `fleets.case_ownership`: `paths` null for
   every trigger path or a list, `key` its case item prefix), and counts only
   while a home member's "Case opened or reopened" automation is on. The loop

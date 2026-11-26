@@ -114,13 +114,15 @@ async def open_gate_item_keys(db: Any, case_id: str) -> set[str]:
     exists (a key, never its content), the same read as the stall sweep
     (``ctem_case_stall._waits_on_someone``).
     """
-    from sqlalchemy import select
+    from sqlalchemy import or_, select
 
     from app.models.work_item import WORK_ITEM_TERMINAL_STATUSES, WorkItem
+    from app.services.ctem_decision_groups import GROUPED_REASON_LEAD
 
     rows = await db.execute(
         select(WorkItem.correlation_key).where(
-            WorkItem.needs_human.is_(True),
+            # A grouped decision waits on its group's card (#2451): it is filed all the same.
+            or_(WorkItem.needs_human.is_(True), WorkItem.blocked_reason.like(f"{GROUPED_REASON_LEAD}%")),
             WorkItem.status.not_in(WORK_ITEM_TERMINAL_STATUSES),
             WorkItem.correlation_key.like("ctem:%" + case_id),
         )
