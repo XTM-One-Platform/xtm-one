@@ -56,6 +56,8 @@ export function CaseWaitingGates({
   const { t_i18n } = useFormatter();
   const waiting = waitingGateRecords(state, gates);
   if (waiting.length === 0) return null;
+  // Set apart from the lines above, so a decision card never reads as one more line (#2477 UX round 1).
+  const inline = waiting.filter((record) => !SECTION_GATES.has(record.key));
   const recipient = (record: CtemCaseGateRecord) =>
     record.asked_of?.name ||
     t_i18n(RECIPIENT_FALLBACK[(record.asked_of?.type ?? "user") as keyof typeof RECIPIENT_FALLBACK] ?? RECIPIENT_FALLBACK.user);
@@ -84,18 +86,20 @@ export function CaseWaitingGates({
             </li>
           ))}
         </ul>
-        {waiting
-          .filter((record) => !SECTION_GATES.has(record.key))
-          .map((record) => (
-            <CaseGateDecision
-              key={record.key}
-              record={record}
-              history={history}
-              personName={personName}
-              titled
-              testId="ctem-case-waiting-gate-decision"
-            />
-          ))}
+        {inline.length > 0 && (
+          <div className="flex flex-col gap-4 border-t border-elevation-subtle-soft pt-4" data-testid="ctem-case-waiting-gate-decisions">
+            {inline.map((record) => (
+              <CaseGateDecision
+                key={record.key}
+                record={record}
+                history={history}
+                personName={personName}
+                titled
+                testId="ctem-case-waiting-gate-decision"
+              />
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

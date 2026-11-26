@@ -867,6 +867,9 @@ export default function CtemCaseDetail() {
         </p>
       )}
 
+      {/* Every waiting decision, whoever works the case (#2464), first: a gate no section owns is answered here. */}
+      <CaseWaitingGates state={kase.state} gates={kase.gates} history={kase.history} personName={personName} />
+
       {kase.state !== "resolved" && kase.state !== "accepted_risk" && (
         <CaseWorkCard
           work={work}

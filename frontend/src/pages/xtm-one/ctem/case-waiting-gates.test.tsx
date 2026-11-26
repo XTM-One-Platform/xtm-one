@@ -126,6 +126,18 @@ describe("Mobilization gates (#2464)", () => {
     expect(screen.getByTestId("ctem-case-mobilization-gate-production-change-elsewhere")).toBeInTheDocument();
   });
 
+  it("renders a waiting ctem.production_change decision on the unified card when its record names its item", () => {
+    state.byId["wi-prod"] = OPEN("wi-prod");
+    renderWithProviders(
+      <MemoryRouter>
+        <CaseMobilization history={[]} tickets={[]} gates={[rec({ key: "ctem.production_change", work_item_id: "wi-prod" })]} />
+      </MemoryRouter>,
+    );
+    const gate = screen.getByTestId("ctem-case-mobilization-gate-production-change");
+    expect(within(gate).getByTestId("unified-decision-card").getAttribute("data-item")).toBe("wi-prod");
+    expect(screen.queryByTestId("ctem-case-mobilization-gate-production-change-elsewhere")).toBeNull();
+  });
+
   it("shows the answered record once decided, with no card", () => {
     renderWithProviders(
       <MemoryRouter>
@@ -159,6 +171,19 @@ describe("Waits for a decision (#2464)", () => {
     // The mobilize card is answered in Mobilization; only accept_risk gets its card here.
     const cards = screen.getAllByTestId("unified-decision-card");
     expect(cards.map((c) => c.getAttribute("data-item"))).toEqual(["wi-risk"]);
+    // The inline cards are set apart from the lines, never read as one more line.
+    expect(within(screen.getByTestId("ctem-case-waiting-gate-decisions")).getByTestId("unified-decision-card")).toBeInTheDocument();
+  });
+
+  it("says a gate with no decision of its own filed cannot be answered yet", () => {
+    renderWithProviders(
+      <MemoryRouter>
+        <CaseWaitingGates state="waiting_decision" gates={[rec({ key: "ctem.accept_risk", work_item_id: null, decision_filed: false })]} history={[]} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("ctem-case-waiting-gate-decision-not-filed")).toBeInTheDocument();
+    expect(screen.queryByTestId("ctem-case-waiting-gate-decision-elsewhere")).toBeNull();
+    expect(screen.queryByTestId("ctem-case-waiting-gate-open")).toBeNull();
   });
 
   it("draws nothing when no gate waits or the case is closed", () => {

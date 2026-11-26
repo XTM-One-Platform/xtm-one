@@ -7,8 +7,9 @@
  * item is read by the record's own `work_item_id`, so a gate the backend adds
  * to `ctem_case_gate_records.GATE_ITEM_PREFIXES` shows its decision without a
  * correlation-key prefix written per section; a caller may give the key of an
- * older API that serves no id. A viewer who cannot read the item, or a gate
- * with no decision filed, reads a sentence that says so.
+ * older API that serves no id. A viewer who cannot read the item reads that the
+ * decision is in the person's list; a gate with no decision of its own filed
+ * (`decision_filed`, per gate) reads that nobody can answer it yet.
  */
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import type { CtemCaseEvent, CtemCaseGateRecord } from "@/hooks/api/useCtemCasesApi";
@@ -89,6 +90,7 @@ export function CaseGateDecision({
           {t_i18n("No decision was filed for this gate, so nobody can answer it yet. The fleet files it the next time it runs this case.")}
         </p>
       )}
+      {/* decision_filed is per gate (#2477 UX round 1): another gate's item never makes this one read filed. */}
       {waiting && !item && !isLoading && record.decision_filed !== false && (
         <p className="text-default-secondary" data-testid={`${testId}-elsewhere`}>
           {t_i18n("This gate waits for a person: the decision is in their Waiting for you list.")}
