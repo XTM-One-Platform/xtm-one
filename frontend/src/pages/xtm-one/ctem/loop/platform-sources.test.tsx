@@ -73,12 +73,19 @@ const PROVEN: CtemSignalPath = {
   sources: [{ provider: "openaev", kind: "listener", event: "A simulation proves an exposure", bound: false }],
 };
 
+/** #2506: the panel is a table; each row opens its configuration from its Configure button. */
+function openConfigs() {
+  for (const button of screen.queryAllByTestId("ctem-path-source-configure")) fireEvent.click(button);
+}
+
 function open() {
-  return renderWithProviders(
+  const view = renderWithProviders(
     <MemoryRouter>
       <SignalPathSourcesSheet path={PROVEN} paths={[PROVEN]} connected={new Set(["openaev", ...connectedProviders([PROVEN])])} onClose={() => undefined} />
     </MemoryRouter>,
   );
+  openConfigs();
+  return view;
 }
 
 beforeEach(() => {
@@ -147,6 +154,7 @@ describe("the path panel (#2434)", () => {
         <SignalPathSourcesSheet path={errored} paths={[errored]} connected={new Set(["openaev"])} onClose={() => undefined} />
       </MemoryRouter>,
     );
+    openConfigs();
     expect(screen.getByTestId("ctem-path-sources-status").textContent).toBe("1 source in error");
     expect(screen.getByTestId("ctem-path-source-state").textContent).toBe("Error");
     expect(screen.getByTestId("ctem-platform-source-status").textContent).toBe("Error");
@@ -164,7 +172,8 @@ describe("the path panel (#2434)", () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId("ctem-path-sources-status").textContent).toBe("Not set up");
-    expect(screen.getByTestId("ctem-path-source-state").textContent).toBe("Off");
+    // One word per source, the path list's (A4 of #2436): a provisioned source with every line off reads Not set up.
+    expect(screen.getByTestId("ctem-path-source-state").textContent).toBe("Not set up");
   });
 
   it("an enabled source shows its run-as and status; the switch off disables it", () => {

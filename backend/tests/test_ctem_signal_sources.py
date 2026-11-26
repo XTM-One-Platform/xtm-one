@@ -132,7 +132,19 @@ def test_each_source_carries_its_own_30_day_activity() -> None:
 
 def test_the_catalog_without_activity_keeps_its_former_shape_plus_sources() -> None:
     row = ctem_signals.path_catalog()[0]
-    assert {"id", "label", "default_lens", "listener", "description", "sources", "status", "capabilities"} == set(row)
+    # #2506: plus the sources enabled / available counts of the path list.
+    assert {
+        "id",
+        "label",
+        "default_lens",
+        "listener",
+        "description",
+        "sources",
+        "status",
+        "capabilities",
+        "sources_enabled",
+        "sources_available",
+    } == set(row)
 
 
 def test_the_code_paths_name_the_fleet_capability_that_feeds_them() -> None:
