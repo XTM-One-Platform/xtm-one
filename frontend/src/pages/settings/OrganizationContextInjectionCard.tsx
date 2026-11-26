@@ -77,6 +77,7 @@ export function OrganizationContextInjectionCard() {
       {!editing ? (
         <SettingsReadGrid>
           <SettingsReadField
+            wide
             label={t_i18n("Use organization context in every agent")}
             info={info}
             value={enabled ? t_i18n("On") : t_i18n("Off")}

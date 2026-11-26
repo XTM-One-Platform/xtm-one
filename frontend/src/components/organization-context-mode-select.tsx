@@ -76,7 +76,7 @@ export function OrganizationContextModeSelect({
         helper={t_i18n("A short summary of the organization profile at the top of the prompt. In effect: {effective}.", { effective })}
       >
         <Select value={value} onValueChange={(v) => onChange(v as OrganizationContextMode)}>
-          <SelectTrigger id={id} aria-describedby={settingsFieldHintId(id)}>
+          <SelectTrigger id={id} className="w-full" aria-describedby={settingsFieldHintId(id)}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
