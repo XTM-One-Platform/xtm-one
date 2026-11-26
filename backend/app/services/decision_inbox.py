@@ -38,10 +38,10 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, not_, or_, select
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql import cast
+from sqlalchemy.sql import ColumnElement, cast
 from sqlalchemy.types import Text
 
 from app.core.json_sql import when_json_parseable
@@ -159,6 +159,22 @@ def fleet_decisions_clause(fleet_id: uuid.UUID):
     )
 
 
+def answered_keeps_waiting_clause() -> ColumnElement[bool]:
+    """SQL: a work item decision whose item a person answered with a ``keeps_waiting`` option (#2500).
+
+    The item keeps its ``needs_human`` flag and its decision row stays open
+    (#1719), but the person owes nothing more until the agent asks again: the
+    inbox leaves it out with the very clause the "Waiting for me" filter and
+    its count use (:func:`app.services.work_item.answered_keeps_waiting_clause`),
+    so the view and the chip read one source of truth.
+    """
+    from app.models.work_item import WorkItem
+    from app.services.work_item import answered_keeps_waiting_clause as item_clause
+
+    answered = select(WorkItem.id).where(item_clause())
+    return and_(Decision.source_type == "work_item", Decision.source_id.in_(answered))
+
+
 def present(row: Decision, names: SourceNames, *, can_answer: bool = True) -> dict[str, Any]:
     """One inbox row: the columns of section 4 and what the card and the link need."""
     from app.services.decision_links import decision_link
@@ -208,7 +224,8 @@ async def waiting_for(
     if not switch["on"]:
         return {"enabled": False, "reason": switch["reason"], "items": []}
     keys = await recipients_of(db, user)
-    query = select(Decision).where(Decision.status == "open")
+    # A keep-waiting answer leaves the row open but owes the person nothing (#2500).
+    query = select(Decision).where(Decision.status == "open", not_(answered_keeps_waiting_clause()))
     if fleet_id is not None:
         query = query.where(fleet_decisions_clause(fleet_id))
     groups = [k.partition(":")[2] for k in keys if k.startswith("group:")]
