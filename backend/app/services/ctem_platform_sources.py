@@ -362,8 +362,8 @@ async def maintain(db: Any, *, now: datetime | None = None) -> int:
     from app.models.ctem_signal_source import CtemSignalSource
 
     now = now or datetime.now(UTC)
-    rows = (await db.execute(select(CtemSignalSource))).scalars().all()
     changed = 0
+    rows = (await db.execute(select(CtemSignalSource))).scalars().all()
     for row in rows:
         if (row.provider, row.kind) not in PROVISIONED:
             continue
@@ -385,6 +385,95 @@ async def maintain(db: Any, *, now: datetime | None = None) -> int:
             changed += 1
     await db.commit()
     return changed
+
+
+#: The built-in CTEM assignments that provision a source today, ``(agent slug, name)``: the
+#: holders :func:`adopt_from_assignments` migrates (#2434, no breaking change).
+HOLDER_ASSIGNMENTS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("ctem-vuln-prioritization-orchestrator", "New KEV or EPSS jump"),
+        ("ctem-vuln-prioritization-orchestrator", "Vulnerability on software we run"),
+        ("ctem-vuln-prioritization-orchestrator", "Vulnerability flagged in a PIR"),
+        ("ctem-vuln-prioritization-orchestrator", "Vulnerability sighted"),
+        ("ctem-vuln-prioritization-orchestrator", "OpenAEV results into cases"),
+        ("ctem-threat-response-orchestrator", "New relevant threat"),
+        ("ctem-threat-response-orchestrator", "Threat activity flagged in a PIR"),
+    }
+)
+
+
+def held_source(provider: Any, state: Any) -> tuple[str, str] | None:
+    """The platform source a holder's connected provisioning *state* stands for, else ``None``."""
+    if not is_connected(state):
+        return None
+    if provider == "opencti":
+        return ("opencti", "pir_playbook" if state.get("playbook_id") else "listener")
+    if provider == "openaev":
+        return ("openaev", "listener")
+    return None
+
+
+async def adopt_from_assignments(db: Any, *, now: datetime | None = None) -> int:
+    """Migrate the sources enabled built-in holders provision to platform sources; returns how many were enabled.
+
+    For each enabled holder (:data:`HOLDER_ASSIGNMENTS`) whose objects exist, the
+    source of the same integration that is not on yet is enabled with the
+    holder's run-as and provisioned at once. The holder's own objects are left
+    in place: they are removed by its provider pass once the seed no longer
+    declares them, so the new objects are verified before the old ones go and
+    no delivery is lost. A source that cannot be provisioned stays off with its
+    reason, the holder untouched. Runs before the provider passes
+    (``trigger_provisioning.maintain_trigger_provisioning``), which would
+    otherwise remove a holder's objects first; the caller commits.
+    """
+    from sqlalchemy import select
+
+    from app.models.agent import Agent
+    from app.models.assignment import Assignment
+    from app.services.openaev_trigger_provisioning import STATE_KEY as OPENAEV_STATE_KEY
+    from app.services.opencti_trigger_provisioning import STATE_KEY as OPENCTI_STATE_KEY
+
+    now = now or datetime.now(UTC)
+    keys = {"opencti": OPENCTI_STATE_KEY, "openaev": OPENAEV_STATE_KEY}
+    rows = (
+        await db.execute(
+            select(Assignment, Agent.slug)
+            .join(Agent, Agent.id == Assignment.agent_id)
+            .where(Assignment.trigger_type == "integration_event", Assignment.enabled.is_(True))
+        )
+    ).all()
+    adopted = 0
+    for assignment, slug in rows:
+        if (slug, assignment.name) not in HOLDER_ASSIGNMENTS:
+            continue
+        config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
+        provider = config.get("provider")
+        state = config.get(keys.get(str(provider), ""))
+        pair = held_source(provider, state)
+        if pair is None or not state.get("integration_id") or assignment.run_as_user_id is None:
+            continue
+        try:
+            integration_id = uuid.UUID(str(state["integration_id"]))
+        except ValueError:
+            continue
+        row = await get_or_create(db, pair[0], pair[1], integration_id)
+        if row.enabled or (row.state or {}).get("adopted_from"):
+            continue
+        try:
+            await enable(
+                db,
+                provider=pair[0],
+                kind=pair[1],
+                integration_id=integration_id,
+                run_as_user_id=assignment.run_as_user_id,
+                now=now,
+            )
+            adopted += 1
+        except SourceRefusedError as exc:
+            logger.warning("Signal source %s %s not adopted from %r: %s", pair[0], pair[1], assignment.name, exc)
+        # One attempt per source: a refusal is shown on the source, never retried in a loop.
+        row.state = {**(row.state or {}), "adopted_from": str(assignment.id)}
+    return adopted
 
 
 def to_dict(row: Any) -> dict[str, Any]:

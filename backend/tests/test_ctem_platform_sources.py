@@ -242,6 +242,76 @@ async def test_enable_the_opencti_live_listener_provisions_one_trigger(monkeypat
     assert not octi.notifiers and not octi.triggers and sources.status_of(row) == ("off", None)
 
 
+class AdoptDb(FakeDb):
+    """The holder query answers *holders*; the source query answers the stored rows."""
+
+    def __init__(self, holders) -> None:
+        super().__init__()
+        self.holders = holders
+        self.calls = 0
+
+    async def execute(self, statement):
+        self.calls += 1
+        if self.calls == 1:
+            return SimpleNamespace(all=lambda: self.holders)
+        return await super().execute(statement)
+
+
+def _holder(name, provider, state, *, run_as=RUN_AS):
+    key = "openaev_provisioning" if provider == "openaev" else "opencti_provisioning"
+    return SimpleNamespace(
+        id=uuid.uuid4(), name=name, run_as_user_id=run_as, trigger_config={"provider": provider, key: state}
+    )
+
+
+async def test_an_enabled_openaev_holder_migrates_enabled_with_its_run_as(openaev):
+    """Upgrade: the source the loop assignment provisions is enabled as its run-as; the old objects stay."""
+    old = {
+        "status": "provisioned",
+        "notifier_id": "old-n",
+        "trigger_ids": {"x": "old-t"},
+        "integration_id": str(INTEGRATION),
+    }
+    holder = _holder("OpenAEV results into cases", "openaev", old)
+    db = AdoptDb([(holder, "ctem-vuln-prioritization-orchestrator")])
+    assert await sources.adopt_from_assignments(db, now=NOW) == 1
+    row = db.rows[0]
+    assert (row.provider, row.kind, row.enabled, row.run_as_user_id) == ("openaev", "listener", True, RUN_AS)
+    assert sources.status_of(row) == ("connected", None) and row.state["adopted_from"] == str(holder.id)
+    # New objects created; the holder's own are not touched here (removed by its pass once unseeded).
+    assert holder.trigger_config["openaev_provisioning"] == old and openaev.notifiers
+
+
+async def test_a_holder_with_nothing_provisioned_migrates_nothing(openaev):
+    holder = _holder("OpenAEV results into cases", "openaev", {"status": "error", "error": "no secret"})
+    db = AdoptDb([(holder, "ctem-vuln-prioritization-orchestrator")])
+    assert await sources.adopt_from_assignments(db, now=NOW) == 0
+    assert not db.rows and not openaev.notifiers
+
+
+async def test_a_user_assignment_is_never_adopted(openaev):
+    state = {"status": "provisioned", "trigger_ids": {"x": "t"}, "integration_id": str(INTEGRATION)}
+    db = AdoptDb([(_holder("My own listener", "openaev", state), "my-agent")])
+    assert await sources.adopt_from_assignments(db, now=NOW) == 0 and not db.rows
+
+
+async def test_a_refused_adoption_is_tried_once_and_stays_off(openaev):
+    state = {"status": "provisioned", "trigger_ids": {"x": "t"}, "integration_id": str(INTEGRATION)}
+    holder = _holder("OpenAEV results into cases", "openaev", state, run_as=uuid.uuid4())
+    db = AdoptDb([(holder, "ctem-vuln-prioritization-orchestrator")])
+    assert await sources.adopt_from_assignments(db, now=NOW) == 0
+    row = db.rows[0]
+    assert row.enabled is False and row.state["adopted_from"] == str(holder.id)
+    assert sources.status_of(row)[0] == "error"
+    db.calls = 0
+    assert await sources.adopt_from_assignments(db, now=NOW) == 0, "never retried in a loop"
+
+
+def test_the_analyst_mark_is_not_a_signal_source():
+    """The Grouping trigger resumes a waiting run; it records no signal, so it is never migrated."""
+    assert all(name != "Analyst review mark" for _slug, name in sources.HOLDER_ASSIGNMENTS)
+
+
 def test_the_pir_playbook_source_reads_the_profile_pirs():
     spec = sources.PROVISIONED[("opencti", "pir_playbook")].spec()
     assert spec["mode"] == "pir_playbook" and spec["organization_context"] == ["pir_ids"]
