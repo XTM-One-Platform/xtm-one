@@ -7,7 +7,7 @@ every active account in "CTEM Viewers" the first time it creates it. A
 nullable unique column: catalogue-only, no backfill here.
 
 Revision ID: s2441ctemseed01
-Revises: p2202fleetrd01
+Revises: s2434sigsrc01
 Create Date: 2026-11-26 01:30:00.000000
 """
 
@@ -21,7 +21,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "s2441ctemseed01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "p2202fleetrd01"
+down_revision: str | Sequence[str] | None = "s2434sigsrc01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
