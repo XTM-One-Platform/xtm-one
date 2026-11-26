@@ -21913,5 +21913,18 @@
   "Type a whole number from 0 to 100.": "Saisissez un nombre entier de 0 à 100.",
   "The PIR policy was not saved: {reason}": "La politique du PIR n'a pas été enregistrée : {reason}",
   "In OpenCTI": "Dans OpenCTI",
-  "Listed": "Listé"
+  "Listed": "Listé",
+  "{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}": "{count, plural, one {{shown} signal en 30 jours} other {{shown} signaux en 30 jours}}",
+  "Last signal: {date}": "Dernier signal : {date}",
+  "PIRs this playbook listens to": "PIR écoutés par ce playbook",
+  "None available: no PIR is enabled on the Intelligence policy.": "Aucun disponible : aucun PIR n'est activé dans la politique de renseignement.",
+  "None available of this path's type in OpenCTI: every enabled PIR is listened to by default.": "Aucun PIR de ce type dans OpenCTI : tous les PIR activés sont écoutés par défaut.",
+  "No PIR: no playbook on this path": "Aucun PIR : pas de playbook sur ce chemin",
+  "Search PIRs": "Rechercher des PIR",
+  "No PIR": "Aucun PIR",
+  "No playbook is provisioned for this path.": "Aucun playbook n'est provisionné pour ce chemin.",
+  "Each PIR records at its own minimum score: {list}": "Chaque PIR enregistre à son propre score minimum : {list}",
+  "Use the default": "Utiliser la valeur par défaut",
+  "Open the Intelligence policy": "Ouvrir la politique de renseignement",
+  "PIR selection saved": "Sélection des PIR enregistrée"
 }

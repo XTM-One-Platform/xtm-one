@@ -21913,5 +21913,18 @@
   "Type a whole number from 0 to 100.": "0〜100 の整数を入力してください。",
   "The PIR policy was not saved: {reason}": "PIR ポリシーは保存されませんでした: {reason}",
   "In OpenCTI": "OpenCTI 内",
-  "Listed": "掲載中"
+  "Listed": "掲載中",
+  "{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}": "{count, plural, other {30日間で{shown}件のシグナル}}",
+  "Last signal: {date}": "最後のシグナル: {date}",
+  "PIRs this playbook listens to": "このプレイブックが監視するPIR",
+  "None available: no PIR is enabled on the Intelligence policy.": "利用可能なものはありません: インテリジェンスポリシーで有効なPIRはありません。",
+  "None available of this path's type in OpenCTI: every enabled PIR is listened to by default.": "OpenCTIにこのパスの種類のPIRはありません: 既定では有効なすべてのPIRを監視します。",
+  "No PIR: no playbook on this path": "PIRなし: このパスにプレイブックはありません",
+  "Search PIRs": "PIRを検索",
+  "No PIR": "PIRなし",
+  "No playbook is provisioned for this path.": "このパスにはプレイブックがプロビジョニングされません。",
+  "Each PIR records at its own minimum score: {list}": "各PIRはそれぞれの最小スコアで記録します: {list}",
+  "Use the default": "既定値を使用",
+  "Open the Intelligence policy": "インテリジェンスポリシーを開く",
+  "PIR selection saved": "PIRの選択を保存しました"
 }
