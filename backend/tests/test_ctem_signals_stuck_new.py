@@ -199,3 +199,21 @@ async def test_one_signal_the_recheck_cannot_decide_never_takes_the_batch_down(f
     assert counts == {"failed": 1, "confirmed": 1}
     assert rows[0].state == "new" and rows[0].updated_at == NOW
     assert rows[1].state == "confirmed"
+
+
+async def test_only_the_bulk_prefetch_releases_the_connection_during_the_cve_read(fake_io, monkeypatch):
+    """#2518 review: the prefetch has no savepoint open and releases; the record-time gate never does."""
+    seen: list[bool] = []
+
+    async def _cve_software(_db, _reader, _cves, *, release=False):
+        seen.append(release)
+        return (), ctem_cve_software.LOOKUP_NO_ACCESS
+
+    monkeypatch.setattr(ctem_cve_software, "cve_software", _cve_software)
+    row = _row("CVE-2015-5123")
+    row.recorded_by = "00000000-0000-0000-0000-000000000001"
+    await store.prepare_cve_reads(_Db([]), [row])
+    facts = store.facts_of(row)
+    profile = await store._profile(None, "org")
+    await store._with_cve_software(_Db([]), row, facts, profile, None)
+    assert seen == [True, False]

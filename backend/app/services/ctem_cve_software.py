@@ -105,17 +105,24 @@ async def read_cve_software(
     return software_names(relations)
 
 
-async def cve_software(db: AsyncSession, reader: uuid.UUID | None, cves: list[str]) -> tuple[tuple[str, ...], str]:
-    """``(software, how the read went)`` for *cves*, read with *reader*'s own OpenCTI access."""
+async def cve_software(
+    db: AsyncSession, reader: uuid.UUID | None, cves: list[str], *, release: bool = False
+) -> tuple[tuple[str, ...], str]:
+    """``(software, how the read went)`` for *cves*, read with *reader*'s own OpenCTI access.
+
+    *release* True hands the pooled connection back before the OpenCTI call: only a
+    caller with no savepoint open (the bulk prefetch, ``prepare_cve_reads``) passes it.
+    """
     if reader is None:
         return (), LOOKUP_NO_READER
     from app.integrations.providers.opencti.capabilities import attach_probe
     from app.services.ctem_metrics_collector import _user_creds
 
     try:
-        # release=False: the gate decides inside a savepoint; a commit here closed it and
-        # left every CVE-only signal undecided ("Can't operate on closed transaction").
-        cred = await _user_creds(db, str(reader), "opencti", release=False)
+        # release False by default: the record-time gate decides inside a savepoint; a commit
+        # here closed it and left every CVE-only signal undecided ("Can't operate on closed
+        # transaction"). The bulk prefetch has none open and releases (#2518 review).
+        cred = await _user_creds(db, str(reader), "opencti", release=release)
     except Exception as exc:  # unreadable credentials: nothing is guessed
         logger.info("CTEM scope gate: OpenCTI access unreadable: %s", format_exception_message(exc))
         return (), LOOKUP_NO_ACCESS

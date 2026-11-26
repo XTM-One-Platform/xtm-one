@@ -454,6 +454,7 @@ async def _with_cve_software(
     primary_assets: Any,
     *,
     remote: bool = True,
+    release: bool = False,
 ) -> gate.SignalFacts:
     """*facts* with the software OpenCTI relates to the CVEs the signal names (#2171).
 
@@ -462,6 +463,8 @@ async def _with_cve_software(
     owner's, as :func:`_scenarios_for`), once per session and CVE list. Never raises.
     *remote* False reads nothing, remote or local: only what this session already
     read (:func:`prepare_cve_reads`) is used, else *facts* are answered unchanged.
+    *release* True (the bulk prefetch, no savepoint open) hands the pooled
+    connection back during the OpenCTI call; the record-time gate never does (#2516).
     """
     from app.services import ctem_cve_software
 
@@ -480,7 +483,9 @@ async def _with_cve_software(
             fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
         reader = scenario_reader(row, fallback)
         found, how = await _session_cached(
-            db, ("cve_software", reader, tuple(cves)), lambda: ctem_cve_software.cve_software(db, reader, cves)
+            db,
+            ("cve_software", reader, tuple(cves)),
+            lambda: ctem_cve_software.cve_software(db, reader, cves, release=release),
         )
     except Exception:
         logger.warning("CTEM scope gate: CVE software not read for %s", getattr(row, "id", "?"), exc_info=True)
@@ -521,7 +526,8 @@ async def prepare_cve_reads(
                 primary_assets = links[org]
             else:
                 primary_assets = await _session_cached(db, ("links", org), partial(_primary_assets, db, org))
-            await _with_cve_software(db, row, facts, profile, primary_assets)
+            # No savepoint is open here: release the connection during the OpenCTI I/O (#2518 review).
+            await _with_cve_software(db, row, facts, profile, primary_assets, release=True)
         except Exception:
             logger.warning("CTEM scope gate: CVE read not prepared for %s", getattr(row, "id", "?"), exc_info=True)
 
