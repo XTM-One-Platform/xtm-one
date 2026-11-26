@@ -1,0 +1,4972 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for XTM One, Filigran's AI-native threat-informed defense platform.">
+      
+      
+        <meta name="author" content="Filigran">
+      
+      
+        <link rel="canonical" href="https://xtm-one-platform.github.io/xtm-one/latest/administration/ai-governance/">
+      
+      
+        <link rel="prev" href="../channels/agent-accounts/">
+      
+      
+        <link rel="next" href="../prompt-safety/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>AI governance - XTM One Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/timeago.css">
+    
+      <link rel="stylesheet" href="../../assets/css/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-P8K1S4VSXR"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-P8K1S4VSXR",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-P8K1S4VSXR",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="filigran" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ai-governance" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+        
+          <aside class="md-banner md-banner--warning">
+            <div class="md-banner__inner md-grid md-typeset">
+              
+  You're not viewing the latest version.
+  <a href="../../.."> 
+    <strong>Click here to go to latest.</strong>
+  </a>
+
+            </div>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
+          </aside>
+        
+      </div>
+    
+    
+      
+
+
+<!-- Header -->
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+
+    <!-- Link to home -->
+    <a href="../.." title="XTM One Documentation" class="md-header__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+
+    <!-- Button to open drawer -->
+    <label class="md-header__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+
+    <!-- Header title -->
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color palette -->
+    
+      
+    
+
+    <!-- Site language selector -->
+    
+
+    <!-- Button to open search modal -->
+    
+      <label class="md-header__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+      </label>
+
+      <!-- Search interface -->
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+
+    <!-- Repository information -->
+    
+      <div class="md-header__source">
+        <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+
+  <!-- Navigation tabs (sticky) -->
+  
+
+  <script type="text/javascript"> !function(){var e,t,n;e="58d967e3f3ca784",t=function(){Reo.init({clientID:"58d967e3f3ca784"})},(n=document.createElement("script")).src="https://static.reo.dev/"+e+"/reo.js",n.async=!0,n.onload=t,document.head.appendChild(n)}(); </script>
+  <script src="https://copilot.filigran.ai/api/v1/public/widget.js" data-token="jNJu1JTbbPwNqk1tqEOw-WjsKU4dEcgn" data-context="{&quot;page&quot;:&quot;docs&quot;,&quot;product&quot;:&quot;XTM One&quot;}"></script>
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../deployment/overview/" class="md-tabs__link">
+          
+  
+  
+  Deployment &amp; Setup
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/getting-started/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../introduction/" class="md-tabs__link">
+          
+  
+  
+  Administration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="XTM One Documentation" class="md-nav__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    XTM One Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2">
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment &amp; Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment &amp; Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_1">
+        
+          
+          <label class="md-nav__link" for="__nav_2_1" id="__nav_2_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/scim-provisioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provisioning with SCIM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/security-headers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security headers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/secret-vaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secret vaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/xtm-suite-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/chat-approvals-in-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat approvals in client apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/backup-and-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3">
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2">
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/containers-and-scopes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Containers and scopes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/relationships-and-nesting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationships and nesting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse and deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/dates-and-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meaning of dates and status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/foundations/trust-and-confidence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trust, review, and confidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3">
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work with agents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Work with agents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/chat-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/office-add-in/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Office add-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/scheduled-work-items/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduled work items
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/workspaces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/presentations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presentations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/custom-dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/mobile-companion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mobile companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/video-studio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video Studio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sandbox-workspace/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sandbox workspace
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/create-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/assignments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Assignments and triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/webhook-triggers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Webhook triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/web-widget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publish an agent on a website
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/agent-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/agentic-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ai-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4">
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manage resources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Manage resources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/agent-to-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent-to-agent (A2A)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/browser-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Browser profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/knowledge-bases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Knowledge bases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/connect-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connect an external MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/platform-mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/platform-tools-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform tools MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/mcp-catalogs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP catalogs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/relays/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relays
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/sharing-and-access/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sharing and access
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Templates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/resources/runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One Desktop and runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5">
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitor activity
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Monitor activity
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/home-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ctem-signals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CTEM signals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/work-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/platform-insights/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform insights
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_6">
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    XTM Suite
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/common-experience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common experience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/opencti/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCTI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/indicator-decay/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indicator decay re-check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/openaev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenAEV
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/xtm-suite/opencrq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCRQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/my-profile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    My profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../users-and-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users and groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../intents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Intents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../organization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organization profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6">
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channels and bots
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Channels and bots
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/slack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/microsoft-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/whatsapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/whatsapp-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp: two backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/telegram/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/discord/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/google-chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channels/agent-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent accounts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI governance
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI governance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#what-is-shared-with-an-ai-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is shared with an AI provider
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is shared with an AI provider">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#adding-documents-to-a-knowledge-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding documents to a knowledge base
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-ai-provider-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the AI provider runs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scope-what-agents-can-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope what agents can access
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#guardrails-and-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guardrails and safety
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#human-approval-of-tool-calls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Human approval of tool calls
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Human approval of tool calls">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-asks-first-and-what-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What asks first, and what doesn't
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tools-that-always-ask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools that always ask
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-a-reviewer-sees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a reviewer sees
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-you-answer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where you answer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#answering-several-at-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Answering several at once
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Answering several at once">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runs-a-standing-approval-already-covers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runs a standing approval already covers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#yes-always" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Yes, always"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#allow-every-tool-for-me" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Allow every tool for me"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scheduled-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scheduled runs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#turning-it-on-or-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Turning it on or off
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#suspending-approvals-for-the-whole-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suspending approvals for the whole platform
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-general-assistant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The General Assistant
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#built-in-agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built-in agents
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tools-from-a-connected-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools from a connected platform
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-retention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data retention
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data retention">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-survives-the-trace-purge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What survives the trace purge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next step
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prompt-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt safety (Nova)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../editions-and-licensing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editions and licensing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../running-without-ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running without AI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../emergency-stop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../emergency-stop-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#what-is-shared-with-an-ai-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is shared with an AI provider
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is shared with an AI provider">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#adding-documents-to-a-knowledge-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding documents to a knowledge base
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-ai-provider-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the AI provider runs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scope-what-agents-can-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope what agents can access
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#guardrails-and-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guardrails and safety
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#human-approval-of-tool-calls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Human approval of tool calls
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Human approval of tool calls">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-asks-first-and-what-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What asks first, and what doesn't
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tools-that-always-ask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools that always ask
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-a-reviewer-sees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a reviewer sees
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-you-answer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where you answer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#answering-several-at-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Answering several at once
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Answering several at once">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runs-a-standing-approval-already-covers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runs a standing approval already covers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#yes-always" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Yes, always"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#allow-every-tool-for-me" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "Allow every tool for me"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scheduled-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scheduled runs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#turning-it-on-or-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Turning it on or off
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#suspending-approvals-for-the-whole-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suspending approvals for the whole platform
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-general-assistant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The General Assistant
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#built-in-agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built-in agents
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tools-from-a-connected-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools from a connected platform
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-retention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data retention
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data retention">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-survives-the-trace-purge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What survives the trace purge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next step
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation">
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../introduction/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Administration
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/XTM-One-Platform/xtm-one/blob/main/docs/docs/administration/ai-governance.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"></path></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/XTM-One-Platform/xtm-one/raw/main/docs/docs/administration/ai-governance.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"></path></svg>
+    </a>
+  
+
+
+<h1 id="ai-governance">AI governance</h1>
+<p>This page describes what XTM One shares with AI providers, where that data is processed, and how to control it. Read it alongside <a href="../../deployment/data-flow/">Data flow</a>, which covers the request lifecycle and where data is stored.</p>
+<h2 id="what-is-shared-with-an-ai-provider">What is shared with an AI provider</h2>
+<p>When the platform calls an AI provider, the request contains only what the model needs to answer:</p>
+<ul>
+<li>the agent's persona and system instructions</li>
+<li>the current conversation or assignment prompt, including recent message history</li>
+<li>context the agent pulls in to answer — for example, snippets retrieved from a knowledge base, tool results, or an incoming trigger payload</li>
+<li>the definitions of the tools the agent may call (names and parameters, not their results until a tool runs)</li>
+</ul>
+<p>What stays private and is never included in the request to the model:</p>
+<ul>
+<li>stored integration and channel credentials (encrypted at rest — see <a href="../../deployment/configuration/#security">Configuration</a>)</li>
+<li>user passwords and session tokens</li>
+<li>knowledge bases in full — when an agent answers, only the snippets it retrieves are sent (the full text is sent once to the embedding model when you first add the content, as described below)</li>
+</ul>
+<div class="admonition info">
+<p class="admonition-title">XTM One does not train on your data</p>
+<p>XTM One never uses your prompts, documents, conversations, memories, or any other data to train, fine-tune, or improve an AI model. Your data is sent to the AI provider you configure <strong>only</strong> to answer your own requests, in real time. The platform itself trains nothing.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Your AI provider sees your prompts</p>
+<p>Whatever an agent puts into a prompt — including retrieved documents and tool results — is sent to the AI provider you configured. The platform does <strong>not</strong> anonymize, tokenize, or redact prompt content before sending it, and prompts are stored unredacted in your own deployment (see <a href="../../deployment/data-flow/#where-data-is-stored">Data flow</a>). Whether the provider retains or trains on the prompts it receives is governed by <strong>its</strong> terms, not by XTM One — review them, and scope agents' knowledge and tools accordingly. For maximum control, run a local model so no prompt data leaves your network.</p>
+</div>
+<h3 id="adding-documents-to-a-knowledge-base">Adding documents to a knowledge base</h3>
+<p>To make a knowledge base searchable, XTM One first has to turn its documents into numbers a computer can compare — these numbers are called <strong>embeddings</strong>. Creating them means sending the document text to an <strong>embedding model</strong>, which is an AI provider just like the one that answers questions.</p>
+<p>Two things are worth knowing:</p>
+<ul>
+<li>This happens <strong>when you add the content</strong>, not on every question. The same applies to an agent's saved memories.</li>
+<li>The embedding model can be a <strong>separate provider</strong> from the one that answers chats — and it can be a <strong>local one</strong> (for example Ollama), so the document text never leaves your network. You set it under <code>Settings</code> → <code>AI Models</code>.</li>
+</ul>
+<h2 id="where-the-ai-provider-runs">Where the AI provider runs</h2>
+<p>You choose the AI provider under <code>Settings</code> → <code>AI Models</code>, or pre-provision it (see the supported providers in <a href="../../deployment/configuration/#ai-providers">Configuration</a>). The provider determines where prompt data is processed:</p>
+<ul>
+<li><strong>Hosted providers</strong> (such as OpenAI, Anthropic, Gemini, and Mistral) process prompts on their own infrastructure, subject to their terms.</li>
+<li><strong>Self-hosted or local providers</strong> (Ollama, or any OpenAI-compatible endpoint on your network) keep prompt data inside your perimeter. This is the recommended option for air-gapped deployments.</li>
+</ul>
+<h2 id="scope-what-agents-can-access">Scope what agents can access</h2>
+<p>Because an agent only shares what it is configured to use, you control exposure by scoping the agent:</p>
+<ul>
+<li>limit which knowledge bases an agent can read</li>
+<li>limit which integrations and tools an agent can call</li>
+<li>use assignment-level scoping to further narrow tools and knowledge bases per automation</li>
+</ul>
+<p>See the <a href="../../usage/agents/">User Guide</a> for how agents, knowledge bases, and tools are configured.</p>
+<h2 id="guardrails-and-safety">Guardrails and safety</h2>
+<p>XTM One adds several safety layers around every agent run. They lower the risk of misuse, but they are not a substitute for limiting what each agent can access and choosing your AI provider carefully.</p>
+<ul>
+<li><strong>Per-agent rules</strong> — every agent has a separate "guardrails" box where you write hard rules it must always follow (for example, "never send external email" or "only answer questions about our products"). These rules are kept apart from the agent's persona, so an edit to its personality can't accidentally erase them.</li>
+<li><strong>Injection detection (alert only)</strong> — messages coming into an agent are checked for known tricks that try to make the AI ignore its rules ("prompt injection" and "jailbreak" attempts). When one is spotted, XTM One records it as a security event for administrators to review — but it does <strong>not</strong> block the message. Treat this as an alert to check, not a wall that stops every attack.</li>
+<li><strong>Treating outside content as data, not orders</strong> — anything an agent pulls in from the outside world (web pages it fetches, incoming webhook or integration messages) is wrapped so the AI treats it as information to read, never as instructions to obey. This helps stop a malicious web page or email from hijacking the agent.</li>
+<li><strong>Built-in security rules</strong> — a fixed set of security instructions is added to every agent so it resists attempts to reveal its hidden instructions, override its rules, or pretend to be someone else.</li>
+<li><strong>Link checking</strong> — when an agent's answer includes links to other XTM Suite products, XTM One checks and corrects them automatically, so the agent never hands out made-up links.</li>
+</ul>
+<h2 id="human-approval-of-tool-calls">Human approval of tool calls</h2>
+<p>When an agent is set to <strong>ask before running tools</strong>, it stops and asks a person before any tool call that is not known to be read-only: anything that could change something or reach outside the platform. The run stops, the reviewer sees exactly what the agent proposes, and nothing happens until they decide.</p>
+<p>Tool approvals are <strong>opt-in</strong>. No agent asks until an administrator turns it on, for one agent or for every agent; until then every tool call runs as it always has, and no screen shows an approval state. See <a href="#turning-it-on-or-off">Turning it on or off</a>. That includes the short list of <a href="#tools-that-always-ask">tools that always ask</a>: they ask only on an agent that asks, so an agent nobody set to ask never stops for a person, whatever tool it calls.</p>
+<p>This is not a suggestion the AI can talk itself out of. The platform checks every tool call before it runs, so the pause happens regardless of what the model decides to do.</p>
+<p>Where everything lives:</p>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Where</th>
+<th>Who</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Whether approvals are in use, which agents ask, the default every agent follows, the per-tool rules, the connected platforms' policies, the emergency suspend switch</td>
+<td><strong>Settings → Access and security → Tool approvals</strong></td>
+<td>Administrators</td>
+</tr>
+<tr>
+<td>Whether one agent asks</td>
+<td>The agent → <strong>Configuration → Tooling → Ask before running tools</strong></td>
+<td>Whoever manages the agent</td>
+</tr>
+<tr>
+<td>The tools you always allow, and <strong>Allow every tool for me</strong></td>
+<td><strong>Profile → Tool approvals</strong> (shown once an agent asks, or while you hold a choice)</td>
+<td>Each person, for themselves only</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-asks-first-and-what-doesnt">What asks first, and what doesn't</h3>
+<p>On an agent that asks, every tool <strong>asks first unless a rule lets it run without asking</strong>. That default matters: a tool nobody has considered yet — a newly connected integration, a custom tool somebody just wrote — asks first rather than acting first.</p>
+<p>XTM One ships rules that let tools that only read data (searching, listing, fetching, looking up) run without asking. Threat-intelligence lookups such as <code>lookup_greynoise_ip</code> or <code>lookup_rf_domain</code> are reads; a tool named with a verb that reads for one service and changes data for another (enrich, triage, assess, identify, reverse, resolve, analyze) still asks. Ordinary read-heavy work is therefore unaffected. The same rule is applied to what you connect: the read-classified tools of your integrations and of company-managed, enabled MCP servers run without asking as well, scoped to what is actually connected — a provider you have not connected exempts nothing. The read tools of a connected Suite platform run without asking on the same basis — see <a href="#tools-from-a-connected-platform">Tools from a connected platform</a>. All of it is listed under <strong>Tool rules</strong> in <strong>Settings → Access and security → Tool approvals</strong>, grouped by where it came from, and any tool can be made to ask first.</p>
+<p>An exemption covers the tool it was decided for, not every tool that carries the name. An MCP server or a custom tool that takes the name of a tool on the list still asks, and a company-managed MCP server's read covers that server's own tool only: a built-in of the same name, such as <code>web_fetch</code>, keeps asking. An entry an administrator adds covers every tool of that name. Tools that download a file (a Jira attachment, a Slack or Google Drive file, a social media post's image) keep asking even though they only read: they pull a document nobody has looked at into the agent's context.</p>
+<p><strong>Chat bots are the exception.</strong> A Slack, Teams or Discord bot's tools are never exempted automatically, including the ones that only read. Reading a channel means reading people's conversations rather than platform data, which is a decision for a person to make per tool rather than one to infer from a verb. Each configured bot carries its own switch under <strong>Settings → Channels</strong> instead. Turning it off means two things, and both are deliberate: conversations through that bot run uninterrupted whatever tools the agent reaches for, the <a href="#tools-that-always-ask">tools that always ask</a> included, and the bot's own send/edit/delete tools stop pausing wherever they are called. Only that bot is affected — two bots of the same provider decide separately.</p>
+<div class="admonition warning">
+<p class="admonition-title">A bot cannot ask, so a gated tool asked for there stops</p>
+<p>A chat conversation with a bot has no way to collect an approval today: the bot replies explaining that it stopped, and the turn ends. That is why the switch exists — without it, a gated tool requested through a bot is not delayed, it is unavailable. (An assignment run's approval can be answered from Teams through its pasted link, see <a href="#where-you-answer">Where you answer</a>.)</p>
+</div>
+<p>A few tools that act on nothing at all are exempt for the same reason: asking a person to approve them would only interrupt. <code>request_human_input</code> is the agent choosing to ask a question — gating it would mean pausing for approval to ask for approval — and <code>wait</code> is the agent's timer, bounded by the wait limits in <strong>Settings → Parameters</strong> and interruptible at any time, so gating it would replace a bounded pause with an unbounded one. <code>check_task_status</code> is the poll beside it, reading whether work the agent already started has finished, on a short fixed budget the model cannot change.</p>
+<p>Administrators manage the rules under <strong>Tool rules</strong> in <strong>Settings → Access and security → Tool approvals</strong>. The rules can be prepared before any agent asks; the page says they change nothing until one does. You can:</p>
+<ul>
+<li><strong>Let it run without asking</strong> — a tool you trust stops asking, for everyone. Any tool can be added, including destructive ones — the platform warns you rather than refusing. <strong>Add a tool by name</strong> does the same for a tool not connected yet.</li>
+<li><strong>Make it ask first</strong> — a read-only tool we ship as running without asking starts asking. That decision survives upgrades: a later release that ships the tool exempt again will not silently undo it. <strong>Back to the default</strong> undoes it.</li>
+<li><strong>Make all its reads ask first</strong> for a whole platform's read tools in one action, and put them back the same way. Ruling on dozens of entries one at a time is not a real choice, so it is offered as one.</li>
+</ul>
+<p>A tool's own page, an integration's tool table and a bot's tool list show whether each tool asks first, only while approvals are in use, and link to the rule (for administrators) or to your own approvals (for everyone else). Your own approvals list the tools that ask first and the ones you always allow, so for anyone but an administrator a tool that runs without asking, and that you do not always allow, is shown without a link.</p>
+<div class="admonition warning">
+<p class="admonition-title"><code>code_interpreter</code> ships whitelisted</p>
+<p>The code interpreter runs code the AI writes, and it is on the default whitelist so that routine calculations don't interrupt every run. It is sandboxed, but if your security posture requires a person to see generated code before it runs, this is the first entry to remove.</p>
+</div>
+<h3 id="tools-that-always-ask">Tools that always ask</h3>
+<p>On an agent that asks, a few tool calls wait for a person whatever else would let them run: a tool on the whitelist, "Yes, always" or <strong>Allow every tool for me</strong>. Only a decision on that very call lets it run. Approval stays opt-in, so these calls ask <strong>only on an agent set to ask</strong>: on an agent set to <strong>Don't ask</strong>, or that follows a platform default of not asking, they run like every other call, recorded with the agent's setting as the reason. The switch above everything is the platform's own: while <a href="#suspending-approvals-for-the-whole-platform">approvals are suspended for the whole platform</a>, they run unattended on every agent, recorded with that as the reason. They are calls whose effect a person should see before it happens:</p>
+<ul>
+<li><code>act_on_page</code> with <code>submit</code>: a click that saves, creates, sends or deletes in the page the user is on.</li>
+<li>The Letsignit user writes, <code>create_letsignit_user</code>, <code>update_letsignit_user_variables</code> and <code>delete_letsignit_user</code>: the Letsignit API key reaches every employee, and what they change appears in every email that person sends afterwards. The Letsignit reads (<code>get_letsignit_signature</code>, <code>get_letsignit_user</code>) are not on this list: like the other directory reads (Microsoft Entra's <code>get_entra_user</code>, for instance), they change nothing, and an administrator who wants them asked makes them ask first under <strong>Tool rules</strong>.</li>
+</ul>
+<p>On an agent that asks, while approvals are available, where nobody can answer (a chat bot, a client that does not support approvals, an action an agent scheduled from a conversation), such a call does not run: the agent replies that it stopped, and an exact scheduled action naming such a tool is refused. An assignment run pauses and waits for a person, like any run with a tool that asks.</p>
+<h3 id="what-a-reviewer-sees">What a reviewer sees</h3>
+<p>When a run pauses, the reviewer gets the tool's name, what it does, and every argument with its description — so a value like <code>cascade: true</code> can be judged, not guessed at. They can then:</p>
+<ul>
+<li><strong>Yes</strong> — run it as proposed.</li>
+<li><strong>No</strong> — decline it. The agent is told it was declined and can propose something else.</li>
+<li><strong>Yes, always</strong> — see below.</li>
+</ul>
+<h3 id="where-you-answer">Where you answer</h3>
+<p>Three places, with the same effect and the same record:</p>
+<ul>
+<li><strong>The run itself</strong> — open it and answer there.</li>
+<li><strong>Operations → Executions</strong> — approvals appear inline in the list, so you can answer without opening each run. Filter to <strong>Awaiting Input</strong> to see only what is paused.</li>
+<li><strong>The run's link pasted in Microsoft Teams</strong> — the link turns into a card that shows each person what their own access allows: whoever may answer the run gets each tool with its arguments and an <code>Approve</code> / <code>Reject</code> choice, or the question with an answer box. The answer is recorded as given from Teams. See <a href="../channels/microsoft-teams/#pasted-xtm-one-links">Pasted XTM One links</a>.</li>
+</ul>
+<p>Someone who sees the card but cannot answer the run can ask the people who can, with <strong>Ask the owner to act</strong> (or <strong>Ask an admin to act</strong> on a company-managed run). Those people get a notification in the bell, and the request is listed on the run page, with <strong>Dismiss</strong>, until the run is answered. It shares nothing: the person who asked still cannot see the run.</p>
+<p>The bell tells you a run is waiting and links to it; the decision is made in one of the two places above, because judging a proposal means seeing every argument in full and that does not fit a notification.</p>
+<h3 id="answering-several-at-once">Answering several at once</h3>
+<p>Select several rows in <strong>Operations → Executions</strong> and answer them together. The selection is per run: a run that paused on more than one tool call is answered as a whole, because a half-answered pause cannot resume.</p>
+<ul>
+<li><strong>Select the N awaiting approval</strong> picks exactly the paused rows, skipping notices you cannot act on.</li>
+<li><strong>Reject</strong> asks for <strong>one reason</strong>, applied to every run in the selection. Give one — with nothing to go on, each agent can only come back and ask you what to do instead, so a reasonless bulk rejection costs more interruptions than it saves.</li>
+<li><strong>Approve always</strong> over a selection lists <strong>every tool</strong> it would stop asking about before you confirm. Read that list: it is the same durable preference described below, applied to several tools at once.</li>
+</ul>
+<p>Each run is recorded as its own decision. If one can no longer be answered — somebody got there first, or the run ended — the others still go through and you are told which did not.</p>
+<h4 id="runs-a-standing-approval-already-covers">Runs a standing approval already covers</h4>
+<p>Granting "always" (below) stops a tool asking on future calls, but the gate has already run for anything sitting paused — so those runs keep waiting for the tool you just trusted. Where that happens the executions list says how many, and offers to release them in one action.</p>
+<p>It is an offer rather than something that happens on its own: a run restarting with no explicit action is surprising, and you may be part-way through deciding something else.</p>
+<p>A run is released only when <strong>every</strong> one of its pending calls is covered. One covered and one uncovered call means it still needs answering by hand — releasing it would approve a call you never consented to. That rule is enforced where the release happens, not where it is offered, so a run that stops qualifying between the offer and the click is refused and named rather than let through.</p>
+<p>Nothing is granted by releasing. The exceptions already exist; this only applies them to what was already waiting.</p>
+<p>Turning on <strong>Allow every tool for me</strong> in your profile makes the same offer, for the same reason.</p>
+<h3 id="yes-always">"Yes, always"</h3>
+<p>This saves a preference for <strong>you</strong>, not for everyone. That tool then runs without asking you again.</p>
+<p>Two things to understand before using it:</p>
+<ul>
+<li>It applies to <strong>your scheduled runs too</strong>, not just the one you were watching. The approval prompt says so before you confirm.</li>
+<li>Another user is still asked. Your preference never lowers the bar for anybody else.</li>
+<li>It does not cover the <a href="#tools-that-always-ask">tools that always ask</a>: "Yes, always" runs the call in front of you, and the next one asks again.</li>
+</ul>
+<p>You can review and take back your saved approvals at any time under <strong>Profile → Tool approvals</strong>, where <strong>Tools that ask first</strong> also lets you <strong>Always allow for me</strong> a tool before it ever asks you. If a tool's parameters change after you approved it, the approval is dropped automatically and the tool asks again — your consent described the older version, so it no longer applies.</p>
+<p>An approval belongs to the tool you approved, not to every tool carrying its name. A tool from an MCP server is covered only on the server you approved it on: another server advertising the same tool name still asks, and so does a built-in tool sharing the name of an MCP or custom tool you approved. Approving the name again on another server moves your approval to that server. A tool from an MCP server that you approved before the server was recorded asks you once more; answering <strong>Yes, always</strong> records its server.</p>
+<h3 id="allow-every-tool-for-me">"Allow every tool for me"</h3>
+<p>If approving tools one at a time is not how you want to work, <strong>Profile → Tool approvals</strong> offers the wholesale form: <strong>Allow every tool for me</strong>. While it is on, none of your conversations or scheduled runs wait for your approval — including tools that delete data or act outside the platform, which is why turning it on asks you to confirm first.</p>
+<p>It does not cover the <a href="#tools-that-always-ask">tools that always ask</a>. Like a per-tool approval, this is a preference for <strong>you</strong> alone; nobody else's runs are affected. Your saved per-tool approvals are kept rather than deleted, so turning the mode off restores exactly the posture you had before. Switching it either way is written to the audit log, and every call that runs under it is recorded with that as the reason.</p>
+<h3 id="scheduled-runs">Scheduled runs</h3>
+<p>A scheduled run that hits a tool needing approval <strong>pauses and waits</strong>. It does not time out, and nothing is auto-approved. The assignment's owner is notified, and the notification names the tools waiting.</p>
+<p>This is deliberate: unattended automation is where an unreviewed destructive action does the most damage. To let one agent's scheduled work run end to end, let the tools it uses run without asking, or set that agent to <strong>Don't ask</strong>.</p>
+<h3 id="turning-it-on-or-off">Turning it on or off</h3>
+<p>Each agent has an <strong>Ask before running tools</strong> setting under <strong>Configuration → Tooling</strong>: <strong>Follow the platform default</strong>, <strong>Ask</strong> or <strong>Don't ask</strong>. It applies to everything the agent does, runs and chats alike. An agent that follows the default takes the platform-wide <strong>Every agent asks by default</strong> switch under <strong>Settings → Access and security → Tool approvals</strong>.</p>
+<p>That default is <strong>off on a new install</strong>, and an upgrade changes neither it nor any agent: an install that turned it on, or that a release before approvals were opt-in created with it on, keeps its setting. Otherwise nothing asks until an administrator turns approval on, for one agent or for every agent, agents created later included.</p>
+<p>The top of <strong>Settings → Access and security → Tool approvals</strong> says whether approvals are <strong>In use</strong>, <strong>Not in use</strong> or <strong>Suspended</strong>, and lists the agents that ask (and the General Assistant when it does), each linking to its setting.</p>
+<p>The agent's <strong>Human in the loop</strong> switch is a different thing: it lets the agent choose to ask a person through the <code>request_human_input</code> tool and adds the review prompt. It does not turn the tool approval gate on.</p>
+<p>Every tool call is recorded either way, with why it ran: allowed by a rule, covered by a saved approval, approved by a person, or run because approval was off. Changing either setting is audited with the value set, who set it, and when.</p>
+<h3 id="suspending-approvals-for-the-whole-platform">Suspending approvals for the whole platform</h3>
+<p><strong>Suspend all approvals</strong>, at the bottom of <strong>Settings → Access and security → Tool approvals</strong>, is the emergency switch. While it is on, no tool call waits for anyone, the General Assistant included, whatever an agent or the platform default says, the <a href="#tools-that-always-ask">tools that always ask</a> included: tool approval is opt-in at platform level, and no tool-level flag turns it back on. Every call that runs under the switch is recorded with that as the reason. The rules and the per-platform policies stay saved but stop applying; <strong>Resume approvals</strong> puts everything back as it was.</p>
+<p>It asks for confirmation and is audited. An administrator's agent with the <code>Platform insights</code> tools reads both switches with <code>get_platform_ai_settings</code> (under <code>tool_approvals</code>: <code>tool_approvals_enabled</code>, <code>approve_tool_calls_default</code> and <code>env_seed</code>, the <code>TOOL_APPROVALS_ENABLED</code> value as deployed) and changes them with <code>update_platform_ai_settings</code> (<code>tool_approvals_enabled: false</code> suspends, <code>true</code> resumes; <code>approve_tool_calls_default</code> is <strong>Every agent asks by default</strong>), with the same administrator check, the same validation (true or false only) and the same audit entry as this page, marked as coming from the tool. <code>TOOL_APPROVALS_ENABLED=false</code> seeds it suspended: it is read once, when the settings row is created on a fresh install or during the upgrade that adds the switch, and ignored afterwards. Unset, or anything unrecognised, leaves approvals available (which still asks nothing until an agent is set to ask).</p>
+<p>Two things to know:</p>
+<ul>
+<li><strong>A run that has already paused stays paused.</strong> Clear those from <strong>Operations → Executions</strong>: answer them, answer by tool, or dismiss them.</li>
+<li><strong>The settings are read fail-closed.</strong> If they cannot be read, tools gate rather than run.</li>
+</ul>
+<h3 id="the-general-assistant">The General Assistant</h3>
+<p>The General Assistant has no agent behind it, so it follows the platform default wherever chat is available. Where it is not, the default reaches only the agents, and <strong>Every agent asks by default</strong> and its confirmation do not name the General Assistant. The suspend switch and a user's own <strong>Allow every tool for me</strong> also reach it; so do the tool rules, which are the narrower lever when it keeps asking about a tool you consider routine.</p>
+<h3 id="built-in-agents">Built-in agents</h3>
+<p>Agents that ship with XTM One are read-only: their persona, tools and settings are managed by the platform and re-synchronised on every restart. <strong>Ask before running tools is the exception</strong>: an administrator can set it on a built-in agent from the same screen as any other agent. Built-in agents are what an embedded assistant in OpenCTI, OpenAEV or OpenGRC drives, so without it the only lever would be the platform-wide default.</p>
+<ul>
+<li><strong>Administrators only</strong>, as for everything on a company-managed agent.</li>
+<li><strong>Your choice survives restarts</strong>: the boot-time re-synchronisation does not touch it.</li>
+</ul>
+<p>Nothing else about a built-in agent or its assignments becomes editable.</p>
+<h3 id="tools-from-a-connected-platform">Tools from a connected platform</h3>
+<p>A Suite platform that registers with XTM One — OpenCTI, OpenAEV, OpenGRC — contributes its own tools, a few hundred of them across the three.</p>
+<p><strong>Its read tools skip approval.</strong> Every platform tool is classified as reading or changing data, and the ones that only read — searching, listing, fetching, querying — are exempt on the same footing as XTM One's own read tools. Anything that changes the platform still asks. So "require approval" for a connected platform means <em>ask before anything that changes it</em>, not <em>ask before anything from it</em>: an agent can look up a report unattended, and still stops before editing one.</p>
+<p>Two things bound that:</p>
+<ul>
+<li><strong>The classification errs towards asking.</strong> A tool whose purpose cannot be established from its name counts as changing data. In particular the consolidated <code>manage_…</code> tools — which can list <em>or</em> create <em>or</em> delete depending on how they are called — always ask, because no single answer about them would be right.</li>
+<li><strong>One read still asks anyway</strong>, by deliberate choice rather than by classification: reading a file's contents into the AI's context, because that loads a third-party document nobody has looked at. Identity and RBAC reads — who the users are, which roles and groups exist, what a role can do — are <strong>not</strong> held back: they change nothing, and re-gating them where that matters is a deployment's decision, made on the whitelist screen. Half-holding them back would only have looked like a protection: the summary asked while every part of it stayed readable.</li>
+</ul>
+<p>If you would rather no platform read ran unattended, <strong>Tool rules</strong> in <strong>Settings → Access and security → Tool approvals</strong> groups them per platform and makes the whole set ask first in one action. That decision survives upgrades and survives the platform reconnecting, and the same control puts them back.</p>
+<p>Whether the platform's <em>other</em> tools ask is decided per platform under <strong>Settings → Access and security → Tool approvals → Approval for connected platforms</strong>, which lists whatever is actually connected. Each row shows two separate things:</p>
+<ul>
+<li><strong>Whether that platform can display an approval prompt.</strong> A fact the platform reports about itself when it registers — only it knows. Most builds today have never said, which is not the same as saying they cannot.</li>
+<li><strong>What happens to its tools while no prompt can be shown.</strong> A policy only you can set: gate them, so its agents explain themselves instead of acting, or let them run.</li>
+</ul>
+<p>The row also says where the current setting came from — a default, this deployment's configuration, or an administrator — so you can tell whether it is protecting you or merely inherited from an install nobody remembers.</p>
+<p>A platform that later ships approval support and re-registers starts gating again on its own, unless an administrator explicitly chose otherwise. In that one case the setting stands and the page offers to restore the safer posture in a click, rather than changing it silently behind you.</p>
+<div class="admonition tip">
+<p class="admonition-title">Setting the starting point at deploy time</p>
+<p><code>TOOL_APPROVALS_PLATFORM_DEFAULT</code> decides what a platform gets <strong>the first time it registers</strong>. Set it to <code>skip</code> when deploying beside a platform release that cannot prompt yet, so its agents keep working without anyone making an API call on first boot.</p>
+<p>It seeds a value rather than overriding one: whatever it sets is visible and changeable on the settings page, and it never overwrites a choice an administrator has made or applies to platforms already registered.</p>
+</div>
+<p>If you drive XTM One chat from another application, see <a href="../../deployment/chat-approvals-in-clients/">Chat approvals in client applications</a>.</p>
+<h2 id="data-retention">Data retention</h2>
+<p>All platform data lives in <strong>your own deployment</strong> (see <a href="../../deployment/data-flow/#where-data-is-stored">Data flow</a>). XTM One applies these defaults:</p>
+<table>
+<thead>
+<tr>
+<th>Data</th>
+<th>Where it is stored</th>
+<th>Default retention</th>
+<th>How to control it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Conversations and messages</td>
+<td>PostgreSQL</td>
+<td>Kept until deleted</td>
+<td>Delete the conversation, or the agent it belongs to</td>
+</tr>
+<tr>
+<td>Assignment runs and results</td>
+<td>PostgreSQL</td>
+<td>Kept until deleted</td>
+<td>Delete the run, or the assignment</td>
+</tr>
+<tr>
+<td>Agent memory — recent interactions</td>
+<td>Redis</td>
+<td>24 hours (auto-expires)</td>
+<td>Automatic</td>
+</tr>
+<tr>
+<td>Agent memory — rolling summary</td>
+<td>Redis</td>
+<td>30 days (auto-expires)</td>
+<td>Automatic</td>
+</tr>
+<tr>
+<td>Agent memory — long-term facts</td>
+<td>PostgreSQL</td>
+<td>90 days, max 200 per agent</td>
+<td>Admins can clear an agent's memory at any time</td>
+</tr>
+<tr>
+<td>LLM traces</td>
+<td>PostgreSQL (or ClickHouse)</td>
+<td>Purged after the retention period — <strong>90 days by default</strong></td>
+<td>Adjustable from <strong>1 to 365 days</strong> under <code>Settings</code> → <code>Observability</code>, where <code>Store full payloads</code> off keeps no prompt, answer or tool content and <code>Enable local trace storage</code> off keeps no trace (see <a href="../../deployment/monitoring/#what-a-trace-keeps">What a trace keeps</a>); individual traces can be deleted</td>
+</tr>
+<tr>
+<td>Daily observability aggregates</td>
+<td>PostgreSQL</td>
+<td><strong>Kept indefinitely</strong> — they outlive the trace purge on purpose</td>
+<td>Not covered by the trace retention setting; see <a href="#what-survives-the-trace-purge">What survives the trace purge</a></td>
+</tr>
+<tr>
+<td>Audit logs</td>
+<td>PostgreSQL</td>
+<td><code>Audit log retention (days)</code> in Settings &gt; Observability, 90 days by default (each user's most recent sign-in is kept); the entries of a user's own actions are deleted with that user's account</td>
+<td>Admin-only visibility; entries cannot be edited from the platform</td>
+</tr>
+<tr>
+<td>Prompt, persona, agent setting and skill versions</td>
+<td>PostgreSQL</td>
+<td>Full history by default</td>
+<td><code>PROMPT_VERSION_RETENTION_COUNT</code> keeps only the latest N versions of each series (<code>0</code> = unlimited); a locked version is never pruned</td>
+</tr>
+<tr>
+<td>Resolved shared state entries</td>
+<td>PostgreSQL</td>
+<td>30 days after resolution</td>
+<td><code>SHARED_STATE_RESOLVED_RETENTION_DAYS</code> (<code>0</code> keeps them until an agent or admin deletes them); active entries are never purged</td>
+</tr>
+<tr>
+<td>Work items (tasks agents hand to each other)</td>
+<td>PostgreSQL</td>
+<td>Done or cancelled items: 30 days. An open item with no activity for 14 days is cancelled, unless it has a start date or deadline still ahead or is a <a href="../../usage/scheduled-work-items/">scheduled work item</a></td>
+<td><code>WORK_ITEM_RESOLVED_RETENTION_DAYS</code> and <code>WORK_ITEM_ABANDONED_AFTER_DAYS</code> (<code>0</code> disables each)</td>
+</tr>
+<tr>
+<td>Worksets (an agent's scoped document corpus)</td>
+<td>PostgreSQL and object storage</td>
+<td>Resolved worksets: 7 days. A workset with its own expiry goes once past it. The corpus the platform creates by itself for an agent's chat or an assignment expires 30 days after its last use</td>
+<td><code>WORKSET_RESOLVED_RETENTION_DAYS</code> (<code>0</code> disables the purge); <code>WORKSET_IMPLICIT_IDLE_DAYS</code> for the agent and assignment corpora (<code>0</code> keeps them until resolved); a workset a flow creates without an expiry is never purged</td>
+</tr>
+<tr>
+<td>Flow events</td>
+<td>PostgreSQL</td>
+<td>30 days</td>
+<td><code>FLOW_EVENT_RETENTION_DAYS</code> (<code>0</code> disables the purge); never shorter than the flow run timeout, so a waiting run keeps hearing its event</td>
+</tr>
+<tr>
+<td>Relayed request records (host, method, status, size, duration)</td>
+<td>PostgreSQL</td>
+<td>30 days</td>
+<td><code>RELAY_REQUEST_LOG_RETENTION_DAYS</code> (<code>0</code> = forever); see <a href="../../usage/resources/relays/">Relays</a></td>
+</tr>
+<tr>
+<td>Public chat widget visitor uploads</td>
+<td>Object storage</td>
+<td>7 days after the visitor's last message; a file never sent: 1 day</td>
+<td><code>PUBLIC_WIDGET_UPLOAD_RETENTION_DAYS</code> (at least <code>1</code>, cannot be switched off)</td>
+</tr>
+<tr>
+<td>Sandbox workspaces (files the code interpreter keeps)</td>
+<td>Object storage</td>
+<td>Conversation workspace: 7 days unused, or at once when the conversation is archived or deleted. Assignment run workspace: when the run ends</td>
+<td><code>CODE_INTERPRETER_WORKSPACE_IDLE_TTL_HOURS</code> (168) and <code>CODE_INTERPRETER_RUN_WORKSPACE_IDLE_TTL_HOURS</code> (24, for a run that has not ended)</td>
+</tr>
+<tr>
+<td>WhatsApp messages received by a WhatsApp integration</td>
+<td>PostgreSQL</td>
+<td>30 days</td>
+<td>The integration's <code>inbound_retention_days</code> field, from 1 to 365 days</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-survives-the-trace-purge">What survives the trace purge</h3>
+<p>Deleting an expired trace does <strong>not</strong> delete the KPI it contributed to. Once a day is complete, XTM One rolls its traces up into a small daily aggregate and keeps that aggregate indefinitely, so the Analytics dashboard can still answer "what did last quarter cost?" long after the individual traces are gone. This is why a 30-day or 90-day chart still has data on a platform with 7-day trace retention.</p>
+<p>What you keep, and for how long:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Individual traces</th>
+<th>Daily aggregates</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Retained for</td>
+<td>The retention period (1–365 days, default 90)</td>
+<td>Indefinitely</td>
+</tr>
+<tr>
+<td>Granularity</td>
+<td>Every request, with prompts, tool calls and errors (the prompts and tool content only while <code>Store full payloads</code> is on)</td>
+<td>One row per day, agent, model, source, user, the person the usage counts for and their <a href="../../deployment/monitoring/#departments">department</a></td>
+</tr>
+<tr>
+<td>Answers</td>
+<td>"What exactly happened in this conversation?"</td>
+<td>"How much did this agent, model or person cost, and how fast was it?"</td>
+</tr>
+<tr>
+<td>Where in the UI</td>
+<td>Trace explorer, individual trace detail, top errors</td>
+<td>Cost, volume and latency charts on Analytics</td>
+</tr>
+</tbody>
+</table>
+<p>Consequences worth knowing before you choose a retention period:</p>
+<ul>
+<li><strong>Prompt and response content is <em>not</em> aggregated.</strong> Only counts, token totals, cost, latency distributions and feedback averages survive. Nothing a user typed, and no tool result, outlives the retention period.</li>
+<li><strong>Aggregates are per user.</strong> A day's row is keyed by agent, model, source <em>and</em> the user who made the request - and, for a request with no user of its own (an assignment run, a sub-agent, a webhook), the person it counts for - with their department at the time, so per-person and per-department usage and cost stay answerable after the traces are gone. If your retention policy requires per-user usage records to expire as well, treat these aggregates as in scope — the trace retention setting does not clear them.</li>
+<li><strong>Error details and per-request diagnostics do not survive.</strong> The "Top errors" table and trace detail are served from raw traces only, so they are always limited to the retention window.</li>
+<li><strong>Latency beyond the window is a distribution, not the raw timings.</strong> Each day stores a bucketed histogram of its durations, which is what lets percentiles be merged correctly across a long window. Expect percentile values to be accurate to within a bucket rather than exact.</li>
+<li><strong>A day is never purged before it is aggregated.</strong> The maintenance job aggregates first and refuses to delete a day that has no aggregate yet, so lowering the retention period (or a restart longer than it) cannot silently drop a day's KPIs. If a window you select reaches back further than any surviving data, Analytics says so instead of showing zeroes.</li>
+<li><strong>ClickHouse follows the same retention period.</strong> With <code>tracing_store_provider=clickhouse</code>, the maintenance job deletes the expired ClickHouse traces and spans, with their offloaded payloads, on the same window as PostgreSQL, about once an hour. It also declares a table TTL at the retention period plus 7 days on the trace, span and score tables, as a backstop: if maintenance stops, ClickHouse still expires the rows on its own, but their offloaded payload objects stay in the bucket. Long-window dashboards read the PostgreSQL aggregates either way.</li>
+</ul>
+<p>To remove the aggregates as well, delete the <code>llm_daily_stats</code> rows (or the deployment's PostgreSQL volume, as below).</p>
+<p>Two categories are <strong>not</strong> retained by XTM One and are governed entirely by your own infrastructure:</p>
+<ul>
+<li><strong>Application logs</strong> are written to standard output. Your container runtime or log aggregator decides how long they are kept and how they are rotated — see <a href="../../deployment/monitoring/#logs">Monitoring</a>.</li>
+<li><strong>Metrics</strong> are exposed on the <code>/metrics</code> endpoint and scraped by your Prometheus. The platform holds only current values; historical retention lives in your monitoring stack.</li>
+</ul>
+<p>To remove all data, delete the deployment's PostgreSQL, Redis, and object-storage volumes. For selective deletion, delete the specific agents, conversations, or knowledge bases from the application.</p>
+<h2 id="next-step">Next step</h2>
+<p>Review <a href="../../deployment/monitoring/">Monitoring</a> to see how AI requests are traced and observed, and <a href="../../deployment/authentication/">Authentication</a> to control who can send them.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+  </span>
+
+    
+    
+    
+      
+  <span class="md-source-file__fact">
+    
+      
+  <span class="md-icon" title="Contributors">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33s1.71.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2"></path></svg>
+  </span>
+  <span>GitHub</span>
+
+    
+    <nav>
+      
+        <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
+          
+          <img src="https://avatars.githubusercontent.com/u/326439686?v=4&amp;size=72" alt="Letullier-Thibert">
+        </a>
+      
+      
+      
+    </nav>
+  </span>
+
+    
+  </aside>
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer">
+        
+          
+          <a href="../channels/agent-accounts/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Agent accounts">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Agent accounts
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../prompt-safety/" class="md-footer__link md-footer__link--next" aria-label="Next: Prompt safety (Nova)">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Prompt safety (Nova)
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"></path></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2026 Filigran SAS. Community Edition licensed under the Apache License 2.0
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/XTM-One-Platform" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://community.filigran.io" target="_blank" rel="noopener" title="community.filigran.io" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M94.1 315.1c0 25.9-21.2 47.1-47.1 47.1S0 341 0 315.1 21.2 268 47.1 268h47.1v47.1zm23.7 0c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1v117.8c0 25.9-21.2 47.1-47.1 47.1s-47.1-21.2-47.1-47.1zm47.1-189c-25.9 0-47.1-21.2-47.1-47.1s21.2-47 47.1-47S212 53.2 212 79.1v47.1h-47.1zm0 23.7c25.9 0 47.1 21.2 47.1 47.1S190.8 244 164.9 244H47.1C21.2 244 0 222.8 0 196.9s21.2-47.1 47.1-47.1zm189 47.1c0-25.9 21.2-47.1 47.1-47.1s47 21.2 47 47.1-21.2 47.1-47.1 47.1h-47.1v-47.1zm-23.7 0c0 25.9-21.2 47.1-47.1 47.1S236 222.8 236 196.9V79.1c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1zm-47.1 189c25.9 0 47.1 21.2 47.1 47.1s-21.2 47-47.1 47-47.1-21.2-47.1-47.1v-47.1h47.1zm0-23.7c-25.9 0-47.1-21.2-47.1-47.1s21.2-47.1 47.1-47.1h117.8c25.9 0 47.1 21.2 47.1 47.1s-21.2 47.1-47.1 47.1z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://linkedin.com/company/filigran" target="_blank" rel="noopener" title="linkedin.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M416 32H31.9C14.3 32 0 46.5 0 64.3v383.4C0 465.5 14.3 480 31.9 480H416c17.6 0 32-14.5 32-32.3V64.3c0-17.8-14.4-32.3-32-32.3M135.4 416H69V202.2h66.5V416zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77m282.1 320h-66.4V312c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9V416h-66.4V202.2h63.7v29.2h.9c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://twitter.com/FiligranHQ" target="_blank" rel="noopener" title="twitter.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"></path></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.path", "navigation.footer", "navigation.expand", "content.action.edit", "content.action.view", "content.code.annotate", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../js/timeago.min.js"></script>
+      
+        <script src="../../js/timeago_mkdocs_material.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>

@@ -1,0 +1,4735 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for XTM One, Filigran's AI-native threat-informed defense platform.">
+      
+      
+        <meta name="author" content="Filigran">
+      
+      
+        <link rel="canonical" href="https://xtm-one-platform.github.io/xtm-one/latest/usage/agents/">
+      
+      
+        <link rel="prev" href="../sandbox-workspace/">
+      
+      
+        <link rel="next" href="../create-agent/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Agents - XTM One Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/timeago.css">
+    
+      <link rel="stylesheet" href="../../assets/css/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-P8K1S4VSXR"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-P8K1S4VSXR",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-P8K1S4VSXR",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="filigran" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#agents" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+        
+          <aside class="md-banner md-banner--warning">
+            <div class="md-banner__inner md-grid md-typeset">
+              
+  You're not viewing the latest version.
+  <a href="../../.."> 
+    <strong>Click here to go to latest.</strong>
+  </a>
+
+            </div>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
+          </aside>
+        
+      </div>
+    
+    
+      
+
+
+<!-- Header -->
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+
+    <!-- Link to home -->
+    <a href="../.." title="XTM One Documentation" class="md-header__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+
+    <!-- Button to open drawer -->
+    <label class="md-header__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+
+    <!-- Header title -->
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color palette -->
+    
+      
+    
+
+    <!-- Site language selector -->
+    
+
+    <!-- Button to open search modal -->
+    
+      <label class="md-header__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+      </label>
+
+      <!-- Search interface -->
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+
+    <!-- Repository information -->
+    
+      <div class="md-header__source">
+        <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+
+  <!-- Navigation tabs (sticky) -->
+  
+
+  <script type="text/javascript"> !function(){var e,t,n;e="58d967e3f3ca784",t=function(){Reo.init({clientID:"58d967e3f3ca784"})},(n=document.createElement("script")).src="https://static.reo.dev/"+e+"/reo.js",n.async=!0,n.onload=t,document.head.appendChild(n)}(); </script>
+  <script src="https://copilot.filigran.ai/api/v1/public/widget.js" data-token="jNJu1JTbbPwNqk1tqEOw-WjsKU4dEcgn" data-context="{&quot;page&quot;:&quot;docs&quot;,&quot;product&quot;:&quot;XTM One&quot;}"></script>
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../deployment/overview/" class="md-tabs__link">
+          
+  
+  
+  Deployment &amp; Setup
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../getting-started/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../administration/introduction/" class="md-tabs__link">
+          
+  
+  
+  Administration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="XTM One Documentation" class="md-nav__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    XTM One Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2">
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment &amp; Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment &amp; Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_1">
+        
+          
+          <label class="md-nav__link" for="__nav_2_1" id="__nav_2_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/scim-provisioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provisioning with SCIM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/security-headers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security headers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/secret-vaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secret vaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/xtm-suite-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/chat-approvals-in-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat approvals in client apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/backup-and-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2">
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/containers-and-scopes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Containers and scopes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/relationships-and-nesting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationships and nesting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse and deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/dates-and-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meaning of dates and status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/trust-and-confidence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trust, review, and confidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work with agents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Work with agents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../office-add-in/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Office add-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scheduled-work-items/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduled work items
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workspaces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../presentations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presentations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mobile-companion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mobile companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../video-studio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video Studio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sandbox-workspace/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sandbox workspace
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#what-an-agent-is-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What an agent is for
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-list-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The list page
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-detail-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The detail page
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-agent-remembers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the agent remembers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-an-assignment-or-a-roster-may-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What an assignment or a roster may name
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#duplicate-and-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Duplicate and export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#read-only-integrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read-only integrations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#building-agents-from-a-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building agents from a conversation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-an-assignment-runs-gates-and-event-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When an assignment runs: gates and event filters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#work-an-agents-queue-the-work-item-trigger" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Work an agent's queue: the work item trigger
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Work an agent's queue: the work item trigger">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#programs-a-status-read-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Programs: a status read live
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fleet-health-findings-and-one-advisory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fleet health: findings and one advisory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-automations-badge-in-agent-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The automations badge in agent tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#react-to-what-happens-in-the-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        React to what happens in the platform
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="React to what happens in the platform">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#act-later-on-one-object-timers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Act later on one object: timers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#importing-an-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Importing an agent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exposing-an-agent-on-a-messaging-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exposing an agent on a messaging platform
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-an-agent-is-disabled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When an agent is disabled
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delete-an-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete an agent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-an-assignment-shows-emergency-stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When an assignment shows Emergency stop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next step
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../create-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../assignments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Assignments and triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../webhook-triggers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Webhook triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-widget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publish an agent on a website
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agentic-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4">
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manage resources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Manage resources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/agent-to-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent-to-agent (A2A)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/browser-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Browser profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/knowledge-bases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Knowledge bases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/connect-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connect an external MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/platform-mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/platform-tools-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform tools MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/mcp-catalogs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP catalogs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/relays/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relays
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/sharing-and-access/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sharing and access
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Templates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One Desktop and runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5">
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitor activity
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Monitor activity
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../home-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ctem-signals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CTEM signals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../work-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platform-insights/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform insights
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_6">
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    XTM Suite
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/common-experience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common experience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/opencti/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCTI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/indicator-decay/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indicator decay re-check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/openaev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenAEV
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/opencrq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCRQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../my-profile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    My profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4">
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/users-and-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users and groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/intents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Intents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/organization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organization profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6">
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channels and bots
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Channels and bots
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/slack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/microsoft-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/whatsapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/whatsapp-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp: two backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/telegram/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/discord/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/google-chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/agent-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent accounts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/ai-governance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI governance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/prompt-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt safety (Nova)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/editions-and-licensing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editions and licensing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/running-without-ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running without AI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/emergency-stop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/emergency-stop-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#what-an-agent-is-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What an agent is for
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-list-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The list page
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-detail-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The detail page
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-agent-remembers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the agent remembers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-an-assignment-or-a-roster-may-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What an assignment or a roster may name
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#duplicate-and-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Duplicate and export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#read-only-integrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read-only integrations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#building-agents-from-a-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building agents from a conversation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-an-assignment-runs-gates-and-event-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When an assignment runs: gates and event filters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#work-an-agents-queue-the-work-item-trigger" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Work an agent's queue: the work item trigger
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Work an agent's queue: the work item trigger">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#programs-a-status-read-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Programs: a status read live
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fleet-health-findings-and-one-advisory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fleet health: findings and one advisory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-automations-badge-in-agent-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The automations badge in agent tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#react-to-what-happens-in-the-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        React to what happens in the platform
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="React to what happens in the platform">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#act-later-on-one-object-timers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Act later on one object: timers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#importing-an-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Importing an agent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exposing-an-agent-on-a-messaging-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exposing an agent on a messaging platform
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-an-agent-is-disabled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When an agent is disabled
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delete-an-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete an agent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-an-assignment-shows-emergency-stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When an assignment shows Emergency stop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next step
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation">
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../getting-started/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    User Guide
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../chat/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Work with agents
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/XTM-One-Platform/xtm-one/blob/main/docs/docs/usage/agents.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"></path></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/XTM-One-Platform/xtm-one/raw/main/docs/docs/usage/agents.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"></path></svg>
+    </a>
+  
+
+
+<h1 id="agents">Agents</h1>
+<p>Agents are the main assistants in XTM One. Each one is configured for a particular role, team, or workflow.</p>
+<h2 id="what-an-agent-is-for">What an agent is for</h2>
+<p>Use an agent when you want a more focused assistant than the <code>General Assistant</code>. An agent can answer questions in a specific domain, use selected tools and integrations, search one or more knowledge bases, hand work to other agents, and run background tasks automatically.</p>
+<p>An agent works on its own through assignments: a trigger (a schedule, an event, a webhook) and a prompt. See <a href="../assignments/">Assignments and triggers</a>.</p>
+<h2 id="the-list-page">The list page</h2>
+<p>Choose <code>Agents</code> from the left sidebar to open the list. You can browse all visible agents, search, filter by visibility or tag, import an agent from a file, and — if your role allows it — create a new one (see <a href="../create-agent/">Create an agent</a>). Each card is a quick summary: the agent's status, what is attached to it, and whether it is company-managed or shared. Some cards also offer quick actions such as opening a chat or enabling and disabling the agent.</p>
+<p>Click the star on an agent's card or row to make it a favorite. Favorites are pinned to the top of the list in both views, above everything else and whichever column you sort by, so the two or three agents you actually work with stay one glance away in a long fleet. The choice is yours alone — it is stored on your account, follows you to any browser, and changes nothing for anyone else. Click the star again to remove it. Filters still come first: a favorite that does not match your search or tag filter is not shown.</p>
+<p>The toggle at the right of the filter row switches between the card grid and a sortable list. The list view is the better choice once you manage more than a handful of agents: it puts status, model, assignment count, and attached resources in sortable columns so you can answer questions like "which agents run which model?" by scanning one column. See <a href="../resources/#grid-and-list-views">grid and list views</a> for how sorting and persistence work.</p>
+<p>Not every visible agent is editable. Company-managed agents are shared broadly and often read-only for standard users, shared agents come from a group or another owner, and built-in agents are typically read-only. If you open an agent and cannot change it, the page is behaving as designed for your access level.</p>
+<p>Connecting a resource to an agent or to one of its assignments (an MCP server, an integration or a channel bot) is limited to the ones you can see yourself, and a save that adds another one is refused; what the agent or the assignment already names stays in place when you save, whoever connected it. An agent shared with you runs with what its owner connected to it - their MCP servers, custom tools, knowledge bases, channel bots and integrations - in its assignment runs, and in your chats too with one exception, integrations: in a chat, an integration you cannot see, or whose owner's connected account is not shared with you, is not used for you (see <a href="../resources/integrations/#sharing-an-oauth-integration">Sharing an OAuth integration</a>). Your own or a company-wide integration of the same service takes its place when the agent resolves one for you; otherwise a note under the answer names the integration (by its service only when it is not shared with you) and says why, and the agent is told too, so it can say what it cannot do.</p>
+<h2 id="the-detail-page">The detail page</h2>
+<p>Click an agent card to open its detail page. The header gives you direct actions — <code>Chat with Agent</code>, <code>Duplicate</code>, <code>Export</code>, enable or disable, and delete when you can manage the agent. If the agent is designed mainly for assignments, the chat button still works but XTM One warns that it is not optimized for conversation.</p>
+<p>The page is organized into tabs (some appear only when your role can see them):</p>
+<ul>
+<li><code>Overview</code> is the best first stop: a quick understanding of what the agent does and what is attached to it, without reading the full configuration. Its <code>Coming up</code> card lists what the agent will do next and when: your scheduled work items on it and the next runs of its scheduled assignments, with actions to cancel or reschedule a scheduled item, and <code>Open in Schedule</code> to see them in the fleet's schedule.</li>
+<li><code>Configuration</code> is how the agent is set up — persona and instructions, tools and integrations, knowledge and memory, handovers, channels, and intent bindings. For most users this is a reading page; editing is usually reserved for admins. The <code>Intent Bindings</code> card is what makes the agent available inside OpenCTI, OpenAEV, or OpenCRQ; see <a href="../../administration/intents/"><code>Intents</code></a>. A built-in tool the agent carries but this deployment has switched off (the code interpreter, Runners, a feature not enabled here) is shown greyed as <code>Unavailable</code>: it does nothing until an administrator enables it, and while editing you can remove it from the agent, not add it. On a company-managed agent that carries <code>Work Items</code> or <code>Shared State</code>, the same card holds its <code>Coordination access</code>: which agents can read and change the company-managed work items it creates and the shared state it owns (see <a href="../work-history/"><code>Work history</code></a>).</li>
+<li>The <code>Model</code> picker in <code>Configuration</code> chooses what the agent runs on: <code>Platform default</code>, one model, or <code>Platform routing model</code>. The routing model is the lightweight model an administrator sets in <code>Settings &gt; AI Models</code> (the one that already evaluates routing conditions); pick it for an agent that takes a narrow, repeated decision - classify, judge, route - that a small model handles well and for less. The agent then follows whatever routing model the administrator configures. When none is configured, the agent runs on the platform default model, and the <code>Configuration</code> and <code>Overview</code> tabs say so. Choosing a model of its own takes the agent off the routing model.</li>
+<li><code>Value</code> shows what the agent returns, then what it may spend. Its <code>ROI</code> section comes first: hours saved, net value and review rate over the last 7, 30 or 90 days, how they are computed, and what the agent delivered from chat. Below it, the run budget caps what one run of the agent may spend — money, tokens, tool calls or time — and can let a run that reaches its cost ceiling finish on a cheaper model instead of stopping. Lowering a limit is open to anyone who can edit the agent; raising one above the platform's own budget is an administrator's decision. See <a href="../agent-budgets/"><code>Run budgets</code></a>. The tab was called <code>Budget</code> and the ROI sat on <code>Overview</code> before; links to either open <code>Value</code>.</li>
+<li><code>Versioning</code> lists every version of the persona and of the tracked settings, to compare them and roll back.</li>
+<li><code>Memory</code> shows the agent's longer-term memory, where authorized users can search it, review its health, and run maintenance. An entry that no longer holds is marked <code>Superseded</code> (see <a href="#what-the-agent-remembers">What the agent remembers</a>).</li>
+<li><code>Observability</code> shows how the agent performs over the recent period: traces over 7 days, average cost and latency, error rate, average feedback and quota consumed, then its cost over 30 days, its recent traces, its models, and the feedback it received. It is shown to the people who can see the agent's chats.</li>
+<li><code>Chats</code> shows conversations associated with the agent, to review or reopen context.</li>
+<li><code>Delegations</code> shows work the agent sent to or received from other agents, useful for understanding how handovers behaved.</li>
+<li><code>Feedback</code> gathers every thumbs up and thumbs down given to the agent's work — its chat answers, its assignment runs, its background tasks and the answers it gave when another agent consulted it — with the comments people left, filterable by kind of work and by rating. When feedback criteria are defined (<code>Settings &gt; Quality</code>), it also shows the agent's weighted score and, per criterion, the average, the distribution and the last 30 days. It is shown to the people who can manage the agent.</li>
+<li><code>Activity</code> is the agent's run history — review recent executions and spot failures.</li>
+</ul>
+<h2 id="what-the-agent-remembers">What the agent remembers</h2>
+<p>An agent with persistent memory stores what it learns (<code>store_memory</code>), searches it (<code>search_memory</code>), and is given the most relevant entries at the start of each conversation and assignment run.</p>
+<p>Some entries describe something that changes: what a document's footer says, how many slides a deck has, the status of a ticket. The agent stores those as <strong>state</strong> entries, named by the object they describe (a subject such as <code>doc:&lt;id&gt;</code> or <code>presentation:&lt;id&gt;</code>). When it records a newer observation of the same subject, that one replaces the older:</p>
+<ul>
+<li>The older entry is kept and still found by a search, listed after the current ones and marked <code>Superseded</code>. It is never given to the agent as context again.</li>
+<li>A state entry reaches the agent dated (<code>as of &lt;date&gt;, verify live</code>), with a reminder that it is a past observation and that the live document, deck or ticket is the one to check before acting on it.</li>
+<li>The agent can also retire an entry that no longer holds (<code>invalidate_memory</code>), by its id or by its subject. A retired entry is kept and marked <code>Superseded</code> too. The agent's shared entries are retired this way only in a session of the agent's owner or of an administrator.</li>
+</ul>
+<p>Entries that name no subject behave as they always did. In a conversation, the agent replaces only the memory it keeps for you, and retires the memory it shares with every user of the agent only for its owner or an administrator: otherwise that shared memory stays as it is for the others, and the newer entry is the one you are shown.</p>
+<p>What an assignment run remembers is kept for the user the run acts as, with the memory of that user's conversations with the agent: the next runs as that user, and that user's conversations, read it; nobody else's do.</p>
+<p>On the <code>Memory</code> tab, clearing the memory, <code>Optimize</code>, and editing or deleting an entry are for the people who can manage the agent: its owner, an administrator, or a user it is shared with to configure. A user it is shared with read-only sees the memory and changes none of it.</p>
+<h2 id="what-an-assignment-or-a-roster-may-name">What an assignment or a roster may name</h2>
+<p>An assignment whose trigger listens to an integration reads that integration's events with its credentials, so when you save it, the integration it names must be one you can see: yours, one shared with you or one of your groups, or a company-wide one. Admins may name any. Otherwise the save is refused with the same answer whether the integration exists or not. Editing anything else, or saving the trigger again with the integration it already names, is never refused, even if that integration is no longer visible to you. The agent builder tools apply the same rule; when strict admin access for agent tools is on, an administrator's agent may name only the integrations the administrator sees as their own, shared with them or company-wide.</p>
+<p>An agent you create from a template gets the template's assignments and default skills (see <a href="../create-agent/">Create an agent</a>). A template trigger that names an integration you cannot see is created without it, and then listens to the new agent's own integration of that provider.</p>
+<p>The agents you let an agent hand work items to (the <code>Work Items</code> tool's roster) follow the same rule: you can add only agents you can see (admins may add any), and the ones already in the roster stay when you save.</p>
+<h2 id="duplicate-and-export">Duplicate and export</h2>
+<p>Two header actions are easy to overlook. <code>Duplicate</code> creates a private copy you can adapt without changing the original, and <code>Export</code> downloads the agent so it can be stored, shared, or imported elsewhere. This is especially helpful when your organization uses standard company-managed agents but you need a private variation.</p>
+<p>The copy is yours, so it keeps only what you could connect to an agent of your own. When you copy an agent someone else owns, the integrations, MCP servers, knowledge bases, custom tools, skills, prompts, handover agents, work-item owner agents and channel bots you cannot use are left out, in the copied assignments too, and the confirmation says how many of each kind were left out and why (the <code>warnings</code> of the duplicate response). Everything you can use is copied as it is, a personal OAuth integration shared with you included. Whoever copies, an assignment trigger that listens to an integration you cannot see loses it: the copied trigger then listens to the copy's own integration of that provider. The original agent is not changed: it keeps running with everything its owner connected. Copied assignments start disabled.</p>
+<p><code>Export</code> asks which format you want. The <strong>XTM One native bundle</strong> (default, JSON) carries everything — assignments, handover routing, memory settings, prompts, skills and variables — so use it for backups and for moving an agent between XTM One instances. <strong>Microsoft AgentSchema</strong> (YAML) is an open, cross-vendor agent definition that other agent platforms can read, and only what that specification can express goes into its standard fields.</p>
+<p>Choosing AgentSchema shows you exactly which of your agent's settings will not be included as standard fields — handover, memory tiers, assignments, integration bindings, prompts and skills among them — before the file is created. Nothing on that list is thrown away: it is preserved in an XTM One section of the document's metadata, so re-importing the same file into XTM One restores everything, while other platforms ignore that section.</p>
+<p>Exporting everything is for the people who can manage the agent: its owner, someone it is shared with for configuration, and administrators. If you can see an agent but not manage it, such as a company-managed agent or one shared with you as read-only, <code>Export</code> gives you what its <a href="../ai-catalog/">AI Catalog</a> download carries instead, in either format. A credential passed to an MCP server as an argument or in its URL is masked. Custom tools that are not company-managed are left out, unless the agent is published with its personal tools included. A company-managed tool, MCP server, skill or prompt restricted to a group you are not in is left out too, and variables come without their values. The file still imports: re-enter the masked values and fill in the variables afterwards.</p>
+<h2 id="read-only-integrations">Read-only integrations</h2>
+<p>An integration bound to an agent can be made read-only for that agent: the agent keeps the tools that read from it (list, get, search, download) and loses the ones that change it (create, update, delete, send, post, transition, upload and any tool whose action is not clearly a read). The setting is enforced when the agent runs, not by an instruction in its prompt: a write tool of a read-only integration is not offered to the agent, and a call that names it anyway is refused. Removing the integration from the agent removes its read-only mark. The same integration can stay writable on another agent.</p>
+<p>A per-user integration (bound under <strong>Advanced: Dynamic integrations (per-user)</strong> on the agent's Tooling tab, resolved to each user's own connection at run time) has the same switch: turn on <strong>Read-only</strong> on its card and the agent keeps only that provider's read tools, whichever user's connection it resolves to. The card then shows a Read-only badge outside edit mode. Turning the per-user binding off clears the switch. The API and the <code>create_agent</code> / <code>update_agent</code> tools set it as <code>integration_template_read_only</code>, a list of provider keys that must also be in <code>integration_template_bindings</code>.</p>
+<h2 id="building-agents-from-a-conversation">Building agents from a conversation</h2>
+<p>An agent with the agent builder tools (the <code>General Assistant</code>, or an agent given the <code>agent_builder</code> built-in tool) can build agents for you in chat:</p>
+<ul>
+<li><code>update_agent</code>, <code>create_agent</code> and <code>duplicate_agent</code> accept every built-in group the agent settings offer (<code>files</code>, <code>web</code>, <code>cti</code>, <code>design</code>, <code>coordination</code>, <code>observability</code> and the others), plus the former ids they replaced. <code>builtin_tool_ids</code> follows <code>binding_mode</code>: <code>replace</code> (the default) makes the list the agent's set, <code>add</code> adds groups and keeps the others, <code>remove</code> takes groups out. The answer names the groups added and removed.</li>
+<li><code>create_agent</code> sets up a complete agent in one call, with everything <code>update_agent</code> can change: model and temperature, built-in tools, memory, tool scoping and deny list, read-only integrations, handover and channels. If one setting is refused, no agent is created. The answer lists every integration bound to the new agent with its name, so you can check none is missing.</li>
+<li><code>clone_agent</code> copies an agent you can see, with integrations, knowledge bases and built-in tools added or removed and the persona replaced or extended. It never copies assignments, sharing, intent bindings or the <code>builtin</code> tag (a copy is not a built-in agent), and it shows what differs from the original, naming each intent binding of the original the copy does not have. With <code>copy_memory</code> it also copies the original's persistent memory you may read, with its dates, types and subjects, and says how many entries it copied; the memory of a company-managed agent is copied by an administrator only. <code>Duplicate</code> takes the same option as <code>copy_memory=true</code> on <code>POST /api/v1/agents/{id}/duplicate</code>.</li>
+<li><code>list_agent_intent_bindings</code>, <code>bind_agent_to_intent</code> and <code>unbind_agent_from_intent</code> read and change the intents an agent answers, which decide where a connected platform (OpenCTI, OpenAEV) offers it, for example in a playbook's AI agent step. See <a href="../../administration/intents/"><code>Intents</code></a>.</li>
+<li><code>edit_opencti_playbook_graph</code> refuses a node whose configuration names a value outside the choices the component offers, such as an AI agent the playbook step does not list, and says which values are allowed: nothing is saved.</li>
+<li><code>list_integration_tools</code> shows which tools of an integration read and which write. For OpenAPI integrations (<code>provider: "openapi"</code>) it lists the operations imported from each integration's spec, grouped by integration, with each tool's HTTP method and path; <code>integration_id</code> lists one integration.</li>
+<li><code>update_integration</code> shares an integration with groups: members can use it (bind it to their agents and run it) or also manage it. An agent shared with a group only uses, for each member, the integrations that member may use.</li>
+<li><code>update_integration</code> with <code>is_company_managed</code> makes an integration company-managed (<code>true</code>, visible platform-wide) or private again (<code>false</code>), as the integration's edit page does. Only an admin can change it. A field the tool does not take is refused by name, so nothing is ignored without a word.</li>
+<li><code>update_agent</code> also shares an agent, with groups or with named people outside any group: "share this agent with alice@example.com and marie@example.com, read-only" gives them the agent in their agent list and lets them chat with it; <code>config</code> lets them edit it too. Only people who already have an account here can be named - an address no account matches is refused, and nobody is invited. Removing someone takes their access away at once. The answer, and <code>get_agent</code>, say who the agent is shared with: each group by name with its number of members, each person by name and email, with their level of access. A company-managed agent is already open to everyone and is not shared this way. As for a group, a person the agent is shared with only uses, in their own chats, the integrations they may use themselves.</li>
+<li><code>update_agent</code> and <code>update_assignment</code> change part of a long text without resending it: <code>mode</code> <code>edit</code> (a list of exact find/replace operations; nothing changes unless every one applies, and a text found more than once needs <code>replace_all</code>), <code>append</code>, <code>replace_section</code> or <code>insert_after</code> (a Markdown section named by its heading), on the <code>field</code> named: <code>persona</code> (the default), <code>guardrails</code> or <code>description</code> for an agent, <code>prompt</code> (the default), <code>activation_prompt</code> or <code>description</code> for an assignment. The answer shows the diff of the field, not the text. Without a <code>mode</code> the field passed is the whole new text, as before. An agent's persona and guardrails changes are versioned like any other edit.</li>
+<li><code>list_groups</code> lists the groups of the platform with their number of members, so the agent can find the group to share with and say who an existing share reaches. Administrators' agents can also list the members of each group.</li>
+<li><code>get_agent</code> takes an optional <code>sections</code> list to read part of an agent's configuration: <code>behavior</code>, <code>model</code>, <code>tools</code>, <code>handover</code>, <code>memory</code>, <code>human_in_the_loop</code>, <code>channels</code>, <code>sharing</code>, <code>guardrails</code>, <code>intents</code>, <code>persona</code>. The name, id and slug are always shown; without <code>sections</code> the whole configuration comes back, persona included. Checking one setting across many agents (for example <code>["tools"]</code> for their tool scoping) no longer reads every persona. An unknown section name is refused with the list of valid ones.</li>
+<li><code>get_assignment</code> takes an optional <code>sections</code> list as well: <code>gates</code>, <code>activation_prompt</code>, <code>prompt</code>, <code>ai_label_prompt</code>, <code>human_in_the_loop_prompt</code>. The name, id, agent, trigger with its configuration and every execution setting are always shown; without <code>sections</code> both prompts come back in full as before. Checking a trigger or a tool check (<code>["gates"]</code>) no longer reads the prompts. An unknown section name is refused with the list of valid ones. For a schedule it also shows the next run, the last fire (<code>Last triggered</code>), the last time it was enabled again (<code>Schedule resumed at</code>) and, when the schedule was off over a cron slot, that <code>Skipped slot</code> (a resume never catches up). <code>list_runs</code> accepts the status <code>queued</code>: a delivery waiting for its busy assignment.</li>
+<li><code>run_agent_once</code> runs an agent once on a prompt and returns its answer, so you can try a new agent without leaving an assignment behind. The run is listed with the agent's runs (trigger <code>run_once</code>, under the calling run when there is one) and has its own sandbox workspace: a file the agent writes under <code>workspace/</code> with code_interpreter stays for its next call, and a <code>$workspace:</code> reference to it resolves. Pass <code>file_ids</code> (up to 30 files you own) to attach them to the prompt as you would in a chat message: the agent sees the images and can read every file. Pass <code>dry_run: true</code> to try an agent that sends or writes without any effect: its reads run, and every write (an email, a message, a record created or changed) is logged and answered that it was not executed.</li>
+<li><code>import_agent_memory</code> recreates persistent memory entries on an agent you can manage, up to 200 per call, for a migration or a restore. Each entry keeps its date, type, subject and the user it belongs to, and a state entry replaces the earlier one on the same subject. Entries belonging to another person need the agent's owner (or an administrator, on a company-managed agent).</li>
+</ul>
+<p>An agent given the <code>agent_builder</code> built-in tool can also hand background tasks to any agent you own, the ones it just created included, without adding them to its handover agents first. It can consult one of them too (<code>consult_agent</code>), for example to test a desk it built: the consulted agent answers with its own handover agents available, as it would in one of its runs, so you see whether its handover works without scheduling anything. An agent consulted through its handover configuration can consult its own <code>Consult</code> handover agents in turn, nothing more (see <a href="../agentic-flow/">Agentic flow</a>). Other agents only reach the agents set up in their handover configuration, and when a handover is not possible the answer says why - for an agent set up with another handover type, it names the tool that reaches it. The <code>General Assistant</code> tries an agent it just built with <code>run_agent_once</code>.</p>
+<p><code>consult_agent</code> and <code>spawn_background_task</code> take an optional <code>output_schema</code> (a JSON Schema object, 50 KB at most) that fixes the shape of that one answer: the agent consulted or delegated to answers one JSON object valid against it, whatever output format it is set to, and the background task's result keeps that JSON whole. A schema that is not valid JSON Schema refuses the call before anything runs, naming the problem. Without it, each agent answers in its own output format.</p>
+<p>The agent called must accept it: <strong>Accept a format requested by the caller</strong> (Output format section of its configuration; <code>accept_caller_output_format</code> in the API and the agent tools) is off by default for every agent. Off, a call that passes <code>output_schema</code> to that agent is refused before it runs, and the caller can call again without it; on, the caller's schema wins for that call. A call without <code>output_schema</code> is the same either way.</p>
+<h2 id="when-an-assignment-runs-gates-and-event-filters">When an assignment runs: gates and event filters</h2>
+<p>Creating assignments and choosing their triggers is covered in <a href="../assignments/">Assignments and triggers</a>. An assignment can be kept from running when there is nothing to do, at three levels, each cheaper than the next:</p>
+<ul>
+<li><strong>Event filters</strong> (integration-event triggers). On the trigger card, an email trigger can be limited to senders (allowed and blocked addresses or domains), to mail sent to you or where you are in Cc, to a subject, a folder, and can skip automated mail (no-reply senders, newsletters and mailing lists, delivery reports, calendar responses). Teams triggers can leave out some authors and, for chats, name the chats to follow; a calendar trigger can follow only created, updated or cancelled events; a flag trigger only some flag statuses. A webhook-delivered event (GitHub, LinkedIn, HubSpot, a generic provider) is filtered on its payload: each filter key names a field of the provider's body, a dotted path reaches a nested one and a list means any of its values, for example <code>{"action": "completed", "workflow_run.conclusion": "failure", "repository.full_name": ["org/repo"]}</code> on a GitHub <code>workflow_run</code> trigger. A key also takes an operator object: <code>{"sender.login": {"ne": "me", "not_in": ["dependabot[bot]"]}}</code>, <code>{"workflow_run.head_branch": {"starts_with": ["feat/", "fix/"]}}</code>, <code>{"sender.login": {"ends_with": "[bot]"}}</code>, <code>contains</code>, <code>matches</code> (a regular expression the whole value must match), <code>in</code>, <code>not_in</code>, <code>eq</code> and <code>exists</code> (true or false); and the filter takes <code>all</code>, <code>any</code> and <code>not</code>, for example <code>{"not": {"sender.login": {"ends_with": "[bot]"}}}</code>. On GitHub <code>workflow_run</code>, <code>check_suite</code>, <code>check_run</code>, <code>status</code> and <code>push</code> triggers, <code>enriched.pull_request</code> is the open pull request the commit belongs to, read from GitHub with the integration: <code>{"enriched.pull_request.user.login": "me"}</code> keeps the CI results of the pull requests you opened, whoever pushed, and <code>{"enriched.pull_request": {"exists": false}}</code> the commits with no open pull request. On <code>workflow_run</code>, <code>check_suite</code>, <code>check_run</code> and <code>status</code> triggers, <code>enriched.head.checks</code> is the check state of the commit (<code>total</code>, <code>completed</code>, <code>pending</code>, <code>failed</code>, <code>skipped</code>, <code>neutral</code>, <code>all_completed</code>, <code>all_green</code> and <code>names</code>), read again for every completion so it is never older than the event: <code>{"action": "completed", "workflow_run.conclusion": "success", "enriched.head.checks.all_green": true}</code> wakes only on the last check to finish green on a commit, whatever its workflow name, so a new or renamed workflow needs no filter change; an earlier result on that commit is counted as <code>enriched.head.checks.all_green does not match the filter</code>. A filter with an unknown operator is refused when the assignment is saved. An event the filter drops creates no run at all and is counted: the trigger card shows <code>Events filtered: N</code>, and <code>get_assignment</code> lists why.</li>
+<li><strong>Tool check</strong> (on the prompt card, before the gate prompt). The platform calls one read-only tool of the agent and checks its result, with no AI model involved: for example "run only when this agent has an open work item" (<code>list_work_items</code> with <code>owner_agent_id</code> <code>{{agent.id}}</code> and <code>open_only</code>, runs when the result is not empty), "only when a shared state entry is active" (<code>get_shared_state</code>, runs when <code>$.status</code> is one of <code>active</code>), or "only when a Board meeting is in the calendar within 7 days" (<code>list_microsoft_calendar_events</code> with <code>days</code> 7, runs when <code>$.subject</code> contains <code>Board</code>). When the check fails, the run is listed as skipped (<code>Skipped: gate check ...</code>) with zero tokens and does not count as an agentic action. When the check chains further checks (<code>also</code>), the skip says which one failed: <code>(check 2 of 2: get_shared_state {"key": "..."})</code>. If a check cannot be evaluated (the agent does not have the tool, the tool fails, or it answers no structured result), the run goes ahead; the run lists the checks passed over under <code>gate_checks_not_evaluated</code> in its trigger context, and the assignment counts them in its dropped-event reasons (<code>gate check 2 not evaluated: &lt;tool&gt;</code>). The check runs once, when the run starts: a run resumed after a restart continues without checking again, a lease the run holds itself never counts as held by another run, and a run that already holds a lease is never skipped.</li>
+<li><strong>Fleet scope of work items</strong>. An agent that belongs to a fleet reads the work items of its fleet: <code>list_work_items</code> returns the items owned, created or claimed by a member of the fleet (the orchestrator included) and the unowned items filed in the fleet's workspace, and its first line names the scope and the fleet. <code>scope</code> <code>own</code> keeps the items the agent owns or created; <code>scope</code> <code>all</code> reads every item the user can see and is for an administrator's agent only. <code>get_work_item</code> answers "not in your fleet" for an item outside it (an administrator's agent still reads it) and <code>claim_work_item</code> refuses it. An agent in no fleet reads as before. A tool check on <code>list_work_items</code> takes the same <code>scope</code> argument. Work item events and the work-item inbox trigger follow the item's owner, creator and holder, unchanged.</li>
+<li><strong>Completion time of work items</strong>. Every work item records when it reached done or cancelled (<code>completed_at</code>, cleared when it is reopened; empty on an item that finished before this field existed). <code>list_work_items</code> shows it, with <code>claimed_at</code>, on each item; <code>completed_from</code> and <code>completed_to</code> (ISO-8601) keep the items completed in that window, <code>updated_from</code> the items written since a time, and <code>sort</code> <code>completed_desc</code> lists the newest completions first (<code>created_desc</code> stays the default, <code>updated_desc</code> is the third order). The first line of the answer names the sort in force. An audit of the last day's completions is then one listing: <code>list_work_items(status="done,cancelled", completed_from=&lt;now minus 24 h&gt;, sort="completed_desc")</code>. The REST list (<code>GET /api/v1/work-items</code>) and its count take the same parameters.</li>
+<li><strong>Text filter and compact listing of work items</strong>. <code>list_work_items</code> <code>query</code> keeps the items whose title or correlation key contains a text, case-insensitive and literal (<code>_</code> and <code>%</code> are not wildcards), combined with the other filters and the same scope; the first line of the answer names it. <code>compact</code> <code>true</code> answers one line per item (id, correlation key, status, title) without the description preview. Checking whether an item about a tool already exists is then one short listing: <code>list_work_items(open_only=true, query="list_work_items", compact=true)</code>.</li>
+<li><strong>Fleet scope of shared state</strong>. <code>list_shared_state</code> takes the same <code>scope</code> argument with the same defaults: <code>fleet</code> lists the entries owned by a member of the fleet and the unowned entries filed in the fleet's workspace, <code>own</code> the entries the agent owns, <code>all</code> every entry the user can see (an administrator's agent only). Its first line names the scope. <code>get_shared_state</code> and <code>set_shared_state</code> on an exact key are unchanged. A fleet's Operations tab (Work Items, Shared State) lists the same population as scope <code>fleet</code>, so its counts equal what the fleet's agents read.</li>
+<li><strong>Filtering a shared state entry without knowing its layout</strong>. <code>get_shared_state</code> with <code>where_json</code> (for example <code>{"number": 12}</code>) and no <code>path</code>, or a <code>path</code> the entry does not hold, searches every list of the entry, starting at the shallowest level that holds one (an entry keeping its lists under an object of objects, such as <code>pools.&lt;pool&gt;.open</code>, is searched there), and, when none matches, the lists one level down; it answers the matching items grouped by the path they were found under, with the count per path. A filter that matches nothing is a normal answer, not an error: 0 matches and the lists searched (a dedupe read that finds nothing is the expected case). An entry that holds no list at all also answers 0 matches, with its top-level keys to pass as <code>path</code>. Only a <code>path</code> the entry does not hold, combined with no match anywhere, is an error naming the lists searched. A correct <code>path</code> reads as before.</li>
+<li><strong>Reading a nested part of a shared state entry</strong>. <code>get_shared_state</code> takes a dot-separated <code>path</code> (for example <code>pools.alpha</code> or <code>pools.alpha.open</code>), the same form <code>set_shared_state</code> writes, and answers that part alone. A top-level key is looked up first, so a key that holds a dot reads as before; a segment that does not exist is refused naming the first missing segment and the keys at the nearest prefix. With <code>where_json</code>, a <code>path</code> that reaches an object searches the lists under it (from the shallowest level that holds one, then one level deeper when none matches) and answers the matches grouped by sub-path (<code>pools.alpha.open</code>) with the count per list, 0 matches naming the lists searched; a <code>path</code> that reaches a list filters that list.</li>
+<li><strong>Changing a nested list of a shared state entry</strong>. <code>set_shared_state</code> with a <code>path</code> and <code>append_json</code>, <code>remove_json</code>, <code>update_json</code>, <code>keep_last_json</code> or <code>fold_json</code> applies those list changes to the lists of the object under the path (for example <code>path</code> <code>pools.alpha</code> with <code>remove_json</code> <code>{"open": [{"number": 12}]}</code> and <code>append_json</code> <code>{"merged": [{"number": 12}]}</code>), on the server under the entry's lock, so two agents moving items in the same nested object never lose each other's change. <code>value_json</code> is not needed; <code>archive_key</code> applies to top-level lists only.</li>
+<li><strong>Projecting and paging a shared state list</strong>. With a <code>path</code> that reaches a list, or with <code>where_json</code>, <code>get_shared_state</code> takes <code>fields</code> (keep only these fields of each item, for example <code>["id", "count"]</code>) and an item page <code>item_offset</code> / <code>item_limit</code>. The page counts items, not characters, so it never cuts an item in half and stays on the same items while other runs append at the end of the list; the answer names <code>items N to M of T</code> and the <code>item_offset</code> of the next page. On a <code>where_json</code> read with no list <code>path</code>, the page runs over the matches in the order they are shown, still grouped by path. Without a list <code>path</code> or <code>where_json</code> these arguments are refused.</li>
+<li><strong>Counting a shared state list or work items per value</strong>. <code>get_shared_state</code> with a list <code>path</code> and <code>group_by</code> (a field of the items, dotted allowed, for example <code>status</code> or <code>meta.class</code>) answers one line per value with its count instead of the items, after <code>where_json</code> when given, plus a <code>(missing)</code> line for the items without the field; with <code>fields</code>, each line also names the first field's value of up to 20 of its items. <code>list_work_items</code> with <code>group_by</code> (<code>status</code>, <code>owner_agent_id</code>, <code>priority</code> or <code>key_prefix</code>, the correlation key up to its first <code>:</code>) answers the count per value for the same filters and scope, no item bodies. Both answers state the read time.</li>
+<li><strong>Exporting a large shared state entry to the sandbox workspace</strong>. When the run has a sandbox workspace, <code>get_shared_state</code> takes <code>to_workspace_path</code> like the file and fetch tools: the selection (the whole value, or what <code>path</code>, <code>where_json</code>, <code>fields</code> and <code>item_offset</code> / <code>item_limit</code> select) is written whole as JSON at that path, with no character window, header or notes, and the answer gives only the path, size and sha256. An entry of several hundred thousand characters is then analysed in the code interpreter in one call instead of being paged through the conversation. A key or a path that does not exist writes nothing and says so.</li>
+<li><strong>Writing a large shared state change from the sandbox workspace</strong>. When the run has a sandbox workspace, <code>set_shared_state</code> also takes <code>from_workspace_path</code>: a JSON file of the workspace holding the write's arguments, for example <code>{"append_json": {"gaps": [...]}, "unique_by_json": {"gaps": "id"}}</code>. The file is read on the server and applied exactly as the same arguments sent inline (the same list rules and the same compact read-back), so a write of hundreds of list items never passes through the conversation. A file that is missing, not JSON or names an unknown argument writes nothing and says why.</li>
+<li><strong>Matching shared state list items by condition</strong>. A field of a <code>where_json</code> match, of a <code>remove_json</code> match and of an <code>update_json</code> <code>match</code> may hold an operator object instead of a value, with the operators of a trigger's payload filter: <code>eq</code>, <code>ne</code>, <code>in</code>, <code>not_in</code>, <code>starts_with</code>, <code>ends_with</code>, <code>contains</code> (a substring of a text, an element of a list), <code>matches</code> (a whole-value regular expression) and <code>exists</code>. <code>{"retest_status": {"starts_with": "PASS"}}</code> selects every item whose status begins with <code>PASS</code>, <code>{"retest": {"exists": false}}</code> every item without a <code>retest</code> field (<code>null</code> counts as absent; <code>ne</code>, <code>not_in</code> and <code>exists: false</code> hold on an item without the field). Several operators, and several fields, must all hold. A plain value still means equality. A misspelled operator, an object mixing operators with other keys or a bad operand is refused with the list of operators, and nothing is written. So one <code>remove_json</code> call drops every closed entry of a long list, and its read-back counts them, without reading the list first.</li>
+<li><strong>A shared state entry that tracks a pull request ends with it</strong>. When a pull request is merged or closed, the platform resolves every active shared state entry whose value names it: a number under <code>pr</code>, <code>pr_number</code> or <code>pull_request</code>, and the same repository under <code>repository</code> or <code>repo</code>, or named in the key before the branch (a branch lease <code>dev:branch-lock:owner/name:fix/12-x</code> holding <code>{"pr": 12}</code>, so two repositories with the same branch name keep separate leases), or, when no repository is named, the pull request's branch under <code>branch</code> or as the last <code>:</code> part of the key (an older lease <code>dev:branch-lock:fix/12-x</code>). An entry that names no pull request number is resolved too when it names the same repository and the pull request's branch is its <code>branch</code> or the last <code>:</code> part of its key (a lease taken before the pull request was opened, such as <code>{"repository": "owner/name", "issue": 11}</code>). The entry keeps its value and gets a note naming the pull request and how it ended; writing to it again makes it active again. When the closing notification is not signed, the platform first checks on the code host that the pull request really closed.</li>
+<li><strong>How large a shared state entry may grow, and what is purged</strong>. A value is measured in characters of its JSON. Over the soft limit (<code>SHARED_STATE_VALUE_SOFT_LIMIT_CHARS</code>, 32,768 by default) a write lands and its read-back carries a size warning naming the largest top-level keys; over the hard limit (<code>SHARED_STATE_VALUE_HARD_LIMIT_CHARS</code>, 65,536 by default) a write is refused unless it makes the value smaller, so an oversized entry can always be compacted. A write that makes a top-level list longer than <code>SHARED_STATE_LIST_MAX_ITEMS</code> (500 by default) is refused the same way, with the fix named (<code>keep_last_json</code>, <code>remove_json</code>, or another key). <code>0</code> disables each limit. The hourly sweep compacts an entry written before these limits: it drops its oldest list items until it fits, with a note giving the count. <code>list_shared_state</code> shows each entry's size and longest list, and tags <code>OVERSIZE</code> the entries over the soft limit next to <code>STALE</code>; the Operations &gt; Shared State tab shows the same flag as an Oversized chip beside Stale, and the hover card of a row gives its size and longest list. Resolved entries are deleted once resolved for <code>SHARED_STATE_RESOLVED_RETENTION_DAYS</code> (30 by default). Active entries are never deleted, but the items an <code>archive_key</code> write moves into an archive are stamped and dropped once older than <code>SHARED_STATE_ARCHIVE_RETENTION_DAYS</code> (14 by default, <code>0</code> keeps them), an archive is capped at the same list length and drops its oldest items past it, an archive is never archived into another archive (the write is refused), and an archive write that would pass the hard limit drops the oldest items the archive already held, across all its lists, never the items that write archives; when even that cannot make room, the archive write and the source write are both refused, so nothing is lost. Keep a history list bounded with <code>keep_last_json</code> and <code>archive_key</code>, and keep totals in counters rather than in the list.</li>
+<li><strong>What ends a shared state entry</strong>. Every fleet, built-in or custom, gets the same lifecycle: an entry created by <code>set_shared_state(hold="take")</code> is a lease, resolved when its hold is released, by its holder or by the scheduler once the holder run ended (<code>lease=false</code> keeps a record that also carries a hold); <code>work_item_id</code> links the entry to a work item and the hourly sweep resolves it once that item is done or cancelled; <code>expires_at</code> resolves it at that date; <code>terminal_condition</code> names what ends it in words. Staleness reads how long the value has stood still: a note alone does not count as a change, and an entry past its <code>expires_at</code> is stale. <code>list_shared_state</code> shows each entry's value age and what ends it (<code>ends: not set</code> when nothing does).</li>
+<li><strong>Shared state hygiene per fleet</strong>. A fleet's health (<code>GET /fleets/{id}/health</code>, field <code>shared_state_hygiene</code>) counts the shared state entries of the fleet you can read: <code>oversize</code> (over the soft limit), <code>stale</code>, <code>orphaned_leases</code> (held by a run that ended) and <code>terminal_linked</code> (linked to a work item that ended). The hourly sweep fixes the last two by itself. When a fleet still has oversize or stale entries after it, the sweep files one low-priority work item on the fleet's orchestrator, with correlation key <code>shared-state-hygiene:&lt;fleet id&gt;</code>. It is never duplicated while it stays open. This applies to every fleet, built-in or custom, whose orchestrator is enabled.</li>
+<li><strong>Patching several list items with one patch</strong>. In <code>set_shared_state</code> <code>update_json</code>, <code>match</code> may be a list of objects: an item matching any of them is patched, so tagging many entries is one patch (for example <code>{"gaps": {"match": [{"id": "a"}, {"id": "b"}], "set": {"family": "f"}}}</code>). Each object of the list must match at least one item, or nothing is written and the refusal names the object that matched nothing.</li>
+<li><strong>Dropping and archiving fields of list items</strong>. An <code>update_json</code> patch takes <code>unset</code>, a list of field names removed from every matched item (<code>{"entries": {"match": {"key": "k"}, "unset": ["retest_result"]}}</code>); an absent field changes nothing. With <code>archive_key</code>, the values the unset removes are first appended to the list <code>entries</code> of that key, one object per matched item (<code>source_key</code>, <code>list</code>, <code>match</code>, <code>archived_at</code>, <code>fields</code>), and the source is written only after the archive, so a long history leaves a live ledger without being read into the context or lost.</li>
+<li><strong>A retention policy that rolls a list instead of refusing the write</strong>. <code>retention_json</code> stores a policy on the key, applied by the server on every later write: <code>{"keep_last": 200, "max_chars": 60000, "archive_key": "metrics-archive"}</code> (at least one of <code>keep_last</code> and <code>max_chars</code>; <code>lists</code> names the top-level lists it governs, every list by default; <code>{}</code> clears it). When a write would pass the bound, or the hard limit, the oldest items of the lists move to <code>archive_key</code> before the write, so an append at the cap lands instead of being refused; the items the call appends are never rolled out. The archive is written first, and an archive at its own cap drops its oldest entries instead of refusing. Without <code>archive_key</code> the rolled items are dropped, and a write that would roll more items out of a list than it appends to it is refused unless <code>confirm_trim</code> is true (a policy set on a list already over its bound would otherwise drop its oldest items in one call). The read-back names the policy and what rolled (<code>rolled by retention to ...: runs 4</code>). Add <code>archive_when</code>, a match in the <code>where_json</code> grammar or a list of them, to roll only finished items: <code>{"max_chars": 60000, "archive_key": "gaps-archive", "archive_when": {"state": {"in": ["merged", "closed"]}}}</code> moves the oldest matching items first and never an open one; <code>keep_last_json</code> on that list trims only matching items too (<code>N open kept</code> in the read-back). When finished items alone cannot bring the list under its bound, the write still lands and the read-back warns that open items were kept past the cap (the hard limit still refuses). A policy without <code>archive_when</code> rolls by age as before and the read-back warns that it did. <code>get_shared_state</code> and every write show <code>retention usage</code> (the size against <code>max_chars</code>) and warn from 80% of a cap. A write also states the value's size against the platform's soft and hard limits, and warns when <code>archive_when</code> matches no item while the value is over <code>max_chars</code> (nothing can roll: the rule names a value no item carries). Bound one item with <code>max_item_chars</code>: <code>{"max_item_chars": 600, "overflow_key": "gaps-overflow"}</code> moves the longest fields of any item over 600 characters to <code>gaps-overflow</code>, under <code>{list: {item id: {field: value}}}</code>, and the item keeps a pointer <code>overflow://gaps-overflow/gaps/&lt;id&gt;#&lt;field&gt;</code>; <code>item_key</code> names the identifying field (default <code>id</code>). Without <code>overflow_key</code> an item over the cap is refused with its size. <code>overflow_fields</code> (<code>["evidence", "runs"]</code>, with <code>overflow_key</code>) moves those fields from every item whatever its size. Setting the policy compacts the items already stored in the same call; the read-back names how many items moved fields. An <code>update_json</code> <code>append</code> on a field that moved (<code>{"match": {"id": "g1"}, "increment": {"count": 1}, "append": {"runs": ["r9"]}}</code>) goes through its pointer: the items absent from the list stored in the overflow key are appended there, the item keeps its pointer and the rest of the patch applies; the overflow is written first, and the read-back names the items added.</li>
+<li><strong>Overflow pointers resolved on read</strong>. <code>get_shared_state</code> with <code>resolve_overflow: true</code> answers the selection with every <code>overflow://</code> pointer replaced by the field it names, read from its overflow key (a pointer whose key, item or field is gone stays a pointer and is counted).</li>
+<li><strong>Duplicate list items merged on the server</strong>. <code>fold_json</code> names, per list, the identifying field(s): <code>{"gaps": "id"}</code> or <code>{"gaps": {"by": "id", "sum": ["count"]}}</code>. After the appends, every object item sharing those values merges into the first one: list fields are unioned in order, the <code>sum</code> fields are added, a field the first item lacks is taken from the later one, and the read-back counts <code>N folded</code>.</li>
+<li><strong>Moving list items to an archive, removing top-level keys</strong>. <code>archive_key</code> also works with <code>remove_json</code> and <code>keep_last_json</code>: the items they drop are appended whole to the list of the same name under the archive key, before the source write, in one call (<code>{"runs": [...]}</code> moves to the archive's <code>runs</code>). If the list changes between the archive and the write, the write is refused, so an item never leaves without its copy. <code>unset_keys</code> (<code>["a", "b"]</code>) removes top-level keys of the value in the same atomic write; a missing key is not an error, and the read-back names the keys removed. With <code>path</code>, <code>value_json</code> may be any JSON value (<code>"text"</code>, <code>3</code>, <code>[1, 2]</code>), written at that sub-key.</li>
+<li><strong>Gate prompt</strong>. One short AI call that answers YES or NO on the event; it runs after the tool check when both are set.</li>
+</ul>
+<p>Microsoft triggers (new email, Teams messages and replies, Teams chat messages, calendar changes, email flag changes) are delivered within seconds when your platform is reachable from the internet over https: XTM One subscribes to Microsoft Graph change notifications for them. A Teams trigger needs its channels selected (a chat trigger its chat ids) to be subscribed. Otherwise, or if Microsoft refuses or drops the subscription, the trigger is checked every 5 minutes as before, and no event is lost or run twice when it switches from one mode to the other. The agent builder's <code>get_assignment</code> says which mode an assignment uses, when it was last checked or notified, and how many events its filter dropped.</p>
+<h2 id="work-an-agents-queue-the-work-item-trigger">Work an agent's queue: the work item trigger</h2>
+<p>An assignment with the <strong>Work item</strong> trigger is its agent's inbox: it picks up the open work items the agent owns, as soon as they become available, and runs one assignment run per item. Each item is completed when its run succeeds and returns to the queue when it fails.</p>
+<ul>
+<li>Items are taken by priority (urgent, high, medium, low), then the earliest due date, then the oldest.</li>
+<li>By default the inbox works on one item at a time. Set <strong>Items in parallel</strong> in the trigger editor of the assignment page (<code>max_concurrent_runs</code> in the trigger configuration, a whole number from 1 to 10) to let it work on up to that many items in parallel, each in its own run; the trigger card then shows "up to N items in parallel". When a run ends, the next item starts at once.</li>
+<li><code>correlation_prefix</code> and <code>priority_min</code> limit the inbox to some items.</li>
+<li><code>express_lane</code> keeps short, time-critical items from waiting behind long runs: <code>{"correlation_prefixes": ["review-verdict:"], "slots": 2}</code> lets the items whose correlation key starts with one of the prefixes (1 to 10 of them) start up to that many runs (1 to 5) above <code>max_concurrent_runs</code>. Every other item still waits for a regular slot. It is set through the API or the agent builder, and the trigger editor keeps it on save.</li>
+</ul>
+<p>The key is also set through the REST API or the agent builder (<code>create_assignment</code> / <code>update_assignment</code>).</p>
+<h3 id="programs-a-status-read-live">Programs: a status read live</h3>
+<p>A program is a work item keyed <code>program:&lt;slug&gt;</code>; its <code>payload.program</code> may give the owner, the target date, the exit criterion and the next step owed to a person. The items keyed <code>program:&lt;slug&gt;/...</code>, and any item whose <code>payload.program_key</code> names the program, are its children. Creating the root is the only step: the program then shows in <code>list_programs</code>. An existing item joins a program with <code>update_work_item(program_key="program:&lt;slug&gt;")</code>, its correlation key unchanged so its owner's inbox still routes it; <code>program_key=""</code> takes it out.</p>
+<p><code>get_program_status(program)</code> computes the status at the time of the call: each child with its status, owner, blockers and due date, each pull request the items name with its state, merge and CI read from the code host, the next steps, and what is owed to a person with its age. Each line says when it was read and which item or pull request it came from. Nothing is copied, so a completed item or a merged pull request shows at the next call. A next step owed to a person with no dated work item is flagged.</p>
+<p>Every fleet orchestrator, the built-in fleets' included, carries <code>list_programs</code> and <code>get_program_status</code>: making an agent the orchestrator of a fleet (on the fleet page, from a fleet spec or a template) adds them to its Coordination tools, its other tools unchanged.</p>
+<h3 id="fleet-health-findings-and-one-advisory">Fleet health: findings and one advisory</h3>
+<p>Every fleet orchestrator also carries <code>get_fleet_health</code> and the built-in skills <strong>Fleet health advisory</strong> and <strong>Fleet design and operations</strong> (the suggested practices of a fleet, see <a href="../agentic-flow/#good-practices-for-a-fleet">Good practices for a fleet</a>). Making an agent the orchestrator adds them; fleets that existed before get them at the next platform start.</p>
+<p><code>get_fleet_health(fleet_id)</code> reads the fleet at the time of the call, with no model call, and returns the member verdicts plus one finding per problem: a failing or disabled member, a disabled member that still owns open items, an assignment that failed its last 3 runs, a schedule silent for 14 days, an item still claimed by a run that ended, an item past its due date, a blocked item that names nothing it waits for, a shared-state entry over the size limit, a handover into a member the fleet does not expose, and a member whose tokens of the day are over 3 times its own daily average. Each finding carries the ids it was read from, its fix (<code>auto</code> or <code>owner</code>) and a recommendation. Its structured result has <code>healthy</code>, so an assignment gate (<code>{"path": "$.healthy", "in": [false]}</code>) skips a healthy fleet at zero tokens.</p>
+<p>With <code>apply_safe_fixes=true</code> the read also applies the only safe fix: it releases the claims of runs that ended, through the platform's own claim sweep. The skill tells the orchestrator to apply that fix only, then to send the fleet's owner one advisory with a recommendation and the evidence for each remaining finding, deduplicated from one check to the next, and nothing when the fleet is healthy.</p>
+<p><strong>Dismiss a finding the owner accepts.</strong> Each finding has an id (for example <code>cost_spike:3f9a1c0b2e</code>), built from the fleet, the kind and all of its evidence, so new evidence raises the finding again under a new id. When a finding needs nothing, for example a cost spike on a platform where cost is not a concern or a schedule left silent on purpose, a person who can manage the fleet dismisses it with <code>dismiss_fleet_health_findings(fleet_id, ids, reason)</code>. Built-in fleets are included. A reason is required, and the platform records who dismissed the finding and when. An id can also be a kind such as <code>cost_spike</code>: that dismisses every finding of the kind on this fleet, whatever its evidence. <code>until</code> (a date) makes the dismissal lapse. Dismissed findings no longer count: a fleet whose only findings are dismissed reads healthy, and the weekly check stays skipped. <code>get_fleet_health</code> lists them under <strong>Dismissed</strong>. <code>action="restore"</code> brings back the ids you pass, or all of them when you pass none. Dismissals belong to one fleet only. Documentation suggestions keep their own <code>list_fleet_doc_findings</code>.</p>
+<p>Each orchestrator also gets one automation, <strong>Weekly fleet health check</strong> (Mondays 07:00 UTC). It is created switched off: <strong>Enable fleet</strong> lists it with the fleet's other automations, and it runs as the person who enables it. Its activation check calls <code>get_fleet_health</code> before any model call and lets the run go ahead only when the fleet has a finding, so a healthy fleet costs no tokens. Making another agent the orchestrator moves the check to it; a check that never ran is removed from the former orchestrator.</p>
+<p><strong>A fleet with its own health sweep.</strong> Deleting the <strong>Weekly fleet health check</strong> turns it off for that fleet: it is not created again, after a restart either, and the fleet's automations badge no longer counts it. A person who manages the fleet can also set it with <code>update_fleet</code> (<code>health_check</code>) or <code>PUT /api/v1/fleets/{id}</code>: <code>off</code> (no check), the id of an assignment of a home member (that assignment is the fleet's health check, and the seeded one is removed), or <code>default</code> (the seeded check comes back, switched off). New fleets get the seeded check.</p>
+<h3 id="the-automations-badge-in-agent-tools">The automations badge in agent tools</h3>
+<p>The badge of a fleet (<strong>On</strong>, <strong>Partially on</strong>, <strong>Paused</strong>, <strong>Not set up</strong>) follows one rule in the Fleets list, the home Fleets row, the fleet header and the agent tools, pinned by a test on both sides. <code>get_fleet</code> ends with the badge, the count of automations on (<code>3 of 4 on</code>) and one line per counted automation that is off: its agent, its name and id, its pause reason (<code>created_disabled</code>, <code>fleet_pause</code>, <code>user_toggle</code>, <code>panic_stop</code>, a quarantine) and what switches it on. <code>get_fleet_health</code> carries the same block in its structured result, under <code>automations</code>. A member with no assignment (an agent called only by consult or by a playbook) counts nowhere: it never makes a fleet partially on.</p>
+<p><code>get_fleet</code>, <code>list_fleets</code> and every <code>update_fleet</code> answer state the fleet's autonomy level (<code>Full human gates (full_gates)</code>, <code>Medium (medium)</code>, <code>Low (low)</code>, <code>Full autonomous (autonomous)</code>). <code>update_fleet</code> lowers it freely; it raises it only for an administrator, in a chat, with <code>confirm=true</code>. A refused raise names the condition that failed (not an administrator, an assignment or background run, no chat, <code>confirm=true</code> missing), what to do and the level kept; an update to the current level answers <code>already at</code> that level; an applied change reads the stored level back.</p>
+<p><code>set_fleet_automations</code> answers why a fleet stays partially on: <code>resume</code> switches on only what <strong>Pause all</strong> switched off, and when that is nothing it says so and names the automations still off. <code>action=enable</code> is <strong>Enable fleet</strong>: without <code>confirm</code> it previews the automations it would switch on, with <code>confirm=true</code> it switches them on (the seeded ones run as the caller), audited as <code>fleet_enable</code>. An automation held by an emergency stop is left as it is. On a built-in fleet, as for pause and resume, only an administrator can do it.</p>
+<h2 id="react-to-what-happens-in-the-platform">React to what happens in the platform</h2>
+<p>An assignment can start when something happens inside XTM One rather than on a schedule: a work item gets a progress note, changes status, is claimed, released or completed; a run fails or ends without finishing while it held work items (for example when the platform restarts); a background task completes or fails; a Video Studio render, scene preview, AI shot or AI music track you requested is ready or failed (<code>video.render.finished</code>, <code>video.scene_preview.finished</code>, <code>video.clip.ready</code>, <code>video.music.ready</code> and their <code>failed</code> counterparts, with the video, its revision and quality, and the number of findings its checks raised); a new build of the platform is first seen serving (<code>platform.release.deployed</code>, once per build, with its <code>version</code>, <code>git_sha</code> and the build it replaces in <code>previous_version</code> and <code>previous_git_sha</code>: wait for a deployment with it instead of checking the release history on a schedule; every assignment hears it, whatever its scope); a connected OpenCTI, OpenAEV or OpenCRQ platform reports a new version on its registration heartbeat (<code>integration.version.changed</code>, once per platform and upgrade, never on a first registration, with its <code>provider</code>, <code>platform_identifier</code>, <code>integration_id</code>, <code>previous_version</code> and <code>version</code>: wait for a module upgrade with it instead of reading its version on a schedule; every assignment hears it, whatever its scope; to read a platform's version once, an agent bound to it uses <code>get_opencti_platform_version</code>, <code>get_opencrq_platform_version</code> or <code>manage_openaev_settings</code> with action <code>version</code>). Choose the <code>platform_event</code> trigger type (from a conversation with the agent builder, or through the API) and name the events in <code>trigger_config</code>, for example <code>{"event": "work_item.note_added", "filter": {"correlation_key": "release:2026"}}</code>. The agent builder's <code>list_platform_events</code> tool lists every event and the fields its filter can name. A filter field takes a value, a list of values (any of them), or an operator: <code>eq</code>, <code>ne</code>, <code>in</code>, <code>not_in</code>, <code>starts_with</code>, <code>ends_with</code>, <code>contains</code>, <code>matches</code> (a regular expression on the whole value) or <code>exists</code>, for example <code>{"correlation_key": {"starts_with": "mail:"}}</code>; <code>all</code>, <code>any</code> and <code>not</code> combine filters. A misspelled operator is refused when the trigger or the watch is saved. In the assignment's trigger settings, pick <strong>Platform event</strong>, then the event, optional filters (a field of the event and the value it must have) and, for a single wait, <strong>One-off watch</strong>; the run detail shows the event that started the run. Through the API or the agent builder, add <code>"once": true</code> to wait for a single event: the first one that matches starts one run and the subscription ends (save the trigger again to watch for the next one). Add <code>"expires_at": "2026-11-02T09:00:00Z"</code> (a date and time with its offset) to stop listening at that time: an event raised after it starts nothing, so a watch that expires without its event never fires.</p>
+<ul>
+<li>The run starts within seconds of the event, with the event in its trigger context (the event name, the work item or run it is about, the note).</li>
+<li>By default the assignment only hears about objects its agent takes part in: the work items it created, owns or holds, the runs and background tasks it started or delegated. An assignment of an agent that belongs to a fleet can set <code>"scope": "fleet"</code> to hear the events of every member of that fleet (membership is read when the event is delivered, so adding or removing a member needs no trigger change). An administrator's assignment can set <code>"scope": "all"</code> to hear every event.</li>
+<li>Each event starts at most one run per assignment. If a run of the same assignment is already working on that work item, the event is added to the item as a dated note instead of starting a second run.</li>
+<li>The event's content (a note, a title, a task outcome) is written by other agents and is treated as untrusted content by the run.</li>
+</ul>
+<h3 id="act-later-on-one-object-timers">Act later on one object: timers</h3>
+<p>A run that must come back to one object at a given time (a reminder an hour before a meeting, a thread still unanswered after three days) arms a timer instead of keeping a recurring assignment that checks every object. The agent calls <code>arm_timer</code> with a <code>correlation_key</code> naming the object (for example <code>schedule:thread-42</code>), a <code>due_at</code> with its UTC offset and an optional <code>payload</code>. At that time the platform raises the <code>timer.due</code> event, and every assignment of that agent on that event whose filter matches runs once with the payload, for example with the filter <code>{"correlation_key": {"starts_with": "schedule:"}}</code>.</p>
+<ul>
+<li>Arming the same <code>correlation_key</code> again replaces the earlier timer; <code>cancel_timer</code> cancels one and <code>list_timers</code> lists them.</li>
+<li><code>unless_work_item_id</code> or <code>unless_shared_state_key</code>: the timer never fires if that work item is done or cancelled, or that shared-state entry is resolved, by its due time.</li>
+<li>A timer fires at most once, within a minute of its due time, and is kept in the database: a platform restart between the arm and the due time does not lose it.</li>
+<li>When nothing takes the key (no assignment of the agent on <code>timer.due</code>, no task watch and no flow trigger), <code>arm_timer</code> still arms the timer but its answer ends with a warning naming the key and the filters the agent's <code>timer.due</code> assignments do take. A timer that fires while none of them takes it ends <code>fired_unheard</code> in <code>list_timers</code> (state <code>ended</code>), so a follow-up that no run picked up is visible instead of lost.</li>
+<li>The tools come with the agent's shared state tools; no model is called to arm or fire a timer.</li>
+</ul>
+<h2 id="importing-an-agent">Importing an agent</h2>
+<p>The import itself is described in <a href="../create-agent/#import-an-agent-from-a-file">Create an agent</a>; this section explains how the file is read.</p>
+<p>You do not have to say what kind of file you are uploading. The platform reads the file, works out whether it is an XTM One bundle or an AgentSchema document, checks it against that format's rules, and only then creates the agent. Both JSON and YAML are accepted.</p>
+<p>After a successful import you are told which format was detected, along with anything the platform had to assume about your file or could not resolve here. A tool declared in an AgentSchema document arrives without its code, because the specification describes what a tool takes rather than how it works, so you need to fill in the implementation before enabling it. An MCP server arrives as a placeholder, since no server address or credentials travel in the document. A knowledge base or file-search source may be referenced but not included, in which case you bind the agent to a knowledge base on this instance to restore retrieval.</p>
+<p>If the file is neither format, fails its format's rules, or is an AgentSchema document describing a <code>hosted</code> or <code>workflow</code> agent — kinds XTM One has no equivalent for — the import is refused and the reason names the specific fields or rules that failed. Nothing is created in that case.</p>
+<p>Whichever format you import from, integration bindings, knowledge bases and links to other agents are not imported: they belong to the instance the agent came from. Imported assignments always start disabled so nothing runs before you have reviewed it.</p>
+<p>A native bundle exported by the agent's owner (or by an administrator, for a company-managed agent) also carries the agent's persistent memory: its current entries, with their dates, types, subjects and the users they belong to. Importing it recreates them on the new agent. An entry belonging to a person who has no account on this instance is left out, and the import says how many. A bundle without memory imports as before. To add memory to an agent that already exists, use <code>POST /api/v1/agents/{agent_id}/memory</code> (up to 200 entries per call) or the <code>import_agent_memory</code> agent builder tool.</p>
+<p>An assignment limited to some of the agent's MCP servers keeps that limit. A server included in the file is mapped onto the copy the import creates, and a server outside the file is kept only if you can already use it on this instance; any other server is removed from the assignment's scope and the import says so. An assignment left with none of its servers runs without MCP tools rather than with every server of the agent.</p>
+<p>An assignment's integration setting is never widened on the way in. An assignment set to use no integrations imports the same way, and one limited to specific integrations imports with no integrations at all, because those integrations do not exist here: the import report names it so you can re-select them. An assignment that uses all of the agent's integrations keeps doing so, as does any assignment from a file exported before this setting was carried.</p>
+<p>An assignment whose trigger listens to an integration keeps it only if you can already see that integration on this instance (an admin keeps any that exists here). Otherwise the integration is removed from the trigger and the import names the assignment, so you can pick one of your integrations before enabling it.</p>
+<h2 id="exposing-an-agent-on-a-messaging-platform">Exposing an agent on a messaging platform</h2>
+<p>An agent answers in web chat by default and nowhere else. To let it work in Slack, Microsoft Teams, WhatsApp, Telegram, Discord, or Google Chat, enable the channel in <code>Configuration</code> &gt; <code>Channels &amp; Bots</code>, where you choose whether the agent receives messages, publishes messages, or both, and on which channels.</p>
+<p>The bot itself is connected once by an administrator. See <a href="../../administration/channels/">Channels and bots</a> for the platform setup and the rules that govern mentions, direct messages, and anonymous users.</p>
+<p>An agent can also answer visitors of a website (<a href="../web-widget/">Publish an agent on a website</a>) and other organizations' agents (<a href="../resources/agent-to-agent/">Agent-to-agent (A2A)</a>).</p>
+<h2 id="when-an-agent-is-disabled">When an agent is disabled</h2>
+<p>A disabled agent stays visible but does not behave like an active one: it looks dimmed in the list, chat is limited, and assignments do not run normally. If an agent you expected to use is disabled, contact the person who manages that workflow. To keep working in one of its conversations meanwhile, <a href="../chat/#continue-a-conversation-with-another-agent">continue it with another agent</a>.</p>
+<h2 id="delete-an-agent">Delete an agent</h2>
+<p>The delete button of an agent's page asks which agent continues its conversations, then deletes the agent and all its assignments. Its conversations are kept, with their whole history:</p>
+<ul>
+<li><strong>With a successor.</strong> Pick one of your agents in <code>Continue its conversations with</code>. The conversations of every person who can use that agent continue with it: the next message there is answered by the successor, which reads the deleted agent's answers labelled with its name. A note <code>Continued by &lt;agent&gt;</code> marks the change. A person who cannot use the successor keeps the conversation with no agent, as below.</li>
+<li><strong>Without one</strong> (<code>No agent</code>). The conversations show that their agent was deleted, and each owner continues one with an agent of theirs from its <code>Conversation options</code> menu (<code>Continue with another agent</code>).</li>
+</ul>
+<p>The deleted agent's traces stay until the trace retention removes them: the people who chatted with it, and its owner, still find them in the Trace Explorer, under its last name. An assistant asked to delete an agent (<code>delete_agent</code>) can name the successor the same way (<code>successor_agent_id</code>).</p>
+<h2 id="when-an-assignment-shows-emergency-stop">When an assignment shows <code>Emergency stop</code></h2>
+<p>An assignment paused by the <a href="../../administration/emergency-stop/">emergency stop</a>
+shows a red <code>Emergency stop</code> badge instead of <code>Paused</code>, in the agent's assignment
+list and on its own page, with who pressed the stop, when and why. Its on/off
+switch is disabled: the assignment comes back when the stop is lifted, not one
+at a time.</p>
+<h2 id="next-step">Next step</h2>
+<p>The next chapter explains <a href="../agentic-flow/"><code>Agentic Flow</code></a>, which shows how agents connect to one another.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 26, 2026 10:55:43 UTC"><span class="timeago" datetime="2026-11-26T10:55:43+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 26, 2026 10:55:43 UTC">2026-11-26</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+  </span>
+
+    
+    
+    
+      
+  <span class="md-source-file__fact">
+    
+      
+  <span class="md-icon" title="Contributors">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33s1.71.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2"></path></svg>
+  </span>
+  <span>GitHub</span>
+
+    
+    <nav>
+      
+        <a href="https://github.com/antoinegaston" class="md-author" title="@antoinegaston">
+          
+          <img src="https://avatars.githubusercontent.com/u/104137175?v=4&amp;size=72" alt="antoinegaston">
+        </a>
+      
+        <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
+          
+          <img src="https://avatars.githubusercontent.com/u/1334279?v=4&amp;size=72" alt="SamuelHassine">
+        </a>
+      
+        <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
+          
+          <img src="https://avatars.githubusercontent.com/u/326439686?v=4&amp;size=72" alt="Letullier-Thibert">
+        </a>
+      
+      
+      
+    </nav>
+  </span>
+
+    
+  </aside>
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer">
+        
+          
+          <a href="../sandbox-workspace/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Sandbox workspace">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Sandbox workspace
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../create-agent/" class="md-footer__link md-footer__link--next" aria-label="Next: Create an agent">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Create an agent
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"></path></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2026 Filigran SAS. Community Edition licensed under the Apache License 2.0
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/XTM-One-Platform" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://community.filigran.io" target="_blank" rel="noopener" title="community.filigran.io" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M94.1 315.1c0 25.9-21.2 47.1-47.1 47.1S0 341 0 315.1 21.2 268 47.1 268h47.1v47.1zm23.7 0c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1v117.8c0 25.9-21.2 47.1-47.1 47.1s-47.1-21.2-47.1-47.1zm47.1-189c-25.9 0-47.1-21.2-47.1-47.1s21.2-47 47.1-47S212 53.2 212 79.1v47.1h-47.1zm0 23.7c25.9 0 47.1 21.2 47.1 47.1S190.8 244 164.9 244H47.1C21.2 244 0 222.8 0 196.9s21.2-47.1 47.1-47.1zm189 47.1c0-25.9 21.2-47.1 47.1-47.1s47 21.2 47 47.1-21.2 47.1-47.1 47.1h-47.1v-47.1zm-23.7 0c0 25.9-21.2 47.1-47.1 47.1S236 222.8 236 196.9V79.1c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1zm-47.1 189c25.9 0 47.1 21.2 47.1 47.1s-21.2 47-47.1 47-47.1-21.2-47.1-47.1v-47.1h47.1zm0-23.7c-25.9 0-47.1-21.2-47.1-47.1s21.2-47.1 47.1-47.1h117.8c25.9 0 47.1 21.2 47.1 47.1s-21.2 47.1-47.1 47.1z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://linkedin.com/company/filigran" target="_blank" rel="noopener" title="linkedin.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M416 32H31.9C14.3 32 0 46.5 0 64.3v383.4C0 465.5 14.3 480 31.9 480H416c17.6 0 32-14.5 32-32.3V64.3c0-17.8-14.4-32.3-32-32.3M135.4 416H69V202.2h66.5V416zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77m282.1 320h-66.4V312c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9V416h-66.4V202.2h63.7v29.2h.9c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://twitter.com/FiligranHQ" target="_blank" rel="noopener" title="twitter.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"></path></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.path", "navigation.footer", "navigation.expand", "content.action.edit", "content.action.view", "content.code.annotate", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../js/timeago.min.js"></script>
+      
+        <script src="../../js/timeago_mkdocs_material.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>

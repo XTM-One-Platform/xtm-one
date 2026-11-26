@@ -1,0 +1,4658 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for XTM One, Filigran's AI-native threat-informed defense platform.">
+      
+      
+        <meta name="author" content="Filigran">
+      
+      
+        <link rel="canonical" href="https://xtm-one-platform.github.io/xtm-one/latest/usage/custom-dashboards/">
+      
+      
+        <link rel="prev" href="../reports/">
+      
+      
+        <link rel="next" href="../mobile-companion/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Custom dashboards - XTM One Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/timeago.css">
+    
+      <link rel="stylesheet" href="../../assets/css/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-P8K1S4VSXR"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-P8K1S4VSXR",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-P8K1S4VSXR",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="filigran" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#custom-dashboards" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+        
+          <aside class="md-banner md-banner--warning">
+            <div class="md-banner__inner md-grid md-typeset">
+              
+  You're not viewing the latest version.
+  <a href="../../.."> 
+    <strong>Click here to go to latest.</strong>
+  </a>
+
+            </div>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
+          </aside>
+        
+      </div>
+    
+    
+      
+
+
+<!-- Header -->
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+
+    <!-- Link to home -->
+    <a href="../.." title="XTM One Documentation" class="md-header__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+
+    <!-- Button to open drawer -->
+    <label class="md-header__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+
+    <!-- Header title -->
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color palette -->
+    
+      
+    
+
+    <!-- Site language selector -->
+    
+
+    <!-- Button to open search modal -->
+    
+      <label class="md-header__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+      </label>
+
+      <!-- Search interface -->
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+
+    <!-- Repository information -->
+    
+      <div class="md-header__source">
+        <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+
+  <!-- Navigation tabs (sticky) -->
+  
+
+  <script type="text/javascript"> !function(){var e,t,n;e="58d967e3f3ca784",t=function(){Reo.init({clientID:"58d967e3f3ca784"})},(n=document.createElement("script")).src="https://static.reo.dev/"+e+"/reo.js",n.async=!0,n.onload=t,document.head.appendChild(n)}(); </script>
+  <script src="https://copilot.filigran.ai/api/v1/public/widget.js" data-token="jNJu1JTbbPwNqk1tqEOw-WjsKU4dEcgn" data-context="{&quot;page&quot;:&quot;docs&quot;,&quot;product&quot;:&quot;XTM One&quot;}"></script>
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../deployment/overview/" class="md-tabs__link">
+          
+  
+  
+  Deployment &amp; Setup
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../getting-started/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../administration/introduction/" class="md-tabs__link">
+          
+  
+  
+  Administration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="XTM One Documentation" class="md-nav__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    XTM One Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2">
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment &amp; Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment &amp; Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_1">
+        
+          
+          <label class="md-nav__link" for="__nav_2_1" id="__nav_2_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/scim-provisioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provisioning with SCIM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/security-headers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security headers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/secret-vaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secret vaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/xtm-suite-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/chat-approvals-in-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat approvals in client apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/backup-and-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2">
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/containers-and-scopes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Containers and scopes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/relationships-and-nesting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationships and nesting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse and deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/dates-and-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meaning of dates and status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/trust-and-confidence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trust, review, and confidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work with agents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Work with agents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../office-add-in/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Office add-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scheduled-work-items/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduled work items
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workspaces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../presentations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presentations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom dashboards
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#ask-for-a-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ask for a dashboard
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-dashboard-can-show" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a dashboard can show
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#make-it-your-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Make it your dashboard
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keep-it-up-to-date" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep it up to date
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rearrange-or-delete-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rearrange or delete it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-it-larger" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See it larger
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        History
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#who-can-see-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who can see it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-dashboards-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The dashboards list
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dashboard-studio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dashboard Studio
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dashboard Studio">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#download" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Download
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#published-link" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Published link
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scheduled-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scheduled export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#visualization-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visualization options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dynamic-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dynamic options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mobile-companion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mobile companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../video-studio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video Studio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sandbox-workspace/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sandbox workspace
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../create-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../assignments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Assignments and triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../webhook-triggers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Webhook triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-widget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publish an agent on a website
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agentic-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4">
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manage resources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Manage resources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/agent-to-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent-to-agent (A2A)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/browser-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Browser profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/knowledge-bases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Knowledge bases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/connect-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connect an external MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/platform-mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/platform-tools-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform tools MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/mcp-catalogs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP catalogs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/relays/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relays
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/sharing-and-access/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sharing and access
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Templates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One Desktop and runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5">
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitor activity
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Monitor activity
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../home-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ctem-signals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CTEM signals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../work-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platform-insights/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform insights
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_6">
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    XTM Suite
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/common-experience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common experience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/opencti/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCTI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/indicator-decay/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indicator decay re-check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/openaev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenAEV
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/opencrq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCRQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../my-profile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    My profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4">
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/users-and-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users and groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/intents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Intents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/organization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organization profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6">
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channels and bots
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Channels and bots
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/slack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/microsoft-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/whatsapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/whatsapp-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp: two backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/telegram/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/discord/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/google-chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/agent-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent accounts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/ai-governance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI governance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/prompt-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt safety (Nova)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/editions-and-licensing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editions and licensing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/running-without-ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running without AI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/emergency-stop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/emergency-stop-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#ask-for-a-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ask for a dashboard
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-dashboard-can-show" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a dashboard can show
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#make-it-your-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Make it your dashboard
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keep-it-up-to-date" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep it up to date
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rearrange-or-delete-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rearrange or delete it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-it-larger" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See it larger
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        History
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#who-can-see-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who can see it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-dashboards-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The dashboards list
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dashboard-studio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dashboard Studio
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dashboard Studio">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#download" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Download
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#published-link" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Published link
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scheduled-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scheduled export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#visualization-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visualization options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dynamic-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dynamic options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation">
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../getting-started/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    User Guide
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../chat/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Work with agents
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/XTM-One-Platform/xtm-one/blob/main/docs/docs/usage/custom-dashboards.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"></path></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/XTM-One-Platform/xtm-one/raw/main/docs/docs/usage/custom-dashboards.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"></path></svg>
+    </a>
+  
+
+
+<h1 id="custom-dashboards">Custom dashboards</h1>
+<p>A custom dashboard is a page of widgets an agent builds for you: your exposure score and its trend, the stages of your CTEM cycle, a decision waiting for you, what your agents did overnight, the questions worth asking next. You ask for it in the chat; it appears in the conversation, and it keeps its own page you can open on the web, on a computer or a phone.</p>
+<p>Custom dashboards are off by default. An administrator turns them on with <code>ENABLED_FEATURES=DASHBOARD_STUDIO</code> (see <a href="../../deployment/configuration/#custom-dashboards">Configuration</a>). While they are off, the <code>Dashboards</code> pages, the <code>Custom Dashboards</code> tool and the published links are not offered, and nothing stored is deleted.</p>
+<h2 id="ask-for-a-dashboard">Ask for a dashboard</h2>
+<p>Ask any agent that has the <code>Custom Dashboards</code> built-in tool, for example:</p>
+<blockquote>
+<p>Build me a dashboard of what I should look at first this morning.</p>
+</blockquote>
+<p>The agent gathers the figures with its other tools (OpenCTI, OpenAEV, your integrations), then composes the dashboard. It appears in the conversation, and under <code>Work &gt; Dashboards</code>.</p>
+<p>The General Assistant carries the tool out of the box, as it does the presentation and video tools; an administrator can remove it in <code>Settings &gt; General Assistant</code>. Turn it on for another agent in its configuration (<code>Built-in tools &gt; Custom Dashboards</code>).</p>
+<h2 id="what-a-dashboard-can-show">What a dashboard can show</h2>
+<p>The agent picks each widget from a fixed catalog and fills its values; XTM One draws it in the platform's look, in dark and light mode, one widget per row on a phone and side by side on a wide screen.</p>
+<table>
+<thead>
+<tr>
+<th>Widget</th>
+<th>Shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Score</td>
+<td>A headline figure with its trend line and a few sub-figures</td>
+</tr>
+<tr>
+<td>Stats</td>
+<td>A row of figures</td>
+</tr>
+<tr>
+<td>Stages</td>
+<td>A cycle or a pipeline, with the progress of each stage</td>
+</tr>
+<tr>
+<td>Decision</td>
+<td>Something waiting for you, with its evidence and buttons</td>
+</tr>
+<tr>
+<td>Feed</td>
+<td>Recent events, such as what each agent did</td>
+</tr>
+<tr>
+<td>Callout</td>
+<td>A highlighted statement</td>
+</tr>
+<tr>
+<td>Ranked list</td>
+<td>What to fix first, with severity badges</td>
+</tr>
+<tr>
+<td>Steps</td>
+<td>A sequence with its outcomes, such as an attack path</td>
+</tr>
+<tr>
+<td>Checklist</td>
+<td>A plan, with what is done</td>
+</tr>
+<tr>
+<td>Progress</td>
+<td>Work under way: its status, a bar and its latest lines</td>
+</tr>
+<tr>
+<td>Prompts</td>
+<td>Questions you can ask the assistant next</td>
+</tr>
+<tr>
+<td>Text</td>
+<td>Paragraphs of prose</td>
+</tr>
+</tbody>
+</table>
+<p>An agent cannot write HTML, colours or links to other sites into a dashboard. Its links open pages of XTM One only. A button that asks something never sends it on its own: it opens a new chat with the question in the composer, for you to read, change and send.</p>
+<h2 id="make-it-your-dashboard">Make it your dashboard</h2>
+<p>On a dashboard's page, <code>Use as my dashboard</code> shows it on your <strong>Dashboard</strong> (<code>/dashboard</code>), and on your home page when your home page is the dashboard, instead of the platform's dashboard. The dashboard list marks it <code>Your dashboard</code>. <code>Use the standard dashboard</code>, on your dashboard or on the dashboard's page, brings back the platform's dashboard. So does deleting the dashboard.</p>
+<p>Any dashboard you can open as yourself - yours, one shared with you, a company dashboard - can be your dashboard, one at a time. If it is deleted or no longer shared with you, the platform's dashboard comes back.</p>
+<h2 id="keep-it-up-to-date">Keep it up to date</h2>
+<ul>
+<li><strong>Refine it in the chat.</strong> On the dashboard's page, <code>Refine with the assistant</code> opens a chat that names the dashboard. Ask for a change ("add the open tickets", "drop the feed"); the agent changes the widgets concerned and leaves the others as they are.</li>
+<li><strong>Refresh it on a schedule.</strong> Create an assignment whose prompt asks the agent to update the dashboard (for example every weekday at 7:00). It refreshes the same dashboard, and the page says it was refreshed by a scheduled run, with a link to that run.</li>
+</ul>
+<p>The page reads the latest version each time you come back to it.</p>
+<h2 id="rearrange-or-delete-it">Rearrange or delete it</h2>
+<p>A dashboard is a grid of 12 columns, with OpenCTI's rows (62 pixels high, 20 apart), so a widget from OpenCTI sits where it sat there. Dashboards made before keep their look: their places are read in these rows. On the dashboard's page, <code>Rearrange</code> lets you drag a widget to move it, drag its corner to resize it, and remove it; with the keyboard, focus a widget, then the arrow keys move it and Shift with the arrow keys resizes it. Each change is saved as you go, and a series of moves made within a minute is kept as one version. A dashboard keeps at least one widget. On a phone or in a narrow chat bubble the widgets are stacked, top to bottom and left to right. If an agent refreshed the dashboard while you were rearranging it, XTM One shows you its latest version and asks you to make your change again.</p>
+<p>The trash button deletes the dashboard (its owner only). In a conversation, it then shows as no longer available.</p>
+<h2 id="see-it-larger">See it larger</h2>
+<p>On a dashboard's page, the full-screen button shows the dashboard alone on the screen, and the button that appears over a widget when you point at it shows that widget alone, filling the screen (Escape closes it).</p>
+<h2 id="history">History</h2>
+<p>Every change is kept - by an agent, by hand, by a colleague - with who made it and what it changed (the 30 latest). The history button on the dashboard's page lists them and previews one; <code>Restore this version</code> saves it again as the newest version, so a restore can itself be undone. <code>Compare</code> sets the version picked against another (the current one by default): the two definitions side by side or unified, and which widgets were added, changed or removed.</p>
+<h2 id="who-can-see-it">Who can see it</h2>
+<p>A dashboard is private to its owner until they share it. <code>Share</code> on the dashboard's page grants people or groups one of three levels: <code>Can view</code> opens it, <code>Can edit</code> also rearranges, refines and shares it (here or through their own assistant), <code>Can manage</code> also deletes it. An administrator can make it a company dashboard, which everyone opens and only administrators change. Administrators can open any dashboard, and change none they were not given. Only the owner and those who manage it delete a dashboard. The dashboard list marks the ones shared with you.</p>
+<p>In Slack, Teams and the chat panels of OpenCTI, OpenAEV and OpenCRQ, the agent's answer carries a link to the dashboard's page instead of the dashboard itself.</p>
+<h2 id="the-dashboards-list">The dashboards list</h2>
+<p><code>Work &gt; Dashboards</code> shows your dashboards, those shared with you and the company ones, as cards or as a table (the toggle beside the search). The table sorts by any column - name, tags, access, number of widgets, last update. Search by title or tag, narrow the list to yours, those shared with you or the company ones, and to one or more tags.</p>
+<p>The menu of a dashboard (<code>...</code>) offers:</p>
+<ul>
+<li><code>Duplicate</code>: a private copy for you, named "(copy)", with its tags and copies of the images it draws. A copy reads its platform widgets through your own integrations: when you cannot use the integration a widget reads, the copy is refused and says why.</li>
+<li><code>Edit tags</code> (those who may edit it): the words it is filed under, lower-cased.</li>
+<li><code>Delete</code> (its owner). In the table, select several of your dashboards to delete them together; you are asked first.</li>
+</ul>
+<p>Administrators also see <code>Public links</code>: every dashboard published as a link, who published it and how fresh its data is, and <code>Turn off</code> for any of them.</p>
+<h2 id="dashboard-studio">Dashboard Studio</h2>
+<p>The Dashboard Studio, part of the same switch, adds:</p>
+<ul>
+<li><strong>Create and import from the list.</strong> <code>New dashboard</code> on the dashboards list asks for a name, a description (Markdown) and what the dashboard should show, and who builds it (<code>Made by</code>: the General Assistant or an agent with the dashboard tools). <code>Create with the assistant</code> makes the dashboard, opens it in the studio and sends your brief as the first message of the studio's chat, so you watch the widgets land and the studio selects each one the assistant adds or changes. <code>Start from an empty dashboard</code> opens it empty, to fill by hand. <code>Import</code> makes one from a file - an OpenCTI dashboard, custom view or widget export, an OpenAEV dashboard export (ZIP) or an XTM One pack - each platform widget reading through your integration of its platform, and opens it in the studio; what the conversion changed is said once it is done. When you have several integrations of one platform, the dialog lets you choose the one its widgets read through; if the file reads that platform and you did not choose, the import says so and names them.</li>
+<li><strong>Refresh.</strong> The refresh button on the dashboard's page and in the studio reads every widget again from its platform at once (a platform answer is otherwise kept a minute), and <code>Auto-refresh</code> does it every minute, 5, 15 or 30 minutes or every hour while the page is open. The interval is yours, kept in this browser for this dashboard.</li>
+<li><strong>The studio bar.</strong> As in the Presentation and Video Studios: the title (renamed in place while editing) and whether everything is saved; <code>Present</code>, the dashboard as its viewers see it, full screen (<code>Esc</code> or <code>Leave fullscreen</code> gives the editor back); the pencil switches between editing and the viewers' view; undo and redo; <code>Refresh</code> (its arrow picks the auto-refresh); the studio; sharing; downloads; and <code>More actions</code>: publish or export, the dashboard source, its history, the settings panel, duplicate and delete.</li>
+<li>
+<p><strong>The settings panel folds away.</strong> <code>More actions</code> &gt; <code>Hide the settings panel</code> gives the dashboard the whole width; adding an element, a chart or an input brings it back. Its edge is dragged to widen or narrow it (a double-click resets it).</p>
+</li>
+<li>
+<p><strong>The studio.</strong> <code>Open in the studio</code> on the dashboard's page opens it beside the assistant, like the Presentation and Video Studios. Drag widgets on the page to place and size them. Click a widget to select it: the assistant is told which one "this widget" is, and the panel on the right shows its configuration (below). A change the assistant saves shows at once, and what you change in the panel is what the assistant then reads: you both work on the same definition.</p>
+</li>
+<li><strong>What the assistant does in the studio.</strong> It plans the dashboard (each widget, where its data comes from and how fresh it is, and the choices you left open with what it takes by default), then builds it widget by widget: it reads what a widget of OpenCTI, OpenAEV or OpenCRQ can be and looks up the types, filter keys and values in the platform with your access instead of guessing them, reads each data source before saving it, adds each widget with its data source and its place in one step, and checks every widget's data before telling you it is done - looking at a picture of the tab as you see it. The General Assistant carries this method (the <code>Dashboard Design</code> skill) and the tools out of the box.</li>
+<li><strong>The source editor.</strong> <code>Dashboard source</code> (the braces in the studio's bar) shows the dashboard as it is stored: an OpenCTI dashboard manifest. Its <code>widgets</code> are OpenCTI's own widgets and OpenAEV's own widgets (<code>widget_type</code>, <code>widget_config</code>), exactly as those platforms store them, placed on OpenCTI's grid; a text widget is OpenCTI's <code>text</code> widget; its <code>variables</code> are the dashboard inputs, as OpenCTI's dashboard variables (a filter names one as <code>$var:&lt;id&gt;</code>, an OpenAEV filter by its id); and <code>x_xtm_one</code> holds what XTM One adds: its own widgets (<code>x_xtm_one.&lt;type&gt;</code>), the data sources that are not a platform widget, the inputs, the tabs and their layouts (a 12-column grid, or an absolute layout in pixels), interactions, visibility, <code>defaults</code> and <code>applicationProperties</code>. Edit the whole of it, or only the selected widget's visualization or data source, or the defaults (these three as the working definition: <code>dataSources</code>, <code>visualizations</code>, <code>inputs</code>, <code>layout</code>). It is checked when you save: a mistake is shown with the field it is about (for example <code>visualizations.kev.dataSources.primary names no data source 'x'</code>) and your text stays in the editor. Those who may not edit see it read-only.</li>
+<li>
+<p><strong>Configuration panel.</strong> While editing, the panel on the right configures the selected visualization, in these sections:</p>
+<ul>
+<li><code>General</code>: its heading and description, its type - any type drawing the same data (a single value becomes a gauge or a ring, a line chart an area or column chart; the options the new type does not have are dropped) - and whether it shows a progress bar while its data is read again and when it was read;</li>
+<li><code>Data source</code>: the source it draws (and, for an area, line, column or bar chart, the source of its annotations), <code>Edit the data source</code> in the source editor, or <code>All data sources</code>;</li>
+<li><code>Data display</code>: the options of its type, such as the stack mode, the legend, data values, missing values, markers and axes of a chart, the donut hole and labels of a pie, the unit, decimal places, abbreviation, trend and sparkline of a single value, the ends and orientation of a gauge, the rows per page, row numbers and totals of a table, and - for a column, bar, line, area or pie chart - the field that splits it into panels (trellis);</li>
+<li><code>Coloring</code>: the series' colours, or a value's colour - the theme's, one colour, or by ranges of the value (below 50 green, from 50 to 80 orange, from 80 red, which you change, add to or remove), written as the dynamic option <code>"&gt; majorValue | rangeValue(majorColorEditorConfig)"</code> with the ranges in the visualization's <code>context</code>; a gauge's own ranges; a colour written as another expression in the source editor is shown as written;</li>
+<li><code>Interactions</code> and <code>Visibility</code> (below);</li>
+<li><code>Position</code>: its column, row, width and height on a grid (counted from 1, kept within the 12 columns), or its place and size in pixels on an absolute layout;</li>
+<li><code>Source</code>: the visualization as JSON, and <code>Open in the source editor</code>.</li>
+</ul>
+<p>Each change is saved as you make it, and undone and redone with the rest. A shape, a line, an icon, an image or markdown has its own options instead.
+- <strong>Toolbar.</strong> While editing, the bar above the dashboard adds a chart - any type, on sample data written in the dashboard until you point it at another source in <code>Data source</code> - or an input (a dropdown, a multiselect, a text, a number, a time range or a button, above the tabs and shown in the <code>Inputs</code> panel), adds shapes, icons, images and markdown on an absolute layout (they are greyed on a grid), opens the data sources and the source editor, and switches the dashboard between a light and a dark theme.
+- <strong>Editing and the viewers' view.</strong> The studio opens in editing for those who may change the dashboard; the pencil shows it as its viewers see it, and <code>Present</code> shows it so, alone on the screen.
+- <strong>Data sources.</strong> The <code>Data</code> panel of the studio lists the dashboard's data sources - where its visualizations' data comes from - with what uses each one (an unused one is greyed). <code>New</code> creates one: data written in the dashboard; the answer of an assignment's last completed run (its text, or a number, a series, a breakdown or rows read from the JSON it answered, at a path such as <code>response.open</code>); a question to an agent, asked only when a viewer presses <code>Ask the agent</code>; a variable (never a secret one, and none while custom variables are turned off); another source passed through steps (<code>where</code>, <code>sort</code>, <code>head</code>, <code>tail</code>, <code>fields</code>, <code>rename</code>, <code>eval</code> with arithmetic only, <code>top</code>, <code>stats</code>, <code>flow</code>), chained one after another; or an OpenCTI, OpenAEV or OpenCRQ widget, built with the same choices as in the product, with a <code>Preview</code>. For OpenCTI: the sixteen widget types of its dashboards; the perspective (entities, knowledge graph, activity &amp; history); up to five data selections (each with its label, the types it counts, its filters - with nested groups, and for relationships the filters of their source and of their target - the date, the attribute counted, the source or target side, the number of results, the sort, a list's columns, a map's zoom and centre); the title, interval, stacked, legend and distributed switches. For OpenAEV: the thirteen widget types of its custom dashboards; series (each with its label, entity and filters), a list's rows, or the fixed series of Security Coverage, Attack Paths and Security Domains (detection or prevention, a simulation); the title, time range (a custom one with its start and end), date, breakdown or interval, number of results, stacked and legend switches, a list's columns and sort. Values are searched in the platform with your access. Every widget type is drawn in XTM One, except OpenCTI's activity &amp; history widgets, shown as a link to the platform. From a source's menu: add a visualization drawing it (placed at the bottom of the tab on screen), edit it, duplicate it, or delete it once nothing uses it. Editing a platform widget keeps everything it holds that the editor does not change; a widget of a type the editor does not know opens in the source editor instead, and saving a widget unchanged writes nothing. Two more sources read data from outside the platforms: an <strong>integration tool</strong> - one tool of any of your integrations that only reads (a tool that could change something is never called), with the arguments you set, its JSON answer read at a path (a tool that answers in words, not JSON, is drawn as text, or kept as a table by a feed, below) - and a <strong>knowledge base table</strong> - a table written in a knowledge base document (JSON, JSON lines, CSV or a Markdown table), the whole document or one of its sections, which an assignment can keep up to date; drawn as a breakdown, a table reads its first text column as the labels and its first number column as the values (a <code>severity,count</code> table). A source can be read again every <code>refresh</code> (<code>5m</code>, <code>1h</code>; 30 seconds at least). <strong>Where it is read</strong> (<code>Read</code>, for the platform, integration, knowledge base, variable and derived sources): on the page, with each viewer's own access (the default); <strong>on the server every…</strong> 5 minutes, 15 minutes, an hour, 6 hours or a day, whoever has the page open; or <strong>on the server, when asked</strong>. Read on the server, a source is read with the access of the person who set it and shown to everyone who opens the dashboard, even those who could not read it themselves; its widgets - and those of the sources derived from it - say <code>Data read … with &lt;name&gt;'s access.</code> and offer <code>Refresh now</code> (a source is read at most every 30 seconds on request; the sources read on the server that derive from it are read again with it), and an open page shows each new read without being reloaded. Whoever changes what such a source reads becomes the person it is read as. On the server, a source can also be read <strong>on a schedule</strong> (a cron expression, UTC, at most every 5 minutes) or <strong>on an event</strong>: an event of the platform (such as <code>run.completed</code>) or an event an integration raises (such as <code>issues.opened</code>), heard when it reaches the platform for an assignment - its poll or its webhook; however many events arrive, it is read at most once a minute.</p>
+</li>
+</ul>
+<p><strong>What changed, and alerts.</strong> Each read on the server is compared with the previous one: the widget says what changed since then - the figure before and after (a number's value, a series' last point, a breakdown's total, a table's row count) and, for a breakdown, the items that moved the most - and a single value shows the change as its trend. A source read on the server can also raise an <strong>alert</strong> when its figure goes above or below a threshold (<code>Alert when the figure is</code>, in the New data source form; up to five per source through the source editor or the assistant, each <code>info</code>, <code>warning</code> or <code>critical</code>): the dashboard's owner and the person the source is read as are told in their notifications when the figure starts to cross it - once, until it goes back - and on their phone when it is linked (<code>Dashboard alerts</code>, which they can mute there). A read that fails changes nothing: a platform that does not answer never raises or clears an alert.</p>
+<p><strong>Feeds.</strong> When a widget's data has to be gathered from several places and consolidated, ask the assistant for a feed: it creates an assignment on an agent that has the tools the data takes, on a schedule or an event, whose answer is the data the widget draws, runs it once and adds the widget. The page shows each new answer as soon as the run ends. An assignment source can draw the trend of a figure over its last runs (<code>Trend over the last runs</code>, 2 to 60), and a feed can also keep its consolidated table in a knowledge base document, which other agents then search and read. A platform source reads over its <code>range</code>: a period (<code>1d</code>, <code>7d</code>, <code>30d</code>, <code>1m</code>, <code>90d</code>, <code>3m</code>, <code>6m</code>, <code>1y</code>; <code>1m</code>, <code>3m</code> and <code>6m</code> count calendar months), fixed dates (<code>2026-01-01/2026-03-31</code>, either end left open), or <code>$time$</code>; without one, the page's. An OpenCTI widget reads it as OpenCTI does: from the start of the day so many days or months back, up to now, as filters on the widget's own date - a list included.
+- <strong>Everyone reads with their own access.</strong> Each viewer reads every source as themselves: an assignment's run they may see (another person's private run shows "No completed run of this assignment is visible to you yet"), a variable shared with them, an agent they may chat with - with their own quota. A question is theirs: asking it does not answer it for anyone else, and a person may ask a few questions a minute. The person writing a source may only point it at what they reach themselves.
+- <strong>Periods.</strong> A time range input offers the last 24 hours, 7, 30 or 90 days, the last month, 3 or 6 months, the last year, all time (every date, each widget's own period set aside) and a custom range (a start date, an end date, or both). Those who may edit the dashboard can keep the period picked as the dashboard's own (<code>Keep as the dashboard's period</code>): it is what everyone sees first.
+- <strong>Inputs and tokens.</strong> The <code>Inputs</code> panel of the studio adds inputs above the tabs: a time range, a dropdown or a multiselect (its choices written one per line as <code>label=value</code>, or read from a data source - which may itself use other inputs' tokens, so one input narrows the next), a text, a number, an entity (a country, a sector, an intrusion set... searched in OpenCTI, or a simulation or a scenario searched in OpenAEV, with the viewer's own access, among the types the input names; the token holds its id), or a button that sets a token and can switch tab. Each input sets a token; a data source names it as <code>$name$</code> in a filter value, a derived step's value or a platform widget's <code>range</code> (<code>$time$</code> for a time range input), and a title or a text names it the same way. A source that uses a token with no value waits ("Waiting for input."), except for an entity input set to <code>Read every entity while none is picked</code> (<code>"required": false</code>): until one is picked, the filters on its token are left out and the widget reads every entity, as an OpenAEV dashboard reads every simulation while its simulation parameter is empty. A token's value reaches the platform as a filter value, never as query text. Other tokens: the viewer's own (<code>$env:user$</code>, <code>$env:user_name$</code>, <code>$env:timezone$</code>, <code>$env:locale$</code>, <code>$env:platform$</code>), a data source's result (<code>$&lt;source&gt;:result.&lt;field&gt;$</code>, such as <code>$ds_open:result.value$</code>, and <code>$&lt;source&gt;:job.status$</code>), and computed tokens (<code>expressions.tokens</code>: arithmetic, text, comparisons and <code>if</code>, <code>len</code>, <code>lower</code>, <code>upper</code>, <code>round</code>, <code>coalesce</code>, <code>number</code>). In a text, <code>$name|s$</code> quotes the value, <code>|h</code> escapes it for HTML, <code>|u</code> encodes it for a URL (the default in a link) and <code>|n</code> writes it as is. The <code>Submit button</code> switch makes inputs change their tokens only when Submit is pressed. The token manager lists every token with its value on the stage, its default (editable), what uses it and what sets it.
+- <strong>Interactions.</strong> Pick a visualization in the studio: its <code>Interactions</code> say what a click on it does, in order - set a token from what was clicked (the name of a slice, a bar or a column, its value, the x or y of a point, a field of a table row) or to a written value (<code>$click.value$</code> and the page's tokens fill it), unset a token, open a link (a page of XTM One, or an http(s) address in a new tab), open another dashboard with tokens (it opens with them, as <code>?form.&lt;token&gt;=</code> in its address), open the item in OpenCTI or OpenAEV, switch tab, or - on a series - set a time range from a brush (<code>$&lt;token&gt;.earliest$</code>, <code>$&lt;token&gt;.latest$</code>). A clickable chart, value or row shows a pointer; a row is also reached with the keyboard.
+- <strong>Visibility.</strong> <code>Show only when</code> and <code>Hide when</code> take an expression on the page's tokens (<code>isSet($host$)</code>, <code>in($sev$, "High", "Critical")</code>, <code>$mode$ = "quiet"</code>); <code>Hide when there is no data</code> hides a visualization while its source has nothing to show. The others close up around a hidden one. In the studio every visualization stays on the stage.
+- <strong>Inspect and export.</strong> The menu of a visualization drawing data shows <code>Inspect</code> (its data source as stored and the result it drew) and <code>Export CSV</code> (that result as a file; a cell a spreadsheet would run as a formula is neutralised). <code>applicationProperties.hideExport</code> removes the export.
+- <strong>Tabs.</strong> A dashboard with several tabs shows a tab bar above its widgets, or on their left (<code>layout.tabs.options</code>: <code>showTabBar</code>, <code>barPosition</code>, also in the panel on the right when nothing is selected); a drag or a resize is saved in the tab on screen. In <code>Edit</code>, the <code>+</code> beside the tabs adds a tab with a grid or with an absolute layout, and the tab's menu renames it, moves it left or right, switches it between a grid and an absolute layout (a tab holding shapes, lines, icons, images or markdown stays absolute: only an absolute layout draws them), and deletes it with what only it shows.
+- <strong>Absolute layouts.</strong> A tab with an absolute layout places its widgets in pixels. Its size, and how it fits the screen (<code>Scale to the screen</code>: scaled down to fit, never up; <code>Actual size</code>: its pixels, scrolled; <code>Fit to width</code>), are set in the panel on the right when nothing is selected, with its background: a colour, an image (its size: its own, the whole image, or covering the layout; its opacity). Besides widgets it holds:
+    - <strong>shapes</strong>: rectangles (with rounded corners), ellipses, and lines with an arrow at either end; a line's end dragged onto the middle of a side of a block holds to it, and follows it when the block moves;
+    - <strong>icons</strong>: any icon of the Lucide catalog presentations use, or an SVG you upload;
+    - <strong>images</strong> you upload (PNG, JPEG, GIF, WebP or SVG, 5 MB each), with the text that describes them to those who cannot see them;
+    - <strong>markdown</strong>, with its colour, background, size, font and alignment.</p>
+<div class="highlight"><pre><span></span><code>Uploaded files belong to the dashboard: whoever can open the dashboard sees them, and they are deleted with it. An uploaded SVG is cleaned of scripts, event handlers and links to other sites before it is stored. Colours are what you pick; a colour left empty follows the theme.
+</code></pre></div>
+<ul>
+<li><strong>Editing an absolute layout.</strong> The bar above the dashboard adds an element, brings the selection to the front or sends it to the back (one step at a time from <code>Arrange</code>), aligns two or more items and distributes three or more, duplicates them (with the same data source, or each with a copy of its own), copies, cuts and pastes them, deletes them, and zooms. Click an item to select it, Shift-click to add one, or draw a box around several from an empty spot; drag to move, drag a handle to resize. With the dashboard focused: the arrow keys move the selection by 10 pixels (with Shift, by 1), Alt with the arrow keys resizes it, Delete removes it, Escape clears the selection, and Ctrl (⌘ on a Mac) with A, C, X, V, D, Z and Shift+Z or Y selects all, copies, cuts, pastes, duplicates, undoes and redoes. The panel on the right sets the selected item's options and its place. Every change is saved as you go; undo and redo save too, and a series of moves made within a minute is kept as one version.</li>
+<li><strong>Theme.</strong> From the toolbar, or in the panel on the right when nothing is selected, a dashboard can keep a light or a dark theme of its own, whatever the theme of the person viewing it.</li>
+<li><strong>Defaults.</strong> <code>defaults.visualizations.global.options</code>, then <code>defaults.visualizations.&lt;type&gt;.options</code>, are applied under each visualization's own options.</li>
+<li><strong>Visualizations.</strong> A data source can be drawn as a single value (<code>xtm.singlevalue</code>), a single value with an icon (<code>xtm.singlevalueicon</code>) or as a ring (<code>xtm.singlevalueradial</code>), a filler or marker gauge (<code>xtm.fillergauge</code>, <code>xtm.markergauge</code>), an area, line, column or bar chart (<code>xtm.area</code>, <code>xtm.line</code>, <code>xtm.column</code>, <code>xtm.bar</code>), a pie or donut (<code>xtm.pie</code>), a scatter, bubble or punchcard chart (<code>xtm.scatter</code>, <code>xtm.bubble</code>, <code>xtm.punchcard</code>), a list or a table; a distribution or a series also as a radar (<code>xtm.radar</code>, one axis per label, one shape per series), a polar area (<code>xtm.polararea</code>, equal slices reaching out as far as their value), a word cloud (<code>xtm.wordcloud</code>, each label as large as its value, on a log scale) or a heatmap (<code>xtm.heatmap</code>, a row per series and a cell per point, coloured from the lowest value to the highest; <code>colorMin</code> / <code>colorMax</code>). Their options are listed below; an option the type does not have, or a value out of its bounds, is refused when the dashboard is saved, with the field it is about.</li>
+<li><strong>Panel details.</strong> A visualization's <code>description</code> shows under its title; <code>showLastUpdated: true</code> shows when its data was read, <code>showProgressBar: true</code> a thin bar while it is read again.</li>
+<li>
+<p><strong>Maps, graphs and flows.</strong> Besides charts, a visualization can be:</p>
+<ul>
+<li><code>xtm.map</code>: the world (or <code>region</code>: <code>europe</code>, <code>americas</code>, <code>apac</code>) with up to three <code>layers</code> - <code>choropleth</code> (regions coloured in five steps of their value, with a legend), <code>bubble</code> (points sized by value) and <code>marker</code> (points as pins) - drawn on the atlas shipped with XTM One: no map tiles are fetched. Regions are ISO 3166-1 alpha-2 codes (<code>FR</code>); a country too small to see is a dot.</li>
+<li><code>xtm.choropleth.svg</code>: the regions coloured on an SVG of your own (a floor plan, a site map), in <code>options.svg</code> (200 KB at most): each element whose <code>id</code> is a region's code takes its colour. The SVG is cleaned when it is saved (no script, link or external resource), and drawn from its shapes only.</li>
+<li><code>xtm.linkgraph</code> (left to right, a table's columns as stages) and <code>xtm.networkgraph</code> (laid out by forces, nodes sized by their links, coloured by group): pan, and zoom with Ctrl and the wheel.</li>
+<li><code>xtm.sankey</code> (flows as bands as wide as their value; loops and cycles are left out and counted), <code>xtm.parallelcoordinates</code> (one axis per column of a table, <code>options.fields</code> to choose them), <code>xtm.timeline</code> (events in lanes, with or without an end), <code>xtm.treemap</code> (values on up to three levels, or a distribution).</li>
+<li><code>xtm.attackflow</code>: a MITRE Attack Flow, from left to right as its builder draws it - an action's card names its tactic and its technique, a condition branches on true or false, an operator joins steps (<code>AND</code>) or offers a choice (<code>OR</code>), an asset is what an action touches, and the flow's card is where it starts. It reads an Attack Flow as its builder exports it (a STIX bundle, in a knowledge base document, the JSON of an assignment or written in the dashboard), or the <code>graph</code> shape with each node's <code>kind</code> (<code>start</code>, <code>action</code>, <code>condition</code>, <code>operator</code>, <code>asset</code>), <code>technique</code>, <code>tactic</code>, <code>description</code> and <code>operator</code>. To lay out the techniques of an entity (an intrusion set, a report) tactic after tactic, read them from an OpenCTI list of attack patterns with the <code>x_mitre_id</code> and <code>killChainPhases</code> columns, and pass it through a <code>flow</code> step (<code>stage: killChainPhases</code>, <code>label: name</code>, <code>technique: x_mitre_id</code>): each technique is an action in each of its tactics, the tactics in their kill chain's order, joined by OR.</li>
+</ul>
+<p>Static data sources take four more shapes for them: <code>geo</code> (<code>points</code> with <code>lat</code> / <code>lon</code> / <code>value</code> / <code>group</code>, <code>regions</code> with <code>code</code> / <code>value</code>), <code>graph</code> (<code>nodes</code>, <code>edges</code> with <code>source</code> / <code>target</code> / <code>value</code>), <code>events</code> (<code>label</code>, <code>start</code>, optional <code>end</code> and <code>lane</code>, ISO dates) and <code>tree</code> (<code>items</code> with a <code>path</code> of up to three names and a <code>value</code>). A graph, a sankey, a timeline or parallel coordinates also draw a table (<code>sourceField</code> / <code>targetField</code> / <code>valueField</code>, <code>startField</code> / <code>endField</code> / <code>laneField</code> / <code>labelField</code> to pick its columns).
+- <strong>Validation outcomes.</strong> Data in the <code>outcomes</code> shape - labels (an expectation type, a security domain, a technique) each with its <code>success</code>, <code>failed</code> and <code>pending</code> counts and optional <code>parts</code> - is drawn as the security posture widgets draw it: a technique matrix (<code>xtm.outcomematrix</code>: a column per <code>group</code>, or per group of a chain in <code>chains</code> with every label of its <code>reference</code>), a path graph (<code>xtm.pathgraph</code>: labels by group, an arrow to those they <code>links</code> to when one is hovered, the run's <code>timeline</code>), an exposure console (<code>xtm.exposureconsole</code>: the exposure score - the share of resolved checks that failed - on an orb, a gate per label, the <code>actions</code> beside it), a score gauge (<code>xtm.scoregauge</code>), a ring gauge (<code>xtm.ringgauge</code>: the first label's successes, failures and pending checks) or domain cards (<code>xtm.domaincards</code>: a card per label with its parts). <code>options.sampleDisplay</code> (<code>full</code>, <code>subtle</code> or <code>off</code>) says whether the exposure console and the gauges show a greyed sample while nothing is counted. Dashboards that used the earlier views (validation gates, exposure gauge, resilience rings, outcome cards, outcome grid) open with their replacement.
+- <strong>Trellis.</strong> A column, bar, line, area or pie chart with <code>options.trellis</code> (<code>splitBy</code>: <code>series</code> for a series, <code>group</code> for a hierarchy, or a column of a table; <code>columns</code>: 1-6 or <code>auto</code>; <code>sharedScale</code>: <code>true</code> by default; <code>sort</code>: <code>name</code>, <code>-name</code>, <code>total</code>, <code>-total</code>) is drawn as one small chart per value of the field, at most 24.
+- <strong>View switches.</strong> In <code>applicationProperties</code>, <code>hideEdit</code> removes <code>Open in the studio</code> and <code>Rearrange</code> from the dashboard's page, <code>hideExport</code> removes <code>Publish or export</code>, <code>hideOpenInPlatform</code> removes the links to OpenCTI, OpenAEV and OpenCRQ on its widgets, and <code>collapseNavigation</code> folds the navigation on the left to its icons while the dashboard is open (your own choice comes back when you leave it).
+- <strong>Live widgets from OpenCTI, OpenAEV and OpenCRQ.</strong> A dashboard can hold the platforms' own widgets: an OpenCTI dashboard widget, an OpenAEV custom dashboard widget, or an OpenCRQ figure (findings, annual loss expectancy by scope or over time, tolerance gaps, the most exposed assets). Their figures are read from the platform each time the page opens, <strong>with the access of the person viewing it</strong>, through an integration that person can use: sharing a dashboard shares its layout, never your data. An OpenCTI map is drawn as a map of the countries and cities it counts, an OpenCTI tree as a treemap, an OpenCTI timeline as a timeline, its radar, polar area, word cloud and heatmap as such, and its bookmarks widget as cards of the bookmarks of the account OpenCTI answers for; a relationships list also gives each relationship's source and target, so it can be drawn as a graph. OpenAEV's security posture widgets are drawn as OpenAEV draws them, from the queries and lists its own widgets read, with your access: the security coverage as a technique matrix (a kill chain at a time, every technique of each phase, a sub-technique counted in its parent, the coverage and All / Covered / Gaps), an attack path as a path graph (its simulation's techniques by phase, the ones each leads to on hover, the simulation's dates; without a simulation it asks for one), the command center as an exposure console (with your OpenAEV security platforms orbiting the score), the exposure score and a resilience gauge as gauges, the security domains as domain cards (every domain OpenAEV knows, in its order) and the posture radar as a radar. An OpenCTI activity and history widget (read by OpenCTI administrators only) shows a link to the platform. Drawn with its own visualization, a platform widget looks as it does in its platform - the same colours (an entity's, a label's, a status'), number and date formats, sizes and layout - from options its platform sets under the visualization's own; drawn as another visualization, it takes that one's look. Any of these options can still be set in the source. A viewer with no access to the integration sees that the data is not available to them.
+- <strong>A platform widget in one step.</strong> <code>Data</code> &gt; <code>New</code> opens on <code>Platform widget</code> (the first of the source types, all shown as tiles). Pick the platform, its integration and the widget - its types are tiles, as in OpenCTI's and OpenAEV's own editors - then <code>Create and place</code>: the data source and its visualization are added together, below the others on the tab on screen, drawn as the platform draws it - in its module's colour, the widget's frame keeping XTM One's. <code>Preview</code> draws it the same way before it is saved. An OpenCTI widget's selection can read one of your OpenCTI saved filters (<code>Saved filter</code>) instead of filters of its own: it is read in OpenCTI, with each viewer's access, every time the widget is.
+- <strong>Widget packs.</strong> <code>Widget packs</code> on the dashboards list is a library of ready-made widgets: built-in packs for OpenCTI, OpenAEV and OpenCRQ, packs you import from a file - an OpenCTI dashboard, custom view or widget export, an OpenAEV dashboard export (ZIP), an XTM One pack - and packs saved from a dashboard. An import says what it changed or left out. An OpenCTI custom view is a dashboard shown on an entity's page: imported, its widgets read the entity an <code>Entity</code> input of the view's type sets (where OpenCTI reads "the current entity"), and inserting the pack adds that input above the tabs, reading through the same integration as the widgets (once: a second view reading the same token uses the input already there). An OpenCTI dashboard's variables are read too: an entity variable becomes an entity input whose value its widgets read; another kind of variable has no input here, so its widgets read its default value, or are left out when it has none (the import says which). An OpenCTI dashboard's or view's period (its last 3 months, or its start and end dates) is kept by each of its widgets, as whoever edits the dashboard set it. An OpenAEV dashboard's simulation and scenario parameters become entity inputs of that type, reading every one while none is picked: its widgets read them where OpenAEV reads the parameter. Saved as a pack, a dashboard keeps the entity inputs its widgets read, and the OpenCTI saved filters its widgets name are written into them (read with your access), since a pack leaves the OpenCTI they were saved in. In the studio, the <code>Packs</code> panel inserts a pack below the selected widget; each live widget reads through your integration of its platform (you choose when you have several). Built-in packs are duplicated to be changed.
+- <strong>Publish or export.</strong> <code>Publish or export</code> sends the dashboard to OpenCTI or OpenAEV as one of their own dashboards, with your own account there, and lists the widgets that platform cannot hold (OpenCTI takes its own widgets and text, OpenAEV its own widgets). The period its OpenCTI widgets read becomes the OpenCTI dashboard's. An input its OpenCTI widgets read goes as one of its dashboard variables when OpenCTI has its type (an entity, a text, a number), and a widget reading another input is left out; <code>OpenCTI custom view</code> sends the dashboard as a custom view of the type of its OpenCTI entity input instead (which needs OpenCTI's customization right there): the widgets reading that input read the entity of the page OpenCTI shows them on. To OpenAEV, its simulation and scenario inputs go as the dashboard's parameters. It also downloads the same files, or the dashboard as a widget pack. The OpenCTI saved filters its widgets name are read with your access and written into the file; one you cannot read keeps its reference, which only its own OpenCTI knows, and the list of what changed says so. OpenCRQ has no custom dashboards: its widgets stay in XTM One.
+- <strong>Share on the XTM Hub.</strong> In the same dialog, <code>XTM Hub</code> shares the dashboard on the XTM Hub through your XTM Hub integration: its OpenCTI export becomes a new resource of an OpenCTI custom dashboards library your Hub account may publish to (the library's upload right in your organization). It stays hidden until you activate it on the XTM Hub.</p>
+</li>
+</ul>
+<h3 id="download">Download</h3>
+<p>With the Dashboard Studio on, <code>Download</code> on the dashboard's page and in the studio saves the dashboard as a PDF (every tab, or the tab on screen, each tab starting a page; a very tall tab goes on over several pages) or the tab on screen as a PNG. A visualization's menu offers <code>Download PNG</code> of that one visualization. The file is drawn on the server as you see the dashboard, each source read with your own access, its inputs at their default values (an entity input named, as on screen); a PDF holds pictures of the tabs, like the dashboard on screen. <code>applicationProperties.hideExport</code> removes the downloads.</p>
+<h3 id="published-link">Published link</h3>
+<p>An administrator can let dashboards be published as links anyone opens without an account (<code>Settings &gt; Access and security &gt; Published dashboard links</code>, off by default). In the <code>Share</code> dialog, the people who manage a dashboard turn its published link on, copy it, replace it or turn it off. A visitor sees a snapshot of the dashboard's data, read on the server with the access of the person who published the link - never live, never with anyone else's access - and when it was read. The snapshot is read again on a visit once older than its interval (every 15 minutes, hour, 4 hours or day) or after the dashboard changed; <code>Read again now</code> reads it at once. Whoever changes what the dashboard reads (its data or widgets, not just where they sit) becomes the link's publisher: from then on the snapshot is read with their access, never with the access of someone who did not choose what it shows. A question to an agent is never asked for a snapshot, nor its answer shown. The visitor receives what draws the dashboard and nothing about where its data comes from (no platform query, integration, assignment, agent or variable), no inputs, no click actions and no links into OpenCTI, OpenAEV or OpenCRQ. The link stops answering when it is turned off or replaced, when the person who published it can no longer edit the dashboard, and while the administrator's switch is off.</p>
+<p>A published link can have a marking ceiling (<code>Highest markings shown</code>, offered when the dashboard reads OpenCTI): pick the highest marking of each type the link may show, by name (<code>TLP:AMBER</code>, <code>PAP:GREEN</code>), as an OpenCTI public dashboard's maximum markings. OpenCTI data carrying a marking above them, or a marking of a type you did not pick, is left out of the snapshot (what the data shown reaches above them, such as a relationship's source or target, or an entity counted by a distribution, reads <code>Restricted</code>, as OpenCTI shows what its reader cannot see), and a source holding an agent's written answer is not kept at all (an answer can quote anything). Changing the ceiling reads the snapshot again, with the access of the person who changed it, who becomes the link's publisher. OpenAEV and OpenCRQ data have no markings and are shown as they are.</p>
+<h3 id="scheduled-export">Scheduled export</h3>
+<p><code>Download</code> &gt; <code>Schedule an export...</code> has one of your agents email the dashboard as a PDF or a PNG on a schedule (UTC): every day, on weekdays, on Mondays, on the first day of each month, or a cron expression. The agent needs its Dashboards built-in tools. The schedule is an assignment on that agent, listed in the dialog (pause it, <code>Send now</code>, delete it) and on the agent's page; its run sends the dashboard with the <code>send_dashboard_export</code> tool through the platform's email. Recipients are the email addresses of people with an account who can open the dashboard (10 at most): each receives the file rendered with their own access, with your subject and message and a link to the dashboard. Any other address is not sent to, and the run says so. An agent can also keep the file with <code>export_dashboard</code> and post it to a channel with its own tools.</p>
+<h3 id="visualization-options">Visualization options</h3>
+<table>
+<thead>
+<tr>
+<th>Visualizations</th>
+<th>Options</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Area, line, column, bar</td>
+<td><code>stackMode</code> (<code>auto</code>, <code>stacked</code>, <code>stacked100</code>), <code>overlayFields</code> (series drawn as lines over the others), <code>y2Fields</code> and <code>showOverlayY2Axis</code> (a second axis, with <code>y2AxisTitleText</code>, <code>y2AxisScale</code>, <code>y2AxisMin</code>, <code>y2AxisMax</code>), <code>dataValuesDisplay</code> (<code>off</code>, <code>all</code>, <code>minmax</code>), <code>legendDisplay</code> (<code>right</code>, <code>left</code>, <code>top</code>, <code>bottom</code>, <code>off</code>) and <code>legendTruncation</code>, <code>xAxisTitleText</code>, <code>yAxisTitleText</code> and their <code>...Visibility</code>, <code>yAxisScale</code> (<code>linear</code>, <code>log</code>), <code>yAxisMin</code>, <code>yAxisMax</code>, <code>xAxisLabelRotation</code>, <code>nullValueDisplay</code> (<code>gaps</code>, <code>zero</code>, <code>connect</code>), <code>seriesColors</code>, <code>seriesColorsByField</code>, <code>pointColors</code> (one colour per column of a single series), <code>markerDisplay</code>, <code>lineWidth</code>, <code>areaOpacity</code>, <code>annotationColor</code>, <code>showBrush</code> (a range bar to zoom), <code>resultLimit</code></td>
+</tr>
+<tr>
+<td>Pie</td>
+<td><code>collapseThreshold</code> (slices under this share of the total are gathered into one, <code>0.01</code> by default), <code>collapseLabel</code>, <code>showDonutHole</code>, <code>labelDisplay</code> (<code>off</code>, <code>values</code>, <code>valuesAndPercentage</code>), <code>legendDisplay</code>, <code>seriesColors</code>, <code>seriesColorsByField</code>. Slices and the legend follow the data's order.</td>
+</tr>
+<tr>
+<td>Scatter, bubble, punchcard</td>
+<td><code>xField</code>, <code>yField</code>, <code>sizeField</code>, <code>categoryField</code> (by default the first numeric columns, and the first text column as the category), axis titles, scale and bounds, <code>legendDisplay</code>, <code>seriesColors</code>, <code>bubbleSizeMin</code>, <code>bubbleSizeMax</code>. A punchcard places a circle for each pair of its two text columns, sized by a number.</td>
+</tr>
+<tr>
+<td>Single value, icon, radial</td>
+<td><code>majorValue</code>, <code>trendValue</code>, <code>sparklineValues</code>, <code>trendDisplay</code> (<code>absolute</code>, <code>percent</code>, <code>off</code>), <code>sparklineDisplay</code> (<code>below</code>, <code>before</code>, <code>after</code>, <code>off</code>), <code>showSparklineAreaGraph</code>, <code>unit</code>, <code>unitPosition</code>, <code>numberPrecision</code>, <code>shouldUseThousandSeparators</code>, <code>shouldAbbreviateValue</code> (on by default: 1.2M), <code>shouldAbbreviateTrendValue</code>, <code>underLabel</code>, <code>majorColor</code>, <code>trendColor</code>, <code>backgroundColor</code>, <code>sparklineStrokeColor</code>; with an icon <code>icon</code> (a Lucide icon name), <code>iconColor</code>, <code>iconPosition</code>, <code>showValue</code>; as a ring <code>maxValue</code>, <code>radialStrokeColor</code>, <code>radialBackgroundColor</code>.</td>
+</tr>
+<tr>
+<td>Filler and marker gauges</td>
+<td><code>value</code>, <code>minValue</code>, <code>maxValue</code>, <code>gaugeRanges</code> (<code>[{from, to, value: colour}]</code>, which also set the scale), <code>orientation</code>, <code>gaugeColor</code>, <code>labelDisplay</code> and <code>valueDisplay</code> (<code>number</code>, <code>percentage</code>, <code>off</code>), <code>unit</code>, <code>numberPrecision</code>, <code>majorTickInterval</code>.</td>
+</tr>
+<tr>
+<td>A platform's look (area, line, column, bar, pie, polar area, radar, word cloud, heatmap)</td>
+<td><code>palette</code> (<code>material</code>, <code>materialMixed</code>, <code>results</code>) and <code>paletteLead</code> (a first colour before it), <code>paletteNoPale</code>, <code>numberFormat</code> (<code>si</code> 1.5K, <code>siSpaced</code> 1.5 K, <code>compact</code>, <code>locale</code> 1,500), <code>dateFormat</code> (<code>date</code>, <code>longDate</code>, <code>monthYear</code>, <code>year</code>), <code>tooltipContent</code> (<code>labelValue</code>, <code>label</code>), <code>separatorWidth</code>, <code>fill</code> (<code>solid</code>, <code>gradient</code>, with <code>fillOpacityFrom</code> and <code>fillOpacityTo</code>), <code>barRadius</code>, <code>barSize</code>, <code>barGap</code>, <code>colorByPoint</code>, <code>stackTotals</code>, <code>xAxisType</code> (<code>category</code>, <code>time</code>), <code>markerSize</code>, <code>labelMaxLength</code> and <code>labelCut</code> (<code>words</code>, <code>chars</code>), <code>gridLines</code> (<code>both</code>, <code>horizontal</code>, <code>vertical</code>, <code>none</code>), <code>gridOpacity</code>, <code>xAxisFontSize</code>, <code>yAxisFontSize</code>, <code>axisLabelColor</code>, <code>hideAxisLines</code>, <code>valueTickCount</code>, <code>dataValuesStrong</code>, <code>radius</code>, <code>donutHoleSize</code>, <code>colorRanges</code> (<code>heat</code>), <code>valueShades</code>, <code>openLinks</code> (a click opens the item in its platform), <code>emptySample</code> (what a widget without data shows greyed).</td>
+</tr>
+<tr>
+<td>Single value (a platform's look)</td>
+<td><code>valueStyle</code>: <code>standard</code>, <code>difference</code> (the figure under its change over 24 hours), <code>tile</code> (an icon tile, a figure that counts up, a trend chip).</td>
+</tr>
+<tr>
+<td>List, distribution, timeline</td>
+<td>A list's <code>listStyle</code> (<code>compact</code>, <code>table</code>, <code>rows</code>, <code>cards</code>), <code>rowHeight</code>, <code>cardsPerRow</code>; a distribution's <code>listStyle</code> (<code>bars</code>, <code>rows</code>); a timeline's <code>timelineStyle</code> (<code>lanes</code>, <code>alternate</code>).</td>
+</tr>
+<tr>
+<td>Map</td>
+<td><code>regionColors</code> (<code>classes</code>, or <code>level</code>: a threat level's colour), <code>basemap</code> (<code>surface</code>, <code>contrast</code>), <code>markerColor</code>, <code>markerSize</code>, <code>markerIcon</code>, <code>zoom</code>, <code>centerLat</code>, <code>centerLng</code>, <code>centerOnFirstMarker</code>.</td>
+</tr>
+<tr>
+<td>Security posture (coverage matrix, path graph, exposure console, score gauge, ring gauge, domain cards)</td>
+<td><code>sampleDisplay</code> (<code>full</code>, <code>subtle</code>, <code>off</code>): how the sample drawn without data shows.</td>
+</tr>
+<tr>
+<td>Table</td>
+<td><code>count</code> (rows per page), <code>headerVisibility</code> (<code>inline</code>, <code>fixed</code>, <code>none</code>), <code>showRowNumbers</code>, <code>showTotals</code> (sums of the numeric columns), <code>columnFormat</code> (per column: <code>width</code>, <code>align</code>, <code>textOverflow</code>, <code>cellType</code> - <code>text</code>, <code>array</code> for a list of items, <code>sparkline</code> for a list of numbers -, <code>data</code>, <code>rowColors</code>, <code>rowBackgroundColors</code>), <code>tableFormat</code> (<code>rowColors</code>, <code>rowBackgroundColors</code> for whole rows).</td>
+</tr>
+</tbody>
+</table>
+<p>A colour is one of <code>accent</code>, <code>brand</code> (the colour OpenCTI and OpenAEV draw their widgets in), <code>ai</code>, <code>success</code>, <code>warning</code>, <code>alert</code>, <code>danger</code>, <code>info</code>, <code>neutral</code>, <code>text</code>, <code>muted</code>, <code>chart1</code> to <code>chart10</code> (the platform's colours, in light and dark), or a <code>#rgb</code> / <code>#rrggbb</code> value.</p>
+<h3 id="dynamic-options">Dynamic options</h3>
+<p>An option whose value starts with <code>&gt;</code> is computed from the visualization's data: <code>"majorColor": "&gt; majorValue | rangeValue(ranges)"</code>. It starts with a source - <code>primary</code> (the data; <code>table</code> is the same), <code>annotation</code> (the data source named <code>dataSources.annotation</code>, whose first column places a marker on the chart's x and second labels it), or another option of the visualization - then steps separated by <code>|</code>:</p>
+<ul>
+<li>picking: <code>seriesByName('count')</code>, <code>seriesByIndex(1)</code> (a series' x is index 0), <code>firstPoint()</code>, <code>lastPoint()</code>, <code>delta(-2)</code> (the last point minus the one at that index), <code>min()</code>, <code>max()</code>, <code>sum()</code>;</li>
+<li>formatting, a point or every point of a series: <code>rangeValue(name)</code>, <code>matchValue(name)</code>, <code>gradient(name)</code>, <code>formatByType(name)</code>, <code>prefix('text')</code>.</li>
+</ul>
+<p>A formatter's <code>name</code> is an entry of the visualization's <code>context</code>: <code>rangeValue</code> takes <code>[{from, to, value}]</code> (from included, to excluded), <code>matchValue</code> <code>[{match, value}]</code>, <code>gradient</code> <code>{stops: [numbers], colors: [colours]}</code>, <code>formatByType</code> <code>{number: {precision, thousandSeparated, unit, unitPosition, abbreviate}}</code>. For example, a single value turning red past 100:</p>
+<div class="highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">"options"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"majorColor"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&gt; majorValue | rangeValue(levels)"</span><span class="p">},</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">"context"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"levels"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">"to"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">,</span><span class="w"> </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="s2">"success"</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="nt">"from"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">,</span><span class="w"> </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="s2">"danger"</span><span class="p">}]}</span>
+</span></code></pre></div>
+<p>Expressions are read in your browser on the data shown, never run as code; one that does not fit this syntax is refused when the dashboard is saved, and one that finds nothing in the data leaves the option at its default.</p>
+<p>If a dashboard holds a widget this version of XTM One does not know (one written by a newer version), the widget shows as a placeholder and the rest of the dashboard is drawn as usual.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 26, 2026 22:02:02 UTC"><span class="timeago" datetime="2026-11-26T22:02:02+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 26, 2026 22:02:02 UTC">2026-11-26</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+  </span>
+
+    
+    
+    
+      
+  <span class="md-source-file__fact">
+    
+      
+  <span class="md-icon" title="Contributors">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33s1.71.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2"></path></svg>
+  </span>
+  <span>GitHub</span>
+
+    
+    <nav>
+      
+        <a href="https://github.com/AreDee-Bangs" class="md-author" title="@AreDee-Bangs">
+          
+          <img src="https://avatars.githubusercontent.com/u/11183028?v=4&amp;size=72" alt="AreDee-Bangs">
+        </a>
+      
+        <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
+          
+          <img src="https://avatars.githubusercontent.com/u/326439686?v=4&amp;size=72" alt="Letullier-Thibert">
+        </a>
+      
+      
+      
+    </nav>
+  </span>
+
+    
+  </aside>
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer">
+        
+          
+          <a href="../reports/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Reports">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Reports
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../mobile-companion/" class="md-footer__link md-footer__link--next" aria-label="Next: Mobile companion">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Mobile companion
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"></path></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2026 Filigran SAS. Community Edition licensed under the Apache License 2.0
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/XTM-One-Platform" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://community.filigran.io" target="_blank" rel="noopener" title="community.filigran.io" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M94.1 315.1c0 25.9-21.2 47.1-47.1 47.1S0 341 0 315.1 21.2 268 47.1 268h47.1v47.1zm23.7 0c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1v117.8c0 25.9-21.2 47.1-47.1 47.1s-47.1-21.2-47.1-47.1zm47.1-189c-25.9 0-47.1-21.2-47.1-47.1s21.2-47 47.1-47S212 53.2 212 79.1v47.1h-47.1zm0 23.7c25.9 0 47.1 21.2 47.1 47.1S190.8 244 164.9 244H47.1C21.2 244 0 222.8 0 196.9s21.2-47.1 47.1-47.1zm189 47.1c0-25.9 21.2-47.1 47.1-47.1s47 21.2 47 47.1-21.2 47.1-47.1 47.1h-47.1v-47.1zm-23.7 0c0 25.9-21.2 47.1-47.1 47.1S236 222.8 236 196.9V79.1c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1zm-47.1 189c25.9 0 47.1 21.2 47.1 47.1s-21.2 47-47.1 47-47.1-21.2-47.1-47.1v-47.1h47.1zm0-23.7c-25.9 0-47.1-21.2-47.1-47.1s21.2-47.1 47.1-47.1h117.8c25.9 0 47.1 21.2 47.1 47.1s-21.2 47.1-47.1 47.1z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://linkedin.com/company/filigran" target="_blank" rel="noopener" title="linkedin.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M416 32H31.9C14.3 32 0 46.5 0 64.3v383.4C0 465.5 14.3 480 31.9 480H416c17.6 0 32-14.5 32-32.3V64.3c0-17.8-14.4-32.3-32-32.3M135.4 416H69V202.2h66.5V416zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77m282.1 320h-66.4V312c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9V416h-66.4V202.2h63.7v29.2h.9c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://twitter.com/FiligranHQ" target="_blank" rel="noopener" title="twitter.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"></path></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.path", "navigation.footer", "navigation.expand", "content.action.edit", "content.action.view", "content.code.annotate", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../js/timeago.min.js"></script>
+      
+        <script src="../../js/timeago_mkdocs_material.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>

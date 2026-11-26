@@ -1,0 +1,5319 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for XTM One, Filigran's AI-native threat-informed defense platform.">
+      
+      
+        <meta name="author" content="Filigran">
+      
+      
+        <link rel="canonical" href="https://xtm-one-platform.github.io/xtm-one/latest/usage/chat/">
+      
+      
+        <link rel="prev" href="../foundations/trust-and-confidence/">
+      
+      
+        <link rel="next" href="../chat-api/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Chat - XTM One Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/timeago.css">
+    
+      <link rel="stylesheet" href="../../assets/css/custom.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-P8K1S4VSXR"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-P8K1S4VSXR",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-P8K1S4VSXR",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="filigran" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#chat" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+        
+          <aside class="md-banner md-banner--warning">
+            <div class="md-banner__inner md-grid md-typeset">
+              
+  You're not viewing the latest version.
+  <a href="../../.."> 
+    <strong>Click here to go to latest.</strong>
+  </a>
+
+            </div>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
+          </aside>
+        
+      </div>
+    
+    
+      
+
+
+<!-- Header -->
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+
+    <!-- Link to home -->
+    <a href="../.." title="XTM One Documentation" class="md-header__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+
+    <!-- Button to open drawer -->
+    <label class="md-header__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+
+    <!-- Header title -->
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Color palette -->
+    
+      
+    
+
+    <!-- Site language selector -->
+    
+
+    <!-- Button to open search modal -->
+    
+      <label class="md-header__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+      </label>
+
+      <!-- Search interface -->
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+
+    <!-- Repository information -->
+    
+      <div class="md-header__source">
+        <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+
+  <!-- Navigation tabs (sticky) -->
+  
+
+  <script type="text/javascript"> !function(){var e,t,n;e="58d967e3f3ca784",t=function(){Reo.init({clientID:"58d967e3f3ca784"})},(n=document.createElement("script")).src="https://static.reo.dev/"+e+"/reo.js",n.async=!0,n.onload=t,document.head.appendChild(n)}(); </script>
+  <script src="https://copilot.filigran.ai/api/v1/public/widget.js" data-token="jNJu1JTbbPwNqk1tqEOw-WjsKU4dEcgn" data-context="{&quot;page&quot;:&quot;docs&quot;,&quot;product&quot;:&quot;XTM One&quot;}"></script>
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../deployment/overview/" class="md-tabs__link">
+          
+  
+  
+  Deployment &amp; Setup
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../getting-started/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../administration/introduction/" class="md-tabs__link">
+          
+  
+  
+  Administration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../development/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Development
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="XTM One Documentation" class="md-nav__button md-logo" aria-label="XTM One Documentation" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    XTM One Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/XTM-One-Platform/xtm-one" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2">
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment &amp; Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment &amp; Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_1">
+        
+          
+          <label class="md-nav__link" for="__nav_2_1" id="__nav_2_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/scim-provisioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provisioning with SCIM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/security-headers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security headers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/secret-vaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secret vaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage telemetry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/data-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/xtm-suite-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/chat-approvals-in-clients/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat approvals in client apps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/backup-and-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup and restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2">
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Foundations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Foundations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/containers-and-scopes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Containers and scopes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/relationships-and-nesting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relationships and nesting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/deduplication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse and deduplication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/dates-and-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meaning of dates and status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundations/trust-and-confidence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trust, review, and confidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work with agents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Work with agents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#what-chat-is-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Chat is for
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-chat-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The chat layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choose-who-you-want-to-talk-to" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose who you want to talk to
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#continue-a-conversation-with-another-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Continue a conversation with another agent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ask-an-assistant-about-your-earlier-conversations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ask an assistant about your earlier conversations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#start-a-new-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start a new conversation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manage-conversations-from-the-sidebar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manage conversations from the sidebar
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#organize-conversations-in-workspaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Organize conversations in workspaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#write-your-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write your message
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-a-suggested-reply" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use a suggested reply
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add-to-a-reply-that-is-still-running" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Add to a reply that is still running
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-how-full-the-conversations-context-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See how full the conversation's context is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ask-several-agents-at-once-with-mentions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ask several agents at once with @mentions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#point-the-agent-at-another-conversation-with" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Point the agent at another conversation with @
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ask-for-changes-to-a-file-the-agent-produced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ask for changes to a file the agent produced
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ask for changes to a file the agent produced">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-a-reply-shows-its-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a reply shows its files
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-prompt-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use prompt templates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-session-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use session tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#voice-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Voice options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-may-see-above-the-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you may see above the messages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-conversation-open-in-several-places" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A conversation open in several places
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#continue-a-conversation-in-slack-or-teams-or-back-on-the-web" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Continue a conversation in Slack or Teams, or back on the web
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export-a-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export a conversation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#share-a-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Share a conversation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rate-an-answer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rate an answer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#find-the-files-of-a-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Find the files of a conversation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Find the files of a conversation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-an-administrator-opens-someone-elses-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When an administrator opens someone else's files
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#background-task-banners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background task banners
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-a-reply-stops-before-it-finishes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a reply stops before it finishes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="When a reply stops before it finishes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-agent-resumes-by-itself" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The agent resumes by itself
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-status-card" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The status card
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-the-agent-could-not-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When the agent could not resume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-waiting-arcade" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The waiting arcade
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The waiting arcade">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#leaderboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Leaderboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#achievements-and-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Achievements and secrets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-the-game-is-not-offered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When the game is not offered
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-an-agent-is-shown-as-not-recommended-for-chat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When an agent is shown as not recommended for chat
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#practical-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Practical tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next step
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chat API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../office-add-in/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Office add-in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scheduled-work-items/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduled work items
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workspaces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../presentations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presentations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-dashboards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom dashboards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mobile-companion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mobile companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../video-studio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video Studio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sandbox-workspace/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sandbox workspace
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../create-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create an agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../assignments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Assignments and triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../webhook-triggers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Webhook triggers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-widget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Publish an agent on a website
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-budgets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run budgets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agentic-flow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic flow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4">
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manage resources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Manage resources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/agent-to-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent-to-agent (A2A)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/browser-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Browser profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/knowledge-bases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Knowledge bases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/connect-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connect an external MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/platform-mcp-servers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform MCP servers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/platform-tools-mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform tools MCP server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/mcp-catalogs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP catalogs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/relays/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relays
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/sharing-and-access/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sharing and access
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/skills/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skills
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Templates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resources/runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One Desktop and runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5">
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitor activity
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Monitor activity
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../home-dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ctem-signals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CTEM signals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../work-history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platform-insights/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform insights
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_6">
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM Suite
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    XTM Suite
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/common-experience/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common experience
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/opencti/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCTI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/indicator-decay/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Indicator decay re-check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/openaev/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenAEV
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xtm-suite/opencrq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XTM One in OpenCRQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../my-profile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    My profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4">
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Administration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Administration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/introduction/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/users-and-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users and groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/intents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Intents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/organization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organization profile
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6">
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channels and bots
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Channels and bots
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/slack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/microsoft-teams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Microsoft Teams
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/whatsapp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/whatsapp-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WhatsApp: two backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/telegram/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/discord/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/google-chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Google Chat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/channels/agent-accounts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent accounts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/ai-governance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI governance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/prompt-safety/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prompt safety (Nova)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/health/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Health
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/editions-and-licensing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editions and licensing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/running-without-ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running without AI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/emergency-stop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../administration/emergency-stop-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Emergency stop API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#what-chat-is-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Chat is for
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-chat-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The chat layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choose-who-you-want-to-talk-to" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose who you want to talk to
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#continue-a-conversation-with-another-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Continue a conversation with another agent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ask-an-assistant-about-your-earlier-conversations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ask an assistant about your earlier conversations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#start-a-new-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start a new conversation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manage-conversations-from-the-sidebar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manage conversations from the sidebar
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#organize-conversations-in-workspaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Organize conversations in workspaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#write-your-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write your message
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-a-suggested-reply" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use a suggested reply
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add-to-a-reply-that-is-still-running" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Add to a reply that is still running
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-how-full-the-conversations-context-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See how full the conversation's context is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ask-several-agents-at-once-with-mentions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ask several agents at once with @mentions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#point-the-agent-at-another-conversation-with" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Point the agent at another conversation with @
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ask-for-changes-to-a-file-the-agent-produced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ask for changes to a file the agent produced
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ask for changes to a file the agent produced">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-a-reply-shows-its-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a reply shows its files
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-prompt-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use prompt templates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-session-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use session tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#voice-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Voice options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-may-see-above-the-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you may see above the messages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-conversation-open-in-several-places" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A conversation open in several places
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#continue-a-conversation-in-slack-or-teams-or-back-on-the-web" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Continue a conversation in Slack or Teams, or back on the web
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export-a-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export a conversation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#share-a-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Share a conversation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rate-an-answer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rate an answer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#find-the-files-of-a-conversation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Find the files of a conversation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Find the files of a conversation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-an-administrator-opens-someone-elses-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When an administrator opens someone else's files
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#background-task-banners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background task banners
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-a-reply-stops-before-it-finishes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a reply stops before it finishes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="When a reply stops before it finishes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-agent-resumes-by-itself" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The agent resumes by itself
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-status-card" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The status card
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-the-agent-could-not-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When the agent could not resume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-waiting-arcade" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The waiting arcade
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The waiting arcade">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#leaderboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Leaderboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#achievements-and-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Achievements and secrets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-the-game-is-not-offered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When the game is not offered
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-an-agent-is-shown-as-not-recommended-for-chat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When an agent is shown as not recommended for chat
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#practical-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Practical tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next step
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation">
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../getting-started/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    User Guide
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="./" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Work with agents
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/XTM-One-Platform/xtm-one/blob/main/docs/docs/usage/chat.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"></path></svg>
+    </a>
+  
+  
+    
+      
+    
+    <a href="https://github.com/XTM-One-Platform/xtm-one/raw/main/docs/docs/usage/chat.md" title="View source of this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"></path></svg>
+    </a>
+  
+
+
+<h1 id="chat">Chat</h1>
+<p>Chat is where you work directly with XTM One in natural language. It supports both the platform-wide <code>General Assistant</code> and individual agents.</p>
+<h2 id="what-chat-is-for">What Chat is for</h2>
+<p>Use Chat when you want to:</p>
+<ul>
+<li>ask a question in plain language</li>
+<li>work with a specific assistant</li>
+<li>upload supporting files</li>
+<li>reuse a saved prompt</li>
+<li>continue an earlier conversation</li>
+<li>speak instead of typing, if your browser supports it</li>
+</ul>
+<h2 id="the-chat-layout">The chat layout</h2>
+<p>Chat has two main areas:</p>
+<ul>
+<li>the left sidebar for assistant selection and conversation history</li>
+<li>the main panel for the active conversation</li>
+</ul>
+<p>If you are on a smaller screen, the sidebar can collapse so the conversation has more space.</p>
+<p>While an agent works, the conversation keeps its end in view: each new command card, output line, status change or wait notice scrolls in as it appears, in the browser and in the desktop app. Scroll up to read and the view stays where you put it, with a <code>Scroll to bottom</code> button; scroll back to the end or press the button and it follows again.</p>
+<p>Each command or tool card an agent runs on a machine shows on one line: what it did (<code>Ran a command</code>, <code>Read a file</code>), the first line of the command or the path, the machine, the result (a spinner while it runs, then the exit code or the error) and how long it took. Click the line to see the whole command, its output and the copy and larger-view buttons; a card you open stays open while you are on the page.</p>
+<h2 id="choose-who-you-want-to-talk-to">Choose who you want to talk to</h2>
+<p>At the top of the sidebar, you choose the assistant for the conversation.</p>
+<p>You may see:</p>
+<ul>
+<li><code>General Assistant</code></li>
+<li>chat-enabled agents</li>
+<li>assignment-oriented agents shown in a <code>Not recommended for chat</code> section</li>
+</ul>
+<p>An agent your company manages carries a <code>Company</code> badge. When an administrator links an agent to the General Assistant, that agent takes the General Assistant's place in the list and carries an <code>Assistant</code> badge.</p>
+<p>Choose the <code>General Assistant</code> when you want a broad helper. Choose a specific agent when you want an assistant with a focused role or built-in context.</p>
+<p>Picking another assistant in the sidebar while a conversation is open starts a new conversation with it. To keep working in the same conversation with another assistant instead, see <a href="#continue-a-conversation-with-another-agent">Continue a conversation with another agent</a>.</p>
+<h2 id="continue-a-conversation-with-another-agent">Continue a conversation with another agent</h2>
+<p>A conversation keeps its whole history whatever agent answers in it. To hand the conversation you are in to another agent - because its agent was deleted or disabled, or because another agent should apply what you asked earlier - open <code>Conversation options</code> at the top of the conversation, choose <code>Continue with another agent</code>, pick the agent and click <code>Continue</code>.</p>
+<ul>
+<li>The agent you pick answers from your next message. It receives the earlier messages of the conversation, and reads the earlier answers labelled with the agent that wrote them, so it does not take them for its own.</li>
+<li>A note <code>Continued by &lt;agent&gt; on &lt;date&gt;</code> marks the change in the conversation.</li>
+<li>Only your own conversations in the web chat can be continued this way, between two answers. A Slack or Teams conversation is answered by the agent its channel routes to.</li>
+<li>The agents offered are the ones you can start a conversation with: enabled and open to chat.</li>
+</ul>
+<p>When an agent is deleted, its conversations are kept. Its owner can name another agent to continue them (see <a href="../agents/#delete-an-agent">Agents</a>); otherwise the conversation shows that its agent was deleted, and you continue it with an agent of yours the same way. The <a href="../presentations/">Studios</a> offer the same action next to the conversation's agent (the arrows button).</p>
+<h2 id="ask-an-assistant-about-your-earlier-conversations">Ask an assistant about your earlier conversations</h2>
+<p>Every assistant you chat with can read your own conversations back, whichever agent you had them with, a deleted one included. Ask it, for example, "apply what I asked about the launch video in my conversation with Video Bot":</p>
+<ul>
+<li><code>list_conversations</code> finds the conversation: by a word of its title, by the agent it was held with (<code>agent</code>, an id or a part of its name, a deleted agent by its last name) or by the video, presentation, report or file it is about (<code>object_id</code>, <code>object_type</code>). Each conversation is listed with its agent.</li>
+<li><code>read_conversation_history</code> reads its messages, oldest first and a window at a time, the conversation you are in when no conversation is named. Each message comes with who wrote it (you, or the agent by name), its date, the tools an answer used and the tool results in one line each, and the files, videos, decks and reports it carried, so the assistant can open them with its other tools. <code>search</code> keeps only the messages containing a text. The full content of a tool result is never returned.</li>
+</ul>
+<p>Only your own conversations can be read, never another person's, even one shared with you; apart from the conversation you are in, a Slack or Teams channel thread other people read is not read either. Reading a conversation other than the one you are in is recorded in the audit log (<code>read_conversation</code>), once per 15 minutes for the same conversation.</p>
+<h2 id="start-a-new-conversation">Start a new conversation</h2>
+<p>To start a new conversation:</p>
+<ol>
+<li>Open <code>Chat</code> from the sidebar.</li>
+<li>Choose the assistant you want.</li>
+<li>Click the <code>New conversation</code> button.</li>
+<li>Type your message and send it.</li>
+</ol>
+<p>If you open Chat from an agent card or an agent detail page, XTM One can preselect that agent for you.</p>
+<h2 id="manage-conversations-from-the-sidebar">Manage conversations from the sidebar</h2>
+<p>The sidebar is not only a list of past chats. It is also your main control area.</p>
+<p>From here you can:</p>
+<ul>
+<li>search conversations by title, preview text, or agent name</li>
+<li>open an earlier conversation</li>
+<li>organize conversations in workspaces (see <a href="#organize-conversations-in-workspaces">below</a>)</li>
+<li>archive a single conversation</li>
+<li>archive all conversations from the <code>Archive all conversations</code> action</li>
+<li>switch assistants without leaving the page</li>
+</ul>
+<p>Archiving removes a conversation from the active list. It is not the same as simply closing the page.</p>
+<p>The conversations other people shared with you are listed under <code>Shared with me</code>, below your own; the search narrows them by title, owner and last message too.</p>
+<h2 id="organize-conversations-in-workspaces">Organize conversations in workspaces</h2>
+<p>To keep the conversations of one topic together, and let their agents share work items and shared state, file them in a <a href="../workspaces/">workspace</a>. The sidebar lists your conversations by workspace, a little like folders:</p>
+<ul>
+<li><code>Workspaces</code> lists each workspace you can file into, your default first, with the conversations filed in it. Click a workspace's name to fold or unfold it; the sidebar remembers what you folded.</li>
+<li><code>Not in a workspace</code> lists the conversations filed nowhere. That is a normal place for a conversation to be: a new conversation starts there, and it stays there until you file it.</li>
+</ul>
+<p>From the sidebar you can:</p>
+<ul>
+<li>create a workspace with the <code>New workspace</code> button next to <code>Workspaces</code>: type its name and press Enter</li>
+<li>file a conversation by dragging it onto a workspace, or with the <code>Move to workspace</code> menu of its row, which also offers <code>Remove from workspace</code>; dropping a conversation on <code>Not in a workspace</code> takes it out of its workspace too</li>
+<li>start a conversation directly in a workspace with the <code>+</code> button of that workspace (<code>New conversation in this workspace</code>)</li>
+<li>manage a workspace from its <code>Workspace actions</code> menu: <code>Rename</code>, and the same actions as on the <a href="../workspaces/#manage-a-workspace">Workspaces page</a> — <code>Make default</code>, <code>Knowledge bases</code>, <code>Share</code>, <code>Archive</code> and <code>Delete</code> — plus <code>Open in Workspaces</code>. Archiving asks for a confirmation, then takes the workspace out of the sidebar; its conversations are then listed under <code>Other workspaces</code>. To restore it, open <code>Work &gt; Operations &gt; Workspaces</code>, click <code>Show archived</code>, then choose <code>Restore</code> in its actions menu. Deleting asks for a confirmation and keeps its conversations, which then appear under <code>Not in a workspace</code>; a workspace that still holds work items cannot be deleted</li>
+</ul>
+<p>Filing a conversation into a workspace other people can see asks first: its members can then search what was written in it.</p>
+<p>Only your own conversations can be filed, into workspaces you can change. A workspace shared with you in read-only shows only while it holds one of your conversations, and a conversation filed in a workspace you can no longer see is listed under <code>Other workspaces</code>. While you search, only the workspaces holding a matching conversation are shown.</p>
+<p>You can also file the conversation you are in from the <code>Conversation options</code> menu at the top of the conversation (<code>File in a workspace</code>). An assistant with the <code>XTM One</code> built-in tool can do it for you — switch the tool on in the <a href="#use-session-tools">session tools menu</a>, then ask for example "create a workspace called Acme audit and move this conversation into it".</p>
+<h2 id="write-your-message">Write your message</h2>
+<p>The composer at the bottom of the screen supports several input methods.</p>
+<p>You can:</p>
+<ul>
+<li>type a normal message</li>
+<li>attach files with the paperclip button</li>
+<li>paste files into the composer</li>
+<li>drag and drop files onto the page</li>
+<li>insert a saved prompt template</li>
+<li>use voice dictation</li>
+<li>start a full voice conversation</li>
+</ul>
+<p>A message holds up to 30 files, each up to 40 MB: a batch of screenshots goes in one message. Past 30, the composer names each file it did not attach and says why ("a message holds at most 30 files"); send them in the next message. While <code>Deep Investigation</code> is on, the composer takes a subject, not files: remove the attachments, or turn it off to send them.</p>
+<p>While a response is being generated, <code>Stop generating</code> (or Esc) interrupts it, and you can keep writing: see <a href="#add-to-a-reply-that-is-still-running">Add to a reply that is still running</a>.</p>
+<p>If a response ends before its answer because XTM One restarted or the reply failed, the work the agent already did is kept: the next message you send in the conversation (<code>Go on</code>, for instance) gets the tools it called and what they returned, so the agent continues from there instead of starting over. A response you stop yourself, and one that ended more than 24 hours ago, start from scratch. A long piece of reasoning with no tool call cannot be kept.</p>
+<p>A line under the composer reminds you that AI can make mistakes and that important information should be checked. The same notice appears at the bottom of the <a href="../web-widget/">embeddable chat widget</a>, between the input box and the "Powered by" line. It is shown in your interface language in the app and in English in the widget.</p>
+<p>The lightning icon among the composer buttons counts the agentic actions consumed in the current quota period (the day, month or year your administrator configured), out of your limit when there is one. Hover it for the details. While an assistant works on your message, the action this reply consumes is shown in brackets: <code>4(+1)/10</code> means 4 actions before this reply, 1 for it, out of 10. It joins the total when the reply ends, along with any sandbox code runs counted toward the same limit; a reply that fails may have its action credited back instead (see <a href="../../deployment/configuration/#agentic-quota">Configuration</a>). The counter is refreshed as well when a reply is stopped or fails, and when a reply you left running by opening another conversation ends.</p>
+<h2 id="use-a-suggested-reply">Use a suggested reply</h2>
+<p>Once an agent has answered, the message box may propose what you would likely ask next, greyed out, with a <code>Tab</code> key beside it. Press <code>Tab</code> (or the right arrow, or click the <code>Tab</code> key) to put it in the box, edit it if you want, then press Enter to send it: a suggestion is never sent by itself. Start typing or press Esc to dismiss it.</p>
+<p>There is not always one: the platform proposes nothing when the next step is not obvious, after a reply that failed or that you stopped, or when you already sent another message. The suggestion is made by the routing model your administrator sets in <code>Settings &gt; AI Models</code>, from your message, the agent's answer and the tools it used. Turn suggestions off in <a href="../my-profile/#profile-tab">your profile</a>.</p>
+<h2 id="add-to-a-reply-that-is-still-running">Add to a reply that is still running</h2>
+<p>You do not have to wait for an answer to correct or complete your request. The composer stays open while the agent works:</p>
+<ol>
+<li>Type your message, and attach files if you need to.</li>
+<li>Press Enter, or the send button (<code>Send now: the agent folds it in at its next step</code>). The line under the composer reads <code>Enter to send now · Esc to stop generating</code>.</li>
+</ol>
+<p>Your message appears in the conversation at once, and the agent takes it into account at its next step, between two tool calls, in the same answer: you get one answer that covers both messages, not two. If the agent was waiting (for a delegated task, for example), your message ends the wait. A message that arrives while the agent is already writing its final answer is answered right after it.</p>
+<ul>
+<li>A message refused before it reaches the agent (you sent too many messages in a minute, or it could not be saved) is put back in the composer, so you can send it again.</li>
+<li>A message that mentions another agent, or references another conversation, is held and sent as its own message when the answer ends (see <a href="#ask-several-agents-at-once-with-mentions">Ask several agents at once with @mentions</a>).</li>
+<li>A message you send while a reply is running can count as one more agentic action.</li>
+<li>To abandon the answer instead, use <code>Stop generating</code> (or Esc).</li>
+</ul>
+<h2 id="see-how-full-the-conversations-context-is">See how full the conversation's context is</h2>
+<p>Once the assistant has answered in a conversation, a small ring and a percentage on the right of the composer show how much of the model's context window the latest answer used. Hover it for the summary (<code>Context used</code>, with the number of tokens); click it to see where the context went: <code>System prompt</code>, <code>Tool definitions</code>, <code>MCP &amp; dynamic tools</code>, <code>Summarized conversation</code>, <code>Tool results</code> and <code>Conversation</code>. The counts are estimates.</p>
+<p>The colour follows what happens to the conversation:</p>
+<ul>
+<li>amber, <code>Context nearly full: older turns will soon be summarized</code>: the oldest messages are about to be replaced by a summary;</li>
+<li>red, <code>Context overflowed: older content was cut to fit</code>: older content was cut so the answer could run.</li>
+</ul>
+<p>When the gauge turns amber or red on a long conversation, starting a new conversation gives the assistant its full context back.</p>
+<h2 id="ask-several-agents-at-once-with-mentions">Ask several agents at once with @mentions</h2>
+<p>Type <code>@</code> in the composer and pick an agent from the list to mention it. You can mention several agents in the same message.</p>
+<ul>
+<li>In a new conversation, the first agent you mention becomes the conversation's agent.</li>
+<li>The conversation's agent answers first. Then every other agent you mentioned answers in turn, in the order you mentioned them. Each reply is its own message, labelled with the agent's name.</li>
+<li>Every mentioned agent receives your full message, including attachments, and can read the replies given before its own in the same turn.</li>
+<li>Each agent is told which agents answer after it in the turn, so it answers its own part and does not ask you to pass your message on to them.</li>
+<li>An agent you mention twice answers once.</li>
+<li>Only agents you can chat with answer: a mention of an agent that is not available to you (not shared with you, disabled, or not open to chat) is ignored, and the others still answer. If an agent fails while answering, a short note replaces its reply and the agents after it still answer.</li>
+<li>Clicking stop ends the turn: the agents that have not answered yet are not asked.</li>
+<li>The mentioned agents of one message share a time limit. An agent still answering when it runs out is stopped, and a note names the agents that were not asked.</li>
+<li>Each agent that answers counts as one agentic action, charged before it starts, exactly as if you had asked it alone; an agent it consults while answering adds nothing. If your agentic quota runs out, the agent that could not be charged says so and the agents after it are not asked. An agent that fails is credited back like any failed answer.</li>
+<li>Each reply keeps what its own agent produced: its trace (for feedback) and the files it generated.</li>
+<li>A message you send while an answer is still being written is held and sent as its own message when the answer ends if it mentions another agent, or while several mentioned agents are answering. A message that reaches a running answer anyway (from another device, or through the API) goes to the agent already answering, and the other agents it mentions then answer it, after the agents of the running turn and under the same rules. One that arrives as the answer is ending is answered by them after the next answer in the conversation.</li>
+</ul>
+<p>Once an administrator turns them on (<code>CHANNEL_AGENT_MENTIONS_ENABLED=true</code>, see <a href="../../deployment/configuration/#messaging-channels">Configuration</a>), mentions also work in messaging channels (Slack, Teams, WhatsApp, Telegram, Discord and Google Chat), for people with an XTM One account. Until then, a channel message is answered by its routed agent alone, whatever it mentions. There is no picker there: type the agent's key after <code>@</code>, the same key the web composer inserts, such as <code>@mail-desk</code>. A mentioned agent answers only when its own channel settings let it answer that message: it is enabled, open to chat, set to <strong>Receive</strong> on that channel (and on that channel conversation, if it is restricted to some), past the bot's receive whitelist, the private-conversation and only-mention rules, and set to <strong>Publish</strong> there. With mentions turned on, an administrator decides which agents can answer on a channel in each agent's Channels settings. Any other <code>@</code> word - a person, a handle, an agent not set up on that channel - is plain text: the routed agent answers alone, as it would without the mention, and no note is added. Anonymous senders cannot mention agents. Each agent that answers counts as one agentic action, as in the web chat, and is told which agents answer after it. When the routed agent has nothing to add, the agents you named still answer. The replies arrive together in one bot message, one section per agent, with a link to every file an agent produced, and are stored as separate messages in the conversation, each with its own agent's files.</p>
+<h2 id="point-the-agent-at-another-conversation-with">Point the agent at another conversation with @</h2>
+<p>To have the agent read another conversation - "@q3-threat-report, what did we decide there?" - type <code>@</code> in the composer: below the agents, <code>Reference a conversation</code> lists the conversations you can open, the most recent first. Type words of a title to narrow the list, joined with hyphens (<code>@q3-threat</code> finds "Q3 threat report"), then pick one: the composer inserts its key, the title in lowercase with hyphens, such as <code>@q3-threat-report</code>.</p>
+<ul>
+<li>The list holds your own conversations, from the web chat and from the assistant embedded in OpenCTI or OpenAEV, and those shared with you by name. It leaves out archived and empty conversations, the conversation you are writing in, and conversations only reachable through an organisation link.</li>
+<li>Only a conversation you picked from the list counts: an <code>@</code> word you type by hand stays plain text. Deleting the key from your message removes the reference.</li>
+<li>With your message the agent receives a short brief of each conversation you referenced: its title, the summary and the instructions kept from its earlier messages, and its last few messages. Every agent that answers the message reads it, the mentioned ones included.</li>
+<li>For the rest of the conversation, the agent can read the referenced conversations in full, page by page. It can read only the conversations referenced in the conversation it answers, and only while you can still open them: one deleted or no longer shared with you is no longer readable.</li>
+<li>Your message shows a chip for each conversation it referenced. Clicking it opens that conversation. Someone you share your conversation with sees the chips, which name the referenced conversations, but can open only the ones they have access to.</li>
+<li>A message references at most 5 conversations.</li>
+<li>A message that references a conversation while an answer is still being written is held and sent when the answer ends: a correction sent to a running answer cannot carry a reference.</li>
+</ul>
+<p>The Presentation Studio's composer offers the same list, with conversations only. In the assistant embedded in OpenCTI or OpenAEV, the list appears once the platform enables it.</p>
+<h2 id="ask-for-changes-to-a-file-the-agent-produced">Ask for changes to a file the agent produced</h2>
+<p>When an agent hands you a file — an HTML briefing, a CSV export, a Markdown report, a JSON bundle — you can ask for a change in plain words: "remove the paragraph about X", "rename the column to Y", "fix the date in the footer". The agent reads the file it produced, applies exactly the change you asked for and returns a <strong>new revision</strong> of the file. The version you already downloaded is never altered under you.</p>
+<ul>
+<li>Text-based files (HTML, Markdown, CSV, JSON, YAML, source code, ...) are edited in place, so a one-line change stays a one-line change — the rest of the document is untouched.</li>
+<li>Rendered documents (PDF, Word) have no editable source: the agent regenerates them from the corrected content.</li>
+<li>Files you uploaded yourself can be corrected the same way; the result is a new file next to your original.</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Name what you want changed as it appears in the document. The agent matches your words against the file's exact text, so "remove the sentence about JP" works when the document says "JP"; a paraphrase may need one round of clarification.</p>
+</div>
+<h3 id="how-a-reply-shows-its-files">How a reply shows its files</h3>
+<ul>
+<li>The files an answer names are shown as cards in the answer. The other files the agent wrote while working on it (a first draft, a scratch file) are shown as compact chips, still downloadable.</li>
+<li>An answer that names none of its files shows them all as cards.</li>
+<li>Files that share a name and type in a conversation are numbered <code>v1</code>, <code>v2</code>, ... in the order they were written, and their cards show the exact size in bytes. Every card shows the time its file was written; hover a card to see its file id and the start of its SHA-256 digest.</li>
+</ul>
+<h2 id="use-prompt-templates">Use prompt templates</h2>
+<p>If prompts are available in your environment, the prompt button opens a list of reusable prompt templates.</p>
+<p>Use this when you want to:</p>
+<ul>
+<li>start from a standard request</li>
+<li>keep your wording consistent</li>
+<li>save time on recurring questions</li>
+</ul>
+<p>Selecting a prompt inserts its content into your message box.</p>
+<h2 id="use-session-tools">Use session tools</h2>
+<p>The wrench button opens the session tools menu. It has one sub-menu per kind of tool, and each sub-menu lists its tools with a switch. Depending on the conversation, you may be able to switch on or off:</p>
+<ul>
+<li>built-in tools</li>
+<li>custom tools</li>
+<li>integrations</li>
+<li>MCP servers</li>
+<li>knowledge bases</li>
+</ul>
+<p>Each kind shows how many of its tools are on. Switching a tool keeps the menu open, so you can change several in a row. The built-in tools of the Platform Health specialists (Memory Steward, Health Diagnosis, Health Experiments, Health Flow Lab) are Platform Health's own: the menu never lists them, and <code>Disable all</code> leaves them as the agent carries them.</p>
+<p>When you use the <code>General Assistant</code>, this menu lets you build a temporary toolset for the conversation. When you use a specific agent, the panel starts from that agent's own toolset and lets you switch built-in tools on or off for the conversation. Work items, shared state and trace inspection act as the agent itself, so they are only offered when the agent already has them or when you can configure the agent. Trace inspection reads the agent's traces, which hold every user's conversations with it, so the one you add, and the one the platform builder (the suite named after the platform) brings along, only work for someone who can read the agent's chats: an admin, its owner, or someone it is shared with as <code>Full access (incl. chats)</code>.</p>
+<p>A message can only add to the conversation what you could connect to an agent of your own: one that adds a custom tool, MCP server, knowledge base or integration you cannot see is refused with an error that says which kind it is, and nothing is sent. Saving your profile's default tools follows the same rule. What the conversation already has - the tools you selected earlier, your profile defaults, the agent's own toolset and the General Assistant's configuration - is used as it was set up, including what the owner of an agent shared with you connected to it.</p>
+<p>Integrations are the one exception, as they always were: an integration you cannot see, or whose owner's connected account is not shared with you, is never used for you in a chat (see <a href="../resources/integrations/#sharing-an-oauth-integration">Sharing an OAuth integration</a>). Nothing is hidden: when an answer could not use one, a note under it names the integration - by its service only when it is not shared with you - and says why, and the agent is told as well, so it can say what it cannot do. Connect your own integration of that service, or ask the owner to share theirs.</p>
+<p>The menu also lets you:</p>
+<ul>
+<li>reset back to the default configuration</li>
+<li>enable all visible tools (the ones already on stay on)</li>
+<li>disable all visible tools</li>
+<li>hide integrations from the menu and show them again (<code>Show or hide integrations</code>, at the bottom of the <code>Integrations</code> sub-menu)</li>
+<li>pick the platform an integration scoped to several registered platforms works on (its own sub-menu)</li>
+</ul>
+<h2 id="voice-options">Voice options</h2>
+<p>If your browser supports speech features, Chat can offer two voice modes.</p>
+<ul>
+<li><code>Dictate a message</code>, the microphone in the message box, converts your speech into text.</li>
+<li><code>Voice call</code> opens a spoken conversation: you speak, the agent answers aloud, and you can interrupt it.</li>
+</ul>
+<p>If these controls do not appear, your browser or device does not currently support them.</p>
+<h2 id="what-you-may-see-above-the-messages">What you may see above the messages</h2>
+<p>The conversation header can show extra context.</p>
+<p>You may see:</p>
+<ul>
+<li>the active agent name</li>
+<li>the current channel, such as web chat</li>
+<li>a transfer banner if another agent handed the conversation over</li>
+<li>a <code>Return</code> action if you want to go back to the source agent</li>
+</ul>
+<p>This is especially useful when the conversation moved from one agent to another.</p>
+<h2 id="a-conversation-open-in-several-places">A conversation open in several places</h2>
+<p>When the same conversation is open in several tabs, on another device, or in voice mode, each one shows the answer as it is written, wherever the message was sent from. Voice mode reads out only the answer to what you said.</p>
+<p>When XTM One is updated while a tab stays open, that tab shows <code>A new version is available</code>: select <code>Reload</code> to use the new version. Until you do, the tab keeps working, but it may show an answer started elsewhere as if you had asked it.</p>
+<p>To connect your own scripts to a conversation, see the <a href="../chat-api/">Chat API</a>.</p>
+<h2 id="continue-a-conversation-in-slack-or-teams-or-back-on-the-web">Continue a conversation in Slack or Teams, or back on the web</h2>
+<p>A conversation is not tied to the place it started. The same conversation - its history, files, session tools and agent - can go on in the web app, in a direct message with the Slack bot, or in your personal chat with the Microsoft Teams bot.</p>
+<ul>
+<li><strong>From Slack or Teams to the web.</strong> A direct-message conversation you had with the bot appears in your conversation list, marked with the Slack or Teams icon. Open it and write: the agent answers here, with everything said in Slack or Teams. Each message in the transcript shows where it was written.</li>
+<li><strong>From the web to Slack or Teams.</strong> Open the conversation, then <code>Conversation options</code> &gt; <code>Continue in Slack or Teams</code>, and pick the app. The bot sends you a direct message: in Slack, reply in its thread; in Teams, reply in your chat with the bot. The conversation goes on there, and stays in your list here.</li>
+<li><strong>Each reply is written where you send your message</strong>, with that app's formatting. A message you send in Slack is answered in Slack; one you send here is answered here.</li>
+<li><strong>The same agent answers everywhere.</strong> When your administrator linked the General Assistant to an agent (Settings &gt; General Assistant &gt; <code>Link to Agent</code>), a Slack or Teams conversation with the General Assistant is answered by that agent there and here alike: the chat shows its name, and its tools in the composer. A conversation you started here with the General Assistant before the link keeps the General Assistant in Slack or Teams too.</li>
+<li><strong>One answer at a time.</strong> A message you send in Slack or Teams while another reply in the conversation is being written (here or there) is queued: the bot tells you so right away, and answers it as soon as that reply is done. Several messages you send meanwhile in the same thread or chat are answered together, in one reply, as the web does with a message sent while the agent is still working. Up to five messages can wait; past that the bot asks you to send yours again later. A queued message the bot could not answer - within an hour, or because something failed twice - is dropped, and the bot tells you so in the thread so you can send it again. A queued message keeps the files you sent with it. If the thread stops continuing the conversation before a queued message runs (you send <code>/new</code> or stop the continuation), that message is not answered, and the bot says so. While a reply to a message sent from Slack or Teams is being written, the web refuses a new message and asks you to send it again once the reply arrives.</li>
+<li><strong>Tool calls waiting for your approval are answered in the web app.</strong> Slack and Teams cannot show the proposal. While the turn that proposed the call still waits for your decision, a message you send in Slack or Teams is queued behind it. If that turn ended with the call still waiting, a new message moves the conversation on, as it does on the web: the call is dropped, and the reply starts by saying so.</li>
+</ul>
+<p>A few limits:</p>
+<ul>
+<li>Only the person who owns the conversation can continue it. A conversation shared with you stays read-only, and a conversation from someone who wrote to the bot without an XTM One account is never listed.</li>
+<li>Group threads stay where they are. A Slack channel thread or a Teams group chat or channel holds other people's messages, and everyone in it reads the agent's answers, so it is not listed here and is continued in Slack or Teams only: you cannot send a message or upload a file into one from here.</li>
+<li>In Teams, your personal chat with the bot has no threads: once you continue a conversation there, every message you send in that chat continues it, until you send <code>/new</code> or continue another conversation there. Teams also needs you to have written to the bot once, so the bot can write back to you.</li>
+<li>The option is offered only where the bot would answer you: the conversation's agent must answer on Slack or Teams (a conversation with the General Assistant always can), and the bot must take direct messages. A Slack bot an administrator restricted to some channels with direct messages turned off does not, and the dialog says so.</li>
+<li><code>Stop</code> in the same dialog ends the continuation: the next message you send in that Slack thread or Teams chat starts a new conversation.</li>
+</ul>
+<h2 id="export-a-conversation">Export a conversation</h2>
+<p><code>Conversation options</code> &gt; <code>Export as Markdown</code> or <code>Export as PDF</code> downloads the conversation as a document: every message in order, under who wrote it and when. A chart an answer shows (see <a href="../platform-insights/">Platform insights</a>) is written as a table of its values. Anyone who can read the conversation can export it, a shared one included; the 2,000 most recent messages are exported.</p>
+<h2 id="share-a-conversation">Share a conversation</h2>
+<p>To let colleagues read one of your conversations, open <code>Conversation options</code> &gt; <code>Share</code>. The <code>Share conversation</code> dialog gives read access in two ways:</p>
+<ul>
+<li><strong>People and groups.</strong> Type at least two characters of a name in <code>Search people and groups…</code> and pick a person or a group. Each one you add is listed as <code>Can view</code>; the bin icon removes their access at once. The conversation then appears in their sidebar, under <code>Shared with me</code>.</li>
+<li><strong>Anyone with the link.</strong> Turn on <code>Anyone on the platform with the link can view</code> to paste the link in a channel or a ticket without listing recipients first. Readers still have to sign in to XTM One, and the conversation does not appear in anyone's sidebar: it is reached through the link only.</li>
+</ul>
+<p><code>Copy link</code> copies the conversation's address. It is always available: someone who has no access yet simply cannot open it until you add them.</p>
+<p>A shared conversation is read-only for the people you share it with: they can read it and download its files, but cannot reply in it, rename it or delete it. Only the owner can share a conversation.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>A conversation can hold results the agent retrieved from integrations or knowledge bases. Sharing it shares those results too, whether or not the people you share it with have access to the source.</p>
+</div>
+<h2 id="rate-an-answer">Rate an answer</h2>
+<p>Point at an answer to show the thumbs under it: <code>Helpful response</code> or <code>Not helpful</code>. A thumbs down opens a dialog where you can say what went wrong; when your administrators defined feedback criteria (<code>Settings &gt; Quality</code>), the dialog also asks you to score them, for a thumbs up too. Click the thumb you chose again to remove your rating.</p>
+<p>Your ratings reach the people who manage the agent, in the agent's <code>Feedback</code> tab. After a reload, an answer you already rated shows its thumbs greyed out (<code>Feedback already submitted</code>), without saying which one you chose.</p>
+<h2 id="find-the-files-of-a-conversation">Find the files of a conversation</h2>
+<p><code>Conversation options</code> &gt; <code>Conversation files</code> opens a panel listing every file of the conversation: the files you attached (<code>Uploaded</code>) and the files the agent produced (<code>Generated by agent</code>), the most recent first. Filter them with <code>All</code>, <code>Uploaded</code> or <code>Generated</code>. For each file you can:</p>
+<ul>
+<li><code>Download</code> it;</li>
+<li><code>Show in conversation</code>, which scrolls to the message that carries it;</li>
+<li><code>Add to the workspace's sources</code>, when the conversation is filed in a workspace you manage (see <a href="../workspaces/">Workspaces</a>).</li>
+</ul>
+<p><code>Open in Files</code> opens the <a href="../files/">Files</a> page on this conversation's files. People you shared the conversation with see the same panel.</p>
+<h3 id="when-an-administrator-opens-someone-elses-files">When an administrator opens someone else's files</h3>
+<p>An administrator who opens the files of a conversation that belongs to another user first sees a confidentiality notice, <code>You are about to open someone else's files</code>, before any file name is shown. To continue, they confirm <code>I have a legitimate need to view these files and I understand this access is logged.</code> and select <code>View files</code>. The access is recorded in the audit log, with the conversation and its owner, and lasts 15 minutes; while the panel is open, a reminder says the files belong to another user. <code>Cancel</code> closes the notice without showing anything; <code>Review notice</code> brings it back.</p>
+<h2 id="background-task-banners">Background task banners</h2>
+<p>Some requests continue in the background.</p>
+<p>When that happens, Chat can show:</p>
+<ul>
+<li>a banner while background tasks are still running</li>
+<li>a completion banner when those background tasks finish</li>
+<li>a failed count if some delegated tasks did not complete successfully</li>
+</ul>
+<p>This means the request involved delegation or longer-running work. It is normal behavior, not an error by itself.</p>
+<p>Files a delegated task produces (a CSV export, a spreadsheet, a report) belong to the conversation: they appear as download chips on the message the agent posts once the task finishes, and the agent itself can open, check and merge them with its own file tools when it summarizes the result.</p>
+<p>Work the agent hands to the background in the Video Studio (a render, an AI shot, a recording, AI music) is shown the same way once the reply ends: a banner says <code>The assistant resumes this conversation when this work finishes</code> and lists each job with how far along it is. When the work ends, the agent comes back on its own and tells you how it went.</p>
+<h2 id="when-a-reply-stops-before-it-finishes">When a reply stops before it finishes</h2>
+<p>A reply can stop before its end: XTM One was restarted or updated while the agent was working, or the process running it stopped. The conversation never just goes quiet when that happens.</p>
+<h3 id="the-agent-resumes-by-itself">The agent resumes by itself</h3>
+<p>When the platform itself stopped the reply (a deployment, a scale-in or a restart of the platform, or the recycling of a web worker that served its quota of requests), you have nothing to do: once XTM One is back, the agent resumes the same message by itself, from the tool calls it had already completed, and the conversation shows it working again.</p>
+<p>It keeps resuming as long as the message makes progress between two stops, for up to 12 hours after the first stop. After three stops in a row that completed no new tool call, it stops resuming and waits for you.</p>
+<h3 id="the-status-card">The status card</h3>
+<p>In place of the interrupted reply, the conversation shows one status card for the whole episode: every stop of the same message folds into it, and the card follows what happens live, in every tab and on every device. It reads, for example:</p>
+<ul>
+<li><code>Interrupted by a platform restart, resuming by itself</code>, then <code>Interrupted by a platform restart, resumed by itself</code> once the agent answers. A message you send while it resumes goes to the running answer as a correction and does not change the card. The Presentation Studio side chat shows the same card;</li>
+<li><code>Interrupted by a worker recycle, resumed by you</code>, when your own message picked the work up and no automatic resume was running;</li>
+<li><code>Interrupted by a server shutdown, could not resume by itself</code>, when the agent did not resume (see below).</li>
+</ul>
+<p>The chip on the card counts the tool calls the agent had completed (<code>3 tool calls</code>). Click it to see them grouped by tool: the last one completed is highlighted (<code>Last completed</code>), a failed call is counted as failed, and the calls still running when the reply stopped are counted too.</p>
+<p>The agent's memory, when it has memory switched on, records the interrupted request and its last completed action.</p>
+<h3 id="when-the-agent-could-not-resume">When the agent could not resume</h3>
+<p>A reply stopped for another reason (the process ran out of memory, for example), or past the limits above, waits for you. The card turns into a warning and offers two buttons to the conversation's owner:</p>
+<ul>
+<li><code>Resume</code> sends <code>Continue where you left off.</code> for you. The tool calls the agent had already completed are kept: the agent continues from their results instead of running them again. Sending any other message continues the same way.</li>
+<li><code>Dismiss</code> stops offering the resume. The card stays, as <code>not resumed</code>.</li>
+</ul>
+<p>A process that crashes or is killed leaves no interrupted reply to draw a card for. The end of the conversation then shows a notice, <code>This response stopped before it finished</code>, with when it stopped and how many completed tool calls are kept, and the same <code>Resume</code> and <code>Dismiss</code> buttons. It stays there after a reload and on your other devices, until a new reply starts. When the reply is already queued to resume by itself, the notice says <code>It is resuming by itself: no need to click anything.</code> and offers no <code>Resume</code>.</p>
+<p>If XTM One cannot be reached while you are on the page, the chat keeps trying to reconnect for as long as the page is open, and follows the agent again as soon as it is back. A message XTM One refuses before any reply starts (you sent too many messages in a minute, for example) is never dropped silently: the reason shows in place of the reply.</p>
+<h2 id="the-waiting-arcade">The waiting arcade</h2>
+<p>While an agent works through a longer request, a small Space Invader appears under the conversation and shoots the waiting message away, letter by letter. It is more than an animation: click it, or its <code>Take control</code> button, and a full Space Invaders game opens over the whole interface. You can also start a game at any time, no wait needed: <code>Play Space Invaders</code> in your user menu (top right), or the command of the same name in the command palette.</p>
+<p>The chat embedded in OpenCTI, OpenAEV and OpenCRQ invites you here too: while its agent works, its <code>Play Space Invaders in XTM One</code> link opens <code>&lt;your XTM One address&gt;/chat?arcade=play</code> in a new tab, and the game starts as soon as you are signed in - even if you have to sign in first, or wait for an administrator to accept the platform's Terms of Use, as long as that happens within ten minutes of the click.</p>
+<ul>
+<li><strong>Controls</strong>: arrow keys or <code>A</code>/<code>D</code> (<code>Q</code>/<code>D</code> on an AZERTY keyboard) to move, <code>Space</code> to fire (hold it for autofire), right-click or <code>X</code> to send a missile where you aim, <code>P</code> to pause, <code>M</code> to mute, <code>Esc</code> to leave (the first press pauses, the second ends the game and saves it). On a touch screen, drag to move and fire, and tap the rocket for a missile.</li>
+<li><strong>Waves and bosses</strong>: every wave marches faster than the last, and every fifth wave brings a boss. Falling capsules hold power-ups: rapid fire, spread shot, laser, shield, extra missiles, and a few rarer ones.</li>
+<li><strong>The interface is fair game</strong>: your shots and the invaders' leave holes in whatever they hit - buttons, messages, the sidebar. Nothing is really broken: the damage is cosmetic, and everything is rebuilt the moment you leave. Your conversation keeps running underneath.</li>
+<li><strong>Your answer comes first</strong>: when the agent has finished answering, a banner says so - a message it posts along the way before carrying on with its work does not count. <code>Esc</code> (or <code>Read it</code>) takes you straight back to it, and if you had stopped playing, the arcade takes you back by itself after a few seconds. <code>Keep playing</code> lets you finish your game. The game waits for the conversation you started it from: if you switch to another conversation or leave the chat while you play, the game goes on but no longer announces that answer.</li>
+</ul>
+<h3 id="leaderboard">Leaderboard</h3>
+<p>Every game you play is scored and saved. The leaderboard - <code>Arcade leaderboard</code> in your user menu, the trophy button next to the waiting game, the <code>Open the leaderboard</code> command, or the pause menu - ranks the best game of each player over the last 24 hours, the last 7 days and all time, shows who is playing right now, and names the holders of three titles: top vandal, sharpshooter and marathon. During a game, the score bar shows whose score you are about to beat.</p>
+<ul>
+<li>Your <strong>callsign</strong> is three letters or digits, like on a real arcade cabinet. It defaults to your initials; change it in the leaderboard's <code>My arcade</code> tab. Other players only ever see your callsign - never your name or your email.</li>
+<li>Turn off <code>Show me on the public leaderboard</code> to keep your scores, titles and live games to yourself, from that moment on - even in a game already running. You still see your own rank.</li>
+<li>Scores are checked by the server: a score, a number of shots or a count of destroyed interface elements that is not plausible for the time played is refused, and so is a score higher than the waves you reached can yield. The arcade tells you why a score was not recorded. A game in which a cheat code was used is saved but not ranked.</li>
+</ul>
+<h3 id="achievements-and-secrets">Achievements and secrets</h3>
+<p>The leaderboard's <code>Achievements</code> tab lists what you have unlocked. Many achievements are secret until you find them: old cheat codes, a very rare saucer, certain dates on the calendar, and a few things you probably should not shoot. Explore.</p>
+<h3 id="when-the-game-is-not-offered">When the game is not offered</h3>
+<p>The gamepad always means play: on the waiting panel it opens the game, and nothing in the chat hides it. When your system asks for reduced motion, the waiting panel shows a plain rotating message instead of the invader and the chat offers no game; <code>Play Space Invaders</code> (in your user menu or the command palette) and a <code>?arcade=play</code> link still start one, since you asked for it. The arcade is not offered while an administrator impersonates a user: nothing is ever recorded under someone else's name. Nor is it offered while the platform's Terms of Use are waiting to be accepted. Administrators can turn the arcade off for the whole platform with <code>ARCADE_ENABLED</code> (see <a href="../../deployment/configuration/#waiting-arcade">Configuration</a>).</p>
+<p>The game and the leaderboard load in the background shortly after you sign in, so a page left open while XTM One is updated can still play. If they could not load before the update (on a Data Saver or 2G connection, for instance), opening them shows <code>Reload to play</code> or <code>Reload to open the leaderboard</code>: <code>Reload</code> reloads the page and opens the game or the leaderboard right away.</p>
+<h2 id="when-an-agent-is-shown-as-not-recommended-for-chat">When an agent is shown as not recommended for chat</h2>
+<p>Some agents are built mainly for background execution rather than direct conversation.</p>
+<p>These agents still appear in the picker, but XTM One marks them so you know they are not optimized for normal chat use.</p>
+<p>You can still try them, but the best experience usually comes from:</p>
+<ul>
+<li>the <code>General Assistant</code></li>
+<li>a chat-enabled agent</li>
+</ul>
+<h2 id="practical-tips">Practical tips</h2>
+<ul>
+<li>Start with the <code>General Assistant</code> if you are unsure which agent to use.</li>
+<li>Use a dedicated agent when the topic belongs to a specific workflow.</li>
+<li>Attach documents when the answer depends on exact wording or evidence.</li>
+<li>Open the same conversation again if you want XTM One to keep the discussion context.</li>
+</ul>
+<h2 id="next-step">Next step</h2>
+<p>The next chapter explains <a href="../agents/">Agents</a>, including what the list page shows and how to read an agent detail page.</p>
+
+
+
+
+
+
+
+  
+    
+  
+  
+    
+  
+
+
+  <aside class="md-source-file">
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Last update">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 13.1c-.1 0-.3.1-.4.2l-1 1 2.1 2.1 1-1c.2-.2.2-.6 0-.8l-1.3-1.3c-.1-.1-.2-.2-.4-.2m-1.9 1.8-6.1 6V23h2.1l6.1-6.1zM12.5 7v5.2l4 2.4-1 1L11 13V7zM11 21.9c-5.1-.5-9-4.8-9-9.9C2 6.5 6.5 2 12 2c5.3 0 9.6 4.1 10 9.3-.3-.1-.6-.2-1-.2s-.7.1-1 .2C19.6 7.2 16.2 4 12 4c-4.4 0-8 3.6-8 8 0 4.1 3.1 7.5 7.1 7.9l-.1.2z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 23, 2026 09:58:52 UTC"><span class="timeago" datetime="2026-11-23T09:58:52+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 23, 2026 09:58:52 UTC">2026-11-23</span>
+  </span>
+
+    
+    
+      
+  <span class="md-source-file__fact">
+    <span class="md-icon" title="Created">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14.47 15.08 11 13V7h1.5v5.25l3.08 1.83c-.41.28-.79.62-1.11 1m-1.39 4.84c-.36.05-.71.08-1.08.08-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8c0 .37-.03.72-.08 1.08.69.1 1.33.32 1.92.64.1-.56.16-1.13.16-1.72 0-5.5-4.5-10-10-10S2 6.5 2 12s4.47 10 10 10c.59 0 1.16-.06 1.72-.16-.32-.59-.54-1.23-.64-1.92M18 15v3h-3v2h3v3h2v-3h3v-2h-3v-3z"></path></svg>
+    </span>
+    <span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-timeago" title="November 17, 2026 15:06:51 UTC"><span class="timeago" datetime="2026-11-17T15:06:51+00:00" locale="en"></span></span><span class="git-revision-date-localized-plugin git-revision-date-localized-plugin-iso_date" title="November 17, 2026 15:06:51 UTC">2026-11-17</span>
+  </span>
+
+    
+    
+    
+      
+  <span class="md-source-file__fact">
+    
+      
+  <span class="md-icon" title="Contributors">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33s1.71.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2"></path></svg>
+  </span>
+  <span>GitHub</span>
+
+    
+    <nav>
+      
+        <a href="https://github.com/AreDee-Bangs" class="md-author" title="@AreDee-Bangs">
+          
+          <img src="https://avatars.githubusercontent.com/u/11183028?v=4&amp;size=72" alt="AreDee-Bangs">
+        </a>
+      
+        <a href="https://github.com/SamuelHassine" class="md-author" title="@SamuelHassine">
+          
+          <img src="https://avatars.githubusercontent.com/u/1334279?v=4&amp;size=72" alt="SamuelHassine">
+        </a>
+      
+        <a href="https://github.com/Letullier-Thibert" class="md-author" title="@Letullier-Thibert">
+          
+          <img src="https://avatars.githubusercontent.com/u/326439686?v=4&amp;size=72" alt="Letullier-Thibert">
+        </a>
+      
+      
+      
+    </nav>
+  </span>
+
+    
+  </aside>
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer">
+        
+          
+          <a href="../foundations/trust-and-confidence/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Trust, review, and confidence">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Trust, review, and confidence
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../chat-api/" class="md-footer__link md-footer__link--next" aria-label="Next: Chat API">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Chat API
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"></path></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2026 Filigran SAS. Community Edition licensed under the Apache License 2.0
+    </div>
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/XTM-One-Platform" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://community.filigran.io" target="_blank" rel="noopener" title="community.filigran.io" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M94.1 315.1c0 25.9-21.2 47.1-47.1 47.1S0 341 0 315.1 21.2 268 47.1 268h47.1v47.1zm23.7 0c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1v117.8c0 25.9-21.2 47.1-47.1 47.1s-47.1-21.2-47.1-47.1zm47.1-189c-25.9 0-47.1-21.2-47.1-47.1s21.2-47 47.1-47S212 53.2 212 79.1v47.1h-47.1zm0 23.7c25.9 0 47.1 21.2 47.1 47.1S190.8 244 164.9 244H47.1C21.2 244 0 222.8 0 196.9s21.2-47.1 47.1-47.1zm189 47.1c0-25.9 21.2-47.1 47.1-47.1s47 21.2 47 47.1-21.2 47.1-47.1 47.1h-47.1v-47.1zm-23.7 0c0 25.9-21.2 47.1-47.1 47.1S236 222.8 236 196.9V79.1c0-25.9 21.2-47.1 47.1-47.1s47.1 21.2 47.1 47.1zm-47.1 189c25.9 0 47.1 21.2 47.1 47.1s-21.2 47-47.1 47-47.1-21.2-47.1-47.1v-47.1h47.1zm0-23.7c-25.9 0-47.1-21.2-47.1-47.1s21.2-47.1 47.1-47.1h117.8c25.9 0 47.1 21.2 47.1 47.1s-21.2 47.1-47.1 47.1z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://linkedin.com/company/filigran" target="_blank" rel="noopener" title="linkedin.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M416 32H31.9C14.3 32 0 46.5 0 64.3v383.4C0 465.5 14.3 480 31.9 480H416c17.6 0 32-14.5 32-32.3V64.3c0-17.8-14.4-32.3-32-32.3M135.4 416H69V202.2h66.5V416zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77m282.1 320h-66.4V312c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9V416h-66.4V202.2h63.7v29.2h.9c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9z"></path></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://twitter.com/FiligranHQ" target="_blank" rel="noopener" title="twitter.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"></path></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.path", "navigation.footer", "navigation.expand", "content.action.edit", "content.action.view", "content.code.annotate", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../js/timeago.min.js"></script>
+      
+        <script src="../../js/timeago_mkdocs_material.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>
