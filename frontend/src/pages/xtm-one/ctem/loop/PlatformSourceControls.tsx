@@ -38,7 +38,7 @@ function platformSourceKey(source: Pick<CtemPlatformSource, "provider" | "kind" 
 }
 
 /** The run-as user of a source at rest: the name, else the email, else a plain "Not set". */
-function useRunAsLabel(userId: string | null): string {
+export function useRunAsLabel(userId: string | null): string {
   const { t_i18n } = useFormatter();
   const { data: users } = useUsers(Boolean(userId));
   if (!userId) return t_i18n("Not set");

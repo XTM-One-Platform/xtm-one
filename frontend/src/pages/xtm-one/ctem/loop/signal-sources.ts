@@ -99,7 +99,32 @@ export function sourceState(source: CtemSignalPathSource, connected: ReadonlySet
   if (source.bound) return "bound";
   if (source.excluded) return "excluded";
   if (source.off) return "off";
+  // A webhook source is never "not connected": it has its own receiver, off until switched on (#2506).
+  if (source.kind === "webhook") return "off";
   return connected.has(source.provider) ? "not_set_up" : "not_connected";
+}
+
+/**
+ * The one state word of a source wherever it is listed, the path list and the path detail alike (UX advisory A4 of
+ * #2436, #2506): its state on the path, except that a source XTM One provisions reads Error or On from its platform
+ * lines when they say so. A provisioned source with every line off keeps "Not set up", never a second word.
+ */
+export function sourceDisplayState(
+  source: CtemSignalPathSource,
+  connected: ReadonlySet<string>,
+  platform: readonly { provider: string; kind: string; status: string }[] = [],
+): SourceState {
+  const state = sourceState(source, connected);
+  if (state === "not_connected" || state === "excluded") return state;
+  const own = platform.filter((s) => s.provider === source.provider && s.kind === source.kind);
+  if (own.some((s) => s.status === "error")) return "error";
+  if (own.some((s) => s.status === "connected")) return "bound";
+  return state;
+}
+
+/** The display name of a source: a webhook source by its own name, any other by its provider (#2506). */
+export function sourceDisplayName(source: Pick<CtemSignalPathSource, "provider" | "kind" | "name">, providerName: (provider: string) => string): string {
+  return source.kind === "webhook" && source.name ? source.name : providerName(source.provider);
 }
 
 /**
@@ -298,6 +323,7 @@ export const SOURCE_KIND_LABEL = {
   listener: "Live listener",
   pass: "Scheduled pass",
   pir_playbook: "PIR playbook",
+  webhook: "Signed webhook",
 } as const satisfies Record<CtemSignalPathSource["kind"], string>;
 
 /**
