@@ -94,7 +94,7 @@ const LOCKED_CHIP_HIDING = {
  * carries the whole name) and no chip runs under the clear and open controls or past the field
  * (UX r1 B2 of #2428).
  */
-export const BOUNDED_CHIP_ROW =
+const BOUNDED_CHIP_ROW =
   "min-w-0 max-w-full [&>li]:min-w-0 [&>li]:max-w-full [&>li>span]:max-w-full [&>li>span>:first-child]:min-w-0";
 
 export function MultiSelect({
