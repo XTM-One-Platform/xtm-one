@@ -279,7 +279,7 @@ One row per `(organization_id, recorded_by, dedupe_key)`.
 |---|---|
 | `organization_id` | The organization (FK, cascade) |
 | `trigger_path`, `lens` | Section 2 (check constraints) |
-| `source_provider`, `source_external_id` | Who saw it (`opencti`, `openaev`, `aikido`, `manual`...) and the object's id there |
+| `source_provider`, `source_external_id` | Who saw it (`opencti`, `openaev`, `aikido`, `manual`...) and the object's id there; for OpenCTI the internal id of its extension (#2505: the STIX `id` is the `standard_id`, which changes on a rename or a merge), the STIX `id` when the extension is absent, the STIX ids kept in the evidence (`stix_id`, `stix_ids`) |
 | `subject_kind`, `subject_ref`, `subject_label` | What it is about: `asset`, `software`, `identity`, `third_party`, `vulnerability`, `threat`, `code`; a stable reference (hostname, IP, URL, CPE, CVE id, account, organization) |
 | `observed_at`, `first_seen_at`, `last_seen_at`, `seen_count` | The latest sighting, the first, the latest time seen, how many sightings |
 | `evidence` | JSON, at most 8,000 characters: the facts and a `link` |
@@ -359,38 +359,6 @@ source.
   (`webhooks.receive_signal_source_webhook`): integration `webhook_secret`,
   per-source throttle, delivery de-duplication, then `note_event` records the
   signal. A source that is off or unknown is ignored. No run starts here.
-
-## 4ter. Generic signed webhook sources (#2506)
-
-A tool XTM One has no integration for records signals on one trigger path
-through a webhook source (`ctem_webhook_sources`, model
-`models/ctem_webhook_source.py`, migration `w2506webhooksrc01`). It is a
-source of its path in the signal sources view: kind `webhook`, provider
-`webhook`, key `webhook:webhook:<id>`, listed with its 30-day count.
-
-- **Off by default.** `POST /api/v1/ctem-signals/webhook-sources`
-  (administrator) creates the source off, with its name, path, subject kind
-  and mapping; `PATCH .../{id}` switches it on or off, renames it or changes
-  the mapping; `DELETE .../{id}` removes it (its signals stay).
-- **Per-source secret, shown once.** The create and
-  `POST .../{id}/rotate` answers carry `secret` once; it is stored encrypted
-  and never read back. A rotation refuses the old secret at once.
-- **Signed receiver.** `POST /api/hooks/ctem-webhook-sources/{id}`
-  (`webhooks.receive_ctem_webhook_source`) checks `X-XTM-Signature:
-  sha256=<hex HMAC-SHA256 of the raw body>` before anything else: a wrong or
-  missing signature answers 401 and records nothing, the source on or off. A
-  verified delivery to a source that is off answers `ignored`.
-- **Mapping.** `mapping` names the dotted path (`event.id`, `items.0.name`)
-  of the signal fields in the posted JSON: `id` (required, the signal's
-  external id and dedupe key), `label` (the subject label), `severity` (kept
-  in the evidence). A delivery with no id at its path answers `unmapped` and
-  keeps the reason on the source (`last_error`).
-- **Test.** `POST .../{id}/test` with a sample answers what the mapping reads
-  in it, recording nothing.
-- **Counts.** Every path of `GET /api/v1/ctem-signals/paths` carries
-  `sources_enabled` (its sources on) and `sources_available` (its sources that
-  are or could be on here); a source of a provider with no integration here
-  counts in neither.
 
 **Fleets route on signals.** The F2 triage assignments of the vulnerability
 prioritization orchestrator (New KEV or EPSS jump, Vulnerability on software
