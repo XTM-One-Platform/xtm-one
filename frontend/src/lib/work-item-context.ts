@@ -128,9 +128,45 @@ const READ_ONLY_PICKUP_EXPLANATIONS = {
  * The explanation of a pickup state for this reader: the read-only sentence
  * when the reader may not change the item and the state has one.
  */
-export function pickupExplanation(state: WorkItemPickupState, canWrite: boolean | undefined): string {
+export function pickupExplanation(state: WorkItemPickupState, canWrite: boolean | undefined, answered = false): string {
+  if (answered && state === "waiting_for_person") return ANSWERED_PICKUP_EXPLANATIONS.waiting_for_person;
   const readOnly: Partial<Record<WorkItemPickupState, string>> = READ_ONLY_PICKUP_EXPLANATIONS;
   return (canWrite === false && readOnly[state]) || PICKUP_EXPLANATIONS[state];
+}
+
+/**
+ * What an item waiting for a person says once a keeps_waiting option was
+ * answered (#2500): the answer is recorded and the item keeps waiting, so the
+ * dialog never says it goes back to its agent when the card is answered.
+ * Read by `t_i18n(pickupExplanation(state, canWrite, answered), ...)`.
+ * @i18n-keys
+ */
+const ANSWERED_PICKUP_EXPLANATIONS = {
+  waiting_for_person: "Your answer is recorded; it keeps waiting until {agent} asks again.",
+} as const satisfies Partial<Record<WorkItemPickupState, string>>;
+
+/** What `answeredKeepsWaiting` reads: a list row has them all, a graph node no payload. */
+type KeptAnswerFields = Pick<WorkItem, "needs_human" | "status"> & {
+  ask?: Pick<NonNullable<WorkItem["ask"]>, "options"> | null;
+  payload?: WorkItem["payload"] | null;
+};
+
+/**
+ * Whether the person already answered the current ask with an option that
+ * keeps the item waiting (#1719, #2500): `payload.answer.option` names a
+ * `keeps_waiting` option of the ask on an item that still needs a person.
+ * The pickup badge, its explanation and "Waits for" then stop asking for a
+ * decision. Pure.
+ */
+export function answeredKeepsWaiting(item: KeptAnswerFields): boolean {
+  // A graph node carries no payload: it never reads as answered.
+  if (!waitsForAnswer(item)) return false;
+  const answer = (item.payload as { answer?: unknown } | null | undefined)?.answer;
+  if (!answer || typeof answer !== "object") return false;
+  const { option, answered_at: at } = answer as Record<string, unknown>;
+  if (typeof option !== "string" || !option || typeof at !== "string" || !at) return false;
+  const folded = option.toLowerCase();
+  return !!item.ask?.options?.some((o) => o.keeps_waiting === true && o.key.toLowerCase() === folded);
 }
 
 /**
@@ -238,18 +274,24 @@ const TERMINAL_STATUSES: ReadonlySet<WorkItemStatus> = new Set(["done", "cancell
  * Whether the item waits for *readerId* as the Waiting for me filter reads it
  * (services/work_item.py `_waits_for_person_clause`): a decision owed by the reader
  * (`needs_human`, its recipient the reader, else its user), or the reader's own item
- * no agent owns, open past its due date. A scheduled item never waits for anyone.
+ * no agent owns, open past its due date. A scheduled item never waits for anyone,
+ * nor does a decision the person answered with a `keeps_waiting` option (#2500):
+ * it waits for its agent (`answeredKeepsWaiting`, read on a list row, whose payload
+ * the row carries).
  */
 export function waitsForReader(
-  // A list row (`scheduled` its view) or a graph item node (`scheduled` a flag).
+  // A list row (`scheduled` its view, `ask` and `payload` read) or a graph item node (`scheduled` a flag).
   item: Pick<WorkItem, "needs_human" | "waits_for_user_id" | "status" | "user_id" | "owner_agent_id" | "due_at"> & {
     scheduled: WorkItem["scheduled"] | boolean;
-  },
+  } & Partial<Pick<KeptAnswerFields, "ask" | "payload">>,
   readerId: string | undefined,
   now: number = Date.now(),
 ): boolean {
   if (!readerId || item.scheduled || TERMINAL_STATUSES.has(item.status)) return false;
-  if (item.needs_human) return (item.waits_for_user_id ?? item.user_id) === readerId;
+  if (item.needs_human) {
+    if (answeredKeepsWaiting(item)) return false;
+    return (item.waits_for_user_id ?? item.user_id) === readerId;
+  }
   return (
     item.user_id === readerId && !item.owner_agent_id && item.status === "open" && !!item.due_at && Date.parse(item.due_at) < now
   );

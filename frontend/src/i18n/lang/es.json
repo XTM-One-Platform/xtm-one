@@ -21936,5 +21936,14 @@
   "Indicator sighting": "Avistamiento de indicador",
   "Code scanning": "Análisis de código",
   "Secret scanning": "Detección de secretos",
-  "{count, plural, other {+# not used here}}": "{count, plural, one {+# sin usar aquí} other {+# sin usar aquí}}"
+  "{count, plural, other {+# not used here}}": "{count, plural, one {+# sin usar aquí} other {+# sin usar aquí}}",
+  "Answer recorded": "Respuesta registrada",
+  "Answered: {option} by {person}, {date}.": "Respuesta: {option} de {person}, {date}.",
+  "Answered: {option}, {date}.": "Respuesta: {option}, {date}.",
+  "Change the answer": "Cambiar la respuesta",
+  "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.": "En espera de que termine{count, plural, one { # paso más} other {n # pasos más}}.",
+  "Still waiting: {agent} asks again when there is something new to decide.": "Sigue en espera: {agent} volverá a preguntar cuando haya algo nuevo que decidir.",
+  "Still waiting: its agent asks again when there is something new to decide.": "Sigue en espera: su agente volverá a preguntar cuando haya algo nuevo que decidir.",
+  "Your answer is recorded; the work item keeps waiting.": "Su respuesta se ha registrado; el elemento de trabajo sigue en espera.",
+  "Your answer is recorded; it keeps waiting until {agent} asks again.": "Su respuesta se ha registrado; sigue en espera hasta que {agent} vuelva a preguntar."
 }

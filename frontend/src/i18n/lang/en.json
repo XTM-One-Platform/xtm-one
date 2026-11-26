@@ -21936,5 +21936,14 @@
   "Indicator sighting": "Indicator sighting",
   "Code scanning": "Code scanning",
   "Secret scanning": "Secret scanning",
-  "{count, plural, other {+# not used here}}": "{count, plural, other {+# not used here}}"
+  "{count, plural, other {+# not used here}}": "{count, plural, other {+# not used here}}",
+  "Answer recorded": "Answer recorded",
+  "Answered: {option} by {person}, {date}.": "Answered: {option} by {person}, {date}.",
+  "Answered: {option}, {date}.": "Answered: {option}, {date}.",
+  "Change the answer": "Change the answer",
+  "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.": "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.",
+  "Still waiting: {agent} asks again when there is something new to decide.": "Still waiting: {agent} asks again when there is something new to decide.",
+  "Still waiting: its agent asks again when there is something new to decide.": "Still waiting: its agent asks again when there is something new to decide.",
+  "Your answer is recorded; the work item keeps waiting.": "Your answer is recorded; the work item keeps waiting.",
+  "Your answer is recorded; it keeps waiting until {agent} asks again.": "Your answer is recorded; it keeps waiting until {agent} asks again."
 }

@@ -6513,6 +6513,8 @@ export interface WorkItemAskOption {
   effect?: string | null;
   /** A terminal option (cancel, close): the card asks to confirm it before sending (#2150). */
   confirm?: boolean;
+  /** Answering with it records the answer and leaves the item waiting, nothing dispatched (#1719, #2500). */
+  keeps_waiting?: boolean;
 }
 
 /** `work_items.ask` (#9437): the question a person answers, as the agent wrote it. */
