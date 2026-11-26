@@ -16,7 +16,7 @@
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, FiniteFloat, StrictBool, model_validator
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, StrictBool, model_validator
 
 # ---------------------------------------------------------------------------
 # Output extraction
@@ -175,7 +175,7 @@ class ExtractorSampleResultResponse(BaseModel):
 
 from app.api.v1.schemas.column_limits import column_length_validator, lone_surrogate_validator
 from app.models.evaluation import Evaluation, EvaluationResult, EvaluationRun
-from app.services.evaluation.settings import PENALTY_FACTOR_MAX, sub_score_weights_error
+from app.services.evaluation.settings import PENALTY_FACTOR_MAX, SubScoreWeights
 from app.services.evaluation_placebo import PlaceboConfig, placebo_mode_error
 
 _EVALUATION_COLUMN_FIELDS = ("name", "execution_mode", "run_mode", "evaluator_model", "quality_source")
@@ -189,18 +189,6 @@ EVALUATION_EXECUTION_MODES: tuple[str, ...] = ("llm_only", "full_loop")
 #: update and import refuse any other string, which would run in parallel.
 EvaluationRunMode = Literal["parallel", "sequential"]
 EVALUATION_RUN_MODES: tuple[str, ...] = ("parallel", "sequential")
-
-
-def _checked_sub_score_weights(weights: dict[str, float]) -> dict[str, float]:
-    error = sub_score_weights_error(weights)
-    if error:
-        raise ValueError(error)
-    return weights
-
-
-#: The judge's criterion weights, refused as a 422 naming the field when they
-#: cannot weigh its score (``sub_score_weights_error``).
-SubScoreWeights = Annotated[dict[str, FiniteFloat], AfterValidator(_checked_sub_score_weights)]
 
 # Cap shared by both bulk-selection endpoints. ``trigger-from-runs`` and
 # ``rescore-from-runs`` build an ``IN (...)`` over the whole list, and the rescore

@@ -3291,6 +3291,7 @@ def _validated_settings(body: CreateEvaluationRequest) -> dict:
         field_scoring_overrides=normalize_field_scoring_overrides(body.field_scoring_overrides),
         tags=strip_reserved_keys(body.tags),
         placebo_config=body.placebo_config.model_dump(mode="json") if body.placebo_config else None,
+        sub_score_weights=body.sub_score_weights.stored() if body.sub_score_weights else None,
     )
     return settings
 
@@ -3975,6 +3976,7 @@ _UPDATED_APART: frozenset[str] = frozenset(
         "evaluation_instructions",
         "tags",
         "placebo_config",
+        "sub_score_weights",
     }
 )
 
@@ -4097,6 +4099,10 @@ async def update_evaluation(
     # payload or null clears them.
     if "tags" in changed:
         evaluation.tags = strip_reserved_keys(body.tags)
+
+    # The judge's weights, stored as sent: `null` brings back 0.20 each.
+    if "sub_score_weights" in changed:
+        evaluation.sub_score_weights = body.sub_score_weights.stored() if body.sub_score_weights else None
 
     # The placebo method: `null` removes it. Its targets are checked
     # against the mode on the row as this update leaves it, when the update

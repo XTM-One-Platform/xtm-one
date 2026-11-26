@@ -23,39 +23,47 @@ from __future__ import annotations
 
 import copy
 import math
-from typing import Any
+from typing import Any, Self
+
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_validator
 
 from app.models.evaluation import Evaluation, EvaluationAgent
 
+
+class SubScoreWeights(BaseModel):
+    """The judge's criterion weights: known criteria only, each from 0 to 1, summing to 1.
+
+    Otherwise the judge's score can leave 0-100 or drop a criterion the author
+    never meant to drop. A criterion left out weighs 0, as the stored weighting
+    leaves it out (``_compute_global_score``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tool_selection_quality: FiniteFloat = Field(0.0, ge=0, le=1)
+    response_completeness: FiniteFloat = Field(0.0, ge=0, le=1)
+    response_accuracy: FiniteFloat = Field(0.0, ge=0, le=1)
+    instruction_adherence: FiniteFloat = Field(0.0, ge=0, le=1)
+    coherence: FiniteFloat = Field(0.0, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def _sums_to_one(self) -> Self:
+        total = sum(self.model_dump().values())
+        if not math.isclose(total, 1.0, abs_tol=1e-6):
+            raise ValueError(f"the weights must sum to 1, got {total:g}")
+        return self
+
+    def stored(self) -> dict[str, float]:
+        """The weights as the JSON column keeps them: the criteria sent, no others."""
+        return self.model_dump(exclude_unset=True)
+
+
 #: The judge's criteria and their default weights. The judge's verdict schema is
 #: built from these keys, and ``sub_score_weights`` may weigh only these.
-SUB_SCORE_WEIGHTS: dict[str, float] = {
-    "tool_selection_quality": 0.20,
-    "response_completeness": 0.20,
-    "response_accuracy": 0.20,
-    "instruction_adherence": 0.20,
-    "coherence": 0.20,
-}
+SUB_SCORE_WEIGHTS: dict[str, float] = dict.fromkeys(SubScoreWeights.model_fields, 0.2)
 
 #: The highest ``penalty_factor``: the scoring card's slider goes from 0 to this.
 PENALTY_FACTOR_MAX = 1.5
-
-
-def sub_score_weights_error(weights: dict[str, float]) -> str | None:
-    """Why *weights* cannot weigh the judge's score, or None.
-
-    Only known criteria, each weighted from 0 to 1, summing to 1 (the
-    creation page normalises them so): otherwise the judge's score can
-    leave 0-100 or drop a criterion the author never meant to drop.
-    """
-    unknown = sorted(set(weights) - set(SUB_SCORE_WEIGHTS))
-    if unknown:
-        return f"unknown criteria {', '.join(unknown)}; known: {', '.join(SUB_SCORE_WEIGHTS)}"
-    if any(not 0.0 <= value <= 1.0 for value in weights.values()):
-        return "each weight must be between 0 and 1"
-    if not math.isclose(sum(weights.values()), 1.0, abs_tol=1e-6):
-        return "the weights must sum to 1"
-    return None
 
 EVALUATION_SETTINGS: tuple[str, ...] = (
     "description",

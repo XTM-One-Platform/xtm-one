@@ -491,17 +491,18 @@ def test_a_setting_that_would_run_or_score_wrong_is_refused_naming_it(request_mo
 
     with pytest.raises(pydantic.ValidationError) as exc:
         request_model(name="E", **{field: value})
-    assert [error["loc"][0] for error in exc.value.errors()] == [field]
+    assert {error["loc"][0] for error in exc.value.errors()} == {field}
 
 
 @pytest.mark.parametrize("request_model", [CreateEvaluationRequest, UpdateEvaluationRequest])
 def test_the_bounds_and_a_partial_weighting_are_accepted(request_model):
     for penalty_factor in (0.0, 1.5):
         assert request_model(name="E", penalty_factor=penalty_factor).penalty_factor == penalty_factor
-    # Weights the creation page normalised, and a single criterion carrying all of it.
+    # Weights the creation page normalised, and a single criterion carrying all of
+    # it: stored as sent, the criteria left out weighing 0 and not written.
     thirds = {"coherence": 1 / 3, "response_accuracy": 1 / 3, "instruction_adherence": 1 / 3}
     for weights in (thirds, _ALL_ON_COHERENCE):
-        assert request_model(name="E", sub_score_weights=weights).sub_score_weights == weights
+        assert request_model(name="E", sub_score_weights=weights).sub_score_weights.stored() == weights
 
 
 def test_an_export_writes_the_run_mode_a_stored_unknown_one_runs_in():
@@ -539,7 +540,8 @@ async def test_a_copy_refuses_a_stored_setting_create_would_refuse_and_copies_no
             after = await _counts(s)
 
         assert exc.value.status_code == 422
-        assert exc.value.detail.startswith(f"{field}:")
+        # The field, or the key of it at fault (``sub_score_weights.coherence``).
+        assert exc.value.detail.split(":")[0].split(".")[0] == field
         assert after == before
     finally:
         await cleanup()
