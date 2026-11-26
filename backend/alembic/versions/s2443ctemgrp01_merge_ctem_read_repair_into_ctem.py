@@ -17,7 +17,7 @@ the function the readers use. Idempotent. Downgrade is a no-op on the ids (the
 merged binding cannot be split back; ``ctem`` grants a superset of both).
 
 Revision ID: s2443ctemgrp01
-Revises: s2441ctemseed01
+Revises: t2478viewersaj01
 Create Date: 2026-11-26 07:20:00.000000
 """
 
@@ -33,7 +33,7 @@ from alembic import op
 revision: str = "s2443ctemgrp01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "s2441ctemseed01"
+down_revision: str | Sequence[str] | None = "t2478viewersaj01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
