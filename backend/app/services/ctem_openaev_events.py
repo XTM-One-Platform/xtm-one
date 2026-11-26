@@ -104,11 +104,20 @@ async def _read_assertion_flag(integration_id: str, scenario_id: str) -> bool | 
     return value if isinstance(value, bool) else None
 
 
+#: What :func:`_read_object` answers when OpenAEV says the object does not exist (a 404):
+#: told apart from ``None`` (unread: unreachable, 5xx, no credential), which fails open.
+GONE: Any = object()
+
+
 async def _read_object(integration_id: str, path: str) -> Any:
-    """One OpenAEV object read with the integration owner's credential, ``None`` when unread."""
+    """One OpenAEV object read with the integration owner's credential.
+
+    ``GONE`` when OpenAEV answers not found, ``None`` when unread for any other reason.
+    """
     import uuid
 
     from app.core.database import async_session
+    from app.integrations.http import is_not_found_error
     from app.integrations.providers.openaev._common import _api, _headers
     from app.models.integration import Integration
     from app.services.integration_tools import _get_token
@@ -123,6 +132,8 @@ async def _read_object(integration_id: str, path: str) -> Any:
         return None
     base_url, _, api_token = str(token).partition("||")
     resp, err = await _api(base_url.strip().rstrip("/"), _headers(api_token.strip()), "get", path, f"GET {path}")
+    if err and is_not_found_error(err):
+        return GONE
     if err or resp is None:
         return None
     return resp.json()
@@ -154,8 +165,10 @@ async def claim_occurrence(
     of the same finished simulation is a repeat; a relaunched simulation ends again with
     a new end date and is delivered. Verified deliveries only (a forged one never claims
     an occurrence); fails open: an unread end date or an unreachable Redis delivers as
-    before. The claim is one atomic ``SET NX``, so two concurrent deliveries of one
-    occurrence never both run. Never raises.
+    before. A simulation OpenAEV no longer has (deleted, or its CTEM case deleted) is
+    dropped as a repeat with no claim, so no run starts against a missing object
+    (#2499); a ``DELETE`` delivery is dropped before any read. The claim is one atomic
+    ``SET NX``, so two concurrent deliveries of one occurrence never both run. Never raises.
     """
     read = ONCE_PER_OCCURRENCE.get(event)
     meta = payload.get("_openaev_event") if isinstance(payload, Mapping) else None
@@ -164,6 +177,9 @@ async def claim_occurrence(
     resource_id = str(meta.get("resource_id") or "").strip()
     if not resource_id:
         return False, None
+    if str(meta.get("operation") or "").upper() == "DELETE":
+        logger.info("OpenAEV %s %s is a deletion, delivery dropped", event, resource_id)
+        return True, None
     from urllib.parse import quote
 
     path, field = read
@@ -172,6 +188,9 @@ async def claim_occurrence(
     except Exception:
         logger.warning("OpenAEV %s %s not read for its occurrence", event, resource_id, exc_info=True)
         return False, None
+    if body is GONE:
+        logger.info("OpenAEV %s %s: simulation gone, delivery dropped", event, resource_id)
+        return True, None
     occurrence = body.get(field) if isinstance(body, dict) else None
     if not isinstance(occurrence, str) or not occurrence.strip():
         return False, None

@@ -177,4 +177,41 @@ describe("CaseValidation", () => {
     renderWithProviders(<CaseValidation caseId="c1" validations={[]} history={[]} />);
     expect(screen.getByText(/once the case is validated|once the case is prioritized|writes in OpenCRQ/)).toBeTruthy();
   });
+
+  // #2468: the scenario link, like the threat package's, and its playability.
+  const SCENARIO_URL = "https://aev.example.com/tenant-1/admin/scenarios/3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
+
+  it("links the scenario in OpenAEV and states it is not playable", () => {
+    const scenario = { restricted: false, url: SCENARIO_URL, name: "APT-X", techniques_total: 12, techniques_playable: 1, techniques_missing: 11, playable: false };
+    renderWithProviders(<CaseValidation caseId="c1" validations={[]} history={[]} scenario={scenario} />);
+    const link = screen.getByTestId("ctem-case-scenario-link");
+    expect(link.getAttribute("href")).toBe(SCENARIO_URL);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(screen.getByTestId("ctem-case-scenario-not-playable").textContent).toContain("11 of 12");
+  });
+
+  it("shows no row for a case without a scenario, and no link for a restricted one", () => {
+    const { unmount } = renderWithProviders(<CaseValidation caseId="c1" validations={[SAFE]} history={[]} scenario={null} />);
+    expect(screen.queryByTestId("ctem-case-validation-scenario")).toBeNull();
+    unmount();
+    renderWithProviders(
+      <CaseValidation caseId="c1" validations={[SAFE]} history={[]} scenario={{ restricted: true, playable: true, techniques_total: 4, techniques_missing: 0 }} />,
+    );
+    expect(screen.queryByTestId("ctem-case-scenario-link")).toBeNull();
+    expect(screen.queryByTestId("ctem-case-validation-scenario")).toBeNull();
+  });
+
+  it("never leaves the card blank: the reason shows with a scenario and no validation yet", () => {
+    const reason = /prove whether the exposure is real/;
+    const playable = { restricted: false, url: SCENARIO_URL, name: "APT-X", techniques_total: 4, techniques_playable: 4, techniques_missing: 0, playable: true };
+    const { unmount } = renderWithProviders(<CaseValidation caseId="c1" validations={[]} history={[]} scenario={playable} />);
+    expect(screen.getByTestId("ctem-case-scenario-link")).toBeTruthy();
+    expect(screen.getByText(reason)).toBeTruthy();
+    unmount();
+    renderWithProviders(
+      <CaseValidation caseId="c1" validations={[]} history={[]} scenario={{ restricted: true, playable: true, techniques_total: 4, techniques_missing: 0 }} />,
+    );
+    expect(screen.queryByTestId("ctem-case-scenario-link")).toBeNull();
+    expect(screen.getByText(reason)).toBeTruthy();
+  });
 });

@@ -309,6 +309,20 @@ export interface CtemCaseTreatmentPlan {
  */
 export type CtemThreatPackageState = "drafted" | "awaiting_review" | "replan" | "rejected" | "validated";
 
+/** The OpenAEV scenario of the validation and its playability (#2468); name, id and link to an OpenAEV reader only. */
+export interface CtemCaseScenario {
+  restricted: boolean;
+  scenario_id?: string | null;
+  name?: string | null;
+  url?: string | null;
+  techniques_total?: number | null;
+  techniques_playable?: number | null;
+  techniques_missing?: number | null;
+  playable?: boolean | null;
+  playable_tests?: string | null;
+  at?: string | null;
+}
+
 export interface CtemCaseThreatPackage {
   restricted: boolean;
   state?: CtemThreatPackageState;
@@ -408,6 +422,8 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   treatment_plan?: CtemCaseTreatmentPlan | null;
   /** Null when no package is attached; absent on an API older than #1115. */
   threat_package?: CtemCaseThreatPackage | null;
+  /** Null when no scenario is recorded; absent on an API older than #2468. */
+  scenario?: CtemCaseScenario | null;
   ticketing?: CtemTicketingTarget;
   /** Upgrade cases only: null when no asset runs the product; absent on an API older than #1252. */
   running_versions?: CtemCaseRunningVersions | null;

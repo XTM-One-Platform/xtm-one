@@ -9,11 +9,12 @@
  * validation references and `gate` events. Never blank: a case not validated
  * yet says so.
  */
-import type { IconName } from "@filigran/design-system";
+import { Icon, type IconName } from "@filigran/design-system";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WorkItemDecisionCard } from "@/components/work-items/WorkItemDecisionCard";
 import { mayAnswerCaseGate } from "@/lib/ctem-access";
-import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
+import type { CtemCaseEvent, CtemCaseGateRecord, CtemCaseScenario, CtemCaseSummary } from "@/hooks/api/useCtemCasesApi";
 import { useWorkItems } from "@/hooks/api/useWorkItemApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
@@ -26,6 +27,7 @@ import { CASE_FACT_ICON, CASE_SECTION_ICON, CaseCardTitleText, CaseIcon } from "
 import { GateDecisionRecord, gateAnswererName, gateRecordOf } from "./GateDecisionRecord";
 import { ToneBadge, type HotTone } from "@/components/ui/tone-badge";
 import { TruncatedText } from "@/components/ui/truncated-text";
+import { safeExternalUrl } from "@/lib/utils";
 
 /** The result word of a validation reference, translated where drawn. @i18n-keys */
 const RESULT_LABEL = {
@@ -80,9 +82,12 @@ export function CaseValidation({
   history,
   gates,
   personName,
+  scenario,
 }: {
   caseId: string;
   validations: CtemCaseSummary["validations"];
+  /** The OpenAEV scenario of the validation (#2468); absent or null when none is recorded. */
+  scenario?: CtemCaseScenario | null;
   history: readonly CtemCaseEvent[];
   /** The resolved decision records of the case (#1518); absent on an older API. */
   gates?: readonly CtemCaseGateRecord[];
@@ -105,6 +110,9 @@ export function CaseValidation({
   const chosen = answered ? chosenOptionLabel(items.data?.[0], gate?.evidence) : null;
   const auto = autoPassReason(gate?.to);
   const who = answered && gate ? ((gate.reason && personName?.(gate.reason)) || t_i18n("a person")) : null;
+  // The scenario link, as the threat package's (#2468): only for an OpenAEV reader, only a safe URL.
+  const scenarioHref = scenario && !scenario.restricted ? safeExternalUrl(scenario.url ?? undefined) : undefined;
+  const missing = scenario?.playable === false && typeof scenario.techniques_missing === "number" ? scenario.techniques_missing : null;
 
   return (
     <Card data-testid="ctem-case-validation">
@@ -114,6 +122,26 @@ export function CaseValidation({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 content-base">
+        {scenario && (scenarioHref || missing !== null) && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1" data-testid="ctem-case-validation-scenario">
+            {scenarioHref && (
+              <Button variant="outline" size="sm" className="gap-1.5" asChild>
+                <a href={scenarioHref} target="_blank" rel="noopener noreferrer" data-testid="ctem-case-scenario-link">
+                  <Icon name="external-link" size={16} className="shrink-0" aria-hidden />
+                  {t_i18n("Open scenario")}
+                </a>
+              </Button>
+            )}
+            {missing !== null && (
+              <ToneBadge tone="yellow" icon={<CaseIcon name="triangle-alert" />} data-testid="ctem-case-scenario-not-playable">
+                {t_i18n("{total, plural, one {Not playable: {missing} of # technique has no payload} other {Not playable: {missing} of # techniques have no payload}}", {
+                  missing,
+                  total: scenario.techniques_total ?? 0,
+                })}
+              </ToneBadge>
+            )}
+          </div>
+        )}
         {rows.length === 0 && !gate && !record && (
           <CaseSectionReason
             own={t_i18n("Checks in OpenAEV that prove whether the exposure is real, once the case is prioritized.")}

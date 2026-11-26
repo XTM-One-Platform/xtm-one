@@ -36,10 +36,11 @@ class _Redis:
         return 0
 
 
-def _delivery(resource_id: str = "sim-1") -> dict[str, Any]:
+def _delivery(resource_id: str = "sim-1", operation: str = "UPDATE") -> dict[str, Any]:
     return {
         "_openaev_event": {
             "event_type": "simulation_finished",
+            "operation": operation,
             "resource_type": "SIMULATION",
             "resource_id": resource_id,
         }
@@ -54,6 +55,10 @@ def world(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         state["reads"].append(path)
         if state["fail"] == "read":
             raise RuntimeError("down")
+        if state["fail"] == "unread":
+            return None
+        if state["fail"] == "gone":
+            return aev.GONE
         return {"exercise_id": path.rsplit("/", 1)[-1], "exercise_end_date": state["end"]}
 
     async def client() -> Any:
@@ -112,11 +117,83 @@ async def test_other_events_and_forged_deliveries_are_never_held(world: dict[str
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fail", ["read", "redis"])
+@pytest.mark.parametrize("fail", ["read", "unread", "redis"])
 async def test_it_fails_open(world: dict[str, Any], fail: str) -> None:
     world["fail"] = fail
     assert await _repeat() is False
     assert await _repeat() is False
+
+
+@pytest.mark.asyncio
+async def test_a_simulation_openaev_no_longer_has_is_dropped(world: dict[str, Any]) -> None:
+    """A deleted simulation (404) starts no run, even on its first delivery (#2499)."""
+    world["fail"] = "gone"
+    assert await _claim() == (True, None)
+    assert await _repeat() is True
+    assert world["redis"].keys == set()
+
+
+@pytest.mark.asyncio
+async def test_a_deletion_is_dropped_before_any_read(world: dict[str, Any]) -> None:
+    payload = _delivery(operation="DELETE")
+    repeat, claim = await aev.claim_occurrence(
+        "simulation_finished", payload, integration_id="i1", assignment_id="a1", verified=True
+    )
+    assert (repeat, claim) == (True, None)
+    assert world["reads"] == []
+
+
+class _Response:
+    def json(self) -> dict[str, Any]:
+        return {"exercise_end_date": "2026-11-23T15:16:31Z"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("err", "expected"),
+    [
+        ("OpenAEV GET /api/exercises/sim-1 failed: resource not found", "gone"),
+        ("HTTP 404: Exercise not found", "gone"),
+        ("HTTP 503: service unavailable", None),
+        ("Request timed out", None),
+        (None, "read"),
+    ],
+)
+async def test_the_read_tells_a_missing_object_from_an_unread_one(
+    monkeypatch: pytest.MonkeyPatch, err: str | None, expected: str | None
+) -> None:
+    """Only a not-found answer is ``GONE``; a transient error stays ``None`` and fails open."""
+    import uuid
+
+    from app.integrations.providers.openaev import _common
+    from app.services import integration_tools
+
+    class _Db:
+        async def __aenter__(self) -> _Db:
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+        async def get(self, model: object, key: object) -> Any:
+            return type("I", (), {"provider": aev.PROVIDER, "user_id": uuid.uuid4()})()
+
+    async def token(*args: object, **kwargs: object) -> str:
+        return "https://aev.example||t"
+
+    async def api(*args: object, **kwargs: object) -> tuple[Any, str | None]:
+        return (None if err else _Response()), err
+
+    monkeypatch.setattr("app.core.database.async_session", lambda: _Db())
+    monkeypatch.setattr(integration_tools, "_get_token", token)
+    monkeypatch.setattr(_common, "_api", api)
+    body = await aev._read_object(str(uuid.uuid4()), "/api/exercises/sim-1")
+    if expected == "gone":
+        assert body is aev.GONE
+    elif expected == "read":
+        assert body == {"exercise_end_date": "2026-11-23T15:16:31Z"}
+    else:
+        assert body is None
 
 
 @pytest.mark.asyncio
