@@ -47,7 +47,6 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { InfoTip } from "@/components/ui/info-tip";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { ProviderLogo } from "@/components/ui/provider-logo";
-import { SearchableSelect, type SelectOption } from "@/components/ui/searchable-select";
 import { useToast } from "@/components/ui/toast";
 import { TIP_WRAP_FOCUS_RING, Tip } from "@/components/ui/tooltip";
 import { TruncatedText } from "@/components/ui/truncated-text";
@@ -69,8 +68,6 @@ import {
   BLOCKED_REASON_SHORT,
   CAPABILITIES_OPEN_BY_DEFAULT,
   MEMBERS_COLUMN_WIDTH,
-  MULTI_CHANNEL_CAPABILITIES,
-  NO_INTEGRATION_VALUE,
   ROW_ACTIONS_WIDTH,
   SECONDARY_COLUMNS_HIDE_BELOW,
   STATUS_COLUMN_WIDTH,
@@ -81,16 +78,13 @@ import {
   capabilityIcon,
   customMembers,
   firstBlocked,
-  idsForPick,
   integrationIds,
   isBuiltinValue,
   multiChannelSelection,
   overwritableCustomMembers,
-  pickerValue,
   toggledIds,
   typeCounts,
   typeEditable,
-  typePickerValue,
   typeSearchFields,
   typeStateRank,
   unsetMembers,
@@ -194,74 +188,47 @@ export function FleetCapabilitySlotsCard({
     ));
 
   /**
-   * The picker of a type or of one member: a multi-select for a multi-channel capability
-   * (the built-in option always on), else one choice with the built-in option pinned first.
-   * Every picker is the same 240 px box with no control outside it (UX r1 B1 of #1209): a
-   * member picker offers "No integration" as an option instead of a clear button beside it.
+   * The picker of a type or of one member: a multi-select for every capability, since an agent
+   * holds several integrations of one kind (Jira and ServiceNow, two EDRs). The built-in option,
+   * when the capability has one, is the first row, checked and locked; removing a chip unbinds
+   * that integration alone. Every picker is the same 240 px box with no control outside it
+   * (UX r1 B1 of #1209): a member cleared of every chip has no integration.
    */
   const picker = (
     type: FleetCapabilityType,
     bound: readonly FleetSlotIntegration[],
     onPick: (ids: string[]) => void,
     label: string,
-    forMember: boolean,
   ) => {
     const builtin = builtinValue(type);
     const builtinLabel = type.builtin ? t_text(type.builtin.label) : "";
-    if (MULTI_CHANNEL_CAPABILITIES.has(type.capability)) {
-      const current = integrationIds(bound);
-      const channel = (integration: FleetSlotIntegration) => ({
-        value: integration.integration_id,
-        label: integrationName(integration),
-        icon: <ProviderLogo provider={integration.provider} className="h-4 w-4 shrink-0" decorative />,
-      });
-      // The always-on built-in ("In XTM One") is the first row, with the XTM One emblem, checked
-      // and locked; the external channels add to it, each with its provider logo (#1373). With
-      // nothing else chosen the field reads the built-in option, never "Choose an integration".
-      return (
-        <MultiSelect
-          aria-label={label}
-          options={[
-            ...(builtin ? [{ value: builtin, label: builtinLabel, icon: <XtmOneEmblem />, locked: true }] : []),
-            ...bound.filter((integration) => !type.candidates.some((c) => c.integration_id === integration.integration_id)).map(channel),
-            ...type.candidates.map(channel),
-          ]}
-          sort={false}
-          selected={multiChannelSelection(type, bound)}
-          onToggle={(value) => {
-            if (!isBuiltinValue(value)) onPick(toggledIds(current, value));
-          }}
-          disabled={busy}
-          placeholder={t_i18n("Choose an integration")}
-          searchPlaceholder={t_i18n("Search integrations...")}
-          emptyOptionsLabel={t_i18n("No integration connected")}
-          noMatchLabel={t_i18n("No match")}
-          maxVisibleChips="fit"
-          className="w-[240px]"
-        />
-      );
-    }
-    const options: SelectOption[] = type.candidates.map((candidate) => ({
-      value: candidate.integration_id,
-      label: integrationName(candidate),
-      keywords: [candidate.provider],
-      icon: <ProviderLogo provider={candidate.provider} className="h-4 w-4" decorative />,
-    }));
-    const pinned: SelectOption[] = builtin
-      ? [{ value: builtin, label: builtinLabel, icon: <XtmOneEmblem /> }]
-      : forMember && bound.length > 0
-        ? [{ value: NO_INTEGRATION_VALUE, label: t_i18n("No integration") }]
-        : [];
+    const current = integrationIds(bound);
+    const channel = (integration: FleetSlotIntegration) => ({
+      value: integration.integration_id,
+      label: integrationName(integration),
+      icon: <ProviderLogo provider={integration.provider} className="h-4 w-4 shrink-0" decorative />,
+    });
+    // The always-on built-in ("In XTM One", the XTM One inventory) is the first row, with the XTM One
+    // emblem, checked and locked; the integrations add to it, each with its provider logo (#1373).
     return (
-      <SearchableSelect
+      <MultiSelect
         aria-label={label}
-        options={options}
-        pinned={pinned}
-        searchable="auto"
-        value={forMember ? pickerValue(type, bound) : typePickerValue(type)}
+        options={[
+          ...(builtin ? [{ value: builtin, label: builtinLabel, icon: <XtmOneEmblem />, locked: true }] : []),
+          ...bound.filter((integration) => !type.candidates.some((c) => c.integration_id === integration.integration_id)).map(channel),
+          ...type.candidates.map(channel),
+        ]}
+        sort={false}
+        selected={multiChannelSelection(type, bound)}
+        onToggle={(value) => {
+          if (!isBuiltinValue(value)) onPick(toggledIds(current, value));
+        }}
         disabled={busy}
         placeholder={t_i18n("Choose an integration")}
-        onValueChange={(value) => onPick(idsForPick(value))}
+        searchPlaceholder={t_i18n("Search integrations...")}
+        emptyOptionsLabel={t_i18n("No integration connected")}
+        noMatchLabel={t_i18n("No match")}
+        maxVisibleChips="fit"
         className="w-[240px]"
       />
     );
@@ -351,7 +318,6 @@ export function FleetCapabilitySlotsCard({
         type.choice,
         (ids) => void chooseForType(type, ids),
         t_i18n("Fleet choice for {capability}", { capability: t_text(type.label) }),
-        false,
       );
     // A connected integration of the type the members cannot take is named with why and how to
     // fix it, never hidden behind "Connect one" (#1373).
@@ -491,7 +457,6 @@ export function FleetCapabilitySlotsCard({
                     member.bound,
                     (ids) => chooseForMember(type, member, ids),
                     t_i18n("{capability} for {member}", { capability: t_text(type.label), member: member.name }),
-                    true,
                   )}
               </>
             ) : (

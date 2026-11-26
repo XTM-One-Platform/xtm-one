@@ -47,6 +47,16 @@ def _module(provider: str) -> Any:
 
 async def maintain_trigger_provisioning(db: Any) -> None:
     """One reconciliation pass per provider; one provider never stops another."""
+    # First the platform signal sources adopt what enabled built-in holders provision
+    # (#2434), so a holder's old objects are removed only after the new ones exist.
+    try:
+        from app.services import ctem_platform_sources
+
+        await ctem_platform_sources.adopt_from_assignments(db)
+        await db.commit()
+    except Exception as exc:
+        logger.error("Signal source adoption failed: %s", format_exception_message(exc), exc_info=True)
+        await db.rollback()
     for provider in _PROVISIONERS:
         try:
             await _module(provider).maintain(db)
@@ -55,6 +65,14 @@ async def maintain_trigger_provisioning(db: Any) -> None:
                 "Trigger provisioning pass failed for %s: %s", provider, format_exception_message(exc), exc_info=True
             )
             await db.rollback()
+    # The platform signal sources (#2434): provisioned on enable, never by an assignment.
+    try:
+        from app.services import ctem_platform_sources
+
+        await ctem_platform_sources.maintain(db)
+    except Exception as exc:
+        logger.error("Signal source pass failed: %s", format_exception_message(exc), exc_info=True)
+        await db.rollback()
 
 
 def provision_spec_error(trigger_type: object, trigger_config: object) -> str | None:

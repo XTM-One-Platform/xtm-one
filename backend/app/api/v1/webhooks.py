@@ -4755,6 +4755,86 @@ async def _handle_hubspot_assignment_webhook(
     return {"status": "ok", "triggered": triggered, "count": len(triggered)}
 
 
+@router.post("/integrations/{integration_id}/signal-sources/{source_id}")
+async def receive_signal_source_webhook(
+    integration_id: str,
+    source_id: str,
+    request: Request,
+) -> dict:
+    """Receive a delivery of a platform signal source (#2434): records the signal, starts no run.
+
+    The OpenCTI and OpenAEV objects an enabled source provisions
+    (``services/ctem_platform_sources.py``) post here, never to an assignment.
+    The same gates as the per-assignment receiver: the integration's
+    ``webhook_secret`` (``X-OpenCTI-Token`` / ``X-OpenAEV-Token``), a
+    per-source throttle and the delivery de-duplication. A verified delivery
+    records its signal (``ctem_signal_listeners.note_event``) and moves the CTEM
+    cases an OpenAEV result concerns (``ctem_openaev_events.note_event``);
+    fleets subscribe through ``ctem_signal.recorded``. A source that is off or
+    unknown is ignored, so disabling it stops its deliveries at once.
+    """
+    source_uuid = safe_uuid(source_id)
+    if not is_valid_uuid(integration_id) or source_uuid is None:
+        return {"status": "ignored", "reason": "invalid integration or source id"}
+    await enforce_rate_limit(
+        request,
+        "webhook-signal-source",
+        limit=_webhook_requests_per_minute(),
+        window_seconds=60,
+        bucket=str(source_uuid),
+    )
+    body = await request.body()
+    from app.models.ctem_signal_source import CtemSignalSource
+
+    async with async_session() as db:
+        integration = (
+            await db.execute(
+                select(Integration)
+                .options(load_only(Integration.id, Integration.provider, Integration.extra_config_enc))
+                .where(Integration.id == integration_id)
+            )
+        ).scalar_one_or_none()
+        source = await db.get(CtemSignalSource, source_uuid)
+    if integration is None or source is None or str(source.integration_id) != str(integration.id):
+        return {"status": "ignored", "reason": "signal source not found"}
+    context = f"integration={integration_id} signal_source={source_id}"
+    _try_verify_webhook_signature(body, integration.extra_config_enc, request, context=context)
+    _verify_opencti_token_header(integration.extra_config_enc, request, context=context)
+    if not source.enabled:
+        return {"status": "ignored", "reason": "signal source is off"}
+    is_duplicate, cached_response, dedup_key = await _claim_webhook_dedup_slot(
+        request, body, scope=f"integrations:{integration_id}:signal-sources:{source_id}"
+    )
+    if is_duplicate:
+        return cached_response or {"status": "duplicate", "deduplicated": True, "recorded": False}
+    try:
+        try:
+            payload_raw = json.loads(body)
+        except ValueError:
+            payload_raw = {"raw_body": body.decode("utf-8", errors="replace")}
+        payload = payload_raw if isinstance(payload_raw, dict) else {"raw_body": str(payload_raw)}
+        provider = integration.provider
+        event_key = _extract_event_key(request, payload)
+        if provider == "opencti":
+            _normalize_opencti_payload(payload)
+        elif provider == "openaev":
+            event_key = _normalize_openaev_payload(payload) or event_key
+        verified = _signed_with_webhook_secret(integration.extra_config_enc)
+        if provider == "openaev":
+            await ctem_openaev_events.stamp_reachability_assertion(
+                event_key, payload, integration_id=str(integration_id), verified=verified
+            )
+        recorded = await ctem_signal_listeners.note_event(provider, event_key, payload, verified=verified)
+        if provider == "opencti":
+            await ctem_analyst_mark.note_event(provider, payload, verified=verified)
+        if provider == "openaev":
+            await ctem_openaev_events.note_event(event_key, payload, verified=verified)
+    except Exception:
+        await _release_webhook_dedup_slot(dedup_key)
+        raise
+    return await _finalize_dedup(dedup_key, {"status": "ok", "event_key": event_key, "recorded": bool(recorded)})
+
+
 @router.post("/integrations/{integration_id}/assignments/{assignment_id}")
 async def receive_assignment_webhook(
     integration_id: str,

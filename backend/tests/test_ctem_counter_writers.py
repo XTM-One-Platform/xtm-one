@@ -79,7 +79,12 @@ def test_per_case_writers_dedupe_on_the_case_id() -> None:
 
 def test_f2_triage_listeners_never_write_the_state() -> None:
     owners = set(CTEM_F2_COUNTER_WRITERS.values()) | {CTEM_CASE_ASSIGNMENT_NAME}
-    triage = [a for a in CTEM_F2_ASSIGNMENTS if a["name"] not in owners and "record_ctem_signal" in a["prompt"]]
+    # #2434: the triage runs hear ctem_signal.recorded (they no longer record the signal themselves).
+    triage = [
+        a
+        for a in CTEM_F2_ASSIGNMENTS
+        if a["name"] not in owners and (a.get("trigger_config") or {}).get("event") == "ctem_signal.recorded"
+    ]
     assert triage
     for a in triage:
         assert CTEM_CASE_NEVER_WRITES_COUNTERS in a["prompt"], a["name"]

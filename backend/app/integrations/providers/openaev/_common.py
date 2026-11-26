@@ -2076,7 +2076,12 @@ class PlatformCapabilities:
 # ---------------------------------------------------------------------------
 
 
-def _fmt_asset(a: dict, base_url: str = "") -> str:
+def _fmt_asset(a: dict[str, Any], base_url: str = "", tag_names: dict[str, str] | None = None) -> str:
+    """Format one OpenAEV asset for the read tools.
+
+    *tag_names* maps tag ids to names (one ``/api/tags`` read per tool call,
+    :func:`_openaev_tag_names`); an id it does not know is printed alone.
+    """
     name = a.get("asset_name") or a.get("endpoint_name") or a.get("asset_id", "?")
     asset_id = a.get("asset_id") or a.get("endpoint_id", "N/A")
     lines = [f"[Asset] {name}"]
@@ -2101,13 +2106,63 @@ def _fmt_asset(a: dict, base_url: str = "") -> str:
         value = a.get(key)
         if value is not None and value != "":
             lines.append(f"  {label}: {value}")
+    if "asset_internet_facing" in a and a["asset_internet_facing"] is None:
+        # Present but null: say so, so "not set" is never read as "not returned".
+        lines.append("  Internet-facing: unset")
     if a.get("asset_description"):
         lines.append(f"  Description: {a['asset_description'][:300]}")
-    tags = [t.get("tag_id") if isinstance(t, dict) else t for t in a.get("asset_tags") or []]
-    tags = [str(t) for t in tags if t]
+    raw_tags = [t.get("tag_id") if isinstance(t, dict) else t for t in a.get("asset_tags") or []]
+    tags: list[str] = [str(t) for t in raw_tags if t]
     if tags:
-        lines.append(f"  Tags: {', '.join(tags)}")
+        names = tag_names or {}
+        lines.append(f"  Tags: {', '.join(f'{names[t]} ({t})' if names.get(t) else t for t in tags)}")
+    lines.extend(_fmt_asset_metadata(a.get("asset_metadata")))
     return "\n".join(lines)
+
+
+#: Bounds of the ``asset_metadata`` block (the free-form map collectors write).
+_ASSET_METADATA_MAX_KEYS = 30
+_ASSET_METADATA_VALUE_CHARS = 200
+
+
+def _fmt_asset_metadata(metadata: Any) -> list[str]:
+    """One ``key: value`` line per metadata entry, sorted and bounded."""
+    if not isinstance(metadata, dict) or not metadata:
+        return []
+    keys = sorted(metadata, key=str)
+    lines = ["  Metadata:"]
+    for key in keys[:_ASSET_METADATA_MAX_KEYS]:
+        value = metadata[key]
+        text = value if isinstance(value, str) else json.dumps(value, default=str)
+        if len(text) > _ASSET_METADATA_VALUE_CHARS:
+            text = text[:_ASSET_METADATA_VALUE_CHARS] + "..."
+        lines.append(f"    {key}: {text}")
+    if len(keys) > _ASSET_METADATA_MAX_KEYS:
+        lines.append(f"    +{len(keys) - _ASSET_METADATA_MAX_KEYS} more")
+    return lines
+
+
+def _assets_carry_tags(assets: list[dict[str, Any]]) -> bool:
+    """Whether any of *assets* carries a tag (a tag lookup is then worth one read)."""
+    return any(a.get("asset_tags") for a in assets if isinstance(a, dict))
+
+
+async def _openaev_tag_names(base_url: str, headers: dict[str, str]) -> dict[str, str]:
+    """Tag id to name, read once per tool call; empty on failure (ids are kept)."""
+    resp, err = await _api(base_url, headers, "get", "/api/tags", "list tags", retry_transient=True)
+    if err or resp is None:
+        return {}
+    try:
+        data = resp.json()
+    except ValueError:
+        return {}
+    if not isinstance(data, list):
+        return {}
+    return {
+        str(t["tag_id"]): str(t["tag_name"])
+        for t in data
+        if isinstance(t, dict) and t.get("tag_id") and t.get("tag_name")
+    }
 
 
 #: The fields manage_openaev_asset writes, printed so a write can be read back
@@ -3151,6 +3206,7 @@ __all__ = [
     "_RefreshableHeaders",
     "_aev_link",
     "_annotate_not_found",
+    "_assets_carry_tags",
     "_bearer_seconds_remaining",
     "_contains_filter",
     "_ensure_fresh_token",
@@ -3171,6 +3227,7 @@ __all__ = [
     "_fmt_vulnerability",
     "_headers",
     "_multi_contains_filter",
+    "_openaev_tag_names",
     "_require_response",
     "_scope_path",
     "_search_body",

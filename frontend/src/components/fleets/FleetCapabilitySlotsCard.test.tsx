@@ -144,13 +144,29 @@ describe("FleetCapabilitySlotsCard", () => {
   it("asks before a type change replaces a custom member's choice, and keeps it on Keep their choice", async () => {
     api.types = [{ ...TICKETING_CUSTOM, candidates: [JIRA, SNOW] }];
     render(false);
-    // The fleet choice picker of the row (a plain select: two options): pick ServiceNow.
+    // The fleet choice picker of the row (a multi-select, #2424): add ServiceNow next to Jira.
     fireEvent.click(screen.getByRole("combobox", { name: "Fleet choice for Ticketing" }));
     fireEvent.click(await screen.findByRole("option", { name: "ServiceNow" }));
     expect(await screen.findByText("Replace the custom choices?")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Keep their choice" }));
     await waitFor(() =>
-      expect(api.setType).toHaveBeenCalledWith({ capability: "ticketing", integrationIds: ["i2"], overrideCustom: false }, expect.anything()),
+      expect(api.setType).toHaveBeenCalledWith(
+        { capability: "ticketing", integrationIds: ["i1", "i2"], overrideCustom: false },
+        expect.anything(),
+      ),
+    );
+  });
+
+  it("binds a second integration on a non-notification capability and unbinds one of two alone (#2424)", async () => {
+    const both = { ...TICKETING_CUSTOM, choice: [JIRA, SNOW], members: [{ ...TICKETING_CUSTOM.members[0], bound: [JIRA, SNOW] }] };
+    api.types = [{ ...both, capability: "edr_xdr", label: "EDR / XDR" }];
+    render(false);
+    // Both bound integrations read as chips of the type row.
+    expect(screen.getAllByTestId("type-bound-edr_xdr")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("combobox", { name: "Fleet choice for EDR / XDR" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Jira ITS" }));
+    await waitFor(() =>
+      expect(api.setType).toHaveBeenCalledWith({ capability: "edr_xdr", integrationIds: ["i2"], overrideCustom: false }, expect.anything()),
     );
   });
 
