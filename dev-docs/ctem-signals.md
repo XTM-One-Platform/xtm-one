@@ -64,6 +64,21 @@ the re-run period applying to a recurring option only
 (`ctem_control_measurement.complete_gate_ask`, called from the work item write,
 from the case and the profile's re-test delay).
 
+A `never_measured` case (#2461) closes only on a first measurement OpenCRQ books
+for the asset: a DETECTION or PREVENTION expectation result on a covered
+technique, or CVE findings from a scan that reads versions. A clean
+unauthenticated scan has nothing to book: its pass is recorded `inconclusive`
+and never closes the case. Each option of the gate says whether its pass
+"closes the case" or "does not close the case"; a non-closing option is never
+recommended, and when nothing on the instance can close the case the first and
+only decision is the structural one (connect a version-reading or measuring
+source), any interim scan offered inside it as non-closing. The card of such a
+case carries `never_measured_line` instead of the general line, and the
+platform moves a recommendation that sits on a non-closing option to the first
+option that closes the case (`closing_recommendation`), on every write of the
+card. The case is recognised by its platform title
+(`ctem_case_loop._CONTROL_DECAY_TITLES`).
+
 A caller may name another lens than the default (a `has` relationship is the
 inside lens of path 1). `GET /api/v1/ctem-signals/paths` answers this table.
 
