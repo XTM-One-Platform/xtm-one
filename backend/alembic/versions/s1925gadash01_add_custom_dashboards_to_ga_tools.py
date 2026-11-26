@@ -19,7 +19,7 @@ write; otherwise the rows are read again ``FOR UPDATE`` under
 ``set_lock_timeout`` and written from that read.
 
 Revision ID: s1925gadash01
-Revises: s2434sigsrc01
+Revises: w2506webhooksrc01
 Create Date: 2026-11-24 18:30:00.000000
 """
 
@@ -35,7 +35,7 @@ from app.core.migration_ddl import set_lock_timeout
 logger = logging.getLogger(__name__)
 
 revision: str = "s1925gadash01"
-down_revision: str | Sequence[str] | None = "s2434sigsrc01"
+down_revision: str | Sequence[str] | None = "w2506webhooksrc01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
