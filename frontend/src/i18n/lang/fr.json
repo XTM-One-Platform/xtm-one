@@ -21926,5 +21926,6 @@
   "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.": "En attente de la fin de {count, plural, one {# autre étape} other {# autres étapes}}.",
   "Still waiting: {agent} asks again when there is something new to decide.": "Toujours en attente : {agent} redemandera dès qu'il y aura du nouveau à décider.",
   "Still waiting: its agent asks again when there is something new to decide.": "Toujours en attente : son agent redemandera dès qu'il y aura du nouveau à décider.",
-  "Your answer is recorded; the work item keeps waiting.": "Votre réponse est enregistrée ; l'élément de travail reste en attente."
+  "Your answer is recorded; the work item keeps waiting.": "Votre réponse est enregistrée ; l'élément de travail reste en attente.",
+  "Your answer is recorded; it keeps waiting until {agent} asks again.": "Votre réponse est enregistrée ; l'élément reste en attente jusqu'à ce que {agent} redemande."
 }
