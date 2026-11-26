@@ -8762,6 +8762,7 @@
   "Recommendation": "Recommandation",
   "Critical": "Critique",
   "Passed": "Réussi",
+  "Passed, not conclusive": "Réussi, non concluant",
   "Needs immediate action": "Action immédiate requise",
   "Should be reviewed": "À examiner",
   "For your information": "Pour information",
@@ -20098,6 +20099,7 @@
   "Escalated: SLA breached": "Escaladé : SLA dépassé",
   "Stalled: waiting on nobody": "À l'arrêt : n'attend personne",
   "Not exposed": "Non exposé",
+  "Not exposed, not conclusive": "Non exposé, non concluant",
   "Reopened: re-test failed": "Rouvert : le nouveau test a échoué",
   "Closed on passing re-test": "Clos sur un nouveau test réussi",
   "Escalated": "Escaladé",
@@ -21644,7 +21646,7 @@
   "No CTEM access": "Aucun accès CTEM",
   "View signals and cases": "Voir les signaux et les cas",
   "View and decide": "Voir et décider",
-  "Members see only the signals they record themselves.": "Les membres ne voient que les signaux qu’ils enregistrent eux-mêmes.",
+  "Members have no CTEM access through this group: no CTEM menu, signals, cases, agent tools or triggers.": "Ce groupe ne donne aucun accès CTEM à ses membres : ni menu CTEM, ni signaux, ni cas, ni outils d’agent, ni déclencheurs.",
   "Members read every signal and case of the organization, read only.": "Les membres lisent tous les signaux et cas de l’organisation, en lecture seule.",
   "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.": "Les membres trient aussi les signaux, modifient les cas (responsable, échéance, état, risque accepté) et répondent aux décisions des cas. Leurs agents ont la même portée.",
   "Notify the members of case decisions": "Notifier les membres des décisions de cas",
@@ -21899,6 +21901,7 @@
   "The PIRs could not be read: {reason}": "Les PIR n'ont pas pu être lus : {reason}",
   "{enabled, plural, one {# PIR enabled in signals} other {# PIRs enabled in signals}} of {total}": "{enabled, plural, one {# PIR activé dans les signaux} other {# PIR activés dans les signaux}} sur {total}",
   "No PIR yet. The PIRs of every connected OpenCTI appear here after the next refresh.": "Aucun PIR pour l'instant. Les PIR de chaque OpenCTI connecté apparaissent ici après la prochaine actualisation.",
+  "{integration}: the PIRs could not be read. {reason}": "{integration} : les PIR n'ont pas pu être lus. {reason}",
   "PIR policy: {name}": "Politique du PIR : {name}",
   "The question this PIR answers, who owns it, its minimum score and whether it drives signals. OpenCTI keeps the PIR itself.": "La question à laquelle ce PIR répond, son responsable, son score minimum et s'il déclenche des signaux. OpenCTI conserve le PIR lui-même.",
   "PIR policy saved": "Politique du PIR enregistrée",
@@ -21913,6 +21916,5 @@
   "The PIR policy was not saved: {reason}": "La politique du PIR n'a pas été enregistrée : {reason}",
   "In OpenCTI": "Dans OpenCTI",
   "Listed": "Listé",
-  "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, one {# notification non lue} other {# notifications non lues}}",
-  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {Voir la # décision qui vous attend} other {Voir les # décisions qui vous attendent}}"
+  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "Pour le rendre concluant, lancez un contrôle qui lit la version en service sur l'actif : un scan authentifié ou un agent."
 }
