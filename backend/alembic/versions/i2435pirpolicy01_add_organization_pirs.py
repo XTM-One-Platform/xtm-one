@@ -97,7 +97,7 @@ def _carry_profile(conn: sa.engine.Connection) -> None:
     for row in carried_rows(profile if isinstance(profile, dict) else {}):
         conn.execute(
             sa.text(
-                f"INSERT INTO {_TABLE} (id, pir_id, name, question, owner, review_cadence, primary_assets, "
+                "INSERT INTO organization_pirs (id, pir_id, name, question, owner, review_cadence, primary_assets, "
                 "min_score, enabled) VALUES (:id, :pir_id, :name, :question, :owner, :review_cadence, "
                 "CAST(:primary_assets AS jsonb), :min_score, true) ON CONFLICT DO NOTHING"
             ),

@@ -43,13 +43,14 @@ logger = logging.getLogger(__name__)
 #: The global schedule's section: it runs every other enabled sync in order.
 ALL_SECTIONS = "all"
 #: The sections a sync may keep up to date: the import's, never a typed field.
-SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "software", "primary_assets", "pirs")
+#: ``pirs`` is no longer one (#2435): the Intelligence policy reads every OpenCTI's PIRs in the background.
+SYNCABLE_SECTIONS: tuple[str, ...] = ("assets", "asset_groups", "software", "primary_assets")
 #: Where each section's syncs are configured (#1134 S2, Sam 22 Nov 2026): the business profile
 #: in Settings > Organization, the inventory in CTEM > Inventory. The global ``all`` schedule is in both.
 #: Primary assets (``primary_assets``) are an Inventory source since they moved to Inventory > Business
 #: (#1690): their OpenCRQ sync is listed next to the asset sources (Sam, 24 Nov 2026).
 SECTION_SCOPES: dict[str, tuple[str, ...]] = {
-    "profile": ("pirs",),
+    "profile": (),
     "inventory": ("assets", "asset_groups", "software", "primary_assets"),
 }
 #: How long a run may hold its lock before another run may take it.

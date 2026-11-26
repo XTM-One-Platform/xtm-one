@@ -331,9 +331,7 @@ def derive_from_organization_context(spec: dict[str, Any], profile: Any) -> tupl
             derived["pir_ids"] = pir_ids
             # Each PIR's own minimum score from the Intelligence policy (#2435), the spec's otherwise.
             own = getattr(profile, "pir_min_scores", None) or {}
-            derived["pir_thresholds"] = {
-                pid: int(own.get(pid, spec.get("pir_min_score", 1))) for pid in pir_ids
-            }
+            derived["pir_thresholds"] = {pid: int(own.get(pid, spec.get("pir_min_score", 1))) for pid in pir_ids}
         else:
             missing.append("pir_ids")
     if "regions" in declared:

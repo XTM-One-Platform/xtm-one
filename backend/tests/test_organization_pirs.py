@@ -41,7 +41,12 @@ def _row(pir_id: str, *, enabled: bool = True, min_score: int = 75, integration_
 
 def test_a_read_fills_the_table_with_new_pirs_disabled():
     nodes = [
-        {"id": "pir-1", "name": "Ransomware on energy", "pir_type": "THREAT_LANDSCAPE", "pir_criteria": [{"weight": 2}]},
+        {
+            "id": "pir-1",
+            "name": "Ransomware on energy",
+            "pir_type": "THREAT_LANDSCAPE",
+            "pir_criteria": [{"weight": 2}],
+        },
         {"id": "pir-2", "name": "", "description": "Retail", "pir_criteria": [{"weight": 1}, {"weight": 3}]},
     ]
     created = pirs.apply_read([], OCTI, nodes, NOW)
@@ -81,7 +86,10 @@ def test_another_opencti_never_marks_these_pirs_gone():
 
 def _spec(thresholds: dict[str, int]) -> dict:
     spec = prov.read_provision_spec(
-        {"provider": "opencti", "provision": {"organization_context": ["pir_ids"], "mode": "pir_playbook", "fleet": "F", "purpose": "P"}}
+        {
+            "provider": "opencti",
+            "provision": {"organization_context": ["pir_ids"], "mode": "pir_playbook", "fleet": "F", "purpose": "P"},
+        }
     )
     profile = OrganizationProfile.model_validate({"pir_ids": sorted(thresholds), "pir_min_scores": thresholds})
     derived, missing = prov.derive_from_organization_context(spec, profile)
@@ -129,7 +137,10 @@ def test_a_disabled_pir_leaves_the_profile_pir_ids():
     assert overlaid.pir_ids == ["pir-a"]
     assert overlaid.pir_min_scores == {"pir-a": 80}
     spec = prov.read_provision_spec(
-        {"provider": "opencti", "provision": {"organization_context": ["pir_ids"], "mode": "pir_playbook", "fleet": "F", "purpose": "P"}}
+        {
+            "provider": "opencti",
+            "provision": {"organization_context": ["pir_ids"], "mode": "pir_playbook", "fleet": "F", "purpose": "P"},
+        }
     )
     derived, _ = prov.derive_from_organization_context(spec, overlaid)
     assert derived["pir_ids"] == ["pir-a"]
@@ -166,7 +177,14 @@ def test_a_34_pir_profile_migrates_with_details_and_thresholds():
     profile = {
         "pir_ids": ids,
         "pir_names": {"pir-00": "Ransomware on energy"},
-        "pir_details": {"pir-00": {"question": "Who targets us?", "owner": "SOC", "review_cadence": "monthly", "primary_assets": ["Payments"]}},
+        "pir_details": {
+            "pir-00": {
+                "question": "Who targets us?",
+                "owner": "SOC",
+                "review_cadence": "monthly",
+                "primary_assets": ["Payments"],
+            }
+        },
         "prioritization_policy": {"pir_min_score_threat": 60},
     }
     rows = _migration().carried_rows(profile)

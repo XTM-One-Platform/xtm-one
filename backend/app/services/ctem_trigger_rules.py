@@ -192,9 +192,7 @@ def pir_drop_reason(
     if not live_scores:
         return "pir_min_score: the delivery names no PIR the entity is flagged in"
     own = own or {}
-    known = {
-        pid: s for pid, s in live_scores.items() if isinstance(s, int | float) and not isinstance(s, bool)
-    }
+    known = {pid: s for pid, s in live_scores.items() if isinstance(s, int | float) and not isinstance(s, bool)}
     if any(s >= own.get(pid, threshold) for pid, s in known.items()):
         return None
     if not known:

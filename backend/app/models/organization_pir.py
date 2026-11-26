@@ -49,9 +49,7 @@ class OrganizationPir(Base):
     #: OpenCTI's ``pir_type`` (``THREAT_LANDSCAPE``, ``THREAT_ORIGIN``, ``THREAT_CUSTOM``).
     pir_type: Mapped[str] = mapped_column(String(40), nullable=False, default="", server_default=text("''"))
     #: The criteria count and weights, summarised for the table (never the raw filters).
-    criteria_summary: Mapped[str] = mapped_column(
-        String(500), nullable=False, default="", server_default=text("''")
-    )
+    criteria_summary: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default=text("''"))
     question: Mapped[str] = mapped_column(String(1000), nullable=False, default="", server_default=text("''"))
     owner: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default=text("''"))
     review_cadence: Mapped[str] = mapped_column(String(16), nullable=False, default="", server_default=text("''"))
