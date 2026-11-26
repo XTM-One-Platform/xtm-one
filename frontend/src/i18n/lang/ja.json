@@ -2660,6 +2660,7 @@
   "Enable to collect enterprise-only metrics: Analytics API and AI Code Tracking.": "有効にするとEnterprise限定メトリクス（Analytics APIとAIコードトラッキング）を収集します。",
   "Enable two-factor": "二要素認証を有効にする",
   "Enabled": "有効",
+  "Partly enabled": "一部有効",
   "Enabled (idle)": "有効（待機中）",
   "Enabled tiers are injected into every assignment run and chat message.": "有効な階層は、すべてのアサインメント実行とチャットメッセージに注入されます。",
   "Enabling the {name} integration": "{name}インテグレーションの有効化",
