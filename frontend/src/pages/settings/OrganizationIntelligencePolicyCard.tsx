@@ -239,7 +239,9 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
             }
             data-testid="settings.organization.intelligence-policy.refresh"
           >
-            {refresh.isPending ? <Spinner size="sm" tone="inherit" /> : <Icon name="refresh-cw" size={16} aria-hidden />}
+            {/* The visible text names the button while busy: the spinner carries no second label (UX r1 A3 on #2444). */}
+            {refresh.isPending && <Spinner size="sm" tone="inherit" />}
+            {!refresh.isPending && <Icon name="refresh-cw" size={16} aria-hidden />}
             {t_i18n("Refresh now")}
           </Button>
         ) : undefined

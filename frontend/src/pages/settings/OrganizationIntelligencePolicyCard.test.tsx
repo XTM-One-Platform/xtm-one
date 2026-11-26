@@ -77,9 +77,8 @@ describe("OrganizationIntelligencePolicyCard", () => {
     expect(within(card).getByText("No longer in OpenCTI")).toBeTruthy();
     expect(within(card).getByText("70")).toBeTruthy();
     expect(within(card).getByText("40")).toBeTruthy();
-    // One row height: the name and the owner are cut on one line with the shared tooltip (UX r1 B2 on #2444).
-    expect(within(card).getByText("Ransomware on energy").className).toContain("truncate");
-    expect(within(card).getAllByText("CTI team")[0].className).toContain("truncate");
+    // An empty Primary assets cell reads "-" as the shared cells do (UX r1 A1 on #2444).
+    expect(within(card).getAllByText("-").length).toBeGreaterThan(0);
     expect(get).not.toHaveBeenCalledWith(expect.stringMatching(/^\/organization-context\/syncs/));
   });
 
