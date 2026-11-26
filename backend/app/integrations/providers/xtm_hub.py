@@ -72,6 +72,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.egress import egress_client
+from app.core.xtm_hub_key import ASSERTION_HEADER
 from app.integrations.base import BaseIntegration, OAuthDefaults
 from app.integrations.file_delivery import (
     deliver_file,
@@ -538,6 +539,7 @@ async def xtm_hub_graphql(
     *,
     api_token: str | None = None,
     platform_token: tuple[str, str] | None = None,
+    platform_assertion: str | None = None,
     upload: tuple[str, str, bytes, str] | None = None,
     uploads: list[tuple[str, str, bytes, str]] | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -546,8 +548,11 @@ async def xtm_hub_graphql(
     With *api_token*, the query runs as the token's user (``Authorization:
     Bearer``). With *platform_token* ``(platform_id, token)``, it runs as that
     registered platform (``XTM-Hub-Platform-Id`` and ``XTM-Hub-Platform-Token``,
-    what the Hub's ``@platform_token`` operations read). Either credential is
-    only sent to a Hub ``xtm_hub_token_url`` accepts. With *upload*
+    what the Hub's ``@platform_token`` operations read). With
+    *platform_assertion*, it runs as the platform that signed it
+    (``XTM-Hub-Platform-Assertion``); only the key enrollment sends it beside
+    the token. Every credential is only sent to a Hub ``xtm_hub_token_url``
+    accepts. A refusal carries the Hub's error codes (``refusal_codes``). With *upload*
     ``(variable, filename, data, content_type)``, the request is a GraphQL
     multipart request carrying that file as ``$variable``, with the
     ``Apollo-Require-Preflight`` header the Hub's CSRF prevention asks for.
@@ -560,7 +565,8 @@ async def xtm_hub_graphql(
         "Accept-Encoding": "identity",
         "User-Agent": PLATFORM_USER_AGENT,
     }
-    if (api_token is not None or platform_token is not None) and xtm_hub_token_url(base_url) != base_url:
+    has_credential = api_token is not None or platform_token is not None or platform_assertion is not None
+    if has_credential and xtm_hub_token_url(base_url) != base_url:
         return None, _INSECURE_HUB_KEY_URL
     if api_token is not None:
         headers["Authorization"] = f"Bearer {api_token}"
@@ -568,6 +574,8 @@ async def xtm_hub_graphql(
         platform_id, token = platform_token
         headers["XTM-Hub-Platform-Id"] = platform_id
         headers["XTM-Hub-Platform-Token"] = token
+    if platform_assertion is not None:
+        headers[ASSERTION_HEADER] = platform_assertion
     body: dict[str, Any]
     if uploads:
         headers["Apollo-Require-Preflight"] = "true"
@@ -697,12 +705,28 @@ def _error_codes(errors: list[Any]) -> list[str]:
     return codes[:3]
 
 
+class HubRefusal(str):
+    """A GraphQL refusal of the Hub: the sentence the agent reads, and the Hub's codes for the caller."""
+
+    codes: tuple[str, ...]
+
+    def __new__(cls, text: str, codes: list[str]) -> HubRefusal:
+        refusal = super().__new__(cls, text)
+        refusal.codes = tuple(codes)
+        return refusal
+
+
 def _refusal(codes: list[str]) -> str:
     """The refusal the agent reads: the fixed sentence, with the Hub's codes."""
     if not codes:
-        return _REFUSED
+        return HubRefusal(_REFUSED, codes)
     hint = _FORBIDDEN_HINT if "FORBIDDEN_ACCESS" in codes else ""
-    return f"{_REFUSED} Hub error: {', '.join(codes)}.{hint}"
+    return HubRefusal(f"{_REFUSED} Hub error: {', '.join(codes)}.{hint}", codes)
+
+
+def refusal_codes(error: str | None) -> tuple[str, ...]:
+    """The Hub's error codes of an ``xtm_hub_graphql()`` refusal (at most three), ``()`` for any other error."""
+    return error.codes if isinstance(error, HubRefusal) else ()
 
 
 def is_refusal(error: str | None) -> bool:

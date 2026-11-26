@@ -17,7 +17,11 @@ from app.api.v1.xtm_hub_registration import RegisterRequest, XtmHubRegistrationS
 from app.core import config
 from app.core.config import settings
 from app.integrations.providers import xtm_hub as hub
-from app.models.xtm_hub_registration import STATUS_LOST_CONNECTIVITY, STATUS_REGISTERED
+from app.models.xtm_hub_registration import (
+    STATUS_LOST_CONNECTIVITY,
+    STATUS_NEEDS_REREGISTRATION,
+    STATUS_REGISTERED,
+)
 from app.services import xtm_hub_registration as registration
 
 _PLATFORM = uuid.UUID("6a3c2a8e-1f2b-4c3d-9e8f-0a1b2c3d4e5f")
@@ -114,10 +118,14 @@ async def test_the_check_sends_this_platform_identity_its_token_and_its_contract
     monkeypatch.setattr(hub, "xtm_hub_graphql", fake)
     monkeypatch.setattr(settings, "app_version", "1.260930.0-dev.abcdef1")
 
-    result = await registration.check_registration("https://hub.example.com", _PLATFORM, _TOKEN, contract)
+    result = await registration.check_registration(
+        "https://hub.example.com", registration.PlatformCredential(_PLATFORM, token=_TOKEN), contract
+    )
 
     assert result == "active"
     assert len(fake.calls) == 1
+    # Before enrollment, the token travels in the input as it always has: no header credential.
+    assert fake.credentials == {}
     base_url, query, variables, _action = fake.calls[0]
     assert base_url == "https://hub.example.com"
     assert query == registration.REFRESH_MUTATION
@@ -162,7 +170,8 @@ async def test_the_contract_is_the_edition_the_platform_reports(monkeypatch, edi
 @pytest.mark.asyncio
 async def test_each_hub_answer_reads_as_one_check_result(monkeypatch, data, err, expected):
     monkeypatch.setattr(hub, "xtm_hub_graphql", _Hub(data=data, err=err))
-    assert await registration.check_registration("https://hub.example.com", _PLATFORM, _TOKEN, "CE") == expected
+    credential = registration.PlatformCredential(_PLATFORM, token=_TOKEN)
+    assert await registration.check_registration("https://hub.example.com", credential, "CE") == expected
 
 
 @pytest.mark.parametrize(
@@ -173,6 +182,8 @@ async def test_each_hub_answer_reads_as_one_check_result(monkeypatch, data, err,
         ("unreachable", STATUS_LOST_CONNECTIVITY),
         ("refused", STATUS_LOST_CONNECTIVITY),
         ("not_found", None),
+        ("key_mismatch", STATUS_NEEDS_REREGISTRATION),
+        ("token_path_closed", STATUS_NEEDS_REREGISTRATION),
     ],
 )
 def test_each_check_result_leads_to_one_status(result, expected):

@@ -9294,6 +9294,7 @@
   "XTM Hub URL": "XTM Hub の URL",
   "Last check": "最終確認",
   "This platform's identifier changed since it was registered. Register it again to keep it on the XTM Hub.": "登録後にこのプラットフォームの識別子が変更されました。XTM Hub に残すには再登録してください。",
+  "The XTM Hub no longer accepts this platform's credentials. Register it again to keep it on the XTM Hub.": "XTM Hub はこのプラットフォームの認証情報を受け付けなくなりました。XTM Hub に残すには再登録してください。",
   "The XTM Hub did not confirm the registration at the last check. It is checked again every hour.": "前回の確認で XTM Hub は登録を確認できませんでした。1 時間ごとに再確認されます。",
   "Waiting for the XTM Hub window...": "XTM Hub のウィンドウを待っています...",
   "Register on the XTM Hub": "XTM Hub に登録",

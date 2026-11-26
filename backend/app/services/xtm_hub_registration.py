@@ -29,6 +29,14 @@ it (``XTM-Hub-Platform-Id`` / ``XTM-Hub-Platform-Token``) at
 ``/api/xtmhub/auto-register``. The Hub knows the platform by the id the
 deployer reported, so ``PLATFORM_ID`` must be that id.
 
+Once the Hub has enrolled this instance's public key (``key_enrolled_at``,
+set by the enrollment), every call is signed instead: a fresh, single-use
+assertion in ``XTM-Hub-Platform-Assertion`` (``core/xtm_hub_key.py``) and no
+token. ``PlatformCredential`` makes that choice for every platform call, and
+``enroll_platform_key()`` is the one call that carries both, to prove the
+instance holds the key it enrolls. The Hub's refusals of a platform credential
+are read in one place (``PLATFORM_REFUSALS``).
+
 The Hub's answers go through ``xtm_hub_graphql()`` (bounded, redirect-free,
 fixed error sentences); nothing here ever logs, audits or serves the token.
 """
@@ -39,9 +47,9 @@ import asyncio
 import logging
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -53,7 +61,13 @@ from app.core.log_once import fingerprint, log_once
 from app.core.redis import redis_client
 from app.core.security import decrypt_value, encrypt_value
 from app.core.utils import format_exception_message
-from app.core.xtm_hub_key import PLATFORM_IDENTIFIER
+from app.core.xtm_hub_key import (
+    PLATFORM_IDENTIFIER,
+    XtmHubKey,
+    XtmHubKeyUnavailableError,
+    derive_key,
+    key_version,
+)
 from app.integrations.providers import xtm_hub as hub
 from app.models.user import User
 from app.models.xtm_hub_registration import (
@@ -83,14 +97,112 @@ mutation XtmOneAutoRegister($input: AutoRegisterPlatformInput) {
 }
 """
 
-CheckResult = Literal["active", "inactive", "not_found", "unreachable", "refused"]
+ENROLL_MUTATION = """
+mutation XtmOneEnrollPlatformKey($input: EnrollPlatformKeyInput!) {
+  enrollPlatformKey(input: $input) { status }
+}
+"""
+
+CheckResult = Literal[
+    "active", "inactive", "not_found", "unreachable", "refused", "key_mismatch", "token_path_closed"
+]
 Contract = Literal["EE", "CE"]
+
+#: What the Hub answers an enrollment. ``enrolled``: the key is stored (again,
+#: for a retry), the token can go. ``conflict``: another key is enrolled for
+#: this registration. ``not_found``: no registration matches the token.
+#: ``key_mismatch``: the assertion's key is not the one the Hub holds.
+#: ``not_available``: the Hub does not enroll keys yet. ``unknown_operation``:
+#: an older Hub without ``enrollPlatformKey``. ``unreachable``: a network
+#: failure, a timeout or a 5xx. ``refused``: any other refusal or answer.
+#: ``not_available``, ``unknown_operation`` and ``unreachable`` keep the token
+#: for a later try.
+EnrollmentOutcome = Literal[
+    "enrolled",
+    "conflict",
+    "not_found",
+    "key_mismatch",
+    "not_available",
+    "unknown_operation",
+    "unreachable",
+    "refused",
+]
+#: The answers of ``enrollPlatformKey`` that are outcomes as they are.
+_ENROLLMENT_STATUSES: dict[str, EnrollmentOutcome] = {
+    "enrolled": "enrolled",
+    "conflict": "conflict",
+    "not_found": "not_found",
+    "key_mismatch": "key_mismatch",
+    "not_available": "not_available",
+}
+
+PlatformRefusal = Literal["assertion_invalid", "key_mismatch", "token_refused", "token_path_closed"]
+
+#: The Hub's refusals of a platform credential, by error code: the one place
+#: they are read. ``assertion_invalid``: a signature, ``typ``, ``aud``,
+#: expiry or replayed ``jti`` the Hub refused. ``key_mismatch``: the key that
+#: signed is not the one enrolled (``SECRET_KEY`` or the key version
+#: changed). ``token_refused``: the Hub knows no registration under that
+#: token. ``token_path_closed``: the Hub no longer takes platform tokens.
+PLATFORM_REFUSALS: dict[str, PlatformRefusal] = {
+    "PLATFORM_ASSERTION_INVALID": "assertion_invalid",
+    "PLATFORM_KEY_MISMATCH": "key_mismatch",
+    "PLATFORM_TOKEN_REFUSED": "token_refused",
+    "PLATFORM_TOKEN_PATH_CLOSED": "token_path_closed",
+}
+
+#: The GraphQL code of a document the Hub's schema does not validate: an
+#: operation, argument or input type an older Hub does not have.
+_UNKNOWN_OPERATION_CODE = "GRAPHQL_VALIDATION_FAILED"
 
 _running: set[asyncio.Task] = set()
 
 
 class RegistrationRefusedError(Exception):
     """A registration that was not stored; ``str()`` is safe to show an admin."""
+
+
+@dataclass(frozen=True)
+class PlatformCredential:
+    """What one platform call to the Hub proves itself with.
+
+    *key* set (the instance is enrolled): a fresh assertion signed with it,
+    never the token. Otherwise the *token*, as before enrollment.
+    """
+
+    platform_id: uuid.UUID
+    token: str | None = None
+    key: XtmHubKey | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        if (self.key is None) == (self.token is None):
+            raise ValueError("A platform credential is the token or the key, exactly one of them")
+
+    @property
+    def signed(self) -> bool:
+        return self.key is not None
+
+    def assertion(self, *, htu: str | None = None) -> str:
+        """A fresh assertion for one call: a new ``jti`` every time."""
+        if self.key is None:
+            raise ValueError("No key: this platform is not enrolled")
+        return self.key.sign_assertion(self.platform_id, htu=htu)
+
+    def headers(self) -> dict[str, Any]:
+        """The ``xtm_hub_graphql()`` credential of one call: the assertion, or the token headers."""
+        if self.key is not None:
+            return {"platform_assertion": self.assertion()}
+        if self.token is None:  # pragma: no cover - __post_init__ refuses it
+            raise ValueError("A platform credential is the token or the key")
+        return {"platform_token": (str(self.platform_id), self.token)}
+
+
+def platform_refusal(error: str | None) -> PlatformRefusal | None:
+    """The Hub's refusal of a platform credential in an ``xtm_hub_graphql()`` error, if it is one."""
+    for code in hub.refusal_codes(error):
+        if code in PLATFORM_REFUSALS:
+            return PLATFORM_REFUSALS[code]
+    return None
 
 
 @dataclass(frozen=True)
@@ -140,31 +252,42 @@ async def registration_contract(db: AsyncSession) -> Contract:
     return "EE" if await get_deployment_edition(db) == EDITION_ENTERPRISE else "CE"
 
 
-async def check_registration(
-    hub_url: str, platform_id: uuid.UUID, token: str, contract: Contract
-) -> CheckResult:
-    """What the Hub says about this platform's registration under *token*.
+async def check_registration(hub_url: str, credential: PlatformCredential, contract: Contract) -> CheckResult:
+    """What the Hub says about this platform's registration under *credential*.
 
+    Before enrollment the token travels in the input, as it always has; once
+    enrolled, the call is signed and the input carries no token.
     *contract* is declared with it: the Hub records a move between ``CE`` and
-    ``EE`` and keeps the contract of a trial as it is.
+    ``EE`` and keeps the contract of a trial as it is. A key the Hub no longer
+    matches, or a token it no longer takes, reads ``key_mismatch`` /
+    ``token_path_closed``: only a new registration helps.
     """
+    request: dict[str, Any] = {
+        "platformId": str(credential.platform_id),
+        "platformVersion": registration_platform_version(),
+        "platformIdentifier": PLATFORM_IDENTIFIER,
+        "platformContract": contract,
+    }
+    signed: dict[str, Any] = {}
+    if credential.signed:
+        signed = credential.headers()
+    else:
+        request["token"] = credential.token
     data, err = await hub.xtm_hub_graphql(
         hub_url,
         REFRESH_MUTATION,
-        {
-            "input": {
-                "platformId": str(platform_id),
-                "token": token,
-                "platformVersion": registration_platform_version(),
-                "platformIdentifier": PLATFORM_IDENTIFIER,
-                "platformContract": contract,
-            }
-        },
+        {"input": request},
         "check the platform registration",
+        **signed,
     )
     if hub.is_transient_error(err):
         return "unreachable"
     if err:
+        refusal = platform_refusal(err)
+        if refusal == "key_mismatch":
+            return "key_mismatch"
+        if refusal == "token_path_closed":
+            return "token_path_closed"
         return "refused"
     answer = (data or {}).get("refreshPlatformRegistrationConnectivityStatus")
     status = answer.get("status") if isinstance(answer, dict) else None
@@ -210,7 +333,9 @@ async def register(db: AsyncSession, *, hub_url: str, token: str) -> XtmHubRegis
             "The XTM Hub URL must be an https URL (http only for a Hub on this machine)."
         )
     platform_id = await current_platform_id(db)
-    result = await check_registration(bound_url, platform_id, token, await registration_contract(db))
+    result = await check_registration(
+        bound_url, PlatformCredential(platform_id, token=token), await registration_contract(db)
+    )
     if result == "unreachable":
         raise RegistrationRefusedError("The XTM Hub could not be reached. Retry shortly.")
     if result != "active":
@@ -279,7 +404,7 @@ async def auto_register(db: AsyncSession, *, token: str) -> XtmHubRegistration:
         AUTO_REGISTER_MUTATION,
         variables,
         "register the platform automatically",
-        platform_token=(str(platform_id), token),
+        **PlatformCredential(platform_id, token=token).headers(),
     )
     if hub.is_transient_error(err):
         raise RegistrationRefusedError("The XTM Hub could not be reached. Retry shortly.")
@@ -304,6 +429,8 @@ async def _store_registration(
         "registered_at": now,
         "last_check_at": now,
         "last_check_result": "active",
+        # A new registration: its token is what the Hub knows, no key yet.
+        "key_enrolled_at": None,
     }
     # One atomic upsert: two registrations at once each get their own
     # generation (the row lock orders them), so a heartbeat that snapshotted
@@ -335,7 +462,55 @@ def status_after(result: CheckResult) -> str | None:
         return STATUS_REGISTERED
     if result == "not_found":
         return None
+    if result in ("key_mismatch", "token_path_closed"):
+        return STATUS_NEEDS_REREGISTRATION
     return STATUS_LOST_CONNECTIVITY
+
+
+async def enroll_platform_key(
+    hub_url: str, platform_id: uuid.UUID, token: str, key: XtmHubKey
+) -> EnrollmentOutcome:
+    """Ask the Hub to enroll *key* for the registration *token* belongs to.
+
+    The one call that carries both credentials: the token headers name the
+    registration, an assertion signed with *key* proves this instance holds
+    it, and the input carries the public JWK. Only the Hub's answer is read:
+    recording the enrollment and dropping the token are the caller's.
+    """
+    if not registration_hub_url(hub_url):
+        return "refused"
+    data, err = await hub.xtm_hub_graphql(
+        hub_url,
+        ENROLL_MUTATION,
+        {"input": {"publicKey": key.public_jwk()}},
+        "enroll the platform key",
+        platform_token=(str(platform_id), token),
+        platform_assertion=key.sign_assertion(platform_id),
+    )
+    if hub.is_transient_error(err):
+        return "unreachable"
+    if err:
+        return _enrollment_refusal(err)
+    answer = (data or {}).get("enrollPlatformKey")
+    status = answer.get("status") if isinstance(answer, dict) else None
+    if isinstance(status, str) and status in _ENROLLMENT_STATUSES:
+        return _ENROLLMENT_STATUSES[status]
+    logger.warning("XTM Hub key enrollment: unexpected status %r", str(status)[:40])
+    return "refused"
+
+
+def _enrollment_refusal(error: str) -> EnrollmentOutcome:
+    """The outcome a refused enrollment reads as."""
+    if _UNKNOWN_OPERATION_CODE in hub.refusal_codes(error):
+        return "unknown_operation"
+    refusal = platform_refusal(error)
+    if refusal == "key_mismatch":
+        return "key_mismatch"
+    if refusal in ("token_refused", "token_path_closed"):
+        # No registration the token still opens: the same as a token the Hub
+        # does not know.
+        return "not_found"
+    return "refused"
 
 
 async def check_now(db: AsyncSession) -> RegistrationView:
@@ -353,8 +528,9 @@ async def check_now(db: AsyncSession) -> RegistrationView:
     snapshot = _Snapshot.of(registration)
     platform_id = await current_platform_id(db)
     contract = await registration_contract(db)
+    version = await key_version(db)
     await db.commit()
-    outcome = await _check_snapshot(snapshot, platform_id, contract)
+    outcome = await _check_snapshot(snapshot, platform_id, contract, version)
     # A miss means a newer registration replaced this one: show it as it is.
     await _apply(db, snapshot, outcome)
     return view_of(await db.get(XtmHubRegistration, SINGLETON_ID, populate_existing=True))
@@ -367,6 +543,7 @@ class _Snapshot:
     platform_id: uuid.UUID
     token_enc: str
     status: str
+    key_enrolled_at: datetime | None = None
 
     @classmethod
     def of(cls, registration: XtmHubRegistration) -> _Snapshot:
@@ -376,27 +553,47 @@ class _Snapshot:
             registration.platform_id,
             registration.token_enc,
             registration.status,
+            registration.key_enrolled_at,
         )
 
 
+def snapshot_credential(snapshot: _Snapshot, version: int) -> PlatformCredential | None:
+    """The credential the registration's calls carry: the key at *version* once enrolled, else the token.
+
+    ``None`` (logged) when it cannot be built: an unreadable token, or no key
+    while ``SECRET_KEY`` is guessable. An enrolled registration never falls
+    back to its token.
+    """
+    if snapshot.key_enrolled_at is not None:
+        try:
+            return PlatformCredential(snapshot.platform_id, key=derive_key(version))
+        except (XtmHubKeyUnavailableError, ValueError) as exc:
+            logger.warning("XTM Hub signing key unavailable: %s", format_exception_message(exc))
+            return None
+    try:
+        return PlatformCredential(snapshot.platform_id, token=decrypt_value(snapshot.token_enc))
+    except Exception as exc:  # pragma: no cover - a corrupted ciphertext
+        logger.warning("XTM Hub registration token unreadable: %s", format_exception_message(exc))
+        return None
+
+
 async def _check_snapshot(
-    snapshot: _Snapshot, platform_id: uuid.UUID, contract: Contract
+    snapshot: _Snapshot, platform_id: uuid.UUID, contract: Contract, version: int
 ) -> CheckResult | Literal["platform_changed"]:
     """The Hub's answer for *snapshot*, read with no database access.
 
     *platform_id* is this platform's current id: a registration made for
-    another one sends nothing. *contract* is the one it declares.
+    another one sends nothing. *contract* is the one it declares, *version*
+    the key version an enrolled registration signs with.
     """
     if snapshot.platform_id != platform_id:
         return "platform_changed"
     if not registration_hub_url(snapshot.hub_url):
         return "refused"
-    try:
-        token = decrypt_value(snapshot.token_enc)
-    except Exception as exc:  # pragma: no cover - a corrupted ciphertext
-        logger.warning("XTM Hub registration token unreadable: %s", format_exception_message(exc))
+    credential = snapshot_credential(snapshot, version)
+    if credential is None:
         return "refused"
-    return await check_registration(snapshot.hub_url, snapshot.platform_id, token, contract)
+    return await check_registration(snapshot.hub_url, credential, contract)
 
 
 async def _apply(
@@ -464,10 +661,11 @@ async def heartbeat() -> str | None:
         snapshot = _Snapshot.of(registration)
         platform_id = await current_platform_id(db)
         contract = await registration_contract(db)
+        version = await key_version(db)
         # Everything the check needs is read: the session holds no
         # transaction across the network call.
         await db.rollback()
-        outcome = await _check_snapshot(snapshot, platform_id, contract)
+        outcome = await _check_snapshot(snapshot, platform_id, contract, version)
         if outcome == "unreachable":
             await log_once(
                 logger,

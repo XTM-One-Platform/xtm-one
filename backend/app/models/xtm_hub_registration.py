@@ -13,6 +13,11 @@ served, and bound to the Hub it was issued by (``hub_url``) and to the platform
 id it was issued for (``platform_id``). ``generation`` changes on every
 registration, so a heartbeat that started before a new registration can never
 overwrite or delete it (compare-and-set).
+
+``key_enrolled_at`` is when the Hub enrolled this instance's public key
+(``core/xtm_hub_key.py``) for the registration: NULL until then. It alone
+decides which credential a call to the Hub carries: the token before, a fresh
+signed assertion after, never both. A new registration resets it.
 """
 
 import uuid
@@ -63,3 +68,6 @@ class XtmHubRegistration(Base):
     # (``active`` / ``inactive`` / ``unreachable``).
     last_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_check_result: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # When the Hub enrolled this instance's public key: NULL = calls carry the
+    # token; set = every call is signed with the key instead.
+    key_enrolled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

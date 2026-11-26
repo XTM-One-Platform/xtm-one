@@ -239,7 +239,7 @@ backend/
 │   │   ├── user_memory_entries.py ← User memory entries: scope / owner / freshness and the one read rule (`visible_to`)
 │   │   ├── user_memory_maintenance.py ← Hourly user-memory sweep (TTL expiry, profile split)
 │   │   ├── notify.py        ← Notification system
-│   │   ├── xtm_hub_registration.py ← XTM Hub registration: token verified before it is stored, hourly heartbeat compare-and-set on `generation`, platform-id change ⇒ `needs_reregistration`
+│   │   ├── xtm_hub_registration.py ← XTM Hub registration: token verified before it is stored, hourly heartbeat compare-and-set on `generation`, platform-id change or a key the Hub no longer matches ⇒ `needs_reregistration`; signed calls once the key is enrolled, `enroll_platform_key()`
 │   │   ├── token_refresh.py ← OAuth token refresh
 │   │   ├── mcp_oauth_discovery.py ← Outbound MCP OAuth onboarding: RFC 9728 → RFC 8414 discovery, RFC 7591 dynamic client registration, PKCE (`MCP_OUTBOUND_DCR_ENABLED`); the inbound side is `api/v1/mcp_oauth.py`
 │   │   ├── mcp_oauth_tokens.py ← A remote MCP server's OAuth token kept fresh while a connection uses it (`StoredMCPOAuthToken`, the `httpx.Auth` hook of `build_mcp_runtime()`, refreshed through `token_refresh.current_mcp_access_token()`)

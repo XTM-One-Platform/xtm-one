@@ -9295,6 +9295,7 @@
   "XTM Hub URL": "XTM Hub URL",
   "Last check": "Last check",
   "This platform's identifier changed since it was registered. Register it again to keep it on the XTM Hub.": "This platform's identifier changed since it was registered. Register it again to keep it on the XTM Hub.",
+  "The XTM Hub no longer accepts this platform's credentials. Register it again to keep it on the XTM Hub.": "The XTM Hub no longer accepts this platform's credentials. Register it again to keep it on the XTM Hub.",
   "The XTM Hub did not confirm the registration at the last check. It is checked again every hour.": "The XTM Hub did not confirm the registration at the last check. It is checked again every hour.",
   "Waiting for the XTM Hub window...": "Waiting for the XTM Hub window...",
   "Register on the XTM Hub": "Register on the XTM Hub",
