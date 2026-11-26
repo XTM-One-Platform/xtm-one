@@ -193,7 +193,8 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 # This case's members only (#2092): never a whole view build on the call during a drain.
                 members = [f"{r.source}:{r.external_id}" for r in rows]
                 view = await view_of.viewer_view(db, str(scope), vertical, members=members)
-                rendered = view_of.hydrate(case, rows, events[:_HISTORY_PAGE], view)
+                # Every section from the whole history, only the served page cut (#2429).
+                rendered = view_of.hydrate(case, rows, events, view, history_page=_HISTORY_PAGE)
                 if rendered is None:
                     return f"No case {case_id}."
                 from app.services import ctem_case_version_history as version_history
