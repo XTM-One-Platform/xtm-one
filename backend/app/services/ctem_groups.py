@@ -81,7 +81,9 @@ async def _all_active_into(db: AsyncSession, group_id: uuid.UUID) -> int:
         (
             await db.execute(
                 pg_insert(GroupMember)
-                .values([{"id": uuid.uuid4(), "group_id": group_id, "user_id": uid, "source": SEED_SOURCE} for uid in ids])
+                .values(
+                    [{"id": uuid.uuid4(), "group_id": group_id, "user_id": uid, "source": SEED_SOURCE} for uid in ids]
+                )
                 .on_conflict_do_nothing(constraint="uq_group_members_group_user")
                 .returning(GroupMember.user_id)
             )

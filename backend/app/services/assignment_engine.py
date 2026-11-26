@@ -6701,9 +6701,7 @@ async def execute_assignment_run(
             # --- CTEM group (#1748): signal and case tools on any agent, the run user's rights ---
             from app.services.builtin_tools import ctem_tools_for
 
-            _ctem_group = (
-                ctem_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
-            )
+            _ctem_group = ctem_tools_for(agent, agent_builtin_tool_ids, user_id=str(run.user_id)) if _ctem_ok else None
             if _ctem_group is not None:
                 composite.add_tools(*_ctem_group)
             # --- CTEM administrator repairs (#1778): the CTEM case agents, or the group bound ---

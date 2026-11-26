@@ -1720,7 +1720,7 @@ async def can_read_object(sub: Subscription, payload: Mapping[str, Any], cache: 
             try:
                 _dropped_counter().labels(object_type=kind, reason="not_readable_by_run_as").inc()
             except Exception:  # a metric never blocks a delivery decision
-                pass
+                logger.debug("Platform event: the dropped-delivery counter is unavailable", exc_info=True)
             logger.info(
                 "Platform event: %s delivery to subscription %s dropped: %s does not read the object",
                 kind,

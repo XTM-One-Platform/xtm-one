@@ -12384,9 +12384,7 @@ def build_agent_builder_tool(
         needle = (search or "").strip().lower()
         # The CTEM signal and case events only for a person with a CTEM right (#2441).
         offered = catalog(ctem=await ctem_access.wires_ctem(user_id))
-        rows = [
-            e for e in offered if not needle or needle in e["event"] or needle in e["description"].lower()
-        ]
+        rows = [e for e in offered if not needle or needle in e["event"] or needle in e["description"].lower()]
         if not rows:
             return "No platform event matches."
         lines = [

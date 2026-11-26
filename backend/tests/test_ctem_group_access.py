@@ -152,11 +152,11 @@ async def test_levels_by_right() -> None:
     assert await ctem_access.reads_organization(db, VIEWER) is True
     assert await ctem_access.may_decide(db, VIEWER) is False
     assert await ctem_access.may_decide(db, DECIDER) is True
-    with pytest.raises(ctem_access.NoCtemAccess):
+    with pytest.raises(ctem_access.NoCtemAccessError):
         await ctem_access.signal_reader(db, NOBODY)
     with pytest.raises(PermissionError):
         await ctem_access.signal_writer(db, VIEWER)
-    with pytest.raises(ctem_access.NoCtemAccess):
+    with pytest.raises(ctem_access.NoCtemAccessError):
         await ctem_access.signal_writer(db, NOBODY)
     assert await ctem_access.signal_writer(db, DECIDER) is None
     assert await ctem_access.refusal(db, NOBODY, write=False) == ctem_access.NO_ACCESS_MESSAGE

@@ -421,10 +421,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
 
                 view = await view_of.viewer_view(db, str(scope), vertical)
                 visible = set(view.open_ids)
-                reason = await ctem_access.refusal(db, scope, write=True)
-                if reason is not None:
+                refused = await ctem_access.refusal(db, scope, write=True)
+                if refused is not None:
                     # Checked at call time for the person the turn or run acts for (#1748, #2441).
-                    return f"Refused: {reason} Nothing was changed."
+                    return f"Refused: {refused} Nothing was changed."
                 pending = case_loop.PendingEvents()
                 case = await store.create_manual_case(
                     db,

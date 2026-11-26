@@ -136,18 +136,18 @@ async def may_decide(db: Any, user: object) -> bool:
     return await level(db, user) in ("admin", "decide")
 
 
-class NoCtemAccess(PermissionError):
+class NoCtemAccessError(PermissionError):
     """The person holds no CTEM right (#2441): every signal and case read or write is refused."""
 
 
 async def signal_reader(db: Any, user: object) -> str | None:
     """The ``recorded_by`` filter of a signal read: ``None`` (the organization) for a person with a right.
 
-    Raises :class:`NoCtemAccess` without one (#2441): there is no own-signals fallback any more.
+    Raises :class:`NoCtemAccessError` without one (#2441): there is no own-signals fallback any more.
     """
     if await reads_organization(db, user):
         return None
-    raise NoCtemAccess(NO_ACCESS_MESSAGE)
+    raise NoCtemAccessError(NO_ACCESS_MESSAGE)
 
 
 async def gate_recipient(db: Any) -> str | None:
@@ -182,7 +182,7 @@ async def gate_recipient(db: Any) -> str | None:
 async def signal_writer(db: Any, user: object) -> str | None:
     """The ``recorded_by`` filter of a signal write (triage): ``None`` with decide.
 
-    Raises :class:`NoCtemAccess` without any right and :class:`PermissionError`
+    Raises :class:`NoCtemAccessError` without any right and :class:`PermissionError`
     with ``view`` alone (#2441: no own-signals fallback).
     """
     found = await level(db, user)
@@ -190,7 +190,7 @@ async def signal_writer(db: Any, user: object) -> str | None:
         return None
     if found == "view":
         raise PermissionError(VIEW_ONLY_MESSAGE)
-    raise NoCtemAccess(NO_ACCESS_MESSAGE)
+    raise NoCtemAccessError(NO_ACCESS_MESSAGE)
 
 
 async def wires_ctem(user_id: object) -> bool:
