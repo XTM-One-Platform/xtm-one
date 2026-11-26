@@ -2660,6 +2660,7 @@
   "Enable to collect enterprise-only metrics: Analytics API and AI Code Tracking.": "Actívelo para recopilar métricas exclusivas de Enterprise: Analytics API y AI Code Tracking.",
   "Enable two-factor": "Activar el doble factor",
   "Enabled": "Activado",
+  "Partly enabled": "Parcialmente activado",
   "Enabled (idle)": "Activado (inactivo)",
   "Enabled tiers are injected into every assignment run and chat message.": "Los niveles habilitados se inyectan en cada ejecución de asignación y en cada mensaje de chat.",
   "Enabling the {name} integration": "Activar la integración {name}",

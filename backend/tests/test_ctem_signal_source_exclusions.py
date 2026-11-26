@@ -60,7 +60,7 @@ def test_a_path_whose_only_bound_source_is_excluded_no_longer_reads_connected() 
     bound.excluded = sources.parse_excluded(_profile({"control_decay": ["opencrq:pass"]}))
     rows = {r["id"]: r for r in ctem_signals.path_catalog({}, bound=bound, activity={})}
     assert rows["control_decay"]["status"] == "not_connected"
-    assert rows["blind_spot"]["status"] == "connected"
+    assert rows["blind_spot"]["status"] == "enabled"
 
 
 def test_a_shared_pass_names_the_other_paths_it_feeds() -> None:

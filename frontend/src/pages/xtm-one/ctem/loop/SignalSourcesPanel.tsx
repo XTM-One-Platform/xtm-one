@@ -331,7 +331,8 @@ export function SignalSourcesPanel() {
       width: 160,
       interactive: true,
       cell: (path) => {
-        const target = pathStatus(path) === "connected" ? null : connectTarget(path);
+        // An enabled path has nothing to switch on; a partly enabled one offers its source that is off.
+        const target = pathStatus(path) === "enabled" ? null : connectTarget(path);
         // A profile pass is turned on by an administrator: a reader gets no button for it.
         const actionable = target && (isAdmin || !connectNeedsAdmin(target));
         // A source XTM One provisions, of a connected provider: Set up opens its enable dialog (#2434).

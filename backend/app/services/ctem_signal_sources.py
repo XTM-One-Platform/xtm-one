@@ -56,7 +56,20 @@ ATTACK_SURFACE_PROVIDERS: tuple[str, ...] = ("shodan", "gti")
 EVIDENCE_HEALTH_PROVIDERS: tuple[str, ...] = ("opencrq",)
 
 SOURCE_KINDS: tuple[str, ...] = ("listener", "pass", "pir_playbook")
-PATH_STATUSES: tuple[str, ...] = ("connected", "error", "not_set_up", "off", "not_connected", "agents_api")
+#: A path's status (#2436, Sam 26 Nov 2026): read from its sources' on/off state, never from the
+#: integration connection alone: ``enabled`` (every source used on the path is on), ``partly_enabled``
+#: (some are), then ``error``, ``not_set_up``, ``off``, ``not_connected`` and ``agents_api``.
+PATH_STATUSES: tuple[str, ...] = (
+    "enabled",
+    "partly_enabled",
+    "error",
+    "not_set_up",
+    "off",
+    "not_connected",
+    "agents_api",
+)
+#: The statuses of a path that records from at least one source.
+LIVE_PATH_STATUSES: frozenset[str] = frozenset({"enabled", "partly_enabled"})
 
 
 class BoundSources(set[tuple[str, str]]):
@@ -257,15 +270,20 @@ def pir_selection(path: str, enabled: dict[str, str], chosen: dict[str, list[str
 
 
 def path_status(sources: list[dict[str, Any]]) -> str:
-    """``agents_api`` with no source; ``error`` when a source is in error; ``connected`` when one is bound;
+    """``agents_api`` with no source; ``error`` when a source is in error; ``enabled`` when every source
+    used on the path (not taken off it) of a connected provider is on, ``partly_enabled`` when some are;
     ``not_set_up`` when a source of a connected provider is not set up; ``off`` when one is off; else
-    ``not_connected``. One status per path, the one its sources say (UX round 1 on #2442, B1)."""
+    ``not_connected``. One status per path, the one its sources say (UX round 1 on #2442, B1); never
+    the integration connection alone (#2436, Sam 26 Nov 2026)."""
     if not sources:
         return "agents_api"
     if any(s.get("error_count") for s in sources):
         return "error"
     if any(s.get("bound") for s in sources):
-        return "connected"
+        # The sources used here of a connected provider: a source taken off the path is a choice, and a
+        # source of a provider with no integration here is a possible one, neither makes the path partial.
+        used = [s for s in sources if not s.get("excluded") and (s.get("bound") or s.get("off") or s.get("not_set_up"))]
+        return "enabled" if all(s.get("bound") for s in used) else "partly_enabled"
     if any(s.get("not_set_up") for s in sources):
         return "not_set_up"
     return "off" if any(s.get("off") for s in sources) else "not_connected"
@@ -433,11 +451,16 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
     # exist and the last check passed (#2434): a connected integration alone feeds nothing.
     for pair in PROVISIONED_PAIRS:
         bound.discard(pair)
-    provisioned = await provisioned_pairs(db, connected, errors=bound.error)
+    turned_off: set[tuple[str, str]] = set()
+    provisioned = await provisioned_pairs(db, connected, errors=bound.error, turned_off=turned_off)
     bound.update(provisioned)
-    # A connected provider whose provisioned source feeds nothing and is in no error: Not set up, never Not connected.
+    # A source an administrator switched off reads Off, as its switch does (#2436, Sam 26 Nov 2026).
+    bound.off |= {pair for pair in turned_off if pair not in bound and pair not in bound.error}
+    # A connected provider whose provisioned source was never set up and is in no error: Not set up, never Not connected.
     bound.not_set_up = {
-        pair for pair in PROVISIONED_PAIRS if connected.get(pair[0]) and pair not in bound and pair not in bound.error
+        pair
+        for pair in PROVISIONED_PAIRS
+        if connected.get(pair[0]) and pair not in bound and pair not in bound.error and pair not in bound.off
     }
     return bound
 
@@ -464,13 +487,20 @@ def provisioned_pair(provider: str, state: Any) -> tuple[str, str] | None:
 
 
 async def provisioned_pairs(
-    db: AsyncSession, connected: dict[str, set[str]], *, errors: dict[tuple[str, str], int] | None = None
+    db: AsyncSession,
+    connected: dict[str, set[str]],
+    *,
+    errors: dict[tuple[str, str], int] | None = None,
+    turned_off: set[tuple[str, str]] | None = None,
 ) -> set[tuple[str, str]]:
     """The provisioned sources on the caller's connected integrations: platform sources, then the
     assignments that still hold a provisioned trigger until the migration moves them (#2434).
 
     *errors*, when given, receives per source the number of its integrations whose platform source
-    reads ``error`` (``ctem_platform_sources.status_of``: enabled and not provisioned, or a refused enable)."""
+    reads ``error`` (``ctem_platform_sources.status_of``: enabled and not provisioned, or a refused enable).
+    *turned_off*, when given, receives the sources whose platform source exists switched off. An
+    integration with a platform source row is read from that row alone: an assignment trigger left on
+    it never makes a source switched off read on (#2436, Sam 26 Nov 2026)."""
     from app.models.assignment import Assignment
     from app.models.ctem_signal_source import CtemSignalSource
     from app.services.ctem_platform_sources import is_connected, status_of
@@ -491,13 +521,19 @@ async def provisioned_pairs(
             )
         )
     ).all()
+    owned: set[tuple[str, str, str]] = set()
     for provider, kind, integration_id, state, enabled in rows:
         if str(integration_id) not in connected.get(provider, set()):
             continue
+        owned.add((provider, kind, str(integration_id)))
+        status = status_of(SimpleNamespace(enabled=enabled, state=state))[0]
         if enabled and is_connected(state):
             out.add((provider, kind))
-        elif errors is not None and status_of(SimpleNamespace(enabled=enabled, state=state))[0] == "error":
-            errors[(provider, kind)] = errors.get((provider, kind), 0) + 1
+        elif status == "error":
+            if errors is not None:
+                errors[(provider, kind)] = errors.get((provider, kind), 0) + 1
+        elif not enabled and turned_off is not None:
+            turned_off.add((provider, kind))
     configs = (
         await db.execute(
             select(Assignment.trigger_config).where(
@@ -514,6 +550,7 @@ async def provisioned_pairs(
             continue
         state = config.get(keys[provider])
         pair = provisioned_pair(provider, state)
-        if pair and str((state or {}).get("integration_id") or "") in connected.get(provider, set()):
+        integration_id = str((state or {}).get("integration_id") or "")
+        if pair and integration_id in connected.get(provider, set()) and (*pair, integration_id) not in owned:
             out.add(pair)
     return out

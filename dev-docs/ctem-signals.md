@@ -165,11 +165,17 @@ listener row of section 2 has no source row.
 `status`, one per path, the one its sources say (UX round 1 on #2442):
 `error` (a source XTM One provisions is in error on one of its integrations,
 `error_count` on the source; critical tone, the chip says "N sources in
-error"), `connected` (one source bound), `not_set_up` (none bound, a source
-XTM One provisions has its provider connected but is switched on nowhere,
-`not_set_up` on the source; neutral tone, action "Set up"), `off` (none
-bound, one pass `off`: its provider is connected, the pass does not run;
-neutral tone, action "Turn on" to its card in Settings > Organization),
+error"), `enabled` (one source bound and every source used on the path, of a
+connected provider and not taken off it, is on; low tone) or `partly_enabled`
+(one bound, another used source off or not set up; medium tone), never
+`connected`: the status reads the sources' on/off state, never the integration
+connection alone (#2436, Sam 26 Nov 2026; a provisioned source whose platform
+source exists switched off reads `off` on the source, and an assignment trigger
+left on that integration never turns it back on), `not_set_up` (none bound, a
+source XTM One provisions has its provider connected but is switched on
+nowhere, `not_set_up` on the source; neutral tone, action "Set up"), `off`
+(none bound, one source `off`: its provider is connected, the source does not
+run; neutral tone, action "Turn on" to its card in Settings > Organization),
 `not_connected` (a source exists, none bound, off or not set up: no
 integration of the provider is connected), `agents_api` (no automatic source:
 agents and the API only, never read as connected). In the path panel the

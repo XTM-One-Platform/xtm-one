@@ -11,7 +11,8 @@ import { profileFieldHref } from "@/lib/organization-profile-tabs";
 
 /** The status labels. @i18n-keys */
 export const PATH_STATUS_LABEL = {
-  connected: "Connected",
+  enabled: "Enabled",
+  partly_enabled: "Partly enabled",
   error: "Error",
   not_set_up: "Not set up",
   off: "Off",
@@ -20,11 +21,12 @@ export const PATH_STATUS_LABEL = {
 } as const satisfies Record<CtemSignalPathStatus, string>;
 
 /**
- * Connected reads healthy, an error reads critical, a source left unbound reads medium, a source not set up,
- * a pass turned off and agents-only are neutral: never green.
+ * Enabled reads healthy, partly enabled and a source left unbound read medium, an error reads critical,
+ * a source not set up, a source turned off and agents-only are neutral: never green.
  */
 export const PATH_STATUS_TONE = {
-  connected: "low",
+  enabled: "low",
+  partly_enabled: "medium",
   error: "critical",
   not_set_up: "neutral",
   off: "neutral",
@@ -32,8 +34,8 @@ export const PATH_STATUS_TONE = {
   agents_api: "neutral",
 } as const satisfies Record<CtemSignalPathStatus, "low" | "medium" | "neutral" | "critical">;
 
-/** The status order of the sort and the filter: connected first, agents-only last. */
-export const PATH_STATUS_ORDER = ["connected", "error", "not_set_up", "off", "not_connected", "agents_api"] as const satisfies readonly CtemSignalPathStatus[];
+/** The status order of the sort and the filter: enabled first, agents-only last. */
+export const PATH_STATUS_ORDER = ["enabled", "partly_enabled", "error", "not_set_up", "off", "not_connected", "agents_api"] as const satisfies readonly CtemSignalPathStatus[];
 
 /** The sources of a path in error, summed over its integrations (#2434). */
 function pathErrorCount(path: Pick<CtemSignalPath, "sources">): number {
@@ -52,15 +54,20 @@ export function pathStatusLabel(path: Pick<CtemSignalPath, "status" | "sources">
 
 /**
  * A path's status: the API's when present, else derived from its sources the same way (no source:
- * agents and the API only; one in error: error; one bound: connected; one not set up: not set up;
- * one off: off). One status per path, the one its sources say (UX round 1 on #2442, B1).
+ * agents and the API only; one in error: error; every used source on: enabled; some on: partly
+ * enabled; one not set up: not set up; one off: off). One status per path, the one its sources say
+ * (UX round 1 on #2442, B1), never the integration connection alone (#2436, Sam 26 Nov 2026).
  */
 export function pathStatus(path: Pick<CtemSignalPath, "status" | "sources">): CtemSignalPathStatus {
   if (path.status) return path.status;
   const sources = path.sources ?? [];
   if (sources.length === 0) return "agents_api";
   if (sources.some((s) => (s.error_count ?? 0) > 0)) return "error";
-  if (sources.some((s) => s.bound)) return "connected";
+  if (sources.some((s) => s.bound)) {
+    // A source taken off the path, or of a provider with no integration here, never makes it partial.
+    const used = sources.filter((s) => !s.excluded && (s.bound || s.off || s.not_set_up));
+    return used.every((s) => s.bound) ? "enabled" : "partly_enabled";
+  }
   if (sources.some((s) => s.not_set_up)) return "not_set_up";
   return sources.some((s) => s.off) ? "off" : "not_connected";
 }
@@ -109,9 +116,14 @@ export function splitSources(
   return { live: sources.filter((s) => !possible(s)), possible: sources.filter(possible) };
 }
 
-/** "N of M trigger paths connected": agents-only paths count in M, never in N. */
+/** Whether a path records from at least one of its sources: enabled or partly enabled. */
+export function isLiveStatus(status: CtemSignalPathStatus): boolean {
+  return status === "enabled" || status === "partly_enabled";
+}
+
+/** "N of M trigger paths connected": a path with a source on counts in N; agents-only paths count in M, never in N. */
 export function connectedCount(paths: readonly Pick<CtemSignalPath, "status" | "sources">[]): number {
-  return paths.filter((p) => pathStatus(p) === "connected").length;
+  return paths.filter((p) => isLiveStatus(pathStatus(p))).length;
 }
 
 /** The providers whose scheduled pass is switched on in Settings > Organization (outside lens, evidence health). */

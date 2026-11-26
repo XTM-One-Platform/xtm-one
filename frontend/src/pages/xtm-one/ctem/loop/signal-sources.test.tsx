@@ -36,7 +36,7 @@ const PATHS: CtemSignalPath[] = [
     id: "new_vulnerability",
     label: "New vulnerability on a running version",
     default_lens: "world",
-    status: "connected",
+    status: "enabled",
     description: "A new or updated vulnerability that may affect what you run",
     sources: [
       { provider: "opencti", kind: "listener", event: "A vulnerability is created or updated, or linked to one of your assets", bound: true },
@@ -64,7 +64,11 @@ describe("signal source rules", () => {
   it("never reads connected without a bound source", () => {
     expect(pathStatus({ sources: [] })).toBe("agents_api");
     expect(pathStatus({ sources: [{ provider: "aikido", kind: "listener", event: "", bound: false }] })).toBe("not_connected");
-    expect(pathStatus({ sources: [{ provider: "aikido", kind: "listener", event: "", bound: true }] })).toBe("connected");
+    expect(pathStatus({ sources: [{ provider: "aikido", kind: "listener", event: "", bound: true }] })).toBe("enabled");
+    // #2436 (Sam, 26 Nov 2026): the status reads the sources' on/off state, never the connection.
+    expect(pathStatus({ sources: [{ provider: "opencti", kind: "listener", event: "", bound: true }, { provider: "opencti", kind: "pir_playbook", event: "", bound: false, not_set_up: true }] })).toBe("partly_enabled");
+    expect(pathStatus({ sources: [{ provider: "openaev", kind: "listener", event: "", bound: false, off: true }] })).toBe("off");
+    expect(pathStatus({ sources: [{ provider: "shodan", kind: "pass", event: "", bound: true }, { provider: "gti", kind: "pass", event: "", bound: false, off: true, excluded: true }] })).toBe("enabled");
     expect(pathStatus({ status: "agents_api", sources: [] })).toBe("agents_api");
     // A pass whose provider is connected but which does not run reads Off, never Not connected (#1344).
     expect(pathStatus({ sources: [{ provider: "opencrq", kind: "pass", event: "", bound: false, off: true }] })).toBe("off");
@@ -118,14 +122,15 @@ describe("SignalSourcesPanel", () => {
     // Grouped by lens: a group header row per lens, with its help line.
     expect(screen.getByTestId("ctem-signal-sources-lens-world").textContent).toContain("World");
     const vulnRow = rows.find((r) => r.getAttribute("data-path") === "new_vulnerability") as HTMLElement;
-    expect(within(vulnRow).getByText("Connected")).toBeTruthy();
+    expect(within(vulnRow).getByText("Enabled")).toBeTruthy();
+    expect(within(vulnRow).queryByText("Connected")).toBeNull();
     expect(within(vulnRow).getByTestId("ctem-signal-sources-30d").textContent).toBe("4");
     // The status chip sits in its own column: one cell per row (Sam, 23 Nov 2026, #1344).
     expect(within(vulnRow).getAllByTestId("ctem-signal-sources-status")).toHaveLength(1);
 
     const agents = rows.find((r) => r.getAttribute("data-path") === "blind_spot") as HTMLElement;
     expect(within(agents).getByText("Agents and API only")).toBeTruthy();
-    expect(within(agents).queryByText("Connected")).toBeNull();
+    expect(within(agents).queryByText("Enabled")).toBeNull();
     expect(within(agents).queryByRole("button", { name: "Connect" })).toBeNull();
 
     const code = rows.find((r) => r.getAttribute("data-path") === "code_flaw") as HTMLElement;
@@ -136,7 +141,7 @@ describe("SignalSourcesPanel", () => {
   it("agrees with the Discovery card on every path, whatever `configured` says (UX round 1 B1 on #1194)", async () => {
     const mixed: CtemSignalPath[] = [
       path({ id: "code_flaw", label: "Code flaw", configured: true, status: "not_connected", sources: [{ provider: "aikido", kind: "listener", event: "", bound: false }] }),
-      path({ id: "third_party_event", label: "Third party", default_lens: "world", configured: false, status: "connected", sources: [{ provider: "opencti", kind: "listener", event: "", bound: true }] }),
+      path({ id: "third_party_event", label: "Third party", default_lens: "world", configured: false, status: "enabled", sources: [{ provider: "opencti", kind: "listener", event: "", bound: true }] }),
       path({ id: "blind_spot", label: "Blind spot", default_lens: "outside", configured: false, status: "agents_api", sources: [] }),
     ];
     get.mockResolvedValue({ paths: mixed });
@@ -150,7 +155,7 @@ describe("SignalSourcesPanel", () => {
     const cardRows = await screen.findAllByTestId("ctem-trigger-path");
     const statusOf = (rows: HTMLElement[]) => Object.fromEntries(rows.map((r) => [r.getAttribute("data-path"), r.getAttribute("data-status")]));
     expect(statusOf(cardRows)).toEqual(statusOf(panelRows));
-    expect(statusOf(cardRows)).toEqual({ code_flaw: "not_connected", third_party_event: "connected", blind_spot: "agents_api" });
+    expect(statusOf(cardRows)).toEqual({ code_flaw: "not_connected", third_party_event: "enabled", blind_spot: "agents_api" });
   });
 
   it("lists only what feeds a path here: an unconnected provider is folded into +N possible, never beside a bound one (#1401)", async () => {
@@ -158,7 +163,7 @@ describe("SignalSourcesPanel", () => {
       id: "new_exposure",
       label: "New exposure",
       default_lens: "outside",
-      status: "connected",
+      status: "enabled",
       sources: [
         { provider: "shodan", kind: "pass", event: "A new host or port", bound: true },
         { provider: "gti", kind: "pass", event: "A new host or port", bound: false },
@@ -168,7 +173,7 @@ describe("SignalSourcesPanel", () => {
       id: "credential_leak",
       label: "Credential or secret leak",
       default_lens: "world",
-      status: "connected",
+      status: "enabled",
       sources: [
         { provider: "aikido", kind: "listener", event: "A leaked secret issue", bound: false },
         { provider: "opencti", kind: "listener", event: "A leak", bound: true },
@@ -185,7 +190,7 @@ describe("SignalSourcesPanel", () => {
       id: "new_vulnerability",
       label: "New vulnerability on a running version",
       default_lens: "world",
-      status: "connected",
+      status: "enabled",
       sources: [
         { provider: "opencti", kind: "listener", event: "A new vulnerability", bound: true },
         { provider: "opencti", kind: "pir_playbook", event: "A PIR match", bound: false },

@@ -2663,6 +2663,7 @@
   "Enable to collect enterprise-only metrics: Analytics API and AI Code Tracking.": "Enable to collect enterprise-only metrics: Analytics API and AI Code Tracking.",
   "Enable two-factor": "Enable two-factor",
   "Enabled": "Enabled",
+  "Partly enabled": "Partly enabled",
   "Enabled (idle)": "Enabled (idle)",
   "Enabled tiers are injected into every assignment run and chat message.": "Enabled tiers are injected into every assignment run and chat message.",
   "Enabling the {name} integration": "Enabling the {name} integration",

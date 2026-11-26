@@ -753,7 +753,7 @@ async def test_the_paths_name_their_sources_status_and_30_day_activity(client: A
         await http.post("/api/v1/ctem-signals", json=_body("stale_asset", "manual", "asset", "a"))  # type: ignore[no-untyped-call]
         paths = {p["id"]: p for p in (await http.get("/api/v1/ctem-signals/paths")).json()["paths"]}
     vuln = paths["new_vulnerability"]
-    assert vuln["status"] == "connected" and vuln["description"]
+    assert vuln["status"] == "enabled" and vuln["description"]
     assert {(s["provider"], s["kind"], s["bound"]) for s in vuln["sources"]} == {
         ("opencti", "listener", True),
         ("opencti", "pir_playbook", False),
