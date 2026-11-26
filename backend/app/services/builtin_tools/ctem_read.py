@@ -105,13 +105,18 @@ def opened_by(events: list[Any]) -> dict[str, Any] | None:
 
 
 def empty_sections(
-    rendered: dict[str, Any], running_versions: Any, inventory_sources: list[str] | None = None
+    rendered: dict[str, Any],
+    running_versions: Any,
+    inventory_sources: list[str] | None = None,
+    software_assets: int = 0,
 ) -> dict[str, str]:
     """Why each empty section of a rendered case is empty, keyed by the section.
 
     *inventory_sources*, the imports the asset software came from, are named when an
     upgrade's product runs on no asset: the loop then reads the deployment or asks the
     asset owner with those sources listed, never asks what they already answered (#1736).
+    *software_assets*, the assets the organization software row of the case's product
+    counts: when it is not zero the read failed to match them, which is said (#2450).
     """
     reasons: dict[str, str] = {}
     if not rendered.get("exploitation"):
@@ -129,6 +134,12 @@ def empty_sections(
     if running_versions is None:
         if rendered.get("remediation_kind") != "upgrade":
             reasons["running_versions"] = "only an upgrade case has running versions"
+        elif software_assets > 0:
+            reasons["running_versions"] = (
+                f"the running versions could not be matched: the organization software of this product counts "
+                f"{software_assets} asset(s), but none of its inventory rows matched the case's product. "
+                "The versions are unread, not absent: never conclude that no asset runs it"
+            )
         elif inventory_sources:
             reasons["running_versions"] = (
                 "no asset of the inventory runs this product; inventory sources checked: "
@@ -209,10 +220,11 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                     running = {**running, "history": version_history.history_of(events)}
                 # The asset count agrees with the running versions this read serves (#2225).
                 version_history.with_live_asset_count(rendered, running, at=datetime.now(UTC))
-                sources = (
-                    await case_versions.inventory_sources(db, primary.id)
-                    if running is None and rendered.get("remediation_kind") == "upgrade"
-                    else None
+                unread = running is None and rendered.get("remediation_kind") == "upgrade"
+                sources = await case_versions.inventory_sources(db, primary.id) if unread else None
+                # A software row that counts assets the case matched none of: the match failed (#2450).
+                software_assets = (
+                    await case_versions.software_asset_count(db, primary.id, case.product_label) if unread else 0
                 )
                 from .ctem_signals import case_signal_scope
 
@@ -223,7 +235,7 @@ def build_ctem_read_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "running_versions": running,
                         "opened_by": opened_by(events),
                         "history_total": len(events),
-                        "empty_sections": empty_sections(rendered, running, sources),
+                        "empty_sections": empty_sections(rendered, running, sources, software_assets),
                         "scope": await case_signal_scope(db, scope, view.signals, case_id=case.id),
                     }
                 )
