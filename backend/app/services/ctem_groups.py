@@ -73,25 +73,35 @@ async def _free_name(db: AsyncSession, wanted: str) -> str:
     return name
 
 
+#: Rows per membership insert of the first seed: four bind parameters a row keeps a
+#: statement far under the 32,767 parameters asyncpg accepts, whatever the account count.
+SEED_BATCH_ROWS = 2000
+
+
 async def _all_active_into(db: AsyncSession, group_id: uuid.UUID) -> int:
     ids = (await db.execute(select(User.id).where(User.is_active.is_(True)))).scalars().all()
-    if not ids:
-        return 0
-    inserted = (
-        (
-            await db.execute(
-                pg_insert(GroupMember)
-                .values(
-                    [{"id": uuid.uuid4(), "group_id": group_id, "user_id": uid, "source": SEED_SOURCE} for uid in ids]
+    added = 0
+    for start in range(0, len(ids), SEED_BATCH_ROWS):
+        batch = ids[start : start + SEED_BATCH_ROWS]
+        inserted = (
+            (
+                await db.execute(
+                    pg_insert(GroupMember)
+                    .values(
+                        [
+                            {"id": uuid.uuid4(), "group_id": group_id, "user_id": uid, "source": SEED_SOURCE}
+                            for uid in batch
+                        ]
+                    )
+                    .on_conflict_do_nothing(constraint="uq_group_members_group_user")
+                    .returning(GroupMember.user_id)
                 )
-                .on_conflict_do_nothing(constraint="uq_group_members_group_user")
-                .returning(GroupMember.user_id)
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
-    return len(inserted)
+        added += len(inserted)
+    return added
 
 
 async def seed_ctem_groups(db: AsyncSession, *, platform_mode: str) -> int:
