@@ -406,6 +406,30 @@ export function listSummary(
   return rest > 0 ? `${head}, ${t_i18n("+{count} more", { count: formatCount(locale, rest) })}` : head;
 }
 
+/**
+ * How many names a list tooltip draws before "+N more": a matched asset list can hold thousands,
+ * and a tooltip neither scrolls by keyboard nor leaves the viewport, so the list stays at one screen.
+ */
+const TIP_LIST_NAMES = 20;
+
+/**
+ * The names of a list input, one per line, up to TIP_LIST_NAMES (UX r2 B1 on #2533):
+ * a joined string went through the tooltip's 280-character cut and lost the last names.
+ */
+function NameListTip({ names, testId }: { names: readonly string[]; testId: string }) {
+  const { t_i18n, intl } = useFormatter();
+  const shown = names.slice(0, TIP_LIST_NAMES);
+  const rest = names.length - shown.length;
+  return (
+    <ul className="flex max-w-xs flex-col break-words" data-testid={testId}>
+      {shown.map((name, index) => (
+        <li key={`${index}-${name}`}>{name}</li>
+      ))}
+      {rest > 0 && <li className="text-default-secondary">{t_i18n("+{count} more", { count: formatCount(intl.locale, rest) })}</li>}
+    </ul>
+  );
+}
+
 export function DecisionInputs({ decision, omit = [] }: { decision: CtemDecisionRecord | null | undefined; omit?: readonly string[] }) {
   const { t_i18n, intl } = useFormatter();
   const inputs = decisionInputs(decision, t_i18n).filter((input) => !omit.includes(input.key));
@@ -427,7 +451,7 @@ export function DecisionInputs({ decision, omit = [] }: { decision: CtemDecision
           ) : input.names && input.names.length > LIST_INPUT_NAMES ? (
             // UX r1 B5 on #1995: the count and the first names, every name in the design-system tooltip.
             <dd className="min-w-0" data-testid={`ctem-decision-input-${input.key}`}>
-              <Tip content={input.value}>
+              <Tip content={<NameListTip names={input.names} testId={`ctem-decision-input-tip-${input.key}`} />}>
                 <span className={cn("block truncate", TIP_WRAP_FOCUS_RING)} tabIndex={0}>
                   {listSummary(input.names, intl.locale, t_i18n, input.capped, input.noun)}
                 </span>
