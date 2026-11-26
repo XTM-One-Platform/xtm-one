@@ -12,34 +12,62 @@ import { profileFieldHref } from "@/lib/organization-profile-tabs";
 /** The status labels. @i18n-keys */
 export const PATH_STATUS_LABEL = {
   connected: "Connected",
+  error: "Error",
+  not_set_up: "Not set up",
   off: "Off",
   not_connected: "Not connected",
   agents_api: "Agents and API only",
 } as const satisfies Record<CtemSignalPathStatus, string>;
 
-/** Connected reads healthy, a source left unbound reads medium, a pass turned off and agents-only are neutral: never green. */
+/**
+ * Connected reads healthy, an error reads critical, a source left unbound reads medium, a source not set up,
+ * a pass turned off and agents-only are neutral: never green.
+ */
 export const PATH_STATUS_TONE = {
   connected: "low",
+  error: "critical",
+  not_set_up: "neutral",
   off: "neutral",
   not_connected: "medium",
   agents_api: "neutral",
-} as const satisfies Record<CtemSignalPathStatus, "low" | "medium" | "neutral">;
+} as const satisfies Record<CtemSignalPathStatus, "low" | "medium" | "neutral" | "critical">;
+
+/** The status order of the sort and the filter: connected first, agents-only last. */
+export const PATH_STATUS_ORDER = ["connected", "error", "not_set_up", "off", "not_connected", "agents_api"] as const satisfies readonly CtemSignalPathStatus[];
+
+/** The sources of a path in error, summed over its integrations (#2434). */
+function pathErrorCount(path: Pick<CtemSignalPath, "sources">): number {
+  return (path.sources ?? []).reduce((n, s) => n + (s.error_count ?? 0), 0);
+}
+
+type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+/** A path's status in words; an error says how many sources are in error ("1 source in error"). */
+export function pathStatusLabel(path: Pick<CtemSignalPath, "status" | "sources">, t_i18n: Translate): string {
+  const status = pathStatus(path);
+  const errors = pathErrorCount(path);
+  if (status === "error" && errors > 0) return t_i18n("{count, plural, one {# source in error} other {# sources in error}}", { count: errors });
+  return t_i18n(PATH_STATUS_LABEL[status]);
+}
 
 /**
- * A path's status: the API's when present, else derived from its sources the
- * same way (no source: agents and the API only; one bound: connected; one off: off).
+ * A path's status: the API's when present, else derived from its sources the same way (no source:
+ * agents and the API only; one in error: error; one bound: connected; one not set up: not set up;
+ * one off: off). One status per path, the one its sources say (UX round 1 on #2442, B1).
  */
 export function pathStatus(path: Pick<CtemSignalPath, "status" | "sources">): CtemSignalPathStatus {
   if (path.status) return path.status;
   const sources = path.sources ?? [];
   if (sources.length === 0) return "agents_api";
+  if (sources.some((s) => (s.error_count ?? 0) > 0)) return "error";
   if (sources.some((s) => s.bound)) return "connected";
+  if (sources.some((s) => s.not_set_up)) return "not_set_up";
   return sources.some((s) => s.off) ? "off" : "not_connected";
 }
 
 /** A source taken off this path still counts as connected for its provider: it feeds other paths (#1445). */
 function liveOnPlatform(s: CtemSignalPathSource): boolean {
-  return s.bound || Boolean(s.off) || Boolean(s.available);
+  return s.bound || Boolean(s.off) || Boolean(s.available) || Boolean(s.not_set_up) || (s.error_count ?? 0) > 0;
 }
 
 /**
@@ -55,9 +83,11 @@ export function connectedProviders(paths: readonly Pick<CtemSignalPath, "sources
  * up (its provider is connected, the source itself is not, e.g. the PIR playbook of a connected
  * OpenCTI), or not connected (no integration of its provider here).
  */
-type SourceState = "bound" | "excluded" | "off" | "not_set_up" | "not_connected";
+type SourceState = "error" | "bound" | "excluded" | "off" | "not_set_up" | "not_connected";
 
 export function sourceState(source: CtemSignalPathSource, connected: ReadonlySet<string>): SourceState {
+  // A source XTM One provisions in error on one of its integrations reads Error, as its platform line does (#2442 UX r1 B1).
+  if ((source.error_count ?? 0) > 0) return "error";
   if (source.bound) return "bound";
   if (source.excluded) return "excluded";
   if (source.off) return "off";
