@@ -227,6 +227,7 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
             variant="secondary"
             className="gap-1.5"
             disabled={refresh.isPending}
+            aria-busy={refresh.isPending || undefined}
             onClick={() =>
               refresh.mutate(undefined, {
                 onError: (err) => toast({ title: t_i18n("The PIRs were not refreshed"), description: err.message, variant: "error" }),
@@ -234,7 +235,8 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
             }
             data-testid="settings.organization.intelligence-policy.refresh"
           >
-            {refresh.isPending ? <Spinner size="sm" tone="inherit" /> : <Icon name="refresh-cw" size={16} aria-hidden />} {t_i18n("Refresh now")}
+            {refresh.isPending ? <Spinner size="sm" tone="inherit" label={t_i18n("Refresh now")} /> : <Icon name="refresh-cw" size={16} aria-hidden />}
+            {t_i18n("Refresh now")}
           </Button>
         ) : undefined
       }
@@ -255,6 +257,26 @@ export function OrganizationIntelligencePolicyCard({ id: anchorId, fold }: Props
             columns={columns}
             rowKey={(pir) => pir.id}
             searchFields={(pir) => [pir.name, pir.owner, pir.question, pir.pir_id]}
+            filters={[
+              {
+                key: "enabled",
+                label: "Enabled in signals",
+                values: (pir) => [pir.enabled ? "yes" : "no"],
+                options: [
+                  { value: "yes", label: t_i18n("Yes") },
+                  { value: "no", label: t_i18n("No") },
+                ],
+              },
+              {
+                key: "in_opencti",
+                label: "In OpenCTI",
+                values: (pir) => [pir.gone_at ? "gone" : "listed"],
+                options: [
+                  { value: "listed", label: t_i18n("Listed") },
+                  { value: "gone", label: t_i18n("No longer in OpenCTI") },
+                ],
+              },
+            ]}
             searchPlaceholder={t_i18n("Search a PIR")}
             exportName="intelligence-policy"
             urlKey="oip_"

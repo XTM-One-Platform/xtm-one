@@ -36,8 +36,8 @@ describe("expandable chip lists under pages/settings", () => {
     expect(offenders, "use ExpandableChipList from @/components/ui/expandable-chip-list").toEqual([]);
   });
 
-  it("the regions and the PIRs of Settings > Organization both use it", async () => {
-    for (const name of ["OrganizationSection.tsx", "OrganizationPirs.tsx"]) {
+  it("the regions of Settings > Organization use it (the PIRs are the Intelligence policy table since #2435)", async () => {
+    for (const name of ["OrganizationSection.tsx"]) {
       const source = await readFile(path.join(SETTINGS, name), "utf8");
       expect(source, name).toContain('from "@/components/ui/expandable-chip-list"');
       expect(source, name).toContain("<ExpandableChipList");
