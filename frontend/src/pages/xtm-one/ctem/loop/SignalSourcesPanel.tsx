@@ -94,7 +94,12 @@ function NoSourceOn({ onOpen, className, compact }: { onOpen: () => void; classN
   const tabIndex = useTriggerTabIndex();
   return (
     <span className={cn("flex min-w-0 items-center gap-2", className)} data-testid="ctem-signal-sources-none-on">
-      <span className="min-w-0 truncate text-default-secondary">{t_i18n("No source on: nothing records this path")}</span>
+      {/* Cut at narrow widths: the whole sentence in the DS tooltip (UX round 1 on #2509, B3). */}
+      <Tip content={t_i18n("No source on: nothing records this path")}>
+        <span tabIndex={tabIndex} className="min-w-0 truncate rounded-sm text-default-secondary" data-testid="ctem-signal-sources-none-on-text">
+          {t_i18n("No source on: nothing records this path")}
+        </span>
+      </Tip>
       {!compact && (
       <Button
         variant="ghost"
@@ -189,6 +194,47 @@ function UnusedSources({ sources }: { sources: CtemSignalPathSource[] }) {
   );
 }
 
+/** How many sources a wide row lists before "+N more" (UX round 1 on #2509, B1). */
+const INLINE_SOURCES = 2;
+
+/** The sources past the first ones of a wide row: one muted item, the list with each state in its tooltip. */
+function MoreSources({
+  sources,
+  connected,
+  platform,
+}: {
+  sources: CtemSignalPathSource[];
+  connected: ReadonlySet<string>;
+  platform: readonly CtemPlatformSource[];
+}) {
+  const { t_i18n } = useFormatter();
+  const tabIndex = useTriggerTabIndex();
+  const tip = (
+    <span className="flex flex-col gap-0.5">
+      {sources.map((s) => {
+        const state = sourceDisplayState(s, connected, platform);
+        const word = state in COMPACT_STATE_WORD ? COMPACT_STATE_WORD[state as keyof typeof COMPACT_STATE_WORD] : null;
+        return (
+          <span key={s.key ?? `${s.provider}:${s.kind}`}>
+            {`${sourceName(s)} (${sourceKindText(t_i18n, s)}${word ? `, ${t_i18n(word)}` : ""})`}
+          </span>
+        );
+      })}
+    </span>
+  );
+  return (
+    <Tip content={tip}>
+      <span
+        tabIndex={tabIndex}
+        className="inline-flex shrink-0 items-center rounded-sm content-caption text-default-secondary"
+        data-testid="ctem-signal-sources-more"
+      >
+        {t_i18n("{count, plural, other {+# more}}", { count: sources.length })}
+      </span>
+    </Tip>
+  );
+}
+
 /** The 30-day count with its per-state tooltip; no tab stop of its own inside a row that opens (#1445). */
 function CountCell({ tip, title, label }: { tip: string; title: string; label: string }) {
   const tabIndex = useTriggerTabIndex();
@@ -263,11 +309,16 @@ function SourceList({
   const notUsed = (s: CtemSignalPathSource) => sourceState(s, connected) === "excluded";
   const unused = shown.some((s) => !notUsed(s)) ? shown.filter(notUsed) : [];
   const listed = unused.length > 0 ? shown.filter((s) => !notUsed(s)) : shown;
+  // One line, never a third row height (UX round 1 on #2509, B1): the first sources, then "+N more" with the
+  // whole list in the DS tooltip, as the folded variant does.
+  const inline = listed.slice(0, INLINE_SOURCES);
+  const more = listed.slice(INLINE_SOURCES);
   return (
-    <span className={className ? `${className} flex min-w-0 flex-wrap items-center gap-x-3` : "flex min-w-0 flex-wrap items-center gap-x-3"}>
-      {listed.map((s) => (
+    <span className={cn("flex min-w-0 flex-nowrap items-center gap-x-3 overflow-hidden", className)} data-testid="ctem-signal-sources-line">
+      {inline.map((s) => (
         <SourceItem key={s.key ?? `${s.provider}:${s.kind}`} source={s} connected={connected} platform={platform} />
       ))}
+      {more.length > 0 && <MoreSources sources={more} connected={connected} platform={platform} />}
       {unused.length > 0 && <UnusedSources sources={unused} />}
     </span>
   );

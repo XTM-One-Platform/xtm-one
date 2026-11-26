@@ -240,6 +240,31 @@ describe("SignalSourcesPanel", () => {
     expect(within(row("code_flaw")).getByRole("button", { name: "Connect" })).toBeTruthy();
   });
 
+  it("keeps a path with many sources to one line: the first ones, then +N more (UX round 1 on #2509, B1)", async () => {
+    const many = path({
+      id: "new_exposure",
+      label: "New exposure",
+      default_lens: "outside",
+      status: "enabled",
+      sources: [
+        { provider: "shodan", kind: "pass", event: "A new host or port", bound: true },
+        ...[1, 2, 3, 4].map((n) => ({ provider: "webhook", kind: "webhook" as const, event: "", bound: true, key: `webhook:${n}`, name: `Hook ${n}` })),
+      ],
+    });
+    get.mockResolvedValue({ paths: [many, PATHS[1]] });
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalSourcesPanel />
+      </MemoryRouter>,
+    );
+    const rows = await screen.findAllByTestId("ctem-signal-sources-path");
+    const row = rows.find((r) => r.getAttribute("data-path") === "new_exposure") as HTMLElement;
+    expect(within(row).getAllByTestId("ctem-signal-source")).toHaveLength(2);
+    expect(within(row).getByTestId("ctem-signal-sources-more").textContent).toBe("+3 more");
+    // A folded source is not drawn on the row: it is in the tooltip of "+3 more".
+    expect(within(row).queryByText("Hook 4")).toBeNull();
+  });
+
   it("counts the sources on of the available ones per path, and opens the path's sources from the empty state (#2506)", async () => {
     get.mockResolvedValue({
       paths: [

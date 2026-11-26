@@ -377,7 +377,12 @@ export function SignalPathSourcesSheet({
       cell: (row) => (
         <span className="flex min-w-0 items-center gap-2">
           <ProviderLogo provider={row.source.provider} className="size-4 shrink-0" decorative />
-          <span className="truncate font-medium">{row.name}</span>
+          {/* The full name in the DS tooltip when the cell cuts it (UX round 1 on #2509, B2). */}
+          <Tip content={row.name}>
+            <span className="min-w-0 truncate font-medium" data-testid="ctem-path-source-name">
+              {row.name}
+            </span>
+          </Tip>
         </span>
       ),
     },
@@ -385,6 +390,8 @@ export function SignalPathSourcesSheet({
       key: "kind",
       header: "Kind",
       hideable: true,
+      // Fixed widths on every column but Source, which takes the free width (UX round 1 on #2509, B2).
+      width: 128,
       sortValue: (row) => sourceKindText(t_i18n, row.source),
       csv: (row) => sourceKindText(t_i18n, row.source),
       cell: (row) => <span className="truncate text-default-secondary">{sourceKindText(t_i18n, row.source)}</span>,
@@ -394,6 +401,7 @@ export function SignalPathSourcesSheet({
       header: "Integration",
       hideable: true,
       hideBelow: "4xl",
+      width: 144,
       sortValue: (row) => row.integration,
       csv: (row) => row.integration,
       cell: (row) => <span className="truncate">{row.integration || t_i18n("None")}</span>,
@@ -403,6 +411,7 @@ export function SignalPathSourcesSheet({
       header: "Run as",
       hideable: true,
       hideBelow: "6xl",
+      width: 128,
       sortValue: (row) => row.runAs,
       csv: (row) => row.runAs,
       cell: (row) => (row.runAs ? <RunAsName ids={row.runAs} /> : <span className="text-default-secondary">{t_i18n("None")}</span>),
@@ -410,6 +419,7 @@ export function SignalPathSourcesSheet({
     {
       key: "status",
       header: "Status",
+      width: 136,
       sortValue: (row) => STATE_RANK[row.state],
       csv: (row) => t_i18n(stateLabel(row.state)),
       cell: (row) => <SourceStatus row={row} platformSources={platformSources} />,
@@ -418,6 +428,7 @@ export function SignalPathSourcesSheet({
       key: "count_30d",
       header: "Signals (30 days)",
       align: "right",
+      width: 136,
       hideable: true,
       firstSort: "desc",
       sortValue: (row) => row.source.count_30d ?? 0,
@@ -429,6 +440,7 @@ export function SignalPathSourcesSheet({
       header: "Last signal",
       hideable: true,
       hideBelow: "4xl",
+      width: 136,
       sortValue: (row) => row.source.last_signal_at ?? "",
       csv: (row) => row.source.last_signal_at ?? "",
       cell: (row) =>
@@ -509,10 +521,19 @@ export function SignalPathSourcesSheet({
                 </span>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={onClose} data-testid="ctem-path-sources-close">
-              <Icon name="x" size={16} aria-hidden />
-              {t_i18n("Close")}
-            </Button>
+            {/* The panel's own action sits in its header beside Close, out of the table toolbar (UX round 1 on #2509, B4). */}
+            <span className="flex shrink-0 items-center gap-2">
+              {isAdmin && (
+                <Button variant="secondary" size="sm" onClick={() => setHookDialog({ source: null })} data-testid="ctem-path-source-add-webhook">
+                  <Icon name="plus" size={16} aria-hidden />
+                  {t_i18n("Add a signed webhook")}
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={onClose} data-testid="ctem-path-sources-close">
+                <Icon name="x" size={16} aria-hidden />
+                {t_i18n("Close")}
+              </Button>
+            </span>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-4" data-testid="ctem-path-sources-scroll">
             {!isAdmin && (
@@ -554,14 +575,6 @@ export function SignalPathSourcesSheet({
                       onEnable={setEnabling}
                     />
                   ) : null
-                }
-                toolbar={
-                  isAdmin ? (
-                    <Button variant="secondary" size="sm" onClick={() => setHookDialog({ source: null })} data-testid="ctem-path-source-add-webhook">
-                      <Icon name="plus" size={16} aria-hidden />
-                      {t_i18n("Add a signed webhook")}
-                    </Button>
-                  ) : undefined
                 }
                 emptyLabel={t_i18n("Agents and the API record this path: it has no integration source.")}
                 noResultsLabel={t_i18n("No source matches the search and filters.")}

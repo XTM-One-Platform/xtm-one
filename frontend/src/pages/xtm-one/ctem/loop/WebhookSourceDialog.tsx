@@ -10,6 +10,7 @@
  */
 import { useEffect, useId, useState } from "react";
 import { Textarea } from "@filigran/design-system";
+import { Tip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { CopyIconButton } from "@/components/ui/copy-icon-button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -188,9 +189,11 @@ export function WebhookSourceDialog({
             <div className="flex flex-col gap-2 border-t border-elevation-subtle pt-4 content-compact" data-testid="ctem-webhook-source-receiver">
               <span className="font-medium">{t_i18n("Receiver")}</span>
               <span className="flex min-w-0 items-center gap-2">
-                <code className="min-w-0 truncate" title={current.receiver_url}>
-                  {current.receiver_url}
-                </code>
+                <Tip content={current.receiver_url}>
+                  <code tabIndex={0} className="min-w-0 truncate rounded-sm">
+                    {current.receiver_url}
+                  </code>
+                </Tip>
                 <CopyIconButton value={current.receiver_url} label={t_i18n("Copy the address")} />
               </span>
               <span className="text-default-secondary">
@@ -216,7 +219,7 @@ export function WebhookSourceDialog({
                 <CopyIconButton value={signedRequestExample(current.receiver_url, current.signature_header)} label={t_i18n("Copy the example")} />
               </span>
               <span>
-                <Button variant="secondary" size="sm" onClick={rotateSecret} disabled={busy} data-testid="ctem-webhook-source-rotate">
+                <Button variant="secondary" onClick={rotateSecret} disabled={busy} data-testid="ctem-webhook-source-rotate">
                   {t_i18n("Rotate the secret")}
                 </Button>
               </span>
@@ -229,7 +232,7 @@ export function WebhookSourceDialog({
                 <Textarea id={ids.sample} aria-label={t_i18n("Test the mapping on a sample")} rows={6} value={sample} onChange={(e) => setSample(e.target.value)} className="font-mono" />
               </SettingsField>
               <span className="flex items-center gap-3">
-                <Button variant="secondary" size="sm" onClick={runTest} disabled={test.isPending} data-testid="ctem-webhook-source-run-test">
+                <Button variant="secondary" onClick={runTest} disabled={test.isPending} data-testid="ctem-webhook-source-run-test">
                   {t_i18n("Test")}
                 </Button>
                 {testLine && (
