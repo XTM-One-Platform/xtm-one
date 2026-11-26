@@ -11,6 +11,20 @@ export function ctemMayView(user: Pick<User, "ctem_access"> | null | undefined, 
   return isAdmin || user?.ctem_access === "admin" || user?.ctem_access === "decide" || user?.ctem_access === "view";
 }
 
+/**
+ * Whether the home page is the XTM One command center (#2441): XTM One mode AND a
+ * CTEM right. The command center is CTEM through and through (posture, stages,
+ * cases), so a person without a right gets the mode-neutral home instead, never
+ * widgets that answer 403 or links to pages that send them back home.
+ */
+export function homeIsCtemCommandCenter(
+  xtmOneMode: boolean,
+  user: Pick<User, "ctem_access"> | null | undefined,
+  isAdmin: boolean,
+): boolean {
+  return xtmOneMode && ctemMayView(user, isAdmin);
+}
+
 /** Whether the person may act on system signals and cases: an administrator or a CTEM decide member (#1748). */
 export function ctemMayDecide(user: Pick<User, "ctem_access"> | null | undefined, isAdmin: boolean): boolean {
   return isAdmin || user?.ctem_access === "admin" || user?.ctem_access === "decide";

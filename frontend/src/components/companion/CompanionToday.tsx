@@ -17,7 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * Today - the companion's home: the platform's logo and the account menu, then
  * the platform's own home dashboard for its mode (XTM One's command center, or
  * the Copilot dashboard), the one `/` shows on a computer - which greets the
- * person itself.
+ * person itself. The command center needs a CTEM right (#2441).
  */
 import { Suspense } from "react";
 import { LockKeyhole, LogOut, Smartphone } from "lucide-react";
@@ -29,6 +29,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useInstallApp } from "@/hooks/useInstallApp";
 import { isXtmOneMode, usePlatformConfig, usePlatformLogoUrl, usePlatformName } from "@/hooks/usePlatformConfig";
 import { useFormatter } from "@/i18n";
+import { homeIsCtemCommandCenter } from "@/lib/ctem-access";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 
 const Dashboard = lazyWithRetry(() => import("@/pages/Dashboard"));
@@ -71,11 +72,12 @@ function TodayHeader() {
 
 export function CompanionToday() {
   const platformConfig = usePlatformConfig();
+  const { user, isAdmin } = useAuth();
   return (
     <div className="flex flex-col gap-5">
       <TodayHeader />
       {platformConfig ? (
-        <Suspense fallback={<PageSkeleton cards={3} />}>{isXtmOneMode(platformConfig.platform_mode) ? <XtmOneDashboard /> : <Dashboard />}</Suspense>
+        <Suspense fallback={<PageSkeleton cards={3} />}>{homeIsCtemCommandCenter(isXtmOneMode(platformConfig.platform_mode), user, isAdmin) ? <XtmOneDashboard /> : <Dashboard />}</Suspense>
       ) : (
         <PageSkeleton cards={3} />
       )}

@@ -6,7 +6,7 @@ import { getToken } from "@/lib/api";
 import { rememberReturnPath } from "@/lib/session-return";
 import { termsOfUsePending } from "@/lib/terms-of-use";
 import { useAuth } from "@/hooks/useAuth";
-import { ctemMayView } from "@/lib/ctem-access";
+import { ctemMayView, homeIsCtemCommandCenter } from "@/lib/ctem-access";
 import { useMe } from "@/hooks/api/useAuthApi";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ArcadeProvider } from "@/components/arcade/ArcadeProvider";
@@ -366,9 +366,12 @@ function HomeRoute() {
 }
 
 /* The mode dashboard, or the custom dashboard the person chose instead
- * (`User.home_dashboard_id`): the mode dashboard again when it cannot be read. */
+ * (`User.home_dashboard_id`): the mode dashboard again when it cannot be read.
+ * The XTM One command center is CTEM, so a person without a CTEM right gets the
+ * mode-neutral dashboard (#2441), never CTEM widgets or links that bounce home. */
 function ChosenOrModeDashboard({ homeDashboardId, platformMode }: { homeDashboardId?: string | null; platformMode?: string }) {
-  const modeDashboard = isXtmOneMode(platformMode) ? <XtmOneDashboard /> : <Dashboard />;
+  const { user, isAdmin } = useAuth();
+  const modeDashboard = homeIsCtemCommandCenter(isXtmOneMode(platformMode), user, isAdmin) ? <XtmOneDashboard /> : <Dashboard />;
   if (!homeDashboardId) return modeDashboard;
   return <HomeDashboard dashboardId={homeDashboardId} fallback={modeDashboard} />;
 }
