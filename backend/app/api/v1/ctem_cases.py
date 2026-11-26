@@ -23,6 +23,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_admin
@@ -169,7 +170,15 @@ async def visible_case(
     view of the current generation. *for_update* (#2373): a change locks the case row
     until its commit, so concurrent writes of one case are serialized.
     """
-    found = await store.get_case(db, case_id, organization_id=await _organization_id(db), for_update=for_update)
+    organization_id = await _organization_id(db)
+    try:
+        found = await store.get_case(db, case_id, organization_id=organization_id, for_update=for_update)
+    except DBAPIError as exc:
+        # Another transaction held the case row past the lock timeout (#2517): busy, retryable.
+        if not store.is_lock_wait(exc):
+            raise
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=store.busy_answer(case_id)) from exc
     if found is None:
         return None
     case, rows, events = found
