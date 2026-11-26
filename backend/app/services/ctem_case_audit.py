@@ -400,8 +400,10 @@ def open_wait(events: list[dict[str, Any]], owner: object = None) -> dict[str, A
     One derivation of who (#2452): ``by`` is a person's id whenever the case has
     one to name. A gate whose reason names a person keeps that person; any other
     reason (a role, a policy, the loop's text, none) or a move by the system
-    answers the case *owner*, who receives its decision; ``None`` only on a case
-    with no owner, which the case sweep no longer leaves open.
+    answers the case *owner*, the person accountable for the case; the gate's
+    decision item itself goes to the CTEM deciders (``ctem_access.gate_recipient``),
+    who the owner may not be. ``None`` only on a case with no owner, which the
+    case sweep no longer leaves open.
     """
     wait = _open_wait(events)
     if wait is None or _user_id(wait.get("by")):
