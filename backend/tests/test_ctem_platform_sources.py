@@ -213,7 +213,8 @@ def test_the_opencti_live_listener_source_covers_every_opencti_listener_row():
             continue
         for kind in row.object_types:
             name = kind.split(":")[-1]
-            assert name in wanted or (name == "threat-actor" and "threat-actor-group" in wanted), kind
+            aliases = {"threat-actor": "threat-actor-group", "sighting": "stix-sighting-relationship"}
+            assert name in wanted or aliases.get(name) in wanted, kind
 
 
 async def test_enable_the_opencti_live_listener_provisions_one_trigger(monkeypatch):
@@ -310,6 +311,54 @@ async def test_a_refused_adoption_is_tried_once_and_stays_off(openaev):
 def test_the_analyst_mark_is_not_a_signal_source():
     """The Grouping trigger resumes a waiting run; it records no signal, so it is never migrated."""
     assert all(name != "Analyst review mark" for _slug, name in sources.HOLDER_ASSIGNMENTS)
+
+
+def test_a_sighting_of_a_vulnerability_records_a_routable_signal():
+    """#2434: the former 'Vulnerability sighted' trigger is a listener row of the live source."""
+    from app.services import ctem_signal_listeners as listeners
+    from app.services.ctem_signals import routing_facts
+
+    payload = {
+        "type": "create",
+        "data": {"id": "sighting--1", "type": "sighting", "sighting_of_ref": "vulnerability--9"},
+    }
+    row, fields = listeners.match("opencti", "create", payload)
+    assert (row.trigger_path, row.subject_kind, fields["ref"]) == (
+        "new_vulnerability",
+        "vulnerability",
+        "vulnerability--9",
+    )
+    assert routing_facts(fields["evidence"])["sighted"] is True
+    other = {"type": "create", "data": {"id": "sighting--2", "type": "sighting", "sighting_of_ref": "indicator--1"}}
+    assert listeners.match("opencti", "create", other) is None
+
+
+class SourceDb:
+    def __init__(self, row) -> None:
+        self.row = row
+
+    async def execute(self, _statement):
+        return SimpleNamespace(scalar_one_or_none=lambda: self.row)
+
+
+_HELD = {"status": "provisioned", "trigger_id": "old", "integration_id": str(INTEGRATION)}
+
+
+@pytest.mark.parametrize(
+    "row, state, removable",
+    [
+        (None, _HELD, False),
+        (SimpleNamespace(enabled=False, state={}), _HELD, False),
+        (SimpleNamespace(enabled=True, state={"status": "error", "error": "x"}), _HELD, False),
+        (SimpleNamespace(enabled=True, state={"status": "provisioned", "trigger_id": "new"}), _HELD, True),
+        (None, {"status": "error", "error": "no secret"}, True),
+        (None, {"status": "error", "trigger_id": "old"}, False),
+    ],
+    ids=["no-source", "source-off", "source-in-error", "source-connected", "nothing-held", "held-in-error"],
+)
+async def test_a_holder_s_old_objects_go_only_once_the_source_delivers(row, state, removable):
+    """New before old (#2434): no gap between the holder's objects and the platform source's."""
+    assert await sources.replaced_by_source(SourceDb(row), "opencti", state) is removable
 
 
 def test_the_pir_playbook_source_reads_the_profile_pirs():

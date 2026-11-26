@@ -87,6 +87,7 @@ def _opencti_pir_spec() -> dict[str, Any]:
 LIVE_LISTENER_ENTITY_TYPES: tuple[str, ...] = (
     "Vulnerability",
     "has",
+    "stix-sighting-relationship",
     "Intrusion-Set",
     "Threat-Actor-Group",
     "Threat-Actor-Individual",
@@ -439,7 +440,12 @@ async def adopt_from_assignments(db: Any, *, now: datetime | None = None) -> int
         await db.execute(
             select(Assignment, Agent.slug)
             .join(Agent, Agent.id == Assignment.agent_id)
-            .where(Assignment.trigger_type == "integration_event", Assignment.enabled.is_(True))
+            # platform_event too: the seed moves a work holder onto ctem_signal.recorded (#2434)
+            # before this pass, its old objects kept in its provisioning state.
+            .where(
+                Assignment.trigger_type.in_(("integration_event", "platform_event")),
+                Assignment.enabled.is_(True),
+            )
         )
     ).all()
     adopted = 0
@@ -447,7 +453,7 @@ async def adopt_from_assignments(db: Any, *, now: datetime | None = None) -> int
         if (slug, assignment.name) not in HOLDER_ASSIGNMENTS:
             continue
         config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
-        provider = config.get("provider")
+        provider = config.get("provider") or next((p for p, k in keys.items() if isinstance(config.get(k), dict)), None)
         state = config.get(keys.get(str(provider), ""))
         pair = held_source(provider, state)
         if pair is None or not state.get("integration_id") or assignment.run_as_user_id is None:
@@ -474,6 +480,33 @@ async def adopt_from_assignments(db: Any, *, now: datetime | None = None) -> int
         # One attempt per source: a refusal is shown on the source, never retried in a loop.
         row.state = {**(row.state or {}), "adopted_from": str(assignment.id)}
     return adopted
+
+
+async def replaced_by_source(db: Any, provider: str, state: Any) -> bool:
+    """Whether a holder's old objects (*state*) may go: the platform source of the same
+    integration is on and connected, so removing them loses no delivery (#2434)."""
+    from sqlalchemy import select
+
+    from app.models.ctem_signal_source import CtemSignalSource
+
+    pair = held_source(provider, state)
+    if pair is None:
+        # No object is held (an error before any was created): clearing it loses nothing.
+        return isinstance(state, dict) and bool(state) and not _held(state)
+    try:
+        integration_id = uuid.UUID(str(state.get("integration_id")))
+    except ValueError:
+        return False
+    row = (
+        await db.execute(
+            select(CtemSignalSource).where(
+                CtemSignalSource.provider == pair[0],
+                CtemSignalSource.kind == pair[1],
+                CtemSignalSource.integration_id == integration_id,
+            )
+        )
+    ).scalar_one_or_none()
+    return row is not None and bool(row.enabled) and is_connected(row.state)
 
 
 def to_dict(row: Any) -> dict[str, Any]:

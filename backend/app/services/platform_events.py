@@ -266,6 +266,7 @@ _CTEM_SIGNAL_KEYS = (
     "verdict",
     "case_id",
     "pir_floor_met",
+    "facts",
 )
 _VIDEO_KEYS = (
     "job_kind",
@@ -577,7 +578,8 @@ PLATFORM_EVENTS: dict[str, dict[str, Any]] = {
             "A CTEM signal was seen for the first time (services/ctem_signals.py), after the scope gate gave it "
             "its first verdict; a re-sighting raises nothing. Payload: signal_id, trigger_path, lens, "
             "source_provider, subject_kind, verdict (confirmed, to_validate, watchlist, discarded, or null when "
-            "the gate did not run), case_id, pir_floor_met (a relevant threat's PIR score reached the policy threshold); "
+            "the gate did not run), case_id, pir_floor_met (a PIR score reached the policy threshold), "
+            "facts (kev, epss_high, sighted, software_named, pir_flagged: yes/no); "
             "read the signal with list_ctem_signals signal_id. Heard only when the user the "
             "subscription runs as reads the signal (an administrator, or its recorder; a listener's signal is "
             "an administrator's only)."

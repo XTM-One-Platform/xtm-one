@@ -1398,18 +1398,27 @@ async def maintain(db: Any, *, now: datetime | None = None) -> int:
     from app.models.assignment import Assignment
 
     now = now or datetime.now(UTC)
+    from app.services.ctem_platform_sources import replaced_by_source
+
     rows = (
         await db.execute(
             select(Assignment, Agent)
             .join(Agent, Agent.id == Assignment.agent_id)
-            .where(Assignment.trigger_type == "integration_event")
+            .where(Assignment.trigger_type.in_(("integration_event", "platform_event")))
         )
     ).all()
     changed = 0
     for assignment, agent in rows:
         config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
-        if config.get("provider") != "opencti":
-            continue
+        listening = assignment.trigger_type == "integration_event" and config.get("provider") == "opencti"
+        if not listening:
+            # A holder the seed moved to ctem_signal.recorded (#2434) keeps its old objects
+            # until the platform source of the same integration delivers: new before old.
+            if not isinstance(config.get(STATE_KEY), dict) or not await replaced_by_source(
+                db, "opencti", config[STATE_KEY]
+            ):
+                continue
+            config = {k: v for k, v in config.items() if k != PROVISION_KEY}
         if PROVISION_KEY not in config and STATE_KEY not in config:
             continue
         wants = PROVISION_KEY in config and assignment.enabled
