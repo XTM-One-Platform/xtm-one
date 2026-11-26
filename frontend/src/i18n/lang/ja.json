@@ -21915,5 +21915,13 @@
   "This gate waits for a person: the decision is in their Waiting for you list.": "このゲートは担当者を待っています。判断はその人の「あなたの対応待ち」リストにあります。",
   "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "判定可能にするには、資産上で稼働中のバージョンを読み取るチェック（認証付きスキャンまたはエージェント）を実行してください。",
   "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, other {未読の通知 # 件}}",
-  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, other {あなたを待っている判断 # 件をすべて表示}}"
+  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, other {あなたを待っている判断 # 件をすべて表示}}",
+  "Answer recorded": "回答を記録しました",
+  "Answered: {option} by {person}, {date}.": "回答: {option}（{person}、{date}）",
+  "Answered: {option}, {date}.": "回答: {option}（{date}）",
+  "Change the answer": "回答を変更",
+  "Still waiting for {count, plural, one {# other step} other {# other steps}} to finish.": "ほかの {count, plural, other {# 件のステップ}} の完了を待っています。",
+  "Still waiting: {agent} asks again when there is something new to decide.": "待機中: 新たに決めることがあれば {agent} が再度確認します。",
+  "Still waiting: its agent asks again when there is something new to decide.": "待機中: 新たに決めることがあればエージェントが再度確認します。",
+  "Your answer is recorded; the work item keeps waiting.": "回答を記録しました。作業項目は待機を続けます。"
 }
