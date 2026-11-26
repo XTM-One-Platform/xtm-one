@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import { screen } from "@testing-library/react";
 
-import { MultiSelect } from "@/components/ui/multi-select";
+import { BOUNDED_CHIP_ROW, MultiSelect } from "@/components/ui/multi-select";
 import { renderWithProviders } from "@/testing/providers";
 
 /**
@@ -51,6 +51,20 @@ describe("MultiSelect with a locked option", () => {
     renderWithProviders(<Picker initial={["builtin:in_app"]} />);
     expect(screen.getByRole("combobox", { name: "Notification" })).toHaveAttribute("placeholder", "In XTM One only");
     expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+  });
+
+  it("cuts a long locked value with an ellipsis, its whole label in the shared tooltip (UX r1 B1 of #2428)", () => {
+    renderWithProviders(<Picker initial={["builtin:in_app"]} />);
+    const input = screen.getByRole("combobox", { name: "Notification" });
+    expect(input).toHaveClass("truncate");
+    // The shared Tip is the input's trigger: Radix marks it with its closed state.
+    expect(input).toHaveAttribute("data-state", "closed");
+  });
+
+  it("bounds every chip of a locked row to the field (UX r1 B2 of #2428)", () => {
+    renderWithProviders(<Picker initial={["builtin:in_app", "i1"]} />);
+    const row = screen.getByRole("list", { name: "Notification" });
+    for (const name of BOUNDED_CHIP_ROW.split(" ")) expect(row).toHaveClass(name);
   });
 
   it("keeps a remove control on the other values, never on the locked one", () => {
