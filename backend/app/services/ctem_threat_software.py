@@ -55,10 +55,13 @@ query CtemGateThreatSoftware($from: [String], $first: Int) {
     toTypes: ["Software", "Vulnerability"]
     first: $first
   ) {
-    edges { node { to { ... on Software { name cpe } ... on Vulnerability { id name } } } }
+    edges { node { to { ... on Software { name cpe } ... on Vulnerability { vulnerability_id: id } } } }
   }
 }
 """
+# The Vulnerability fragment reads its id under an alias and never ``name``: sibling inline
+# fragments that share a response key with different nullability (``name`` is ``String!`` on
+# one type and ``String`` on the other) fail OpenCTI's validation (GRAPHQL_VALIDATION_FAILED, #2523).
 
 
 def _targets(relations: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
@@ -67,8 +70,8 @@ def _targets(relations: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], lis
     vulns: list[str] = []
     for rel in relations:
         node = (rel or {}).get("to") or {}
-        if node.get("id"):
-            vid = str(node["id"])
+        if node.get("vulnerability_id"):
+            vid = str(node["vulnerability_id"])
             if vid not in vulns:
                 vulns.append(vid)
         elif node.get("name") or node.get("cpe"):
