@@ -314,6 +314,29 @@ def render_page(
     return "\n".join([head + ".", wrap_untrusted(json.dumps(page, ensure_ascii=False), "organization profile"), tail])
 
 
+def render_rows_page(
+    category: Category, rows: list[Any], *, total: int, query: str = "", offset: int = 0, limit: int = DEFAULT_PAGE
+) -> str:
+    """One page the database already cut (*total* rows match), read like :func:`render_page` (#2443)."""
+    from app.services.content_safety import wrap_untrusted
+
+    scope = f" matching {query.strip()!r}" if query.strip() else ""
+    if not total:
+        return f"Category {category.name} ({category.label}): no row{scope}. Do not guess it."
+    if not rows:
+        return f"Category {category.name} ({category.label}): offset {offset} is past the {total} rows{scope}."
+    nxt = offset + len(rows)
+    tail = (
+        f'More: get_organization_context(category="{category.name}"'
+        + (f", query={query.strip()!r}" if scope else "")
+        + f", offset={nxt}, limit={limit})."
+        if nxt < total
+        else "End of the category."
+    )
+    head = f"Category {category.name} ({category.label}): rows {offset + 1}-{nxt} of {total}{scope}."
+    return "\n".join([head, wrap_untrusted(json.dumps(rows, ensure_ascii=False), "organization profile"), tail])
+
+
 #: The ``field:value`` terms an agent's query on the assets category filters on (#1774): the
 #: CTEM Inventory list's filters (``organization_asset_store``), ``source`` and ``group`` included.
 ASSET_QUERY_FIELDS: tuple[str, ...] = (
