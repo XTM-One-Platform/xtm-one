@@ -349,45 +349,21 @@ _AEV_UI_PATHS: dict[str, str] = {
 }
 
 
-def aev_ui_url(base_url: str, entity_type: str, entity_id: str | None, tenant_id: str = "") -> str:
-    """The OpenAEV UI page of the entity, or ``""`` (#2468).
+def _aev_link(base_url: str, entity_type: str, entity_id: str | None) -> str:
+    """Return a markdown ``Link:`` line for the entity, or ``""``.
 
-    On a tenant-scoped OpenAEV the UI route carries the tenant segment
-    (``{base}/{tenant_id}/admin/scenarios/{id}``), the form OpenAEV itself
-    reports; without a resolved tenant the legacy form. Empty when ``base_url``
-    is empty (never a bare path the chat UI would resolve against its own
-    origin), ``entity_id`` is missing or ``"N/A"``, or ``entity_type`` is not in
-    ``_AEV_UI_PATHS``.
+    Returns an empty string when:
+      * ``base_url`` is empty (never emit a bare path the chat UI would
+        mis-resolve against its own origin);
+      * ``entity_id`` is missing / ``"N/A"``;
+      * ``entity_type`` is not in ``_AEV_UI_PATHS``.
     """
     if not base_url or not entity_id or entity_id == "N/A":
         return ""
     path = _AEV_UI_PATHS.get(entity_type)
     if not path:
         return ""
-    tenant = f"/{quote(tenant_id.strip(), safe='')}" if tenant_id and tenant_id.strip() else ""
-    return f"{base_url.rstrip('/')}{tenant}{path}/{entity_id}"
-
-
-def _aev_link(base_url: str, entity_type: str, entity_id: str | None, tenant_id: str = "") -> str:
-    """Return a markdown ``Link:`` line for the entity (:func:`aev_ui_url`), or ``""``."""
-    url = aev_ui_url(base_url, entity_type, entity_id, tenant_id)
-    return f"  Link: [Open in OpenAEV]({url})" if url else ""
-
-
-async def ui_tenant_id(headers: Any) -> str:
-    """The tenant the tool set's calls go to, for its UI links (#2468); ``""`` when none or unresolved.
-
-    Same resolver as :func:`_scope_path`: headers without one (a bare collector) are unscoped.
-    """
-    resolver = getattr(headers, "tenant_scope", None)
-    if resolver is None:
-        return ""
-    try:
-        scope = await resolver.tenant_scope()
-    except Exception:  # a link without the tenant beats no answer
-        logger.debug("OpenAEV tenant unreadable for a UI link", exc_info=True)
-        return ""
-    return "" if scope.error else (scope.tenant_id or "")
+    return f"  Link: [Open in OpenAEV]({base_url}{path}/{entity_id})"
 
 # ---------------------------------------------------------------------------
 # Scenario / payload enums (matching OpenAEV API constants)
@@ -1212,6 +1188,14 @@ EXPECTATION_TYPES = [
 #: ARTICLE / CHALLENGE are fulfilled by people, not products, so they never
 #: carry a platform scope.
 TECHNICAL_EXPECTATION_TYPES = ["PREVENTION", "DETECTION", "VULNERABILITY"]
+
+#: The expectation types a payload (threat arsenal action) accepts. OpenAEV's
+#: ``PayloadService`` maps only DETECTION, PREVENTION, LOGGING and VULNERABILITY
+#: and answers 400 "Unsupported expectation type" for anything else; LOGGING is
+#: behind the ``LOGGING_EXPECTATION`` preview flag, so it is not offered. Human
+#: expectations (MANUAL / ARTICLE / CHALLENGE) belong to the manual, email and
+#: challenge inject contracts, never to a payload.
+PAYLOAD_EXPECTATION_TYPES = ["PREVENTION", "DETECTION", "VULNERABILITY"]
 
 #: ``SecurityPlatform.SECURITY_PLATFORM_TYPE`` - the product families an
 #: expectation can be scoped to. Empty scope for a given expectation means
@@ -2371,11 +2355,11 @@ def _fmt_attack_pattern(ap: dict) -> str:
     return "\n".join(lines)
 
 
-def _fmt_scenario(s: dict, base_url: str = "", tenant_id: str = "") -> str:
+def _fmt_scenario(s: dict, base_url: str = "") -> str:
     scenario_id = s.get("scenario_id", "N/A")
     lines = [f"[Scenario] {s.get('scenario_name', '?')}"]
     lines.append(f"  ID: {scenario_id}")
-    link = _aev_link(base_url, "scenario", scenario_id, tenant_id)
+    link = _aev_link(base_url, "scenario", scenario_id)
     if link:
         lines.append(link)
     if s.get("scenario_description"):
@@ -3207,6 +3191,7 @@ __all__ = [
     "FILTER_MODES",
     "FILTER_OPERATORS",
     "JSON_READ_CHARS",
+    "PAYLOAD_EXPECTATION_TYPES",
     "PAYLOAD_TYPES",
     "PLATFORMS",
     "REPORTING_CONTEXT_TYPES",

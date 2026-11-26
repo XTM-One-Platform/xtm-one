@@ -8762,6 +8762,7 @@
   "Recommendation": "推奨事項",
   "Critical": "重大",
   "Passed": "合格",
+  "Passed, not conclusive": "合格（判定不能）",
   "Needs immediate action": "ただちに対応が必要",
   "Should be reviewed": "確認が必要",
   "For your information": "参考情報",
@@ -20098,6 +20099,7 @@
   "Escalated: SLA breached": "エスカレーション: SLA 超過",
   "Stalled: waiting on nobody": "停滞: 誰も対応していません",
   "Not exposed": "露出なし",
+  "Not exposed, not conclusive": "露出なし（判定不能）",
   "Reopened: re-test failed": "再オープン: 再テスト失敗",
   "Closed on passing re-test": "再テスト合格でクローズ",
   "Escalated": "エスカレーション",
@@ -21899,6 +21901,7 @@
   "The PIRs could not be read: {reason}": "PIR を読み取れませんでした: {reason}",
   "{enabled, plural, one {# PIR enabled in signals} other {# PIRs enabled in signals}} of {total}": "{total} 件中 {enabled, plural, other {# 件の PIR がシグナルで有効}}",
   "No PIR yet. The PIRs of every connected OpenCTI appear here after the next refresh.": "PIR はまだありません。接続されたすべての OpenCTI の PIR は次回の更新後にここに表示されます。",
+  "{integration}: the PIRs could not be read. {reason}": "{integration}: PIR を読み取れませんでした。{reason}",
   "PIR policy: {name}": "PIR ポリシー: {name}",
   "The question this PIR answers, who owns it, its minimum score and whether it drives signals. OpenCTI keeps the PIR itself.": "この PIR が答える質問、担当者、最小スコア、シグナルを発生させるかどうか。PIR 自体は OpenCTI が保持します。",
   "PIR policy saved": "PIR ポリシーを保存しました",
@@ -21913,7 +21916,5 @@
   "The PIR policy was not saved: {reason}": "PIR ポリシーは保存されませんでした: {reason}",
   "In OpenCTI": "OpenCTI 内",
   "Listed": "掲載中",
-  "Open scenario": "シナリオを開く",
-  "{total, plural, one {Not playable: {missing} of # technique has no payload} other {Not playable: {missing} of # techniques have no payload}}": "{total, plural, other {実行不可: # 件のテクニックのうち {missing} 件にペイロードがありません}}",
-  "Recorded the validation scenario": "検証シナリオを記録しました"
+  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "判定可能にするには、資産上で稼働中のバージョンを読み取るチェック（認証付きスキャンまたはエージェント）を実行してください。"
 }
