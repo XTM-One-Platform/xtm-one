@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""#1337: the read-only ``ctem_read`` group, bound on any agent."""
+"""#1337, #2443: the CTEM reads, now served by the one ``ctem`` group (former ``ctem_read`` id)."""
 
 from __future__ import annotations
 
@@ -27,14 +27,15 @@ from app.core.config import settings
 from app.models.ctem_case import CtemCaseEvent
 from app.services import ctem_case_versions
 from app.services.builtin_tool_groups import BUILTIN_TOOL_GROUPS
+from app.services.builtin_tool_aliases import canonical_builtin_selection, current_group_id, runtime_builtin_tool_ids
 from app.services.builtin_tools import (
     AGENT_KEYED_BUILTIN_TOOL_IDS,
-    CTEM_READ_TOOL_NAMES,
-    build_ctem_read_tools,
-    ctem_read_tools_for,
-    offers_ctem_read_tools,
+    build_ctem_tools,
+    ctem_tools_for,
+    offers_ctem_tools,
 )
-from app.services.builtin_tools.ctem_read import asset_page, empty_sections, opened_by
+from app.services.builtin_tools.ctem_read import empty_sections, opened_by
+from app.services.organization_inventory_query import compact_asset
 from app.services.builtin_tools.ctem_signals import _since
 from app.services.ctem_signals import provider_name, to_dict
 from app.tools.base import ToolCall
@@ -52,101 +53,53 @@ def _custom_agent(**kw: Any) -> Any:
     )
 
 
-def test_the_group_is_registered_agent_keyed_and_writes_nothing() -> None:
-    group = next(g for g in BUILTIN_TOOL_GROUPS if g.id == "ctem_read")
-    assert group.agent_keyed and not group.bind_admin_only
-    assert "ctem_read" in AGENT_KEYED_BUILTIN_TOOL_IDS
-    defs, _ = build_ctem_read_tools(user_id="", agent_id="")
-    assert tuple(d.name for d in defs) == CTEM_READ_TOOL_NAMES
-    assert not any(d.name.startswith(("record_", "create_", "update_", "decide_", "sync_")) for d in defs)
+def test_the_former_read_and_repair_ids_are_renamed_into_ctem() -> None:
+    """#2443: one CTEM group; the former ids stay accepted and resolve to it."""
+    assert current_group_id("ctem_read") == "ctem" and current_group_id("ctem_repair") == "ctem"
+    assert not {"ctem_read", "ctem_repair"} & {g.id for g in BUILTIN_TOOL_GROUPS}
+    assert canonical_builtin_selection(["ctem_read", "ctem_repair", "web"], {"ctem_read": ["get_ctem_case"]}) == (
+        ["ctem", "web"],
+        {"ctem": ["get_ctem_case"]},
+    )
+    assert "ctem" in AGENT_KEYED_BUILTIN_TOOL_IDS
 
 
-def test_offered_when_bound_in_xtm_one_mode_only(monkeypatch: pytest.MonkeyPatch, xtm_one: None) -> None:
-    assert offers_ctem_read_tools(["web_fetch", "ctem_read"])
-    assert not offers_ctem_read_tools(["web_fetch"])
-    assert not offers_ctem_read_tools(None)
-    monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: True), raising=False)
-    assert not offers_ctem_read_tools(["ctem_read"])
+def test_the_ctem_group_serves_the_enriched_case_read_and_the_passes(xtm_one: None) -> None:
+    """#2443: the enriched get_ctem_case and the passes read moved into ctem; list_ctem_assets is gone."""
+    defs, executor = build_ctem_tools(user_id="", agent_id="")
+    names = [d.name for d in defs]
+    assert names.count("get_ctem_case") == 1
+    assert "list_ctem_attack_surface_passes" in names
+    assert "list_ctem_assets" not in names
+    assert not any(n.startswith("repair_ctem_") for n in names)
+    get = next(d for d in defs if d.name == "get_ctem_case")
+    assert "who opened it" in get.description and get.source == "builtin:ctem"
+    assert executor.handler("list_ctem_attack_surface_passes") is not None
 
 
-def test_a_custom_agent_bound_to_the_group_gets_the_three_reads(xtm_one: None) -> None:
-    wired = ctem_read_tools_for(_custom_agent(), ["ctem_read"], user_id=str(uuid.uuid4()))
-    assert wired is not None
-    assert tuple(d.name for d in wired[0]) == CTEM_READ_TOOL_NAMES
+def test_a_former_ctem_read_binding_wires_the_ctem_group(xtm_one: None) -> None:
+    ids = runtime_builtin_tool_ids(["ctem_read"], None)
+    assert offers_ctem_tools(ids)
+    wired = ctem_tools_for(_custom_agent(), ids, user_id=str(uuid.uuid4()))
+    assert wired is not None and "get_ctem_case" in {d.name for d in wired[0]}
 
 
-def test_not_wired_without_a_person_or_without_the_binding(xtm_one: None) -> None:
-    assert ctem_read_tools_for(_custom_agent(), ["ctem_read"], user_id="") is None
-    assert ctem_read_tools_for(_custom_agent(), ["web_fetch"], user_id=str(uuid.uuid4())) is None
-
-
-def test_a_ctem_agent_is_never_offered_a_function_twice(xtm_one: None) -> None:
-    # Carries the signal tools, not the case tools: the group adds the case reads only.
-    triage = _custom_agent(slug="ctem-vuln-triage-analyst", builtin=True)
-    wired = ctem_read_tools_for(triage, ["ctem_read"], user_id=str(uuid.uuid4()))
-    assert wired is not None
-    defs, executor = wired
-    assert [d.name for d in defs] == ["list_ctem_cases", "get_ctem_case", "list_ctem_assets"]
-    assert executor.handler("list_ctem_signals") is None
-    # Carries both: only the inventory read is added (#1782).
-    orchestrator = _custom_agent(slug="ctem-vuln-prioritization-orchestrator", builtin=True)
-    wired = ctem_read_tools_for(orchestrator, ["ctem_read"], user_id=str(uuid.uuid4()))
-    assert wired is not None
-    assert [d.name for d in wired[0]] == ["list_ctem_assets"]
-
-
-def test_the_asset_page_carries_the_counts_by_source_and_category() -> None:
-    """#1782: the inventory read answers the page, its next offset and the counts of the same filters."""
-    page = {
-        "items": [{"id": "a1", "name": "web-01", "sources": ["openaev"], "records": [{"source": "openaev"}]}],
-        "total": 3,
-        "offset": 0,
-        "limit": 1,
-    }
-    facets = {
-        "source": [{"value": "openaev", "count": 2}, {"value": "intune", "count": 1}],
-        "category": [{"value": "endpoint", "count": 3}],
-    }
-    body = asset_page(page, facets)
-    assert body["total"] == 3 and body["next_offset"] == 1
-    assert body["by_source"]["openaev"] == {"name": "OpenAEV", "assets": 2}
-    assert body["by_source"]["intune"] == {"name": "intune", "assets": 1}
-    assert body["by_category"] == {"endpoint": 3}
-    assert "records" not in body["assets"][0]
-    assert asset_page({**page, "total": 1}, {})["next_offset"] is None
-
-
-def test_an_asset_names_the_id_its_source_knows() -> None:
-    """#2385: the module tools take the source's external_id, so the page keeps it and no other record field."""
-    record = {"source": "openaev", "external_id": "E1", "id": "R1", "name": "web-01"}
-    page = {"items": [{"id": "a1", "records": [record]}], "total": 1, "offset": 0, "limit": 50}
-    asset = asset_page(page, {})["assets"][0]
-    assert asset["source_ids"] == [{"source": "openaev", "external_id": "E1"}]
-    assert "records" not in asset and "R1" not in str(asset)
-
-
-def test_an_asset_of_two_sources_lists_both_ids() -> None:
-    """#2385: a merged asset names the id of each source, once."""
+def test_a_search_row_names_the_id_its_source_knows() -> None:
+    """#2385, carried from list_ctem_assets into search_assets: the module tools take the source's external_id."""
     records = [
-        {"source": "openaev", "external_id": "E1"},
+        {"source": "openaev", "external_id": "E1", "id": "R1"},
         {"source": "opencti", "external_id": "C9"},
         {"source": "openaev", "external_id": "E1"},
         {"source": "intune"},
     ]
-    page = {"items": [{"id": "a1", "records": records}], "total": 1, "offset": 0, "limit": 50}
-    assert asset_page(page, {})["assets"][0]["source_ids"] == [
+    asset = compact_asset({"id": "a1", "records": records})
+    assert asset["source_ids"] == [
         {"source": "openaev", "external_id": "E1"},
         {"source": "opencti", "external_id": "C9"},
     ]
+    assert "records" not in asset and "R1" not in str(asset)
+    assert compact_asset({"id": "a2"}) == {"id": "a2"}
 
-
-def test_the_inventory_tool_says_which_id_a_module_takes() -> None:
-    """#2385: the description tells the inventory id from the source's external_id."""
-    import inspect
-
-    from app.services.builtin_tools import ctem_read
-
-    assert "Module tools take source_ids.external_id, not id." in inspect.getsource(ctem_read)
 
 
 def test_a_signal_names_its_provider_product() -> None:
@@ -245,7 +198,7 @@ def read(env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespa
     monkeypatch.setattr(ctem_case_versions, "inventory_sources", _sources)
 
     def _for(user_id: str) -> Any:
-        _, executor = build_ctem_read_tools(user_id=user_id, agent_id=AGENT)
+        _, executor = build_ctem_tools(user_id=user_id, agent_id=AGENT)
 
         async def call(name: str, **args: Any) -> str:
             result = await executor.execute_tool(ToolCall(id="r1", name=name, arguments=args))

@@ -160,7 +160,32 @@ async def search_assets(
     size, start = _limit(limit), _offset(offset)
     found = await store.list_assets(db, organization_id, q=str(query or ""), offset=start, limit=size, filters=wanted)
     held = await store.held_values(db, organization_id, wanted) if not found.total and wanted else None
-    return page(list(found.items), total=found.total, offset=start, limit=size, **({"held": held} if held else {}))
+    items = [compact_asset(item) for item in found.items]
+    return page(items, total=found.total, offset=start, limit=size, **({"held": held} if held else {}))
+
+
+def source_ids(records: Any) -> list[dict[str, str]]:
+    """Each source's own id of an asset (#2385): the id a module tool takes, never the inventory id."""
+    pairs: list[dict[str, str]] = []
+    for record in records or []:
+        if not isinstance(record, dict):
+            continue
+        pair = {
+            "source": str(record.get("source") or "").strip(),
+            "external_id": str(record.get("external_id") or "").strip(),
+        }
+        if pair["source"] and pair["external_id"] and pair not in pairs:
+            pairs.append(pair)
+    return pairs
+
+
+def compact_asset(item: Any) -> Any:
+    """A search row without its source records, their (source, external_id) pairs kept (#2385, from list_ctem_assets)."""
+    if not isinstance(item, dict) or "records" not in item:
+        return item
+    compact = {k: v for k, v in item.items() if k != "records"}
+    compact["source_ids"] = source_ids(item.get("records"))
+    return compact
 
 
 async def get_asset(

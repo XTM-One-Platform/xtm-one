@@ -76,7 +76,8 @@ def test_threat_activity_flagged_in_a_pir_has_one_owner() -> None:
 
 def test_posture_role_reads_the_cases() -> None:
     agent = next(a for a in ba.BUILTIN_AGENTS if a["slug"] == ba.CTEM_POSTURE_ORCHESTRATOR_SLUG)
-    assert "ctem_read" in agent["builtin_tool_ids"]
+    assert "ctem" in agent["builtin_tool_ids"]
+    assert "ctem_read" not in agent["builtin_tool_ids"]
     assert "posture and reporting fleet" not in agent["persona"]
     assert "CTEM loop" in agent["persona"]
 

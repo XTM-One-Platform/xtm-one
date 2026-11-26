@@ -2419,9 +2419,9 @@ BUILTIN_AGENTS.append(
             "opencti-dashboard-widget-creator": "consult",
         },
         # shared_state: the refresh debounce and the fleets' counters
-        # (``ctem:fN:state``); ctem_read: the CTEM cases the board report
-        # counts (#1832), read-only.
-        "builtin_tool_ids": ["shared_state", "ctem_read"],
+        # (``ctem:fN:state``); ctem: the CTEM cases the board report counts
+        # (#1832), within the acting person's CTEM right (one CTEM group, #2443).
+        "builtin_tool_ids": ["shared_state", "ctem"],
         "integration_template_bindings": ["opencti", "openaev", "opencrq"],
         "memory_short_term_enabled": True,
         "memory_medium_term_enabled": False,

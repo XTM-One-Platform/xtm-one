@@ -269,19 +269,8 @@ def build_builtin_tool_member_catalog(*, include_disabled: bool = False) -> dict
     ua_defs, _ = build_user_admin_tools(user_id=None, caller_is_admin=False)
     catalog["user_admin"] = _extract(ua_defs)
 
-    # Read-only CTEM signals and cases (#1337), from the real builder.
-    from app.services.builtin_tools import build_ctem_read_tools
-
-    cr_defs, _ = build_ctem_read_tools(user_id="", agent_id="")
-    catalog["ctem_read"] = _extract(cr_defs)
-
-    # CTEM administrator repairs (#1778), from the real builder.
-    from app.services.builtin_tools import build_ctem_repair_tools
-
-    crp_defs, _ = build_ctem_repair_tools(user_id="")
-    catalog["ctem_repair"] = _extract(crp_defs)
-
-    # CTEM signal and case tools on any agent (#1748), from the real builder.
+    # CTEM signal and case tools on any agent (#1748), from the real builder; the
+    # former ctem_read / ctem_repair groups are renamed into it (#2443).
     from app.services.builtin_tools import build_ctem_tools
 
     ctem_defs, _ = build_ctem_tools(user_id="", agent_id="")
