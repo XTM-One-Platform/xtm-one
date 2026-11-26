@@ -598,6 +598,7 @@ export function ParametersCard({
               value={organizationContextMode}
               agentMode={agent?.organization_context_mode ?? "inherit"}
               onChange={setOrganizationContextMode}
+              fullWidth={false}
             />
 
             <div className="border-t border-elevation-subtle-soft" />

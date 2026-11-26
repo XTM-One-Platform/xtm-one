@@ -55,12 +55,18 @@ export function OrganizationContextModeSelect({
   value,
   agentMode,
   onChange,
+  fullWidth = true,
 }: {
   scope: "agent" | "assignment";
   value: OrganizationContextMode;
   /** The agent's own mode, for an assignment: what Inherit falls back to first. */
   agentMode?: OrganizationContextMode;
   onChange: (mode: OrganizationContextMode) => void;
+  /**
+   * Stretch the trigger to its cell (the agent General selects row). False keeps
+   * the content width of the other selects of the host form (assignment Parameters).
+   */
+  fullWidth?: boolean;
 }) {
   const { t_i18n } = useFormatter();
   const id = useId();
@@ -76,7 +82,7 @@ export function OrganizationContextModeSelect({
         helper={t_i18n("A short summary of the organization profile at the top of the prompt. In effect: {effective}.", { effective })}
       >
         <Select value={value} onValueChange={(v) => onChange(v as OrganizationContextMode)}>
-          <SelectTrigger id={id} className="w-full" aria-describedby={settingsFieldHintId(id)}>
+          <SelectTrigger id={id} className={fullWidth ? "w-full" : undefined} aria-describedby={settingsFieldHintId(id)}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
