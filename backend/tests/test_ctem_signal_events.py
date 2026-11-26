@@ -223,8 +223,16 @@ async def test_filters_match_on_routing_fields(world):
 
 
 @pytest.mark.asyncio
-async def test_user_reads_signal_is_admin_or_recorder():
-    recorder, admin, other = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+async def test_user_reads_signal_is_admin_or_a_ctem_right(monkeypatch):
+    """#2441: an administrator or a CTEM view or decide right reads a signal; recording it grants nothing."""
+    from app.services import ctem_access
+
+    recorder, admin, viewer = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+
+    async def _right(_db, user_id):
+        return "view" if str(user_id) == str(viewer) else None
+
+    monkeypatch.setattr(ctem_access, "group_right", _right)
 
     def db_for(recorded_by):
         class _Result:
@@ -241,9 +249,9 @@ async def test_user_reads_signal_is_admin_or_recorder():
         return _Db()
 
     sid = uuid.uuid4()
-    assert await signals.user_reads_signal(db_for(str(recorder)), str(recorder), sid) is True
-    assert await signals.user_reads_signal(db_for(str(recorder)), str(other), sid) is False
-    assert await signals.user_reads_signal(db_for("system"), str(other), sid) is False
+    assert await signals.user_reads_signal(db_for(str(recorder)), str(recorder), sid) is False
+    assert await signals.user_reads_signal(db_for(str(recorder)), str(viewer), sid) is True
+    assert await signals.user_reads_signal(db_for("system"), str(viewer), sid) is True
     assert await signals.user_reads_signal(db_for("system"), str(admin), sid) is True
     assert await signals.user_reads_signal(db_for(None), str(admin), sid) is False
     assert await signals.user_reads_signal(db_for("system"), "not-a-uuid", sid) is False

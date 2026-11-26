@@ -2,6 +2,9 @@
 
 """CTEM rights granted to a group (#1748): view reads the organization, decide also acts.
 
+Since #2441 a person with no right has no CTEM at all: 403 on the API, no own
+signals, no CTEM tool or event.
+
 Covers ``services/ctem_access.py`` (the one reader), the signal API (list, read,
 triage), the signal tool reach and the event delivery rule. The group
 membership query is replaced by a dict of rights per user.
@@ -149,9 +152,18 @@ async def test_levels_by_right() -> None:
     assert await ctem_access.reads_organization(db, VIEWER) is True
     assert await ctem_access.may_decide(db, VIEWER) is False
     assert await ctem_access.may_decide(db, DECIDER) is True
-    assert await ctem_access.signal_reader(db, NOBODY) == NOBODY
-    assert await ctem_access.signal_writer(db, VIEWER) == VIEWER
+    with pytest.raises(ctem_access.NoCtemAccessError):
+        await ctem_access.signal_reader(db, NOBODY)
+    with pytest.raises(PermissionError):
+        await ctem_access.signal_writer(db, VIEWER)
+    with pytest.raises(ctem_access.NoCtemAccessError):
+        await ctem_access.signal_writer(db, NOBODY)
     assert await ctem_access.signal_writer(db, DECIDER) is None
+    assert await ctem_access.refusal(db, NOBODY, write=False) == ctem_access.NO_ACCESS_MESSAGE
+    assert await ctem_access.refusal(db, VIEWER, write=False) is None
+    assert await ctem_access.refusal(db, VIEWER, write=True) == ctem_access.VIEW_ONLY_MESSAGE
+    assert await ctem_access.refusal(db, DECIDER, write=True) is None
+    assert await ctem_access.refusal(db, ADMIN, write=True) is None
 
 
 async def test_the_strongest_group_right_wins(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -184,8 +196,8 @@ async def test_an_unreadable_membership_is_no_right(monkeypatch: pytest.MonkeyPa
 # Stable ids: the users are random per process, and pytest-xdist workers must collect the same names.
 @pytest.mark.parametrize(
     ("user", "seen"),
-    [(ADMIN, 3), (VIEWER, 3), (DECIDER, 3), (NOBODY, 1)],
-    ids=["admin", "view", "decide", "none"],
+    [(ADMIN, 3), (VIEWER, 3), (DECIDER, 3)],
+    ids=["admin", "view", "decide"],
 )
 async def test_view_and_decide_read_the_system_signals(client: httpx.AsyncClient, user: str, seen: int) -> None:
     response = await client.get("/api/v1/ctem-signals", headers={"X-User": user})
@@ -193,11 +205,13 @@ async def test_view_and_decide_read_the_system_signals(client: httpx.AsyncClient
     assert response.json()["total"] == seen
 
 
-async def test_without_a_right_a_system_signal_is_a_404(client: httpx.AsyncClient, store: _Store) -> None:
-    system = store.rows[0]
-    refused = await client.get(f"/api/v1/ctem-signals/{system.id}", headers={"X-User": NOBODY})
-    assert refused.status_code == 404
-    read = await client.get(f"/api/v1/ctem-signals/{system.id}", headers={"X-User": VIEWER})
+async def test_without_a_right_every_signal_route_is_a_403(client: httpx.AsyncClient, store: _Store) -> None:
+    own = store.rows[2]  # recorded by NOBODY: no own-signals fallback any more (#2441)
+    for path in ("/api/v1/ctem-signals", f"/api/v1/ctem-signals/{own.id}"):
+        refused = await client.get(path, headers={"X-User": NOBODY})
+        assert refused.status_code == 403
+        assert refused.json()["detail"] == ctem_access.NO_ACCESS_MESSAGE
+    read = await client.get(f"/api/v1/ctem-signals/{store.rows[0].id}", headers={"X-User": VIEWER})
     assert read.status_code == 200
 
 
@@ -216,11 +230,11 @@ async def test_decide_triages_the_system_signals(client: httpx.AsyncClient, stor
     assert store.triaged and store.triaged[0][1] == "dismiss"
 
 
-async def test_without_a_right_triage_reaches_own_signals_only(client: httpx.AsyncClient, store: _Store) -> None:
+async def test_without_a_right_triage_is_a_403(client: httpx.AsyncClient, store: _Store) -> None:
     body = {"action": "dismiss", "filter": {"state": "to_validate"}}
     response = await client.post("/api/v1/ctem-signals/triage", json=body, headers={"X-User": NOBODY})
-    assert response.status_code == 200
-    assert response.json()["matched"] == 1
+    assert response.status_code == 403
+    assert store.triaged == []
 
 
 # --- agent tool reach and event delivery ----------------------------------------------------
@@ -242,7 +256,7 @@ async def test_an_agent_of_a_view_member_lists_the_system_signals(
     monkeypatch.setattr("app.services.organizations.get_primary", _primary)
     monkeypatch.setattr("app.api.v1.helpers.agent_tool_admin_bypass", lambda user: bool(user and user.is_admin))
 
-    for user, total, applied in ((VIEWER, 3, "organization"), (NOBODY, 1, "own")):
+    for user, total, applied in ((VIEWER, 3, "organization"),):
         _, executor = build_ctem_signal_tools(user_id=user)
         result = await executor.execute_tool(ToolCall(id="c", name="list_ctem_signals", arguments={}))
         body = json.loads(result.content)
@@ -268,3 +282,54 @@ async def test_a_system_signal_event_reaches_a_member_with_a_right_only(monkeypa
     assert await signals.user_reads_signal(db, DECIDER, sid) is True
     assert await signals.user_reads_signal(db, ADMIN, sid) is True
     assert await signals.user_reads_signal(db, NOBODY, sid) is False
+
+
+async def test_an_own_signal_event_no_longer_reaches_a_person_without_a_right() -> None:
+    class _Scalar:
+        def scalar_one_or_none(self) -> str:
+            return NOBODY
+
+    class _EventDb(_Db):
+        async def execute(self, _statement: Any) -> Any:
+            return _Scalar()
+
+    db: Any = _EventDb()
+    assert await signals.user_reads_signal(db, NOBODY, uuid.uuid4()) is False
+
+
+# --- tools and triggers offered only with a right (#2441) -------------------------------------
+
+
+async def test_ctem_tools_are_wired_only_with_a_right(monkeypatch: pytest.MonkeyPatch) -> None:
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _session() -> Any:
+        yield _Db()
+
+    monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: False), raising=False)
+    monkeypatch.setattr("app.core.database.async_session", _session)
+    assert await ctem_access.wires_ctem(VIEWER) is True
+    assert await ctem_access.wires_ctem(DECIDER) is True
+    assert await ctem_access.wires_ctem(ADMIN) is True
+    assert await ctem_access.wires_ctem(NOBODY) is False
+    assert await ctem_access.wires_ctem(None) is False
+
+
+async def test_ctem_events_are_offered_and_saved_only_with_a_right(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import platform_events
+
+    names = {e["event"] for e in platform_events.catalog(ctem=False)}
+    assert "ctem_signal.recorded" not in names and "ctem_case.opened" not in names
+    assert "timer.due" in names
+    assert "ctem_signal.recorded" in {e["event"] for e in platform_events.catalog()}
+
+    async def _wires(user_id: Any) -> bool:
+        return str(user_id) != NOBODY
+
+    monkeypatch.setattr(ctem_access, "wires_ctem", _wires)
+    config = {"event": "ctem_signal.recorded"}
+    assert await platform_events.ctem_event_error("platform_event", config, NOBODY) is not None
+    assert await platform_events.ctem_event_error("platform_event", config, VIEWER) is None
+    assert await platform_events.ctem_event_error("platform_event", {"event": "timer.due"}, NOBODY) is None
+    assert await platform_events.ctem_event_error("schedule", config, NOBODY) is None

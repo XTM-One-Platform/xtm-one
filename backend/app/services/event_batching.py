@@ -68,6 +68,10 @@ SPLIT_CONFIG = "batch_split"
 REMAINDER_CONTEXT = "batch_remainder_run_id"
 #: ``trigger_context`` key of the batch run a remainder run was split from.
 SPLIT_FROM_CONTEXT = "batch_split_from_run_id"
+#: Events a waiting batch lists once per object (``object_type`` and ``object_id``): a second
+#: ``ctem_case.opened`` for a case the batch already carries, raised again under a new event
+#: id by the case catch-up, would only queue a second run of the same case (#2447).
+OBJECT_DEDUPED_EVENTS = frozenset({"ctem_case.opened"})
 #: Trigger types whose runs a window batches (``trigger_context["type"]``).
 BATCHED_CONTEXT_TYPES = frozenset({"integration_event", "platform_event"})
 #: Trigger types whose ``trigger_config`` may carry the window.
@@ -204,10 +208,46 @@ def can_join(waiting: Mapping[str, Any] | None, limit: int = MAX_BATCH_EVENTS) -
     return len(events_of(waiting)) < min(limit, MAX_BATCH_EVENTS)
 
 
+def _object_of(event: Mapping[str, Any]) -> tuple[str, str, str] | None:
+    """``(event, object_type, object_id)`` of an event listed once per object, else ``None``."""
+    name = event.get("event")
+    object_id = event.get("object_id") or event.get("case_id")
+    if name not in OBJECT_DEDUPED_EVENTS or not object_id:
+        return None
+    return str(name), str(event.get("object_type") or ""), str(object_id)
+
+
 def carries(waiting: Mapping[str, Any] | None, incoming: Mapping[str, Any] | None) -> bool:
-    """Whether the waiting batch already lists *incoming* (the same event delivered twice)."""
-    incoming_id = _event_id(incoming or {})
-    return bool(incoming_id) and any(_event_id(e) == incoming_id for e in events_of(waiting))
+    """Whether the waiting batch already lists *incoming*.
+
+    The same event delivered twice (same event id), or, for an event of
+    :data:`OBJECT_DEDUPED_EVENTS`, the same event about the same object under
+    another event id (#2447).
+    """
+    incoming = incoming or {}
+    incoming_id = _event_id(incoming)
+    incoming_object = _object_of(incoming)
+    for event in events_of(waiting):
+        if incoming_id and _event_id(event) == incoming_id:
+            return True
+        if incoming_object is not None and _object_of(event) == incoming_object:
+            return True
+    return False
+
+
+def carried_object_ids(payload: Mapping[str, Any] | None) -> set[str]:
+    """Every object id a run's payload carries: each listed event's ``object_id`` and ``case_id``.
+
+    A batch run's context names only its first event, so a reader asking
+    "is a run already waiting for this object" reads the payload (#2447).
+    """
+    carried: set[str] = set()
+    for event in events_of(payload):
+        for key in ("object_id", "case_id"):
+            value = event.get(key)
+            if value:
+                carried.add(str(value))
+    return carried
 
 
 def merged_payload(waiting: Mapping[str, Any] | None, incoming: Mapping[str, Any] | None) -> dict[str, Any]:

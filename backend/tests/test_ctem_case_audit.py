@@ -150,6 +150,24 @@ def test_open_wait_falls_back_to_the_move_into_waiting_decision() -> None:
     assert audit.open_wait(system_move) == {"gate": None, "by": None, "since": "2026-11-23T10:00:00+00:00"}  # type: ignore[no-untyped-call]
 
 
+def test_open_wait_names_the_owner_when_the_gate_names_no_person() -> None:
+    # #2452: one derivation, owned and unowned cases alike: a person's id whenever the case has one.
+    owner = "0d4c2b1a-1111-4222-8333-444455556666"
+    gate = _history()
+    assert audit.open_wait(gate, owner)["by"] == owner  # type: ignore[no-untyped-call,index]
+    assert audit.open_wait(gate, None)["by"] is None  # type: ignore[no-untyped-call,index]
+    system_move = [_e("10:00", "state", actor="system", **{"from": "new", "to": "waiting_decision"})]
+    assert audit.open_wait(system_move, owner)["by"] == owner  # type: ignore[no-untyped-call,index]
+    # A role or a policy name in the gate's reason is not a person: the owner answers.
+    policy = [_e("11:00", "gate", reason="autonomy policy", **{"from": "approve_fix", "to": "waited"})]
+    assert audit.open_wait(policy, owner)["by"] == owner  # type: ignore[no-untyped-call,index]
+    # A gate or a move that names a person keeps that person over the owner.
+    person = "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f"
+    named = [_e("11:00", "gate", reason=person, **{"from": "approve_fix", "to": "waited"})]
+    assert audit.open_wait(named, owner)["by"] == person  # type: ignore[no-untyped-call,index]
+    assert audit.open_wait([_e("09:00", "ticket", to="open")], owner) is None  # type: ignore[no-untyped-call]
+
+
 def test_stalled_since_holds_while_the_stalled_event_is_the_newest() -> None:
     # #1736 slice 2: the Cases list shows "waits on nobody" and the Stalled filter from it.
     stalled = _e("12:20", "stalled", actor="system", to="nobody", reason="waits on nobody since ...")

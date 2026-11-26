@@ -220,7 +220,8 @@ class _Db:
     """Answers the reads plan_catch_up makes: open cases, owner_requested events, case runs, open items.
 
     An ask given as ``(case id, owner)`` was made just now; ``(case id, owner, at)`` at *at*.
-    *runs* are ``(case id, created_at)`` (an ended run) or ``(case id, created_at, status)`` of the case automation's runs.
+    *runs* are ``(case id, created_at)`` (an ended run), ``(case id, created_at, status)`` or
+    ``(case id, created_at, status, trigger_payload)`` of the case automation's runs.
     """
 
     def __init__(
@@ -232,7 +233,7 @@ class _Db:
     ) -> None:
         now = datetime.now(UTC)
         self.cases, self.open_keys = cases, open_keys
-        self.runs = [r if len(r) == 3 else (*r, "completed") for r in runs or []]
+        self.runs = [(*r, "completed", None) if len(r) == 2 else (*r, None) if len(r) == 3 else r for r in runs or []]
         self.asked = [a if len(a) == 3 else (*a, now) for a in asked]
         self.calls = 0
         self.statements: list[Any] = []

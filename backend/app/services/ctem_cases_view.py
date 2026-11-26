@@ -279,8 +279,8 @@ SIGNAL_SOURCE = "signal"
 
 async def signal_members(db: Any, user_id: str) -> set[str]:
     """The ``signal:<id>`` members *user_id* may read: every case-bound signal for an
-    administrator or a CTEM view or decide right (``services/ctem_access.py``), else the
-    signals recorded for them (the rule of ``GET /ctem-signals``).
+    administrator or a CTEM view or decide right (``services/ctem_access.py``), else none
+    (#2441: no CTEM without a right, the rule of ``GET /ctem-signals``).
 
     A case opened from a signal with no product issue (a path without a CVE) is
     then visible to whoever sees the signal that opened it, never to nobody.
@@ -296,7 +296,7 @@ async def signal_members(db: Any, user_id: str) -> set[str]:
         user is not None and await ctem_access.group_right(db, user_id) is not None
     )
     if not whole:
-        query = query.where(CtemSignal.recorded_by == str(user_id))
+        return set()
     try:
         ids = (await db.execute(query)).scalars()
     except Exception:
@@ -1062,18 +1062,19 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     }
 
 
-def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, Any]:
+def case_position(events: list[CtemCaseEvent], view: ViewerView, owner: object = None) -> dict[str, Any]:
     """Where one case stands, from the history this viewer is served (#1503).
 
     ``phase``: its CTEM phase (the list's grouping and the Kanban by phase);
-    ``waiting_on``: the gate it waits on, who and since when (``None`` when none);
+    ``waiting_on``: the gate it waits on, who and since when (``None`` when none); who is a person's
+    id: the one the gate names, else the case *owner* (#2452, ``ctem_case_audit.open_wait``);
     ``stalled_since``: when the sweep found it waiting on nobody, while that is still its newest
     event (``None`` once anything happened to the case after it, #1736).
     """
     served = [_event(row, view) for row in events if row.kind != VERSIONS_KIND]
     return {
         "phase": audit.current_phase(served),
-        "waiting_on": audit.open_wait(served),
+        "waiting_on": audit.open_wait(served, owner),
         "stalled_since": audit.stalled_since(served),
     }
 
@@ -1558,16 +1559,15 @@ def reaches_primary_asset(rows: list[CtemCaseIssue], view: ViewerView, primary_a
 
 
 async def acts_on_case(db: Any, user: Any, rows: list[CtemCaseIssue], vertical: str) -> bool:
-    """Whether *user_id* may change a case they see (#1748).
+    """Whether *user_id* may change a case they see (#1748, #2441).
 
-    An administrator or a CTEM decide right: every case they see, read and
-    write. A CTEM view right is strictly read only (Sam, 24 Nov 2026): every
-    case write is refused. Without a right, the cases their own read shows.
+    An administrator or a CTEM decide right only: a view right is strictly
+    read only (Sam, 24 Nov 2026) and no right is no CTEM at all (#2441).
     *rows* and *vertical* are kept for the callers' symmetry with the read.
     """
     from app.services import ctem_access
 
-    return await ctem_access.level(db, user) != "view"
+    return await ctem_access.may_decide(db, user)
 
 
 def owner_sees(rows: list[CtemCaseIssue], owner_view: ViewerView) -> bool:
@@ -1591,6 +1591,11 @@ async def user_sees_case(db: Any, user_id: Any, case_id: Any, vertical: Any = No
         case_uuid = uuid.UUID(str(case_id))
         uuid.UUID(str(user_id))
     except (ValueError, TypeError):
+        return False
+    from app.services import ctem_access
+
+    # No CTEM without a right (#2441), re-read at delivery time.
+    if await ctem_access.level(db, str(user_id)) is None:
         return False
     primary = await get_primary(db)
     if primary is None:

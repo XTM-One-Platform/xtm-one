@@ -35,6 +35,7 @@ from ._common import (
     COMMAND_EXECUTORS,
     CONTRACT_OUTPUT_TYPES,
     EXPECTATION_TYPES,
+    PAYLOAD_EXPECTATION_TYPES,
     PLATFORMS,
     PROVIDING_FILTER_KEY,
     SECURITY_PLATFORM_TYPES,
@@ -626,9 +627,22 @@ def register(
                     return {}, err
                 body["action_platforms"] = values
             if expectations is not None:
-                values, err = _enum_list(
-                    expectations, EXPECTATION_TYPES, "expectations"
-                )
+                human = [
+                    str(v).strip().upper()
+                    for v in expectations
+                    if str(v).strip().upper() in EXPECTATION_TYPES
+                    and str(v).strip().upper() not in PAYLOAD_EXPECTATION_TYPES
+                ]
+                if human:
+                    return (
+                        {},
+                        f"expectations {', '.join(human)} cannot be set on a "
+                        "threat arsenal action: OpenAEV payloads accept only "
+                        f"{', '.join(PAYLOAD_EXPECTATION_TYPES)}. An "
+                        "evidence-only action is judged on its findings; human "
+                        "validation is a manual inject, not a payload expectation.",
+                    )
+                values, err = _enum_list(expectations, PAYLOAD_EXPECTATION_TYPES, "expectations")
                 if err:
                     return {}, err
                 body["action_expectations"] = values
@@ -1671,14 +1685,14 @@ def register(
                     },
                     "expectations": {
                         "type": "array",
-                        "items": {"type": "string", "enum": EXPECTATION_TYPES},
+                        "items": {"type": "string", "enum": PAYLOAD_EXPECTATION_TYPES},
                         "description": (
                             "What the action measures. PREVENTION = the control "
                             "should block it; DETECTION = the control should alert "
                             "on it; VULNERABILITY = the action proves a CVE is "
                             "present (inverted polarity - success means NOT "
-                            "vulnerable); MANUAL/ARTICLE/CHALLENGE = a human has to "
-                            "validate. Required on create. Pair with "
+                            "vulnerable); human validation is a manual inject, "
+                            "not an action expectation. Required on create. Pair with "
                             "expected_security_platforms to scope which product "
                             "families should catch each expectation."
                         ),

@@ -204,3 +204,98 @@ def test_a_34_pir_profile_migrates_with_details_and_thresholds():
 def test_a_profile_without_policy_migrates_at_the_former_default():
     rows = _migration().carried_rows({"pir_ids": ["a", "a", ""]})
     assert [(r["pir_id"], r["min_score"]) for r in rows] == [("a", 75)]
+
+
+# --- #2459: the identity of a PIR read, and the refusal said -------------------------------------
+
+
+def _user(email: str, *, active: bool = True):
+    import types
+
+    return types.SimpleNamespace(id=uuid.uuid4(), email=email, is_active=active)
+
+
+def test_the_seed_account_is_never_the_identity_of_a_per_user_read(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "admin_email", "admin@seed.example")
+    seed, clicker, run_as, admin = (
+        _user("admin@seed.example"),
+        _user("ciso@example.com"),
+        _user("soc@example.com"),
+        _user("it@example.com"),
+    )
+    order = pirs.ordered_identities(clicker, [run_as, None], [seed, admin, clicker], seed)
+    assert [u.email for u in order] == ["ciso@example.com", "soc@example.com", "it@example.com"]
+    # The scheduler has no clicker: the signal source's run-as user goes first, never the seed owner.
+    assert [u.email for u in pirs.ordered_identities(None, [run_as], [seed], seed)] == ["soc@example.com"]
+    assert pirs.ordered_identities(None, [], [seed], seed) == []
+    assert pirs.ordered_identities(_user("x@example.com", active=False), [], [], None) == []
+
+
+def test_a_static_key_integration_keeps_the_seed_account_as_a_last_resort(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "admin_email", "admin@seed.example")
+    seed = _user("admin@seed.example")
+    assert pirs.ordered_identities(None, [], [seed], seed, per_user=False) == [seed]
+    other = _user("it@example.com")
+    assert pirs.ordered_identities(None, [], [seed, other], seed, per_user=False) == [other]
+
+
+def test_a_refused_read_tries_the_next_identity_then_says_why(monkeypatch):
+    import asyncio
+    import types
+
+    first, second = _user("a@example.com"), _user("b@example.com")
+    integration = types.SimpleNamespace(id=OCTI, name="OpenCTI - CTEM", user_id=None)
+
+    async def identities(_db, _integration, _acting):
+        return [first, second]
+
+    answers = {first.id: "PIRs unreadable: AUTH_REQUIRED", second.id: [{"id": "pir-1", "name": "Filigran"}]}
+
+    async def read_as(_db, _integration, user_id):
+        return answers[user_id]
+
+    monkeypatch.setattr(pirs, "_identities", identities)
+    monkeypatch.setattr(pirs, "_read_as", read_as)
+    assert asyncio.run(pirs._read_integration(None, integration)) == [{"id": "pir-1", "name": "Filigran"}]
+
+    answers[second.id] = "PIRs unreadable: AUTH_REQUIRED"
+    reason = asyncio.run(pirs._read_integration(None, integration))
+    assert reason == "a@example.com: PIRs unreadable: AUTH_REQUIRED; b@example.com: PIRs unreadable: AUTH_REQUIRED"
+
+    async def nobody(_db, _integration, _acting):
+        return []
+
+    monkeypatch.setattr(pirs, "_identities", nobody)
+    assert "no identity to read the PIRs with" in asyncio.run(pirs._read_integration(None, integration))
+
+
+def test_the_manual_refresh_reads_as_the_clicker_and_answers_the_errors(monkeypatch):
+    import asyncio
+    import types
+
+    from app.api.v1 import organization_context as route
+
+    seen: dict = {}
+
+    async def refresh_all(_db, *, acting_user_id=None):
+        seen["acting"] = acting_user_id
+        return {"read": 0, "added": 0, "errors": {str(OCTI): "refused"}, "names": {str(OCTI): "OpenCTI - CTEM"}}
+
+    async def list_rows(_db):
+        return []
+
+    class _Db:
+        async def commit(self):
+            return None
+
+    monkeypatch.setattr(pirs, "refresh_all", refresh_all)
+    monkeypatch.setattr(pirs, "list_rows", list_rows)
+    admin = types.SimpleNamespace(id=uuid.uuid4())
+    response = asyncio.run(route.refresh_intelligence_policy(db=_Db(), admin=admin))
+    assert seen["acting"] == admin.id
+    assert [(e.integration, e.reason) for e in response.errors] == [("OpenCTI - CTEM", "refused")]
+    assert response.total == 0

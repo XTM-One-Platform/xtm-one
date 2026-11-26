@@ -105,6 +105,15 @@ async def provision_builtin_content(
             if seeded_fleet:
                 logger.info("Provisioned %d Platform Health fleet agent(s)", seeded_fleet)
 
+    # The CTEM access groups (#2441): "CTEM Viewers" (every account) and an
+    # empty "CTEM Operators"; xtm_one and dev only.
+    from app.services.ctem_groups import seed_ctem_groups
+
+    async with async_session() as db:
+        seeded_groups = await seed_ctem_groups(db, platform_mode=seed_mode)
+        if seeded_groups:
+            logger.info("Provisioned %d CTEM access group(s)", seeded_groups)
+
     # Built-in fleets (#8988), after the agents, assignments and skills they
     # reference; xtm_one and dev only, copilot sweeps any it finds.
     from app.agents import fleet_seed

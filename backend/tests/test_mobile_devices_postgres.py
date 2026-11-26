@@ -212,7 +212,7 @@ async def test_a_waiting_work_item_entry_stays_unread_through_the_dismiss_route(
 
     item_id = str(uuid.uuid4())
 
-    async def _waiting(*, user_id: str, limit: int) -> list[dict[str, str]]:
+    async def _waiting(*, user_id: str, limit: int, offset: int = 0) -> list[dict[str, str]]:
         return [{"id": item_id, "title": "Pick", "question": "A or B?", "since": "2026-11-21T08:00:00+00:00"}]
 
     monkeypatch.setattr(work_item, "list_work_items_waiting_for_person", _waiting)
@@ -239,7 +239,7 @@ async def test_mark_all_read_never_reads_a_waiting_decision(
 
     item_id = str(uuid.uuid4())
 
-    async def _waiting(*, user_id: str, limit: int) -> list[dict[str, str]]:
+    async def _waiting(*, user_id: str, limit: int, offset: int = 0) -> list[dict[str, str]]:
         return [{"id": item_id, "title": "Pick", "question": "A or B?", "since": "2026-11-21T08:00:00+00:00"}]
 
     monkeypatch.setattr(work_item, "list_work_items_waiting_for_person", _waiting)

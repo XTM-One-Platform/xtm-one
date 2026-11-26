@@ -133,6 +133,10 @@ interface CtemCaseValidation {
   /** "inconclusive" (#1692): a pass that proves nothing, the word given kept in `reported_result`. */
   result: "passed" | "not_exposed" | "failed" | "pending" | "inconclusive";
   reported_result?: "passed" | "not_exposed";
+  /** #1458: false when the check that reported a pass proves nothing; absent when the writer did not say. */
+  conclusive?: boolean;
+  /** #1500: "remediation" (the fix read in place), "validation" (a detection or behaviour test) or "exposure" (#2118). */
+  evidence_type?: string;
   at: string;
   mitigation_only?: boolean;
   note?: string | null;

@@ -1189,6 +1189,14 @@ EXPECTATION_TYPES = [
 #: carry a platform scope.
 TECHNICAL_EXPECTATION_TYPES = ["PREVENTION", "DETECTION", "VULNERABILITY"]
 
+#: The expectation types a payload (threat arsenal action) accepts. OpenAEV's
+#: ``PayloadService`` maps only DETECTION, PREVENTION, LOGGING and VULNERABILITY
+#: and answers 400 "Unsupported expectation type" for anything else; LOGGING is
+#: behind the ``LOGGING_EXPECTATION`` preview flag, so it is not offered. Human
+#: expectations (MANUAL / ARTICLE / CHALLENGE) belong to the manual, email and
+#: challenge inject contracts, never to a payload.
+PAYLOAD_EXPECTATION_TYPES = ["PREVENTION", "DETECTION", "VULNERABILITY"]
+
 #: ``SecurityPlatform.SECURITY_PLATFORM_TYPE`` - the product families an
 #: expectation can be scoped to. Empty scope for a given expectation means
 #: "any security platform" (the legacy default).
@@ -3183,6 +3191,7 @@ __all__ = [
     "FILTER_MODES",
     "FILTER_OPERATORS",
     "JSON_READ_CHARS",
+    "PAYLOAD_EXPECTATION_TYPES",
     "PAYLOAD_TYPES",
     "PLATFORMS",
     "REPORTING_CONTEXT_TYPES",

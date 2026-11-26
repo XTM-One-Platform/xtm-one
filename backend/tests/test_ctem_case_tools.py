@@ -134,6 +134,16 @@ def env(monkeypatch):
     # No delete audit row in this fake session (#2328): a miss stays "No case".
     monkeypatch.setattr("app.services.ctem_case_delete.deleted_case_answer", _never_deleted)
 
+    # The acting person holds a CTEM decide right (#2441: no right refuses every case tool).
+    from app.services import ctem_access
+
+    seen.ctem_level = "decide"
+
+    async def _level(_db: object, _user: object) -> str | None:
+        return seen.ctem_level
+
+    monkeypatch.setattr(ctem_access, "level", _level)
+
     def _tools(user_id: str):
         defs, executor = build_ctem_case_tools(user_id=user_id, agent_id=AGENT)
 
