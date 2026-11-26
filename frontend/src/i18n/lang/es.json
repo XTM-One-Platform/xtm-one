@@ -21644,7 +21644,7 @@
   "No CTEM access": "Sin acceso CTEM",
   "View signals and cases": "Ver señales y casos",
   "View and decide": "Ver y decidir",
-  "Members see only the signals they record themselves.": "Los miembros solo ven las señales que registran ellos mismos.",
+  "Members have no CTEM access through this group: no CTEM menu, signals, cases, agent tools or triggers.": "Este grupo no da acceso CTEM a sus miembros: ni menú CTEM, ni señales, ni casos, ni herramientas de agente, ni disparadores.",
   "Members read every signal and case of the organization, read only.": "Los miembros leen todas las señales y casos de la organización, solo lectura.",
   "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.": "Los miembros también clasifican señales, modifican casos (responsable, fecha límite, estado, riesgo aceptado) y responden a las decisiones de los casos. Sus agentes tienen el mismo alcance.",
   "Notify the members of case decisions": "Notificar a los miembros las decisiones de casos",

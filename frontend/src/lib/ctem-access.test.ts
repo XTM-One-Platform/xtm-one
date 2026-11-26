@@ -1,7 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
-import { ctemMayDecide, mayAnswerCaseGate } from "./ctem-access";
+import { ctemMayDecide, ctemMayView, mayAnswerCaseGate } from "./ctem-access";
+
+describe("ctemMayView", () => {
+  it("lets an administrator and a view or decide member reach CTEM (#2441)", () => {
+    expect(ctemMayView(null, true)).toBe(true);
+    expect(ctemMayView({ ctem_access: "view" }, false)).toBe(true);
+    expect(ctemMayView({ ctem_access: "decide" }, false)).toBe(true);
+    expect(ctemMayView({ ctem_access: "admin" }, false)).toBe(true);
+  });
+
+  it("hides CTEM from a person without a right", () => {
+    expect(ctemMayView({ ctem_access: null }, false)).toBe(false);
+    expect(ctemMayView(undefined, false)).toBe(false);
+  });
+});
 
 describe("ctemMayDecide", () => {
   it("lets an administrator and a decide member act", () => {

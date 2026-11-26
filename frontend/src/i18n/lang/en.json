@@ -21644,7 +21644,7 @@
   "No CTEM access": "No CTEM access",
   "View signals and cases": "View signals and cases",
   "View and decide": "View and decide",
-  "Members see only the signals they record themselves.": "Members see only the signals they record themselves.",
+  "Members have no CTEM access through this group: no CTEM menu, signals, cases, agent tools or triggers.": "Members have no CTEM access through this group: no CTEM menu, signals, cases, agent tools or triggers.",
   "Members read every signal and case of the organization, read only.": "Members read every signal and case of the organization, read only.",
   "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.": "Members also triage signals, change cases (owner, due date, state, accepted risk) and answer the case decisions. Their agents get the same reach.",
   "Notify the members of case decisions": "Notify the members of case decisions",

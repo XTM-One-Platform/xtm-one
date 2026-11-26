@@ -6,6 +6,7 @@ import { getToken } from "@/lib/api";
 import { rememberReturnPath } from "@/lib/session-return";
 import { termsOfUsePending } from "@/lib/terms-of-use";
 import { useAuth } from "@/hooks/useAuth";
+import { ctemMayView } from "@/lib/ctem-access";
 import { useMe } from "@/hooks/api/useAuthApi";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ArcadeProvider } from "@/components/arcade/ArcadeProvider";
@@ -392,6 +393,15 @@ function XtmOneRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/* A `/ctem/*` page: XTM One mode AND a CTEM right (#2441): an administrator or a
+ * member of a group with a CTEM view or decide right. Anyone else is sent home,
+ * as the menu hides the section and the API answers 403. */
+function CtemRoute({ children }: { children: React.ReactNode }) {
+  const { user, isAdmin } = useAuth();
+  if (user && !ctemMayView(user, isAdmin)) return <Navigate to="/" replace />;
+  return <XtmOneRoute>{children}</XtmOneRoute>;
+}
+
 export default function App() {
   const platformConfig = usePlatformConfig();
   const catalogEnabled = useAICatalogEnabled();
@@ -683,20 +693,20 @@ export default function App() {
       >
         <Route path="/" element={<Page><HomeRoute /></Page>} />
         <Route path="/dashboard" element={<Page><CommandCenterRoute /></Page>} />
-        <Route path="/ctem/governance" element={<XtmOneRoute><Page><CtemGovernance /></Page></XtmOneRoute>} />
-        <Route path="/ctem/cases" element={<XtmOneRoute><Page><CtemCases /></Page></XtmOneRoute>} />
+        <Route path="/ctem/governance" element={<CtemRoute><Page><CtemGovernance /></Page></CtemRoute>} />
+        <Route path="/ctem/cases" element={<CtemRoute><Page><CtemCases /></Page></CtemRoute>} />
         {/* The Cases Kanban view is a path, never ?view= (#10203, #1503); a static segment ranks above :id. */}
-        <Route path="/ctem/cases/kanban" element={<XtmOneRoute><Page><CtemCases /></Page></XtmOneRoute>} />
-        <Route path="/ctem/signals" element={<XtmOneRoute><Page><CtemSignals /></Page></XtmOneRoute>} />
-        <Route path="/ctem/signals/:tab" element={<XtmOneRoute><Page><CtemSignals /></Page></XtmOneRoute>} />
-        <Route path="/ctem/cases/:id" element={<XtmOneRoute><Page><CtemCaseDetail /></Page></XtmOneRoute>} />
+        <Route path="/ctem/cases/kanban" element={<CtemRoute><Page><CtemCases /></Page></CtemRoute>} />
+        <Route path="/ctem/signals" element={<CtemRoute><Page><CtemSignals /></Page></CtemRoute>} />
+        <Route path="/ctem/signals/:tab" element={<CtemRoute><Page><CtemSignals /></Page></CtemRoute>} />
+        <Route path="/ctem/cases/:id" element={<CtemRoute><Page><CtemCaseDetail /></Page></CtemRoute>} />
         {/* CTEM > Inventory (#1178). */}
-        <Route path="/ctem/inventory/assets/:id" element={<XtmOneRoute><Page><CtemAssetDetail /></Page></XtmOneRoute>} />
-        <Route path="/ctem/inventory/software/:id" element={<XtmOneRoute><Page><CtemSoftwareDetail /></Page></XtmOneRoute>} />
-        <Route path="/ctem/inventory/asset-groups/:id" element={<XtmOneRoute><Page><CtemAssetGroupDetail /></Page></XtmOneRoute>} />
-        <Route path="/ctem/inventory/primary-assets/:name" element={<XtmOneRoute><Page><CtemPrimaryAssetDetail /></Page></XtmOneRoute>} />
-        <Route path="/ctem/inventory/:tab?" element={<XtmOneRoute><Page><CtemInventory /></Page></XtmOneRoute>} />
-        <Route path="/ctem/:stage" element={<XtmOneRoute><Page><CtemStageDetail /></Page></XtmOneRoute>} />
+        <Route path="/ctem/inventory/assets/:id" element={<CtemRoute><Page><CtemAssetDetail /></Page></CtemRoute>} />
+        <Route path="/ctem/inventory/software/:id" element={<CtemRoute><Page><CtemSoftwareDetail /></Page></CtemRoute>} />
+        <Route path="/ctem/inventory/asset-groups/:id" element={<CtemRoute><Page><CtemAssetGroupDetail /></Page></CtemRoute>} />
+        <Route path="/ctem/inventory/primary-assets/:name" element={<CtemRoute><Page><CtemPrimaryAssetDetail /></Page></CtemRoute>} />
+        <Route path="/ctem/inventory/:tab?" element={<CtemRoute><Page><CtemInventory /></Page></CtemRoute>} />
+        <Route path="/ctem/:stage" element={<CtemRoute><Page><CtemStageDetail /></Page></CtemRoute>} />
         <Route path="/briefing" element={<XtmOneRoute><Page><ExposureBriefing /></Page></XtmOneRoute>} />
         {/* The chat's chunk loads in its empty frame, never a page skeleton the panel's own would replace. */}
         <Route path="/chat" element={<ChatGate><Page fallback={<ChatFrame />}><ChatPanelPage /></Page></ChatGate>} />
