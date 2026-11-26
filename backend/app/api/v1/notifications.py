@@ -56,8 +56,15 @@ class NotificationItemResponse(BaseModel):
 
 class NotificationFeedResponse(BaseModel):
     items: list[NotificationItemResponse]
+    #: The unread entries of this page.
     unread_count: int
     read_at: str | None = None
+    #: Every decision waiting on the person, the Home notice's count, not the page's (#2453).
+    waiting_decision_total: int = 0
+    #: What the badge shows: every waiting decision plus the other unread entries of the page (#2453).
+    unread_total: int = 0
+    #: The ``offset`` of the next page of waiting decisions; ``None`` past the last (#2453).
+    next_offset: int | None = None
 
 
 class MarkReadRequest(BaseModel):
@@ -77,11 +84,17 @@ class MarkReadRequest(BaseModel):
 @router.get("", response_model=NotificationFeedResponse)
 async def get_notifications(
     limit: int = Query(FEED_WINDOW, ge=1, le=50),
+    offset: int = Query(0, ge=0, le=100_000),
+    view: Literal["all", "decisions"] = Query("all"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """The person's notifications: waiting ones first, then the newest."""
-    return await build_feed(db, user, limit=limit)
+    """The person's notifications: waiting ones first, then the newest.
+
+    ``offset`` pages the waiting decisions (``next_offset`` names the next
+    page); ``view=decisions`` answers the waiting decisions alone (#2453).
+    """
+    return await build_feed(db, user, limit=limit, offset=offset, decisions_only=view == "decisions")
 
 
 @router.post("/read", response_model=NotificationFeedResponse)

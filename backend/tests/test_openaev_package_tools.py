@@ -2783,6 +2783,60 @@ def test_threat_arsenal_schema_constrains_expectation_keys():
     assert esp["propertyNames"]["enum"] == ["PREVENTION", "DETECTION", "VULNERABILITY"]
 
 
+def test_threat_arsenal_schema_offers_payload_expectation_types_only():
+    # A payload accepts PREVENTION / DETECTION / VULNERABILITY only (OpenAEV
+    # PayloadService answers 400 on the human types), so the enum never offers them.
+    _, tools = _build()
+    tool = next(t for t in tools if t.name == "manage_openaev_threat_arsenal")
+    enum = tool.input_schema["properties"]["expectations"]["items"]["enum"]
+    assert enum == ["PREVENTION", "DETECTION", "VULNERABILITY"]
+
+
+@pytest.mark.parametrize("human_type", ["MANUAL", "article", "Challenge"])
+async def test_threat_arsenal_create_refuses_human_expectation_locally(monkeypatch, human_type):
+    from app.integrations.providers.openaev import threat_arsenal
+
+    executor, _ = _build()
+    fake = _RecordingApi({"injector_contract_id": "a1"})
+    monkeypatch.setattr(threat_arsenal, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_threat_arsenal",
+        {**_ARSENAL_CREATE_BASE, "expectations": [human_type]},
+    )
+    assert human_type.upper() in result.content
+    assert "PREVENTION, DETECTION, VULNERABILITY" in result.content
+    assert "manual inject" in result.content
+    assert not fake.calls  # refused before any request left
+
+
+@pytest.mark.parametrize("action", ["update", "fork"])
+async def test_threat_arsenal_update_and_fork_refuse_human_expectation_locally(monkeypatch, action):
+    from app.integrations.providers.openaev import threat_arsenal
+
+    executor, _ = _build()
+    fake = _RecordingApi({"injector_contract_id": "a1"})
+    monkeypatch.setattr(threat_arsenal, "_api", fake)
+    result = await _run(
+        executor,
+        "manage_openaev_threat_arsenal",
+        {"action": action, "action_id": "a1", "expectations": ["MANUAL"]},
+    )
+    assert "PREVENTION, DETECTION, VULNERABILITY" in result.content
+    assert not fake.calls
+
+
+async def test_threat_arsenal_create_with_detection_is_unchanged(monkeypatch):
+    from app.integrations.providers.openaev import threat_arsenal
+
+    executor, _ = _build()
+    fake = _RecordingApi({"injector_contract_id": "a1", "action_name": "Recon sweep"})
+    monkeypatch.setattr(threat_arsenal, "_api", fake)
+    result = await _run(executor, "manage_openaev_threat_arsenal", dict(_ARSENAL_CREATE_BASE))
+    assert not result.is_error, result.content
+    assert fake.last_json()["action_expectations"] == ["DETECTION"]
+
+
 async def test_threat_arsenal_create_sends_empty_association_lists(monkeypatch):
     # Regression guard: a create with no attack-pattern / tag associations must send
     # explicit empty lists, never omit them and never null. The OpenAEV payload path

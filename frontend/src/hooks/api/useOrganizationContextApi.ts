@@ -388,9 +388,18 @@ export interface IntelligencePolicyPir {
   gone_at: string | null;
 }
 
+/** One OpenCTI a refresh could not read, and why (its rows are kept as they were). */
+interface IntelligencePolicyReadError {
+  integration_id: string;
+  integration: string;
+  reason: string;
+}
+
 export interface IntelligencePolicyResponse {
   pirs: IntelligencePolicyPir[];
   total: number;
+  /** Set by a refresh only. */
+  errors?: IntelligencePolicyReadError[];
 }
 
 export type IntelligencePolicyPatch = Partial<

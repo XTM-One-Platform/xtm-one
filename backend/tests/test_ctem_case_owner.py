@@ -131,3 +131,87 @@ async def test_nothing_is_read_without_asset_or_default(monkeypatch: pytest.Monk
     db = OwnerSession(fail=True)
     signal = _signal(subject_kind="software", decision={})
     assert await owner_of.owner_for_signal(cast("Any", db), signal) == (None, None)
+
+
+# --- #2452: the CTEM decider fallback and the backfill -------------------------
+
+SAM = uuid.uuid4()
+BOB = uuid.uuid4()
+SEED = uuid.uuid4()
+
+
+def test_the_decider_is_a_decide_group_member_before_an_administrator() -> None:
+    assert owner_of.pick_decider([(BOB, "bob@example.com")], [(SAM, "sam@example.com")]) == (
+        BOB,
+        "CTEM decider (decide group member)",
+    )
+    assert owner_of.pick_decider([], [(SAM, "sam@example.com")]) == (SAM, "CTEM decider (administrator)")
+    assert owner_of.pick_decider([], []) == (None, None)
+
+
+def test_several_deciders_take_the_first_by_creation_and_say_so() -> None:
+    owner, how = owner_of.pick_decider([], [(SAM, "sam@example.com"), (BOB, "bob@example.com")])
+    assert owner == SAM and how == "CTEM decider (administrator, first of 2 by account creation)"
+
+
+def test_the_seed_account_decides_only_when_it_is_alone() -> None:
+    people = [(SEED, "admin@filigran.io"), (SAM, "sam@example.com")]
+    assert owner_of.pick_decider([], people, "Admin@Filigran.io")[0] == SAM
+    assert owner_of.pick_decider([], people[:1], "admin@filigran.io")[0] == SEED
+
+
+@pytest.mark.asyncio
+async def test_a_single_admin_owns_a_case_nobody_else_owns(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CTEM_CASE_DEFAULT_OWNER", raising=False)
+    # asset records (no owner), then the decide groups (none), then the administrators.
+    db = OwnerSession([("", None)], [], [(SAM, "sam@example.com")])
+    assert await owner_of.owner_for_signal(cast("Any", db), _signal()) == (SAM, "CTEM decider (administrator)")
+
+
+@pytest.mark.asyncio
+async def test_the_default_wins_over_the_decider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CTEM_CASE_DEFAULT_OWNER", "default@example.com")
+    db = OwnerSession([], [(DEFAULT, "default@example.com")], [], [(SAM, "sam@example.com")])
+    assert await owner_of.owner_for_signal(cast("Any", db), _signal()) == (DEFAULT, owner_of.FROM_DEFAULT)
+
+
+class BackfillSession(OwnerSession):
+    """The unowned open cases, then the decider reads; collects the rows added."""
+
+    def __init__(self, *reads: list[Any]) -> None:
+        super().__init__(*reads)
+        self.added: list[Any] = []
+
+    def add(self, row: Any) -> None:
+        self.added.append(row)
+
+
+@pytest.mark.asyncio
+async def test_the_backfill_owns_each_unowned_case_once() -> None:
+    from datetime import UTC, datetime
+
+    from app.models.ctem_case import CtemCaseEvent
+
+    now = datetime(2026, 11, 26, 7, 0, tzinfo=UTC)
+    first = SimpleNamespace(id=uuid.uuid4(), owner_user_id=None)
+    second = SimpleNamespace(id=uuid.uuid4(), owner_user_id=None)
+    db = BackfillSession([first, second], [], [(SAM, "sam@example.com")])
+    assert await owner_of.backfill_owners(cast("Any", db), now=now) == 2
+    assert first.owner_user_id == SAM and second.owner_user_id == SAM
+    events = [r for r in db.added if isinstance(r, CtemCaseEvent)]
+    assert [(e.kind, e.to_value, e.reason) for e in events] == [
+        ("owner", str(SAM), "CTEM decider (administrator), backfill")
+    ] * 2
+    # The next pass finds no unowned case (the owner event keeps it out): nothing is written.
+    again = BackfillSession([])
+    assert await owner_of.backfill_owners(cast("Any", again), now=now) == 0 and again.added == []
+
+
+@pytest.mark.asyncio
+async def test_the_backfill_writes_nothing_when_nobody_decides() -> None:
+    from datetime import UTC, datetime
+
+    case = SimpleNamespace(id=uuid.uuid4(), owner_user_id=None)
+    db = BackfillSession([case], [], [])
+    assert await owner_of.backfill_owners(cast("Any", db), now=datetime.now(UTC)) == 0
+    assert case.owner_user_id is None and db.added == []

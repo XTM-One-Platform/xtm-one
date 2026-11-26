@@ -1062,18 +1062,19 @@ def _event(row: CtemCaseEvent, view: ViewerView) -> dict[str, Any]:
     }
 
 
-def case_position(events: list[CtemCaseEvent], view: ViewerView) -> dict[str, Any]:
+def case_position(events: list[CtemCaseEvent], view: ViewerView, owner: object = None) -> dict[str, Any]:
     """Where one case stands, from the history this viewer is served (#1503).
 
     ``phase``: its CTEM phase (the list's grouping and the Kanban by phase);
-    ``waiting_on``: the gate it waits on, who and since when (``None`` when none);
+    ``waiting_on``: the gate it waits on, who and since when (``None`` when none); who is a person's
+    id: the one the gate names, else the case *owner* (#2452, ``ctem_case_audit.open_wait``);
     ``stalled_since``: when the sweep found it waiting on nobody, while that is still its newest
     event (``None`` once anything happened to the case after it, #1736).
     """
     served = [_event(row, view) for row in events if row.kind != VERSIONS_KIND]
     return {
         "phase": audit.current_phase(served),
-        "waiting_on": audit.open_wait(served),
+        "waiting_on": audit.open_wait(served, owner),
         "stalled_since": audit.stalled_since(served),
     }
 

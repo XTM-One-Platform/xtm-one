@@ -51,7 +51,7 @@ progress, resolved, accepted risk).
    Reaching cases at all needs a CTEM right (#2441, `services/ctem_access.py`):
    an administrator, or a member of a group granting `view` (read) or
    `decide` (read and change); anyone else gets 403 and no CTEM menu, tool or
-   trigger. The seeded "CTEM Viewers" group holds every account, "CTEM
+   trigger. The seeded "CTEM Viewers" group (Auto join on, #2478) holds every account, "CTEM
    Operators" starts empty. A case gate waits for the `decide` groups that
    have an active member (`ctem_access.gate_recipient`); with none, the
    routing of the person the run acts for, never every administrator.
@@ -798,7 +798,12 @@ then the existing AI assessment and facts grid unchanged.
   decision, Closed, All) and the toggles (`?c_q=`: Mine, Unassigned, Overdue,
   Critical and high). A case Waiting for decision says what it waits on, who
   and since when (the "Waits on" column; `waiting_on` on each list row: the
-  newest unanswered waiting gate, `ctem_case_audit.open_wait`).
+  newest unanswered waiting gate, `ctem_case_audit.open_wait`). One derivation
+  of who (#2452): `waiting_on.by` is the person the gate names (a user id),
+  else the case owner, the person accountable for the case (the gate's decision
+  item goes to the CTEM deciders, `ctem_access.gate_recipient`, who the owner
+  may not be); owned and unowned cases read alike, and "A decision" is left only for a case with no owner, which the case
+  sweep no longer leaves open (`ctem_case_owner.backfill_owners`).
 - **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
   (quick filters, search and filters applied) at `/ctem/cases` or as columns
   at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.
@@ -1105,8 +1110,8 @@ context: every figure 0.
 | `get_ctem_case` | one case with members (source, id), the latest 20 history events; at most 100 issues (ranked, Restricted last) with `issues_total` and `issues_truncated`; reads the case's own members, never a whole view build (#2092) |
 | `create_ctem_case` | splits open issues (`source:external_id`) out of their cases into a manual case that pins them (`ctem_cases_store.create_manual_case`; a `split` event on each case they leave) |
 | `update_ctem_case` | owner, due date, note, state with `reason`; `resolved` needs `evidence`; `accepted_risk` refused for an agent (a person accepts risk). Answers a compact result (#2092): id, title, state, owner, due date, `changed`, `unchanged` and `history_written`, never the whole case; a gate decision identical to the newest one of its key is not recorded again (`unchanged: ["gate"]`); a committed write never answers an error |
-| `record_ctem_case_validation` | a validation or re-test reference (provider, ref, result, kind, mitigation_only) through `ctem_case_loop.record_validation`: passed or not_exposed resolves (mitigated, watching when mitigation only), failed reopens, the events raised after the commit |
-| `record_ctem_case_ticket` | a ticket reference (integration, key, url, status) through `ctem_case_loop.record_ticket`: one entry per `(integration, key)` updated in place, a `ticket` event on change, never a state move |
+| `record_ctem_case_validation` | a validation or re-test reference (provider, ref, result, kind, mitigation_only) through `ctem_case_loop.record_validation`: passed or not_exposed resolves (mitigated, watching when mitigation only), failed reopens, the events raised after the commit; answers compactly (#2473): id, title, state after the write, `state_changed` (with `previous_state` and `resolution_kind` when it moved), the `validation` entry recorded with its index and the `history_written` events, never the case re-read |
+| `record_ctem_case_ticket` | a ticket reference (integration, key, url, status) through `ctem_case_loop.record_ticket`: one entry per `(integration, key)` updated in place, a `ticket` event on change, never a state move; answers compactly (#2473): id, title, state, `state_changed`, the `ticket` recorded and the `history_written` events |
 | `decide_ctem_case_remediation` | the remediation decision (CTEM-17, gate B, key `ctem.remediation.decision`): options with figures and the recommendation; rules in `services/ctem_remediation_decision.py` (see 9ter) |
 | `merge_ctem_cases` | #2037: folds duplicate cases of one fix (`case_ids`) into `target_id` through `ctem_cases_store.merge_cases`, the rules of `POST /ctem-cases/merge`: every case named must be one the acting person sees and acts on (a view right is refused), the agent is the actor of each `merge` event; the survivor keeps its state, owner and SLA and takes the keys, members, history and signals, so a recompute maps them to it and no case reopens. The seeded loop orchestrators merge a duplicate into the case a person holds, else the oldest, and never delete it: `delete_ctem_cases` frees the fix key, so a case whose signals still match reopens at the next reconcile with a new SLA |
 
@@ -1264,6 +1269,17 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 **API.** `GET /api/v1/ctem-cases/opening` answers `{vertical, on, waiting}` (`waiting`: confirmed signals with no case) to anyone who reads cases. `PUT` takes `{on, vertical?}`, `require_admin`; a change writes one audit row (`entity_type` `ctem_case_opening`, who, when, on or off) and raises the platform-wide event `ctem_case.opening_changed` (`vertical`, `on`, `changed_by`, `waiting`); the same value again changes nothing (`changed: false`). It answers `{vertical, on, waiting, changed, draining}`.
 
 **Screens.** `CaseOpeningSwitch` is a discreet control for administrators only (Sam, 24 Nov 2026); anyone else sees nothing in every state. On Cases it sits in the table toolbar beside Group by and Views, a 32 px control with their border, padding and label, drawn disabled until the setting is read so the toolbar never shifts; on the Signal sources header it is the same control. Its tooltip is one line, with the waiting count while it is off. While it is off the empty Cases list keeps its usual sentence and adds one muted line, "Case opening is off" (`CaseOpeningOffEmptyState`). Turning it on or off toasts one line, "Case opening on" or "Case opening off"; the opening read is polled every 3 s while signals wait.
+
+### 9bis.2 Same-kind decisions asked once per person (#2451)
+
+A reconcile burst opens hundreds of cases at once; one card per case for one person cannot be answered. `services/ctem_decision_groups.py` folds them:
+
+- **Groupable.** The validation gate (`ctem:validation:<case>`, `ctem:f2:validate:<case>`) of a `control_decay` case whose title says "for the first time" (kind `first_measure`, an asset with no test evidence yet). Every other gate keeps its own card.
+- **Stays individual.** A P1 case whose SLA ends within 72 hours (`NEAR_SLA`), so an urgent decision is never buried in a list.
+- **On write.** `work_item.create_work_item` of a groupable `needs_human` item joins the open group of its recipient and kind, `ctem:group:<kind>:<recipient>` (created on first use, owned by the same agent): the case's item is written blocked on the group (`blocked_reason` "Grouped into <id>"), with no card of its own. The group's card states the count, the priority mix and the numbered list of cases, links to the cases list, and offers approve all, approve selected (the numbers named in the answer, ranges allowed), decline all and later (keeps waiting). Its due date is the earliest due of its members, its priority the highest.
+- **On answer.** `work_item.answer_work_item` on a group fans out: each answered case's item reopens with `payload.answer` (`approve` or `decline`, the person's text, `via_group`) and raises its own answered `work_item.status_changed`, so the fleet's "Gate answered" listener applies it on the case as for an individual card. A whole answer completes the group; approve selected rewrites it with the rest.
+- **Consolidation.** The scheduled case sweep folds the open per-case items of a groupable kind into their groups (`consolidate`, 500 per pass): their cards are closed without a notification. A re-run finds none left and changes nothing.
+- **Waits on someone.** The stall sweep and the case page's "decision filed" count a grouped item as a filed decision.
 
 ## 10. Slices
 

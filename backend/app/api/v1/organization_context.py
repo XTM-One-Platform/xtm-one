@@ -2008,9 +2008,19 @@ class IntelligencePolicyPir(BaseModel):
     gone_at: str | None
 
 
+class IntelligencePolicyReadError(BaseModel):
+    """One OpenCTI whose PIRs a refresh could not read, and why."""
+
+    integration_id: str
+    integration: str
+    reason: str
+
+
 class IntelligencePolicyResponse(BaseModel):
     pirs: list[IntelligencePolicyPir]
     total: int
+    #: Set by a refresh: the OpenCTIs it could not read (their rows are kept as they were).
+    errors: list[IntelligencePolicyReadError] = Field(default_factory=list)
 
 
 class IntelligencePolicyPatch(BaseModel):
@@ -2097,15 +2107,27 @@ async def patch_intelligence_policy_pir(
 @router.post("/intelligence-policy/refresh", response_model=IntelligencePolicyResponse)
 async def refresh_intelligence_policy(
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    admin: User = Depends(require_admin),
 ) -> IntelligencePolicyResponse:
-    """Read the PIRs of every connected OpenCTI now (administrators); the background refresh does it hourly."""
+    """Read the PIRs of every connected OpenCTI now, as the calling administrator first (administrators).
+
+    The background refresh does it hourly. An OpenCTI that could not be read
+    is answered in ``errors`` with the reason, never silently.
+    """
     from app.services.organization_pirs import list_rows, refresh_all
 
-    await refresh_all(db)
+    result = await refresh_all(db, acting_user_id=admin.id)
     await db.commit()
     rows = await list_rows(db)
-    return IntelligencePolicyResponse(pirs=[_policy_pir(r) for r in rows[:25]], total=len(rows))
+    errors = [
+        IntelligencePolicyReadError(
+            integration_id=integration_id,
+            integration=result.get("names", {}).get(integration_id, "OpenCTI"),
+            reason=reason,
+        )
+        for integration_id, reason in result.get("errors", {}).items()
+    ]
+    return IntelligencePolicyResponse(pirs=[_policy_pir(r) for r in rows[:25]], total=len(rows), errors=errors)
 
 
 class AiDraftProposal(BaseModel):
