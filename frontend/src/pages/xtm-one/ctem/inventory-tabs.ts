@@ -16,7 +16,7 @@ export const RETIRED_TABS: Record<string, InventoryTab> = { "tech-stack": "softw
  * pass, the prioritization policy and the evidence health pass. They have a tab of their own (#1511): read by
  * everyone, each card's own Edit for administrators, so no card is reachable by URL only.
  */
-export const EXPOSURE_TAB_CARDS = ["outside_lens", "prioritization_policy", "evidence_health"] as const satisfies readonly ProfileCard[];
+export const EXPOSURE_TAB_CARDS = ["outside_lens", "prioritization_policy", "intelligence_policy", "evidence_health"] as const satisfies readonly ProfileCard[];
 
 /**
  * The business inputs of the CTEM loop (#1690, Sam 24 Nov 2026): primary assets and business services, shipped

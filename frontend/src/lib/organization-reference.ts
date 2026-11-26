@@ -112,10 +112,6 @@ export function missingRateInto(currency: string, rates: readonly FxRate[]): boo
   return Boolean(currency) && !rates.some((rate) => rate.to_currency === currency);
 }
 
-export function emptyPirDetail(): PirDetail {
-  return { question: "", owner: "", review_cadence: "", primary_assets: [] };
-}
-
 /** Whether *detail* says nothing (the save leaves it out). */
 function pirDetailEmpty(detail: PirDetail): boolean {
   return !detail.question.trim() && !detail.owner.trim() && !detail.review_cadence && detail.primary_assets.length === 0;
@@ -140,9 +136,6 @@ export function pirDetailsOf(pirIds: readonly string[], details: Record<string, 
   }
   return kept;
 }
-
-/** The fields of a PIR detail, in the order the details dialog shows them. */
-export const PIR_DETAIL_FIELDS = 4;
 
 /** How many of the four fields of *detail* are set (question, owner, review cadence, primary assets served). */
 export function pirDetailFilled(detail: PirDetail | undefined): number {

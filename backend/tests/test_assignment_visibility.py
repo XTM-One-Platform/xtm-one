@@ -518,6 +518,10 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
         "the company-wide OpenCTI an administrator's identity link and PIR sync write against, "
         "on top of integration_visible_filter for that signed-in administrator; never a caller tier"
     ),
+    ("services/organization_pirs.py", "_opencti_integrations"): (
+        "the company-wide OpenCTIs the scheduled Intelligence policy refresh reads PIRs from, "
+        "with no acting user; lists nothing to a caller, never a caller tier (#2435)"
+    ),
     ("services/sub_agent.py", "_background_tasks_query"): (
         "the Background Tasks Company / Shared split of an admin's tasks that are "
         "not theirs, by the delegating agent, on top of the admin-only scope the "
