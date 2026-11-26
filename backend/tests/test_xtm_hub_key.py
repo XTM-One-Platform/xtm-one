@@ -145,7 +145,8 @@ class TestInstanceSetting:
         assert column.server_default.arg == "1"
         assert column.default.arg == 1
 
-    def test_the_database_refuses_a_version_below_one(self):
+    def test_the_model_declares_the_version_check(self):
+        # The model's metadata, not the database: the migration's CHECK is not exercised here.
         checks = {
             c.name: str(c.sqltext)
             for c in PlatformSettings.__table__.constraints

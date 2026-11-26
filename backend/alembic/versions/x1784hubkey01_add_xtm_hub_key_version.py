@@ -4,7 +4,7 @@ The version of the XTM Hub signing key (``app/core/xtm_hub_key.py``): starts
 at 1, never below. platform_settings holds one row, so the CHECK is instant.
 
 Revision ID: x1784hubkey01
-Revises: s2441ctemseed01
+Revises: s2443ctemgrp01
 """
 
 from collections.abc import Sequence
@@ -18,7 +18,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "x1784hubkey01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "s2441ctemseed01"
+down_revision: str | Sequence[str] | None = "s2443ctemgrp01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -41,20 +41,35 @@ def _column_exists(conn, table: str, column: str) -> bool:
     )
 
 
+def _check_exists(conn, table: str, name: str) -> bool:
+    return bool(
+        conn.execute(
+            sa.text("SELECT 1 FROM pg_constraint WHERE conname = :name AND conrelid = to_regclass(:table)"),
+            {"name": name, "table": table},
+        ).scalar()
+    )
+
+
 def upgrade() -> None:
     conn = op.get_bind()
-    # 1. Idempotency probe — steady-state re-runs take NO lock.
-    if _column_exists(conn, _TABLE, _COLUMN):
+    # 1. Idempotency probe — steady-state re-runs take NO lock. The column and
+    #    the CHECK are probed apart: an earlier draft of this revision added the
+    #    column alone.
+    has_column = _column_exists(conn, _TABLE, _COLUMN)
+    has_check = _check_exists(conn, _TABLE, _CHECK)
+    if has_column and has_check:
         return
     # 2. Pre-flight: kill same-role lock holders so the ALTER is instant.
     terminate_lock_holders(conn, _TABLE)
     # 3. Safety belt: fail fast (55P03) instead of wedging the lock queue.
     set_lock_timeout(conn)
     # 4. Guarded, constant-default (metadata-only) DDL; the CHECK scans one row.
-    op.execute(
-        f"ALTER TABLE {_TABLE} ADD COLUMN IF NOT EXISTS {_COLUMN} INTEGER NOT NULL DEFAULT 1, "
-        f"ADD CONSTRAINT {_CHECK} CHECK ({_COLUMN} >= 1)"
-    )
+    clauses = []
+    if not has_column:
+        clauses.append(f"ADD COLUMN IF NOT EXISTS {_COLUMN} INTEGER NOT NULL DEFAULT 1")
+    if not has_check:
+        clauses.append(f"ADD CONSTRAINT {_CHECK} CHECK ({_COLUMN} >= 1)")
+    op.execute(f"ALTER TABLE {_TABLE} " + ", ".join(clauses))
 
 
 def downgrade() -> None:
