@@ -20,6 +20,17 @@ import app.services.builtin_tools.traces as traces_module
 from app.tools.base import ToolCall
 
 
+@pytest.fixture(autouse=True)
+def readable_targets(monkeypatch):
+    """Every allow-listed target is one whose chats the caller may read: the
+    narrowing to readable targets is pinned by ``test_shared_agent_trace_reach.py``."""
+
+    async def _readable(_db, _user, agent_ids, _group_ids=None):
+        return {str(uuid.UUID(str(i))) for i in agent_ids}
+
+    monkeypatch.setattr(traces_module, "agents_whose_traces_user_may_read", _readable)
+
+
 def _trace(agent_id: str, *, run_id: uuid.UUID | None = None, minutes_ago: int = 60, **overrides):
     now = datetime.now(UTC)
     base = dict(

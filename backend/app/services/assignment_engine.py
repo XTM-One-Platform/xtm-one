@@ -4510,6 +4510,39 @@ async def _report_refused_continuation(
         logger.warning("Could not report the refused %s of assignment %s", kind, assignment.id, exc_info=True)
 
 
+async def _add_run_trace_tools(
+    composite: Any,
+    db: AsyncSession,
+    agent: Agent,
+    agent_builtin_tool_ids: list[str],
+    acting_user_id: _uuid.UUID | None,
+) -> None:
+    """Wire the trace suites of a run: the chat turn's rule, for the user it acts as.
+
+    A trace suite reads every user's conversations with the agent, so a run
+    wires one, carried or implied by ``agent_builder``, only when the user it
+    acts as may read the agent's chats (``agent_chat._turn_trace_tool_ids``).
+    That user is whoever triggered the run, else its run-as user or owner
+    (``_execution_identity``), so a viewer who triggers a run reads no trace
+    their Chats tab hides.
+    """
+    from app.models.user import User
+    from app.services.agent_chat import _add_trace_tools, _turn_trace_tool_ids
+    from app.services.builtin_tools.traces import TRACE_SUITE_IDS
+
+    # Most runs carry no trace suite: they read no user for it.
+    if "agent_builder" not in agent_builtin_tool_ids and not TRACE_SUITE_IDS.intersection(agent_builtin_tool_ids):
+        return
+    acting_user =await db.get(User, acting_user_id) if acting_user_id else None
+    _add_trace_tools(
+        composite,
+        db,
+        str(acting_user_id) if acting_user_id else "",
+        agent,
+        await _turn_trace_tool_ids(db, acting_user, agent, agent_builtin_tool_ids),
+    )
+
+
 @company_managed_run_scoped
 @known_secrets_scoped("run_id")
 async def execute_assignment_run(
@@ -6911,25 +6944,8 @@ async def execute_assignment_run(
                 )
                 composite.add_tools(doc_defs, doc_exec)
 
-            if "inspect_my_traces" in agent_builtin_tool_ids or "inspect_agent_traces" in agent_builtin_tool_ids:
-                from app.services.builtin_tools import build_trace_tools
-
-                trace_defs, trace_exec = build_trace_tools(
-                    db,
-                    str(effective_user_id) if effective_user_id else "",
-                    str(agent.id),
-                    supervision_target_agent_ids=agent.trace_supervision_target_agent_ids,
-                    # Only the supervision grant lets an admin run identity's
-                    # privilege reach another agent's payloads; self-inspection
-                    # alone must not.
-                    allow_cross_agent="inspect_agent_traces" in agent_builtin_tool_ids,
-                )
-                if "inspect_my_traces" not in agent_builtin_tool_ids:
-                    trace_defs = [d for d in trace_defs if d.name != "inspect_my_traces"]
-                if "inspect_agent_traces" not in agent_builtin_tool_ids:
-                    trace_defs = [d for d in trace_defs if d.name != "inspect_agent_traces"]
-                if trace_defs:
-                    composite.add_tools(trace_defs, trace_exec)
+            # --- Trace inspection (self + supervision, and agent_builder's alias) ---
+            await _add_run_trace_tools(composite, db, agent, agent_builtin_tool_ids, effective_user_id)
 
             if "fimi_analytics" in agent_builtin_tool_ids:
                 from app.services.builtin_tools import build_fimi_analytics_composite
@@ -6963,7 +6979,6 @@ async def execute_assignment_run(
                 from app.services.builtin_tools import (
                     build_agent_builder_tool,
                     build_evaluation_tools,
-                    build_trace_tools,
                 )
 
                 # The run acts as ``effective_user_id``: an admin-only
@@ -6982,41 +6997,6 @@ async def execute_assignment_run(
                 ab_defs = [d for d in ab_defs if caller_may_run(d.name, is_admin=_acting_is_admin)]
                 composite.add_tools(ab_defs, ab_exec)
 
-                # Platform built-in alias: agent_builder implies the full
-                # trace inspection surface. Legacy trace ids stay
-                # authoritative for the tools they already registered above;
-                # the alias only fills in the trace tools still missing.
-                _missing_trace_tools = {
-                    "inspect_my_traces",
-                    "inspect_agent_traces",
-                } - set(agent_builtin_tool_ids)
-                if _missing_trace_tools:
-                    from app.services.builtin_tools.traces import (
-                        TRACE_PAYLOAD_TOOL_NAME,
-                    )
-
-                    trace_defs, trace_exec = build_trace_tools(
-                        db,
-                        str(effective_user_id) if effective_user_id else "",
-                        str(agent.id),
-                        supervision_target_agent_ids=agent.trace_supervision_target_agent_ids,
-                        # This alias grants the full inspection surface,
-                        # supervision included, so the admin branch applies here.
-                        allow_cross_agent=True,
-                    )
-                    # ``get_trace_payload`` is not a selectable id — it is the
-                    # fetch that makes the inspection tools' bounded previews
-                    # readable in full, so it comes along with whichever of them
-                    # this alias adds. ``add_tools`` is last-write-wins by name,
-                    # so re-adding one already registered above is a no-op.
-                    trace_defs = [
-                        d
-                        for d in trace_defs
-                        if d.name in _missing_trace_tools
-                        or d.name == TRACE_PAYLOAD_TOOL_NAME
-                    ]
-                    if trace_defs:
-                        composite.add_tools(trace_defs, trace_exec)
 
                 ev_defs, ev_exec = build_evaluation_tools(
                     db,

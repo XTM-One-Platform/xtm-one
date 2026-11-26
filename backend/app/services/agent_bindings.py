@@ -305,6 +305,9 @@ def retain_agent_bindings(agent: Agent, keep: dict[str, set[str]]) -> dict[str, 
     if "work_item_owner_agent_ids" in keep and agent.work_item_owner_agent_ids:
         _filter("work_item_owner_agent_ids")
 
+    if "trace_supervision_target_agent_ids" in keep and agent.trace_supervision_target_agent_ids:
+        _filter("trace_supervision_target_agent_ids")
+
     return dropped
 
 
@@ -318,6 +321,7 @@ COPY_WARNING_LABELS: dict[str, str] = {
     "skill_ids": "skill",
     "prompt_ids": "prompt",
     "work_item_owner_agent_ids": "work-item owner agent",
+    "trace_supervision_target_agent_ids": "trace supervision target agent",
     "channel_config": "channel setting",
     "assignment_tool_sources": "assignment MCP server",
     "assignment_integration_bindings": "assignment integration binding",

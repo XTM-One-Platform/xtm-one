@@ -20,7 +20,11 @@ A person lends a resource whenever something shared carries it:
 * an MCP server and its secrets (headers, environment, its own OAuth token),
 * a custom tool, whose code runs for whoever uses it,
 * a channel bot and its bot token,
-* a variable and its value (secret or not).
+* a variable and its value (secret or not),
+* a knowledge base, a skill or a prompt an agent, a flow or the General
+  Assistant attaches: its runs read it as its owner may, for everyone they
+  serve, so attaching one lends it (lent by design, disclosed, never scoped
+  to the person chatting).
 
 It is lent by sharing the resource itself (a person, a group, company-wide),
 and by every entity that carries it: an agent bound to it (its assignments,
@@ -113,6 +117,9 @@ RESOURCE_MCP_SERVER = "mcp_server"
 RESOURCE_CUSTOM_TOOL = "custom_tool"
 RESOURCE_CHANNEL_BOT = "channel_bot"
 RESOURCE_VARIABLE = "variable"
+RESOURCE_KNOWLEDGE_BASE = "knowledge_base"
+RESOURCE_SKILL = "skill"
+RESOURCE_PROMPT = "prompt"
 #: What a person can lend through something shared.
 RESOURCE_KINDS = (
     RESOURCE_INTEGRATION,
@@ -120,7 +127,14 @@ RESOURCE_KINDS = (
     RESOURCE_CUSTOM_TOOL,
     RESOURCE_CHANNEL_BOT,
     RESOURCE_VARIABLE,
+    RESOURCE_KNOWLEDGE_BASE,
+    RESOURCE_SKILL,
+    RESOURCE_PROMPT,
 )
+#: Resources lent only through what attaches them. A preview of a change to
+#: one of them (its own share, unshare or deletion) does not list it: the
+#: person changing it sees what they change. What it carries is still listed.
+ATTACHED_ONLY_KINDS = frozenset({RESOURCE_KNOWLEDGE_BASE, RESOURCE_SKILL, RESOURCE_PROMPT})
 
 RESOURCE_MODELS: dict[str, Any] = {
     RESOURCE_INTEGRATION: Integration,
@@ -128,6 +142,9 @@ RESOURCE_MODELS: dict[str, Any] = {
     RESOURCE_CUSTOM_TOOL: CustomTool,
     RESOURCE_CHANNEL_BOT: ChannelBot,
     RESOURCE_VARIABLE: Variable,
+    RESOURCE_KNOWLEDGE_BASE: KnowledgeBase,
+    RESOURCE_SKILL: AgentSkill,
+    RESOURCE_PROMPT: Prompt,
 }
 
 #: Direct shares of the resource itself.
@@ -192,6 +209,11 @@ HOLDS_MCP_ENV = "mcp_env"
 HOLDS_CODE = "code"
 HOLDS_VALUE = "secret_value"
 HOLDS_PLAIN_VALUE = "plain_value"
+#: A knowledge base's documents: searched and read, written where the agent
+#: holds a write grant.
+HOLDS_DOCUMENTS = "documents"
+#: A skill's or a prompt's instructions (a skill's files included).
+HOLDS_INSTRUCTIONS = "instructions"
 #: Kinds that lend nothing: no stored credential, or one minted per user.
 _LENDS_NOTHING = frozenset({HOLDS_NONE, HOLDS_PLATFORM})
 
@@ -236,17 +258,21 @@ ENTITY_GROUP = "group"
 ENTITY_PLATFORM_MCP = "platform_mcp"
 #: What a preview can be asked about: every resource, every carrier a person
 #: edits, and the two audiences an administrator changes on their own.
-ENTITY_TYPES = (
-    *RESOURCE_KINDS,
-    ENTITY_AGENT,
-    ENTITY_ASSIGNMENT,
-    ENTITY_FLOW,
-    ENTITY_KNOWLEDGE_BASE,
-    ENTITY_SKILL,
-    ENTITY_PROMPT,
-    ENTITY_GENERAL_ASSISTANT,
-    ENTITY_GROUP,
-    ENTITY_PLATFORM_MCP,
+ENTITY_TYPES = tuple(
+    dict.fromkeys(
+        (
+            *RESOURCE_KINDS,
+            ENTITY_AGENT,
+            ENTITY_ASSIGNMENT,
+            ENTITY_FLOW,
+            ENTITY_KNOWLEDGE_BASE,
+            ENTITY_SKILL,
+            ENTITY_PROMPT,
+            ENTITY_GENERAL_ASSISTANT,
+            ENTITY_GROUP,
+            ENTITY_PLATFORM_MCP,
+        )
+    )
 )
 
 #: The carrier path an editable entity stands for.
@@ -1025,6 +1051,10 @@ def describe_secret(kind: str, resource: Any) -> dict[str, Any]:
         is_company = True
     elif kind == RESOURCE_VARIABLE:
         secret = HOLDS_VALUE if getattr(resource, "is_secret", False) else HOLDS_PLAIN_VALUE
+    elif kind == RESOURCE_KNOWLEDGE_BASE:
+        secret = HOLDS_DOCUMENTS
+    elif kind in (RESOURCE_SKILL, RESOURCE_PROMPT):
+        secret = HOLDS_INSTRUCTIONS
     else:
         secret = HOLDS_NONE
     return {
@@ -1169,6 +1199,9 @@ def held_resources(
             _variable_ids(get("persona"), get("guardrails"), get("handover_prompt"), get("human_in_the_loop_prompt")),
             REASON_REFERENCE,
         )
+        _add(held, RESOURCE_KNOWLEDGE_BASE, _attachment_ids(entity, "knowledge_base_ids"), REASON_BINDING)
+        _add(held, RESOURCE_SKILL, _attachment_ids(entity, "skill_ids"), REASON_BINDING)
+        _add(held, RESOURCE_PROMPT, _attachment_ids(entity, "prompt_ids"), REASON_BINDING)
     elif path == PATH_ASSIGNMENT:
         _add(held, RESOURCE_INTEGRATION, flatten_binding_ids(get("integration_bindings")), REASON_OVERRIDE)
         trigger = get("trigger_config")
@@ -1193,6 +1226,8 @@ def held_resources(
         _add(held, RESOURCE_INTEGRATION, [ref[2] for ref in flow_integration_refs(graph)], REASON_FLOW_NODE)
         _add(held, RESOURCE_CUSTOM_TOOL, _flow_custom_tool_ids(graph), REASON_FLOW_NODE)
         _add(held, RESOURCE_VARIABLE, _variable_ids(_graph_text(graph)), REASON_FLOW_NODE)
+        _add(held, RESOURCE_KNOWLEDGE_BASE, _attachment_ids(entity, "knowledge_base_ids"), REASON_FLOW_NODE)
+        _add(held, RESOURCE_SKILL, _attachment_ids(entity, "skill_ids"), REASON_FLOW_NODE)
     elif path == PATH_KNOWLEDGE_BASE:
         _add(held, RESOURCE_INTEGRATION, _as_list(sync_source_integration_ids), REASON_SYNC_SOURCE)
     elif path == PATH_SKILL:
@@ -1213,6 +1248,7 @@ def held_resources(
         _add(held, RESOURCE_CUSTOM_TOOL, _as_list(get("custom_tool_ids")), REASON_BINDING)
         _add(held, RESOURCE_CHANNEL_BOT, _channel_bot_ids(get("channel_config")), REASON_CHANNEL)
         _add(held, RESOURCE_VARIABLE, _variable_ids(get("system_prompt")), REASON_REFERENCE)
+        _add(held, RESOURCE_KNOWLEDGE_BASE, _attachment_ids(entity, "knowledge_base_ids"), REASON_BINDING)
     elif path == PATH_PERSONAL_ASSISTANT:
         _add(held, RESOURCE_INTEGRATION, flatten_binding_ids(get("ga_integration_bindings")), REASON_BINDING)
         _add(held, RESOURCE_MCP_SERVER, _as_list(get("ga_mcp_server_ids")), REASON_BINDING)
@@ -1541,6 +1577,15 @@ _SCANNED: dict[str, tuple[tuple[str, Any, tuple[str, ...]], ...]] = {
         (PATH_PROMPT, Prompt, ("content",)),
         (PATH_CUSTOM_TOOL, CustomTool, ("js_function", "description")),
     ),
+    RESOURCE_KNOWLEDGE_BASE: (
+        (PATH_AGENT, Agent, ("knowledge_base_ids",)),
+        (PATH_FLOW, Flow, ("graph",)),
+    ),
+    RESOURCE_SKILL: (
+        (PATH_AGENT, Agent, ("skill_ids",)),
+        (PATH_FLOW, Flow, ("graph",)),
+    ),
+    RESOURCE_PROMPT: ((PATH_AGENT, Agent, ("prompt_ids",)),),
 }
 
 
@@ -2385,6 +2430,8 @@ async def _reached(
 
 def _opt_outs(kind: str, resource: Any, entity_type: str, actor_id: Any, actor_is_admin: bool) -> list[str]:
     options: list[str] = []
+    if kind in ATTACHED_ONLY_KINDS:
+        return options
     secret = describe_secret(kind, resource)
     if (
         kind == RESOURCE_INTEGRATION
@@ -2569,7 +2616,7 @@ async def _shared_with_group(
         for row in rows[:MAX_ENTITIES_PER_KIND]:
             if group_id not in _uuids(getattr(row, "shared_group_ids", None)):
                 continue
-            if kind in RESOURCE_KINDS:
+            if kind in RESOURCE_KINDS and kind not in ATTACHED_ONLY_KINDS:
                 resources.append((kind, str(row.id)))
             path = PATH_CUSTOM_TOOL if kind == RESOURCE_CUSTOM_TOOL else kind
             if path in CARRIER_PATHS:
@@ -2702,7 +2749,7 @@ async def preview_change(
                 )
 
     cut = False
-    if entity_type in RESOURCE_KINDS:
+    if entity_type in RESOURCE_KINDS and entity_type not in ATTACHED_ONLY_KINDS:
         resource_id = str(getattr(entity, "id", "") or "") or _NEW
         key = (entity_type, resource_id)
         if after is not None and entity_type == RESOURCE_INTEGRATION:
