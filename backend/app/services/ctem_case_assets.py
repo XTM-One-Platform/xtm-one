@@ -18,7 +18,9 @@ records them with their provenance:
   and the case page's affected assets, the issues' own assets first;
 - :func:`complete_gate_ask`: the ``Assets:`` line of a remediation or mobilize
   gate card, so a hostname match is shown as inferred;
-- :func:`enrich_source_ids`: the module ids of rows stored before #2448.
+- :func:`enrich_source_ids`: the module ids of rows stored before #2448;
+- :func:`resolve_named_rows`: the inventory id and module ids of the rows the
+  issues name (#2492), resolved at read time.
 
 A row's ``asset_id`` is the CTEM inventory id (``organization_assets.id``,
 ``id_space`` ``inventory``), never a module id: the module ids are its
@@ -165,6 +167,43 @@ async def enrich_source_ids(db: AsyncSession, rows: Iterable[Any] | None) -> Non
     for row in targets:
         if "source_ids" not in row:
             row["source_ids"] = ids.get(str(row["asset_id"]), [])
+
+
+#: The provenances whose rows carry a name only until the read resolves them (#2492).
+_NAMED_PROVENANCES = frozenset({PROVENANCE_ISSUE, PROVENANCE_INVENTORY})
+
+
+async def resolve_named_rows(db: AsyncSession, organization_id: uuid.UUID | None, rows: Iterable[Any] | None) -> None:
+    """Resolve the issue-named *rows* (no ``asset_id``) to the one inventory asset each names (#2492).
+
+    One lookup for every row of the read (:func:`resolve_names`). A row whose
+    name matches exactly one asset gets ``asset_id``, ``id_space``, ``sources``
+    and ``source_ids``, its ``name`` and ``provenance`` kept; a name that matches
+    none or several stays name-only with ``resolved: false``, never guessed. A
+    store that cannot be read leaves the rows as they are. No stored data changes.
+    """
+    targets = [
+        r
+        for r in rows or ()
+        if isinstance(r, dict)
+        and not r.get("asset_id")
+        and _key(r.get("name"))
+        and r.get("provenance", PROVENANCE_ISSUE) in _NAMED_PROVENANCES
+    ]
+    if not targets:
+        return
+    resolved = await resolve_names(db, organization_id, [str(r["name"]) for r in targets])
+    if resolved is None:
+        return
+    for row in targets:
+        hit = resolved.get(_key(row["name"])[:300])
+        if hit is None:
+            row["resolved"] = False
+            continue
+        row["asset_id"] = hit["asset_id"]
+        row["id_space"] = ID_SPACE
+        row["sources"] = list(hit.get("sources") or [])
+        row["source_ids"] = [dict(p) for p in hit.get("source_ids") or ()]
 
 
 def attach_run_order(

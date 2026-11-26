@@ -754,6 +754,10 @@ async def _inventory_of(case: Any, rendered: dict[str, Any], events: list[Any]) 
         # host, rows stored before #2448 included: asset_id is the inventory id.
         assets = [dict(a) for a in rendered.get("assets") or []]
         await case_assets.enrich_source_ids(db, [*assets, *(affected.get("assets") or [])])
+        # The hosts the issues name, resolved to their inventory id and module ids in one lookup (#2492).
+        await case_assets.resolve_named_rows(
+            db, getattr(case, "organization_id", None), [*assets, *(affected.get("assets") or [])]
+        )
         return {
             "assets": assets,
             # The versions the case's product runs on the assets (#1252), never a typed software version.
