@@ -21917,9 +21917,6 @@
   "The PIR policy was not saved: {reason}": "La politique du PIR n'a pas été enregistrée : {reason}",
   "In OpenCTI": "Dans OpenCTI",
   "Listed": "Listé",
-  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "Pour le rendre concluant, lancez un contrôle qui lit la version en service sur l'actif : un scan authentifié ou un agent.",
-  "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, one {# notification non lue} other {# notifications non lues}}",
-  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {Voir la # décision qui vous attend} other {Voir les # décisions qui vous attendent}}",
   "{count, plural, one {{shown} signal in 30 days} other {{shown} signals in 30 days}}": "{count, plural, one {{shown} signal en 30 jours} other {{shown} signaux en 30 jours}}",
   "Last signal: {date}": "Dernier signal : {date}",
   "PIRs this playbook listens to": "PIR écoutés par ce playbook",
@@ -21932,5 +21929,12 @@
   "Each PIR records at its own minimum score: {list}": "Chaque PIR enregistre à son propre score minimum : {list}",
   "Use the default": "Utiliser la valeur par défaut",
   "Open the Intelligence policy": "Ouvrir la politique de renseignement",
-  "PIR selection saved": "Sélection des PIR enregistrée"
+  "PIR selection saved": "Sélection des PIR enregistrée",
+  "To make it conclusive, run a check that reads the running version on the asset: an authenticated scan or an agent.": "Pour le rendre concluant, lancez un contrôle qui lit la version en service sur l'actif : un scan authentifié ou un agent.",
+  "{count, plural, one {# unread notification} other {# unread notifications}}": "{count, plural, one {# notification non lue} other {# notifications non lues}}",
+  "{count, plural, one {See the # decision waiting for you} other {See all # decisions waiting for you}}": "{count, plural, one {Voir la # décision qui vous attend} other {Voir les # décisions qui vous attendent}}",
+  "Indicator sighting": "Observation d’indicateur",
+  "Code scanning": "Analyse de code",
+  "Secret scanning": "Détection de secrets",
+  "{count, plural, other {+# not used here}}": "{count, plural, one {+# non utilisée ici} other {+# non utilisées ici}}"
 }
