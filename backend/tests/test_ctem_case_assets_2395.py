@@ -68,7 +68,7 @@ class _AssetDb:
             keys = statement.whereclause.clauses[1].right.value
             rows = [(aid, name, key) for key in keys for name, ids in self.assets.items() for aid in ids if key == name]
             return _Result(rows)
-        return _Result([(aid, src) for aid, src in self.sources.items()])
+        return _Result([(aid, src, f"{src}-{aid}") for aid, src in self.sources.items()])
 
 
 def _case(**extra: Any) -> Any:
