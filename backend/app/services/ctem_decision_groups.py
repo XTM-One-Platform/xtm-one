@@ -246,7 +246,7 @@ async def join_group(
     workspace_id: uuid.UUID | None,
     is_company_managed: bool,
     waits_for_user_id: uuid.UUID | None,
-    waits_for_group_ids: list | None,
+    waits_for_group_ids: list[Any] | None,
     now: datetime,
 ) -> tuple[Any, bool] | None:
     """The group item the decision *correlation_key* joins, and whether it was created; ``None`` to stay individual.
@@ -433,6 +433,7 @@ async def fan_out(
 
     spec = dict(group.payload or {}).get("group") or {}
     members: list[dict[str, Any]] = list(spec.get("members") or [])
+    chosen: list[Mapping[str, Any]]
     if option == APPROVE_SELECTED:
         chosen = selected_members(members, answer.get("text"))
         if not chosen:
@@ -441,9 +442,11 @@ async def fan_out(
             )
         case_option = CASE_APPROVE
     elif option == APPROVE_ALL:
-        chosen, case_option = members, CASE_APPROVE
+        chosen = [*members]
+        case_option = CASE_APPROVE
     elif option == DECLINE_ALL:
-        chosen, case_option = members, CASE_DECLINE
+        chosen = [*members]
+        case_option = CASE_DECLINE
     else:
         raise ValueError(f"option {option!r} is not an answer of a grouped decision")
     ids = [uuid.UUID(str(m["item_id"])) for m in chosen]
