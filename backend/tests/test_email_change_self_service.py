@@ -20,6 +20,7 @@ import json
 import logging
 import re
 import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -219,6 +220,10 @@ class TestARequestIsRefused:
     async def test_for_an_account_scim_provisioned_or_linked(self, env):
         # Its identity provider's next sync would write its own address back.
         await _refused(_ask(_user(scim_external_id="idp-42"), "jane.doe@corp.com"), 400)
+        assert not env.mail and not env.redis.store
+
+    async def test_for_an_account_scim_linked_without_an_external_id(self, env):
+        await _refused(_ask(_user(scim_linked_at=datetime.now(UTC)), "jane.doe@corp.com"), 400)
         assert not env.mail and not env.redis.store
 
     async def test_under_impersonation(self, env):

@@ -199,6 +199,10 @@ class User(Base):
     # The identity provider's id of the account when SCIM provisions it
     # (``externalId``, ``api/v1/scim.py``); NULL for an account SCIM never saw.
     scim_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
+    # When SCIM first created, linked or updated the account, ``externalId``
+    # or not (``externalId`` is optional): its identity provider manages it
+    # from then on (``users.provisioning_source``). NULL for one SCIM never saw.
+    scim_linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
 
     # LLM preferences (per-user overrides)
     preferred_llm_provider: Mapped[str | None] = mapped_column(

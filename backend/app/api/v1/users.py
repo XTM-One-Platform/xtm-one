@@ -136,9 +136,9 @@ class UserDetailResponse(BaseModel):
 
 def provisioning_source(user: User) -> str:
     """``scim`` for an account an identity provider manages, else ``sso`` or ``local``."""
-    if user.scim_external_id:
+    if getattr(user, "scim_external_id", None) or getattr(user, "scim_linked_at", None):
         return "scim"
-    return "sso" if user.sso_provider else "local"
+    return "sso" if getattr(user, "sso_provider", None) else "local"
 
 
 class UserIntegrationItem(BaseModel):

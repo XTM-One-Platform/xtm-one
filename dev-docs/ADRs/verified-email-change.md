@@ -40,7 +40,7 @@ From the Profile page, the user enters the new address and their current passwor
 
 `POST /api/v1/settings/email-change` with `{ email, current_password }`:
 
-- Refused with 400 for an SSO account (`sso_provider` set) or one SCIM provisioned or linked (`scim_external_id` set): its IdP owns the email, and its next SCIM sync would write it back. `GET /auth/me` reports why the change is refused (`email_change_blocked`: `identity_provider`, `platform_admin`, `no_email`), and the Profile page shows the row read-only with the reason.
+- Refused with 400 for an SSO account (`sso_provider` set) or one SCIM created, linked or updated (`users.provisioning_source()`: `scim_external_id`, or `scim_linked_at`, which SCIM stamps whether or not the IdP sends the optional `externalId`): its IdP owns the email, and its next SCIM sync would write it back. `GET /auth/me` reports why the change is refused (`email_change_blocked`: `identity_provider`, `platform_admin`, `no_email`), and the Profile page shows the row read-only with the reason.
 - Refused with 403 under impersonation.
 - Refused with 401 when the current password is wrong.
 - Refused with 400 when the address is not a valid email or its domain is not allowed (same rule as registration).

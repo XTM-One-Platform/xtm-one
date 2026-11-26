@@ -298,3 +298,78 @@ async def test_the_platform_admin_cannot_be_deactivated_by_scim(monkeypatch: pyt
             assert refused.json()["scimType"] == "mutability"
         async with db.sessions() as session:
             assert (await session.get(User, admin_id)).is_active is True
+
+
+async def test_an_account_linked_by_username_alone_is_managed_by_its_identity_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # externalId is optional in SCIM 2.0: the link alone hands the account,
+    # its email included, to the identity provider.
+    from app.api.v1.settings import email_change_blocked
+    from app.api.v1.users import provisioning_source
+
+    monkeypatch.setattr("app.services.email.is_email_configured", lambda: True)
+    async with scratch_database(
+        "scimlink", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True
+    ) as db:
+        async with db.sessions() as session:
+            admin = _user("admin", role="admin", email=_PLATFORM_ADMIN, days=30)
+            local = _user("local", email="local.person@example.com")
+            session.add_all([admin, local])
+            await session.commit()
+            local_id = local.id
+            assert provisioning_source(local) == "local" and email_change_blocked(local) is None
+        async with _client(db.sessions, admin, monkeypatch) as client:
+            raw = (await client.post("/api/v1/scim/tokens", json={"name": "Entra"})).json()["token"]
+            linked = await client.post(
+                f"{_SCIM}/Users",
+                json={"userName": "Local.Person@example.com", "active": True},
+                headers={"Authorization": f"Bearer {raw}"},
+            )
+            assert linked.status_code == 201 and linked.json()["id"] == str(local_id)
+        async with db.sessions() as session:
+            account = await session.get(User, local_id)
+            assert account.scim_external_id is None and account.scim_linked_at is not None
+            assert provisioning_source(account) == "scim"
+            assert email_change_blocked(account) == "identity_provider"
+
+
+async def test_the_upgrade_stamps_the_accounts_scim_already_manages() -> None:
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "u1906scimlnk01_add_users_scim_linked_at.py"
+    spec = importlib.util.spec_from_file_location("u1906scimlnk01", path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    async with scratch_database(
+        "scimstamp", tables=ALL_TABLES, extensions=("vector",), skip_without_extensions=True
+    ) as db:
+        async with db.sessions() as session:
+            admin = _user("admin", role="admin", email=_PLATFORM_ADMIN, days=30)
+            by_external_id = _user("ext")
+            by_external_id.scim_external_id = "ext-1"
+            by_audit, untouched = _user("audited"), _user("local")
+            session.add_all([admin, by_external_id, by_audit, untouched])
+            await session.flush()
+            session.add(
+                AuditLog(
+                    user_id=by_audit.id,
+                    user_email=by_audit.email,
+                    action="update",
+                    entity_type="user",
+                    entity_id=by_audit.id,
+                    summary="SCIM linked the existing account",
+                    details={"linked": True, "scim_token_id": str(uuid.uuid4())},
+                )
+            )
+            await session.commit()
+            ids = {"ext": by_external_id.id, "audited": by_audit.id, "local": untouched.id, "admin": admin.id}
+        async with db.sessions() as session:
+            conn = await session.connection()
+            stamped = await conn.run_sync(lambda sync: migration.backfill_in_batches(sync, batch_size=1))
+            again = await conn.run_sync(lambda sync: migration.backfill_in_batches(sync, batch_size=1))
+            await session.commit()
+            assert (stamped, again) == (2, 0)
+            linked = {name: (await session.get(User, uid)).scim_linked_at is not None for name, uid in ids.items()}
+            assert linked == {"ext": True, "audited": True, "local": False, "admin": False}

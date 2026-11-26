@@ -4807,13 +4807,14 @@ def email_change_blocked(user: User) -> str | None:
 
     The rule both self-service routes apply and ``GET /auth/me`` reports, so
     the profile offers no change it would refuse. An identity provider owns the
-    address of an SSO account and of one SCIM provisioned or linked: its next
-    sync writes its own address back. Platform administrator standing follows
+    address of an SSO account and of one SCIM provisioned or linked
+    (``users.provisioning_source``): its next sync writes its own address back. Platform administrator standing follows
     ``ADMIN_EMAIL``, and the boot finds the account by it.
     """
+    from app.api.v1.users import provisioning_source
     from app.services import email as email_service
 
-    if user.sso_provider or getattr(user, "scim_external_id", None):
+    if provisioning_source(user) != "local":
         return "identity_provider"
     if is_platform_admin(user):
         return "platform_admin"
@@ -4832,13 +4833,12 @@ def _refuse_self_service_email_change(user: User) -> None:
         raise HTTPException(status_code=status_code, detail=detail)
 
 
-async def _email_change_target_refused(db: AsyncSession, user: User, email: str) -> bool:
+def _email_change_target_refused(user: User, email: str, domain_list: list[str]) -> bool:
     """Whether *email* is no address *user* may take, whoever holds it: the
-    allowed domains, ``ADMIN_EMAIL`` and the Terms of Use exemptions."""
+    allowed domains (*domain_list*), ``ADMIN_EMAIL`` and the Terms of Use exemptions."""
     from app.core.config import settings as app_settings
-    from app.core.sso_helpers import get_sso_config
 
-    if not email_domain_allowed(email, (await get_sso_config(db)).allowed_domain_list):
+    if not email_domain_allowed(email, domain_list):
         return True
     if admin_email_change_refusal(user, email) is not None:
         return True
@@ -4901,7 +4901,7 @@ async def request_email_change(
     holder = (
         await db.execute(select(User.email).where(func.lower(User.email) == email, User.id != user.id))
     ).scalar_one_or_none()
-    if holder is not None or await _email_change_target_refused(db, user, email):
+    if holder is not None or _email_change_target_refused(user, email, domain_list):
         await token_store.drop_email_change(user.id)
         if holder is not None:
             html, text = email_service.email_change_address_taken_email()
@@ -4935,6 +4935,7 @@ async def confirm_email_change(
     own (``token_store.password_reset_addressed_to``). The session stays: the
     ``sub`` does not change.
     """
+    from app.core.sso_helpers import get_sso_config
     from app.services import email as email_service
     from app.services.mfa import _normalize_totp_code
 
@@ -4951,7 +4952,8 @@ async def confirm_email_change(
     holder = (
         await db.execute(select(User.id).where(func.lower(User.email) == email, User.id != user.id))
     ).scalar_one_or_none()
-    if holder is not None or await _email_change_target_refused(db, user, email):
+    domain_list = (await get_sso_config(db)).allowed_domain_list
+    if holder is not None or _email_change_target_refused(user, email, domain_list):
         raise taken
     old_email = user.email
     user.email = email

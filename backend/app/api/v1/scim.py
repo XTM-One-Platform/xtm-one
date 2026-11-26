@@ -245,6 +245,9 @@ async def _apply_user(db: AsyncSession, user: User, changes: s.UserChanges, toke
     from app.services import user_deactivation
 
     changed: list[str] = []
+    # Managed by the identity provider from now on, whatever externalId holds.
+    if user.scim_linked_at is None:
+        user.scim_linked_at = datetime.now(UTC)
     if changes.user_name:
         email = changes.user_name.strip().lower()
         if email != user.email.lower():
@@ -372,6 +375,7 @@ async def create_user(
         role="user",
         sso_provider="saml" if cfg.saml_enabled else "oidc" if cfg.oidc_enabled else None,
         scim_external_id=changes.external_id,
+        scim_linked_at=now,
         is_active=active,
         deactivated_at=None if active else now,
         deactivation_source=None if active else SCIM_SOURCE,
