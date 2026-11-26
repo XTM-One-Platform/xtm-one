@@ -15,8 +15,10 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import jwt as pyjwt
 import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -27,8 +29,10 @@ import app.models  # noqa: F401 - registers every mapper
 from app.api import deps
 from app.api.v1 import xtm_hub_registration as routes
 from app.api.v1.platform_settings_helpers import get_platform_settings
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import decrypt_value
+from app.core.xtm_hub_key import derive_key, key_version
 from app.integrations.providers import xtm_hub as hub
 from app.models.audit_log import AuditLog
 from app.models.user import User
@@ -48,6 +52,7 @@ _HUB = "https://hub.example.com"
 # Computed, so no literal looks like a credential to a secret scanner.
 _TOKEN = str(uuid.uuid5(uuid.NAMESPACE_URL, "test:xtm-hub-platform-token"))
 _NEW_TOKEN = str(uuid.uuid5(uuid.NAMESPACE_URL, "test:xtm-hub-platform-token-2"))
+_STRONG_SECRET = "x" * 24 + "-a-strong-test-secret-key"
 
 
 class _FakeHub:
@@ -55,10 +60,12 @@ class _FakeHub:
 
     def __init__(self, status: str | None = "active", err: str | None = None):
         self.status, self.err, self.calls = status, err, []
+        self.credentials: list[dict] = []
         self.during_call = None
 
-    async def __call__(self, base_url, query, variables, action):
+    async def __call__(self, base_url, query, variables, action, **credentials):
         self.calls.append((base_url, variables))
+        self.credentials.append(credentials)
         if self.during_call is not None:
             hook, self.during_call = self.during_call, None
             await hook()
@@ -632,3 +639,93 @@ async def test_an_automatic_registration_is_refused_before_any_call(monkeypatch)
         )
         assert fake.calls == []
         assert await _registration(sessions) is None
+
+
+async def _enroll(sessions) -> None:
+    """Record the key enrollment the way the enrollment will: the date on the registration."""
+    async with sessions() as db:
+        await db.execute(
+            update(XtmHubRegistration)
+            .where(XtmHubRegistration.id == SINGLETON_ID)
+            .values(key_enrolled_at=datetime.now(UTC))
+        )
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_registration_starts_with_no_enrolled_key(monkeypatch):
+    async with _database() as sessions:
+        await _register(sessions, monkeypatch)
+        stored = await _registration(sessions)
+        assert stored is not None and stored.key_enrolled_at is None
+
+
+@pytest.mark.asyncio
+async def test_once_enrolled_the_heartbeat_is_signed_and_sends_no_token(monkeypatch):
+    monkeypatch.setattr(settings, "secret_key", _STRONG_SECRET)
+    async with _database() as sessions:
+        await _register(sessions, monkeypatch)
+        await _enroll(sessions)
+        fake = _FakeHub("active")
+        monkeypatch.setattr(hub, "xtm_hub_graphql", fake)
+
+        assert await registration.heartbeat() == STATUS_REGISTERED
+
+        ((_base_url, variables),) = fake.calls
+        (credentials,) = fake.credentials
+        assert "token" not in variables["input"]
+        assert set(credentials) == {"platform_assertion"}
+        async with sessions() as db:
+            platform_id = (await get_platform_settings(db)).id
+            key = derive_key(await key_version(db))
+        claims = pyjwt.decode(
+            credentials["platform_assertion"],
+            pyjwt.PyJWK(key.public_jwk()).key,
+            algorithms=["EdDSA"],
+            audience="xtm-hub",
+            issuer=str(platform_id),
+        )
+        assert claims["exp"] - claims["iat"] == 60
+
+
+@pytest.mark.asyncio
+async def test_before_enrollment_the_heartbeat_sends_the_token(monkeypatch):
+    async with _database() as sessions:
+        await _register(sessions, monkeypatch)
+        fake = _FakeHub("active")
+        monkeypatch.setattr(hub, "xtm_hub_graphql", fake)
+
+        assert await registration.heartbeat() == STATUS_REGISTERED
+
+        assert fake.calls[0][1]["input"]["token"] == _TOKEN
+        assert fake.credentials == [{}]
+
+
+@pytest.mark.asyncio
+async def test_a_key_the_hub_no_longer_matches_asks_for_a_new_registration(monkeypatch):
+    monkeypatch.setattr(settings, "secret_key", _STRONG_SECRET)
+    async with _database() as sessions:
+        await _register(sessions, monkeypatch)
+        await _enroll(sessions)
+        refusal = hub._refusal(["PLATFORM_KEY_MISMATCH"])
+        monkeypatch.setattr(hub, "xtm_hub_graphql", _FakeHub(None, refusal))
+
+        assert await registration.heartbeat() == STATUS_NEEDS_REREGISTRATION
+
+        stored = await _registration(sessions)
+        assert stored is not None
+        assert (stored.status, stored.last_check_result) == (STATUS_NEEDS_REREGISTRATION, "key_mismatch")
+
+
+@pytest.mark.asyncio
+async def test_a_new_registration_forgets_the_enrolled_key(monkeypatch):
+    async with _database() as sessions:
+        await _register(sessions, monkeypatch)
+        await _enroll(sessions)
+
+        await _register(sessions, monkeypatch, token=_NEW_TOKEN)
+
+        stored = await _registration(sessions)
+        assert stored is not None
+        assert (stored.generation, stored.key_enrolled_at) == (2, None)
+

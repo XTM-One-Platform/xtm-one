@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.security import PUBLISHED_SECRET_KEYS
 from app.core.xtm_hub_key import (
     ASSERTION_AUDIENCE,
+    ASSERTION_TYPE,
     PLATFORM_IDENTIFIER,
     XtmHubKeyUnavailableError,
     derive_key,
@@ -116,12 +117,31 @@ class TestAssertion:
     def test_the_header_names_the_key(self):
         key = derive_key(1)
         header = pyjwt.get_unverified_header(key.sign_assertion(_PLATFORM_ID))
-        assert header == {"alg": "EdDSA", "kid": key.kid, "typ": "JWT"}
+        assert header == {"alg": "EdDSA", "kid": key.kid, "typ": "xtm-hub-platform+jwt"}
+        assert header["typ"] == ASSERTION_TYPE
 
-    def test_it_lives_five_minutes(self):
+    def test_it_lives_sixty_seconds(self):
         key = derive_key(1)
         claims = _verify(key.sign_assertion(_PLATFORM_ID), key.public_jwk())
-        assert claims["exp"] - claims["iat"] == 300
+        assert claims["exp"] - claims["iat"] == 60
+
+    def test_no_htu_unless_asked(self):
+        key = derive_key(1)
+        assert "htu" not in _verify(key.sign_assertion(_PLATFORM_ID), key.public_jwk())
+
+    def test_a_download_assertion_carries_its_path(self):
+        key = derive_key(1)
+        path = "/document/get/7b1f2c3d-0000-4000-8000-000000000001/7b1f2c3d-0000-4000-8000-000000000002"
+        assert _verify(key.sign_assertion(_PLATFORM_ID, htu=path), key.public_jwk())["htu"] == path
+
+    @pytest.mark.parametrize(
+        "htu",
+        ["https://hub.example.com/document/get/a/b", "document/get/a/b", "/document/get/a/b?x=1", "/a#b", ""],
+        ids=["absolute-url", "relative", "query", "fragment", "empty"],
+    )
+    def test_htu_is_a_path_only(self, htu):
+        with pytest.raises(ValueError, match="htu"):
+            derive_key(1).sign_assertion(_PLATFORM_ID, htu=htu)
 
     def test_every_assertion_has_its_own_jti(self):
         key = derive_key(1)

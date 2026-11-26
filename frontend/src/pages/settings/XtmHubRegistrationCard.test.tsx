@@ -109,6 +109,29 @@ describe("XtmHubRegistrationCard", () => {
     expect(field.value).toBe("https://hub.example.com");
     expect(field.readOnly).toBe(true);
   });
+
+  const identifierChanged =
+    "This platform's identifier changed since it was registered. Register it again to keep it on the XTM Hub.";
+  const credentialsRefused =
+    "The XTM Hub no longer accepts this platform's credentials. Register it again to keep it on the XTM Hub.";
+
+  it("asks to register again when the platform's identifier changed", () => {
+    registration = { ...registered, status: "needs_reregistration", last_check_result: null };
+    render(<XtmHubRegistrationCard />, { wrapper: Providers });
+
+    expect(screen.getByText(identifierChanged)).toBeTruthy();
+    expect(screen.queryByText(credentialsRefused)).toBeNull();
+  });
+
+  for (const result of ["key_mismatch", "token_path_closed"]) {
+    it(`asks to register again when the XTM Hub refuses the platform's credentials (${result})`, () => {
+      registration = { ...registered, status: "needs_reregistration", last_check_result: result };
+      render(<XtmHubRegistrationCard />, { wrapper: Providers });
+
+      expect(screen.getByText(credentialsRefused)).toBeTruthy();
+      expect(screen.queryByText(identifierChanged)).toBeNull();
+    });
+  }
 });
 
 // The stored Hub address, once registered: a link only when it is a web

@@ -260,7 +260,10 @@ export function XtmHubRegistrationCard() {
 
         {status === "needs_reregistration" && (
           <p className="content-base text-feedback-warning-primary">
-            {t_i18n("This platform's identifier changed since it was registered. Register it again to keep it on the XTM Hub.")}
+            {registration?.last_check_result === "key_mismatch" ||
+            registration?.last_check_result === "token_path_closed"
+              ? t_i18n("The XTM Hub no longer accepts this platform's credentials. Register it again to keep it on the XTM Hub.")
+              : t_i18n("This platform's identifier changed since it was registered. Register it again to keep it on the XTM Hub.")}
           </p>
         )}
         {status === "lost_connectivity" && (

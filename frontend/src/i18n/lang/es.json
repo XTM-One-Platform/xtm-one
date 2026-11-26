@@ -9294,6 +9294,7 @@
   "XTM Hub URL": "URL del XTM Hub",
   "Last check": "Última comprobación",
   "This platform's identifier changed since it was registered. Register it again to keep it on the XTM Hub.": "El identificador de esta plataforma ha cambiado desde su registro. Regístrela de nuevo para mantenerla en el XTM Hub.",
+  "The XTM Hub no longer accepts this platform's credentials. Register it again to keep it on the XTM Hub.": "El XTM Hub ya no acepta las credenciales de esta plataforma. Regístrela de nuevo para mantenerla en el XTM Hub.",
   "The XTM Hub did not confirm the registration at the last check. It is checked again every hour.": "El XTM Hub no confirmó el registro en la última comprobación. Se vuelve a comprobar cada hora.",
   "Waiting for the XTM Hub window...": "Esperando la ventana del XTM Hub...",
   "Register on the XTM Hub": "Registrar en el XTM Hub",
