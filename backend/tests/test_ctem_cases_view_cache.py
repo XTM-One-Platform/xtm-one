@@ -299,6 +299,66 @@ async def test_a_list_read_with_no_view_answers_the_build_that_finished_in_the_w
 
 
 @pytest.mark.asyncio
+async def test_a_list_read_answers_the_view_another_pod_writes_during_the_wait(
+    redis: Any, judged: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#2232: another pod holds the build, so this pod's task ends at once; the read still finds its view."""
+    built = view_of.ViewerView(issues={"opencti:a": rules.SourceIssue(source="opencti", external_id="a", name="x")})
+
+    async def nothing() -> None:
+        return None
+
+    def revalidate(user_id: str, vertical: str, generation: str) -> asyncio.Task[None]:
+        return asyncio.create_task(nothing())
+
+    async def other_pod() -> None:
+        await asyncio.sleep(0.03)
+        redis.data[view_of._view_key("u-1", "cyber", "0")] = built.to_json()
+
+    monkeypatch.setattr(view_of, "_revalidate", revalidate)
+    monkeypatch.setattr(view_of, "LIST_POLL_SECONDS", 0.01)
+    monkeypatch.setattr(view_of, "LIST_BUILD_WAIT_SECONDS", 1.0)
+    writer = asyncio.create_task(other_pod())
+    phases = view_of.start_timing()
+    view = await view_of.viewer_view(None, "u-1", "cyber", stale_ok=True)
+    await writer
+    assert judged == [] and view.sees("opencti:a") and "cache-built" in phases
+
+
+@pytest.mark.asyncio
+async def test_a_kept_view_is_decoded_once_per_worker(
+    redis: Any, judged: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#2232: a list read of a warm view never decodes its JSON again; each read gets its own copy."""
+    view_of._decoded.clear()
+    decodes: list[int] = []
+    original = view_of.ViewerView.from_json
+
+    def counting(raw: Any) -> view_of.ViewerView:
+        decodes.append(1)
+        return original(raw)
+
+    monkeypatch.setattr(view_of.ViewerView, "from_json", staticmethod(counting))
+    await view_of.viewer_view(None, "u-1", "cyber")
+    first = await view_of.viewer_view(None, "u-1", "cyber")
+    phases = view_of.start_timing()
+    second = await view_of.viewer_view(None, "u-1", "cyber")
+    assert len(decodes) == 1 and "decode-memo" in phases and {"redis", "copy"} <= set(phases)
+    first.open_ids.add("opencti:z")
+    first.stale = True
+    assert "opencti:z" not in second.open_ids and not second.stale
+    third = await view_of.viewer_view(None, "u-1", "cyber")
+    assert "opencti:z" not in third.open_ids and not third.stale
+
+
+def test_the_decoded_views_stay_bounded() -> None:
+    view_of._decoded.clear()
+    for n in range(view_of.DECODED_VIEWS_MAX + 5):
+        view_of._decode_view(view_of.ViewerView(missing=[f"p{n}"]).to_json())
+    assert len(view_of._decoded) == view_of.DECODED_VIEWS_MAX
+
+
+@pytest.mark.asyncio
 async def test_a_list_read_answers_the_previous_view_after_its_generation_key_expired(
     redis: Any, judged: list[str], revalidations: list[Any]
 ) -> None:

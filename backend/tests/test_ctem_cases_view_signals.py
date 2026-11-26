@@ -150,13 +150,16 @@ async def test_signal_details_reads_only_the_members_given() -> None:
     class _Db:
         async def execute(self, query: Any) -> Any:
             seen.append(str(query))
-            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [signal]))
+            # Column rows (#2232): the detail read selects the columns a row names, never the ORM object.
+            return SimpleNamespace(all=lambda: [signal])
 
     assert await view_of.signal_details(_Db(), set()) == {}
     assert seen == []
     details = await view_of.signal_details(_Db(), {f"signal:{signal.id}", "signal:not-a-uuid"})
     assert list(details) == [f"signal:{signal.id}"]
     assert details[f"signal:{signal.id}"]["name"] == "O365 Device Code Phishing Campaign"
+    # Only the columns signal_detail reads, never the whole row.
+    assert "ctem_signals.trigger_path" in seen[0] and "ctem_signals.state" not in seen[0]
 
 
 def test_a_case_row_carries_its_dates_and_signal_count() -> None:
