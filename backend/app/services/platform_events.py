@@ -1514,9 +1514,38 @@ async def _deliver(name: str, payload: Mapping[str, Any], sub: Subscription, ass
             payload={"trigger_type": TRIGGER_TYPE, **dict(payload)},
             db=db,
             trigger_context=context,
-            overflow="persist",
+            overflow=delivery_overflow(name),
         )
+    if result.status == "dropped" and is_ctem_event(name) and getattr(result, "reason", None) is None:
+        await _record_queue_full(sub.assignment_id)
+        return f"dropped: {QUEUE_FULL_OUTCOME}"
     return f"{result.status} run {result.run_id}"
+
+
+#: The outcome of a CTEM delivery past its assignment's queue limit (#2570).
+QUEUE_FULL_OUTCOME = "skipped: queue full"
+
+
+def delivery_overflow(name: str) -> str:
+    """What a delivery of *name* does at its assignment's queue limit (#2570).
+
+    A CTEM signal or case event is dropped there (``drop_newest``): its source raises it again
+    (a case waiting on nobody is raised ``ctem_case.stalled``, an unrun case is caught up), and a
+    storm of case openings queued past the limit kept a platform down after every restart. Every
+    other platform event has no sender that would raise it again: queued past the limit.
+    """
+    return "drop_newest" if is_ctem_event(name) else "persist"
+
+
+async def _record_queue_full(assignment_id: object) -> None:
+    """Count one delivery dropped at the queue limit on its assignment, summarised (best effort)."""
+    from app.services.integration_event_filters import record_filter_reasons, record_filtered_events
+
+    try:
+        await record_filtered_events(assignment_id, 1)
+        await record_filter_reasons(assignment_id, {QUEUE_FULL_OUTCOME: 1})
+    except Exception as exc:  # a counter never blocks a delivery decision
+        logger.debug("Could not count the queue-full drop of assignment %s: %r", assignment_id, exc)
 
 
 async def dispatch_event(name: str, payload: Mapping[str, Any]) -> list[str]:
