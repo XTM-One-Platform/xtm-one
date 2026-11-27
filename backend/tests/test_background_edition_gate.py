@@ -1146,7 +1146,8 @@ async def test_queued_deliveries_stay_queued_while_ai_is_unavailable(monkeypatch
     session = _Session([[]])
     monkeypatch.setattr(assignment_engine, "async_session", lambda: session)
     assert await assignment_engine.drain_assignment_queues() == 0
-    assert session.executes == 1, "the queue is read once"
+    # The CTEM backlog count of trim_platform_event_queues (#2570), then the queue: one read each.
+    assert session.executes == 2, "the backlog count and the queue are read once each"
     gate.assert_not_awaited()
 
 

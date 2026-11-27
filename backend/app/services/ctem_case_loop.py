@@ -482,6 +482,10 @@ async def open_from_signal(
     # #2558: the lookup and the insert under the key's lock, so two openings of one fix meet.
     await hold_key_lock(db, signal.organization_id, vertical, fix.key)
     case = await _open_case_for_key(db, signal.organization_id, vertical, fix.key, fix.aliases)
+    if case is None and not await case_opening.take_opening_token(vertical):
+        # #2570: the per-minute opening budget of the vertical is spent: the signal stays confirmed
+        # with no case and opens on a next pass (the paced pass of the autonomous tick, the sweep).
+        return None
     created = case is None
     if case is None:
         case = CtemCase(
@@ -1544,8 +1548,11 @@ async def open_waiting(
     events: PendingEvents | None,
     now: datetime,
     counts: dict[str, int],
-) -> None:
+) -> bool:
     """Open the cases of up to ``SWEEP_BATCH`` waiting confirmed signals, oldest sighting first; adds to *counts*.
+
+    True when the pass stopped on the per-minute opening budget (#2570,
+    ``ctem_case_opening.take_opening_token``): the rest waits for the next pass.
 
     The caller checked :func:`ctem_case_opening.may_open_waiting` and commits. The switch is read
     again before every signal: an administrator who pauses case opening mid-pass stops the pass at
@@ -1569,6 +1576,9 @@ async def open_waiting(
         if not await case_opening.is_on(db, vertical):
             logger.info("CTEM case opening paused for %s mid-pass; the rest of the batch waits", vertical)
             break
+        if await case_opening.budget_left(vertical) == 0:
+            logger.info("CTEM case opening of %s: the per-minute budget is spent; the rest waits", vertical)
+            return True
         before = len(events.items) if events is not None else 0
         frames_before = len(events.frames) if events is not None else 0
         # Read before the savepoint: its rollback expires the signal, and a lazy refresh on an
@@ -1589,6 +1599,7 @@ async def open_waiting(
             continue
         opened = events is not None and len(events.items) > before
         counts["opened" if opened else "joined"] += 1
+    return False
 
 
 def duplicate_groups(cases: list[Any]) -> list[list[Any]]:
