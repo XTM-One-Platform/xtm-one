@@ -769,13 +769,21 @@ def match(provider: str, event_key: str, payload: Mapping[str, Any]) -> tuple[Li
     return None
 
 
-async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], *, verified: bool) -> bool:
+async def note_event(
+    provider: str,
+    event_key: str,
+    payload: Mapping[str, Any],
+    *,
+    verified: bool,
+    session_factory: Any = None,
+) -> bool:
     """Record the signal a webhook delivery carries, if any; never raises. ``True`` when one was recorded.
 
     XTM One mode only, once an organization is set up, and only for a delivery
     *verified* against a configured webhook secret: the route accepts an
     unsigned delivery when no secret is set, and such a delivery is never
-    trusted with a signal.
+    trusted with a signal. *session_factory* opens the session (the queued
+    intake passes its own engine's, #2584); the web pool's by default.
     """
     from app.core.config import settings
 
@@ -800,17 +808,32 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
     from app.services.ctem_loop_stream import publish_signal_update
     from app.services.organizations import get_primary
 
+    open_session = session_factory or async_session
+    from app.services.ctem_signal_sources import (
+        cached_exclusions,
+        excluded_sources,
+        is_excluded,
+        remember_exclusions,
+    )
+
+    # A delivery of the provisioned PIR playbook is the playbook source, any other the listener (#1445).
+    kind = "pir_playbook" if payload.get("xtm_source") == "pir_playbook" else "listener"
+    # #2583 point 7: a delivery of a source excluded from its path is dropped from the cached map,
+    # before any database session, so an excluded catch-up never takes a connection.
+    cached = cached_exclusions()
+    if cached is not None and is_excluded(cached[1], row.trigger_path, provider, kind, row.source):
+        return False
+
     try:
-        async with async_session() as db:
+        async with open_session() as db:
             primary = await get_primary(db)
             if primary is None:
                 return False
-            from app.services.ctem_signal_sources import excluded_sources, is_excluded
-
-            # A delivery of the provisioned PIR playbook is the playbook source, any other the listener (#1445).
-            kind = "pir_playbook" if payload.get("xtm_source") == "pir_playbook" else "listener"
-            if is_excluded(await excluded_sources(db, primary.id), row.trigger_path, provider, kind, row.source):
-                return False
+            if cached is None or cached[0] != primary.id:
+                excluded = await excluded_sources(db, primary.id)
+                remember_exclusions(primary.id, excluded)
+                if is_excluded(excluded, row.trigger_path, provider, kind, row.source):
+                    return False
             if row.trigger_path in ("relevant_threat", "new_vulnerability") and fields["evidence"].get("pir"):
                 from app.services.ctem_trigger_rules import PIR_FLOOR_KEY
 
@@ -874,14 +897,21 @@ async def _pir_floor(db: Any, organization_id: Any, pirs: object, *, kind: str =
     return pir_floor_met(pirs, threshold_for(policy, kind), getattr(profile, "pir_min_scores", None) or {})
 
 
-async def note_tracked_organizations(payload: Mapping[str, Any], organization_ids: list[str], *, verified: bool) -> int:
+async def note_tracked_organizations(
+    payload: Mapping[str, Any],
+    organization_ids: list[str],
+    *,
+    verified: bool,
+    session_factory: Any = None,
+) -> int:
     """CTEM-29: one path 11 signal per tracked organization an OpenCTI report or incident names.
 
     *organization_ids* are the XTM One organizations ``organization_events.annotate_payload``
     found in the delivery. The subject is the organization's name, so the scope gate
     resolves it to the asset row that names it and, through a primary asset's asset names,
     to the primary asset its services support; no dependency sends it to the watchlist.
-    No model call; never raises. How many signals were recorded.
+    No model call; never raises. How many signals were recorded. *session_factory* opens the
+    session (the signal inbox drain passes the intake engine's, #2583 point 5); the web pool's by default.
     """
     from app.core.config import settings
 
@@ -898,7 +928,7 @@ async def note_tracked_organizations(payload: Mapping[str, Any], organization_id
     recorded = 0
     internal_id = opencti_internal_id(data)
     try:
-        async with async_session() as db:
+        async with (session_factory or async_session)() as db:
             primary = await get_primary(db)
             if primary is None:
                 return 0

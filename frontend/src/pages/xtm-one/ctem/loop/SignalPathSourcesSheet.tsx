@@ -78,6 +78,7 @@ import {
   type SourceState,
   sourceDisplayName,
   sourceDisplayState,
+  sourceIntegrationNames,
   sourceKey,
   sourceState,
   sourceStateIcon,
@@ -274,11 +275,6 @@ function ownLines(source: CtemSignalPathSource, platform: readonly CtemPlatformS
   return platform.filter((s) => s.provider === source.provider && s.kind === source.kind);
 }
 
-function integrationNames(source: CtemSignalPathSource, platform: readonly CtemPlatformSource[]): string {
-  if (source.kind === "webhook") return "";
-  return [...new Set(ownLines(source, platform).map((s) => s.integration_name).filter(Boolean))].join(", ");
-}
-
 function runAsUsers(source: CtemSignalPathSource, platform: readonly CtemPlatformSource[]): string {
   return [...new Set(ownLines(source, platform).filter((s) => s.enabled && s.run_as_user_id).map((s) => s.run_as_user_id as string))].join(",");
 }
@@ -365,7 +361,7 @@ export function SignalPathSourcesSheet({
     source,
     state: sourceDisplayState(source, connected, platformSources),
     name: sourceDisplayName(source, providerName),
-    integration: integrationNames(source, platformSources),
+    integration: sourceIntegrationNames(source, platformSources),
     runAs: runAsUsers(source, platformSources),
   }));
   const columns: DataTableColumn<SourceTableRow>[] = [

@@ -88,8 +88,9 @@ CTEM_LOOP_DOC: dict[str, str] = {
         "Automations count; Pause all switches them off).\n"
         "- **Event refresh** and **Monthly board report**: a closed case refreshes the stages it "
         "touched; the board report on the 1st of the month.\n"
-        "- **PIR match created**: the Intelligence desk answers a PIR match in OpenCTI; with the "
-        "**Weekly PIR answer**, the **Half-year threat landscape** and the **Stale indicator clean-up**.\n"
+        "- **PIR match created** and **Report containing a PIR entity**: the Intelligence desk answers a "
+        "PIR match in OpenCTI; with the **Weekly PIR answer**, the **Half-year threat landscape** and "
+        "the **Stale indicator clean-up**.\n"
         "- **Simulation finished**: the Validation desk sorts every result of an OpenAEV simulation; "
         "with the **Weekly validation plan**, the **Weekly coverage report** and its own re-tests.\n"
         "- **Scenario re-priced**, **Finding re-scored** and **Control validation ingested**: the Risk "
@@ -307,6 +308,8 @@ OPENCTI_PIR_DESK_DOC: dict[str, str] = {
     "triggers": (
         "- **PIR match created**: an OpenCTI creation of a Report, an Intrusion Set, a Campaign or a "
         "Vulnerability flagged in one of the organization's PIRs.\n"
+        "- **Report containing a PIR entity**: an OpenCTI report created or updated that contains an "
+        "entity flagged in one of the organization's PIRs.\n"
         "- **Weekly PIR answer**: Mondays 07:00.\n"
         "- **Half-year threat landscape**: 1 January and 1 July, 08:00.\n"
         "- **Stale indicator clean-up**: the 1st of each month, 06:00.\n"
@@ -912,6 +915,11 @@ OPENCTI_PIR_DESK_STRUCTURED: dict[str, Any] = {
             "name": "PIR match created",
             "filter": "A report, intrusion set, campaign or vulnerability flagged in a PIR",
         },
+        {
+            "module": "opencti",
+            "name": "Report containing a PIR entity",
+            "filter": "A report that contains an entity flagged in a PIR",
+        },
         {"module": "schedule", "name": "Weekly PIR answer", "filter": "Mondays at 07:00"},
         {"module": "schedule", "name": "Half-year threat landscape", "filter": "1 January and 1 July at 08:00"},
         {"module": "schedule", "name": "Stale indicator clean-up", "filter": "The 1st of each month at 06:00"},
@@ -952,6 +960,12 @@ OPENCTI_PIR_DESK_STRUCTURED: dict[str, Any] = {
             "basis": "One run per entity flagged in a PIR, under its daily cap",
             "runs_min": 0,
             "runs_max": 300,
+        },
+        {
+            "trigger": "Report containing a PIR entity",
+            "basis": "One run per report holding a PIR entity, under its daily cap",
+            "runs_min": 0,
+            "runs_max": 150,
         },
         {"trigger": "Weekly PIR answer", "basis": "One run a week", "runs_min": 4, "runs_max": 5},
         {"trigger": "Half-year threat landscape", "basis": "Two runs a year", "runs_min": 0, "runs_max": 1},
@@ -1239,7 +1253,11 @@ CTEM_LOOP_STRUCTURED: dict[str, Any] = {
     "quota": [
         *CTEM_THREAT_RESPONSE_STRUCTURED["quota"],
         *CTEM_POSTURE_STRUCTURED["quota"],
-        *(q for q in OPENCTI_PIR_DESK_STRUCTURED["quota"] if q["trigger"] == "PIR match created"),
+        *(
+            q
+            for q in OPENCTI_PIR_DESK_STRUCTURED["quota"]
+            if q["trigger"] in ("PIR match created", "Report containing a PIR entity")
+        ),
         *(q for q in OPENAEV_DETECTION_DESK_STRUCTURED["quota"] if q["trigger"] == "Simulation finished"),
         *(
             q

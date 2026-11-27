@@ -73,6 +73,8 @@ SHARED_AGENTS: tuple[str, ...] = (
 #: Campaign) flagged in a PIR is the CTEM loop's one trigger, "Threat activity flagged in a PIR"
 #: (#1832): one owner per entity type, so one entity is never triaged twice.
 TRIGGER_ENTITY_TYPES: tuple[str, ...] = ("Report", "Vulnerability")
+#: #2583 point 3: a report containing (``object_refs``) an entity flagged in a PIR.
+REPORT_CONTAINED = "Report containing a PIR entity"
 
 _TARGETS = ["xtm_one", "dev"]
 
@@ -239,9 +241,9 @@ PIR_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
         **_COMMON,
         "name": "PIR match created",
         "description": (
-            "An OpenCTI report or vulnerability flagged in one of the organization's PIRs is "
-            "created: triage it and file what matters in the PIR case. Threat activity flagged in a "
-            "PIR is the CTEM loop's trigger."
+            "An OpenCTI report or vulnerability is linked to an entity flagged in one of the "
+            "organization's PIRs: triage it and file what matters in the PIR case. Threat activity "
+            "flagged in a PIR is the CTEM loop's trigger."
         ),
         "trigger_type": "integration_event",
         "trigger_config": {
@@ -250,16 +252,50 @@ PIR_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "provision": {
                 "fleet": FLEET_NAME,
                 "purpose": "PIR matches",
+                # A report or a vulnerability is never flagged in a PIR itself (#2583 point 3): the
+                # PIR playbook delivers it when a new relationship links it to a flagged entity.
+                "mode": "pir_playbook",
+                "pir_relation": "linked",
                 "entity_types": list(TRIGGER_ENTITY_TYPES),
-                "event_types": ["create"],
                 "organization_context": ["pir_ids"],
-                "pir_min_score": 1,
             },
         },
         "prompt": (
             "An OpenCTI {{trigger.entity_type}} was created: {{trigger.entity_name}} ({{trigger.entity_id}}). "
-            "It is flagged in at least one of the organization's PIRs.\n"
+            "A new relationship links it to an entity flagged in at least one of the organization's PIRs.\n"
             "Triage each STIX id once: when the standing case of its PIR already holds this entity, "
+            "add nothing and answer that it was filed before.\n"
+            "Run one triage of the PIR desk loop: delegate the scoring to the PIR Triage Analyst, "
+            "file each match worth it in the standing case of its PIR, and when it is a top threat "
+            "have the hunt package and the detections built. Answer with the run JSON."
+        ),
+    },
+    {
+        **_COMMON,
+        "name": REPORT_CONTAINED,
+        "description": (
+            "An OpenCTI report contains an entity flagged in one of the organization's PIRs: triage it "
+            "and file what matters in the PIR case."
+        ),
+        "trigger_type": "integration_event",
+        "trigger_config": {
+            "provider": "opencti",
+            "event": "create",
+            "provision": {
+                "fleet": FLEET_NAME,
+                "purpose": "Reports containing a PIR entity",
+                # #2583 point 3: OpenCTI's PIR playbook never reads a container's object_refs, so a
+                # live trigger scoped to the entities flagged in the PIRs (read at every recheck).
+                "pir_relation": "contained",
+                "entity_types": ["Report"],
+                "event_types": ["create", "update"],
+                "organization_context": ["pir_ids"],
+            },
+        },
+        "prompt": (
+            "An OpenCTI report was created or updated: {{trigger.entity_name}} ({{trigger.entity_id}}). "
+            "It contains at least one entity flagged in the organization's PIRs.\n"
+            "Triage each STIX id once: when the standing case of its PIR already holds this report, "
             "add nothing and answer that it was filed before.\n"
             "Run one triage of the PIR desk loop: delegate the scoring to the PIR Triage Analyst, "
             "file each match worth it in the standing case of its PIR, and when it is a top threat "

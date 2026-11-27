@@ -1125,8 +1125,8 @@ which the registration writes without one, gets a secret generated and stored
 in its extra config by the first pass that needs it,
 `trigger_provisioning.receiver_secret`, #970), and a live knowledge trigger with
 the filters (`entity_type`, `objectLabel` by resolved label id,
-`x_opencti_score` gte) and that notifier. Both are named
-`XTM One - <fleet> - <purpose>`.
+`x_opencti_score` gte) and that notifier. Each is named
+`XTM One - <fleet> - <purpose> - <Kind>` (#2583).
 
 - Idempotent: the ids live in `trigger_config.opencti_provisioning`; a lost
   state adopts the objects by exact name instead of duplicating them.
@@ -1245,6 +1245,31 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   PIR information, and the fleet reads the live score from OpenCTI
   before acting. Leaving a PIR is not delivered (the delete toggle stays
   off).
+- PIR sources (#2583 point 3): OpenCTI flags an entity in a PIR only as the
+  source of a relationship matching one of its criteria, which a
+  `Vulnerability` or a `Report` never is. `read_provision_spec` refuses a
+  `pir_ids` spec on those types with the reason
+  (`NOT_PIR_SOURCE_TYPES`, `pir_source_refusal`) unless it sets
+  `provision.pir_relation: "linked"` (PIR playbook only): the entry then
+  listens to `create_rel` alone (an entity a new relationship links to a
+  flagged one, OpenCTI's `stixIdOfLinkedEntity`), with the entity type
+  filter and no `pir_score` filter. The `new_vulnerability` playbook
+  (`PIR_PATH_RELATIONS`) and the PIR desk's "PIR matches" (reports and
+  vulnerabilities) are linked; `relevant_threat` stays flagged.
+- Legacy Threat response holders (#2583 point 4): the assignments "New
+  relevant threat" and "Threat activity flagged in a PIR"
+  (`ctem_platform_sources.RETIRED_HOLDERS`) lose their OpenCTI trigger,
+  playbook and notifier once the Signals source of the same integration
+  (`listener`, `pir_playbook`) is on and connected: `maintain` passes
+  `retired=True` to `provision_one`, which removes them and leaves a
+  `retired` tombstone state, so the next pass does not provision them again;
+  the source going off provisions them back (new before old, no delivery
+  lost). The admin route `POST /api/v1/ctem-signals/sources/legacy-opencti-objects`
+  (`dry_run` true by default) lists, then removes, every object left in
+  OpenCTI under a legacy name (`LEGACY_NAME_STEMS`: "XTM One - Threat
+  response - ...", "XTM One - CTEM loop - New relevant threats" and "...
+  Threat activity flagged in a PIR"), per integration a Signals source is on
+  for, triggers and playbooks before their notifiers.
 
 ### 8.2 Event enrichment
 
@@ -1260,7 +1285,7 @@ save repairs the trigger at the next pass:
 
 ```json
 {"provision": {"fleet": "Threat response", "purpose": "PIR threats",
-               "entity_types": ["Report"], "organization_context": ["pir_ids"],
+               "entity_types": ["Intrusion-Set"], "organization_context": ["pir_ids"],
                "pir_min_score": 20}}
 ```
 
@@ -1302,12 +1327,17 @@ disable or delete, state in `trigger_config.openaev_provisioning`):
 | `atomic_test_finished` | `INJECT` `UPDATE`, `inject_status` eq `EXECUTED`, `PARTIAL`, `ERROR` |
 | `finding_created` | `FINDING` `CREATE` |
 
+- Names follow the rule of #2583 shared with OpenCTI: the notifier is
+  `XTM One - <fleet> - <purpose> - Notifier`, its description carries the
+  instance URL, fleet, path and the assignment (name and id) or signal source
+  it serves; a recheck renames an object of the former rule in place, ids kept.
 - One WEBHOOK notifier per assignment posts OpenAEV's default body to the
   assignment's receiver with the integration's `webhook_secret` as
   `X-OpenAEV-Token` (checked by `_verify_signature`, never persisted). No
   secret: the state is `error`, nothing is wired unauthenticated.
-- One LIVE trigger per event, named `XTM One - <fleet> - <purpose> - <event>`;
-  the receiver keys the delivery on that suffix (`_normalize_openaev_payload`)
+- One LIVE trigger per event, named
+  `XTM One - <fleet> - <purpose> - Trigger - <event>`; the receiver keys the
+  delivery on the last segment (a trigger of the former rule still reads) (`_normalize_openaev_payload`)
   and records `_openaev_event` (event, operation, resource type and id,
   message, platform URL).
 - Expectation results have no notification resource in OpenAEV

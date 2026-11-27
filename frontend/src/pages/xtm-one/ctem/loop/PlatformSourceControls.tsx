@@ -9,7 +9,7 @@
  * off removes what it provisioned. A reader sees the same lines without controls.
  */
 import { useEffect, useId, useState } from "react";
-import { Chip } from "@filigran/design-system";
+import { Chip, Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { userSelectOption } from "@/components/ui/entity-select-options";
@@ -17,20 +17,61 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SettingsField, settingsFieldHintId } from "@/components/ui/settings-form";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
+import { Tip } from "@/components/ui/tooltip";
 import { useUsers } from "@/hooks/api/useAuthApi";
 import {
+  type CtemLegacyOpenctiReport,
   type CtemPlatformSource,
   type CtemSignalPathSource,
   useDisableCtemPlatformSource,
   useEnableCtemPlatformSource,
+  useRemoveLegacyOpenctiObjects,
 } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import {
+  PLATFORM_OBJECT_KIND_TEXT,
+  PLATFORM_OBJECT_OPEN_LABEL,
   PLATFORM_SOURCE_STATUS_LABEL,
   PLATFORM_SOURCE_STATUS_TONE,
   enableRefusalText,
+  holdsLegacyCleanup,
+  platformObjectLinks,
   platformSourceReason,
+  sharedFeeds,
 } from "./platform-sources";
+
+/** The platform's name on an Open in label. */
+const PLATFORM_NAME: Record<string, string> = { opencti: "OpenCTI", openaev: "OpenAEV", opencrq: "OpenCRQ" };
+
+/**
+ * One labelled button per object the source holds in its platform (#2583 point 2): opens it there in a new tab.
+ * Objects that open the same page (several triggers in one list) share one button. The kind is written on the
+ * button, never an icon alone, so two links of one row never look the same (UX advisory A1 of #2592).
+ */
+function PlatformObjectLinks({ source }: { source: CtemPlatformSource }) {
+  const { t_i18n } = useFormatter();
+  const seen = new Set<string>();
+  const links = platformObjectLinks(source).filter((link) => !seen.has(link.href) && seen.add(link.href));
+  if (links.length === 0) return null;
+  const platform = PLATFORM_NAME[source.provider] ?? source.provider;
+  return (
+    <span className="flex shrink-0 items-center" data-testid="ctem-platform-source-objects">
+      {links.map((link) => {
+        const label = t_i18n(PLATFORM_OBJECT_OPEN_LABEL[link.kind], { platform });
+        return (
+          <Tip key={link.href} content={label}>
+            <Button asChild variant="ghost" size="sm">
+              <a href={link.href} target="_blank" rel="noopener noreferrer" aria-label={label} data-testid="ctem-platform-source-object-link" data-kind={link.kind}>
+                {t_i18n(PLATFORM_OBJECT_KIND_TEXT[link.kind])}
+                <Icon name="external-link" size={16} aria-hidden />
+              </a>
+            </Button>
+          </Tip>
+        );
+      })}
+    </span>
+  );
+}
 
 /** The key of one platform source on one integration. */
 function platformSourceKey(source: Pick<CtemPlatformSource, "provider" | "kind" | "integration_id">): string {
@@ -183,8 +224,10 @@ function PlatformSourceLine({
           className="shrink-0"
           data-testid="ctem-platform-source-status"
         />
+        <span className="ml-auto" />
+        {source.enabled && <PlatformObjectLinks source={source} />}
         <Switch
-          className="ml-auto shrink-0"
+          className="shrink-0"
           checked={source.enabled}
           disabled={!isAdmin || disable.isPending || !source.integration_connected}
           onCheckedChange={toggle}
@@ -197,6 +240,7 @@ function PlatformSourceLine({
           {t_i18n("Runs as: {user}", { user: runAs })}
         </span>
       )}
+      <PlatformSourceBlastRadius source={source} />
       {!source.integration_connected && <span className="text-default-secondary">{t_i18n("The integration is not connected.")}</span>}
       {reason && (
         <span className="text-feedback-error-primary" data-testid="ctem-platform-source-reason">
@@ -204,6 +248,151 @@ function PlatformSourceLine({
         </span>
       )}
     </li>
+  );
+}
+
+/**
+ * What one switch of this source turns off (#2583 point 6): the paths it feeds when it feeds more than one,
+ * and the objects it holds in its platform by name, so an administrator reads the blast radius first.
+ */
+function PlatformSourceBlastRadius({ source }: { source: CtemPlatformSource }) {
+  const { t_i18n } = useFormatter();
+  const feeds = sharedFeeds(source);
+  const names = (source.objects ?? []).map((o) => o.name).filter((n): n is string => Boolean(n));
+  if (feeds.length === 0 && names.length === 0) return null;
+  const platform = PLATFORM_NAME[source.provider] ?? source.provider;
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5 text-default-secondary" data-testid="ctem-platform-source-blast-radius">
+      {feeds.length > 0 && (
+        <span data-testid="ctem-platform-source-feeds">
+          {t_i18n("Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.", {
+            count: feeds.length,
+            paths: feeds.map((f) => t_i18n(f.label)).join(", "),
+          })}
+        </span>
+      )}
+      {names.length > 0 && (
+        <>
+          <span>{t_i18n("Objects in {platform}:", { platform })}</span>
+          <ul className="flex min-w-0 flex-col" data-testid="ctem-platform-source-object-names">
+            {names.map((name) => (
+              <li key={name} className="min-w-0 truncate" title={name}>
+                {name}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** One integration's line of the legacy objects report: what was found, removed or why it could not be read. */
+function LegacyReportLine({ report, names, dryRun }: { report: CtemLegacyOpenctiReport; names: Record<string, string>; dryRun: boolean }) {
+  const { t_i18n } = useFormatter();
+  const objects = report.objects ?? [];
+  const integration = names[report.integration_id] ?? report.integration_id;
+  return (
+    <li className="flex min-w-0 flex-col gap-1" data-testid="ctem-legacy-report">
+      <span className="font-medium">{integration}</span>
+      {report.error ? (
+        <span className="text-feedback-error-primary">{report.error}</span>
+      ) : objects.length === 0 ? (
+        <span className="text-default-secondary">{t_i18n("No legacy object left.")}</span>
+      ) : (
+        <>
+          <span className="text-default-secondary">
+            {dryRun
+              ? t_i18n("{count, plural, one {# object would be removed:} other {# objects would be removed:}}", { count: objects.length })
+              : t_i18n("{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}", { count: report.removed ?? 0 })}
+          </span>
+          <ul className="flex min-w-0 flex-col">
+            {objects.map((o) => (
+              <li key={o.id} className="min-w-0 truncate" title={o.name}>
+                {o.name}
+              </li>
+            ))}
+          </ul>
+          {(report.errors ?? []).map((e) => (
+            <span key={e} className="text-feedback-error-primary">
+              {e}
+            </span>
+          ))}
+        </>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Admin "Remove legacy OpenCTI objects" (#2583 point 4): the dialog lists first (dry run) what the former
+ * Threat response holders left in OpenCTI, per integration a Signals source is on for; Remove deletes them.
+ */
+function LegacyOpenctiCleanup({ integrationNames }: { integrationNames: Record<string, string> }) {
+  const { t_i18n } = useFormatter();
+  const { toast } = useToast();
+  const run = useRemoveLegacyOpenctiObjects();
+  const [open, setOpen] = useState(false);
+  const [removed, setRemoved] = useState(false);
+  const report = run.data?.integrations ?? [];
+  const found = report.reduce((n, r) => n + (r.objects?.length ?? 0), 0);
+  const start = () => {
+    setOpen(true);
+    setRemoved(false);
+    run.mutate({ dryRun: true });
+  };
+  const remove = () =>
+    run.mutate(
+      { dryRun: false },
+      {
+        onSuccess: () => {
+          setRemoved(true);
+          toast({ title: t_i18n("Legacy OpenCTI objects removed"), variant: "success" });
+        },
+        onError: (err) => toast({ title: t_i18n("The legacy OpenCTI objects could not be removed"), description: err.message, variant: "error" }),
+      },
+    );
+  return (
+    <>
+      <Button variant="ghost" size="sm" className="self-start" onClick={start} data-testid="ctem-legacy-cleanup">
+        {t_i18n("Remove legacy OpenCTI objects")}
+      </Button>
+      <Dialog open={open} onOpenChange={(next) => !next && !run.isPending && setOpen(false)}>
+        <DialogContent size="md" data-testid="ctem-legacy-cleanup-dialog">
+          <DialogHeader>
+            <DialogTitle>{t_i18n("Remove legacy OpenCTI objects")}</DialogTitle>
+            <DialogDescription>
+              {t_i18n("The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            {run.isPending && !run.data ? (
+              <span className="text-default-secondary">{t_i18n("Reading OpenCTI...")}</span>
+            ) : run.isError && !run.data ? (
+              <span className="text-feedback-error-primary">{run.error.message}</span>
+            ) : report.length === 0 ? (
+              <span className="text-default-secondary">{t_i18n("No OpenCTI integration has a Signals source on.")}</span>
+            ) : (
+              <ul className="flex flex-col gap-3 content-compact">
+                {report.map((r) => (
+                  <LegacyReportLine key={r.integration_id} report={r} names={integrationNames} dryRun={!removed} />
+                ))}
+              </ul>
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpen(false)} disabled={run.isPending}>
+              {removed ? t_i18n("Close") : t_i18n("Cancel")}
+            </Button>
+            {!removed && (
+              <Button variant="destructive" onClick={remove} disabled={run.isPending || found === 0} data-testid="ctem-legacy-cleanup-confirm">
+                {t_i18n("Remove {count, plural, one {# object} other {# objects}}", { count: found })}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -232,6 +421,9 @@ export function PlatformSourceControls({
             <PlatformSourceLine key={platformSourceKey(s)} source={s} isAdmin={isAdmin} onEnable={onEnable} />
           ))}
         </ul>
+      )}
+      {isAdmin && holdsLegacyCleanup(source, own) && (
+        <LegacyOpenctiCleanup integrationNames={Object.fromEntries(own.map((s) => [s.integration_id, s.integration_name]))} />
       )}
     </div>
   );

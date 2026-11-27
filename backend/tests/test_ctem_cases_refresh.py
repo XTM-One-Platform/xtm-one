@@ -30,6 +30,9 @@ class FakeRedis:
     async def delete(self, key: str) -> None:
         self.kv.pop(key, None)
 
+    async def exists(self, key: str) -> int:
+        return int(key in self.kv)
+
     async def zadd(self, key, mapping):
         self.z.setdefault(key, {}).update(mapping)
 
@@ -145,6 +148,35 @@ async def test_scheduled_pass_recomputes_as_each_identity_once_per_interval(redi
     # "a" applied first, then "b" saw an outage: the muted line names OpenAEV.
     fresh = await refresh.freshness("cyber")
     assert fresh["updated_at"] and fresh["missing"] == ["openaev"]
+
+
+@pytest.mark.asyncio
+async def test_a_purge_without_resync_holds_the_scheduled_and_page_open_recomputes(redis, monkeypatch):
+    """#2583 note of 27 Nov 2026: a purge is not undone by the next pass without anyone asking."""
+    _primary(monkeypatch)
+    calls: list[str] = []
+
+    async def identities(db, vertical):
+        return ["a"]
+
+    async def minutes(db):
+        return 15
+
+    async def recompute_for_user(db, *, organization_id, user_id, vertical):
+        calls.append(user_id)
+        return {"applied": True, "missing": []}
+
+    import app.services.ctem_cases_source as source
+
+    monkeypatch.setattr(refresh, "pass_identities", identities)
+    monkeypatch.setattr(refresh, "interval_minutes", minutes)
+    monkeypatch.setattr(source, "recompute_for_user", recompute_for_user)
+    await refresh.hold_after_purge(15)
+    assert await refresh.scheduled_pass(FakeDb()) is None
+    assert await refresh.viewer_due("a", "cyber", 15) is False
+    assert calls == []
+    await redis.delete("ctem:cases:recompute-held-after-purge")
+    assert await refresh.scheduled_pass(FakeDb()) == {"identities": 1, "applied": 1, "skipped": 0}
 
 
 @pytest.mark.asyncio

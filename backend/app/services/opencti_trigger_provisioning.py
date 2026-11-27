@@ -95,6 +95,8 @@ logger = logging.getLogger(__name__)
 PROVISION_KEY = "provision"
 STATE_KEY = "opencti_provisioning"
 NAME_PREFIX = "XTM One"
+#: The last line of every provisioned object's description (#2583.1).
+EDITS_LINE = "Edits are reverted; turn it off in XTM One."
 #: OpenCTI's built-in Generic webhook notifier connector (``notifier-statics.ts``).
 WEBHOOK_CONNECTOR_ID = "08f9f00f-4e52-4466-ae27-be9fa9813a88"
 RECHECK_SECONDS = 900
@@ -111,6 +113,21 @@ DERIVABLE_CONTEXT_FIELDS = ("pir_ids", "regions", "sector")
 TRIGGER_MODE = "trigger"
 PIR_PLAYBOOK_MODE = "pir_playbook"
 PROVISION_MODES = (TRIGGER_MODE, PIR_PLAYBOOK_MODE)
+#: OpenCTI flags an entity in a PIR only as the SOURCE of a relationship matching one of its
+#: criteria; a Vulnerability or a Report never is (#2583 point 3), so a PIR score filter on them
+#: can never match and a listener built on it never fires.
+NOT_PIR_SOURCE_TYPES: tuple[str, ...] = ("Vulnerability", "Report")
+#: ``provision.pir_relation`` of a PIR playbook: the entity flagged in a PIR (default), or (#2583
+#: point 3) the entity a new relationship links to a flagged one, OpenCTI's ``create_rel`` toggle
+#: (``listenPirEventsUtils.stixIdOfLinkedEntity``), how a Vulnerability or a Report reaches a PIR.
+PIR_FLAGGED = "flagged"
+PIR_LINKED = "linked"
+#: ``contained`` (#2583 point 3): a report whose ``object_refs`` hold an entity flagged in the PIRs.
+#: OpenCTI's PIR playbook never reads a container, so it is a live trigger scoped to the flagged ids.
+PIR_CONTAINED = "contained"
+PIR_RELATIONS = (PIR_FLAGGED, PIR_LINKED, PIR_CONTAINED)
+#: The entity types a ``contained`` trigger listens to: containers.
+CONTAINER_TYPES: tuple[str, ...] = ("Report",)
 #: OpenCTI's playbook components (``modules/playbook/components``).
 PIR_ENTRY_COMPONENT = "PLAYBOOK_DATA_STREAM_PIR"
 NOTIFIER_COMPONENT = "PLAYBOOK_NOTIFIER_COMPONENT"
@@ -228,6 +245,27 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         raise ProvisionSpecError(
             "provision.mode pir_playbook listens to the profile PIRs: organization_context must name pir_ids"
         )
+    pir_relation = raw.get("pir_relation") or PIR_FLAGGED
+    if pir_relation not in PIR_RELATIONS:
+        raise ProvisionSpecError(f"provision.pir_relation: use one of {list(PIR_RELATIONS)}")
+    if pir_relation == PIR_LINKED and mode != PIR_PLAYBOOK_MODE:
+        raise ProvisionSpecError(
+            "provision.pir_relation linked is read by the PIR playbook only: set mode pir_playbook"
+        )
+    if pir_relation == PIR_CONTAINED:
+        if mode != TRIGGER_MODE or "pir_ids" not in context_fields:
+            raise ProvisionSpecError(
+                "provision.pir_relation contained is a live trigger on the profile PIRs: "
+                "leave mode unset and name pir_ids in organization_context"
+            )
+        if not entity_types or set(entity_types) - set(CONTAINER_TYPES):
+            raise ProvisionSpecError(
+                f"provision.pir_relation contained listens to containers only: entity_types {list(CONTAINER_TYPES)}"
+            )
+    if "pir_ids" in context_fields and pir_relation == PIR_FLAGGED:
+        refusal = pir_source_refusal(entity_types)
+        if refusal is not None:
+            raise ProvisionSpecError(f"{refusal}, or set mode pir_playbook with pir_relation linked")
     organizations = _organizations_scope(raw.get("organizations"))
     if organizations != PRIMARY_SCOPE and context_fields:
         raise ProvisionSpecError(
@@ -271,6 +309,7 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         "pir_min_score": pir_min_score,
         "pir_subset": pir_subset,
         "mode": mode,
+        "pir_relation": pir_relation,
         "organizations": organizations,
         # Filled from the tracked organizations by :func:`with_tracked_organizations`.
         "organization_refs": [],
@@ -281,6 +320,18 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         "regions": [],
         "sectors": [],
     }
+
+
+def pir_source_refusal(entity_types: Any) -> str | None:
+    """Why a PIR score filter on *entity_types* can never match, ``None`` when it can (#2583 point 3). Pure."""
+    impossible = sorted({str(t) for t in entity_types or []} & set(NOT_PIR_SOURCE_TYPES))
+    if not impossible:
+        return None
+    return (
+        f"provision.entity_types {impossible} cannot be filtered on a PIR score: OpenCTI flags an entity in a "
+        "PIR only as the source of a relationship matching one of its criteria, which a Vulnerability or a "
+        "Report never is, so the listener would never fire; listen to them without pir_ids"
+    )
 
 
 def pir_score_filters(spec: dict[str, Any]) -> list[dict[str, Any]]:
@@ -400,8 +451,37 @@ async def with_tracked_organizations(db: Any, spec: dict[str, Any]) -> dict[str,
     return tracked_refs(spec, rows, profiles)
 
 
-def object_name(spec: dict[str, Any]) -> str:
-    return f"{NAME_PREFIX} - {spec['fleet']} - {spec['purpose']}"
+#: The kind each provisioned object names last (#2583): one naming rule on every object.
+OBJECT_KINDS: dict[str, str] = {
+    "trigger": "Trigger",
+    "notifier": "Notifier",
+    "playbook": "Playbook",
+    "digest": "Digest",
+}
+
+
+def object_name(spec: dict[str, Any], kind: str = "") -> str:
+    """``XTM One - <Fleet> - <Path label> - <Kind>`` (#2583); without *kind*, the shared stem."""
+    stem = f"{NAME_PREFIX} - {spec['fleet']} - {spec['purpose']}"
+    return f"{stem} - {OBJECT_KINDS[kind]}" if kind else stem
+
+
+def object_description(spec: dict[str, Any], kind: str) -> str:
+    """What an OpenCTI user reads on the object: the instance, the fleet, the path and who it serves (#2583)."""
+    from app.core.config import settings
+
+    origin = spec.get("origin") or {}
+    lines = [
+        f"Provisioned by XTM One ({settings.base_url.rstrip('/')}).",
+        f"Fleet: {spec['fleet']}. Path: {spec['purpose']}. Kind: {OBJECT_KINDS[kind]}.",
+    ]
+    if origin.get("assignment_id"):
+        lines.append(f"Assignment: {origin.get('assignment') or 'unnamed'} ({origin['assignment_id']}).")
+    if origin.get("source_id"):
+        lines.append(f"Signal source: {origin['source_id']}.")
+    # #2583.1: the description ends with what an edit does and where the object is turned off.
+    lines.append(EDITS_LINE)
+    return "\n".join(lines)
 
 
 def receiver_url(base_url: str, integration_id: str, assignment_id: str) -> str:
@@ -483,7 +563,7 @@ def trigger_filters(
         filters.extend(vuln_signals)
     elif vuln_signals:
         groups.append({"mode": "or", "filters": vuln_signals, "filterGroups": []})
-    if spec.get("pir_ids"):
+    if spec.get("pir_ids") and spec.get("pir_relation") != PIR_CONTAINED:
         # OpenCTI's composite PIR filter (stix-testers ``testPirScore``): an
         # entity flagged in one of these PIRs with at least the score. One
         # filter per minimum score (#2435), any of them matching.
@@ -621,6 +701,50 @@ async def _resolve_sector_ids(gql: Gql, sectors: list[str]) -> tuple[list[str], 
     return ids, missing
 
 
+#: The flagged entities a report-containment trigger scopes to, at most (#2583 point 3).
+MAX_CONTAINED_IDS = 500
+
+
+async def pir_flagged_ids(gql: Gql, pir_ids: list[str], limit: int = MAX_CONTAINED_IDS) -> list[str]:
+    """The ids (internal and standard) of the entities flagged in *pir_ids*, highest score first.
+
+    #2583 point 3: OpenCTI flags no Report in a PIR and its playbook's ``create_rel`` reads only a
+    new relationship, never a container's ``object_refs``; a report containing a flagged entity is
+    caught by a live trigger scoped to these ids (``objects``), read again at every recheck.
+    """
+    found: list[str] = []
+    query = (
+        "query XtmPirFlagged($pirId: ID!, $first: Int, $filters: FilterGroup) {"
+        " stixDomainObjects(pirId: $pirId, first: $first, orderBy: refreshed_at, orderMode: desc,"
+        " filters: $filters) { edges { node { id standard_id } } } }"
+    )
+    for pir_id in sorted(set(pir_ids)):
+        scope = {
+            "mode": "and",
+            "filters": [
+                {
+                    "key": "regardingOf",
+                    "operator": "eq",
+                    "mode": "and",
+                    "values": [
+                        {"key": "id", "values": [pir_id], "operator": "eq", "mode": "or"},
+                        {"key": "relationship_type", "values": ["in-pir"], "operator": "eq", "mode": "or"},
+                    ],
+                }
+            ],
+            "filterGroups": [],
+        }
+        data, err = await gql(query, {"pirId": pir_id, "first": limit, "filters": scope})
+        if err:
+            raise RuntimeError(err)
+        for edge in (data.get("stixDomainObjects") or {}).get("edges") or []:
+            node = edge.get("node") or {}
+            for value in (node.get("id"), node.get("standard_id")):
+                if isinstance(value, str) and value and value not in found:
+                    found.append(value)
+    return found[: 2 * limit]
+
+
 async def _standard_ids(gql: Gql, internal_ids: list[str]) -> dict[str, str]:
     """``{internal id: standard id}`` of OpenCTI entities (a delivery carries STIX standard ids)."""
     found: dict[str, str] = {}
@@ -684,11 +808,12 @@ async def _find_by_name(gql: Gql, root: str, name: str) -> str | None:
     return None
 
 
-async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config: str) -> str:
+async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config: str, description: str = "") -> str:
+    description = description or "Provisioned by XTM One: delivers this trigger's events to an assignment."
     notifier_id = notifier_id or await _find_by_name(gql, "notifiers", name)
     if notifier_id:
         data, err = await gql(
-            "query XtmNotifier($id: String!) { notifier(id: $id) { id name notifier_configuration } }",
+            "query XtmNotifier($id: String!) { notifier(id: $id) { id name description notifier_configuration } }",
             {"id": notifier_id},
         )
         if err:
@@ -696,8 +821,11 @@ async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config:
         current = data.get("notifier")
         if current:
             edits = []
+            # #2583: renamed in place on a recheck, its id kept.
             if current.get("name") != name:
                 edits.append({"key": "name", "value": [name]})
+            if current.get("description") != description:
+                edits.append({"key": "description", "value": [description]})
             if current.get("notifier_configuration") != config:
                 edits.append({"key": "notifier_configuration", "value": [config]})
             if edits:
@@ -714,7 +842,7 @@ async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config:
         {
             "input": {
                 "name": name,
-                "description": "Provisioned by XTM One: delivers this trigger's events to an assignment.",
+                "description": description,
                 "notifier_connector_id": WEBHOOK_CONNECTOR_ID,
                 "notifier_configuration": config,
             }
@@ -729,13 +857,20 @@ async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config:
 
 
 async def _ensure_trigger(
-    gql: Gql, trigger_id: str | None, name: str, filters: str, event_types: list[str], notifier_id: str
+    gql: Gql,
+    trigger_id: str | None,
+    name: str,
+    filters: str,
+    event_types: list[str],
+    notifier_id: str,
+    description: str = "",
 ) -> str:
+    description = description or "Provisioned by XTM One for an assignment; edits are reverted."
     trigger_id = trigger_id or await _find_by_name(gql, "triggersKnowledge", name)
     if trigger_id:
         data, err = await gql(
             "query XtmTrigger($id: String!) { triggerKnowledge(id: $id) "
-            "{ id name event_types filters notifiers { id } } }",
+            "{ id name description event_types filters notifiers { id } } }",
             {"id": trigger_id},
         )
         if err:
@@ -745,6 +880,8 @@ async def _ensure_trigger(
             edits = []
             if current.get("name") != name:
                 edits.append({"key": "name", "value": [name]})
+            if current.get("description") != description:
+                edits.append({"key": "description", "value": [description]})
             if not _same_filters(current.get("filters"), filters):
                 edits.append({"key": "filters", "value": [filters]})
             if [n.get("id") for n in (current.get("notifiers") or [])] != [notifier_id]:
@@ -766,7 +903,7 @@ async def _ensure_trigger(
         {
             "input": {
                 "name": name,
-                "description": "Provisioned by XTM One for an assignment; edits are reverted.",
+                "description": description,
                 "event_types": event_types,
                 "notifiers": [notifier_id],
                 "instance_trigger": False,
@@ -843,10 +980,15 @@ def pir_playbook_nodes(
     """
     pir_ids = sorted(spec.get("pir_ids") or [])
     names = pir_names or {}
+    linked = spec.get("pir_relation") == PIR_LINKED
     per_score = pir_score_filters(spec)
-    if len(per_score) <= 1:
+    if linked:
+        # #2583 point 3: the delivered entity is the one a new relationship links to a flagged
+        # entity; OpenCTI tests the filters on it, and it carries no score in these PIRs.
+        score_filter: dict[str, Any] = {"mode": "and", "filters": [], "filterGroups": []}
+    elif len(per_score) <= 1:
         score = per_score[0]["values"][0]["values"][0] if per_score else str(spec.get("pir_min_score", 1))
-        score_filter: dict[str, Any] = {
+        score_filter = {
             "mode": "and",
             "filters": [{"key": ["pir_score"], "values": [score], "operator": "gte", "mode": "or"}],
             "filterGroups": [],
@@ -868,10 +1010,10 @@ def pir_playbook_nodes(
         )
     entry = {
         "inPirFilters": [{"value": pid, "label": names.get(pid) or pid, "type": "Pir"} for pid in pir_ids],
-        "create": True,
-        "update": True,
+        "create": not linked,
+        "update": not linked,
         "delete": False,
-        "create_rel": False,
+        "create_rel": linked,
         "filters": json.dumps(score_filter, sort_keys=True),
     }
     notify = {
@@ -988,7 +1130,12 @@ async def _relabel_node(gql: Gql, playbook_id: str, node: dict[str, Any], config
 
 
 async def _ensure_pir_playbook(
-    gql: Gql, playbook_id: str | None, name: str, entry: dict[str, Any], notify: dict[str, Any]
+    gql: Gql,
+    playbook_id: str | None,
+    name: str,
+    entry: dict[str, Any],
+    notify: dict[str, Any],
+    description: str = "",
 ) -> str:
     """One running playbook *name* holding *entry* then *notify*; rebuilt on any drift.
 
@@ -996,10 +1143,12 @@ async def _ensure_pir_playbook(
     whose items carry the right values but no label (provisioned before the
     labels) is patched in place, a label rewritten in OpenCTI is kept.
     """
+    description = description or "Provisioned by XTM One for an assignment; edits are reverted."
     playbook_id = playbook_id or await _find_by_name(gql, "playbooks", name)
     if playbook_id:
         data, err = await gql(
-            "query XtmPlaybook($id: String!) { playbook(id: $id) { id name playbook_running playbook_definition } }",
+            "query XtmPlaybook($id: String!) "
+            "{ playbook(id: $id) { id name description playbook_running playbook_definition } }",
             {"id": playbook_id},
         )
         if err:
@@ -1008,9 +1157,22 @@ async def _ensure_pir_playbook(
         if current:
             nodes = _stored_nodes(current.get("playbook_definition"))
             wanted = {PIR_ENTRY_COMPONENT: entry, NOTIFIER_COMPONENT: notify}
+            # #2583: a new name or description is patched in place, the playbook id kept.
+            edits = []
+            if current.get("name") != name:
+                edits.append({"key": "name", "value": [name]})
+            if current.get("description") != description:
+                edits.append({"key": "description", "value": [description]})
+            if edits:
+                _, err = await gql(
+                    "mutation XtmPlaybookPatch($id: ID!, $input: [EditInput!]!) "
+                    "{ playbookFieldPatch(id: $id, input: $input) { id } }",
+                    {"id": playbook_id, "input": edits},
+                )
+                if err:
+                    raise RuntimeError(err)
             if (
-                current.get("name") == name
-                and current.get("playbook_running")
+                current.get("playbook_running")
                 and set(nodes) == set(wanted)
                 and all(
                     same_node_configuration(cid, config, nodes[cid]["configuration"]) for cid, config in wanted.items()
@@ -1024,7 +1186,7 @@ async def _ensure_pir_playbook(
             await _delete(gql, "playbookDelete", playbook_id)
     data, err = await gql(
         "mutation XtmPlaybookAdd($input: PlaybookAddInput!) { playbookAdd(input: $input) { id } }",
-        {"input": {"name": name, "description": "Provisioned by XTM One for an assignment; edits are reverted."}},
+        {"input": {"name": name, "description": description}},
     )
     if err:
         raise RuntimeError(err)
@@ -1095,6 +1257,8 @@ async def reconcile(
     state = dict(state or {})
     stamp = (now or datetime.now(UTC)).isoformat()
     name = object_name(spec)
+    notifier_name = object_name(spec, "notifier")
+    notifier_text = object_description(spec, "notifier")
     try:
         label_ids, missing = await _resolve_label_ids(gql, spec["labels"])
         if missing:
@@ -1112,6 +1276,18 @@ async def reconcile(
             }
         organization_ids: list[str] = []
         receiver: list[dict[str, Any]] = []
+        contained: list[str] = []
+        if spec.get("pir_relation") == PIR_CONTAINED:
+            # #2583 point 3: a report holding an entity flagged in the PIRs (its object_refs).
+            contained = await pir_flagged_ids(gql, list(spec.get("pir_ids") or []))
+            if not contained:
+                return {
+                    **state,
+                    "status": "error",
+                    "error": "no entity is flagged in the PIRs yet: no report can contain one; rechecked at every pass",
+                    "checked_at": stamp,
+                }
+            organization_ids = contained
         if spec.get("organizations", PRIMARY_SCOPE) != PRIMARY_SCOPE:
             organization_ids, receiver, missing_org_sectors = await _organization_scope(gql, spec)
             if missing_org_sectors:
@@ -1123,14 +1299,21 @@ async def reconcile(
                 }
         if spec.get("mode") == PIR_PLAYBOOK_MODE:
             config = notifier_configuration(url, secret, template=PIR_WEBHOOK_TEMPLATE)
-            notifier_id = await _ensure_notifier(gql, state.get("notifier_id"), name, config)
+            notifier_id = await _ensure_notifier(gql, state.get("notifier_id"), notifier_name, config, notifier_text)
             if state.get("trigger_id"):
                 # The assignment moved from a live trigger to the PIR playbook.
                 await _delete(gql, "triggerKnowledgeDelete", state["trigger_id"])
             member_id, member_name = await _own_user(gql)
             pir_names = await _pir_names(gql, list(spec.get("pir_ids") or []))
             entry, notify = pir_playbook_nodes(spec, notifier_id, member_id, member_name, pir_names)
-            playbook_id = await _ensure_pir_playbook(gql, state.get("playbook_id"), name, entry, notify)
+            playbook_id = await _ensure_pir_playbook(
+                gql,
+                state.get("playbook_id"),
+                object_name(spec, "playbook"),
+                entry,
+                notify,
+                object_description(spec, "playbook"),
+            )
             return {
                 "status": "provisioned",
                 "error": None,
@@ -1154,12 +1337,18 @@ async def reconcile(
             }
         config = notifier_configuration(url, secret)
         filters = trigger_filters(spec, label_ids, country_ids + sector_ids, organization_ids)
-        notifier_id = await _ensure_notifier(gql, state.get("notifier_id"), name, config)
+        notifier_id = await _ensure_notifier(gql, state.get("notifier_id"), notifier_name, config, notifier_text)
         if state.get("playbook_id"):
             # The assignment moved from the PIR playbook back to a live trigger.
             await _delete(gql, "playbookDelete", state["playbook_id"])
         trigger_id = await _ensure_trigger(
-            gql, state.get("trigger_id"), name, filters, spec["event_types"], notifier_id
+            gql,
+            state.get("trigger_id"),
+            object_name(spec, "trigger"),
+            filters,
+            spec["event_types"],
+            notifier_id,
+            object_description(spec, "trigger"),
         )
     except Exception as exc:  # one assignment never breaks the pass
         return {**state, "status": "error", "error": str(exc)[:500], "checked_at": stamp}
@@ -1174,6 +1363,8 @@ async def reconcile(
     }
     if receiver:
         provisioned["organizations"] = receiver
+    if contained:
+        provisioned["contained_ids"] = str(len(contained))
     return provisioned
 
 
@@ -1189,6 +1380,107 @@ async def remove(gql: Gql, state: dict[str, Any]) -> str | None:
     except Exception as exc:
         return str(exc)[:500]
     return None
+
+
+#: The names the legacy Threat response holders gave their objects (#2583 point 4), before and after
+#: the fleet rename (#2121): the stems a legacy object's name starts with.
+LEGACY_NAME_STEMS: tuple[str, ...] = (
+    f"{NAME_PREFIX} - Threat response - ",
+    f"{NAME_PREFIX} - CTEM loop - New relevant threats",
+    f"{NAME_PREFIX} - CTEM loop - Threat activity flagged in a PIR",
+)
+#: The state of a legacy holder whose objects were retired: it holds nothing and is not re-provisioned
+#: while its Signals source is on and connected.
+RETIRED = "retired"
+#: ``(GraphQL list root, delete mutation)`` of each kind of object a holder provisioned.
+LEGACY_ROOTS: tuple[tuple[str, str], ...] = (
+    ("triggersKnowledge", "triggerKnowledgeDelete"),
+    ("playbooks", "playbookDelete"),
+    ("notifiers", "notifierDelete"),
+)
+
+
+def is_legacy_name(name: Any) -> bool:
+    return isinstance(name, str) and any(name.startswith(stem) for stem in LEGACY_NAME_STEMS)
+
+
+async def legacy_objects(gql: Gql) -> list[dict[str, str]]:
+    """The legacy Threat response objects present in OpenCTI: ``{root, id, name}``, triggers first."""
+    found: list[dict[str, str]] = []
+    for root, _ in LEGACY_ROOTS:
+        data, err = await gql(
+            f"query XtmFind($search: String) {{ {root}(first: 200, search: $search) {{ edges {{ node {{ id name }} }} }} }}",
+            {"search": NAME_PREFIX},
+        )
+        if err:
+            raise RuntimeError(err)
+        for edge in (data.get(root) or {}).get("edges") or []:
+            node = edge.get("node") or {}
+            if node.get("id") and is_legacy_name(node.get("name")):
+                found.append({"root": root, "id": node["id"], "name": node["name"]})
+    return found
+
+
+async def remove_legacy_objects(gql: Gql, objects: list[dict[str, str]]) -> list[str]:
+    """Delete *objects* (from :func:`legacy_objects`), triggers and playbooks before notifiers; the errors."""
+    mutations = dict(LEGACY_ROOTS)
+    errors: list[str] = []
+    for obj in objects:
+        try:
+            await _delete(gql, mutations[obj["root"]], obj["id"])
+        except Exception as exc:
+            errors.append(f"{obj['name']}: {str(exc)[:200]}")
+    return errors
+
+
+async def legacy_cleanup(db: Any, *, dry_run: bool = True) -> list[dict[str, Any]]:
+    """Admin "Remove legacy OpenCTI objects" (#2583 point 4): per OpenCTI integration a Signals source
+    is on for, the legacy Threat response objects found and, unless *dry_run*, removed.
+
+    Reads each integration as the run-as of its enabled source; one entry per integration:
+    ``{integration_id, objects, removed, errors}`` (``error`` instead when it cannot be read).
+    """
+    from sqlalchemy import select
+
+    from app.models.ctem_signal_source import CtemSignalSource
+
+    rows = (
+        (
+            await db.execute(
+                select(CtemSignalSource).where(
+                    CtemSignalSource.provider == "opencti", CtemSignalSource.enabled.is_(True)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    report: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        integration_id = str(row.integration_id)
+        if integration_id in seen or row.run_as_user_id is None:
+            continue
+        seen.add(integration_id)
+        conn = await integration_connection(db, integration_id, row.run_as_user_id)
+        if isinstance(conn, str):
+            report.append({"integration_id": integration_id, "error": conn})
+            continue
+        try:
+            objects = await legacy_objects(conn[0])
+        except Exception as exc:
+            report.append({"integration_id": integration_id, "error": str(exc)[:500]})
+            continue
+        errors = [] if dry_run else await remove_legacy_objects(conn[0], objects)
+        report.append(
+            {
+                "integration_id": integration_id,
+                "objects": [{"kind": o["root"], "id": o["id"], "name": o["name"]} for o in objects],
+                "removed": 0 if dry_run else len(objects) - len(errors),
+                "errors": errors,
+            }
+        )
+    return report
 
 
 def due_for_check(state: Any, now: datetime) -> bool:
@@ -1345,15 +1637,21 @@ def _with_state(trigger_config: dict, state: dict | None) -> dict:
     return updated
 
 
-async def provision_one(db: Any, assignment: Any, agent: Any, *, now: datetime | None = None) -> dict | None:
-    """Reconcile one assignment; writes and returns its new state (``None`` = nothing held)."""
+async def provision_one(
+    db: Any, assignment: Any, agent: Any, *, now: datetime | None = None, retired: bool = False
+) -> dict[str, Any] | None:
+    """Reconcile one assignment; writes and returns its new state (``None`` = nothing held).
+
+    *retired*: a legacy holder whose Signals source delivers instead (#2583 point 4): its
+    objects are removed whatever its ``provision`` block declares.
+    """
     from app.core.config import settings
 
     now = now or datetime.now(UTC)
     config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
     state = config.get(STATE_KEY) if isinstance(config.get(STATE_KEY), dict) else None
     try:
-        spec = read_provision_spec(config) if assignment.enabled else None
+        spec = read_provision_spec(config) if assignment.enabled and not retired else None
     except ProvisionSpecError as exc:
         new_state = {**(state or {}), "status": "error", "error": str(exc), "checked_at": now.isoformat()}
         assignment.trigger_config = _with_state(config, new_state)
@@ -1368,6 +1666,13 @@ async def provision_one(db: Any, assignment: Any, agent: Any, *, now: datetime |
             return new_state
         error = await remove(conn[0], state)
         new_state = None if error is None else {**state, "status": "error", "error": error, "checked_at": now.isoformat()}
+        if retired and error is None:
+            # A tombstone, so the next pass never provisions the holder again while its source delivers.
+            new_state = {
+                "status": RETIRED,
+                "integration_id": state.get("integration_id"),
+                "checked_at": now.isoformat(),
+            }
         assignment.trigger_config = _with_state(config, new_state)
         return new_state
     if isinstance(conn, str):
@@ -1405,6 +1710,7 @@ async def provision_one(db: Any, assignment: Any, agent: Any, *, now: datetime |
             assignment.trigger_config = _with_state(config, new_state)
             return new_state
     url = receiver_url(settings.base_url, integration_id, str(assignment.id))
+    spec = {**spec, "origin": {"assignment": getattr(assignment, "name", ""), "assignment_id": str(assignment.id)}}
     new_state = await reconcile(gql, spec, state, url=url, secret=secret, now=now)
     new_state["integration_id"] = integration_id
     assignment.trigger_config = _with_state(config, new_state)
@@ -1442,7 +1748,7 @@ async def maintain(db: Any, *, now: datetime | None = None) -> int:
     from app.models.assignment import Assignment
 
     now = now or datetime.now(UTC)
-    from app.services.ctem_platform_sources import replaced_by_source
+    from app.services.ctem_platform_sources import RETIRED_HOLDERS, replaced_by_source, source_connected
 
     rows = (
         await db.execute(
@@ -1455,7 +1761,20 @@ async def maintain(db: Any, *, now: datetime | None = None) -> int:
     for assignment, agent in rows:
         config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
         listening = assignment.trigger_type == "integration_event" and config.get("provider") == "opencti"
-        if not listening:
+        retired = False
+        kind = RETIRED_HOLDERS.get((getattr(agent, "slug", ""), assignment.name))
+        if listening and kind and isinstance(config.get(STATE_KEY), dict):
+            # A legacy Threat response holder (#2583 point 4): its objects go once the Signals
+            # source of the same integration delivers instead; new before old, nothing lost.
+            state = config[STATE_KEY]
+            retired = bool(state.get("integration_id")) and await source_connected(
+                db, "opencti", kind, state.get("integration_id")
+            )
+        if retired:
+            if state.get("status") == RETIRED:
+                continue  # already removed; nothing to recheck while the source delivers
+            config = {k: v for k, v in config.items() if k != PROVISION_KEY}
+        elif not listening:
             # A holder the seed moved to ctem_signal.recorded (#2434) keeps its old objects
             # until the platform source of the same integration delivers: new before old.
             if not isinstance(config.get(STATE_KEY), dict) or not await replaced_by_source(
@@ -1469,7 +1788,7 @@ async def maintain(db: Any, *, now: datetime | None = None) -> int:
         if wants and not due_for_check(config.get(STATE_KEY), now):
             continue
         before = config.get(STATE_KEY)
-        after = await provision_one(db, assignment, agent, now=now)
+        after = await provision_one(db, assignment, agent, now=now, retired=retired)
         if (before or {}).get("fingerprint") != (after or {}).get("fingerprint") or (before or {}).get(
             "status"
         ) != (after or {}).get("status"):

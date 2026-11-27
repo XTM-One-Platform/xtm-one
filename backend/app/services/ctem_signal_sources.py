@@ -57,7 +57,9 @@ EVIDENCE_HEALTH_PROVIDERS: tuple[str, ...] = ("opencrq",)
 
 #: ``webhook``: a generic signed webhook source an administrator creates on one path
 #: (``ctem_webhook_sources``, #2506); never in :data:`PATH_SOURCES`, read from its table.
-SOURCE_KINDS: tuple[str, ...] = ("listener", "pass", "pir_playbook", "webhook")
+#: ``cases_reader``: the scheduled cases recompute's reader of a provider's open issues (#2583 note of
+#: 27 Nov 2026), its own source so the row lists it and its switch stops it.
+SOURCE_KINDS: tuple[str, ...] = ("listener", "pass", "pir_playbook", "webhook", "cases_reader")
 #: A path's status (#2436, Sam 26 Nov 2026): read from its sources' on/off state, never from the
 #: integration connection alone: ``enabled`` (every source used on the path is on), ``partly_enabled``
 #: (some are), then ``error``, ``not_set_up``, ``off``, ``not_connected`` and ``agents_api``.
@@ -147,6 +149,7 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
     "new_vulnerability": (
         Source("opencti", "listener", "A vulnerability is created or updated, or linked to one of your assets"),
         Source("opencti", "pir_playbook", "The PIR playbook flags a vulnerability in one of your PIRs"),
+        Source("opencti", "cases_reader", "The cases recompute reads a vulnerability on your inventory software"),
         Source("github", "listener", "A security advisory is published on one of your repositories"),
     ),
     "relevant_threat": (
@@ -173,6 +176,7 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
     ),
     "proven_exploitable": (
         Source("openaev", "listener", "A finished simulation reached a high or very high criticality asset"),
+        Source("openaev", "cases_reader", "The cases recompute reads a CVE finding on one of your assets"),
     ),
     "new_exposure": (
         Source("openaev", "listener", "A reachability assertion failed: a target that should not answer answers"),
@@ -236,6 +240,11 @@ PIR_PATHS: dict[str, tuple[str, ...]] = {
     "new_vulnerability": ("Vulnerability",),
     "relevant_threat": ("Intrusion-Set", "Threat-Actor-Group", "Threat-Actor-Individual", "Campaign", "Malware"),
 }
+
+#: How each path's playbook reaches its entities (#2583 point 3): a threat is flagged in a PIR
+#: itself; a vulnerability never is, so it arrives when a new relationship links it to a flagged
+#: entity (``provision.pir_relation`` ``linked``, OpenCTI's ``create_rel``).
+PIR_PATH_RELATIONS: dict[str, str] = {"new_vulnerability": "linked", "relevant_threat": "flagged"}
 
 #: The OpenCTI ``pir_type`` values a path takes by default (#2436). OpenCTI offers threat PIRs today;
 #: a vulnerability PIR type is matched by name as soon as OpenCTI offers one.
@@ -369,9 +378,62 @@ async def excluded_sources(db: AsyncSession, organization_id: Any) -> dict[str, 
         return parse_excluded(None)
 
 
+#: Seconds a read exclusion map is trusted by the recorders (#2583 point 7): a source switched off
+#: stops recording within this delay, and an excluded delivery is dropped with no database session.
+EXCLUSIONS_TTL_SECONDS = 30.0
+_exclusions_cache: tuple[float, Any, dict[str, set[tuple[str, ...]]]] | None = None
+
+
+def cached_exclusions() -> tuple[Any, dict[str, set[tuple[str, ...]]]] | None:
+    """The primary organization's id and its exclusion map as last read, while fresh; else ``None``."""
+    import time
+
+    cached = _exclusions_cache
+    if cached is None or time.monotonic() - cached[0] > EXCLUSIONS_TTL_SECONDS:
+        return None
+    return cached[1], cached[2]
+
+
+def remember_exclusions(organization_id: Any, excluded: dict[str, set[tuple[str, ...]]]) -> None:
+    """Keep the exclusion map just read for :data:`EXCLUSIONS_TTL_SECONDS`."""
+    import time
+
+    global _exclusions_cache
+    _exclusions_cache = (time.monotonic(), organization_id, excluded)
+
+
+def forget_exclusions() -> None:
+    """Drop the cached exclusion map: the next delivery reads the profile again."""
+    global _exclusions_cache
+    _exclusions_cache = None
+
+
 def is_excluded(excluded: dict[str, set[tuple[str, ...]]], path: str, provider: str, kind: str, name: str = "") -> bool:
     """Whether ``provider:kind`` (``provider:kind:name`` for a named source, #2436) is excluded from *path*."""
     return _key_tuple(source_key(provider, kind, name)) in excluded.get(path, set())
+
+
+def reader_excluded(excluded: dict[str, set[tuple[str, ...]]], path: str, provider: str) -> bool:
+    """Whether the cases recompute's reader of *provider* records nothing on *path*.
+
+    Off when its own ``provider:cases_reader`` source is excluded, or when the path is off for the
+    provider: every other source of that provider on the path excluded ("Not used here").
+    """
+    if is_excluded(excluded, path, provider, "cases_reader"):
+        return True
+    others = [s for s in PATH_SOURCES.get(path, ()) if s.provider == provider and s.kind != "cases_reader"]
+    return bool(others) and all(is_excluded(excluded, path, s.provider, s.kind, s.name) for s in others)
+
+
+def reader_pairs(connected: Any) -> set[tuple[str, str]]:
+    """The ``(provider, "cases_reader")`` sources bound for the connected *providers*.
+
+    The cases recompute reads a connected provider's open issues with nothing to set up in its
+    platform, so its reader is on as soon as the provider is connected; only an exclusion on a
+    path turns it off there ("Not used here"). It never reads Not set up (UX round 1 on #2592, B1).
+    """
+    readers = {s.provider for row in PATH_SOURCES.values() for s in row if s.kind == "cases_reader"}
+    return {(provider, "cases_reader") for provider in connected if provider in readers}
 
 
 def _connected_ids(rows: list[tuple[Any, str]]) -> dict[str, set[str]]:
@@ -425,6 +487,7 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
     ).all()
     connected = _connected_ids([(r[0], r[1]) for r in rows])
     bound = BoundSources((p, "listener") for p in connected)
+    bound.update(reader_pairs(connected))
 
     primary = await get_primary(db)
     if primary is not None:

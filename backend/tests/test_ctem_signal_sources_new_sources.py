@@ -214,8 +214,35 @@ async def test_a_new_source_records_nothing_until_it_is_included(monkeypatch: py
         return sources.parse_excluded(_profile(included={"code_flaw": ["github:listener:code_scanning"]}))
 
     monkeypatch.setattr(sources, "excluded_sources", _included)
+    # A profile save forgets the cached exclusion map (#2583 point 7).
+    sources.forget_exclusions()
     await listeners.note_event("github", "code_scanning_alert.created", _code(), verified=True)
     assert len(recorded) == 1 and recorded[0]["signal"].trigger_path == "code_flaw"
+
+
+async def test_an_excluded_delivery_opens_no_session_once_the_exclusions_are_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2583 point 7: the per-path exclusion is decided from the cached map before any database session."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(type(settings), "is_copilot_like", property(lambda _s: False), raising=False)
+    opened: list[int] = []
+
+    def _session() -> Any:
+        opened.append(1)
+        raise AssertionError("an excluded delivery must not open a session")
+
+    sources.remember_exclusions("org", sources.parse_excluded(_profile()))
+    assert (
+        await listeners.note_event(
+            "github", "code_scanning_alert.created", _code(), verified=True, session_factory=_session
+        )
+        is False
+    )
+    assert opened == []
+    sources.forget_exclusions()
+    assert sources.cached_exclusions() is None
 
 
 async def test_a_resolved_secret_or_a_fixed_code_alert_closes_its_members(monkeypatch: pytest.MonkeyPatch) -> None:

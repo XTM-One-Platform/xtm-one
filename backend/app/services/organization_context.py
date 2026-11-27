@@ -1630,6 +1630,10 @@ async def save_version(
     elif await records.is_imported(db, organization_id):
         if await records.imported_version(db, organization_id) >= int(latest or 0):
             await records.mark_version(db, organization_id, int(latest or 0) + 1)
+    # #2583 point 7: the signal recorders cache the source exclusions; a new profile version drops them.
+    from app.services.ctem_signal_sources import forget_exclusions
+
+    forget_exclusions()
     row = OrganizationContextVersion(
         organization_id=organization_id,
         version=int(latest or 0) + 1,

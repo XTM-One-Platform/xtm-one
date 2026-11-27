@@ -71,6 +71,31 @@ def test_one_status_per_path_a_provisioned_source_says_it() -> None:
     assert sources.path_status([{"bound": False, "not_set_up": True}, {"bound": False, "off": True}]) == "not_set_up"
 
 
+def test_a_cases_reader_of_a_connected_provider_reads_on_never_not_set_up() -> None:
+    """UX round 1 on #2592, B1: the cases recompute needs no set-up, so a path whose other sources are
+    on reads Enabled; an excluded reader reads Not used here; no reader without its provider."""
+    assert sources.reader_pairs({"opencti": {"i1"}, "openaev": {"i2"}, "github": {"i3"}}) == {
+        ("opencti", "cases_reader"),
+        ("openaev", "cases_reader"),
+    }
+    path = next(
+        p
+        for p, row in sources.PATH_SOURCES.items()
+        if any(s.provider == "opencti" and s.kind == "cases_reader" for s in row)
+    )
+    on = {(s.provider, s.kind) for s in sources.PATH_SOURCES[path] if s.provider == "opencti"}
+    bound = sources.BoundSources(on | sources.reader_pairs({"opencti": {"i1"}}))
+    row = sources.path_sources(path, bound)
+    reader = next(s for s in row if s["kind"] == "cases_reader")
+    assert reader["bound"] is True and reader["not_set_up"] is False
+    assert sources.path_status([s for s in row if s["provider"] == "opencti"]) == "enabled"
+
+    bound.excluded = {path: {("opencti", "cases_reader")}}
+    reader = next(s for s in sources.path_sources(path, bound) if s["kind"] == "cases_reader")
+    assert reader["bound"] is False and reader["excluded"] is True and reader["not_set_up"] is False
+    assert sources.reader_pairs({}) == set()
+
+
 def test_a_source_off_reads_off_and_never_bound() -> None:
     bound = sources.BoundSources({("opencti", "listener")})
     bound.off.add(("opencrq", "pass"))

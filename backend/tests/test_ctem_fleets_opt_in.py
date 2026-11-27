@@ -58,6 +58,7 @@ _FLEET_ASSIGNMENTS = {
         ("opencti-pir-desk-orchestrator", name)
         for name in (
             "PIR match created",
+            "Report containing a PIR entity",
             "Weekly PIR answer",
             "Half-year threat landscape",
             "Stale indicator clean-up",

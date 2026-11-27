@@ -19,6 +19,7 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
+from prometheus_client import Gauge
 from sqlalchemy import delete, select, update
 
 from app.core.utils import format_exception_message
@@ -29,6 +30,10 @@ logger = logging.getLogger(__name__)
 DRAIN_BATCH = 200
 #: Recording attempts before a row is dropped.
 MAX_ATTEMPTS = 5
+#: Seconds one tick spends draining, batch after batch (#2584 gate line 2): one batch per 60 s tick
+#: recorded 10,000 catch-up updates in about 50 minutes in the lab; about 1,100 rows fit in 20 s
+#: there, a third of the tick's window, so the scheduler's other steps keep theirs.
+DRAIN_BUDGET_SECONDS = 20.0
 
 
 async def accept(
@@ -54,19 +59,89 @@ async def accept(
 async def record(
     provider: str, integration_id: str, event_key: str, payload: dict[str, Any], *, verified: bool
 ) -> bool:
-    """What the webhook used to do inline: hand one delivery to its recorders. ``True`` when a signal was recorded."""
+    """What the webhook used to do inline: hand one delivery to its recorders. ``True`` when a signal was recorded.
+
+    #2584: the signal is recorded on the intake engine (``database.intake_session``), its own
+    connection budget, so draining an OpenCTI catch-up never takes the web pool the UI waits on.
+    """
+    from app.core.database import intake_session
     from app.services import ctem_analyst_mark, ctem_openaev_events, ctem_signal_listeners
 
     if provider == "openaev":
         await ctem_openaev_events.stamp_reachability_assertion(
             event_key, payload, integration_id=str(integration_id), verified=verified
         )
-    recorded = await ctem_signal_listeners.note_event(provider, event_key, payload, verified=verified)
+    recorded = await ctem_signal_listeners.note_event(
+        provider, event_key, payload, verified=verified, session_factory=intake_session
+    )
     if provider == "opencti":
         await ctem_analyst_mark.note_event(provider, payload, verified=verified)
+        named = payload.get(TRACKED_KEY)
+        if isinstance(named, list) and named:
+            # #2583 point 5: path 11, one signal per tracked organization the report or incident names.
+            recorded = bool(
+                await ctem_signal_listeners.note_tracked_organizations(
+                    payload, [str(n) for n in named], verified=verified, session_factory=intake_session
+                )
+            ) or bool(recorded)
     if provider == "openaev":
         await ctem_openaev_events.note_event(event_key, payload, verified=verified)
     return bool(recorded)
+
+
+#: Where the receiver records the tracked organizations an OpenCTI delivery names (#2583 point 5).
+TRACKED_KEY = "_tracked_organizations"
+#: The path whose source state holds the tracked organizations' resolved ids.
+_THIRD_PARTY_PATH = "third_party_event"
+
+
+def tracked_named(source_state: Any, payload: Mapping[str, Any]) -> list[str]:
+    """The XTM One ids of the tracked organizations an OpenCTI delivery names by identity. Pure.
+
+    Read from the organizations the source's path 11 trigger resolved at provisioning
+    (internal and standard ids, ``opencti_trigger_provisioning._organization_scope``).
+    """
+    from app.services.organization_events import named_organizations
+
+    paths = source_state.get("paths") if isinstance(source_state, dict) else None
+    sub = paths.get(_THIRD_PARTY_PATH) if isinstance(paths, dict) else None
+    if not isinstance(sub, dict):
+        return []
+    return named_organizations(payload.get("data"), sub.get("organizations"))
+
+
+def _object_key(provider: str, integration_id: str, event_key: str, payload: Any) -> str | None:
+    """The key repeated updates of one OpenCTI object share; ``None`` for a delivery never folded."""
+    if provider != "opencti" or "delete" in (event_key or "").casefold() or not isinstance(payload, Mapping):
+        return None
+    from app.services.ctem_signal_listeners import opencti_internal_id
+
+    data = payload.get("data")
+    object_id = opencti_internal_id(data) if isinstance(data, Mapping) else ""
+    return f"{integration_id}:{event_key}:{object_id}" if object_id else None
+
+
+def coalesce(batch: list[tuple[Any, ...]]) -> tuple[list[tuple[Any, ...]], list[Any]]:
+    """Fold repeated updates of one OpenCTI object into the latest one (#2584). Pure.
+
+    *batch* is oldest first; the latest delivery of each object keeps its place, the earlier
+    ones are returned apart (their row ids), recorded never: during a catch-up OpenCTI sends one
+    update per field written, and only the object as last delivered matters. A delete, an
+    OpenAEV or OpenCRQ delivery, or one without an object id is never folded.
+    """
+    latest: dict[str, int] = {}
+    for index, row in enumerate(batch):
+        key = _object_key(row[1], row[2], row[3], row[4])
+        if key is not None:
+            latest[key] = index
+    kept, folded = [], []
+    for index, row in enumerate(batch):
+        key = _object_key(row[1], row[2], row[3], row[4])
+        if key is None or latest[key] == index:
+            kept.append(row)
+        else:
+            folded.append(row[0])
+    return kept, folded
 
 
 async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
@@ -79,7 +154,7 @@ async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
     from app.core.database import async_session
     from app.models.ctem_signal_inbox import CtemSignalInbox
 
-    counts = {"recorded": 0, "retried": 0, "dropped": 0}
+    counts = {"recorded": 0, "retried": 0, "dropped": 0, "coalesced": 0}
     async with async_session() as db:
         rows = (
             (
@@ -105,6 +180,10 @@ async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
             update(CtemSignalInbox).where(CtemSignalInbox.id.in_(ids)).values(attempts=CtemSignalInbox.attempts + 1)
         )
         await db.commit()
+    batch, folded = coalesce(batch)
+    for row_id in folded:
+        await _delete(row_id)
+    counts["coalesced"] = len(folded)
     for row_id, provider, integration_id, event_key, payload, verified, attempts in batch:
         try:
             await record(provider, integration_id, event_key, payload or {}, verified=verified)
@@ -126,6 +205,75 @@ async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
         counts["recorded"] += 1
         await _delete(row_id)
     return counts
+
+
+async def drain_within(budget_seconds: float = DRAIN_BUDGET_SECONDS, limit: int = DRAIN_BATCH) -> dict[str, int]:
+    """Drain batch after batch until the inbox is empty or *budget_seconds* have passed; the summed counts.
+
+    A batch is never cut: the budget is read between batches, so a tick overruns it by one batch at most.
+    """
+    import time
+
+    totals = {"recorded": 0, "retried": 0, "dropped": 0, "coalesced": 0}
+    deadline = time.monotonic() + budget_seconds
+    while True:
+        counts = await drain(limit)
+        for key, value in counts.items():
+            totals[key] = totals.get(key, 0) + value
+        handled = counts["recorded"] + counts["dropped"] + counts["coalesced"]
+        # Empty, or only retries left (a batch that recorded nothing): wait for the next tick.
+        if handled == 0 or time.monotonic() >= deadline:
+            return totals
+
+
+#: Waiting deliveries past which a growing inbox is logged (#2584 point 4): a catch-up the drain does not keep up with.
+DEPTH_WARNING = 1000
+#: The depth last logged; a new line only when the inbox grew past it, reset once it drains under the threshold.
+_last_logged_depth = 0
+
+
+QUEUE_DEPTH_GAUGE = Gauge(
+    "xtmone_ctem_signal_inbox_depth",
+    "Verified signal source deliveries accepted and waiting to be recorded (#2584)",
+)
+
+
+async def depth() -> int | None:
+    """Deliveries waiting in the inbox (sets the gauge); ``None`` when the database cannot be read."""
+    from sqlalchemy import func
+
+    from app.core.database import intake_session
+    from app.models.ctem_signal_inbox import CtemSignalInbox
+
+    try:
+        async with intake_session() as db:
+            value = int((await db.execute(select(func.count()).select_from(CtemSignalInbox))).scalar_one())
+    except Exception:
+        return None
+    QUEUE_DEPTH_GAUGE.set(value)
+    note_depth(value)
+    return value
+
+
+def note_depth(value: int) -> bool:
+    """Log a warning when the inbox depth grows past :data:`DEPTH_WARNING`; ``True`` when a line was written.
+
+    One line per growth step (the depth at least doubled since the last line, or crossed the
+    threshold again after draining under it), so a storm leaves a readable trail, never a line per tick.
+    """
+    global _last_logged_depth
+    if value < DEPTH_WARNING:
+        _last_logged_depth = 0
+        return False
+    if _last_logged_depth and value < 2 * _last_logged_depth:
+        return False
+    logger.warning(
+        "CTEM signal inbox: %d verified deliveries waiting to be recorded (warning at %d): the drain is behind",
+        value,
+        DEPTH_WARNING,
+    )
+    _last_logged_depth = value
+    return True
 
 
 async def _delete(row_id: Any) -> None:

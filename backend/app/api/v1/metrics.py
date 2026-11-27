@@ -339,6 +339,10 @@ async def metrics(db: AsyncSession = Depends(get_db)) -> Response:
     await _read_assignment_dispatch(db, platform_id)
     await _read_relays(db, platform_id)
     await _read_sandbox_workspaces(db, platform_id)
+    from app.services.ctem_signal_inbox import depth as signal_inbox_depth
+
+    # Sets xtmone_ctem_signal_inbox_depth from the inbox table, the same for every worker (#2584).
+    await signal_inbox_depth()
 
     # Generate the standard Prometheus plain-text response
     data = generate_latest(REGISTRY)

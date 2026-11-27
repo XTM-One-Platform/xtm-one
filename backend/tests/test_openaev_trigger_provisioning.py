@@ -90,7 +90,7 @@ def test_each_event_maps_to_its_openaev_trigger():
     finding = prov.trigger_body(SPEC, "finding_created", "n1")
     assert finding["notification_trigger_event_types"] == ["CREATE"]
     assert "notification_trigger_filters" not in finding
-    assert finding["notification_trigger_name"] == "XTM One - Exposure validation - Results - finding_created"
+    assert finding["notification_trigger_name"] == "XTM One - Exposure validation - Results - Trigger - finding_created"
 
 
 def test_the_notifier_carries_the_secret_as_a_static_header():
@@ -183,6 +183,30 @@ async def test_remove_deletes_triggers_then_notifier():
     assert not api.notifiers and not api.triggers
 
 
+async def test_objects_follow_the_naming_rule_and_are_renamed_in_place() -> None:
+    # #2583: "XTM One - <Fleet> - <Path> - <Kind>", a description naming who it serves, ids kept on rename.
+    api = FakeOpenAEV()
+    spec = {**SPEC, "origin": {"assignment": "Results", "assignment_id": "a1"}}
+    state = await prov.reconcile(api, spec, None, url=URL, secret="s", now=NOW)
+    notifier = api.notifiers[state["notifier_id"]]
+    assert notifier["notifier_name"] == "XTM One - Exposure validation - Results - Notifier"
+    assert "Fleet: Exposure validation. Path: Results. Kind: Notifier." in notifier["notifier_description"]
+    assert "Assignment: Results (a1)." in notifier["notifier_description"]
+    names = {t["notification_trigger_name"] for t in api.triggers.values()}
+    assert names == {
+        "XTM One - Exposure validation - Results - Trigger - finding_created",
+        "XTM One - Exposure validation - Results - Trigger - simulation_finished",
+    }
+    # An object of the former rule is renamed by the next check, its id kept.
+    api.notifiers[state["notifier_id"]]["notifier_name"] = "XTM One - Exposure validation - Results"
+    tid = state["trigger_ids"]["finding_created"]
+    api.triggers[tid]["notification_trigger_name"] = "XTM One - Exposure validation - Results - finding_created"
+    again = await prov.reconcile(api, spec, state, url=URL, secret="s", now=NOW)
+    assert again["notifier_id"] == state["notifier_id"] and again["trigger_ids"] == state["trigger_ids"]
+    assert api.notifiers[state["notifier_id"]]["notifier_name"].endswith(" - Notifier")
+    assert api.triggers[tid]["notification_trigger_name"].endswith(" - Trigger - finding_created")
+
+
 def test_due_for_check():
     assert prov.due_for_check(None, NOW)
     fresh = {"status": "provisioned", "checked_at": NOW.isoformat()}
@@ -194,11 +218,12 @@ def test_due_for_check():
     "name, event",
     [
         ("XTM One - F - P - finding_created", "finding_created"),
+        ("XTM One - F - P - Trigger - finding_created", "finding_created"),
         ("XTM One - F - P - nope", None),
         ("My own trigger - finding_created", None),
         (None, None),
     ],
-    ids=["provisioned", "unknown-suffix", "foreign", "absent"],
+    ids=["provisioned", "named-2583", "unknown-suffix", "foreign", "absent"],
 )
 def test_the_event_is_read_from_the_trigger_name(name, event):
     assert prov.event_from_notification_name(name) == event

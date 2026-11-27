@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import uuid
+from datetime import UTC, datetime
+from typing import Any
+
+import pytest
+
 from app.services import ctem_case_loop as loop
 from app.services import ctem_cases as rules
 from app.services.ctem_source_signals import signal_of
@@ -40,6 +47,66 @@ def test_an_opencti_vulnerability_is_a_new_vulnerability_signal_keyed_on_its_fix
     # The case the signal opens groups on the same fix key the recompute groups on.
     case_fix = loop.source_fix_of(signal.evidence)
     assert case_fix is not None and case_fix.key == fix.key and case_fix.kind == "upgrade"
+
+
+class _Db:
+    def __init__(self) -> None:
+        self.info: dict[str, Any] = {}
+
+    def begin_nested(self) -> Any:
+        class _Tx:
+            async def __aenter__(self) -> None:
+                return None
+
+            async def __aexit__(self, *exc: object) -> None:
+                return None
+
+        return _Tx()
+
+
+def _run_reader(monkeypatch: pytest.MonkeyPatch, excluded: dict[str, set[tuple[str, ...]]]) -> list[Any]:
+    """One source issue through the cases recompute's reader; the signals it handed to record_signal."""
+    from app.services import ctem_cases_store as store
+    from app.services import ctem_scope_gate_store as gate_store
+    from app.services import ctem_signal_sources, ctem_signals
+
+    recorded: list[Any] = []
+
+    async def _excluded(db: Any, organization_id: Any) -> dict[str, set[tuple[str, ...]]]:
+        return excluded
+
+    async def _record(db: Any, *, signal: Any, **_: Any) -> tuple[Any, bool]:
+        recorded.append(signal)
+        return object(), False
+
+    async def _evaluate(*_: Any, **__: Any) -> None:
+        return None
+
+    monkeypatch.setattr(ctem_signal_sources, "excluded_sources", _excluded)
+    monkeypatch.setattr(ctem_signals, "record_signal", _record)
+    monkeypatch.setattr(gate_store, "evaluate", _evaluate)
+    issue = _issue()
+    fix = rules.remediation_of(issue)
+    assert fix is not None
+    asyncio.run(store._source_signal(_Db(), uuid.uuid4(), issue, fix, datetime.now(UTC)))
+    return recorded
+
+
+def test_the_cases_reader_records_nothing_on_a_path_off_for_its_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2583 note of 27 Nov 2026: OpenCTI "Not used here" on path 1 stops the recompute's signals too."""
+    off = {"new_vulnerability": {("opencti", "listener"), ("opencti", "pir_playbook")}}
+    assert _run_reader(monkeypatch, off) == []
+    assert _run_reader(monkeypatch, {"new_vulnerability": {("opencti", "cases_reader")}}) == []
+
+
+def test_the_cases_reader_records_as_its_own_source_when_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import ctem_signals
+
+    recorded = _run_reader(monkeypatch, {})
+    assert len(recorded) == 1
+    assert recorded[0].evidence[ctem_signals.SOURCE_KEY_EVIDENCE] == "opencti:cases_reader"
+    # Only the listener off: the PIR playbook still feeds the path, so the reader still records.
+    assert len(_run_reader(monkeypatch, {"new_vulnerability": {("opencti", "listener")}})) == 1
 
 
 def test_an_openaev_finding_is_proven_exploitable() -> None:

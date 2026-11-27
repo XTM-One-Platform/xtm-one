@@ -1198,6 +1198,9 @@ class Settings(BaseSettings):
     # queue above still bounds how many of those become runs. Clamped to
     # ``>= 1`` at use time. A throttled delivery gets HTTP 429 + ``Retry-After``.
     webhook_requests_per_minute: int = 60
+    # The connections of the signal inbox drain's own engine (#2584), never the
+    # web pool: an OpenCTI catch-up waits on these, the UI does not.
+    ctem_signal_intake_db_pool_size: int = 4
     # Event matching of integration-event and webhook triggers. A
     # trigger saved before exact matching existed keeps its prefix match
     # (``pull_request`` also fires on ``pull_request_review``) until a person

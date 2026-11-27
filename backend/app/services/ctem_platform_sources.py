@@ -39,19 +39,45 @@ logger = logging.getLogger(__name__)
 #: The name a platform source gives its objects in the source platform.
 OBJECT_FLEET = "Signals"
 
+#: The state of an enabled source whose paths are all off: no object held, rechecked at every pass.
+IDLE = "idle"
+
 #: The run-as a source needs when it has none (a row enabled before the run-as was required).
 NO_RUN_AS = "no run-as user: enable the source again and pick the user it provisions as"
 
 
-def _openaev_spec() -> dict[str, Any]:
+#: The OpenAEV events provisioned whatever path is on: they move an open case (validation, re-test).
+OPENAEV_CASE_EVENTS: tuple[str, ...] = ("simulation_finished", "finding_updated", "finding_deleted")
+
+
+def _listened(excluded: dict[str, set[tuple[str, ...]]] | None, path: str, provider: str, name: str) -> bool:
+    """Whether the ``provider:listener`` source named *name* records on *path*; ``None``: every source is on."""
+    from app.services.ctem_signal_sources import is_excluded
+
+    return excluded is None or not is_excluded(excluded, path, provider, "listener", name)
+
+
+def openaev_events(excluded: dict[str, set[tuple[str, ...]]] | None = None) -> list[str]:
+    """The OpenAEV events the listener source provisions: the case events, plus each listener row's events
+    while its source is on its path (#2583, Sam 27 Nov 2026). *excluded* is ``excluded_sources``."""
     from app.agents.builtin_agents import CTEM_OPENAEV_LOOP_EVENTS
+    from app.services.ctem_signal_listeners import LISTENERS
 
-    return {"fleet": OBJECT_FLEET, "purpose": "OpenAEV listener", "events": sorted(CTEM_OPENAEV_LOOP_EVENTS)}
+    wanted = set(OPENAEV_CASE_EVENTS)
+    for row in LISTENERS:
+        if row.provider == "openaev" and _listened(excluded, row.trigger_path, "openaev", row.source):
+            wanted.update(row.event_keys)
+    return sorted(wanted & set(CTEM_OPENAEV_LOOP_EVENTS))
 
 
-#: The entity types the OpenCTI PIR playbook delivers: the vulnerability and the threat paths.
+def _openaev_spec(excluded: dict[str, set[tuple[str, ...]]] | None = None) -> dict[str, Any]:
+    return {"fleet": OBJECT_FLEET, "purpose": "OpenAEV listener", "events": openaev_events(excluded)}
+
+
+#: The entity types the single OpenCTI PIR playbook (before #2436) delivers: the threats flagged in a
+#: PIR. A vulnerability is never flagged itself (#2583 point 3): the per-path playbook of
+#: ``new_vulnerability`` delivers the vulnerabilities linked to a flagged entity.
 PIR_PLAYBOOK_ENTITY_TYPES: tuple[str, ...] = (
-    "Vulnerability",
     "Intrusion-Set",
     "Threat-Actor-Group",
     "Threat-Actor-Individual",
@@ -60,18 +86,27 @@ PIR_PLAYBOOK_ENTITY_TYPES: tuple[str, ...] = (
 )
 
 
+def path_label(path: str) -> str:
+    """The label of a trigger path as the Sources view shows it (``ctem_signals.PATH_CATALOG``)."""
+    from app.services.ctem_signals import PATH_CATALOG
+
+    return PATH_CATALOG.get(path, (path, ""))[0]
+
+
 def _opencti_pir_spec(path: str = "") -> dict[str, Any]:
     """The PIR playbook spec; for *path* (#2436), the playbook of that path alone, over its entity types."""
     from app.services import opencti_trigger_provisioning as prov
-    from app.services.ctem_signal_sources import PIR_PATHS
+    from app.services.ctem_signal_sources import PIR_PATH_RELATIONS, PIR_PATHS
 
     spec = prov.read_provision_spec(
         {
             "provider": "opencti",
             "provision": {
                 "fleet": OBJECT_FLEET,
-                "purpose": f"OpenCTI PIR playbook - {path}" if path else "OpenCTI PIR playbook",
+                # #2583.1: <Path> is the path label the Sources view shows, never its internal key.
+                "purpose": f"OpenCTI PIR playbook - {path_label(path)}" if path else "OpenCTI PIR playbook",
                 "mode": prov.PIR_PLAYBOOK_MODE,
+                "pir_relation": PIR_PATH_RELATIONS.get(path, prov.PIR_FLAGGED),
                 "entity_types": list(PIR_PATHS[path] if path else PIR_PLAYBOOK_ENTITY_TYPES),
                 "organization_context": ["pir_ids"],
                 "pir_min_score": 1,
@@ -100,7 +135,65 @@ LIVE_LISTENER_ENTITY_TYPES: tuple[str, ...] = (
 )
 
 
-def _opencti_listener_spec() -> dict[str, Any]:
+#: The OpenCTI entity types the live listener delivers for each source it feeds, ``(path, source name)``:
+#: the trigger's filter is the union of the sources that are on (#2583 point 7, Sam 27 Nov 2026).
+LIVE_LISTENER_TYPES_BY_SOURCE: dict[tuple[str, str], tuple[str, ...]] = {
+    ("new_vulnerability", ""): ("Vulnerability", "has", "stix-sighting-relationship"),
+    ("relevant_threat", ""): (
+        "Intrusion-Set",
+        "Threat-Actor-Group",
+        "Threat-Actor-Individual",
+        "Campaign",
+        "Malware",
+    ),
+    ("relevant_threat", "indicator_sighting"): ("stix-sighting-relationship",),
+    ("credential_leak", ""): ("User-Account", "Email-Addr"),
+}
+
+
+def opencti_listener_types(excluded: dict[str, set[tuple[str, ...]]] | None = None) -> list[str]:
+    """The entity types of the live listener trigger: those of the sources that are on, in table order."""
+    on = {
+        t
+        for (path, name), types in LIVE_LISTENER_TYPES_BY_SOURCE.items()
+        if _listened(excluded, path, "opencti", name)
+        for t in types
+    }
+    return [t for t in LIVE_LISTENER_ENTITY_TYPES if t in on]
+
+
+def _opencti_listener_spec(excluded: dict[str, set[tuple[str, ...]]] | None = None) -> dict[str, Any]:
+    from app.services import opencti_trigger_provisioning as prov
+
+    entity_types = opencti_listener_types(excluded)
+    if not entity_types:
+        raise NothingToListenError(
+            "every path the OpenCTI live listener feeds is set to Not used here: nothing to listen to"
+        )
+    spec = prov.read_provision_spec(
+        {
+            "provider": "opencti",
+            "provision": {
+                "fleet": OBJECT_FLEET,
+                "purpose": "OpenCTI live listener",
+                "entity_types": entity_types,
+                "event_types": ["create", "update"],
+            },
+        }
+    )
+    if spec is None:  # the block above always declares one
+        raise RuntimeError("the OpenCTI live listener spec is empty")
+    return spec
+
+
+#: Path 11 (#2583 comment point 5): the reports and incidents naming a tracked organization reach
+#: the live listener source through a trigger of their own, scoped to the tracked organizations'
+#: identities, so the vulnerability intake is never widened to every report.
+THIRD_PARTY_PATH = "third_party_event"
+THIRD_PARTY_ENTITY_TYPES: tuple[str, ...] = ("Report", "Incident")
+
+
+def _opencti_third_party_spec() -> dict[str, Any]:
     from app.services import opencti_trigger_provisioning as prov
 
     spec = prov.read_provision_spec(
@@ -108,14 +201,15 @@ def _opencti_listener_spec() -> dict[str, Any]:
             "provider": "opencti",
             "provision": {
                 "fleet": OBJECT_FLEET,
-                "purpose": "OpenCTI live listener",
-                "entity_types": list(LIVE_LISTENER_ENTITY_TYPES),
+                "purpose": f"OpenCTI live listener - {path_label(THIRD_PARTY_PATH)}",
+                "entity_types": list(THIRD_PARTY_ENTITY_TYPES),
                 "event_types": ["create", "update"],
+                "organizations": prov.TRACKED_SCOPE,
             },
         }
     )
     if spec is None:  # the block above always declares one
-        raise RuntimeError("the OpenCTI live listener spec is empty")
+        raise RuntimeError("the OpenCTI third-party listener spec is empty")
     return spec
 
 
@@ -128,13 +222,24 @@ class Provisioned:
     label: str
     #: One set of objects per trigger path and PIR selection (#2436): ``spec(path)`` builds each.
     per_pir_path: bool = False
+    #: What it provisions follows the sources on per path (#2583): ``spec(excluded=...)`` builds it.
+    follows_paths: bool = False
+    #: Paths that need objects of their own next to the main ones, ``(path, spec)`` (#2583 point 5):
+    #: held under ``state["paths"][path]``, provisioned while the source is on that path.
+    path_objects: tuple[tuple[str, Callable[[], dict[str, Any]]], ...] = ()
 
 
 #: ``(provider, kind)`` -> how it is provisioned.
 PROVISIONED: dict[tuple[str, str], Provisioned] = {
-    ("openaev", "listener"): Provisioned("app.services.openaev_trigger_provisioning", _openaev_spec, "OpenAEV"),
+    ("openaev", "listener"): Provisioned(
+        "app.services.openaev_trigger_provisioning", _openaev_spec, "OpenAEV", follows_paths=True
+    ),
     ("opencti", "listener"): Provisioned(
-        "app.services.opencti_trigger_provisioning", _opencti_listener_spec, "OpenCTI"
+        "app.services.opencti_trigger_provisioning",
+        _opencti_listener_spec,
+        "OpenCTI",
+        follows_paths=True,
+        path_objects=((THIRD_PARTY_PATH, _opencti_third_party_spec),),
     ),
     ("opencti", "pir_playbook"): Provisioned(
         "app.services.opencti_trigger_provisioning", _opencti_pir_spec, "OpenCTI", per_pir_path=True
@@ -144,6 +249,10 @@ PROVISIONED: dict[tuple[str, str], Provisioned] = {
 
 class SourceRefusedError(ValueError):
     """The source cannot be enabled; the message is the exact reason shown to the administrator."""
+
+
+class NothingToListenError(SourceRefusedError):
+    """Every path the source feeds is off: its objects are removed so the platform stops delivering."""
 
 
 def receiver_url(base_url: str, integration_id: str, source_id: str) -> str:
@@ -164,6 +273,13 @@ def is_connected(state: Any) -> bool:
 def status_of(row: Any) -> tuple[str, str | None]:
     """``(status, reason)`` of a row: ``connected``, ``off`` or ``error`` with its reason."""
     state = row.state if isinstance(getattr(row, "state", None), dict) else {}
+    if row.enabled and state.get("status") == IDLE:
+        # Switched on, every path it feeds off: it holds nothing and is never an error (#2583 point 7).
+        # A path with objects of its own still delivers (#2583 point 5): connected through it.
+        subs = [s for s in (state.get("paths") or {}).values() if isinstance(s, dict)]
+        if any(is_connected(s) for s in subs):
+            return "connected", None
+        return "off", state.get("error")
     if not row.enabled:
         return ("error", state.get("error")) if state.get("status") == "error" else ("off", None)
     if is_connected(state):
@@ -228,7 +344,15 @@ async def _spec(
     *path* and *pir_ids* build one PIR playbook of a per-path source (#2436): its
     PIRs are that selection, each at its Intelligence policy minimum.
     """
-    spec = PROVISIONED[(provider, kind)].spec(path) if path else PROVISIONED[(provider, kind)].spec()
+    entry = PROVISIONED[(provider, kind)]
+    if path:
+        spec = entry.spec(path)
+    elif entry.follows_paths:
+        from app.services.ctem_signal_sources import excluded_sources
+
+        spec = entry.spec(excluded=await excluded_sources(db, None))
+    else:
+        spec = entry.spec()
     if pir_ids is not None:
         spec = {**spec, "pir_subset": sorted(pir_ids)}
     if spec.get("organization_context"):
@@ -300,6 +424,7 @@ async def _reconcile_pir_paths(db: Any, row: Any, conn: tuple[Any, str, str], no
             errors.append(f"{path}: {exc}")
             paths[path] = {**sub, "status": "error", "error": str(exc), "checked_at": stamp}
             continue
+        spec = {**spec, "origin": {"source_id": str(row.id)}}
         sub = await module.reconcile(client, spec, sub, url=url, secret=secret, now=now)
         sub["pir_ids"] = list(pir_ids)
         paths[path] = sub
@@ -344,15 +469,85 @@ async def _reconcile(db: Any, row: Any, now: datetime) -> dict[str, Any]:
         return {**state, "status": "error", "error": conn, "checked_at": stamp}
     if PROVISIONED[(row.provider, row.kind)].per_pir_path:
         return await _reconcile_pir_paths(db, row, conn, now)
-    try:
-        spec = await _spec(db, row.provider, row.kind)
-    except SourceRefusedError as exc:
-        return {**state, "status": "error", "error": str(exc), "checked_at": stamp}
     client, integration_id, secret = conn
     url = receiver_url(settings.base_url, integration_id, str(row.id))
-    new_state = await module.reconcile(client, spec, state, url=url, secret=secret, now=now)
+    top = {k: v for k, v in state.items() if k != "paths"}
+    paths = await _reconcile_path_objects(db, row, client, dict(state.get("paths") or {}), url, secret, now)
+    try:
+        spec = await _spec(db, row.provider, row.kind)
+    except NothingToListenError as exc:
+        # Every path is off: the objects go, so the source platform stops delivering (#2583 point 7).
+        leftover = await module.remove(client, top) if _held(top) else None
+        if leftover:
+            return {
+                **state,
+                "paths": paths,
+                "status": "error",
+                "error": f"{exc}; objects not removed: {leftover}",
+                "checked_at": stamp,
+            }
+        out = {"status": IDLE, "error": str(exc), "checked_at": stamp, "integration_id": integration_id}
+        return {**out, "paths": paths} if paths else out
+    except SourceRefusedError as exc:
+        return {**state, "status": "error", "error": str(exc), "checked_at": stamp}
+    spec = {**spec, "origin": {"source_id": str(row.id)}}
+    new_state = await module.reconcile(client, spec, top, url=url, secret=secret, now=now)
     new_state["integration_id"] = integration_id
+    if paths:
+        new_state["paths"] = paths
     return new_state
+
+
+async def _tracked_organizations(db: Any, provider: str, spec: dict[str, Any]) -> dict[str, Any]:
+    """*spec* with the tracked organizations of its scope; called by name so the session stays visible: it only reads."""
+    if provider == "opencti":
+        from app.services.opencti_trigger_provisioning import with_tracked_organizations as opencti_tracked
+
+        return await opencti_tracked(db, spec)
+    return spec
+
+
+async def _reconcile_path_objects(
+    db: Any, row: Any, client: Any, previous: dict[str, Any], url: str, secret: str, now: datetime
+) -> dict[str, Any]:
+    """The objects of the paths that need their own (#2583 point 5), as ``{path: state}``.
+
+    A path set to Not used here, or with nothing to scope it to (no tracked organization
+    with monitoring on and an OpenCTI identity), holds nothing: its objects are removed and
+    the path is quiet, never an error of the source.
+    """
+    entry = PROVISIONED[(row.provider, row.kind)]
+    if not entry.path_objects:
+        return {}
+    from app.services.ctem_signal_sources import excluded_sources
+
+    module = _module(row.provider, row.kind)
+    excluded = await excluded_sources(db, None)
+    out: dict[str, Any] = {}
+    for path, build in entry.path_objects:
+        sub = dict(previous.pop(path, None) or {})
+        spec = build()
+        try:
+            if _listened(excluded, path, row.provider, "") and spec.get("organizations") not in (None, "primary"):
+                spec = await _tracked_organizations(db, row.provider, spec)
+        except Exception as exc:  # one path never breaks the source
+            logger.warning("signal source %s: the tracked organizations of %s were not read", row.id, path)
+            out[path] = {**sub, "status": "error", "error": str(exc)[:500], "checked_at": now.isoformat()}
+            continue
+        wanted = _listened(excluded, path, row.provider, "") and (
+            spec.get("organizations") in (None, "primary") or bool(spec.get("organization_refs"))
+        )
+        if not wanted:
+            leftover = await module.remove(client, sub) if _held(sub) else None
+            if leftover:
+                out[path] = {**sub, "status": "error", "error": f"objects not removed: {leftover}"}
+            continue
+        spec = {**spec, "origin": {"source_id": str(row.id)}}
+        out[path] = await module.reconcile(client, spec, sub, url=url, secret=secret, now=now)
+    for gone in previous.values():
+        if _held(gone):
+            await module.remove(client, gone)
+    return out
 
 
 async def _remove(db: Any, row: Any) -> str | None:
@@ -602,24 +797,38 @@ async def adopt_from_assignments(db: Any, *, now: datetime | None = None) -> int
 async def replaced_by_source(db: Any, provider: str, state: Any) -> bool:
     """Whether a holder's old objects (*state*) may go: the platform source of the same
     integration is on and connected, so removing them loses no delivery (#2434)."""
-    from sqlalchemy import select
-
-    from app.models.ctem_signal_source import CtemSignalSource
-
     pair = held_source(provider, state)
     if pair is None:
         # No object is held (an error before any was created): clearing it loses nothing.
         return isinstance(state, dict) and bool(state) and not _held(state)
+    return await source_connected(db, pair[0], pair[1], state.get("integration_id"))
+
+
+#: The legacy Threat response holders (#2583 point 4): their OpenCTI objects are retired once the
+#: Signals source of the same integration is on and connected, ``(agent slug, name)`` -> the kind
+#: of the source that replaces them. Their assignment stays (it listens to nothing afterwards).
+RETIRED_HOLDERS: dict[tuple[str, str], str] = {
+    ("ctem-threat-response-orchestrator", "New relevant threat"): "listener",
+    ("ctem-threat-response-orchestrator", "Threat activity flagged in a PIR"): "pir_playbook",
+}
+
+
+async def source_connected(db: Any, provider: str, kind: str, integration_id: Any) -> bool:
+    """Whether the platform source ``(provider, kind)`` of *integration_id* is on and connected."""
+    from sqlalchemy import select
+
+    from app.models.ctem_signal_source import CtemSignalSource
+
     try:
-        integration_id = uuid.UUID(str(state.get("integration_id")))
+        integration_uuid = uuid.UUID(str(integration_id))
     except ValueError:
         return False
     row = (
         await db.execute(
             select(CtemSignalSource).where(
-                CtemSignalSource.provider == pair[0],
-                CtemSignalSource.kind == pair[1],
-                CtemSignalSource.integration_id == integration_id,
+                CtemSignalSource.provider == provider,
+                CtemSignalSource.kind == kind,
+                CtemSignalSource.integration_id == integration_uuid,
             )
         )
     ).scalar_one_or_none()
@@ -655,6 +864,55 @@ def reason_code(reason: str | None) -> tuple[str | None, dict[str, str]]:
     return "provider_error", {"detail": reason[:500]}
 
 
+def provisioned_objects(state: Any) -> list[dict[str, str]]:
+    """The objects a source holds in its platform, ``[{kind, id}]`` (#2583 point 2), for the Open in links.
+
+    ``kind`` is ``notifier``, ``trigger`` or ``playbook``; per-path states (the PIR playbook)
+    are read too. An id held twice is listed once, in a stable order.
+    """
+    if not isinstance(state, dict):
+        return []
+    out: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(kind: str, value: Any, stem: str = "") -> None:
+        if isinstance(value, str) and value and (kind, value) not in seen:
+            seen.add((kind, value))
+            # #2583 point 6: the name the object carries in its platform, so the row says what it holds.
+            out.append({"kind": kind, "id": value, **({"name": f"{stem} - {kind.capitalize()}"} if stem else {})})
+
+    def walk(sub: dict[str, Any]) -> None:
+        raw = sub.get("name")
+        stem = raw if isinstance(raw, str) else ""
+        add("notifier", sub.get("notifier_id"), stem)
+        add("trigger", sub.get("trigger_id"), stem)
+        triggers = sub.get("trigger_ids")
+        for value in triggers.values() if isinstance(triggers, dict) else triggers or []:
+            add("trigger", value, stem)
+        add("playbook", sub.get("playbook_id"), stem)
+
+    walk(state)
+    for _, sub in sorted((state.get("paths") or {}).items()):
+        if isinstance(sub, dict):
+            walk(sub)
+    return out
+
+
+def fed_paths(provider: str, kind: str) -> list[dict[str, str]]:
+    """The trigger paths a source feeds, ``[{path, label}]`` in catalog order (#2583 point 6). Pure.
+
+    One provisioned object can feed several paths (the OpenCTI live listener): turning it off stops
+    them all, so the source row names them before an administrator switches it.
+    """
+    from app.services.ctem_signal_sources import PATH_SOURCES
+
+    return [
+        {"path": path, "label": path_label(path)}
+        for path, rows in PATH_SOURCES.items()
+        if any(s.provider == provider and s.kind == kind for s in rows)
+    ]
+
+
 def to_dict(row: Any) -> dict[str, Any]:
     status, reason = status_of(row)
     code, params = reason_code(reason)
@@ -670,4 +928,6 @@ def to_dict(row: Any) -> dict[str, Any]:
         "reason_code": code,
         "reason_params": params,
         "checked_at": (row.state or {}).get("checked_at"),
+        "objects": provisioned_objects(row.state),
+        "feeds": fed_paths(row.provider, row.kind),
     }

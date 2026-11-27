@@ -1004,6 +1004,7 @@ async def test_the_paths_name_their_sources_status_and_30_day_activity(client: A
     assert {(s["provider"], s["kind"], s["bound"]) for s in vuln["sources"]} == {
         ("opencti", "listener", True),
         ("opencti", "pir_playbook", False),
+        ("opencti", "cases_reader", False),
         ("github", "listener", False),
     }
     assert paths["code_flaw"]["status"] == "not_connected"

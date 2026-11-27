@@ -286,6 +286,23 @@ def _interrupted(status: dict[str, Any], *, paused: bool) -> dict[str, Any]:
     return status
 
 
+async def _hold_recompute(sessions: Any) -> None:
+    """No automatic cases recompute for one interval after a purge without a resync (#2583 note).
+
+    The scheduled recompute re-reads the OpenCTI and OpenAEV issues and would refill the signals
+    the purge just emptied; held, the list stays empty until a person asks for a recompute or a
+    resync, or the hold ends. Never raises.
+    """
+    from app.services import ctem_cases_refresh as refresh
+
+    try:
+        async with sessions() as db:
+            minutes = await refresh.interval_minutes(db)
+    except Exception:
+        minutes = refresh.DEFAULT_INTERVAL_MINUTES
+    await refresh.hold_after_purge(minutes)
+
+
 async def read_status() -> dict[str, Any] | None:
     """The running or last job: ``{id, state, resync, step, steps: {name: {state, counts}}, error, ...}``.
 
@@ -424,6 +441,8 @@ async def run_job(
         status["steps"][failed]["state"] = "failed"
         status["error"] = f"{failed}: {format_exception_message(exc)}"[:1000]
     finally:
+        if not status["resync"] and not status["error"]:
+            await _hold_recompute(sessions)
         await resume_intake()
         status["steps"]["resume"]["state"] = "done"
         status["step"] = "resume"

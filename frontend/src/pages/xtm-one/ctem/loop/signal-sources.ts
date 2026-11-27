@@ -122,6 +122,19 @@ export function sourceDisplayState(
   return state;
 }
 
+/**
+ * The integrations a source runs on, joined: a provisioned source by its own platform lines; the cases recompute,
+ * which provisions nothing, by every connected integration of its provider (UX advisory A2 of #2592); a webhook none.
+ */
+export function sourceIntegrationNames(
+  source: Pick<CtemSignalPathSource, "provider" | "kind">,
+  platform: readonly { provider: string; kind: string; integration_name?: string | null }[],
+): string {
+  if (source.kind === "webhook") return "";
+  const lines = platform.filter((s) => s.provider === source.provider && (source.kind === "cases_reader" || s.kind === source.kind));
+  return [...new Set(lines.map((s) => s.integration_name).filter(Boolean))].join(", ");
+}
+
 /** The signed request a tool sends to a webhook source (#2506), the secret left as $SECRET: never the real one in a copied command. */
 export function signedRequestExample(url: string, header: string): string {
   return [
@@ -334,6 +347,7 @@ export const SOURCE_KIND_LABEL = {
   pass: "Scheduled pass",
   pir_playbook: "PIR playbook",
   webhook: "Signed webhook",
+  cases_reader: "Cases recompute",
 } as const satisfies Record<CtemSignalPathSource["kind"], string>;
 
 /**

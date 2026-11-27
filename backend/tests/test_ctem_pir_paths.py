@@ -132,8 +132,9 @@ async def test_each_path_gets_its_own_playbook(monkeypatch: pytest.MonkeyPatch, 
     state = await sources._reconcile_pir_paths(None, row, (object(), "integ", "s"), NOW)
     assert state["status"] == "provisioned" and sources.is_connected(state)
     assert module.provisioned == {
-        "OpenCTI PIR playbook - new_vulnerability": ["v1", "v2"],
-        "OpenCTI PIR playbook - relevant_threat": ["t1"],
+        # #2583.1: the path label the Sources view shows, never the internal key.
+        "OpenCTI PIR playbook - New vulnerability on a running version": ["v1", "v2"],
+        "OpenCTI PIR playbook - Relevant new threat or actor": ["t1"],
     }
     assert len(state["playbook_ids"]) == 2
     assert module.removed == [{"notifier_id": "old-n", "playbook_id": "old"}]
