@@ -74,6 +74,11 @@ STALE_VIEW_TTL_SECONDS = 7 * 24 * 3600
 BUILD_LOCK_SECONDS = 60
 #: How often the building pod extends its lock, well inside :data:`BUILD_LOCK_SECONDS`.
 BUILD_LOCK_REFRESH_SECONDS = 20
+#: At most one generation bump per vertical in this window, across pods (#2555): a burst of case
+#: events (93 cases opened in 14 minutes on ctem.one) bumped once per case and made every viewer
+#: rebuild a full view (8 to 56 s) per event until the database pool ran out. A change inside the
+#: window marks the vertical pending and a trailing bump retires the views at the window's end.
+VIEW_BUMP_INTERVAL_SECONDS = 30.0
 #: The reasons a product gives about one identity (``ctem_cases_source.IDENTITY_REASONS``): the
 #: viewer has no access there, so what it did not return is refused, not unjudged (#2113).
 _IDENTITY_REASONS = frozenset({"rejected", "not_connected"})
@@ -861,20 +866,78 @@ async def forget_view(user_id: str, vertical: str) -> None:
         logger.info("CTEM cases: view cache not dropped for %s", user_id, exc_info=True)
 
 
+def _bump_window_key(vertical: str) -> str:
+    return f"ctem:cases:view-bump-window:{vertical}"
+
+
+def _bump_pending_key(vertical: str) -> str:
+    return f"ctem:cases:view-bump-pending:{vertical}"
+
+
+#: The trailing bump of each vertical this worker waits to run (#2555), one per vertical.
+_TRAILING_BUMPS: dict[str, asyncio.Task[None]] = {}
+
+
 async def forget_all_views(vertical: str) -> None:
     """Drop every viewer's cached view of *vertical* (a case opened, a signal joined one).
 
     The cases changed for everyone, not only for the caller, so the views are
     retired by bumping their generation: the next read of each viewer misses
     and reads its own source again; the old entries expire with their TTL.
+
+    Bumps are coalesced (#2555): the first change of a window bumps at once; a
+    change inside :data:`VIEW_BUMP_INTERVAL_SECONDS` of a bump marks the
+    vertical pending and one trailing bump runs at the end of the window, so a
+    burst of N events retires the views about once per window, never N times,
+    and the last change is never lost.
     """
     client = await _redis()
     if client is None:
         return
     try:
-        await client.incr(_generation_key(vertical))
+        if await client.set(_bump_window_key(vertical), "1", nx=True, ex=_bump_window_seconds()):
+            await client.incr(_generation_key(vertical))
+            return
+        await client.set(_bump_pending_key(vertical), "1", ex=_bump_window_seconds() * 4)
     except Exception:
         logger.info("CTEM cases: view generation not bumped for %s", vertical, exc_info=True)
+        return
+    _schedule_trailing_bump(vertical)
+
+
+def _bump_window_seconds() -> int:
+    return max(1, int(VIEW_BUMP_INTERVAL_SECONDS))
+
+
+def _schedule_trailing_bump(vertical: str) -> None:
+    """Start this worker's trailing bump of *vertical* unless one already waits."""
+    running = _TRAILING_BUMPS.get(vertical)
+    if running is not None and not running.done():
+        return
+    task = asyncio.create_task(_trailing_bump(vertical), name=f"ctem-view-trailing-bump:{vertical}")
+    _TRAILING_BUMPS[vertical] = task
+
+
+async def _trailing_bump(vertical: str) -> None:
+    """Bump *vertical* once its window ends, while a change is pending; never raises.
+
+    Any pod may run it: the pending mark is shared, so the first trailing bump that takes the
+    next window retires the views and clears the mark; the others find nothing pending.
+    """
+    try:
+        while True:
+            await asyncio.sleep(VIEW_BUMP_INTERVAL_SECONDS)
+            client = await _redis()
+            if client is None or not await client.get(_bump_pending_key(vertical)):
+                return
+            if await client.set(_bump_window_key(vertical), "1", nx=True, ex=_bump_window_seconds()):
+                await client.delete(_bump_pending_key(vertical))
+                await client.incr(_generation_key(vertical))
+                return
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.info("CTEM cases: trailing view generation bump failed for %s", vertical, exc_info=True)
 
 
 def _member_id(row: CtemCaseIssue) -> str:
