@@ -11,7 +11,7 @@ return, ``set_lock_timeout``, guarded DDL; the index is created on the new, empt
 table in the same transaction. The downgrade drops the table with the same recipe.
 
 Revision ID: c2570siginbox1
-Revises: b2549profapps01
+Revises: c2577caseteam01
 Create Date: 2026-11-27 07:45:00.000000
 """
 
@@ -25,7 +25,7 @@ from app.core.migration_ddl import set_lock_timeout, terminate_lock_holders
 revision: str = "c2570siginbox1"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "b2549profapps01"
+down_revision: str | Sequence[str] | None = "c2577caseteam01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
