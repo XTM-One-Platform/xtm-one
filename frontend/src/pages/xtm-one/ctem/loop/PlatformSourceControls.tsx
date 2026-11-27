@@ -10,7 +10,6 @@
  */
 import { useEffect, useId, useState } from "react";
 import { Chip, Icon } from "@filigran/design-system";
-import { isRunAsModule, ModuleRunAsField } from "@/components/module-run-as/ModuleRunAsField";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { userSelectOption } from "@/components/ui/entity-select-options";
@@ -37,8 +36,8 @@ import {
   enableRefusalText,
   legacyCleanupCount,
   platformObjectLinks,
-  platformSourceReason,
   sharedFeeds,
+  sourceReasonLine,
 } from "./platform-sources";
 
 /** The platform's name on an Open in label. */
@@ -117,7 +116,7 @@ export function PlatformSourceEnableDialog({
 }) {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
-  const { data: users } = useUsers(Boolean(source) && !isRunAsModule(source?.provider));
+  const { data: users } = useUsers(Boolean(source));
   const enable = useEnableCtemPlatformSource();
   const [runAs, setRunAs] = useState<string>("");
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -147,7 +146,7 @@ export function PlatformSourceEnableDialog({
     <Dialog open={!!source} onOpenChange={(next) => !next && onClose()}>
       <DialogContent size="md" data-testid="ctem-platform-source-enable">
         <DialogHeader>
-          <DialogTitle>{source?.enabled ? t_i18n("Change the run-as user of {source}", { source: label }) : t_i18n("Turn on {source}", { source: label })}</DialogTitle>
+          <DialogTitle>{t_i18n("Turn on {source}", { source: label })}</DialogTitle>
           <DialogDescription>
             {t_i18n("XTM One creates the objects that deliver this source in {integration}, as the user you pick. They stay until you turn the source off.", {
               integration: source?.integration_name ?? "",
@@ -155,50 +154,40 @@ export function PlatformSourceEnableDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
-          {/* #2650: who XTM One acts as in the module, asked before any object is created there; the caller by default. */}
-          {isRunAsModule(source?.provider) ? (
-            <ModuleRunAsField
-              module={source.provider}
+          {/* The run-as is the only field and Turn on needs it: marked required, its info bubble says who it is (#2442 UX r1 B2). */}
+          <SettingsField
+            id={fieldId}
+            label={t_i18n("Run as")}
+            required
+            info={t_i18n(
+              "The XTM One user this source provisions as. XTM One uses that user's {integration} connection to create the objects that deliver this source (a notifier and its triggers, or a playbook). If that user is deactivated or loses the connection, the source turns to Error and stops delivering until you pick another user.",
+              { integration: source?.integration_name ?? "" },
+            )}
+            helper={t_i18n("Pick a user with a connected integration to this platform and the rights to create its triggers.")}
+            error={refusal ? <span data-testid="ctem-platform-source-refusal">{refusal}</span> : undefined}
+          >
+            <SearchableSelect
+              id={fieldId}
+              aria-label={t_i18n("Run as")}
+              aria-invalid={refusal ? true : undefined}
+              aria-describedby={settingsFieldHintId(fieldId)}
+              options={(users ?? []).filter((u) => u.is_active).map((u) => userSelectOption(u))}
               value={runAs}
-              onChange={(value) => {
+              onValueChange={(value) => {
                 setRunAs(value);
                 setRefusal(null);
               }}
-              active={Boolean(source)}
               disabled={enable.isPending}
-              helper={t_i18n("XTM One creates the notifier and its triggers, or the playbook, with this user's connection.")}
-              error={refusal ? <span data-testid="ctem-platform-source-refusal">{refusal}</span> : undefined}
+              placeholder={t_i18n("Search users...")}
             />
-          ) : (
-            <SettingsField
-              id={fieldId}
-              label={t_i18n("Run as")}
-              required
-              error={refusal ? <span data-testid="ctem-platform-source-refusal">{refusal}</span> : undefined}
-            >
-              <SearchableSelect
-                id={fieldId}
-                aria-label={t_i18n("Run as")}
-                aria-invalid={refusal ? true : undefined}
-                aria-describedby={settingsFieldHintId(fieldId)}
-                options={(users ?? []).filter((u) => u.is_active).map((u) => userSelectOption(u))}
-                value={runAs}
-                onValueChange={(value) => {
-                  setRunAs(value);
-                  setRefusal(null);
-                }}
-                disabled={enable.isPending}
-                placeholder={t_i18n("Search users...")}
-              />
-            </SettingsField>
-          )}
+          </SettingsField>
         </DialogBody>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} disabled={enable.isPending}>
             {t_i18n("Cancel")}
           </Button>
           <Button onClick={submit} disabled={!runAs || enable.isPending} data-testid="ctem-platform-source-enable-submit">
-            {source?.enabled ? t_i18n("Save") : t_i18n("Turn on")}
+            {t_i18n("Turn on")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -219,7 +208,8 @@ function PlatformSourceLine({
   const { toast } = useToast();
   const disable = useDisableCtemPlatformSource();
   const runAs = useRunAsLabel(source.run_as_user_id);
-  const reason = platformSourceReason(source, t_i18n);
+  // The reason ended by its full stop, then its fix in the reader's language (UX round 1 on #2653, B2).
+  const reason = sourceReasonLine(source, null, t_i18n);
   const toggle = (on: boolean) => {
     if (on) return onEnable(source);
     if (!source.id) return;
@@ -255,23 +245,8 @@ function PlatformSourceLine({
       {/* The Open in links take their own wrapping line under the name, so neither the name nor a link label is cut (#2649 UX r1 B1). */}
       {source.enabled && <PlatformObjectLinks source={source} />}
       {source.enabled && (
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate text-default-secondary" data-testid="ctem-platform-source-run-as">
-            {t_i18n("Runs as: {user}", { user: runAs })}
-          </span>
-          {/* #2650: the run-as stays changeable; the source is provisioned again as the new user. */}
-          {isAdmin && source.integration_connected && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="shrink-0"
-              onClick={() => onEnable(source)}
-              aria-label={t_i18n("Change the run-as user of {integration}", { integration: source.integration_name })}
-              data-testid="ctem-platform-source-run-as-change"
-            >
-              {t_i18n("Change")}
-            </Button>
-          )}
+        <span className="text-default-secondary" data-testid="ctem-platform-source-run-as">
+          {t_i18n("Runs as: {user}", { user: runAs })}
         </span>
       )}
       <PlatformSourceBlastRadius source={source} />

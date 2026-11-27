@@ -140,9 +140,19 @@ async def list_ctem_signal_paths(
         quiet = await quiet_reasons(db, primary.id, resync_running=replaying)
     bound = await bound_sources(db, user.id)
     webhooks = webhook_sources.path_sources_of(await webhook_sources.list_sources(db))
+    # #2642: path 6's own inventory evaluation says why the path records nothing.
+    from app.services.ctem_inventory_staleness import last_outcome
+
+    evaluations = {"stale_asset": await last_outcome()}
     return {
         "paths": signals.path_catalog(
-            counts, bound=bound, activity=activity, by_source=by_source, webhooks=webhooks, quiet=quiet
+            counts,
+            bound=bound,
+            activity=activity,
+            by_source=by_source,
+            webhooks=webhooks,
+            quiet=quiet,
+            evaluations=evaluations,
         )
     }
 
@@ -193,7 +203,6 @@ async def list_ctem_signal_sources(
         for r in (await db.execute(select(CtemSignalSource))).scalars().all()
     }
     out: list[dict[str, Any]] = []
-    names: dict[str, str | None] = {}
     for (provider, kind), spec in platform_sources.PROVISIONED.items():
         for integration in integrations:
             if integration.provider != provider:
@@ -218,12 +227,6 @@ async def list_ctem_signal_sources(
                     "feeds": platform_sources.fed_paths(provider, kind),
                 }
             )
-            # "Runs as" of the source row (#2650).
-            run_as_id = item.get("run_as_user_id")
-            if run_as_id and run_as_id not in names:
-                person = await db.get(User, uuid.UUID(run_as_id))
-                names[run_as_id] = (getattr(person, "full_name", None) or person.email) if person else None
-            item["run_as_name"] = names.get(run_as_id) if run_as_id else None
             item["integration_name"] = integration.name
             # The platform's web UI host, for the Open in links of its objects (#2583 point 2).
             item["integration_url"] = get_integration_public_url(integration)
@@ -248,20 +251,14 @@ async def enable_ctem_signal_source(
     """
     _require_xtm_one()
     from app.services import ctem_platform_sources as platform_sources
-    from app.services import module_run_as
 
-    # #2650: the user chosen in the "Act in <module> as" dialog, checked before any object is made.
-    try:
-        run_as = await module_run_as.resolve(db, actor=user, raw=body.run_as_user_id, providers=[body.provider])
-    except module_run_as.RunAsRefusedError as exc:
-        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
     try:
         row = await platform_sources.enable(
             db,
             provider=body.provider,
             kind=body.kind,
             integration_id=body.integration_id,
-            run_as_user_id=run_as,
+            run_as_user_id=body.run_as_user_id,
         )
     except platform_sources.SourceRefusedError as exc:
         await db.commit()
