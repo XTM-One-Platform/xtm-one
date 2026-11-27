@@ -35,7 +35,13 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from app.services.ctem_primary_assets import PrimaryAssetIndex, contains_word, is_family_word, link_basis
+from app.services.ctem_primary_assets import (
+    PrimaryAssetIndex,
+    contains_word,
+    is_family_word,
+    is_url_like,
+    link_basis,
+)
 from app.services.organization_context import (
     PROFILE_ASSET_CAP,
     AssetEntry,
@@ -401,6 +407,9 @@ def _product_matches(product: str, ref: str) -> bool:
         r = parts[4] if len(parts) > 4 else r
     if is_family_word(p) and p != r.replace("_", " "):
         return False
+    # #2679: a URL or host name label (a web-app shortcut row) names only itself.
+    if p != r and (is_url_like(p) or is_url_like(r)):
+        return False
     return contains_word(p, r)
 
 
@@ -689,9 +698,7 @@ def _primary_assets_of(profile: OrganizationProfile, resolution: Resolution) -> 
     names |= {g.name.lower() for a in resolution.assets for g in groups_of(profile, a)}
     names |= {g.lower() for g in resolution.groups}
     named = {n.lower() for n in resolution.named_primary_assets}
-    # #2680: a hop reached only by a bare OS family reference is a possible exposure, never a
-    # running product: it sets no scope criticality.
-    linked = {str(h["primary_asset_key"]) for h in resolution.primary_assets if not h.get("family_only")}
+    linked = {str(h["primary_asset_key"]) for h in resolution.primary_assets}
     out: list[tuple[str, str]] = []
     for pa_row in profile.primary_assets:
         if (
