@@ -775,7 +775,7 @@ def provisioned_objects(state: Any) -> list[dict[str, str]]:
         add("notifier", sub.get("notifier_id"))
         add("trigger", sub.get("trigger_id"))
         triggers = sub.get("trigger_ids")
-        for value in (triggers.values() if isinstance(triggers, dict) else triggers or []):
+        for value in triggers.values() if isinstance(triggers, dict) else triggers or []:
             add("trigger", value)
         add("playbook", sub.get("playbook_id"))
 

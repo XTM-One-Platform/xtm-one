@@ -4,13 +4,12 @@
 
 * repeated updates of one OpenCTI object are folded into the latest one;
 * a delete, an OpenAEV delivery or one without an object id is never folded;
-* a verified delivery is never throttled, an unsigned one still is;
+* a verified delivery is never throttled; an unsigned one, or one that fails verification, still is;
 * the signal is recorded on the intake engine, never the web pool.
 """
 
 from __future__ import annotations
 
-import inspect
 import uuid
 from typing import Any
 
@@ -45,14 +44,76 @@ def test_deletes_openaev_and_unidentified_deliveries_are_never_folded() -> None:
         assert kept == batch and folded == []
 
 
-def test_a_verified_delivery_is_never_throttled() -> None:
+class _Db:
+    def __init__(self, integration: Any, source: Any) -> None:
+        self._integration, self._source = integration, source
+
+    async def __aenter__(self) -> _Db:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    async def execute(self, _query: Any) -> Any:
+        integration = self._integration
+
+        class _Result:
+            def scalar_one_or_none(self) -> Any:
+                return integration
+
+        return _Result()
+
+    async def get(self, _model: Any, _key: Any) -> Any:
+        return self._source
+
+
+async def _deliver(monkeypatch: Any, *, signed: bool, verify_fails: bool) -> tuple[list[str], int | None]:
+    """One delivery to the signal-source receiver with its gates stubbed: the throttles taken and the error code."""
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
     from app.api.v1 import webhooks
 
-    body = inspect.getsource(webhooks.receive_signal_source_webhook).split('"""', 2)[2]
-    throttle = body.index('"webhook-signal-source"')
-    # The per-source limit sits under "if not verified": an OpenCTI notifier never retries.
-    assert "if not verified:" in body[:throttle]
-    assert body.index("verified = _signed_with_webhook_secret") < throttle
+    integration_id, source_id = str(uuid.uuid4()), str(uuid.uuid4())
+    integration = SimpleNamespace(id=integration_id, provider="opencti", extra_config_enc="enc")
+    source = SimpleNamespace(integration_id=integration_id, enabled=False)
+    throttles: list[str] = []
+
+    async def throttle(_request: Any, scope: str, **_kw: Any) -> None:
+        throttles.append(scope)
+
+    def verify(*_a: Any, **_kw: Any) -> None:
+        if verify_fails:
+            raise HTTPException(status_code=401, detail="Invalid OpenCTI token")
+
+    async def body() -> bytes:
+        return b"{}"
+
+    monkeypatch.setattr(webhooks, "async_session", lambda: _Db(integration, source))
+    monkeypatch.setattr(webhooks, "enforce_rate_limit", throttle)
+    monkeypatch.setattr(webhooks, "_try_verify_webhook_signature", verify)
+    monkeypatch.setattr(webhooks, "_verify_opencti_token_header", lambda *_a, **_kw: None)
+    monkeypatch.setattr(webhooks, "_signed_with_webhook_secret", lambda _enc: signed)
+    request = SimpleNamespace(body=body)
+    try:
+        await webhooks.receive_signal_source_webhook(integration_id, source_id, request, SimpleNamespace())  # type: ignore[arg-type]
+    except HTTPException as exc:
+        return throttles, exc.status_code
+    return throttles, None
+
+
+async def test_a_verified_delivery_is_never_throttled(monkeypatch: Any) -> None:
+    assert await _deliver(monkeypatch, signed=True, verify_fails=False) == ([], None)
+
+
+async def test_an_unsigned_delivery_is_still_throttled(monkeypatch: Any) -> None:
+    assert await _deliver(monkeypatch, signed=False, verify_fails=False) == (["webhook-signal-source"], None)
+
+
+async def test_a_delivery_that_fails_verification_is_throttled_then_refused(monkeypatch: Any) -> None:
+    # Review of #2592: a bad token must not escape the per-source limit.
+    assert await _deliver(monkeypatch, signed=True, verify_fails=True) == (["webhook-signal-source"], 401)
 
 
 def test_the_intake_engine_is_its_own_pool() -> None:

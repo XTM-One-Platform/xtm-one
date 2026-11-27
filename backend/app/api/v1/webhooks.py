@@ -4853,10 +4853,8 @@ async def receive_signal_source_webhook(
     if integration is None or source is None or str(source.integration_id) != str(integration.id):
         return {"status": "ignored", "reason": "signal source not found"}
     context = f"integration={integration_id} signal_source={source_id}"
-    _try_verify_webhook_signature(body, integration.extra_config_enc, request, context=context)
-    _verify_opencti_token_header(integration.extra_config_enc, request, context=context)
-    verified = _signed_with_webhook_secret(integration.extra_config_enc)
-    if not verified:
+
+    async def _throttle() -> None:
         await enforce_rate_limit(
             request,
             "webhook-signal-source",
@@ -4864,6 +4862,20 @@ async def receive_signal_source_webhook(
             window_seconds=60,
             bucket=str(source_uuid),
         )
+
+    verified = _signed_with_webhook_secret(integration.extra_config_enc)
+    if not verified:
+        # Unsigned: no secret to check, so every delivery counts against the per-source limit.
+        await _throttle()
+    try:
+        _try_verify_webhook_signature(body, integration.extra_config_enc, request, context=context)
+        _verify_opencti_token_header(integration.extra_config_enc, request, context=context)
+    except HTTPException:
+        # A delivery that fails verification still counts against the limit (review of #2592):
+        # only a verified delivery is never throttled. A flood of bad tokens is answered 429.
+        if verified:
+            await _throttle()
+        raise
     if not source.enabled:
         return {"status": "ignored", "reason": "signal source is off"}
     is_duplicate, cached_response, dedup_key = await _claim_webhook_dedup_slot(
