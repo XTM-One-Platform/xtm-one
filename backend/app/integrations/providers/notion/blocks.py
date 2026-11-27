@@ -26,6 +26,7 @@ from ._common import (
     _rich_text_to_markdown,
 )
 from .formatting import (
+    CALLOUT_ICON_REMOVAL_REFUSAL,
     MARKDOWN_LAYOUT_SYNTAX,
     MarkdownBlockError,
     _find_block_alignment,
@@ -34,6 +35,7 @@ from .formatting import (
     _sanitize_blocks,
     _text_to_blocks,
     _update_block_fields,
+    find_null_callout_icon,
 )
 
 # How a write tool refuses a payload that carries ``alignment``: the
@@ -82,8 +84,13 @@ def _normalized_runs(rich_text: list) -> list[tuple]:
         if not isinstance(item, dict):
             continue
         kind = item.get("type") or "text"
+        user_id = _mentioned_user_id(item)
         if kind == "text":
             text = (item.get("text") or {}).get("content") or item.get("plain_text", "")
+        elif user_id:
+            # A user mention reads and writes back as @[Name](user:<id>): the
+            # person is what it carries, not the name Notion renders.
+            text = f"user:{user_id}"
         else:
             text = item.get("plain_text", "")
         annotations = item.get("annotations") or {}
@@ -110,6 +117,19 @@ def _normalized_runs(rich_text: list) -> list[tuple]:
         merged(runs, core, style, link)
         merged(runs, trail, bare, None)
     return [tuple(run) for run in runs]
+
+
+def _mentioned_user_id(item: dict[str, object]) -> str | None:
+    """The id of the person a user mention run names, else ``None``."""
+    if item.get("type") != "mention":
+        return None
+    mention = item.get("mention")
+    if not isinstance(mention, dict):
+        return None
+    user = mention.get("user")
+    if mention.get("type") != "user" or not isinstance(user, dict):
+        return None
+    return str(user.get("id") or "") or None
 
 
 def _quoted(text: str) -> str:
@@ -585,6 +605,13 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
                         f"`children[{idx}].{aligned}` cannot be set", _ALIGNMENT_RETRY
                     )
                 )
+            null_icon = find_null_callout_icon(child)
+            if null_icon:
+                return _update_refusal(
+                    f"Error: `children[{idx}].{null_icon}` is null: "
+                    f"{CALLOUT_ICON_REMOVAL_REFUSAL}. Leave `icon` out of the "
+                    f"payload; {_NOTHING_APPENDED}."
+                )
         children = _sanitize_blocks(children)
         after_block_id = (after_block_id or "").strip()
         async with _client() as client:
@@ -751,8 +778,12 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
         # the exact key to drop so the rest of the payload is resent as-is.
         aligned = _find_block_alignment(payload)
         if aligned:
-            return _alignment_error(
-                _alignment_refusal(f"`{aligned}` cannot be set", _ALIGNMENT_RETRY)
+            return _alignment_error(_alignment_refusal(f"`{aligned}` cannot be set", _ALIGNMENT_RETRY))
+        null_icon = find_null_callout_icon(payload)
+        if null_icon:
+            return _update_refusal(
+                f"Error: `{null_icon}` is null: {CALLOUT_ICON_REMOVAL_REFUSAL}. "
+                f"Leave `icon` out of the payload; {_NOTHING_UPDATED}."
             )
         _sanitize_blocks([payload])
 
@@ -929,7 +960,7 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
             description=(
                 "Append content blocks to a Notion page. The content field "
                 "accepts rich Markdown converted to native Notion blocks: "
-                "# / ## / ### headings, - / * / + bullets (indent to nest one "
+                "# to #### headings, - / * / + bullets (indent to nest one "
                 "level), 1. / 1) numbered lists, [] / [x] to-dos, > quotes, "
                 "--- dividers, | a | b | tables and ``` fenced code blocks. "
                 "Inline **bold**, *italic*, `code`, ~~strikethrough~~ and "
@@ -948,7 +979,7 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
                     "content": {
                         "type": "string",
                         "description": (
-                            "Markdown content. Block syntax: # / ## / ### headings, "
+                            "Markdown content. Block syntax: # to #### headings, "
                             "- / * / + bullets (indent to nest), 1. / 1) numbered, "
                             "[] / [x] to-dos, > quote, --- divider, | a | b | table, "
                             "``` code fence, > [!icon=... color=...] callout, "
@@ -978,7 +1009,8 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
                 "Use for advanced blocks: headings, lists, to-dos, code blocks, etc. "
                 "Children nested deeper than Notion takes in one request (a "
                 "callout inside a column) are appended under the blocks just "
-                "created. An empty table cell is []. Example: "
+                "created. An empty table cell is []. A callout always gets "
+                "an icon (Notion's default when none is sent). Example: "
                 '[{"type": "heading_2", "heading_2": {"rich_text": [{"type": "text", "text": {"content": "Title"}}]}}]'
             ),
             input_schema={
@@ -1015,7 +1047,8 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
                 "links as [label](url)) with your edit - every link and format "
                 "you leave in place is kept. A trailing {color=...} sets the "
                 "block's colour, and a callout's `> [!icon=... color=...]` "
-                "marker its icon and colour. Otherwise provide the block type "
+                "marker its icon and colour (Notion cannot remove a callout "
+                "icon through the API). Otherwise provide the block type "
                 "payload as `block_json`. "
                 'Example: {"paragraph": {"rich_text": [{"type": "text", "text": {"content": "Updated"}}]}} '
                 'or {"to_do": {"checked": true}}. '

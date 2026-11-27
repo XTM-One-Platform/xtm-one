@@ -76,7 +76,9 @@ async def test_a_withheld_mention_is_explained_once_per_person():
         result = await _run(executor, "get_notion_block", block_id="block-1")
 
     assert not result.is_error, result.content
-    assert "Owners: @Anonymous and @Anonymous, reviewed by @Anonymous" in result.content
+    assert (
+        "Owners: @[Anonymous](user:user-1) and @[Anonymous](user:user-2), reviewed by @[Anonymous](user:user-1)"
+    ) in result.content
     assert result.content.count("Notion withheld the name of") == 1
     assert "Notion withheld the name of 2 people" in result.content
     assert "do not report them as anonymous" in result.content
@@ -102,7 +104,7 @@ async def test_a_named_mention_adds_no_note():
         result = await _run(executor, "get_notion_block", block_id="block-1")
 
     assert not result.is_error, result.content
-    assert "Owner: @Ada" in result.content
+    assert "Owner: @[Ada](user:user-1)" in result.content
     assert "withheld" not in result.content
 
 

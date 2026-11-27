@@ -1051,8 +1051,8 @@ def register(ctx: NotionContext, executor) -> list[ToolDefinition]:
             description=(
                 "Create a new page in Notion under a parent page, database, or "
                 "data source. The content field accepts rich Markdown that is "
-                "converted to native Notion blocks: # / ## / ### headings "
-                "(#### and deeper map to heading 3), - / * / + bullets, "
+                "converted to native Notion blocks: # to #### headings "
+                "(##### and deeper map to heading 4), - / * / + bullets, "
                 "1. / 1) numbered lists (indent a line to nest it one level), "
                 "[] / [x] to-dos, > quotes, --- dividers, | a | b | tables, and "
                 "``` fenced code blocks. Inline **bold**, *italic*, `code`, "

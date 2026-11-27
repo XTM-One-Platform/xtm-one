@@ -6,7 +6,7 @@ rich_text run, so inline markdown (``**bold**``, ``*italic*``, ``code``,
 page as literal characters. These tests pin the new behavior:
 
 - ``_parse_inline_markdown`` -> proper Notion rich_text with annotations/links
-- ``_text_to_blocks`` -> headings (incl. ####+ -> h3), nested lists, fenced
+- ``_text_to_blocks`` -> headings (incl. #####+ -> h4), nested lists, fenced
   code blocks, tables with inline cells, and inline-formatted paragraphs
 - end-to-end ``append_notion_blocks`` no longer leaks literal markers
 
@@ -166,8 +166,8 @@ def test_blocks_heading_levels_and_deep_collapse():
         "heading_1",
         "heading_2",
         "heading_3",
-        "heading_3",  # #### collapses to h3
-        "heading_3",  # ###### collapses to h3
+        "heading_4",
+        "heading_4",  # ###### collapses to h4
     ]
 
 

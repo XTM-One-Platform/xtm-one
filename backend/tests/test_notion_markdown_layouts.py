@@ -12,6 +12,7 @@ JSON payload names where it broke.
 from __future__ import annotations
 
 import copy
+from typing import Any
 from unittest.mock import AsyncMock, patch
 from urllib.parse import urlparse
 
@@ -586,10 +587,79 @@ def test_a_block_colour_and_a_callout_marker_read_in_the_writer_syntax():
     assert _block_to_text(bare) == "> [!callout]"
 
 
+def test_a_heading_4_reads_its_text() -> None:
+    block = {
+        "type": "heading_4",
+        "heading_4": {
+            "rich_text": [{"type": "text", "text": {"content": "Test"}, "plain_text": "Test", "annotations": {}}]
+        },
+    }
+    assert _block_to_text(block) == "#### Test"
+
+
+def test_a_heading_4_written_read_and_written_again_round_trips() -> None:
+    (written,) = _text_to_blocks("#### Title {color=blue}")
+    assert written["type"] == "heading_4"
+    read = _block_to_text(written)
+    assert read == "#### Title {color=blue}"
+    (again,) = _text_to_blocks(read)
+    assert again == written
+
+
+@pytest.mark.asyncio
+async def test_update_notion_block_content_strips_the_heading_4_prefix() -> None:
+    executor = _SafeIntegrationExecutor()
+    build_tools("fake-token", executor)
+    fake = FakeNotion()
+    fake.seed("blk", _live("heading_4", "Old"))
+    fake_patch = AsyncMock(return_value=(httpx.Response(200, json={}), None))
+    fake_get = AsyncMock(side_effect=fake.request)
+
+    async def route(*args: Any, **kwargs: Any) -> Any:
+        if args[1] == "patch":
+            return await fake_patch(args[2], json=kwargs["json"])
+        return await fake_get(*args, **kwargs)
+
+    with patch(SAFE_REQUEST, new=AsyncMock(side_effect=route)):
+        result = await _call(executor, "update_notion_block", block_id="blk", content="#### New")
+    assert not result.is_error, result.content
+    assert _plain(fake_patch.call_args.kwargs["json"]["heading_4"]["rich_text"]) == "New"
+
+
+@pytest.mark.parametrize("value", ["none", "None", "null"])
+def test_a_callout_marker_asking_for_no_icon_is_refused_with_the_notion_limit(value: str) -> None:
+    with pytest.raises(MarkdownBlockError, match="Notion does not allow removing a callout icon"):
+        _text_to_blocks(f"> [!icon={value}] text")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "arguments", "path"),
+    [
+        ("update_notion_block", {"block_json": '{"callout": {"icon": null}}'}, "`callout.icon` is null"),
+        (
+            "append_notion_blocks_json",
+            {"children_json": '[{"type": "callout", "callout": {"rich_text": [], "icon": null}}]'},
+            "`children[0].callout.icon` is null",
+        ),
+    ],
+)
+async def test_a_null_callout_icon_is_refused_before_any_call(tool: str, arguments: dict[str, str], path: str) -> None:
+    executor = _SafeIntegrationExecutor()
+    build_tools("fake-token", executor)
+    with patch(SAFE_REQUEST, new_callable=AsyncMock) as mock_req:
+        result = await _call(executor, tool, block_id="blk", **arguments)
+    assert result.is_error
+    assert path in result.content
+    assert "Notion does not allow removing a callout icon through the API; remove it in the Notion UI" in result.content
+    mock_req.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "block",
     [
         _live("heading_2", "Title", color="blue"),
+        _live("heading_4", "Deep", color="blue"),
         _live("paragraph", "Body", color="red_background"),
         _live("callout", "Note", icon={"type": "emoji", "emoji": "🎯"}, color="blue_background"),
     ],
