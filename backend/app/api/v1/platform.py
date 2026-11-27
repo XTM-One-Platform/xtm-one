@@ -3636,6 +3636,21 @@ PLATFORM_CHAT_PLATFORM_RESTARTING = "platform_restarting"
 #: The ``Retry-After`` of a turn a platform stop cut: a replacement worker
 #: usually serves within seconds of the drain.
 PLATFORM_CHAT_RESTART_RETRY_AFTER_SECONDS = 5
+#: The turn's input does not fit the model: the conversation and the content
+#: exceed its context window (``context_overflow``), the agent's tools do
+#: (``tool_overflow``), or the provider refused the payload with a 413
+#: (``request_too_large``). ``run_agent_chat`` answers these with a chat text
+#: and a ``status: error`` event instead of raising; the same request fails
+#: again, so none is retryable. The two overflow kinds are
+#: ``llm.base.overflow_error_type``'s.
+PLATFORM_CHAT_REQUEST_TOO_LARGE = "request_too_large"
+PLATFORM_CHAT_INPUT_ERROR_TYPES = frozenset({"context_overflow", "tool_overflow", PLATFORM_CHAT_REQUEST_TOO_LARGE})
+_PLATFORM_CHAT_REQUEST_TOO_LARGE_DETAIL = (
+    "The AI model's provider refused this request as too large. Reduce the conversation length or attached content."
+)
+#: The turn ended with no answer text: nothing a caller can use, and a new
+#: attempt may answer.
+_PLATFORM_CHAT_EMPTY_ANSWER_DETAIL = "The agent ended the turn without an answer. Send the same request again."
 
 _PROVIDER_WEATHER_CAUSES = frozenset(
     {
@@ -3759,6 +3774,34 @@ def classify_platform_turn_failure(exc: BaseException) -> PlatformTurnFailure:
     ):
         return PlatformTurnFailure(502, PLATFORM_CHAT_PROVIDER_REJECTED, False, detail, last_status, legs=legs)
     return PlatformTurnFailure(500, PLATFORM_CHAT_INTERNAL_ERROR, False, detail, last_status, legs=legs)
+
+
+def platform_turn_input_failure(error_types: list[str], result_text: str | None) -> PlatformTurnFailure | None:
+    """The answer of a turn that ``run_agent_chat`` ended on an oversized input.
+
+    ``run_agent_chat`` ends such a turn with a ``status: error`` event naming
+    the kind (*error_types*, in order) and RETURNS the chat text of that kind
+    (*result_text*). Both must hold: an error event of a nested step
+    (a delegated agent, a tool) does not fail a turn that answered. A context
+    or tool overflow and a provider 413 are 413, not retryable, with the terse
+    API text (``llm.base.overflow_api_message``) as ``detail``; anything
+    else is ``None``.
+    """
+    from app.llm.base import OVERFLOW_API_MESSAGES, OVERFLOW_FRIENDLY_MESSAGES
+    from app.llm.router import REQUEST_TOO_LARGE_STREAMING_MESSAGE
+
+    chat_texts = {**OVERFLOW_FRIENDLY_MESSAGES, PLATFORM_CHAT_REQUEST_TOO_LARGE: REQUEST_TOO_LARGE_STREAMING_MESSAGE}
+    kind = next((k for k in reversed(error_types) if k in chat_texts), None)
+    if kind is None or result_text != chat_texts[kind]:
+        return None
+    if kind == PLATFORM_CHAT_REQUEST_TOO_LARGE:
+        return PlatformTurnFailure(413, kind, False, _PLATFORM_CHAT_REQUEST_TOO_LARGE_DETAIL, 413)
+    return PlatformTurnFailure(413, kind, False, OVERFLOW_API_MESSAGES[kind])
+
+
+def platform_turn_empty_answer() -> PlatformTurnFailure:
+    """The answer of a turn that ended with no answer text: retryable."""
+    return PlatformTurnFailure(500, PLATFORM_CHAT_INTERNAL_ERROR, True, _PLATFORM_CHAT_EMPTY_ANSWER_DETAIL)
 
 
 def _aware_isoformat(value: datetime) -> str:
@@ -5741,9 +5784,15 @@ async def send_platform_chat_message(
         # restore walks ``transfer_chain`` to name who wrote each answer, so a
         # transfer that leaves none mislabels every later message.
         _ns_transfer_chain: list[dict[str, str]] = []
+        # The kind of an oversized-input end: ``run_agent_chat`` returns a chat
+        # text for it (what a person reads) and says it in a ``status: error``
+        # event, which this path turns into an error status.
+        _ns_error_types: list[str] = []
 
         async def _ns_on_event(event: dict) -> None:
             _record_transfer_start(event, _ns_transfer_chain)
+            if event.get("status") == "error" and isinstance(event.get("error_type"), str):
+                _ns_error_types.append(event["error_type"])
 
         try:
             result_text, transfer_id = await run_agent_chat(
@@ -5806,8 +5855,21 @@ async def send_platform_chat_message(
                 headers=headers,
             )
 
-        if not result_text or not result_text.strip():
-            result_text = "I encountered an issue. Please try again."
+        # An oversized input, or no answer at all: an error status, never a 200
+        # whose content (the chat apology, a placeholder) the caller would take
+        # for the agent's answer; nothing is stored as the agent's message.
+        _ns_failure = platform_turn_input_failure(_ns_error_types, result_text)
+        if _ns_failure is None and (not result_text or not result_text.strip()):
+            _ns_failure = platform_turn_empty_answer()
+        if _ns_failure is not None:
+            logger.warning(
+                "Platform chat turn of conversation %s ended without an answer: answered %d %s",
+                conv_id,
+                _ns_failure.status_code,
+                _ns_failure.error_type,
+            )
+            await db.commit()
+            return JSONResponse(status_code=_ns_failure.status_code, content=_ns_failure.body(conv_id))
 
         if transfer_id:
             conv.transfer_source_agent_id = conv.agent_id
@@ -6075,6 +6137,10 @@ async def send_platform_chat_message(
             if event.get("status") == "thinking_text" and event.get("content"):
                 reasoning_acc.add(str(event["content"]))
             _record_transfer_start(event, _platform_transfer_chain)
+            if event.get("status") == "error" and event.get("error_type") in PLATFORM_CHAT_INPUT_ERROR_TYPES:
+                # The same ``retryable`` as the non-streaming error body of an
+                # oversized input: the step fails, the same request fails again.
+                event = {**event, "retryable": False}
             if _should_forward_platform_status_event(event):
                 # Without the prompt copies and full tool payloads the trace
                 # above was built from: no consumer of this stream reads them,
