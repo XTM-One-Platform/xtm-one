@@ -21918,6 +21918,7 @@
   "Partners read fleets and runs as the owner": "Les partenaires lisent les flottes et les exécutions comme le propriétaire",
   "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "La tâche d'un partenaire lit aussi la flotte d'origine de cet agent, sa santé, ses éléments de travail et la version en service. Jamais une autre flotte, jamais une écriture.",
   "Could not change the partner fleet reads": "Impossible de modifier la lecture de la flotte par les partenaires",
+  "Could not change the partner owner reads": "Impossible de modifier la lecture en tant que propriétaire par les partenaires",
   "Defender XDR alert raised": "Alerte Defender XDR levée",
   "Defender XDR alert evidence": "Preuve d'alerte Defender XDR",
   "Carries alert_id, title, severity, category, service_source, detection_source and the attack techniques. Real time through the Defender XDR Streaming API to your Azure Event Hub. Each alert runs once.": "Contient alert_id, title, severity, category, service_source, detection_source et les techniques d'attaque. En temps réel via la Streaming API de Defender XDR vers votre Azure Event Hub. Chaque alerte s'exécute une seule fois.",
