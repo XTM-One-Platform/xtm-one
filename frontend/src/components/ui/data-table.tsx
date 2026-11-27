@@ -1405,13 +1405,14 @@ function DataTableView<T>({
                 testId="data-table-filters"
                 panelClassName={faceted ? FACET_GRID_PANEL : undefined}
               >
+                <FacetColumns faceted={faceted}>
                 {filters.map((filter, index) =>
                   filterOptions[index].length === 0 ? null : (
                     <div
                       key={filter.key}
                       role="group"
                       aria-labelledby={`${filterHeadingId}-${filter.key}`}
-                      className={cn("space-y-1", faceted && "min-w-0")}
+                      className={cn("space-y-1", faceted && "mb-3 min-w-0 break-inside-avoid")}
                       data-facet={faceted ? filter.key : undefined}
                     >
                       <Label id={`${filterHeadingId}-${filter.key}`}>{t_i18n(filter.label)}</Label>
@@ -1424,6 +1425,7 @@ function DataTableView<T>({
                     </div>
                   ),
                 )}
+                </FacetColumns>
                 {filterPills}
               </FiltersPill>
             )
@@ -1557,12 +1559,25 @@ function DataTableView<T>({
 }
 
 /**
- * The faceted Filters panel (#2556): its groups in columns of at least 12 rem, as many
- * as fit 56 rem or the viewport less its margins; a 10-group list fits a 1080p viewport
- * without the panel's own scroller.
+ * The faceted Filters panel (#2556): its groups packed into balanced columns of at least
+ * 13 rem (a long group never stretches a row, as a grid would): four in its 60 rem, three
+ * when the panel's fitted width (filterPanelMaxWidth) is narrower. The CTEM cases list's
+ * 11 groups fit a 1080p viewport without the panel's own scroller (measured in the lab:
+ * 958 px of content in a grid, 586 px in four columns). The columns live in an inner block
+ * with no height cap: on a short viewport the panel scrolls down, never sideways (a capped
+ * multi-column box spills its extra columns to the right).
  */
-const FACET_GRID_PANEL =
-  "grid w-[min(56rem,calc(100vw-2rem))] grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] items-start gap-x-4 gap-y-3";
+const FACET_GRID_PANEL = "w-[60rem]";
+
+function FacetColumns({ faceted, children }: { faceted: boolean; children: ReactNode }) {
+  return faceted ? (
+    <div data-testid="data-table-facet-columns" className="columns-[13rem] gap-x-4">
+      {children}
+    </div>
+  ) : (
+    <>{children}</>
+  );
+}
 
 /**
  * The one height of every toolbar control (search, filter pills, Clear all filters,

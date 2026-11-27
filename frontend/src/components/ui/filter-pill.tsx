@@ -140,6 +140,16 @@ export function filterPanelMaxHeight(panelTop: number, viewportHeight: number): 
 }
 
 /**
+ * The widest a fitted panel may be: the larger of the space right of its anchor's left
+ * edge and left of its anchor's right edge, less the viewport margin, so a wide panel
+ * (the faceted Filters grid, #2556) opens from the side it fits on and never passes the
+ * viewport (at 1080 px the CTEM cases' 960 px panel ran from x 596 to 1556).
+ */
+export function filterPanelMaxWidth(anchor: { left: number; right: number }, viewportWidth: number): number {
+  return Math.max(MIN_FITTED_PANEL_HEIGHT, Math.floor(Math.max(viewportWidth - anchor.left, anchor.right) - VIEWPORT_MARGIN));
+}
+
+/**
  * The floating panel under a pill; the caller sets its padding and content.
  *
  * The edge it opens from is measured again after every render of the panel
@@ -161,12 +171,17 @@ export function FilterPillPanel({
   const ref = useRef<HTMLDivElement>(null);
   const [align, setAlign] = useState<"left" | "right">("left");
   const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
+  const [maxWidth, setMaxWidth] = useState<number | undefined>(undefined);
 
   const measure = useCallback(() => {
     const panel = ref.current;
     const anchor = panel ? (panel.offsetParent ?? panel.parentElement) : null;
     if (!panel || !anchor) return;
-    setAlign(filterPanelAlign(anchor.getBoundingClientRect(), panel.offsetWidth, document.documentElement.clientWidth));
+    const box = anchor.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth;
+    const widest = fitViewport ? filterPanelMaxWidth(box, viewportWidth) : undefined;
+    if (fitViewport) setMaxWidth(widest);
+    setAlign(filterPanelAlign(box, widest === undefined ? panel.offsetWidth : Math.min(panel.offsetWidth, widest), viewportWidth));
     if (fitViewport) {
       setMaxHeight(filterPanelMaxHeight(panel.getBoundingClientRect().top, document.documentElement.clientHeight));
     }
@@ -199,7 +214,7 @@ export function FilterPillPanel({
         fitViewport && "overflow-y-auto overscroll-contain",
         className,
       )}
-      style={fitViewport && maxHeight !== undefined ? { ...style, maxHeight } : style}
+      style={fitViewport && maxHeight !== undefined ? { ...style, maxHeight, maxWidth } : style}
       {...rest}
     >
       {children}
