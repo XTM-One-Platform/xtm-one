@@ -282,4 +282,28 @@ describe("the fleet ROI view on the ledger (#12077 L6b3 UX r2)", () => {
     expect(await screen.findByText("Researcher")).toBeTruthy();
     expect(screen.getAllByText("3 runs, 2 chat deliverables").length).toBeGreaterThan(0);
   });
+
+  it("states the fleet's scope and shows an outside supervisor's cost apart, never in the cards (#2639)", async () => {
+    get.mockImplementation(async (url: string) => {
+      if (url.startsWith("/fleets/")) return cost;
+      if (url.startsWith("/roi/chat")) return { currency: "EUR", totals: { deliverables: 0, pending: 0, corrected: 0, minutes: 0, hours: 0, value: 0 }, lines: [] };
+      return { ...report(3), figures: { ...ledger(), basis: "fleet_members", supervision: { agents: 1, ...t(0, 0), ai_cost: 12 } } };
+    });
+    renderPage("/fleets/f-1/roi");
+    expect(await screen.findByText("This fleet's runs only. The organization total counts every agent.")).toBeTruthy();
+    const line = screen.getByTestId("roi-fleet-supervision");
+    expect(line.textContent).toContain("1 outside agent supervises this fleet");
+    expect(line.textContent).toContain("12");
+  });
+
+  it("draws no supervision line when no outside agent supervises the fleet (#2639)", async () => {
+    get.mockImplementation(async (url: string) => {
+      if (url.startsWith("/fleets/")) return cost;
+      if (url.startsWith("/roi/chat")) return { currency: "EUR", totals: { deliverables: 0, pending: 0, corrected: 0, minutes: 0, hours: 0, value: 0 }, lines: [] };
+      return { ...report(3), figures: { ...ledger(), basis: "fleet_members", supervision: null } };
+    });
+    renderPage("/fleets/f-1/roi");
+    expect(await screen.findByTestId("roi-fleet-scope-note")).toBeTruthy();
+    expect(screen.queryByTestId("roi-fleet-supervision")).toBeNull();
+  });
 });

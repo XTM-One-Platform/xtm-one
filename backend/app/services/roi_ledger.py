@@ -616,6 +616,9 @@ async def figures(
     now = now or datetime.now(UTC)
     first, last = _window_days(window, now)
     facts, used_currency = await ledger_facts(db, first=first, last=last, currency=currency, now=now)
+    supervisors: dict[uuid.UUID, frozenset[uuid.UUID]] = {}
+    if roi_figures.normalize_scope(scope) == roi_figures.SCOPE_FLEET and scope_id is not None:
+        supervisors = await fleet_supervisors(db, [scope_id])
     result = roi_figures.compute(
         facts,
         scope=scope,
@@ -625,9 +628,57 @@ async def figures(
         window_last=last,
         cost_masked=not settings.observability_cost_data_enabled,
         period_days=roi_report.window_days(window, now=now),
+        supervisor_ids=supervisors.get(scope_id, frozenset()) if scope_id is not None else frozenset(),
     )
     result.currency = used_currency
     return result
+
+
+async def fleet_supervisors(db: AsyncSession, fleet_ids: list[uuid.UUID]) -> dict[uuid.UUID, frozenset[uuid.UUID]]:
+    """The outside agents that supervise each fleet of *fleet_ids* (#2639), in two reads.
+
+    A supervisor is an agent that is not a home member of the fleet and whose trace supervision
+    allow-list (``Agent.trace_supervision_target_agent_ids``, what ``inspect_agent_traces`` reads)
+    names one of its home members. Its runs carry its own home fleet (or none), never this one, so
+    they stay out of the fleet's figures; the fleet answer shows them apart (``supervision``).
+    """
+    from app.models.agent import Agent
+    from app.models.fleet import FLEET_ROLE_MEMBER, FleetMember
+
+    ids = list(dict.fromkeys(fleet_ids))
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(FleetMember.fleet_id, FleetMember.agent_id).where(
+                FleetMember.fleet_id.in_(ids),
+                FleetMember.role == FLEET_ROLE_MEMBER,
+                FleetMember.agent_id.is_not(None),
+            )
+        )
+    ).all()
+    members: dict[uuid.UUID, set[str]] = {}
+    for fleet_id, agent_id in rows:
+        members.setdefault(fleet_id, set()).add(str(agent_id))
+    if not members:
+        return {}
+    watchers = (
+        await db.execute(
+            select(Agent.id, Agent.trace_supervision_target_agent_ids).where(
+                Agent.trace_supervision_target_agent_ids.is_not(None)
+            )
+        )
+    ).all()
+    out: dict[uuid.UUID, frozenset[uuid.UUID]] = {}
+    for fleet_id, home in members.items():
+        found = {
+            agent_id
+            for agent_id, targets in watchers
+            if str(agent_id) not in home and home.intersection(str(t) for t in (targets or []))
+        }
+        if found:
+            out[fleet_id] = frozenset(found)
+    return out
 
 
 def _window_days(window: str, now: datetime) -> tuple[date | None, date]:
@@ -662,6 +713,7 @@ async def figures_for_subjects(
         pricing = await roi_report.load_pricing(db, currency)
         return pricing.currency, {}
     facts, used_currency = await ledger_facts(db, first=first, last=last, currency=currency, now=now)
+    supervisors = await fleet_supervisors(db, ids) if subject_type == roi_figures.SCOPE_FLEET else {}
     by_id = roi_figures.compute_subjects(
         facts,
         subject_type=subject_type,
@@ -671,6 +723,7 @@ async def figures_for_subjects(
         window_last=last,
         cost_masked=not settings.observability_cost_data_enabled,
         period_days=roi_report.window_days(window, now=now),
+        supervisors=supervisors,
     )
     for result in by_id.values():
         result.currency = used_currency

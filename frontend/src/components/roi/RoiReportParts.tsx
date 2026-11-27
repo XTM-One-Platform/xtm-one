@@ -33,7 +33,13 @@ import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RoiFigure } from "@/components/roi/RoiFigure";
-import type { RoiAssumptionFact, RoiComputationStep, RoiReportResponse, RoiWindow } from "@/hooks/api/useRoiReportApi";
+import type {
+  RoiAssumptionFact,
+  RoiComputationStep,
+  RoiLedgerSupervision,
+  RoiReportResponse,
+  RoiWindow,
+} from "@/hooks/api/useRoiReportApi";
 import { useFormatter } from "@/i18n";
 import { exactCount, exactCurrency, formatCount, formatCurrency } from "@/lib/number-format";
 import { roiRecordCounts, SOURCE_NAMES } from "@/lib/roi-figure";
@@ -281,6 +287,46 @@ export function RoiResetNote({ since }: { since?: string | null }) {
       <Info className="h-4 w-4" aria-hidden />
       {t_i18n("Measured since {date} (reset)", { date })}
     </p>
+  );
+}
+
+/**
+ * The scope of a fleet's figures (#2639): they count this fleet's own runs only. When agents outside
+ * the fleet supervise it, their runs and cost are said apart: never in the cards above, always in the
+ * organization total. The cost is omitted when the platform masks costs.
+ */
+export function RoiFleetScopeNote({
+  supervision,
+  currency,
+  costMasked,
+}: {
+  supervision?: RoiLedgerSupervision | null;
+  currency: string;
+  costMasked?: boolean;
+}) {
+  const { t_i18n } = useFormatter();
+  const { locale } = useIntl();
+  const cost = !costMasked && supervision?.ai_cost != null ? formatCurrency(locale, currency, supervision.ai_cost) : null;
+  return (
+    <div role="note" className="space-y-1 content-compact text-default-secondary" data-testid="roi-fleet-scope-note">
+      <p className="flex flex-wrap items-center gap-2">
+        <Info className="h-4 w-4" aria-hidden />
+        {t_i18n("This fleet's runs only. The organization total counts every agent.")}
+      </p>
+      {supervision && (
+        <p className="pl-6" data-testid="roi-fleet-supervision">
+          {cost
+            ? t_i18n(
+                "{agents, plural, one {# outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {# outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}",
+                { agents: supervision.agents, cost },
+              )
+            : t_i18n(
+                "{agents, plural, one {# outside agent supervises this fleet: its runs count in the organization total only.} other {# outside agents supervise this fleet: their runs count in the organization total only.}}",
+                { agents: supervision.agents },
+              )}
+        </p>
+      )}
+    </div>
   );
 }
 
