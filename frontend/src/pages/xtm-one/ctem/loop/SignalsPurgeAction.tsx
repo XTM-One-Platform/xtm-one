@@ -8,12 +8,17 @@
  * offers the resync (unchecked by default) and enables only once the shown code is
  * typed back. The job then runs on the server; the progress dialog follows it step
  * by step (pause, purge, resync, resume). A non-administrator never sees it.
+ *
+ * #2578: with the resync ticked, one window per route (each OpenCTI type, the PIR
+ * matches, third-party events, the inside sources), its default from the server;
+ * a pass reads the current state. The finished job lists the outcome of each route.
  */
 import { useState } from "react";
 import { Checkbox, Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
 import {
@@ -21,10 +26,19 @@ import {
   useStartCtemSignalPurge,
   type CtemSignalPurgeJob,
   type CtemSignalPurgeStepState,
+  type CtemSignalResyncRoute,
+  type CtemSignalResyncRouteResult,
 } from "@/hooks/api/useCtemSignalsApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
+import { initialWindowText, parseWindow, routeOutcome, windowsToSend } from "./purge-resync-windows";
+
+const GROUP_HEADING: Record<CtemSignalResyncRoute["group"], string> = {
+  world: "Outside world (OpenCTI)",
+  inside: "Inside state",
+  pass: "Scheduled passes",
+};
 
 const STEP_ORDER = ["pause", "purge", "resync", "resume"] as const;
 
@@ -47,6 +61,7 @@ export function SignalsPurgeAction() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
   const [resync, setResync] = useState(false);
+  const [windowText, setWindowText] = useState<Record<string, string>>({});
   const info = useCtemSignalPurge(isAdmin && (confirmOpen || progressOpen));
   const start = useStartCtemSignalPurge();
 
@@ -55,6 +70,9 @@ export function SignalsPurgeAction() {
   const job = info.data?.job ?? null;
   const running = job?.state === "running";
   const counts = info.data?.counts;
+  const routes = info.data?.resync_routes ?? [];
+  const maxDays = info.data?.resync_max_days ?? 365;
+  const windows = resync ? windowsToSend(routes, { ...initialWindowText(routes), ...windowText }, maxDays) : null;
 
   const ask = () => {
     if (running) {
@@ -62,13 +80,14 @@ export function SignalsPurgeAction() {
       return;
     }
     setResync(false);
+    setWindowText({});
     setConfirmOpen(true);
     void info.refetch();
   };
 
   const confirm = () =>
     start.mutate(
-      { confirm: info.data?.confirm_word ?? "", resync },
+      { confirm: info.data?.confirm_word ?? "", resync, ...(resync && windows ? { resync_windows: windows } : {}) },
       {
         onSuccess: () => setProgressOpen(true),
         // The server's reason (a job already running, the word refused), never a silent failure.
@@ -121,7 +140,8 @@ export function SignalsPurgeAction() {
         )}
         confirmLabel={t_i18n("Purge")}
         challenge
-        confirmDisabled={!counts || start.isPending}
+        size={resync ? "wide" : "sm"}
+        confirmDisabled={!counts || start.isPending || (resync && !windows)}
         onConfirm={confirm}
       >
         <div className="space-y-3 content-compact" aria-busy={!counts && !info.isError} data-testid="ctem-signals-purge-preview">
@@ -146,16 +166,18 @@ export function SignalsPurgeAction() {
             checked={resync}
             onCheckedChange={(checked) => setResync(checked === true)}
           />
-          {/* What refills the list after the purge (#2583 note): the recompute is held without a resync. */}
-          <p className="text-default-secondary" data-testid="ctem-signals-purge-recompute">
-            {resync
-              ? t_i18n("The resync reads every source again, with the paths and sources that are on.")
-              : t_i18n("Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.")}
-          </p>
+          {resync && routes.length > 0 && (
+            <ResyncWindows
+              routes={routes}
+              maxDays={maxDays}
+              texts={{ ...initialWindowText(routes), ...windowText }}
+              onChange={(key, text) => setWindowText((prev) => ({ ...prev, [key]: text }))}
+            />
+          )}
         </div>
       </ConfirmDialog>
       <Dialog open={progressOpen} onOpenChange={setProgressOpen}>
-        <DialogContent className="max-w-sm" data-testid="ctem-signals-purge-progress">
+        <DialogContent className="max-w-md" data-testid="ctem-signals-purge-progress">
           <DialogHeader>
             <DialogTitle className="text-base">
               {running || !job
@@ -194,8 +216,120 @@ export function SignalsPurgeAction() {
               })}
             </ol>
           )}
+          {job && !running && <ResyncResult job={job} routes={routes} />}
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/** One window field per route, grouped; a pass says it reads the current state (#2578). */
+function ResyncWindows({
+  routes,
+  maxDays,
+  texts,
+  onChange,
+}: {
+  routes: CtemSignalResyncRoute[];
+  maxDays: number;
+  texts: Record<string, string>;
+  onChange: (key: string, text: string) => void;
+}) {
+  const { t_i18n } = useFormatter();
+  const groups = (Object.keys(GROUP_HEADING) as CtemSignalResyncRoute["group"][]).filter((g) => routes.some((r) => r.group === g));
+  // Labels, legends and the unit at body size, like the fields, not under the preview's content-compact (UX round 2 of #2590, B1).
+  return (
+    <div className="space-y-3 content-base" data-testid="ctem-signals-purge-windows">
+      <p className="text-default-secondary">
+        {t_i18n("How far back the resync reads, in days. Leave an inside-state field empty to read every open item.")}
+      </p>
+      {groups.map((group) => (
+        <fieldset key={group} className="space-y-1.5">
+          <legend className="font-medium">{t_i18n(GROUP_HEADING[group])}</legend>
+          {/* Two columns in the wide dialog, no inner scroller: every field and its error stay in view (UX round 1 of #2590, B1 and B2). */}
+          <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+            {routes
+              .filter((r) => r.group === group)
+              .map((route) => {
+                const id = `ctem-signals-purge-window-${route.key}`;
+                if (!route.windowed) {
+                  // A pass, or a route the resync does not read: a read-only line with its reason, never a field (B3).
+                  return (
+                    <div key={route.key} className="min-w-0" data-testid={id}>
+                      <span className="block">{t_i18n(route.label)}</span>
+                      <span className="block text-default-secondary">{t_i18n(route.note ?? "Runs once")}</span>
+                    </div>
+                  );
+                }
+                const invalid = parseWindow(texts[route.key] ?? "", route, maxDays) === "invalid";
+                return (
+                  <div key={route.key} className="min-w-0">
+                    <label id={`${id}-label`} htmlFor={id} className="block">
+                      {t_i18n(route.label)}
+                    </label>
+                    <span className="mt-1 flex items-center gap-1.5">
+                      <Input
+                        id={id}
+                        inputMode="numeric"
+                        className="w-20 shrink-0 [&_input]:text-right [&_input]:tabular-nums"
+                        value={texts[route.key] ?? ""}
+                        placeholder={route.group === "inside" ? t_i18n("All") : undefined}
+                        aria-invalid={invalid}
+                        aria-labelledby={`${id}-label`}
+                        aria-describedby={invalid ? `${id}-error` : undefined}
+                        onChange={(e) => onChange(route.key, e.target.value)}
+                      />
+                      <span className="shrink-0 whitespace-nowrap text-default-secondary">{t_i18n("days")}</span>
+                    </span>
+                    {invalid && (
+                      <p id={`${id}-error`} className="mt-1 text-feedback-error-primary" role="alert">
+                        {t_i18n("Enter a whole number from {min} to {max}", { min: 1, max: maxDays })}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        </fieldset>
+      ))}
+    </div>
+  );
+}
+
+/** What the resync read and recorded on each route, at the end of the progress dialog (#2578). */
+function ResyncResult({ job, routes }: { job: CtemSignalPurgeJob; routes: CtemSignalResyncRoute[] }) {
+  const { t_i18n } = useFormatter();
+  const results = job.steps.resync.counts.routes as Record<string, CtemSignalResyncRouteResult> | undefined;
+  if (!results || typeof results !== "object") return null;
+  const labels = new Map(routes.map((r) => [r.key, r.label]));
+  return (
+    <div className="max-h-64 overflow-y-auto border-t border-line pt-3" data-testid="ctem-signals-purge-result">
+      <p className="mb-1.5 font-medium content-compact">{t_i18n("Resync by source")}</p>
+      <ul className="space-y-1.5 content-compact">
+        {Object.entries(results).map(([key, result]) => {
+          const outcome = routeOutcome(result);
+          return (
+            <li key={key} className="flex items-start justify-between gap-3" data-testid={`ctem-signals-purge-result-${key}`} data-kind={outcome.kind}>
+              <span className="min-w-0">
+                <span className={cn(outcome.kind === "skipped" && "text-default-secondary")}>{t_i18n(labels.get(key) ?? key)}</span>
+                {outcome.kind !== "done" && (
+                  <span className={cn("block", outcome.kind === "error" ? "text-feedback-error-primary" : "text-default-secondary")}>
+                    {outcome.reason}
+                  </span>
+                )}
+                {outcome.kind === "done" && outcome.capped && (
+                  <span className="block text-default-secondary">{t_i18n("Stopped at the read limit")}</span>
+                )}
+              </span>
+              {outcome.kind !== "skipped" && (
+                <span className="shrink-0 text-right tabular-nums text-default-secondary">
+                  {t_i18n("{read} read, {recorded} recorded", { read: outcome.read, recorded: outcome.recorded })}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

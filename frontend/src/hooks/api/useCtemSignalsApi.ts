@@ -155,7 +155,7 @@ export type CtemSignalPathStatus = "enabled" | "partly_enabled" | "error" | "not
 /** One way a trigger path is fired (#1189): an integration listener, a scheduled pass or the OpenCTI PIR playbook. */
 export interface CtemSignalPathSource {
   provider: string;
-  kind: "listener" | "pass" | "pir_playbook" | "webhook" | "cases_reader";
+  kind: "listener" | "pass" | "pir_playbook" | "webhook";
   /** The English line naming the event that fires the path (an i18n key). */
   event: string;
   /** Bound for the caller: a connected integration they can see (and, for a pass, the pass runs on it). */
@@ -320,16 +320,6 @@ export interface CtemPlatformSource {
   reason_code: CtemPlatformSourceReasonCode | null;
   reason_params: Record<string, string>;
   checked_at: string | null;
-  /** The objects it holds in its platform (#2583 point 2), for the Open in links. */
-  objects?: CtemPlatformSourceObject[];
-  /** The platform's web UI host, `null` when the integration stores none. */
-  integration_url?: string | null;
-}
-
-/** One object a platform source provisioned: a notifier, a trigger or a playbook, by its id there. */
-export interface CtemPlatformSourceObject {
-  kind: "notifier" | "trigger" | "playbook";
-  id: string;
 }
 
 /** The platform signal sources, administrators only (the API answers 403 to anyone else). */
@@ -381,9 +371,37 @@ export interface CtemSignalPurgeJob {
   finished_at: string | null;
 }
 
+/** One resync route of the purge (#2578): a world type, an inside source or a pass, with its default window. */
+export interface CtemSignalResyncRoute {
+  key: string;
+  group: "world" | "inside" | "pass";
+  /** English, translated by the dialog. */
+  label: string;
+  /** Days; null: no age limit. */
+  default: number | null;
+  /** False for a pass (it reads the current state) and for a route the resync does not read. */
+  windowed: boolean;
+  /** Why the resync does not read this route (English, translated by the dialog); null otherwise. */
+  note?: string | null;
+}
+
+/** The resync's outcome on one route (#2578), from `steps.resync.counts.routes`. */
+export interface CtemSignalResyncRouteResult {
+  window_days: number | null;
+  read?: number;
+  recorded?: number;
+  errors?: string[];
+  skipped?: string;
+  error?: string;
+  note?: string;
+  capped?: boolean;
+}
+
 export interface CtemSignalPurgeInfo {
   counts: { signals: number; cases: number };
   confirm_word: string;
+  resync_routes: CtemSignalResyncRoute[];
+  resync_max_days: number;
   job: CtemSignalPurgeJob | null;
 }
 
@@ -400,7 +418,11 @@ export function useCtemSignalPurge(enabled: boolean) {
 /** Start the purge of every signal (#2528): 422 without the word, 409 while a job runs. */
 export function useStartCtemSignalPurge() {
   const qc = useQueryClient();
-  return useMutation<{ job: CtemSignalPurgeJob }, Error, { confirm: string; resync: boolean }>({
+  return useMutation<
+    { job: CtemSignalPurgeJob },
+    Error,
+    { confirm: string; resync: boolean; resync_windows?: Record<string, number | null> }
+  >({
     mutationFn: (body) => api.post("/ctem-signals/purge", body),
     onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals", "purge"] }),
     meta: { suppressGlobalErrorToast: true },
