@@ -1919,6 +1919,29 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("CTEM new-signal recheck error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+        # #2570: the verified signal-source deliveries the webhook accepted, recorded off
+        # the request path, a bounded batch per tick (ctem_signal_inbox).
+        try:
+            from app.services import ctem_signal_inbox
+
+            drained = await ctem_signal_inbox.drain()
+            if any(drained.values()):
+                logger.info("CTEM signal inbox drained: %s", drained)
+        except Exception as e:
+            logger.error("CTEM signal inbox drain error: %s", format_exception_message(e), exc_info=True)
+        # #2570: the paced opening pass, once a minute, within the per-minute opening budget
+        # (CTEM_CASE_OPEN_PER_MINUTE): a platform restarted in a storm opens its waiting
+        # cases a budget at a time, by itself, one supervising run per case.
+        try:
+            from app.services import ctem_case_opening
+            from app.services.ctem_signal_purge import intake_paused
+
+            if not await intake_paused() and await ctem_case_opening.paced_pass_due():
+                paced = await ctem_case_opening.paced_pass("cyber")
+                if paced and (paced.get("opened") or paced.get("joined")):
+                    logger.info("CTEM paced case opening: %s", paced)
+        except Exception as e:
+            logger.error("CTEM paced case opening error: %s", format_exception_message(e), exc_info=True)
         # CTEM case loop (#857): open the cases of confirmed signals still
         # waiting, escalate SLA breaches once. Rules only, no model call;
         # its own cadence (CTEM_CASE_SWEEP_SECONDS, default hourly).

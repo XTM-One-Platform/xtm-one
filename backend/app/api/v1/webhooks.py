@@ -216,7 +216,13 @@ from app.models.assignment import (
 )
 from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
-from app.services import ctem_analyst_mark, ctem_openaev_events, ctem_signal_listeners, github_token_installations
+from app.services import (
+    ctem_analyst_mark,
+    ctem_openaev_events,
+    ctem_signal_inbox,
+    ctem_signal_listeners,
+    github_token_installations,
+)
 from app.services import event_enrichment_retry as enrichment_retry
 from app.services.assignment_engine import (
     QUOTA_DROP_REASON,
@@ -4816,8 +4822,10 @@ async def receive_signal_source_webhook(
     The same gates as the per-assignment receiver: the integration's
     ``webhook_secret`` (``X-OpenCTI-Token`` / ``X-OpenAEV-Token``), a
     per-source throttle and the delivery de-duplication. A verified delivery
-    records its signal (``ctem_signal_listeners.note_event``) and moves the CTEM
-    cases an OpenAEV result concerns (``ctem_openaev_events.note_event``);
+    is written to the durable inbox and answered at once (#2570:
+    ``ctem_signal_inbox.accept``); the autonomous tick then records its signal
+    (``ctem_signal_listeners.note_event``) and moves the CTEM cases an OpenAEV
+    result concerns (``ctem_openaev_events.note_event``);
     fleets subscribe through ``ctem_signal.recorded``. A source that is off or
     unknown is ignored, so disabling it stops its deliveries at once.
     """
@@ -4868,19 +4876,14 @@ async def receive_signal_source_webhook(
         elif provider == "openaev":
             event_key = _normalize_openaev_payload(payload) or event_key
         verified = _signed_with_webhook_secret(integration.extra_config_enc)
-        if provider == "openaev":
-            await ctem_openaev_events.stamp_reachability_assertion(
-                event_key, payload, integration_id=str(integration_id), verified=verified
-            )
-        recorded = await ctem_signal_listeners.note_event(provider, event_key, payload, verified=verified)
-        if provider == "opencti":
-            await ctem_analyst_mark.note_event(provider, payload, verified=verified)
-        if provider == "openaev":
-            await ctem_openaev_events.note_event(event_key, payload, verified=verified)
+        # #2570: written to the durable inbox and answered at once. OpenCTI never retries a
+        # webhook, so a delivery is never answered 429/503 nor held while it is recorded; the
+        # autonomous tick records it off the request path (ctem_signal_inbox.drain).
+        await ctem_signal_inbox.accept(provider, str(integration_id), event_key, payload, verified=verified)
     except Exception:
         await _release_webhook_dedup_slot(dedup_key)
         raise
-    return await _finalize_dedup(dedup_key, {"status": "ok", "event_key": event_key, "recorded": bool(recorded)})
+    return await _finalize_dedup(dedup_key, {"status": "ok", "event_key": event_key, "queued": True})
 
 
 @router.post("/integrations/{integration_id}/assignments/{assignment_id}")
