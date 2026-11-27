@@ -20693,6 +20693,7 @@
   "Agents and API only": "Agents and API only",
   "Live listener": "Live listener",
   "Scheduled pass": "Scheduled pass",
+  "Cases recompute": "Cases recompute",
   "PIR playbook": "PIR playbook",
   "What your own tools see in your environment": "What your own tools see in your environment",
   "What an attacker sees of you from the internet": "What an attacker sees of you from the internet",
@@ -22140,5 +22141,12 @@
   "OpenAEV simulation results": "OpenAEV simulation results",
   "Attack surface pass": "Attack surface pass",
   "Recorded by the GitLab asset sync": "Recorded by the GitLab asset sync",
-  "Delivered by event only": "Delivered by event only"
+  "Delivered by event only": "Delivered by event only",
+  "The cases recompute reads a vulnerability on your inventory software": "The cases recompute reads a vulnerability on your inventory software",
+  "The cases recompute reads a CVE finding on one of your assets": "The cases recompute reads a CVE finding on one of your assets",
+  "Open the notifier in {platform}": "Open the notifier in {platform}",
+  "Open the triggers in {platform}": "Open the triggers in {platform}",
+  "Open the playbook in {platform}": "Open the playbook in {platform}",
+  "The resync reads every source again, with the paths and sources that are on.": "The resync reads every source again, with the paths and sources that are on.",
+  "Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.": "Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute."
 }
