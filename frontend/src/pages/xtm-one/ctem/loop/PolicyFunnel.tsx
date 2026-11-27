@@ -22,9 +22,12 @@ import { thresholdSource, thresholdWithSource } from "./decision-primary-assets"
 type Translate = (id: string, values?: Record<string, string | number>) => string;
 type PolicyCheck = NonNullable<CtemDecisionRecord["policy_checks"]>[number] & Record<string, unknown>;
 
+/** #2631: a score the gate read nowhere; "not scored" is the note of a record written before it. */
+const NO_SCORE_NOTES = new Set(["no score read", "not scored"]);
+
 /** A check's value in words: a level translated, a yes/no, a number as it is, an unscored score said so. */
 function checkValue(check: PolicyCheck, t_i18n: Translate): string {
-  if (check.note === "not scored") return t_i18n("Not scored");
+  if (NO_SCORE_NOTES.has(String(check.note ?? ""))) return t_i18n("No score read");
   const value = check.value;
   if (typeof value === "boolean") return value ? t_i18n("Yes") : t_i18n("No");
   if (typeof value === "number") return String(value);
@@ -41,7 +44,7 @@ function checkComparison(check: PolicyCheck, t_i18n: Translate): string {
   const threshold = check.threshold;
   if (threshold === undefined || threshold === null || threshold === "") return value;
   const minimum = String(levelLabel(threshold, t_i18n));
-  if (!value || check.note === "not scored") return value ? t_i18n("{value}, minimum {threshold}", { value, threshold: minimum }) : minimum;
+  if (!value || NO_SCORE_NOTES.has(String(check.note ?? ""))) return value ? t_i18n("{value}, minimum {threshold}", { value, threshold: minimum }) : minimum;
   return check.passed ? t_i18n("{value} ≥ {threshold}", { value, threshold: minimum }) : t_i18n("{value} < {threshold}", { value, threshold: minimum });
 }
 

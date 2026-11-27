@@ -629,6 +629,10 @@ class PrioritizationPolicy(BaseModel):
     epss_min: float | None = Field(default=None, ge=0, le=1)
     #: A vulnerability in CISA KEV passes the thresholds whatever its scores.
     kev_always_in: bool = True
+    #: #2631: a CVE-bearing signal whose score a set minimum needs is read nowhere (neither its evidence
+    #: nor the vulnerability in OpenCTI): ``hold`` keeps it on the watchlist for validation, ``pass``
+    #: lets it through; either way the decision reads "no score read", never a silent pass.
+    missing_score: Literal["hold", "pass"] = "hold"
     #: Keep only findings on an asset whose ``internet_facing`` is ``yes``: an opt-in that also drops the
     #: findings on user endpoints, which the Exposed layer always keeps (``asset_reachability``).
     internet_exposure_required: bool = False
@@ -1326,6 +1330,7 @@ POLICY_SETTABLE_PATHS: tuple[str, ...] = (
     "prioritization_policy.cvss_min",
     "prioritization_policy.epss_min",
     "prioritization_policy.kev_always_in",
+    "prioritization_policy.missing_score",
     "prioritization_policy.internet_exposure_required",
     "prioritization_policy.min_primary_asset_criticality",
     "prioritization_policy.require_risk_scenario",

@@ -1645,6 +1645,21 @@ async def integration_connection(db: Any, integration_id: str, user_id: Any) -> 
     return connection[0], str(integration.id), secret
 
 
+def held(state: Any) -> bool:
+    """Whether *state* names an object that exists in OpenCTI (a trigger, a notifier or a playbook).
+
+    A state left by a failed pass (an error before any object was created) holds nothing: clearing it
+    loses nothing, and it never reads orphaned (#2636).
+    """
+    return isinstance(state, dict) and bool(
+        state.get("trigger_id")
+        or state.get("trigger_ids")
+        or state.get("notifier_id")
+        or state.get("playbook_id")
+        or state.get("playbook_ids")
+    )
+
+
 def _with_state(trigger_config: dict, state: dict | None) -> dict:
     updated = dict(trigger_config)
     if state is None:
@@ -1673,6 +1688,11 @@ async def provision_one(
         new_state = {**(state or {}), "status": "error", "error": str(exc), "checked_at": now.isoformat()}
         assignment.trigger_config = _with_state(config, new_state)
         return new_state
+    if spec is None and state and not held(state) and not retired:
+        # Off and holding nothing in OpenCTI (#2636): a leftover error of an earlier pass, never an
+        # orphan; the assignment reads not provisioned until it is switched on (fleet setup).
+        assignment.trigger_config = _with_state(config, None)
+        return None
     conn = await _connection(db, assignment, agent)
     if spec is None:
         if not state:
@@ -1740,9 +1760,7 @@ async def deprovision(db: Any, assignment: Any) -> None:
 
     config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
     state = config.get(STATE_KEY)
-    if not isinstance(state, dict) or not (
-        state.get("trigger_id") or state.get("notifier_id") or state.get("playbook_id")
-    ):
+    if not held(state):
         return
     try:
         agent = await db.get(Agent, assignment.agent_id)

@@ -1643,11 +1643,14 @@ async def _signal_members(
     if ids is not None:  # one case's signals (#1986)
         statement = statement.where(cast(CtemSignal.id, String).in_(ids))
     rows = (await db.execute(statement)).scalars().all()
-    from app.services.ctem_primary_assets import decision_primary_assets
+    from app.services.ctem_primary_assets import decision_assets, decision_primary_assets, decision_scope_kinds
     from app.services.ctem_scope_gate import signal_cve_ids
 
     # #2396: each primary asset the gate decision reached, with its link basis (proven or inferred).
     reached = {s.id: decision_primary_assets(s.decision or {}) for s in rows}
+    # #2635: the inventory assets the gate matched, read from the decision at each view build, so the
+    # cases opened before this change count them too (no backfill, no purge).
+    matched = {s.id: decision_assets(s.decision or {}) for s in rows}
     # The CVE ids each signal names: enriched from OpenCTI like an OpenCTI issue (#2041).
     cves = {
         f"signal:{s.id}": found
@@ -1659,9 +1662,14 @@ async def _signal_members(
             source="signal",
             external_id=str(s.id),
             name=(s.subject_label or s.subject_ref or s.trigger_path)[:300],
-            assets=(s.subject_ref,) if s.subject_kind == "asset" else (),
+            assets=tuple(
+                dict.fromkeys(
+                    [*((s.subject_ref,) if s.subject_kind == "asset" and s.subject_ref else ()), *matched[s.id]]
+                )
+            ),
             primary_assets=tuple(j["name"] for j in reached[s.id]),
             inferred_primary_assets=tuple(j["name"] for j in reached[s.id] if j["basis"] == "inferred"),
+            scope_kinds=tuple(decision_scope_kinds(s.decision or {})),
             first_seen_at=s.first_seen_at,
         )
         for s in rows
