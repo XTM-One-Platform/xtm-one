@@ -1125,8 +1125,8 @@ which the registration writes without one, gets a secret generated and stored
 in its extra config by the first pass that needs it,
 `trigger_provisioning.receiver_secret`, #970), and a live knowledge trigger with
 the filters (`entity_type`, `objectLabel` by resolved label id,
-`x_opencti_score` gte) and that notifier. Each is named
-`XTM One - <fleet> - <purpose> - <Kind>` (#2583).
+`x_opencti_score` gte) and that notifier. Both are named
+`XTM One - <fleet> - <purpose>`.
 
 - Idempotent: the ids live in `trigger_config.opencti_provisioning`; a lost
   state adopts the objects by exact name instead of duplicating them.
@@ -1245,31 +1245,6 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   PIR information, and the fleet reads the live score from OpenCTI
   before acting. Leaving a PIR is not delivered (the delete toggle stays
   off).
-- PIR sources (#2583 point 3): OpenCTI flags an entity in a PIR only as the
-  source of a relationship matching one of its criteria, which a
-  `Vulnerability` or a `Report` never is. `read_provision_spec` refuses a
-  `pir_ids` spec on those types with the reason
-  (`NOT_PIR_SOURCE_TYPES`, `pir_source_refusal`) unless it sets
-  `provision.pir_relation: "linked"` (PIR playbook only): the entry then
-  listens to `create_rel` alone (an entity a new relationship links to a
-  flagged one, OpenCTI's `stixIdOfLinkedEntity`), with the entity type
-  filter and no `pir_score` filter. The `new_vulnerability` playbook
-  (`PIR_PATH_RELATIONS`) and the PIR desk's "PIR matches" (reports and
-  vulnerabilities) are linked; `relevant_threat` stays flagged.
-- Legacy Threat response holders (#2583 point 4): the assignments "New
-  relevant threat" and "Threat activity flagged in a PIR"
-  (`ctem_platform_sources.RETIRED_HOLDERS`) lose their OpenCTI trigger,
-  playbook and notifier once the Signals source of the same integration
-  (`listener`, `pir_playbook`) is on and connected: `maintain` passes
-  `retired=True` to `provision_one`, which removes them and leaves a
-  `retired` tombstone state, so the next pass does not provision them again;
-  the source going off provisions them back (new before old, no delivery
-  lost). The admin route `POST /api/v1/ctem-signals/sources/legacy-opencti-objects`
-  (`dry_run` true by default) lists, then removes, every object left in
-  OpenCTI under a legacy name (`LEGACY_NAME_STEMS`: "XTM One - Threat
-  response - ...", "XTM One - CTEM loop - New relevant threats" and "...
-  Threat activity flagged in a PIR"), per integration a Signals source is on
-  for, triggers and playbooks before their notifiers.
 
 ### 8.2 Event enrichment
 
@@ -1285,7 +1260,7 @@ save repairs the trigger at the next pass:
 
 ```json
 {"provision": {"fleet": "Threat response", "purpose": "PIR threats",
-               "entity_types": ["Intrusion-Set"], "organization_context": ["pir_ids"],
+               "entity_types": ["Report"], "organization_context": ["pir_ids"],
                "pir_min_score": 20}}
 ```
 
@@ -1327,17 +1302,12 @@ disable or delete, state in `trigger_config.openaev_provisioning`):
 | `atomic_test_finished` | `INJECT` `UPDATE`, `inject_status` eq `EXECUTED`, `PARTIAL`, `ERROR` |
 | `finding_created` | `FINDING` `CREATE` |
 
-- Names follow the rule of #2583 shared with OpenCTI: the notifier is
-  `XTM One - <fleet> - <purpose> - Notifier`, its description carries the
-  instance URL, fleet, path and the assignment (name and id) or signal source
-  it serves; a recheck renames an object of the former rule in place, ids kept.
 - One WEBHOOK notifier per assignment posts OpenAEV's default body to the
   assignment's receiver with the integration's `webhook_secret` as
   `X-OpenAEV-Token` (checked by `_verify_signature`, never persisted). No
   secret: the state is `error`, nothing is wired unauthenticated.
-- One LIVE trigger per event, named
-  `XTM One - <fleet> - <purpose> - Trigger - <event>`; the receiver keys the
-  delivery on the last segment (a trigger of the former rule still reads) (`_normalize_openaev_payload`)
+- One LIVE trigger per event, named `XTM One - <fleet> - <purpose> - <event>`;
+  the receiver keys the delivery on that suffix (`_normalize_openaev_payload`)
   and records `_openaev_event` (event, operation, resource type and id,
   message, platform URL).
 - Expectation results have no notification resource in OpenAEV
@@ -2249,7 +2219,7 @@ The routes (`backend/app/api/v1/fleets.py`) and their service
 | `POST /fleets/{id}/pause` | Pause all: every automation that is on switches off, stamped `fleet_pause`. Audit `fleet_pause` | as Enable | allowed |
 | `POST /fleets/{id}/resume` | Resume: exactly the `fleet_pause` ones switch back on; 409 during an emergency stop. Audit `fleet_resume` | as Enable | allowed |
 | `POST /fleets/{id}/unset` | Back to not set up (#11060): every automation that is on switches off, and every off one (any stamp but `panic_stop`) is re-stamped `created_disabled`, so the fleet reads Not set up, 0 on, no Resume. Nothing deleted (ids, prompts, triggers, run history kept); an automation an emergency stop holds is left as it is and named (`held_by_stop` in the audit). Idempotent. Agent tool: `set_fleet_automations(action="unset")`, a dry-run count without `confirm=true`. Audit `fleet_unset` plus one `pause` row per assignment | as Enable | allowed |
-| `POST /fleets/{id}/reset` | Reset a built-in fleet to its factory state (#1508; `services/fleet_reset.py`), administrators only, `dry_run` for the dialog's counts, `confirm_name` (the fleet's name) for the real call. Every automation off and `created_disabled` (as unset) with its run-as and schedule anchor cleared; the level back to the seeded one; `approval_pins`, `customer_gates` and every fleet customer setting (tool-level enforcement, instructions position, confirmed prerequisites, health dismissals, check and enrolment, activity visibility, budget, iteration cap, run budget, member defaults, organization scope) back to their column default; a local documentation version replaced by the shipped one; each home member's customer layer cleared (bindings and their scoping, lending, MCP servers, knowledge bases, skills, custom tools, organization notes, model pin, approval switches), the seed's own built-in integrations, knowledge bases and skills kept, and its definition rewritten from the seed now. Kept: ids, run history, cases and findings, the audit trail, the workspace, and the home members' open work items (decision items included), counted in the answer's `open_gates` and `open_items`. Refused (422) on a custom fleet and (409) during an emergency stop. Idempotent; audit `fleet_reset` with `before` (the fleet as it stood: effective level, home members, connected agents, pins, added gates, open decision items and open items) and `changes` (the counts), plus `autonomy_level_change` (reason `fleet_reset`) when the level moves (#2134); the next boot changes nothing. | administrators | allowed |
+| `POST /fleets/{id}/reset` | Reset a built-in fleet to its factory state (#1508; `services/fleet_reset.py`), administrators only, `dry_run` for the dialog's counts, `confirm_name` (the fleet's name) for the real call. Every automation off and `created_disabled` (as unset) with its run-as and schedule anchor cleared; the level back to the seeded one; `approval_pins`, `customer_gates` and every fleet customer setting (tool-level enforcement, instructions position, confirmed prerequisites, health dismissals, check and enrolment, activity visibility, budget, iteration cap, run budget, member defaults, organization scope) back to their column default; a local documentation version replaced by the shipped one; each home member's customer layer cleared (bindings and their scoping, lending, MCP servers, knowledge bases, skills, custom tools, organization notes, model pin, approval switches), the seed's own built-in integrations, knowledge bases and skills kept, and its definition rewritten from the seed now. Kept: ids, run history, cases and findings, the audit trail, the workspace, and the home members' open work items (decision items included), counted in the answer's `open_gates` and `open_items`. The fleet's value (ROI) restarts: `value_measured_since` stamped now, so its records and the AI cost of its agents count from the reset (#2580, `dev-docs/roi-outcomes.md` 12.6); nothing deleted, and a fleet already in its factory state can still be reset for that. Refused (422) on a custom fleet and (409) during an emergency stop. Idempotent on the configuration; audit `fleet_reset` with `value_measured_since` {from, to} and `before` (the fleet as it stood: effective level, home members, connected agents, pins, added gates, open decision items and open items) and `changes` (the counts), plus `autonomy_level_change` (reason `fleet_reset`) when the level moves (#2134); the next boot changes nothing. | administrators | allowed |
 | `POST /fleets/bulk` | pause, resume or set_autonomy on up to 100 fleets, or `all_fleets` (administrators, pause only); each fleet follows its single-fleet rule, refused fleets reported; `dry_run` counts | per fleet | allowed |
 
 **What the level acts on (#10153).** A custom fleet whose `approval_pins` is
