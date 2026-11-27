@@ -136,3 +136,35 @@ def test_the_gate_keeps_the_case_closed_and_every_hop_says_version_verified() ->
     sources = [s for s in scope.get("sources") or [] if s["from"] == "primary_asset"]
     assert all(s.get("assets_total", 0) == 0 for s in sources)
     assert not any(s["name"] == CODE and s.get("chain") for s in sources)
+
+
+def test_a_family_only_hop_sets_no_scope_criticality_next_to_a_verified_hop() -> None:
+    """A verified named hop on a medium primary asset and a family-only hop on a critical one."""
+    hypervisors = "Hypervisors"
+    profile = oc.parse_profile(
+        {
+            "primary_assets": [
+                {"name": WORKSTATIONS, "criticality": "critical"},
+                {"name": hypervisors, "criticality": "medium"},
+            ],
+            "prioritization_policy": {"min_primary_asset_criticality": "medium"},
+        }
+    )
+    host = _reacher(
+        "HYPERV-01",
+        os_family="Windows",
+        products={"windows server 2016": "Windows Server 2016 10.0.14393.0"},
+        primary_asset=hypervisors,
+    )
+    host.versioned.add("Windows Server 2016 10.0.14393.0")
+    laptop = _reacher("LAPTOP-W11", os_family="Windows", products={"microsoft windows 11": "Microsoft Windows 11"})
+    index = pa.PrimaryAssetIndex(loaded=True, reachers=[host, laptop])
+    decision = gate.decide(profile, _cve(*CVE_2026_20934), primary_assets=index, today=TODAY)
+    hops = {h["asset"]: h for h in decision.record["reconcile"]["primary_assets"]}
+    assert hops["HYPERV-01"]["version_verified"] is True and hops["HYPERV-01"]["family_only"] is False
+    assert hops["LAPTOP-W11"]["family_only"] is True
+    scope = decision.record["scope"]
+    names = [s["name"] for s in scope["sources"] if s["from"] == "primary_asset"]
+    assert WORKSTATIONS not in names
+    assert hypervisors in names
+    assert scope["criticality"] != "critical"
