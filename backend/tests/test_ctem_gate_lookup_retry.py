@@ -244,6 +244,31 @@ async def test_a_bulk_pass_decides_from_the_failure_it_met_not_from_not_read(mon
     assert facts.threat_lookup == FAILED
 
 
+@pytest.mark.asyncio
+async def test_a_bulk_prefetch_meets_a_failure_once_per_key_and_reads_it_again_next_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2548 review: N rows sharing a threat id cost one OpenCTI timeout per prefetch, not N."""
+    calls, read = _answers(((), FAILED))
+    monkeypatch.setattr(ctem_threat_software, "threat_software", read)
+    monkeypatch.setattr(store, "default_scenario_reader", lambda db: _none())
+    monkeypatch.setattr(store, "facts_of", lambda row: _threat_facts())
+    db = _db()
+    recorder = str(uuid.uuid4())
+    rows = [_row(_threat_facts()) for _ in range(5)]
+    for row in rows:
+        row.recorded_by = recorder  # one reader: one OpenCTI key for the five rows
+    profiles: dict[Any, Any] = {"org": _profile()}
+    links: dict[Any, Any] = {"org": None}
+    await store.prepare_cve_reads(db, rows, profiles=profiles, links=links)
+    assert len(calls) == 1
+    facts = await store._with_threat_software(db, rows[-1], _threat_facts(), _profile(), None, remote=False)
+    assert facts.threat_lookup == FAILED
+    # The next pass reads the failed key again.
+    await store.prepare_cve_reads(db, rows, profiles=profiles, links=links)
+    assert len(calls) == 2
+
+
 async def _none() -> None:
     return None
 
