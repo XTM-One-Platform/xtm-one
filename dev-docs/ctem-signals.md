@@ -379,6 +379,18 @@ source.
   (`webhooks.receive_signal_source_webhook`): integration `webhook_secret`,
   per-source throttle, delivery de-duplication, then `note_event` records the
   signal. A source that is off or unknown is ignored. No run starts here.
+- **Owners (#2640).** `GET /ctem-signals/sources` answers each object of a
+  source with its `owner` (`Signals`) and, for a per-event trigger, its module
+  `event`. The objects the fleets' assignments provisioned on the same
+  integration (`opencti_provisioning` / `openaev_provisioning` in their trigger
+  config) come apart in `fleet_objects` on the listener row, each with the
+  owner its name carries (`XTM One - <Owner> - <Purpose>`,
+  `ctem_platform_sources.object_owner`), so a source row counts only its own.
+  A source trigger whose event a fleet also listens to carries `shared_with`,
+  and the page says why both exist: each owner keeps its own trigger, its own
+  receiver and its own run as its own run-as user (the source records the
+  signal and moves the case, the desk runs its analysis); merging them would
+  route a desk run through a Signals source it may have turned off.
 
 ## 4ter. Generic signed webhook sources (#2506)
 
