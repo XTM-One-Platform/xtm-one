@@ -1435,6 +1435,7 @@ opencti:list_opencti_playbook_states
 opencti:list_opencti_relationships
 opencti:list_opencti_stream_consumers
 opencti:list_opencti_subtypes
+opencti:list_opencti_vocabulary
 opencti:query_opencti_activity
 opencti:query_opencti_catalog
 opencti:query_opencti_pir_entities
