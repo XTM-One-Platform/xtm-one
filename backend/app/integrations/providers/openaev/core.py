@@ -57,10 +57,13 @@ from ._common import (
     _simulation_state_lines,
     _validate_filter_group,
     asset_group_member_ids_lines,
+    asset_group_not_found,
     count_scenario_injects,
     describe_filter_group,
     fmt_asset_group_members,
     inject_targets_line,
+    inventory_group_source_id,
+    is_not_found_error,
     mirror_content_targets,
     scoped_safe_request,
     stored_targets_line,
@@ -498,7 +501,13 @@ def register_core(
         members_page: int = 0,
         member_search: str = "",
     ) -> str:
-        """An asset group with its dynamic filter and its members, paged."""
+        """An asset group with its dynamic filter and its members, paged.
+
+        An inventory id of a group synced from OpenAEV is read as that group's OpenAEV id (#2714).
+        """
+        requested = str(group_id or "").strip()
+        resolved = await inventory_group_source_id(requested)
+        group_id = resolved or requested
         async with tool_client(hdrs, timeout=30) as client:
             resp, err = await scoped_safe_request(
                 client,
@@ -509,12 +518,17 @@ def register_core(
                 headers=hdrs,
             )
         if err:
-            return err
+            return asset_group_not_found(err, requested) if is_not_found_error(err) and not resolved else err
         resp = _require_response(resp)
         data = resp.json()
         if not data:
-            return f"Asset group '{group_id}' not found."
+            return asset_group_not_found("empty answer", requested)
         out = _fmt_asset_group(data)
+        if resolved:
+            out = (
+                f"Read as OpenAEV asset group {resolved}: '{requested}' is its XTM One inventory id "
+                f"(pass the source_id next time).\n{out}"
+            )
         size = max(0, min(int(members_limit), ASSET_GROUP_MEMBERS_MAX))
         if size == 0:
             return out
@@ -1827,7 +1841,7 @@ def register_core(
                 "properties": {
                     "group_id": {
                         "type": "string",
-                        "description": "The asset group's ID",
+                        "description": "The OpenAEV asset group ID (list_asset_groups: a row's source_id)",
                     },
                     "members_limit": {
                         "type": "integer",

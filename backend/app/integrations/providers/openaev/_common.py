@@ -1549,6 +1549,46 @@ def _chosen_tenant_hint(scope: TenantScope) -> str:
     )
 
 
+#: The ``source`` of the organization inventory's rows synced from OpenAEV.
+INVENTORY_SOURCE = "openaev"
+
+
+async def inventory_group_source_id(group_ref: str) -> str | None:
+    """OpenAEV's id of the inventory asset group *group_ref* names, when it is one synced from OpenAEV (#2714).
+
+    ``list_asset_groups`` and an asset's groups answer the XTM One row id as ``id``; an agent that
+    passes it here would read a 404. Unreadable inventory (no database, no profile): ``None``.
+    """
+    text = str(group_ref or "").strip()
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", text):
+        return None
+    from app.core.database import async_session
+    from app.services.organization_inventory_query import group_source_id
+
+    try:
+        async with async_session() as db:
+            found = await group_source_id(db, text, source=INVENTORY_SOURCE)
+    except Exception:  # the inventory is a convenience: OpenAEV is read as asked without it
+        logger.debug("Inventory asset group unreadable for %s", text, exc_info=True)
+        return None
+    return found if found and found != text else None
+
+
+def asset_group_not_found(err: str, group_ref: str) -> str:
+    """An asset-group 404 that names the likely cause first: an XTM One inventory id (#2714).
+
+    The tenant the request went to is no cause of this 404 and is left out; the cross-tenant
+    note of a tenant-scoped path stays, after the id advice.
+    """
+    detail = err.split(_CHOSEN_TENANT_LEAD, 1)[0].strip()
+    return (
+        f"Asset group '{group_ref}' not found in OpenAEV. If this id comes from the organization "
+        "inventory (list_asset_groups, an asset's groups), it is the XTM One row id, not OpenAEV's: "
+        "pass that row's source_id, or find the group with search_openaev_asset_groups. "
+        f"({detail})"
+    )
+
+
 def _with_scope_hint(err: str | None, hint: str) -> str | None:
     """Append *hint* to *err* when *err* is a tenant-scope rejection or a not-found.
 

@@ -1180,16 +1180,20 @@ async def _asset_groups(db: AsyncSession, organization_id: uuid.UUID, asset_id: 
     rec, member, grp = OrganizationAssetRecord, OrganizationAssetGroupMember, OrganizationAssetGroup
     rows = (
         await db.execute(
-            select(grp.id, grp.name, grp.source)
+            select(grp.id, grp.name, grp.source, grp.external_id)
             .join(member, member.group_id == grp.id)
             .join(rec, rec.id == member.record_id)
             .where(grp.organization_id == organization_id, rec.asset_id == asset_id)
-            .group_by(grp.id, grp.name, grp.source, grp.name_key)
+            .group_by(grp.id, grp.name, grp.source, grp.external_id, grp.name_key)
             .order_by(grp.name_key, grp.id)
             .limit(MAX_PAGE)
         )
     ).all()
-    return [{"id": str(gid), "name": str(name), "source": str(source)} for gid, name, source in rows]
+    # source_id: the id the source module's own tools take, never ``id`` (#2714).
+    return [
+        {"id": str(gid), "name": str(name), "source": str(source), "source_id": str(external_id)}
+        for gid, name, source, external_id in rows
+    ]
 
 
 #: The most identifiers one lookup reads (a page of a platform's list, its hero).
