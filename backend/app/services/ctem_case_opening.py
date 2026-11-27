@@ -53,6 +53,15 @@ OPENING_CHANGED = "ctem_case.opening_changed"
 DRAIN_MAX_PASSES = 100
 #: The advisory lock key prefix that keeps two drain passes of one vertical apart.
 _DRAIN_LOCK = "ctem-case-drain:"
+#: A drain pass never blocks on the vertical lock (#2555): a busy lock (a recompute's write phase,
+#: another drain's pass) is tried again after a backoff that doubles from the first value to the
+#: cap, for at most the budget; the drain then stops with a log line, and the sweep takes over.
+DRAIN_BUSY_FIRST_WAIT_SECONDS = 0.5
+DRAIN_BUSY_MAX_WAIT_SECONDS = 10.0
+DRAIN_BUSY_BUDGET_SECONDS = 300.0
+#: The pause between two drain passes (#2555): the passes of a large backlog never hold the
+#: database back to back, so the requests and the webhooks of the platform get their connections.
+DRAIN_PASS_PAUSE_SECONDS = 0.5
 
 #: The drains started by a PUT, held so the event loop never drops one mid-run.
 _DRAINS: set[asyncio.Task[Any]] = set()
@@ -145,21 +154,34 @@ async def hold_vertical_lock(db: AsyncSession, vertical: str) -> None:
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": _DRAIN_LOCK + vertical})
 
 
+async def try_vertical_lock(db: AsyncSession, vertical: str) -> bool:
+    """Take the lock of :func:`hold_vertical_lock` without waiting; False when another writer holds it (#2555).
+
+    The blocking form made a drain pass wait on a long recompute until the statement timeout
+    killed the drain after 0 passes; the try form answers at once and the drain backs off.
+    """
+    taken = await db.scalar(text("SELECT pg_try_advisory_xact_lock(hashtext(:key))"), {"key": _DRAIN_LOCK + vertical})
+    return bool(taken)
+
+
 def event_data(vertical: str, on: bool, actor: User, waiting: int) -> dict[str, Any]:
     """The payload of ``ctem_case.opening_changed``."""
     return {"vertical": vertical, "on": on, "changed_by": str(actor.id), "waiting": waiting}
 
 
-async def drain_pass(db: AsyncSession, vertical: str) -> dict[str, int]:
+async def drain_pass(db: AsyncSession, vertical: str) -> dict[str, int] | None:
     """One drain pass: the waiting signals of one sweep batch opened, committed, frames published.
 
-    Holds a transaction-scoped advisory lock: a second drain of *vertical* waits for this pass's
-    commit and then finds those signals linked, so a fix never opens two cases.
+    Holds a transaction-scoped advisory lock: a second drain of *vertical* backs off until this
+    pass commits and then finds those signals linked, so a fix never opens two cases. None when
+    the lock is busy (#2555): nothing was read or written, the caller tries again later.
     """
     from app.services import ctem_case_loop as loop
 
     counts = {"opened": 0, "joined": 0, "skipped": 0}
-    await hold_vertical_lock(db, vertical)
+    if not await try_vertical_lock(db, vertical):
+        await db.rollback()
+        return None
     if not await is_on(db, vertical):
         await db.rollback()
         return counts
@@ -174,16 +196,26 @@ async def drain(vertical: str, *, session_factory: Any = None, max_passes: int =
     """Open the cases of every waiting confirmed signal now, pass after pass; the totals.
 
     Stops when a pass opens and joins nothing (none waits, or what waits cannot be opened), when
-    case opening is paused again, or after *max_passes*. Logged at the end. Never raises.
+    case opening is paused again, after *max_passes*, or when the vertical lock stays busy past
+    :data:`DRAIN_BUSY_BUDGET_SECONDS` (#2555). Passes are spaced by :data:`DRAIN_PASS_PAUSE_SECONDS`.
+    Logged at the end. Never raises.
     """
     if session_factory is None:
         from app.core.database import async_session as session_factory
     totals = {"passes": 0, "opened": 0, "joined": 0, "skipped": 0}
     started = time.monotonic()
     try:
-        for _ in range(max_passes):
-            async with session_factory() as db:
-                counts = await drain_pass(db, vertical)
+        while totals["passes"] < max_passes:
+            if totals["passes"]:
+                await asyncio.sleep(DRAIN_PASS_PAUSE_SECONDS)
+            counts = await _locked_pass(vertical, session_factory)
+            if counts is None:
+                logger.warning(
+                    "CTEM case opening drain of %s stopped: vertical lock busy for %.0f s, the sweep opens the rest",
+                    vertical,
+                    DRAIN_BUSY_BUDGET_SECONDS,
+                )
+                break
             totals["passes"] += 1
             for key, value in counts.items():
                 totals[key] += value
@@ -193,6 +225,22 @@ async def drain(vertical: str, *, session_factory: Any = None, max_passes: int =
         logger.exception("CTEM case opening drain of %s stopped after %s passes", vertical, totals["passes"])
     logger.info("CTEM case opening drain of %s: %s in %.1f s", vertical, totals, time.monotonic() - started)
     return totals
+
+
+async def _locked_pass(vertical: str, session_factory: Any) -> dict[str, int] | None:
+    """One :func:`drain_pass`, tried again with a doubling backoff while the lock is busy; None past the budget."""
+    wait = DRAIN_BUSY_FIRST_WAIT_SECONDS
+    deadline = time.monotonic() + DRAIN_BUSY_BUDGET_SECONDS
+    while True:
+        async with session_factory() as db:
+            counts = await drain_pass(db, vertical)
+        if counts is not None:
+            return counts
+        if time.monotonic() + wait > deadline:
+            return None
+        logger.info("CTEM case opening drain of %s: vertical lock busy, next try in %.1f s", vertical, wait)
+        await asyncio.sleep(wait)
+        wait = min(wait * 2, DRAIN_BUSY_MAX_WAIT_SECONDS)
 
 
 def _drain_name(vertical: str) -> str:

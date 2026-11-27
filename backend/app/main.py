@@ -4993,7 +4993,7 @@ async def health_ready():
             media_type="application/json",
         )
 
-    from app.core.database import engine
+    from app.core.database import health_engine
     from app.core.redis import redis_client
 
     async def _run_checks() -> tuple[dict, bool]:
@@ -5009,7 +5009,8 @@ async def health_ready():
         per_check_timeout = 4.0
 
         async def _check_database() -> str:
-            async with engine.connect() as conn:
+            # Its own one-connection engine (#2555): a request pool held by a burst never fails readiness.
+            async with health_engine().connect() as conn:
                 await conn.execute(text("SELECT 1"))
             return "ok"
 
