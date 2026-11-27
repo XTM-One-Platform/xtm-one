@@ -1375,6 +1375,20 @@ only function that computes a figure.
 | `fleet:<id>` | `fleet_id = id`, every person | open to whoever sees the fleet (`fleet_visible`); totals, by class, by unit, by agent of the fleet, by week; k rule | same plus "By person" when on |
 | `organization` | every fact | totals identical to the administrator's; by class, by unit, by week; by agent and by fleet for the objects he sees, the rest in "Other agents and fleets"; k rule | every row named; "By person" when on |
 
+Fleet scope and supervision (#2639). A fact's fleet is the fleet its run
+stamped, else its agent's HOME fleet (`fleet_runs.home_fleet_defaults_of`):
+an agent outside the fleet that only watches it (a supervisor: an agent whose
+`trace_supervision_target_agent_ids` names a home member,
+`roi_ledger.fleet_supervisors`) never adds a run, a minute or a cost to the
+fleet's hero, ROI, cost per run, list column or By agent. The fleet answer
+carries it apart as `figures.supervision` (`agents` and the totals of those
+agents, null when none, under the k rule for a non-administrator, never under
+`own_share_only`); the organization total still counts it, in its agent's row.
+Every answer states what its hero counts in `figures.basis`:
+`fleet_members`, `agent`, `mine` or `organization`. The fleet's Value tab says
+"This fleet's runs only. The organization total counts every agent." and,
+when `supervision` is set, the supervisors' count and cost on their own line.
+
 Every fact lands in exactly one row of every breakdown, so each breakdown sums
 to the hero without counting a fact twice. Each breakdown keeps its own
 residual row, for the facts that lack its own dimension only:

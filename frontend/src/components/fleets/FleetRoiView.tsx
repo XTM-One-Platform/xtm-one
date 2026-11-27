@@ -33,6 +33,7 @@ import {
   RoiAssumptions,
   RoiBreakdown,
   RoiEstimatedNote,
+  RoiFleetScopeNote,
   RoiKpiCards,
   RoiReportSkeleton,
   RoiResetNote,
@@ -176,6 +177,7 @@ export function FleetRoiView({ fleetId, onSetFleetDefault }: FleetRoiViewProps) 
     <div className="space-y-4" data-testid="fleet-roi-view">
       {header}
       <RoiResetNote since={report.data.value_measured_since} />
+      <RoiFleetScopeNote supervision={report.data.figures?.supervision} currency={currency} costMasked={report.data.cost_masked} />
       {report.data.estimated && <RoiEstimatedNote />}
       <RoiKpiCards
         figures={figures}
