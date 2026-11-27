@@ -573,7 +573,10 @@ job at a time on the platform (Redis lock `ctem:signals:purge-job`), in a strict
 order:
 
 1. **Pause intake.** The flag `ctem:signals:intake-paused` (2 h TTL, so a lost
-   pod never leaves intake off) is read by `ctem_signals.record_signal`, which
+   pod never leaves intake off; the running job refreshes it and the job lock
+   every third of the TTL, #2652, so a resync of any length keeps intake paused
+   on every pod, the status `running` and a second purge out, while a job whose
+   process died loses both within one TTL and reads interrupted) is read by `ctem_signals.record_signal`, which
    every source goes through: while it is set each one is refused with
    `SignalIntakePausedError` (a `SignalError`) and records nothing. The scheduled
    recheck and case sweep, the attack surface pass and the evidence health pass
@@ -598,6 +601,10 @@ order:
    held (a new host still undeclared on path 7, a held port on path 5 or 7), and
    the mark is replaced by the signal key, so the next pass dedupes on it; the
    pass itself runs only after every route and diffs against the pre-purge pass.
+   Its live progress is `steps.resync.counts.progress` (#2652): `read` entities
+   over every route, `rate_per_minute`, `elapsed_seconds`, `routes_done` of
+   `routes_total` and `eta_seconds`, an estimate from the routes done (null
+   before the first ends), written at most every 5 s while entities are read.
    While the routes replay, the paths list gives the outside paths the reason
    `resync_queued` (`quiet_reason`, `ctem_attack_surface.quiet_reasons`);
    after it, an outside path with no signal in 30 days names why (first pass

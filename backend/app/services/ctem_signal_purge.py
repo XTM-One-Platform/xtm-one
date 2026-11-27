@@ -35,8 +35,10 @@ the resync choice and the counts per step. ``dev-docs/ctem-signals.md`` section
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
@@ -62,7 +64,12 @@ SIGNAL_BATCH = 1000
 LOCK_RETRIES = 3
 #: The Redis key of the intake pause; its TTL ends a pause a lost pod never lifted.
 PAUSE_KEY = "ctem:signals:intake-paused"
+#: The life of the pause and of the job lock without a heartbeat (#2652): the running job refreshes
+#: both every third of it (:func:`_heartbeat`), so a resync longer than this keeps them; a job whose
+#: process died stops refreshing, and both end within one TTL (the status then reads interrupted).
 PAUSE_TTL_SECONDS = 2 * 3600
+#: How often the resync progress is written to the status while entities are read, at most.
+PROGRESS_WRITE_SECONDS = 5.0
 #: The Redis key that keeps a second job out, and the one that holds the job status.
 JOB_LOCK_KEY = "ctem:signals:purge-job"
 STATUS_KEY = "ctem:signals:purge-status"
@@ -115,6 +122,33 @@ async def pause_intake() -> None:
         await client.set(PAUSE_KEY, "1", ex=PAUSE_TTL_SECONDS)
     except Exception:
         logger.warning("CTEM signal purge: intake pause not shared through Redis", exc_info=True)
+
+
+async def _sleep(seconds: float) -> None:
+    await asyncio.sleep(seconds)
+
+
+async def _refresh_keys() -> None:
+    """One heartbeat: the job lock, and the pause while this process holds intake paused, live for one more TTL."""
+    try:
+        client = await _redis()
+        await client.set(JOB_LOCK_KEY, "1", ex=PAUSE_TTL_SECONDS)
+        if _LOCAL["paused"]:
+            await client.set(PAUSE_KEY, "1", ex=PAUSE_TTL_SECONDS)
+    except Exception:
+        logger.info("CTEM signal purge: job lock and pause not refreshed in Redis", exc_info=True)
+
+
+async def _heartbeat() -> None:
+    """Refresh the job lock and the intake pause every third of their TTL until cancelled (#2652).
+
+    Run beside the job by :func:`run_job` and cancelled before it resumes intake and releases
+    the lock, so a resync of any length stays ``running`` on every pod, no second job starts
+    and intake stays paused everywhere; never raises.
+    """
+    while True:
+        await _sleep(max(1.0, PAUSE_TTL_SECONDS / 3))
+        await _refresh_keys()
 
 
 async def resume_intake() -> None:
@@ -407,6 +441,7 @@ async def run_job(
         status["steps"][step]["counts"].update(counts_)
         await _write_status(status)
 
+    heartbeat = asyncio.create_task(_heartbeat(), name=f"ctem-signal-purge-heartbeat:{status['id']}")
     try:
         await mark("pause", "running")
         await pause_intake()
@@ -438,6 +473,12 @@ async def run_job(
             from app.services.ctem_signal_resync import resync as resync_all
 
             run_resync = resync or resync_all
+            tracker = ResyncProgress(status)
+
+            async def route_done(path: str, recorded: int) -> None:
+                tracker.route_done()
+                await path_done(path, recorded)
+
             token = RESYNC_BYPASS.set(True)
             try:
                 # The outside signals the last pass held come back first (#2634): the pass itself
@@ -446,7 +487,11 @@ async def run_job(
                 status["steps"]["resync"]["counts"]["held"] = held
                 await _write_status(status)
                 result = await run_resync(
-                    sessions=sessions, actor_id=actor_id, progress=path_done, windows=status.get("windows")
+                    sessions=sessions,
+                    actor_id=actor_id,
+                    progress=route_done,
+                    windows=status.get("windows"),
+                    on_read=tracker.read_one,
                 )
             finally:
                 RESYNC_BYPASS.reset(token)
@@ -459,6 +504,10 @@ async def run_job(
         status["steps"][failed]["state"] = "failed"
         status["error"] = f"{failed}: {format_exception_message(exc)}"[:1000]
     finally:
+        heartbeat.cancel()
+        # Its cancellation, or a stray error: the job's end runs whatever it was.
+        with contextlib.suppress(BaseException):
+            await heartbeat
         if not status["resync"] and not status["error"]:
             await _hold_recompute(sessions)
         await resume_intake()
@@ -471,6 +520,52 @@ async def run_job(
         await _release_job()
         await _announce(status)
     return status
+
+
+class ResyncProgress:
+    """The live progress of step 3 in the status (#2652): ``steps.resync.counts.progress``.
+
+    ``read`` entities read so far over every route, ``rate_per_minute`` since the step began,
+    ``routes_done`` of ``routes_total`` and ``eta_seconds``, an estimate from the routes done
+    (``None`` before the first one ends). Written at most every :data:`PROGRESS_WRITE_SECONDS`
+    while entities are read, and at each route's end.
+    """
+
+    def __init__(self, status: dict[str, Any]) -> None:
+        from app.services.ctem_signal_resync import ROUTE_COUNT
+
+        self.status = status
+        self.started = time.monotonic()
+        self.written = self.started
+        self.read = 0
+        self.routes_done_count = 0
+        self.routes_total = ROUTE_COUNT
+        self._store()
+
+    def _store(self) -> None:
+        elapsed = max(time.monotonic() - self.started, 1e-6)
+        done, total = self.routes_done_count, self.routes_total
+        eta = round(elapsed * (total - done) / done) if done and done < total else (0 if done >= total else None)
+        self.status["steps"]["resync"]["counts"]["progress"] = {
+            "read": self.read,
+            "rate_per_minute": round(self.read * 60 / elapsed, 1),
+            "elapsed_seconds": round(elapsed),
+            "routes_done": done,
+            "routes_total": total,
+            "eta_seconds": eta,
+        }
+
+    async def read_one(self) -> None:
+        self.read += 1
+        if time.monotonic() - self.written >= PROGRESS_WRITE_SECONDS:
+            self.written = time.monotonic()
+            self._store()
+            await _write_status(self.status)
+
+    def route_done(self) -> None:
+        self.routes_done_count = min(self.routes_done_count + 1, self.routes_total)
+        self.written = time.monotonic()
+        self._store()
 
 
 async def _audit(sessions: Any, actor_id: uuid.UUID, status: dict[str, Any]) -> None:

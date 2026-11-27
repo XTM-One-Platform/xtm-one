@@ -252,7 +252,7 @@ async def test_a_purge_resync_whose_pass_fails_raises_the_held_drift_again(monke
         status = purge.new_status(str(uuid.uuid4()), admin, resync=True)
         seen_at_routes: list[int] = []
 
-        async def _routes(*, sessions: Any, actor_id: Any, progress: Any, windows: Any) -> dict[str, Any]:
+        async def _routes(*, sessions: Any, actor_id: Any, progress: Any, windows: Any, **_: Any) -> dict[str, Any]:
             # The routes replay (30 minutes on a large tenant) with the drift already back.
             async with sessions() as db:
                 seen_at_routes.append(
