@@ -15274,7 +15274,6 @@
   "ROI figures are estimated from default baselines until your organization sets its own.": "組織が独自のベースラインを設定するまで、ROI の数値は既定のベースラインから推定されます。",
   "Screen left empty between two inserts": "2つのはめ込みの間で画面が空になった",
   "Simulation finished": "シミュレーション完了",
-  "Atomic test finished": "アトミックテスト完了",
   "Inject or atomic test finished": "インジェクトまたはアトミックテスト完了",
   "Finding created": "検出結果の作成",
   "Stored": "保存済み",
@@ -17923,6 +17922,7 @@
   "{count, plural, one {{products} could not be read, so open exposures there may be missing.} other {{products} could not be read, so open exposures there may be missing.}}": "{count, plural, other {{products} を読み込めませんでした。未対応のエクスポージャーが表示されていない可能性があります。}}",
   "On the issues you can see": "表示可能な課題について",
   "Unknown: {count, plural, one {# open issue} other {# open issues}} not readable with details": "不明：{count, plural, other {#件の未解決の課題}}の詳細を読み取れません",
+  "Unknown: CVE facts not readable for you": "不明: CVE の情報を読み取れません",
   "Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.": "未解決の課題を、それを解消する修正ごとにまとめたものです。OpenCTI または OpenAEV で表示できる課題を 1 件以上含むケースが表示されます。",
   "Open issues the fix closes. Issues you cannot see in their source product are counted as restricted.": "この修正で解消される未解決の課題。ソース製品で表示できない課題は制限として数えます。",
   "Reason": "理由",
@@ -20083,7 +20083,6 @@
   "Step in progress": "実行中のステップ",
   "Asset created": "アセット作成",
   "Asset updated": "アセット更新",
-  "Asset stale": "アセットの陳腐化",
   "Asset turned stale": "アセット陳腐化",
   "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "テナントの古さのしきい値を超えて OpenAEV でアセットが確認されていない場合にトリガーされます（しきい値が設定されるまで無効）。",
   "Finding deleted": "検出結果削除",
@@ -22164,7 +22163,7 @@
   "Triggers": "トリガー",
   "Playbook": "プレイブック",
   "Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.": "{count, plural, other {# 件のパス}}に供給: {paths}。オフにするとすべて停止します。",
-  "Owner: {owner}": "所有者: {owner}",
+  "Objects in {platform}:": "{platform} のオブジェクト:",
   "No legacy object left.": "旧オブジェクトは残っていません。",
   "{count, plural, one {# object would be removed:} other {# objects would be removed:}}": "{count, plural, other {# 件のオブジェクトが削除されます:}}",
   "{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}": "{count, plural, =0 {オブジェクトは削除されませんでした。} other {# 件のオブジェクトを削除しました。}}",
@@ -22180,7 +22179,5 @@
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, other {推定の主要資産 # 件}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, other {推定 # 件}}",
   "No asset matched; opened on: {reasons}": "一致する資産なし。開始の根拠: {reasons}",
-  "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "{platform} 内のオブジェクト（所有者: Signals、{count, plural, other {# 件}}）:",
-  "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "{platform} 内のその他の XTM One オブジェクト（フリート所有、ここでは数えません、{count, plural, other {# 件}}）:",
-  "{count, plural, one {{owners} also listens} other {{owners} also listen}} to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, other {{owners} も}}独自のトリガーで「{event}」イベントを受信します。各所有者は独自の配信を受け取り、独自の実行ユーザーで独自の実行を開始します。"
+  "Not scored": "スコアなし"
 }
