@@ -2608,6 +2608,17 @@ class Settings(BaseSettings):
     #     Observability wins. 0 (or negative) keeps every run.
     assignment_run_retention_days: int = 90
 
+    # --- CTEM signal retention (#2581, services/ctem_signal_retention.py) ---
+    #   - A signal the scope gate discarded is deleted by the hourly retention
+    #     pass once not seen (``last_seen_at``) for this many days; a later
+    #     sighting records it again through the gate. A signal a person
+    #     dismissed or linked to a case never is. A window saved in Settings >
+    #     Observability wins. 0 (or negative) turns the rule off.
+    ctem_signal_discarded_retention_days: int = 30
+    #   - The same for a watchlist signal (re-decided by the gate on every new
+    #     sighting).
+    ctem_signal_watchlist_retention_days: int = 90
+
     # --- Workset lifecycle ---
     # A workset is a WORKSPACE, not a deliverable: a scoped corpus an agent
     # builds to answer one question, holding documents, chunks and vectors. It

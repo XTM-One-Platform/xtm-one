@@ -53,7 +53,8 @@ export function FleetResetDialog({
   // An emergency stop holding automations of the fleet refuses the reset (UX round 2 B1):
   // the fleet is then never "already in its factory state", whatever the other counts say.
   const held = resetHeldByStop(plan.data);
-  const nothing = !!plan.data && lines.length === 0 && held.length === 0;
+  // A fleet already in its factory state is still reset: its value (ROI) restarts from now (#2580).
+  const settingsFactory = !!plan.data && lines.length === 0 && held.length === 0;
 
   const close = (next: boolean) => {
     if (!next) setError(null);
@@ -83,7 +84,7 @@ export function FleetResetDialog({
       inputAriaLabel={t_i18n("Type {name} to confirm", { name: fleetName })}
       confirmLabel={t_i18n("Reset fleet")}
       cancelLabel={t_i18n("Cancel")}
-      confirmDisabled={plan.isLoading || plan.isError || nothing || held.length > 0}
+      confirmDisabled={plan.isLoading || plan.isError || held.length > 0}
       pending={reset.isPending}
       error={error}
       closeOnConfirm={false}
@@ -110,15 +111,17 @@ export function FleetResetDialog({
               {t_i18n("Resume them from the emergency stop before resetting the fleet.")}
             </p>
           </div>
-        ) : nothing ? (
-          <p className="content-compact text-default-secondary">{t_i18n("The fleet is already in its factory state.")}</p>
         ) : (
           <div>
+            {settingsFactory && (
+              <p className="mb-2 content-compact text-default-secondary">{t_i18n("The fleet is already in its factory state.")}</p>
+            )}
             <p className="content-compact font-medium text-default-primary">{t_i18n("What is reset")}</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5 content-compact text-default-secondary" data-testid="fleet-reset-plan">
               {lines.map((line) => (
                 <li key={line}>{line}</li>
               ))}
+              <li>{t_i18n("Value (ROI) restarts from now")}</li>
             </ul>
           </div>
         )}

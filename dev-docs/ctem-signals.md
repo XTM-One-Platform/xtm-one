@@ -587,8 +587,50 @@ the pause is still there, `resume` stays `pending` and the dialog says intake is
 still paused. The progress dialog stops polling and the purge button opens the
 confirm dialog again.
 
+## 6quater. Retention of discarded and watchlist signals (#2581)
+
+Without it a signal is only deleted by the purge (section 6ter) or with its
+organization. `services/ctem_signal_retention.py` deletes the signals nobody will
+act on, in the hourly retention pass of the autonomous tick
+(`autonomous._run_retention_pass`, next to the file, coordination and run
+retentions):
+
+| State | Deleted when | Window key (Settings > Observability) | Default |
+|---|---|---|---|
+| `discarded` by the scope gate | not seen (`last_seen_at`) for the window | `coordination_retention.ctem_signal_discarded_days` | `CTEM_SIGNAL_DISCARDED_RETENTION_DAYS`, 30 |
+| `watchlist` | not seen for the window | `coordination_retention.ctem_signal_watchlist_days` | `CTEM_SIGNAL_WATCHLIST_RETENTION_DAYS`, 90 |
+
+- **0 turns a rule off.** The windows are keys of
+  `platform_settings.coordination_retention` (`services/coordination_retention.py`),
+  saved through `PUT /api/v1/settings/observability` (`CoordinationRetention`,
+  optional: a body without them keeps the stored windows), and fall back to the
+  environment defaults.
+- **Never deleted:** a signal a person dismissed (`decision.reason_code`
+  `dismissed_by_user`: deleting it would bring it back at its next sighting);
+  a signal in a case (it names one in `case_id`, or a case holds it as a
+  `signal` member, `ctem_case_issues`); any other state.
+- **A later sighting** of a deleted signal records it again as a first
+  sighting: the scope gate decides it anew and `ctem_signal.recorded` is raised.
+- **Watchlist re-decided on every sighting:** a new sighting of a watchlist
+  signal runs the scope gate again (`ctem-scope-gate.md` section 1), so it
+  rarely reaches its window while it keeps being seen.
+- **Batches:** `SIGNAL_RETENTION_BATCH` (1,000) per transaction, oldest
+  sighting first; the DELETE re-applies every rule, so a signal seen again or
+  joined to a case meanwhile stays. A pass deletes at most
+  `MAX_BATCHES_PER_PASS` batches per state; one that reached it sets the
+  `RETENTION_DRAIN` backlog and the next ticks drain the rest.
+- **Skipped during a purge:** `purge_running()` reads the purge job's guards
+  (a job of this process, the intake pause `PAUSE_KEY`, the job lock
+  `JOB_LOCK_KEY`); a Redis error never stops retention for good.
+- **Audit:** one platform audit row per pass that deleted anything
+  (`system:ctem_signal_retention`, action `retention_purge`, entity type
+  `ctem_signal`), with `details.deleted` per state and `details.retention_days`.
+
 ## 7. Tests
 
+`tests/test_ctem_signal_retention.py` and
+`tests/test_ctem_signal_retention_postgres.py` (section 6quater: each rule on
+PostgreSQL, a 0 window, the batches, the audit row, the purge guard),
 `tests/test_ctem_signals.py` (input rules, listener table, API and tools:
 one signal per path through each, idempotence, filters, recorder scope,
 Copilot mode), `tests/test_ctem_signals_postgres.py` (the upsert, a new

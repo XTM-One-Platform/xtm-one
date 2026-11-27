@@ -35,6 +35,7 @@ import {
   RoiEstimatedNote,
   RoiKpiCards,
   RoiReportSkeleton,
+  RoiResetNote,
   RoiUnderK,
 } from "@/components/roi/RoiReportParts";
 import { useFleetRoiReport } from "@/hooks/api/useRoiReportApi";
@@ -133,6 +134,7 @@ export function FleetRoiView({ fleetId, onSetFleetDefault }: FleetRoiViewProps) 
     return (
       <div className="space-y-4" data-testid="fleet-roi-view">
         {header}
+        <RoiResetNote since={report.data.value_measured_since} />
         {chat}
         {state === "none" ? (
           <EmptyState
@@ -163,6 +165,7 @@ export function FleetRoiView({ fleetId, onSetFleetDefault }: FleetRoiViewProps) 
     return (
       <div className="space-y-4" data-testid="fleet-roi-view">
         {header}
+        <RoiResetNote since={report.data.value_measured_since} />
         <RoiUnderK kind="fleet" {...underK} />
         <RoiKpiCards figures={figures} currency={currency} window={window} costMasked={report.data.cost_masked} />
         {chat}
@@ -172,6 +175,7 @@ export function FleetRoiView({ fleetId, onSetFleetDefault }: FleetRoiViewProps) 
   return (
     <div className="space-y-4" data-testid="fleet-roi-view">
       {header}
+      <RoiResetNote since={report.data.value_measured_since} />
       {report.data.estimated && <RoiEstimatedNote />}
       <RoiKpiCards
         figures={figures}

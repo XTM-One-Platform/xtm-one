@@ -76,6 +76,8 @@ def test_no_stored_value_answers_the_environment_defaults(monkeypatch):
     monkeypatch.setattr(cr.settings, "shared_state_archive_retention_days", 14)
     monkeypatch.setattr(cr.settings, "workset_resolved_retention_days", 7)
     monkeypatch.setattr(cr.settings, "assignment_run_retention_days", 90)
+    monkeypatch.setattr(cr.settings, "ctem_signal_discarded_retention_days", 30)
+    monkeypatch.setattr(cr.settings, "ctem_signal_watchlist_retention_days", 90)
     assert cr.coordination_retention_days(None) == {
         "work_item_resolved_days": 90,
         "work_item_abandoned_days": 14,
@@ -83,6 +85,8 @@ def test_no_stored_value_answers_the_environment_defaults(monkeypatch):
         "shared_state_archive_days": 14,
         "workset_resolved_days": 7,
         "assignment_run_days": 90,
+        "ctem_signal_discarded_days": 30,
+        "ctem_signal_watchlist_days": 90,
     }
 
 
