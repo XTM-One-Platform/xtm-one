@@ -124,16 +124,26 @@ async def list_ctem_signal_paths(
     counts: dict[str, dict[str, int]] = {}
     activity: dict[str, dict[str, Any]] = {}
     by_source: dict[str, dict[str, dict[str, Any]]] = {}
+    quiet: dict[str, dict[str, Any]] = {}
     if primary is not None:
+        from app.services.ctem_attack_surface import quiet_reasons
+
         reader = await _reader(db, user)
         counts = await signals.counts_by_path(db, organization_id=primary.id, recorded_by=reader)
         since = datetime.now(UTC) - timedelta(days=30)
         activity = await signals.activity_by_path(db, organization_id=primary.id, recorded_by=reader, since=since)
         by_source = await signals.activity_by_source(db, organization_id=primary.id, recorded_by=reader, since=since)
+        from app.services import ctem_signal_purge
+
+        job = await ctem_signal_purge.read_status() or {}
+        replaying = job.get("state") == "running" and bool(job.get("resync"))
+        quiet = await quiet_reasons(db, primary.id, resync_running=replaying)
     bound = await bound_sources(db, user.id)
     webhooks = webhook_sources.path_sources_of(await webhook_sources.list_sources(db))
     return {
-        "paths": signals.path_catalog(counts, bound=bound, activity=activity, by_source=by_source, webhooks=webhooks)
+        "paths": signals.path_catalog(
+            counts, bound=bound, activity=activity, by_source=by_source, webhooks=webhooks, quiet=quiet
+        )
     }
 
 
