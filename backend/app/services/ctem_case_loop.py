@@ -207,6 +207,15 @@ def fix_of(signal: CtemSignal) -> CaseFix:
             title=f"Upgrade {subject} to a fixed version"[:COLUMN_MAX],
         )
     key = _bounded_key(f"{kind}:{signal.subject_kind}/{_norm(signal.subject_ref)}")
+    if kind == "manual" and signal.subject_kind == "vulnerability":
+        exposure = _manual_exposure_key(signal)
+        if exposure:
+            # #2700: one (CVE, product, asset) exposure is one manual case whatever the subject spelling;
+            # an open case on the former spelling is still joined.
+            aliases = (key,) if key != exposure else ()
+            return CaseFix(
+                key=exposure, kind=kind, title=_TITLES[kind].format(subject=subject)[:COLUMN_MAX], aliases=aliases
+            )
     cve = signal_cve(signal) if kind == "patch" and signal.subject_kind == "vulnerability" else ""
     if cve:
         # #2558: one CVE is one patch case, whether its subject is the CVE id, its STIX id or a name.
@@ -235,6 +244,45 @@ def signal_cve(signal: Any) -> str:
         if found:
             return found.group(0).upper()
     return ""
+
+
+def _fold(value: object) -> str:
+    return " ".join(str(value or "").split()).casefold()
+
+
+def _evidence_values(evidence: dict[str, Any], keys: tuple[str, ...]) -> list[str]:
+    """The folded, non-empty strings an evidence holds under *keys* (a string or a list each), in order."""
+    values: list[str] = []
+    for name in keys:
+        raw = evidence.get(name)
+        for item in raw if isinstance(raw, list) else [raw]:
+            folded = _fold(item) if isinstance(item, str) else ""
+            if folded:
+                values.append(folded)
+    return list(dict.fromkeys(values))
+
+
+#: The evidence keys that name a signal's assets and products (the scope gate reads the same, #2171).
+_ASSET_KEYS: tuple[str, ...] = ("assets", "asset", "hostnames", "urls", "ips")
+_PRODUCT_KEYS: tuple[str, ...] = ("products", "software")
+
+
+def signal_exposure(signal: Any) -> tuple[str, list[str], list[str]]:
+    """``(cve, products, assets)`` a signal reports, folded; empty parts when it names none (#2700, pure)."""
+    evidence = getattr(signal, "evidence", None)
+    evidence = evidence if isinstance(evidence, dict) else {}
+    products = _evidence_values(evidence, _PRODUCT_KEYS)
+    if getattr(signal, "subject_kind", None) == "software" and _fold(getattr(signal, "subject_ref", None)):
+        products.insert(0, _fold(signal.subject_ref))
+    return signal_cve(signal), list(dict.fromkeys(products)), _evidence_values(evidence, _ASSET_KEYS)
+
+
+def _manual_exposure_key(signal: Any) -> str:
+    """``manual:vulnerability/<cve>:<products>:<assets>`` of a CVE signal, ``""`` when it names no CVE (#2700)."""
+    cve, products, assets = signal_exposure(signal)
+    if not cve:
+        return ""
+    return _bounded_key(f"manual:vulnerability/{cve.lower()}:{','.join(sorted(products))}:{','.join(sorted(assets))}")
 
 
 def canonical_key(key: str) -> str:
@@ -415,10 +463,8 @@ async def hold_key_lock(db: AsyncSession, organization_id: uuid.UUID, vertical: 
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": lock})
 
 
-async def _open_case_for_key(
-    db: AsyncSession, organization_id: uuid.UUID, vertical: str, key: str, aliases: tuple[str, ...] = ()
-) -> CtemCase | None:
-    rows = list(
+async def _open_cases(db: AsyncSession, organization_id: uuid.UUID, vertical: str) -> list[CtemCase]:
+    return list(
         (
             await db.execute(
                 select(CtemCase).where(
@@ -429,6 +475,12 @@ async def _open_case_for_key(
             )
         ).scalars()
     )
+
+
+async def _open_case_for_key(
+    db: AsyncSession, organization_id: uuid.UUID, vertical: str, key: str, aliases: tuple[str, ...] = ()
+) -> CtemCase | None:
+    rows = await _open_cases(db, organization_id, vertical)
     for case in rows:
         if key in (case.keys or []):
             return case
@@ -444,6 +496,61 @@ async def _open_case_for_key(
         if any(rules.same_product_key(key, k) for k in case.keys or []):
             case.keys = [*(case.keys or []), key]
             return case
+    return None
+
+
+def _case_products(case: Any) -> set[str]:
+    """The folded product names an upgrade case stands for: its label, and each upgrade key's product (#2700)."""
+    names = {_fold(getattr(case, "product_label", None))}
+    for key in case.keys or []:
+        parts = rules.upgrade_key_parts(key)
+        if parts is not None:
+            vendor, product, _version = parts
+            names.add(product)
+            if vendor != "-" and not product.startswith(vendor + " "):
+                names.add(f"{vendor} {product}")
+    return {n for n in names if n}
+
+
+def _same_product(left: str, right: str) -> bool:
+    """Whether two folded product names name one product, one behind its publisher (``chrome``, ``google chrome``)."""
+    from app.services.ctem_case_versions import product_keys
+
+    return left == right or left in product_keys(right) or right in product_keys(left)
+
+
+async def _exposure_case(db: AsyncSession, signal: CtemSignal, vertical: str) -> CtemCase | None:
+    """The open case that already holds the exposure a manual signal reports, else ``None`` (#2700).
+
+    A patch case of the signal's CVE holds it; so does an upgrade case of one of the signal's
+    products (the version it upgrades to set aside) whose running assets include every asset the
+    signal names. A signal that names no CVE and no product, or an asset no such case runs on,
+    finds none and opens its own case, as before.
+    """
+    cve, products, assets = signal_exposure(signal)
+    if not cve and not products:
+        return None
+    rows = await _open_cases(db, signal.organization_id, vertical)
+    if cve:
+        patch = f"patch:vulnerability/{cve.lower()}"
+        for case in rows:
+            if any(canonical_key(k) == patch for k in case.keys or []):
+                return case
+    if not products:
+        return None
+    from app.services.ctem_case_owner import asset_names
+    from app.services.ctem_case_versions import running_asset_names
+
+    wanted = set(assets) | set(asset_names(signal))
+    for case in rows:
+        if case.remediation_kind != "upgrade":
+            continue
+        held = _case_products(case)
+        if not any(_same_product(p, h) for p in products for h in held):
+            continue
+        if wanted and not wanted <= {_fold(n) for n in await running_asset_names(db, case)}:
+            continue
+        return case
     return None
 
 
@@ -482,6 +589,11 @@ async def open_from_signal(
     # #2558: the lookup and the insert under the key's lock, so two openings of one fix meet.
     await hold_key_lock(db, signal.organization_id, vertical, fix.key)
     case = await _open_case_for_key(db, signal.organization_id, vertical, fix.key, fix.aliases)
+    if case is None and fix.kind == "manual":
+        # #2700: an exposure an open patch or upgrade case already holds joins that case, its key added there.
+        case = await _exposure_case(db, signal, vertical)
+        if case is not None and fix.key not in (case.keys or []):
+            case.keys = [*(case.keys or []), fix.key]
     if case is None and not await case_opening.take_opening_token(vertical):
         # #2570: the per-minute opening budget of the vertical is spent: the signal stays confirmed
         # with no case and opens on a next pass (the paced pass of the autonomous tick, the sweep).
