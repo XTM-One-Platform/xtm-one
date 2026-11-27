@@ -403,10 +403,18 @@ async def load_task_replay(
 
         # Whether each recording the cut segment started was created, so the note names it.
         await resume_landed.judge_for_resume(in_flight, conversation_id, user_id)
+    # A cut result whose whole text the checkpoint holds becomes a file the resumed attempt reads (#2689),
+    # in the scope it reads files from: the delegating conversation, else the run.
+    resumed = await turn_checkpoint.keep_wholes(
+        resumed,
+        user_id=user_id,
+        conversation_id=str(conversation_id) if conversation_id is not None else None,
+        run_id=str(assignment_run_id) if conversation_id is None and assignment_run_id is not None else None,
+    )
     # A file the note names is one the resumed attempt can open (#11847).
     resumed = replace(resumed, spilled=await turn_checkpoint.readable_spills(resumed.spilled, user_id))
     note = turn_checkpoint.resume_note(resumed, workspace=workspace, code_interpreter=code_interpreter)
-    history = [*messages, *([note] if note is not None else [])]
+    history = [*resumed.messages, *([note] if note is not None else [])]
     # Kept by this attempt's checkpoint: a later resume replays it, its in-flight line included.
     resumed = resumed.with_note(note)
     turn_id = stored.get("turn_id") if isinstance(stored, dict) else None

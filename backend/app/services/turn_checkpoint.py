@@ -111,6 +111,8 @@ MAX_REPLAYED_ARGUMENT_CHARS = 20_000
 #: ``FileAttachment.source`` of a result kept whole for a resume: an internal
 #: file, never listed for the user nor attached to a reply (``app.llm.base``).
 SPILL_SOURCE = CHECKPOINT_FILE_SOURCE
+#: What one checkpoint keeps at most of the whole texts of cut results no file holds yet (#2689).
+MAX_KEPT_WHOLE_CHARS = 400_000
 #: Cut results the resume note names one by one.
 _NOTE_MAX_SPILLED = 10
 #: A checkpoint older than this is not resumed: what its tools read has aged.
@@ -527,16 +529,30 @@ def cut_named_ids(content: str, *, exclude: Iterable[str] = ()) -> list[str]:
     return list(seen)[-MAX_CUT_NAMED_IDS:]
 
 
-def _cut_note(total: int, file_id: str | None, filename: str, named_ids: Sequence[str] = ()) -> str:
+def _cut_note(
+    total: int,
+    file_id: str | None,
+    filename: str,
+    named_ids: Sequence[str] = (),
+    call: str | None = None,
+) -> str:
+    """The marker ending a cut result: where the whole result is, or how to read its rest again.
+
+    *call* is the call that returned it, as ``name(arguments)``: a result kept
+    in no file names it, so the resumed turn knows which call to make again
+    (#2689); never a bare "not kept" with no next step.
+    """
     named = (
         f" Ids the part not shown names (a file among them stays readable by its id): {', '.join(named_ids)}."
         if named_ids
         else ""
     )
     if file_id is None:
+        again = f"call {call} again" if call else "call the tool again"
         return (
             f"\n\n[Result cut for the replay of an interrupted turn: the first {REPLAY_HEAD_CHARS:,} of "
-            f"{total:,} characters are shown; the rest was not kept.{named}]"
+            f"{total:,} characters are shown; the rest was not kept in any file. To read it, {again} "
+            f"with a narrower page (a smaller limit or an offset) or a workspace path.{named}]"
         )
     from app.services.code_interpreter import code_interpreter_offered, mount_path_hint
     from app.tools.base import offered_tools
@@ -571,6 +587,40 @@ def _cut_arguments(arguments: object, limit: int = MAX_REPLAYED_ARGUMENT_CHARS) 
     return cut
 
 
+async def _keep_file(
+    text: str,
+    *,
+    user_id: object,
+    filename: str,
+    conversation_id: str | None,
+    run_id: str | None,
+    chars: int,
+) -> str | None:
+    """*text* stored as an internal file of *user_id* (:data:`SPILL_SOURCE`); its id, ``None`` when it failed."""
+    try:
+        from app.services.builtin_tools._shared import _persist_generated_file
+
+        row = await _persist_generated_file(
+            user_id=str(user_id),
+            filename=filename,
+            raw_bytes=text.encode("utf-8"),
+            content_type="text/plain",
+            conversation_id=conversation_id,
+            assignment_run_id=run_id,
+            source=SPILL_SOURCE,
+        )
+        row_id = getattr(row, "id", None)
+        return str(row_id) if row_id is not None else None
+    except Exception as exc:
+        logger.warning(
+            "Could not keep a %d-character result of %s whole for its resume; the replay shows its start only: %s",
+            chars,
+            conversation_id or run_id,
+            format_exception_message(exc),
+        )
+        return None
+
+
 async def _spill(
     entries: list[dict],
     *,
@@ -580,6 +630,7 @@ async def _spill(
     files_conversation_id: str | None = None,
     files_run_id: str | None = None,
     kept_text: Callable[[str], str] | None = None,
+    keep_whole: bool = False,
 ) -> list[dict]:
     """*entries* with every oversized result cut and kept whole as a file of *user_id*.
 
@@ -591,15 +642,25 @@ async def _spill(
     that is no conversation, and names the scope its resume reads files from.
     *kept_text* turns the result into the text the file holds (a run keeps its
     known secrets as markers, as in its checkpoint).
+
+    *keep_whole* (a turn with an acting user, before any stop): a cut result
+    kept in no file keeps its whole text in the checkpoint itself, under
+    ``whole``, so keeping it does not depend on a late write racing the
+    process exit (#2689). The resume turns it into a file
+    (:func:`keep_wholes`); a turn that ends normally deletes the checkpoint,
+    so it creates no file. :func:`_wholes_within` bounds what is kept.
     """
     out: list[dict] = []
     names: dict[str, str] = {}
+    call_lines: dict[str, str] = {}
     for entry in entries:
         if entry.get("role") == "assistant" and entry.get("tool_calls"):
             calls = []
             for call in entry["tool_calls"]:
                 names[str(call.get("id"))] = str(call.get("name"))
-                calls.append({**call, "arguments": _cut_arguments(call.get("arguments"))})
+                cut_arguments = _cut_arguments(call.get("arguments"))
+                call_lines[str(call.get("id"))] = f"{call.get('name')}({_arguments_line(cut_arguments)})"
+                calls.append({**call, "arguments": cut_arguments})
             entry = {**entry, "tool_calls": calls}
         elif entry.get("role") == "tool" and not entry.get("spill"):
             content = entry.get("content") or ""
@@ -613,33 +674,21 @@ async def _spill(
                     filename = f"interrupted-turn-result-{name}-{call_id[-8:] or 'call'}.txt"
                     file_id: str | None = None
                     if user_id:
-                        try:
-                            from app.services.builtin_tools._shared import _persist_generated_file
-
-                            text = kept_text(content) if kept_text is not None else content
-                            row = await _persist_generated_file(
-                                user_id=user_id,
-                                filename=filename,
-                                raw_bytes=text.encode("utf-8"),
-                                content_type="text/plain",
-                                conversation_id=(
-                                    files_conversation_id
-                                    if files_conversation_id is not None or files_run_id is not None
-                                    else str(conversation_id)
-                                ),
-                                assignment_run_id=files_run_id,
-                                source=SPILL_SOURCE,
-                            )
-                            file_id = str(row.id)
-                        except Exception as exc:
-                            logger.warning(
-                                "Could not keep a %d-character result of conversation %s whole for its "
-                                "resume; the replay shows its start only: %s",
-                                len(content),
-                                conversation_id,
-                                format_exception_message(exc),
-                            )
+                        file_id = await _keep_file(
+                            kept_text(content) if kept_text is not None else content,
+                            user_id=user_id,
+                            filename=filename,
+                            conversation_id=(
+                                files_conversation_id
+                                if files_conversation_id is not None or files_run_id is not None
+                                else str(conversation_id)
+                            ),
+                            run_id=files_run_id,
+                            chars=len(content),
+                        )
                     spill = {"file_id": file_id, "chars": len(content), "filename": filename, "name": name}
+                    if call_id in call_lines:
+                        spill["call"] = call_lines[call_id]
                     known[call_id] = spill
                 entry = {
                     **entry,
@@ -649,25 +698,134 @@ async def _spill(
                         spill["file_id"],
                         spill["filename"],
                         cut_named_ids(content, exclude=[spill["file_id"] or ""]),
+                        call_lines.get(call_id),
                     ),
                     "spill": spill,
                 }
+                if spill["file_id"] is None and keep_whole:
+                    entry["whole"] = content
         out.append(entry)
     return out
+
+
+def _wholes_within(entries: list[dict[str, Any]], limit: int = MAX_CHECKPOINT_CHARS) -> list[dict[str, Any]]:
+    """*entries* with the ``whole`` texts that fit *limit* with the rest, the newest kept first.
+
+    Applied after :func:`bounded`, which counts the replayed heads alone: a
+    whole text never pushes a round out, it is dropped itself (that result
+    is then replayed cut with the call to make again).
+    """
+    room = min(limit - sum(_entry_chars(entry) for entry in entries), MAX_KEPT_WHOLE_CHARS)
+    out = list(entries)
+    for index in range(len(out) - 1, -1, -1):
+        whole = out[index].get("whole")
+        if whole is None:
+            continue
+        if isinstance(whole, str) and len(whole) <= room:
+            room -= len(whole)
+        else:
+            out[index] = {k: v for k, v in out[index].items() if k != "whole"}
+    return out
+
+
+async def keep_wholes(
+    resumed: ResumedWork,
+    *,
+    user_id: object,
+    conversation_id: str | None = None,
+    run_id: str | None = None,
+) -> ResumedWork:
+    """*resumed* with every cut result whose whole text the checkpoint holds kept as a file of *user_id*.
+
+    The interrupted turn stored the whole text (``_spill(keep_whole=True)``)
+    when no file was made before it died. The resuming turn keeps it as a
+    file in its scope (*conversation_id*, or the assignment run *run_id*),
+    and the replayed result names that file, as if the stop had kept it.
+    Without a user, or when the file cannot be stored, nothing changes.
+    """
+    if user_id is None:
+        return resumed
+    wholes = {
+        str(entry.get("tool_call_id") or ""): entry["whole"]
+        for entry in resumed.entries
+        if entry.get("role") == "tool" and isinstance(entry.get("whole"), str)
+    }
+    if not wholes:
+        return resumed
+    spilled: list[dict[str, Any]] = []
+    kept: dict[str, dict[str, Any]] = {}
+    for spill in resumed.spilled:
+        call_id = str(spill.get("call_id") or "")
+        whole = wholes.get(call_id)
+        if spill.get("file_id") or whole is None:
+            spilled.append(spill)
+            continue
+        filename = str(spill.get("filename") or f"interrupted-turn-result-{call_id[-8:] or 'call'}.txt")
+        file_id = await _keep_file(
+            whole,
+            user_id=user_id,
+            filename=filename,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            chars=len(whole),
+        )
+        if file_id is None:
+            spilled.append(spill)
+            continue
+        spill = {**spill, "file_id": file_id, "filename": filename}
+        spilled.append(spill)
+        kept[call_id] = spill
+    if not kept:
+        return resumed
+
+    def _content(call_id: str, content: str) -> str:
+        spill = kept[call_id]
+        return content[:REPLAY_HEAD_CHARS] + _cut_note(
+            int(spill.get("chars") or len(wholes[call_id])),
+            spill["file_id"],
+            spill["filename"],
+            cut_named_ids(wholes[call_id], exclude=[spill["file_id"]]),
+        )
+
+    entries: list[dict[str, Any]] = []
+    for entry in resumed.entries:
+        call_id = str(entry.get("tool_call_id") or "")
+        if entry.get("role") == "tool" and call_id in kept:
+            entry = {k: v for k, v in entry.items() if k != "whole"}
+            entry["content"] = _content(call_id, entry.get("content") or "")
+            entry["spill"] = {k: v for k, v in kept[call_id].items() if k != "call_id"}
+        entries.append(entry)
+    messages = [
+        replace(message, content=_content(str(message.tool_call_id), message.content or ""))
+        if message.role == "tool" and str(message.tool_call_id or "") in kept
+        else message
+        for message in resumed.messages
+    ]
+    return replace(resumed, messages=messages, entries=entries, spilled=spilled)
 
 
 def with_spills(entries: list[dict], stored: object) -> list[dict]:
     """The cut results of *entries* named again with the files *stored* kept them in, as ``spilled`` lists them.
 
     Each entry the stored checkpoint cut gets its ``spill`` back (so a later
-    write keeps no second file); the return is ``ResumedWork.spilled``.
+    write keeps no second file), and the ``whole`` text the checkpoint kept
+    of a result no file holds (:func:`keep_wholes`); the return is
+    ``ResumedWork.spilled``.
     """
     spills = _spilled_of(stored)
+    wholes = {
+        str(entry.get("tool_call_id") or ""): entry["whole"]
+        for entry in (stored if isinstance(stored, list) else ())
+        if isinstance(entry, dict) and entry.get("role") == "tool" and isinstance(entry.get("whole"), str)
+    }
     spilled: list[dict] = []
     for entry in entries:
-        spill = spills.get(str(entry.get("tool_call_id") or "")) if entry.get("role") == "tool" else None
+        call_id = str(entry.get("tool_call_id") or "")
+        spill = spills.get(call_id) if entry.get("role") == "tool" else None
         if spill is not None:
             entry["spill"] = spill
+            if not spill.get("file_id") and call_id in wholes:
+                entry["whole"] = wholes[call_id]
             spilled.append({"call_id": entry.get("tool_call_id"), **spill})
     return spilled
 
@@ -738,23 +896,40 @@ def resume_note(
             "runs again and answers what that call left."
         )
     if resumed.spilled:
-        named = [
-            f"{s.get('name') or 'tool'} ({int(s.get('chars') or 0):,} characters) -> "
-            + (f"conversation file {s['file_id']}" if s.get("file_id") else "not kept")
-            for s in resumed.spilled[:_NOTE_MAX_SPILLED]
-        ]
-        more = f", +{len(resumed.spilled) - _NOTE_MAX_SPILLED} more" if len(resumed.spilled) > _NOTE_MAX_SPILLED else ""
-        parts.append(
-            f"{len(resumed.spilled)} result(s) are replayed cut and kept whole as conversation files "
-            + (
-                "(read_file_content, or attachments/ in code_interpreter): "
-                if code_interpreter
-                else "(read_file_content): "
+        kept = [s for s in resumed.spilled if s.get("file_id")]
+        lost = [s for s in resumed.spilled if not s.get("file_id")]
+        if kept:
+            named = [
+                f"{s.get('name') or 'tool'} ({int(s.get('chars') or 0):,} characters) -> conversation file "
+                f"{s['file_id']}"
+                for s in kept[:_NOTE_MAX_SPILLED]
+            ]
+            more = f", +{len(kept) - _NOTE_MAX_SPILLED} more" if len(kept) > _NOTE_MAX_SPILLED else ""
+            parts.append(
+                f"{len(kept)} result(s) are replayed cut and kept whole as conversation files "
+                + (
+                    "(read_file_content, or attachments/ in code_interpreter): "
+                    if code_interpreter
+                    else "(read_file_content): "
+                )
+                + "; ".join(named)
+                + more
+                + "."
             )
-            + "; ".join(named)
-            + more
-            + "."
-        )
+        if lost:
+            # #2689: a result no file holds names the call that returned it and the way back to its rest.
+            named = [
+                f"{s.get('call') or s.get('name') or 'tool'} ({int(s.get('chars') or 0):,} characters)"
+                for s in lost[:_NOTE_MAX_SPILLED]
+            ]
+            more = f", +{len(lost) - _NOTE_MAX_SPILLED} more" if len(lost) > _NOTE_MAX_SPILLED else ""
+            parts.append(
+                f"{len(lost)} result(s) are replayed cut and their rest was kept in no file: "
+                + "; ".join(named)
+                + more
+                + ". The data is not lost to you: before you conclude it is unavailable, call the tool again "
+                "to read the rest, with a narrower page (a smaller limit or an offset) or a workspace path."
+            )
     if workspace:
         parts.append(f"The sandbox workspace (workspace/) holds: {workspace}")
     # The prompt's start time is stale by the length of the cut (#8660).
@@ -1036,6 +1211,8 @@ async def load_replay(
 
     # Whether each recording the cut segment started was created, so the note names it.
     await resume_landed.judge_for_resume(resumed.in_flight, conversation_id, user_id)
+    # A cut result whose whole text the checkpoint holds becomes a file the resumed turn reads (#2689).
+    resumed = await keep_wholes(resumed, user_id=user_id, conversation_id=str(conversation_id))
     # A file the note names is one the resumed turn can open (#11847).
     resumed = replace(resumed, spilled=await readable_spills(resumed.spilled, user_id))
     note = resume_note(
@@ -1184,15 +1361,21 @@ class TurnCheckpoint:
             self._attempted = True
             try:
                 entries = _with_cut_cause(entries)
-                entries = bounded(
-                    await _spill(
-                        entries,
-                        known=self._spilled,
-                        conversation_id=self.conversation_id,
-                        user_id=self.user_id if self._keep_files else None,
-                        files_conversation_id=self._files_conversation_id,
-                        files_run_id=self._files_run_id,
-                        kept_text=self._kept_text,
+                entries = _wholes_within(
+                    bounded(
+                        await _spill(
+                            entries,
+                            known=self._spilled,
+                            conversation_id=self.conversation_id,
+                            user_id=self.user_id if self._keep_files else None,
+                            files_conversation_id=self._files_conversation_id,
+                            files_run_id=self._files_run_id,
+                            kept_text=self._kept_text,
+                            # A turn with an acting user keeps the whole text of a cut result no file
+                            # holds in the checkpoint itself, the stop's write included (its file write
+                            # may fail): a file no longer depends on that write (#2689).
+                            keep_whole=bool(self.user_id),
+                        )
                     )
                 )
                 await self._write(entries)
