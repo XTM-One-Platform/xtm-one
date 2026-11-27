@@ -22131,5 +22131,7 @@
   "GitHub Dependabot alerts": "GitHub Dependabot アラート",
   "GitLab dependency findings": "GitLab の依存関係の検出結果",
   "OpenAEV simulation results": "OpenAEV のシミュレーション結果",
-  "Attack surface pass": "アタックサーフェスのパス"
+  "Attack surface pass": "アタックサーフェスのパス",
+  "Recorded by the GitLab asset sync": "GitLab アセット同期で記録",
+  "Delivered by event only": "イベントでのみ配信"
 }
