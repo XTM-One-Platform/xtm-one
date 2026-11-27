@@ -90,7 +90,8 @@ def test_a_family_reference_reaches_only_a_device_of_that_known_os_family() -> N
     assert [h["asset"] for h in hits] == ["LAPTOP-W11"]
     hop = hits[0]
     assert hop["family_only"] is True and hop["version_verified"] is False
-    assert hop["software"].lower() == "windows"
+    # #2711: the hop names the label the device runs, the family reference beside it.
+    assert hop["reference"].lower() == "windows" and hop["software"] == "Microsoft Windows 11"
 
 
 def test_a_family_only_hop_counts_in_no_total() -> None:

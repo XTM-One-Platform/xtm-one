@@ -67,7 +67,9 @@ def test_a_link_through_an_asset_group_of_intune_devices_opens_the_case_with_the
     pa_row = next(s for s in decision.record["scope"]["sources"] if s["from"] == "primary_asset")
     assert pa_row["name"] == WORKSTATIONS and pa_row["criticality"] == "high"
     hop = pa_row["chain"][0]
-    assert hop["software"] == "Windows 11" and hop["asset"] == "LAPTOP-042"
+    # #2711: the label the device runs, the CVE software reference beside it.
+    assert hop["software"] == "Microsoft Windows 11 Enterprise" and hop["reference"] == "Windows 11"
+    assert hop["asset"] == "LAPTOP-042"
     assert hop["through_kind"] == "asset_group" and hop["through"] == "All Windows x86_64"
     assert hop["source"] == "rule" and hop["roles"] == ["used_by"]
     assert decision.record["reconcile"]["primary_assets"][0]["primary_asset_key"] == _key(WORKSTATIONS)
