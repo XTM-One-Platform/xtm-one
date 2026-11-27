@@ -522,12 +522,16 @@ _MD_ITALIC_ALT_RE = re.compile(
 )
 _MD_STRIKE_RE = re.compile(r"~~(.+?)~~", re.DOTALL)
 _MD_CODE_RE = re.compile(r"`([^`]+)`")
+# ``@[Name](user:<id>)``: a user mention, the form the read tools show one in
+# (``_common._user_mention_text``).
+_MD_USER_MENTION_RE = re.compile(r"@\[([^\]]+)\]\(user:([0-9A-Za-z-]+)\)")
 
 # (priority, regex, kind). On a positional tie the lower priority wins, so a
 # longer marker (``***``) is preferred over the shorter ``**`` / ``*`` that
 # would also match at the same index.
 _INLINE_RULES: tuple[tuple[int, re.Pattern, str], ...] = (
     (0, _MD_CODE_RE, "code"),
+    (0, _MD_USER_MENTION_RE, "user_mention"),
     (0, _MD_LINK_RE, "link"),
     (1, _MD_BOLD_ITALIC_RE, "bold_italic"),
     (2, _MD_BOLD_RE, "bold"),
@@ -579,8 +583,9 @@ def _parse_inline_markdown(
     """Convert inline Markdown in *text* to a Notion rich_text array.
 
     Handles **bold**, *italic* / _italic_, ``code``, ~~strikethrough~~,
-    ***bold italic*** and [label](url). Markers nest (e.g. a bold link), runs
-    longer than 2000 chars are split, and an empty string yields ``[]``.
+    ***bold italic***, [label](url) and the user mention @[Name](user:<id>).
+    Markers nest (e.g. a bold link), runs longer than 2000 chars are split,
+    and an empty string yields ``[]``.
     """
     annotations = annotations or {}
     out: list[dict] = []
@@ -609,6 +614,14 @@ def _parse_inline_markdown(
         if kind == "code":
             # Code spans are terminal: never reinterpret their contents.
             _append_inline_text(out, inner, {**annotations, "code": True}, link)
+        elif kind == "user_mention":
+            mention: dict[str, Any] = {
+                "type": "mention",
+                "mention": {"type": "user", "user": {"id": match.group(2)}},
+            }
+            if annotations:
+                mention["annotations"] = dict(annotations)
+            out.append(mention)
         elif kind == "link":
             out.extend(
                 _parse_inline_markdown(inner, annotations, match.group(2), _depth + 1)
@@ -757,8 +770,9 @@ def _build_nested_list(items: list[tuple[int, str, str, bool]]) -> list[dict]:
 def _heading_from_line(content: str) -> tuple[str, str] | None:
     """Return ``(heading_type, text)`` for a ``#``..``######`` line, else None.
 
-    Notion only has heading_1..heading_3, so ``####``+ collapse to heading_3.
-    A space after the hashes is required (so ``#tag`` stays a paragraph).
+    Notion has heading_1..heading_4, so ``#####`` and ``######`` collapse to
+    heading_4. A space after the hashes is required (so ``#tag`` stays a
+    paragraph).
     """
     if not content.startswith("#"):
         return None
@@ -768,7 +782,7 @@ def _heading_from_line(content: str) -> tuple[str, str] | None:
     rest = content[hashes:]
     if not rest.startswith(" "):
         return None
-    return f"heading_{min(hashes, 3)}", rest[1:].strip()
+    return f"heading_{min(hashes, 4)}", rest[1:].strip()
 
 
 # The layout syntax of ``_text_to_blocks``, as the Markdown write tools
@@ -790,7 +804,7 @@ def _text_to_blocks(text: str) -> list[dict]:
     """Convert markdown-like text to Notion blocks.
 
     Block-level syntax:
-      # / ## / ### Heading (####-###### collapse to heading_3)
+      # / ## / ### / #### Heading (#####-###### collapse to heading_4)
       - / * / + Bullet list item    1. / 1) Numbered list item
       [] / [ ] To-do                [x] Checked to-do
       > Quote                       --- / *** / ___ Divider
@@ -974,6 +988,36 @@ _CALLOUT_KINDS: dict[str, dict[str, str]] = {
 }
 
 
+# Notion's callout ``icon`` is an object or absent, never null (Notion-Version
+# 2025-09-03): a callout created without one gets the default icon, and an
+# update cannot remove it.
+CALLOUT_ICON_REMOVAL_REFUSAL = (
+    "Notion does not allow removing a callout icon through the API; remove it in the Notion UI"
+)
+_NO_ICON_VALUES = frozenset({"none", "null", "no", "off", "false"})
+
+
+def find_null_callout_icon(block: Any, _depth: int = 0) -> str | None:
+    """The path of a callout ``icon`` set to null inside one block payload, or ``None``."""
+    if _depth > 32 or not isinstance(block, dict):
+        return None
+    callout = block.get("callout")
+    if isinstance(callout, dict) and "icon" in callout and callout["icon"] is None:
+        return "callout.icon"
+    for key, value in block.items():
+        children = value.get("children") if isinstance(value, dict) else None
+        if key == "children":
+            children = value
+        if not isinstance(children, list):
+            continue
+        prefix = "children" if key == "children" else f"{key}.children"
+        for idx, child in enumerate(children):
+            found = find_null_callout_icon(child, _depth + 1)
+            if found:
+                return f"{prefix}[{idx}].{found}"
+    return None
+
+
 def _parse_callout_marker(spec: str) -> dict:
     """The ``icon`` / ``color`` body fields a ``[!...]`` marker sets."""
     kind: str | None = None
@@ -988,6 +1032,8 @@ def _parse_callout_marker(spec: str) -> dict:
                 )
             if key in attrs:
                 raise MarkdownBlockError(f"`{key}` is set twice in `[!{spec}]`")
+            if key == "icon" and value.lower() in _NO_ICON_VALUES:
+                raise MarkdownBlockError(f"`icon={value}` in `[!{spec}]`: {CALLOUT_ICON_REMOVAL_REFUSAL}")
             attrs[key] = value
         elif kind is None and token.lower() in _CALLOUT_KINDS:
             kind = token.lower()

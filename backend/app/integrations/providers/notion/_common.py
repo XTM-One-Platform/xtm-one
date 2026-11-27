@@ -151,6 +151,7 @@ _NOTION_BLOCK_TYPES = frozenset(
         "heading_1",
         "heading_2",
         "heading_3",
+        "heading_4",
         "bulleted_list_item",
         "numbered_list_item",
         "to_do",
@@ -732,8 +733,35 @@ def _rich_text_link(item: dict) -> str | None:
     return url
 
 
+# How a user mention reads: ``@[Name](user:<id>)``, so a writer checking its
+# page tells a real mention from the literal text "@Name". The comment writer
+# parses the same form back into a mention.
+USER_MENTION_SCHEME = "user:"
+
+
+def _user_mention_text(item: dict[str, Any]) -> str | None:
+    """A user mention as ``@[Name](user:<id>)``; ``None`` for any other run."""
+    if item.get("type") != "mention":
+        return None
+    mention = item.get("mention") or {}
+    user = mention.get("user")
+    if mention.get("type") != "user" or not isinstance(user, dict) or not user.get("id"):
+        return None
+    name = str(item.get("plain_text") or "").strip().removeprefix("@").strip()
+    if not name:
+        name = _person_label(user).removeprefix("@")
+    name = name.replace("[", "(").replace("]", ")")
+    return f"@[{name}]({USER_MENTION_SCHEME}{user['id']})"
+
+
 def _rich_text_run(item: dict) -> tuple[str, tuple[bool, ...], str | None]:
     """A run's text, its Markdown-expressible flags and its link."""
+    user_mention = _user_mention_text(item)
+    if user_mention is not None:
+        _record_unnamed_mention(item)
+        annotations = item.get("annotations") or {}
+        flags = tuple(bool(annotations.get(flag)) for flag in _MARKDOWN_FLAGS)
+        return user_mention, flags, None
     if item.get("type") == "equation":
         expression = (item.get("equation") or {}).get("expression")
         text = f"${expression or item.get('plain_text', '')}$"
@@ -780,9 +808,9 @@ def _rich_text_to_markdown(rich_text: list) -> str:
     Links come back as ``[label](url)`` and bold / italic / strikethrough /
     code as their markers - the grammar ``formatting._parse_inline_markdown``
     parses - so text an agent reads here and writes back keeps every link and
-    format it did not touch. A mention keeps its text, linked to what it
-    points at when it has an address; underline and colour have no Markdown
-    form and are not shown.
+    format it did not touch. A user mention reads ``@[Name](user:<id>)``;
+    another mention keeps its text, linked to what it points at when it has
+    an address; underline and colour have no Markdown form and are not shown.
     """
     runs: list[list] = []
     for item in rich_text or []:
@@ -926,6 +954,7 @@ _TEXT_BLOCK_PREFIXES: dict[str, str] = {
     "heading_1": "# ",
     "heading_2": "## ",
     "heading_3": "### ",
+    "heading_4": "#### ",
     "bulleted_list_item": "• ",
     "numbered_list_item": "1. ",
     "quote": "> ",

@@ -10,6 +10,7 @@ block that holds what Markdown cannot carry instead of dropping it.
 """
 
 import json
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -22,8 +23,9 @@ from app.integrations.providers.notion._common import (
     _rich_text_to_plain,
 )
 from app.integrations.providers.notion.blocks import _markdown_losses
+from app.integrations.providers.notion.formatting import _parse_inline_markdown
 from app.services.integration_tools import _SafeIntegrationExecutor
-from app.tools.base import ToolCall
+from app.tools.base import ToolCall, ToolResult
 
 FBI = "https://www.linkedin.com/company/fbi/"
 FBI_CYBER = "https://www.linkedin.com/showcase/fbicyber/"
@@ -50,13 +52,15 @@ def _text(content: str, *, link: str | None = None, **annotations) -> dict:
     }
 
 
-def _mention(sub: str, target: dict, plain: str, href: str | None = None) -> dict:
+def _mention(
+    sub: str, target: dict[str, Any], plain: str, href: str | None = None, **annotations: bool
+) -> dict[str, Any]:
     return {
         "type": "mention",
         "mention": {"type": sub, sub: target},
         "plain_text": plain,
         "href": href,
-        "annotations": _text("")["annotations"],
+        "annotations": {**_text("")["annotations"], **annotations},
     }
 
 
@@ -133,8 +137,27 @@ def test_mentions_read_as_their_text_linked_to_what_they_point_at():
     ]
 
     assert _rich_text_to_markdown(rich_text) == (
-        "@Byron Graham wrote [Q3 plan](https://www.notion.so/p1)"
+        "@[Byron Graham](user:u-1) wrote [Q3 plan](https://www.notion.so/p1)"
     )
+
+
+def test_a_user_mention_reads_apart_from_the_literal_text_and_parses_back() -> None:
+    rich_text = [
+        _text("Owner: "),
+        _mention("user", {"id": "0b1c2d3e-aaaa-bbbb-cccc-1234567890ab"}, "@Ada Lovelace"),
+        _text(", not @Ada Lovelace"),
+    ]
+
+    markdown = _rich_text_to_markdown(rich_text)
+
+    assert markdown == ("Owner: @[Ada Lovelace](user:0b1c2d3e-aaaa-bbbb-cccc-1234567890ab), not @Ada Lovelace")
+    parsed = _parse_inline_markdown(markdown)
+    assert [r["type"] for r in parsed] == ["text", "mention", "text"]
+    assert parsed[1]["mention"] == {
+        "type": "user",
+        "user": {"id": "0b1c2d3e-aaaa-bbbb-cccc-1234567890ab"},
+    }
+    assert _markdown_losses(rich_text) == []
 
 
 def test_every_text_block_reads_its_links():
@@ -184,6 +207,8 @@ def test_plain_text_readers_are_unchanged():
         [_text("x", code=True), _text(" + "), _text("y", strikethrough=True)],
         [_text("wiki", link="https://en.wikipedia.org/wiki/Foo_(bar)")],
         [_text("mail me", link="mailto:a@example.com")],
+        [_mention("user", {"id": "u-1"}, "@Byron Graham"), _text(" wrote")],
+        [_mention("user", {"id": "u-1"}, "@Byron Graham", bold=True)],
     ],
 )
 def test_markdown_the_reader_writes_parses_back_to_the_same_runs(rich_text):
@@ -193,7 +218,7 @@ def test_markdown_the_reader_writes_parses_back_to_the_same_runs(rich_text):
 @pytest.mark.parametrize(
     ("rich_text", "named"),
     [
-        ([_mention("user", {"id": "u-1"}, "@Byron Graham")], "a user mention"),
+        ([_mention("page", {"id": "p-1"}, "Q3 plan")], "a page mention"),
         ([_text("x"), {"type": "equation", "equation": {"expression": "e=mc^2"},
                        "plain_text": "e=mc^2", "annotations": {}}],
          "an inline equation"),
@@ -218,7 +243,7 @@ def _ok(payload: dict | None = None) -> httpx.Response:
     return httpx.Response(200, json=payload or {})
 
 
-async def _update(executor, **arguments):
+async def _update(executor: _SafeIntegrationExecutor, **arguments: Any) -> ToolResult:
     return await executor.execute_tool(
         ToolCall(
             id="c1",
@@ -294,11 +319,27 @@ async def test_the_read_prefix_copied_back_is_not_written_into_the_heading():
 
 
 @pytest.mark.asyncio
+async def test_a_markdown_edit_keeps_the_user_mention_it_did_not_touch() -> None:
+    executor = _SafeIntegrationExecutor()
+    build_tools("dummy-token", executor)
+    live = [_mention("user", {"id": "u-1", "object": "user"}, "@Byron Graham"), _text(" owns it")]
+
+    with patch("app.integrations.providers.notion._common.safe_request", new_callable=AsyncMock) as mock_request:
+        mock_request.side_effect = [(_ok(_paragraph(live)), None), (_ok(), None)]
+        result = await _update(executor, content="@[Byron Graham](user:u-1) owns it now")
+
+    assert not result.is_error, result.content
+    sent = mock_request.call_args_list[1].kwargs["json"]["paragraph"]["rich_text"]
+    assert sent[0] == {"type": "mention", "mention": {"type": "user", "user": {"id": "u-1"}}}
+    assert sent[1]["text"]["content"] == " owns it now"
+
+
+@pytest.mark.asyncio
 async def test_a_block_holding_a_mention_is_refused_with_its_json_to_edit():
     executor = _SafeIntegrationExecutor()
     build_tools("dummy-token", executor)
     live = [
-        _mention("user", {"id": "u-1", "object": "user"}, "@Byron Graham"),
+        _mention("page", {"id": "p-1", "object": "page"}, "Q3 plan"),
         _text(" and "),
         _text("a link", link=FBI),
     ]
@@ -307,16 +348,16 @@ async def test_a_block_holding_a_mention_is_refused_with_its_json_to_edit():
         "app.integrations.providers.notion._common.safe_request", new_callable=AsyncMock
     ) as mock_request:
         mock_request.return_value = (_ok(_paragraph(live)), None)
-        result = await _update(executor, content="@Byron Graham and nothing else")
+        result = await _update(executor, content="Q3 plan and nothing else")
 
     assert result.is_error
-    assert 'a user mention "@Byron Graham"' in result.content
+    assert 'a page mention "Q3 plan"' in result.content
     assert "nothing has been updated" in result.content
     quoted = json.loads(result.content.split("`block_json`:\n", 1)[1])
     assert quoted == {
         "paragraph": {
             "rich_text": [
-                {"type": "mention", "mention": {"type": "user", "user": {"id": "u-1"}}},
+                {"type": "mention", "mention": {"type": "page", "page": {"id": "p-1"}}},
                 {"type": "text", "text": {"content": " and "}},
                 {"type": "text", "text": {"content": "a link", "link": {"url": FBI}}},
             ]
