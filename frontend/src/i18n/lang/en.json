@@ -22169,5 +22169,8 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferred} other {# inferred}}",
-  "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}"
+  "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}",
+  "This fleet's runs only. The organization total counts every agent.": "This fleet's runs only. The organization total counts every agent.",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}"
 }

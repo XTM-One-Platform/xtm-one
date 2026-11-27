@@ -22169,5 +22169,8 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# activo primario probado} other {# activos primarios probados}}, {inferred, plural, one {# inferido} other {# inferidos}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# activo primario inferido} other {# activos primarios inferidos}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferido} other {# inferidos}}",
-  "No asset matched; opened on: {reasons}": "Ningún activo coincide; abierto por: {reasons}"
+  "No asset matched; opened on: {reasons}": "Ningún activo coincide; abierto por: {reasons}",
+  "This fleet's runs only. The organization total counts every agent.": "Solo las ejecuciones de esta flota. El total de la organización cuenta todos los agentes.",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, one {{shown} agente externo supervisa esta flota: {cost} de coste de IA, contado solo en el total de la organización.} other {{shown} agentes externos supervisan esta flota: {cost} de coste de IA, contados solo en el total de la organización.}}",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} agente externo supervisa esta flota: sus ejecuciones cuentan solo en el total de la organización.} other {{shown} agentes externos supervisan esta flota: sus ejecuciones cuentan solo en el total de la organización.}}"
 }
