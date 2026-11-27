@@ -115,8 +115,11 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
    decisions taken while it kept failing) and `lookup_retry` (`scheduled`, or
    `exhausted` after 6 attempts); the Signals page reads "OpenCTI software not
    read, will retry" instead of a final Unmatched. A failed read is never cached
-   for the pass (`_session_cached` keeps only `read` answers), so one miss does
-   not decide the other signals of the same threat or CVE list. Every 90 s,
+   as an answer (`_session_cached` keeps only `read` answers), so one miss does
+   not decide the other signals of the same threat or CVE list for good. Within
+   one bulk prefetch (`prepare_cve_reads`) a failure is met once per key: the
+   rows sharing that threat id or CVE list reuse it instead of paying one
+   OpenCTI timeout each, and the next prefetch reads the key again. Every 90 s,
    after `drain_new`, `recheck_lookup_failed` decides again, 500 per call, the
    `to_validate` / `subject_unresolved` rows flagged incomplete (or, written by
    a build before #2542, carrying a failed lookup, such as the #2523 window),

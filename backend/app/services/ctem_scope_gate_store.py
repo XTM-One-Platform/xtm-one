@@ -426,18 +426,39 @@ def _read_ok(value: Any) -> bool:
     return isinstance(value, tuple) and len(value) == 2 and value[1] == gate.LOOKUP_READ
 
 
-async def _software_read(db: AsyncSession, key: tuple[Any, ...], load: Callable[[], Awaitable[Any]]) -> tuple[Any, str]:
+async def _software_read(
+    db: AsyncSession,
+    key: tuple[Any, ...],
+    load: Callable[[], Awaitable[Any]],
+    *,
+    reuse_failure: bool = False,
+) -> tuple[Any, str]:
     """An OpenCTI software read through the session cache (#2542).
 
     A read that answered is cached for the pass; one that failed is not (the next
     signal of the same threat or CVE list reads again), and is kept apart under
-    ``("failed", *key)`` only so a ``remote=False`` decision of this pass says why it
-    was not read instead of "not read".
+    ``("failed", *key)`` so a ``remote=False`` decision of this pass says why it
+    was not read instead of "not read". *reuse_failure* True (the bulk prefetch,
+    :func:`prepare_cve_reads`) answers that failure instead of reading again, so a
+    slow OpenCTI costs one timeout per key and pass, not one per signal (#2548 review).
     """
+    if reuse_failure:
+        failed = _session_hit(db, ("failed", *key))
+        if isinstance(failed, tuple):
+            return failed[0], str(failed[1])
     found, how = await _session_cached(db, key, load, keep=_read_ok)
     if how != gate.LOOKUP_READ:
         _session_put(db, ("failed", *key), (found, how))
     return found, how
+
+
+def _forget_failures(db: AsyncSession) -> None:
+    """Drop the OpenCTI read failures this session met, so a new bulk prefetch reads them again (#2542)."""
+    info = getattr(db, "info", None)
+    cache = info.get(_READ_CACHE_KEY) if isinstance(info, dict) else None
+    if isinstance(cache, dict):
+        for key in [key for key in cache if key and key[0] == "failed"]:
+            del cache[key]
 
 
 def _software_hit(db: AsyncSession, key: tuple[Any, ...]) -> Any:
@@ -494,6 +515,7 @@ async def _with_cve_software(
     *,
     remote: bool = True,
     release: bool = False,
+    reuse_failure: bool = False,
 ) -> gate.SignalFacts:
     """*facts* with the software OpenCTI relates to the CVEs the signal names (#2171).
 
@@ -504,6 +526,7 @@ async def _with_cve_software(
     read (:func:`prepare_cve_reads`) is used, else *facts* are answered unchanged.
     *release* True (the bulk prefetch, no savepoint open) hands the pooled
     connection back during the OpenCTI call; the record-time gate never does (#2516).
+    *reuse_failure* as :func:`_software_read`.
     """
     from app.services import ctem_cve_software
 
@@ -525,6 +548,7 @@ async def _with_cve_software(
             db,
             ("cve_software", reader, tuple(cves)),
             lambda: ctem_cve_software.cve_software(db, reader, cves, release=release),
+            reuse_failure=reuse_failure,
         )
     except Exception:
         logger.warning("CTEM scope gate: CVE software not read for %s", getattr(row, "id", "?"), exc_info=True)
@@ -546,13 +570,14 @@ async def _with_threat_software(
     *,
     remote: bool = True,
     release: bool = False,
+    reuse_failure: bool = False,
 ) -> gate.SignalFacts:
     """*facts* with the software OpenCTI says the threat targets or uses (#2523).
 
     Read only for an OpenCTI threat (:func:`threat_opencti_id`) that resolves to
     nothing on its evidence alone, with the recorder's own OpenCTI access, once
-    per session, reader and threat id. Never raises. *remote* and *release* as
-    :func:`_with_cve_software`.
+    per session, reader and threat id. Never raises. *remote*, *release* and
+    *reuse_failure* as :func:`_with_cve_software`.
     """
     from app.services import ctem_cve_software, ctem_threat_software
 
@@ -574,6 +599,7 @@ async def _with_threat_software(
             db,
             ("threat_software", reader, threat_id),
             lambda: ctem_threat_software.threat_software(db, reader, threat_id, release=release),
+            reuse_failure=reuse_failure,
         )
     except Exception:
         logger.warning("CTEM scope gate: threat software not read for %s", getattr(row, "id", "?"), exc_info=True)
@@ -590,10 +616,12 @@ async def _with_remote_software(
     *,
     remote: bool = True,
     release: bool = False,
+    reuse_failure: bool = False,
 ) -> gate.SignalFacts:
     """*facts* with the OpenCTI software reads the gate takes: the CVEs' (#2171), then the threat's (#2523)."""
-    facts = await _with_cve_software(db, row, facts, profile, primary_assets, remote=remote, release=release)
-    return await _with_threat_software(db, row, facts, profile, primary_assets, remote=remote, release=release)
+    kw = {"remote": remote, "release": release, "reuse_failure": reuse_failure}
+    facts = await _with_cve_software(db, row, facts, profile, primary_assets, **kw)
+    return await _with_threat_software(db, row, facts, profile, primary_assets, **kw)
 
 
 async def prepare_cve_reads(
@@ -612,7 +640,13 @@ async def prepare_cve_reads(
     cache and the pass decides with ``remote_reads=False``. *profiles* and *links*
     by organization spare a second build; a missing one is read once per session.
     Never raises: a signal not read here is decided without its CVE software.
+
+    A read that failed is met once per key in this prefetch: the rows sharing that
+    threat id or CVE list reuse the failure instead of paying one OpenCTI timeout
+    each; the failures of an earlier pass are forgotten first, so the next pass
+    reads them again (#2548 review).
     """
+    _forget_failures(db)
     for row in rows:
         if row.state not in GATED_STATES:
             continue
@@ -630,7 +664,7 @@ async def prepare_cve_reads(
             else:
                 primary_assets = await _session_cached(db, ("links", org), partial(_primary_assets, db, org))
             # No savepoint is open here: release the connection during the OpenCTI I/O (#2518 review).
-            await _with_remote_software(db, row, facts, profile, primary_assets, release=True)
+            await _with_remote_software(db, row, facts, profile, primary_assets, release=True, reuse_failure=True)
         except Exception:
             logger.warning("CTEM scope gate: CVE read not prepared for %s", getattr(row, "id", "?"), exc_info=True)
 
