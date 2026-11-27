@@ -201,7 +201,13 @@ Common rules:
   case automation answered (no run of the case since it, no open case item)
   is made again after 15 minutes (`REASK_AFTER_SECONDS`) under a new event
   id, 3 asks in all (`MAX_ASKS`), so a delivery lost to an exhausted pool
-  never leaves a case unowned (#2101).
+  never leaves a case unowned (#2101). A run the delivery queue dropped
+  before it started (`skipped` with the "Delivery dropped by the assignment
+  queue:" error: trimmed `queue full` or evicted `drop_oldest`) answers no
+  ask, for any case its batch carried (#2693). A pass asks no more cases of
+  an owner than its case automation's queue has room for
+  (`queue_headroom`: free slots under `ASSIGNMENT_QUEUE_MAX_DEPTH` times
+  `batch_max_events`); the rest get no ask and wait for the next pass.
   `GET /ctem-cases/{id}` answers `owner_fleet` {slug, name, active, fleet_id};
   the case page header shows "Owned by <fleet>" linked to the fleet page, or
   "No active fleet owns this case" when it is null or inactive.

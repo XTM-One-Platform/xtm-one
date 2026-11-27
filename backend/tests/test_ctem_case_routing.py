@@ -220,8 +220,9 @@ class _Db:
     """Answers the reads plan_catch_up makes: open cases, owner_requested events, case runs, open items.
 
     An ask given as ``(case id, owner)`` was made just now; ``(case id, owner, at)`` at *at*.
-    *runs* are ``(case id, created_at)`` (an ended run), ``(case id, created_at, status)`` or
-    ``(case id, created_at, status, trigger_payload)`` of the case automation's runs.
+    *runs* are ``(case id, created_at)`` (an ended run), ``(case id, created_at, status)``,
+    ``(case id, created_at, status, trigger_payload)`` or the same with the run ``error``
+    of the case automation's runs.
     """
 
     def __init__(
@@ -233,7 +234,8 @@ class _Db:
     ) -> None:
         now = datetime.now(UTC)
         self.cases, self.open_keys = cases, open_keys
-        self.runs = [(*r, "completed", None) if len(r) == 2 else (*r, None) if len(r) == 3 else r for r in runs or []]
+        full = [(*r, "completed") if len(r) == 2 else r for r in runs or []]
+        self.runs = [(*r, *([None] * (5 - len(r)))) for r in full]
         self.asked = [a if len(a) == 3 else (*a, now) for a in asked]
         self.calls = 0
         self.statements: list[Any] = []
@@ -526,8 +528,12 @@ async def test_catch_up_publishes_the_ask_again_under_a_new_event_id(monkeypatch
         published.append(event_id)
         return event_id
 
+    async def room(_db: Any) -> dict[str, int]:
+        return {LOOP: 20}
+
     monkeypatch.setattr(database, "async_session", _Session)
     monkeypatch.setattr(routing, "plan_catch_up_asks", plan)
+    monkeypatch.setattr(routing, "queue_headroom", room)
     monkeypatch.setattr(platform_events, "publish", publish)
     assert await routing.catch_up(now=_NOW) == 1
     assert published == [routing._catch_up_event_id(x.id, LOOP, 1)]

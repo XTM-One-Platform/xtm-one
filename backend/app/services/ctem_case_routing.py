@@ -40,6 +40,7 @@ import uuid
 from collections.abc import Iterable, MutableMapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import select
@@ -230,7 +231,9 @@ async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime | None])
     before it was created. A run that failed or was cancelled does not (the
     event got no answer from it), and neither does a run that expired in the
     queue before any worker started it (``skipped``, ``expired_not_started``,
-    #2234): its case is asked again by the next pass.
+    #2234), nor a run the delivery queue dropped before it started (``skipped``
+    with the ``QUEUE_DROP_ERROR_PREFIX`` error: trimmed ``queue full``, evicted
+    by ``drop_oldest``, #2693): its case is asked again by the next pass.
 
     A batch run (and the remainder run a split hands the rest of its list to)
     names only its first case in its context: every case its payload lists
@@ -243,7 +246,7 @@ async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime | None])
 
     from app.models.assignment import Assignment, AssignmentRun
     from app.services import event_batching
-    from app.services.assignment_engine import ACTIVE_RUN_STATUSES, QUEUED_RUN_STATUS
+    from app.services.assignment_engine import ACTIVE_RUN_STATUSES, QUEUE_DROP_ERROR_PREFIX, QUEUED_RUN_STATUS
     from app.services.orchestration_adapters.assignment import EXPIRED_NOT_STARTED_STOP_REASON
 
     waiting = (*ACTIVE_RUN_STATUSES, QUEUED_RUN_STATUS)
@@ -254,7 +257,13 @@ async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime | None])
         in_window = or_(in_window, AssignmentRun.created_at >= min(asked_times))
     rows = (
         await db.execute(
-            select(object_id, AssignmentRun.created_at, AssignmentRun.status, AssignmentRun.trigger_payload)
+            select(
+                object_id,
+                AssignmentRun.created_at,
+                AssignmentRun.status,
+                AssignmentRun.trigger_payload,
+                AssignmentRun.error,
+            )
             .join(Assignment, Assignment.id == AssignmentRun.assignment_id)
             .where(
                 Assignment.name == CTEM_CASE_ASSIGNMENT_NAME,
@@ -273,7 +282,10 @@ async def _answered_case_ids(db: AsyncSession, asks: dict[str, datetime | None])
         )
     ).all()
     answered: set[str] = set()
-    for cid, created, status, payload in rows:
+    for cid, created, status, payload, error in rows:
+        if status == "skipped" and isinstance(error, str) and error.startswith(QUEUE_DROP_ERROR_PREFIX):
+            # Dropped by the delivery queue before any worker started it: no case of it was run (#2693).
+            continue
         carried = {str(cid)} if cid else set()
         if isinstance(payload, dict):
             carried |= event_batching.carried_object_ids(payload)
@@ -440,6 +452,67 @@ async def catch_up_places(
     return places
 
 
+async def queue_headroom(db: AsyncSession) -> dict[str, int]:
+    """How many cases one pass may ask each owner token now without overflowing its queue (#2693).
+
+    A catch-up ask is an ordinary ``ctem_case.opened`` delivered to the owner's
+    "Case opened or reopened" automation, under the same ``ASSIGNMENT_QUEUE_MAX_DEPTH``:
+    a pass of :data:`CATCH_UP_BATCH` asks could push the queue past it and see its
+    own batches trimmed ``skipped: queue full``. Per enabled case automation of a
+    home member: the free queue slots (the limit less the runs already queued) times
+    the cases one queued run carries (``batch_max_events`` when it batches, else
+    one; a split batch keeps one queued run at a time). An owner with several such
+    automations takes the smallest, since any of them may receive the event. A case
+    left out is not asked (no ``owner_requested`` recorded, no ask spent): the next
+    pass asks it. An owner absent from the answer is not bounded.
+    """
+    from sqlalchemy import func
+
+    from app.core.config import settings
+    from app.models.assignment import Assignment, AssignmentRun
+    from app.models.fleet import FLEET_ROLE_MEMBER, Fleet, FleetMember
+    from app.services import event_batching
+    from app.services.assignment_engine import QUEUED_RUN_STATUS
+
+    rows = (
+        await db.execute(
+            select(Fleet.id, Fleet.slug, Fleet.is_builtin, Assignment.id, Assignment.trigger_config)
+            .join(FleetMember, FleetMember.fleet_id == Fleet.id)
+            .join(Assignment, Assignment.agent_id == FleetMember.agent_id)
+            .where(
+                Fleet.is_archived.is_(False),
+                Fleet.case_ownership.is_not(None),
+                FleetMember.role == FLEET_ROLE_MEMBER,
+                Assignment.name == CTEM_CASE_ASSIGNMENT_NAME,
+                Assignment.enabled.is_(True),
+            )
+        )
+    ).all()
+    if not rows:
+        return {}
+    counts = (
+        await db.execute(
+            select(AssignmentRun.assignment_id, func.count())
+            .where(
+                AssignmentRun.assignment_id.in_(sorted({r[3] for r in rows}, key=str)),
+                AssignmentRun.status == QUEUED_RUN_STATUS,
+            )
+            .group_by(AssignmentRun.assignment_id)
+        )
+    ).all()
+    queued: dict[Any, int] = {aid: int(n) for aid, n in counts}
+    max_depth = max(1, int(settings.assignment_queue_max_depth))
+    room: dict[str, int] = {}
+    for fleet_id, slug, is_builtin, assignment_id, config in rows:
+        token = token_of(SimpleNamespace(id=fleet_id, slug=slug, is_builtin=is_builtin))
+        batches = isinstance(config, dict) and bool(config.get(event_batching.WINDOW_CONFIG))
+        per_run = event_batching.max_events(config) if batches else 1
+        free = max(0, max_depth - int(queued.get(assignment_id, 0)))
+        cases = free * per_run
+        room[token] = min(room.get(token, cases), cases)
+    return room
+
+
 async def catch_up(*, only: set[str] | None = None, now: datetime | None = None) -> int:
     """Hand every open case its owner never ran to that owner: one ``ctem_case.opened`` each. Never raises.
 
@@ -454,6 +527,26 @@ async def catch_up(*, only: set[str] | None = None, now: datetime | None = None)
     try:
         async with async_session() as db:
             planned = await plan_catch_up_asks(db, only=only, now=now)
+            if not planned:
+                return 0
+            try:
+                room = await queue_headroom(db)
+            except Exception:
+                logger.warning("CTEM case catch-up: queue headroom unreadable, the pass is not bounded", exc_info=True)
+                room = {}
+            kept: list[tuple[CtemCase, str, int]] = []
+            for case, owner, attempt in planned:
+                if owner in room:
+                    if room[owner] <= 0:
+                        continue
+                    room[owner] -= 1
+                kept.append((case, owner, attempt))
+            if len(kept) < len(planned):
+                logger.info(
+                    "CTEM case catch-up: %d case(s) left to the next pass, their owner's queue is near its limit",
+                    len(planned) - len(kept),
+                )
+            planned = kept
             if not planned:
                 return 0
             out: list[tuple[dict[str, Any], str]] = []
