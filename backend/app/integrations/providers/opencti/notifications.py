@@ -219,6 +219,25 @@ def register(
                 )
             if not edits:
                 return "Provide name, description, or notifier_configuration to update."
+            # #2632: OpenCTI notifierEdit validates notifier_connector_id and
+            # notifier_configuration read from the edit input on every patch (a
+            # missing key reads as empty: "Invalid notifier connector"), so the
+            # stored values travel with whatever field changes.
+            current, err = await _gql(
+                "query NotifierEditBase($id: String!) {"
+                "  notifier(id: $id) { notifier_connector { id } notifier_configuration } }",
+                {"id": notifier_id},
+            )
+            if err:
+                return err
+            stored = current.get("notifier")
+            if not stored:
+                return f"Notifier {notifier_id} not found."
+            if not notifier_configuration:
+                edits.append({"key": "notifier_configuration", "value": [stored.get("notifier_configuration") or ""]})
+            edits.append(
+                {"key": "notifier_connector_id", "value": [(stored.get("notifier_connector") or {}).get("id") or ""]}
+            )
             query = (
                 "mutation NotifierPatch($id: ID!, $input: [EditInput!]!) {"
                 "  notifierFieldPatch(id: $id, input: $input) { id name } }"
