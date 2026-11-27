@@ -204,3 +204,37 @@ async def test_a_refused_token_is_one_short_line_per_route_and_not_asked_again(
     for key in ("vulnerability", "intrusion_set", "malware", "email_addr"):
         assert routes[key]["errors"] == [resync.AUTH_REFUSED]
     assert len(resync.AUTH_REFUSED) < 120
+
+
+@pytest.mark.asyncio
+async def test_a_refused_connection_does_not_mark_a_healthy_one_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2619 review: connection 0 refused must leave connection 1 read on every later route."""
+    healthy: list[str] = []
+
+    async def _refused(query: str, variables: dict[str, Any]) -> tuple[dict[str, Any], str]:
+        return {}, "You must be logged in to do this. [AUTH_REQUIRED]"
+
+    async def _ok(query: str, variables: dict[str, Any]) -> tuple[dict[str, Any], None]:
+        healthy.append(variables["types"][0])
+        node = {"id": "x", "entity_type": variables["types"][0], "name": "n"}
+        return {"stixCoreObjects": {"edges": [{"node": node}], "pageInfo": {"hasNextPage": False}}}, None
+
+    async def _connections(sessions: Any) -> tuple[list[Any], list[str]]:
+        return [_refused, _ok], []
+
+    async def _off(sessions: Any) -> set[str]:
+        return set()
+
+    async def _note(*a: Any, **k: Any) -> bool:
+        return True
+
+    monkeypatch.setattr(resync, "_opencti_connections", _connections)
+    monkeypatch.setattr(resync, "_excluded_listener_paths", _off)
+    routes = await resync.resync_world(lambda: _Session(), now=NOW, note=_note)
+    world = [w for w in resync.WINDOWS if w.entity_type]
+    assert healthy == [w.entity_type for w in world]
+    for window in world:
+        assert routes[window.key]["read"] == 1
+        assert routes[window.key]["errors"] == [resync.AUTH_REFUSED]
