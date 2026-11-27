@@ -19941,6 +19941,7 @@
   "Excluded by the policy ({kind}: {value})": "Excluido por la política ({kind}: {value})",
   "Accepted risk owned by {owner} until {until}": "Riesgo aceptado por {owner} hasta {until}",
   "{score} {value} below the policy minimum {minimum}": "{score} {value} por debajo del mínimo de la política {minimum}",
+  "No score read: {score} held for validation (policy minimum {minimum})": "Ninguna puntuación leída: {score} retenido para validación (mínimo de la política {minimum})",
   "No internet-facing asset, and the policy requires internet exposure": "Ningún recurso expuesto a Internet, y la política exige exposición a Internet",
   "No primary asset at or above {minimum}": "Ningún activo primario de nivel {minimum} o superior",
   "No risk scenario holds the subject": "Ningún escenario de riesgo contiene el sujeto",
@@ -19986,6 +19987,7 @@
   "Becomes a case if the policy exclusion is removed": "Se convierte en caso si se elimina la exclusión de la política",
   "Becomes a case when the accepted risk ends on {until}": "Se convierte en caso cuando termine el riesgo aceptado, el {until}",
   "Becomes a case if {score} reaches {minimum}": "Se convierte en caso si {score} alcanza {minimum}",
+  "Decided again once a {score} is read for it": "Se decide de nuevo cuando se lea un {score} para él",
   "Becomes a case if an internet-facing asset holds it": "Se convierte en caso si lo tiene un recurso expuesto a Internet",
   "Becomes a case if a primary asset at or above {minimum} holds it": "Se convierte en caso si lo tiene un activo primario de nivel {minimum} o superior",
   "Becomes a case once a risk scenario holds it": "Se convierte en caso cuando lo tenga un escenario de riesgo",
@@ -21742,7 +21744,10 @@
   "Loop progress": "Progreso en el ciclo",
   "Policy funnel": "Embudo de la política",
   "Scope and criticality": "Alcance y criticidad",
-  "Not scored": "Sin puntuación",
+  "No score read": "Ninguna puntuación leída",
+  "Hold signals with no score": "Retener las señales sin puntuación",
+  "A vulnerability with no CVSS or EPSS to compare waits on the watchlist for validation.": "Una vulnerabilidad sin CVSS ni EPSS que comparar espera en la lista de vigilancia para su validación.",
+  "On: when a minimum is set and no score is read, neither in the signal nor in OpenCTI, the signal is held on the watchlist. Off: it passes that minimum. Both record no score read. Read by the CTEM scope gate.": "Activado: cuando se fija un mínimo y no se lee ninguna puntuación, ni en la señal ni en OpenCTI, la señal queda retenida en la lista de vigilancia. Desactivado: supera ese mínimo. Ambos registran ninguna puntuación leída. Lo lee el filtro de alcance CTEM.",
   "{value} ≥ {threshold}": "{value} ≥ {threshold}",
   "{value} < {threshold}": "{value} < {threshold}",
   "{value}, minimum {threshold}": "{value}, mínimo {threshold}",
@@ -22165,5 +22170,9 @@
   "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.": "Los disparadores, playbooks y notificadores que las antiguas automatizaciones Threat response dejaron en OpenCTI. Las fuentes Signals los sustituyen; no se toca nada más.",
   "Reading OpenCTI...": "Leyendo OpenCTI...",
   "No OpenCTI integration has a Signals source on.": "Ninguna integración de OpenCTI tiene una fuente Signals activada.",
-  "Remove {count, plural, one {# object} other {# objects}}": "Eliminar {count, plural, one {# objeto} other {# objetos}}"
+  "Remove {count, plural, one {# object} other {# objects}}": "Eliminar {count, plural, one {# objeto} other {# objetos}}",
+  "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# activo primario probado} other {# activos primarios probados}}, {inferred, plural, one {# inferido} other {# inferidos}}",
+  "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# activo primario inferido} other {# activos primarios inferidos}}",
+  "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferido} other {# inferidos}}",
+  "No asset matched; opened on: {reasons}": "Ningún activo coincide; abierto por: {reasons}"
 }

@@ -55,6 +55,7 @@ import { CaseAuditTrail } from "./ctem/CaseAuditTrail";
 import { timelineOutcome, type TimelineOutcome } from "@/lib/ctem-fleet-timeline";
 import { isNotFoundError } from "@/lib/api";
 import { exactCount, formatCount } from "@/lib/number-format";
+import { primaryAssetsLine } from "./ctem/case-primary-assets";
 import { useNow } from "@/hooks/useTick";
 import { CaseLoopLine, CaseUrgencyChip, RetestChip, hasRetestData, retestRank } from "./ctem/case-loop";
 import { CaseTicketChip } from "./ctem/case-ticket";
@@ -857,11 +858,7 @@ export default function CtemCaseDetail() {
           icon={AssetsGlyph}
           label={t_i18n("Assets")}
           value={formatCount(intl.locale, kase.asset_count)}
-          subtitle={
-            aggregatesRestricted || kase.primary_asset_count == null
-              ? aggregatesSubtitle
-              : t_i18n("{count, plural, one {# primary asset} other {# primary assets}}", { count: kase.primary_asset_count })
-          }
+          subtitle={aggregatesRestricted ? aggregatesSubtitle : (primaryAssetsLine(kase, t_i18n) ?? aggregatesSubtitle)}
         />
       </div>
 
