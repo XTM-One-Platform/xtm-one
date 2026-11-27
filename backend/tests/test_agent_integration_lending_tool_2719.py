@@ -190,7 +190,7 @@ async def test_a_shared_member_bound_to_its_owners_unlent_integration_is_a_findi
     owner = uuid.uuid4()
     mine = uuid.uuid4()
     member = _agent(owner, {"grafana": [str(mine)]}, groups=["g1"])
-    db = _SequencedDB([member], [(mine, owner)])
+    db = _SequencedDB([member], [(mine, owner, None, None)])
 
     [finding] = await signals._lending_findings(db, [member.id])
 
@@ -217,9 +217,33 @@ async def test_a_colleagues_integration_on_a_shared_member_is_no_finding():
     owner = uuid.uuid4()
     theirs = uuid.uuid4()
     member = _agent(owner, {"grafana": [str(theirs)]}, groups=["g1"])
-    db = _SequencedDB([member], [(theirs, uuid.uuid4())])
+    db = _SequencedDB([member], [(theirs, uuid.uuid4(), None, None)])
 
     assert await signals._lending_findings(db, [member.id]) == []
+
+
+@pytest.mark.asyncio
+async def test_an_integration_shared_with_the_whole_audience_is_no_finding():
+    """The people the member is shared with already hold the row: nothing to lend."""
+    owner = uuid.uuid4()
+    mine = uuid.uuid4()
+    member = _agent(owner, {"grafana": [str(mine)]}, groups=["g1"], people=["u1"])
+    db = _SequencedDB([member], [(mine, owner, ["g1", "g2"], ["u1"])])
+
+    assert await signals._lending_findings(db, [member.id]) == []
+
+
+@pytest.mark.asyncio
+async def test_an_integration_shared_with_part_of_the_audience_is_a_finding():
+    """A person the row is not shared with still runs without it."""
+    owner = uuid.uuid4()
+    mine = uuid.uuid4()
+    member = _agent(owner, {"grafana": [str(mine)]}, groups=["g1"], people=["u1"])
+    db = _SequencedDB([member], [(mine, owner, ["g1"], None)])
+
+    [finding] = await signals._lending_findings(db, [member.id])
+
+    assert finding.evidence == [f"{member.id}:{mine}"]
 
 
 def test_the_finding_has_advice():
