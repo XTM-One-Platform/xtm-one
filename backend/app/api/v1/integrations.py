@@ -177,8 +177,10 @@ from app.services.integration_state import (
     admin_oauth_app,
     api_key_binding_of,
     forget_key_bound_elsewhere,
+    heal_status_after_test,
     repair_onto_admin_oauth_app,
     replace_oauth_client_id,
+    status_for_auth_type,
     takes_admin_oauth_app,
     uses_admin_oauth_app,
 )
@@ -3010,6 +3012,13 @@ async def update_integration(
             integration.status = "connected"
         elif body.auth_type in _TOKEN_GRANT_AUTH_TYPES:
             integration.status = _token_grant_status(integration)
+        elif (switched_status := status_for_auth_type(integration)) is not None:
+            # The credentials stored now decide, never the previous type's
+            # status: OAuth -> API key with a key is connected (#2553).
+            integration.status = switched_status
+            # Read under the new type: the key sent with the switch is untested.
+            if typed_credential_untested(integration.auth_type, api_key=body.api_key, client_secret=body.client_secret):
+                integration.connection_test_status = CONNECTION_TEST_UNTESTED
         elif old_auth_type == "platform_managed":
             integration.status = "not_connected"
 
@@ -3692,6 +3701,9 @@ async def test_integration(
     # A person's own account (per-user mode) says nothing about the integration's.
     if not is_user_credential(holder):
         integration.connection_test_status = connection_test_outcome(result.get("status"))
+        # A key that just reached its provider is connected, whatever status
+        # an older write left (#2553).
+        heal_status_after_test(integration, result.get("status"))
         await db.commit()
     return result
 

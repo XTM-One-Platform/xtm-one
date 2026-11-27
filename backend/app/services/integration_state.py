@@ -214,6 +214,55 @@ def put_on_admin_oauth_app(integration: Integration, app: AdminOAuthApp) -> None
     )
 
 
+#: The auth types whose stored secret is the credential: an API key or a bot
+#: token (a client id/secret pair kept in the client columns for CrowdStrike).
+_TYPED_CREDENTIAL_AUTH_TYPES = frozenset({"api_key", "bot_token"})
+
+
+def status_for_auth_type(integration: Integration) -> str | None:
+    """The status the stored credentials give *integration* under its auth type.
+
+    The one rule applied after an auth-type switch, by the REST update and the
+    agent builder, so a status set under the previous type never survives it
+    (an OAuth integration left ``configured`` and switched to an API key showed
+    "Pre-configured" with its key stored and tested, #2553). A typed credential
+    is connected once its key is stored, as at creation (a client id left by
+    an OAuth past is that app's, not a credential: it does not count); OAuth is
+    connected with a token, ``configured`` with an app and no token yet, else
+    ``disconnected``.
+    ``None`` for the auth types whose status has its own rule (none,
+    platform-managed, the token grants): the caller keeps it.
+    """
+    auth_type = getattr(integration, "auth_type", None)
+    if auth_type in _TYPED_CREDENTIAL_AUTH_TYPES:
+        return INTEGRATION_CONNECTED if getattr(integration, "api_key_enc", None) else "disconnected"
+    if auth_type == "oauth":
+        if getattr(integration, "access_token_enc", None):
+            return INTEGRATION_CONNECTED
+        return "configured" if getattr(integration, "client_id_enc", None) else "disconnected"
+    return None
+
+
+def heal_status_after_test(integration: Integration, test_status: str | None) -> bool:
+    """Mark a typed-credential integration connected once its own credential passed a test.
+
+    ``True`` when the status changed. A test that reached the provider with
+    the stored key proves it usable whatever status an older write left
+    (``configured`` from an OAuth past, #2553); a failed test leaves the status
+    alone, its verdict is ``connection_test_status``. OAuth and the other auth
+    types read their status from their token or their own rule.
+    """
+    if (
+        test_status in ("ok", "info")
+        and getattr(integration, "auth_type", None) in _TYPED_CREDENTIAL_AUTH_TYPES
+        and getattr(integration, "status", None) != INTEGRATION_CONNECTED
+        and getattr(integration, "api_key_enc", None)
+    ):
+        integration.status = INTEGRATION_CONNECTED
+        return True
+    return False
+
+
 async def repair_onto_admin_oauth_app(db: AsyncSession, integration: Integration) -> bool:
     """Put an existing OAuth integration without an app on the admin's; ``True`` if done.
 
