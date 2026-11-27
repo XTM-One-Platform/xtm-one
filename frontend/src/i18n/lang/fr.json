@@ -15274,6 +15274,7 @@
   "ROI figures are estimated from default baselines until your organization sets its own.": "Les chiffres de ROI sont estimés à partir des références par défaut tant que votre organisation n'a pas défini les siennes.",
   "Screen left empty between two inserts": "Écran laissé vide entre deux incrustations",
   "Simulation finished": "Simulation terminée",
+  "Atomic test finished": "Test atomique terminé",
   "Inject or atomic test finished": "Inject ou test atomique terminé",
   "Finding created": "Constat créé",
   "Stored": "Enregistré",
@@ -20082,6 +20083,7 @@
   "Step in progress": "Étape en cours",
   "Asset created": "Actif créé",
   "Asset updated": "Actif modifié",
+  "Asset stale": "Actif obsolète",
   "Asset turned stale": "Actif devenu obsolète",
   "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "Se déclenche quand un actif n'a pas été vu dans OpenAEV au-delà du seuil d'obsolescence du tenant (inactif tant que le seuil n'est pas défini).",
   "Finding deleted": "Constat supprimé",
@@ -22177,5 +22179,5 @@
   "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}",
   "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objets dans {platform}, appartenant à Signals ({count, plural, one {# objet} other {# objets}}) :",
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Autres objets XTM One dans {platform}, appartenant à des flottes, non comptés ici ({count, plural, one {# objet} other {# objets}}) :",
-  "{owners} also listens to {event} with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{owners} écoute aussi {event} avec son propre déclencheur : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution."
+  "{owners} also listens to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{owners} écoute aussi l'événement « {event} » avec son propre déclencheur : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution."
 }
