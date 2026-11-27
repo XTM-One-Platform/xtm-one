@@ -282,13 +282,41 @@ def test_owner_details_read_the_newest_owner_event() -> None:
     note = SimpleNamespace(kind="note", reason="x", evidence=None)
     assert owner_of.owner_details([note, newest, older]) == {
         "owner_reason": "asset group: All endpoints (3 of 4 affected assets)",
-        "owner_contributors": [{"user_id": str(CLOUD), "via": "asset group: DNS"}],
+        "owner_basis": {"kind": "asset_group", "name": "All endpoints", "assets": 3, "affected": 4},
+        "owner_contributors": [{"user_id": str(CLOUD), "via": "asset group: DNS", "group": "DNS"}],
     }
     assert owner_of.owner_details([older]) == {
         "owner_reason": "fallback: CTEM decider (administrator)",
+        "owner_basis": {"kind": "decider", "source": "administrator", "candidates": 1},
         "owner_contributors": [],
     }
-    assert owner_of.owner_details([]) == {"owner_reason": None, "owner_contributors": []}
+    assert owner_of.owner_details([]) == {"owner_reason": None, "owner_basis": None, "owner_contributors": []}
+
+
+def test_the_basis_is_stored_as_data_and_read_from_older_reasons() -> None:
+    """#2571: the case detail words the basis in the reader's language, never the stored sentence."""
+    assert owner_of.basis_of("asset group: DNS: shared (2 affected assets)") == {
+        "kind": "asset_group",
+        "name": "DNS: shared",
+        "assets": 2,
+        "affected": None,
+    }
+    assert owner_of.basis_of("primary asset: customer portal") == {"kind": "primary_asset", "name": "customer portal"}
+    assert owner_of.basis_of(owner_of.FROM_DEFAULT) == {"kind": "default"}
+    assert owner_of.basis_of("fallback: CTEM decider (decide group member, first of 3 by account creation)") == {
+        "kind": "decider",
+        "source": "decide_group",
+        "candidates": 3,
+    }
+    assert owner_of.basis_of(owner_of.FROM_KEPT) == {"kind": "kept"}
+    assert owner_of.basis_of("Taken over") is None and owner_of.basis_of(None) is None
+    route = owner_of.Route(IT, "primary asset: customer portal")
+    assert json.loads(route.evidence())["basis"] == {"kind": "primary_asset", "name": "customer portal"}
+    # A person's change is answered as such; a system event with an unknown reason stays unexplained.
+    by_person = SimpleNamespace(kind="owner", actor=str(SAM), reason=None, evidence=None)
+    assert owner_of.owner_details([by_person])["owner_basis"] == {"kind": "person"}
+    unknown = SimpleNamespace(kind="owner", actor="system", reason="x", evidence=None)
+    assert owner_of.owner_details([unknown])["owner_basis"] is None
 
 
 def _sweep(monkeypatch: pytest.MonkeyPatch, route: owner_of.Route, calls: list[Any]) -> None:
