@@ -3850,8 +3850,10 @@ async def test_injector_contract_search_scope_uses_canonical_tokens(monkeypatch)
 
 async def test_search_findings_scopes_to_simulation(monkeypatch):
     # On a busy tenant an unscoped findings search can surface / PROOF-cite / promote
-    # ANOTHER run's finding, so simulation_id scopes it via the finding_simulation eq
-    # filter (item 4). Routed through _api (WS2 JWT auto-refresh on long runs).
+    # ANOTHER run's finding, so simulation_id scopes it on OpenAEV's per-simulation
+    # route, whose distinct search stays inside the simulation (#2594: the tenant-wide
+    # route with a finding_simulation filter timed out on a text search). Routed
+    # through _api (WS2 JWT auto-refresh on long runs).
     from app.integrations.providers.openaev import core
 
     captured: dict = {}
@@ -3867,18 +3869,64 @@ async def test_search_findings_scopes_to_simulation(monkeypatch):
     result = await _run(
         executor,
         "search_openaev_findings",
-        {"search": "smb", "simulation_id": "sim-123"},
+        {"search": "admin", "simulation_id": "sim-123", "limit": 5},
     )
     assert not result.is_error, result.content
-    assert captured["path"] == "/api/findings/search"
+    assert captured["path"] == "/api/findings/exercises/sim-123/search"
     assert captured["params"] == {"distinct": "true"}
-    assert captured["json"]["filterGroup"] == {
-        "mode": "and",
-        "filters": [
-            {"key": "finding_simulation", "operator": "eq", "values": ["sim-123"]}
-        ],
-    }
+    assert captured["json"]["textSearch"] == "admin"
+    assert captured["json"]["size"] == 5
+    assert "filterGroup" not in captured["json"]
     assert "in simulation sim-123" in result.content  # empty-state scope note
+
+
+async def test_search_findings_by_inject_and_simulation_keeps_the_filter(monkeypatch):
+    # Both ids: the per-inject route, with the simulation kept as a body filter.
+    from app.integrations.providers.openaev import core
+
+    captured: dict = {}
+
+    async def fake_api(base_url, headers, method, path, action, *, json=None, params=None, **kw):
+        captured.update(path=path, json=json)
+        return _FakeResp({"content": [], "totalElements": 0}), None
+
+    monkeypatch.setattr(core, "_api", fake_api)
+    executor, _ = _build()
+    result = await _run(
+        executor,
+        "search_openaev_findings",
+        {"inject_id": "inj-1", "simulation_id": "sim-123"},
+    )
+    assert not result.is_error, result.content
+    assert captured["path"] == "/api/findings/injects/inj-1/search"
+    assert captured["json"]["filterGroup"]["filters"] == [
+        {"key": "finding_simulation", "operator": "eq", "values": ["sim-123"]}
+    ]
+
+
+@pytest.mark.parametrize(
+    ("args", "scope", "narrower"),
+    [
+        ({"search": "admin", "simulation_id": "sim-123"}, "simulation sim-123", "inject_id"),
+        ({"search": "admin"}, "the whole tenant", "simulation_id or inject_id"),
+    ],
+)
+async def test_search_findings_timeout_names_the_scope(monkeypatch, args, scope, narrower):
+    # #2594: a timeout names the scope used and a narrower one, never only
+    # "the service may be slow or overloaded".
+    from app.integrations.providers.openaev import core
+
+    async def fake_api(base_url, headers, method, path, action, **kw):
+        return None, (
+            f"Error: OpenAEV request timed out while trying to {action}. The service may be slow or overloaded."
+        )
+
+    monkeypatch.setattr(core, "_api", fake_api)
+    executor, _ = _build()
+    result = await _run(executor, "search_openaev_findings", args)
+    assert f"scoped to {scope}" in result.content
+    assert f"Retry narrower: {narrower}." in result.content
+    assert "slow or overloaded" not in result.content
 
 
 async def test_search_findings_unscoped_has_no_simulation_filter(monkeypatch):
