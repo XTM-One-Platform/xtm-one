@@ -220,8 +220,11 @@ async def clear_raised_state(db: AsyncSession) -> dict[str, int]:
     before the previous pass, and never raised again); the keys
     the diff recomputes every pass (answers, dangling, unowned, unseen) only need
     the key gone. Every other host stays as it is.
+
+    A raised port of path 5 or 7 also leaves its ``rearm_mark`` (#2634): when the resync's own
+    pass does not complete, ``ctem_attack_surface.reraise_held`` raises it again from the mark.
     """
-    from app.services.ctem_attack_surface import REARM_NEW_HOST, SOURCE, host_key
+    from app.services.ctem_attack_surface import REARM_NEW_HOST, REARMED_PATHS, SOURCE, host_key, rearm_mark
 
     rows = list(
         (
@@ -246,7 +249,16 @@ async def clear_raised_state(db: AsyncSession) -> dict[str, int]:
                 for p in row.ports or []
                 if not isinstance(p, dict) or f"{p.get('port')}/{p.get('transport') or 'tcp'}" not in raised_ports
             ]
-        row.signalled = []
+        marks = [
+            rearm_mark(key)
+            for key in row.signalled or []
+            if marker in key and key.split(":", 1)[0] in REARMED_PATHS and key.split(marker, 1)[1].startswith("port:")
+        ]
+        # A mark an earlier purge left that no pass consumed yet stays.
+        kept = [key for key in row.signalled or [] if key.startswith("rearm:")]
+        row.signalled = list(dict.fromkeys([*kept, *marks]))
+        if row.signalled:
+            rearmed += 1
     await db.flush()
     return {"surface_hosts": len(rows), "surface_hosts_rearmed": rearmed}
 
@@ -422,11 +434,17 @@ async def run_job(
                 status["steps"]["resync"]["counts"].setdefault("paths", {})[path] = recorded
                 await _write_status(status)
 
+            from app.services.ctem_signal_resync import reraise_held
             from app.services.ctem_signal_resync import resync as resync_all
 
             run_resync = resync or resync_all
             token = RESYNC_BYPASS.set(True)
             try:
+                # The outside signals the last pass held come back first (#2634): the pass itself
+                # only runs after every route, and diffs against the pre-purge pass.
+                held = await reraise_held(sessions)
+                status["steps"]["resync"]["counts"]["held"] = held
+                await _write_status(status)
                 result = await run_resync(
                     sessions=sessions, actor_id=actor_id, progress=path_done, windows=status.get("windows")
                 )
