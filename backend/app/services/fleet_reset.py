@@ -373,6 +373,10 @@ async def reset_builtin_fleet(
 
     await unset_fleet(db, fleet, actor=actor, request=request)
     for assignment in automations:
+        # What the automation provisioned in its module goes while its run-as can still reach it
+        # (#2636): a reset leaves no orphaned trigger, notifier or playbook, and no provisioning
+        # state that would read Error once the run-as is cleared. Fleet setup provisions anew.
+        await _remove_provisioned(db, assignment)
         assignment.run_as_user_id = None
         assignment.schedule_resumed_at = None
     fleet.autonomy_level = SEEDED_FLEET_AUTONOMY_LEVEL
@@ -397,6 +401,23 @@ async def reset_builtin_fleet(
             await ensure_fleet_health_check(db, fleet, lead)
     await db.flush()
     return outcome
+
+
+async def _remove_provisioned(db: AsyncSession, assignment: Any) -> None:
+    """Remove what *assignment* provisioned in its source platform, then drop its provisioning state.
+
+    Best effort (``trigger_provisioning.deprovision_assignment`` never raises). An object the
+    removal could not reach keeps its ``XTM One - ...`` name in the module, where the legacy
+    cleanup of the signal sources lists it.
+    """
+    from app.agents.fleet_opt_in import PROVISIONING_STATE_KEYS
+    from app.services.trigger_provisioning import deprovision_assignment
+
+    config = getattr(assignment, "trigger_config", None)
+    if not isinstance(config, dict) or not any(k in config for k in PROVISIONING_STATE_KEYS):
+        return
+    await deprovision_assignment(db, assignment)
+    assignment.trigger_config = {k: v for k, v in config.items() if k not in PROVISIONING_STATE_KEYS}
 
 
 async def _open_member_work(db: AsyncSession, agent_ids: list[Any]) -> tuple[int, int]:
