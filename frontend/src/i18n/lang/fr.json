@@ -17922,6 +17922,7 @@
   "{count, plural, one {{products} could not be read, so open exposures there may be missing.} other {{products} could not be read, so open exposures there may be missing.}}": "{count, plural, one {{products} n'a pas pu être lu : des expositions ouvertes peuvent manquer.} other {{products} n'ont pas pu être lus : des expositions ouvertes peuvent manquer.}}",
   "On the issues you can see": "Sur les problèmes que vous voyez",
   "Unknown: {count, plural, one {# open issue} other {# open issues}} not readable with details": "Inconnu : {count, plural, one {# problème ouvert non lisible avec ses détails} other {# problèmes ouverts non lisibles avec leurs détails}}",
+  "Unknown: CVE facts not readable for you": "Inconnu : faits CVE non lisibles pour vous",
   "Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.": "Problèmes ouverts regroupés par le correctif qui les ferme. Vous voyez les cas qui contiennent au moins un problème visible pour vous dans OpenCTI ou OpenAEV.",
   "Open issues the fix closes. Issues you cannot see in their source product are counted as restricted.": "Problèmes ouverts que le correctif ferme. Ceux que vous ne voyez pas dans leur produit source sont comptés comme restreints.",
   "Reason": "Motif",
@@ -22177,5 +22178,6 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# actif primaire prouvé} other {# actifs primaires prouvés}}, {inferred, plural, one {# déduit} other {# déduits}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# actif primaire déduit} other {# actifs primaires déduits}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# déduit} other {# déduits}}",
-  "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}"
+  "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}",
+  "Not scored": "Non noté"
 }
