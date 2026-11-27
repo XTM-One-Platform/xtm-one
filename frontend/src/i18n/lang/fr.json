@@ -20110,6 +20110,9 @@
   "{count, plural, one {{shown} min left} other {{shown} min left}}": "{count, plural, one {{shown} min restante} other {{shown} min restantes}}",
   "{count, plural, one {{shown} h left} other {{shown} h left}}": "{count, plural, one {{shown} h restante} other {{shown} h restantes}}",
   "{count, plural, one {{shown} day left} other {{shown} days left}}": "{count, plural, one {{shown} jour restant} other {{shown} jours restants}}",
+  "{shown} d {shownHours} h left": "{shown} j {shownHours} h restants",
+  "{shown} d {shownHours} h past the SLA": "SLA dépassé de {shown} j {shownHours} h",
+  "SLA due {date}": "Échéance du SLA : {date}",
   "{count, plural, one {{shown} min past the SLA} other {{shown} min past the SLA}}": "{count, plural, one {SLA dépassé de {shown} min} other {SLA dépassé de {shown} min}}",
   "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}": "{count, plural, one {SLA dépassé de {shown} h} other {SLA dépassé de {shown} h}}",
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, one {SLA dépassé de {shown} jour} other {SLA dépassé de {shown} jours}}",
@@ -20670,7 +20673,6 @@
   "{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}": "{count, plural, one {# KEV} other {# KEV}} sur {assets, plural, one {# actif} other {# actifs}}",
   "{count, plural, one {# KEV} other {# KEV}}": "{count, plural, one {# KEV} other {# KEV}}",
   "{count, plural, one {# primary asset touched} other {# primary assets touched}}": "{count, plural, one {# actif primaire touché} other {# actifs primaires touchés}}",
-  "{days, plural, =0 {Due today} one {Due in # day} other {Due in # days}}": "{days, plural, =0 {Échéance aujourd'hui} one {Échéance dans # jour} other {Échéance dans # jours}}",
   "No owner": "Sans responsable",
   "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}": "{days, plural, =0 {Ouvert aujourd'hui} one {Ouvert il y a # jour} other {Ouvert il y a # jours}}",
   "Open the case": "Ouvrir le cas",
@@ -22164,7 +22166,8 @@
   "Reading OpenCTI...": "Lecture d'OpenCTI...",
   "No OpenCTI integration has a Signals source on.": "Aucune intégration OpenCTI n'a de source Signals activée.",
   "Remove {count, plural, one {# object} other {# objects}}": "Supprimer {count, plural, one {# objet} other {# objets}}",
-  "This fleet's runs only. The organization total counts every agent.": "Exécutions de cette flotte uniquement. Le total de l'organisation compte tous les agents.",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, one {{shown} agent extérieur supervise cette flotte : {cost} de coût IA, compté dans le total de l'organisation uniquement.} other {{shown} agents extérieurs supervisent cette flotte : {cost} de coût IA, comptés dans le total de l'organisation uniquement.}}",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} agent extérieur supervise cette flotte : ses exécutions comptent dans le total de l'organisation uniquement.} other {{shown} agents extérieurs supervisent cette flotte : leurs exécutions comptent dans le total de l'organisation uniquement.}}"
+  "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# actif primaire prouvé} other {# actifs primaires prouvés}}, {inferred, plural, one {# déduit} other {# déduits}}",
+  "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# actif primaire déduit} other {# actifs primaires déduits}}",
+  "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# déduit} other {# déduits}}",
+  "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}"
 }

@@ -20110,6 +20110,9 @@
   "{count, plural, one {{shown} min left} other {{shown} min left}}": "{count, plural, other {残り {shown} 分}}",
   "{count, plural, one {{shown} h left} other {{shown} h left}}": "{count, plural, other {残り {shown} 時間}}",
   "{count, plural, one {{shown} day left} other {{shown} days left}}": "{count, plural, other {残り {shown} 日}}",
+  "{shown} d {shownHours} h left": "残り {shown} 日 {shownHours} 時間",
+  "{shown} d {shownHours} h past the SLA": "SLA を {shown} 日 {shownHours} 時間超過",
+  "SLA due {date}": "SLA 期限 {date}",
   "{count, plural, one {{shown} min past the SLA} other {{shown} min past the SLA}}": "{count, plural, other {SLA を {shown} 分超過}}",
   "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}": "{count, plural, other {SLA を {shown} 時間超過}}",
   "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}": "{count, plural, other {SLA を {shown} 日超過}}",
@@ -20670,7 +20673,6 @@
   "{count, plural, one {# KEV} other {# KEV}} on {assets, plural, one {# asset} other {# assets}}": "{assets, plural, other {# 件の資産}}に{count, plural, other {# 件の KEV}}",
   "{count, plural, one {# KEV} other {# KEV}}": "{count, plural, other {# 件の KEV}}",
   "{count, plural, one {# primary asset touched} other {# primary assets touched}}": "{count, plural, other {主要資産 # 件に影響}}",
-  "{days, plural, =0 {Due today} one {Due in # day} other {Due in # days}}": "{days, plural, =0 {本日期限} other {期限まで # 日}}",
   "No owner": "担当者なし",
   "{days, plural, =0 {Opened today} one {Opened # day ago} other {Opened # days ago}}": "{days, plural, =0 {本日作成} other {# 日前に作成}}",
   "Open the case": "ケースを開く",
@@ -22164,7 +22166,8 @@
   "Reading OpenCTI...": "OpenCTI を読み込み中...",
   "No OpenCTI integration has a Signals source on.": "Signals ソースがオンの OpenCTI 連携はありません。",
   "Remove {count, plural, one {# object} other {# objects}}": "{count, plural, other {# 件のオブジェクトを削除}}",
-  "This fleet's runs only. The organization total counts every agent.": "このフリートの実行のみ。組織の合計にはすべてのエージェントが含まれます。",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: AI コスト {cost}、組織の合計にのみ計上されます。}}",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: その実行は組織の合計にのみ計上されます。}}"
+  "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, other {証明済みの主要資産 # 件}}、{inferred, plural, other {推定 # 件}}",
+  "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, other {推定の主要資産 # 件}}",
+  "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, other {推定 # 件}}",
+  "No asset matched; opened on: {reasons}": "一致する資産なし。開始の根拠: {reasons}"
 }
