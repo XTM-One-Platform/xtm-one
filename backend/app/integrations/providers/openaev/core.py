@@ -368,6 +368,13 @@ _SCENARIO_UPDATE_FIELDS = (
 )
 
 
+def _findings_timeout_hint(err: str, scope: str, narrower: str) -> str:
+    """Name the scope a timed-out findings search used and a narrower one (#2594)."""
+    if "timed out" not in err:
+        return err
+    return f"Error: OpenAEV timed out searching findings scoped to {scope}. Retry narrower: {narrower}."
+
+
 def register_core(
     base_url: str, headers: dict[str, str], executor: CallableToolExecutor
 ) -> list[ToolDefinition]:
@@ -1401,8 +1408,11 @@ def register_core(
     ) -> str:
         """Search for security findings or list all.
 
-        Pass ``simulation_id`` to scope the search to ONE run's simulation (the
-        ``finding_simulation`` backend filter key). On a busy tenant an UNSCOPED
+        Pass ``simulation_id`` to scope the search to ONE run's simulation: it goes
+        to OpenAEV's per-simulation route (``/api/findings/exercises/{id}/search``),
+        whose distinct search stays inside that simulation, so a text search does
+        not scan every occurrence of the value across the tenant (#2594). On a busy
+        tenant an UNSCOPED
         search can surface, PROOF-cite, or promote ANOTHER run's finding, so the
         autonomous orchestrator should always pass its run's simulation id when it
         verifies what a step produced.
@@ -1415,7 +1425,9 @@ def register_core(
         simulation_id = (simulation_id or "").strip()
         inject_id = (inject_id or "").strip()
         filter_group = None
-        if simulation_id:
+        # Inject route: the simulation stays a body filter on top of it. Simulation
+        # alone: the per-simulation route scopes the search itself (#2594).
+        if simulation_id and inject_id:
             filter_group = {
                 "mode": "and",
                 "filters": [
@@ -1429,13 +1441,24 @@ def register_core(
         # Route through _api so a long autonomous run keeps its JWT fresh (WS2); the
         # distinct flag rides as a query param and the idempotent read opts into the
         # transient-5xx retry.
-        path = f"/api/findings/injects/{quote(inject_id, safe='')}/search" if inject_id else "/api/findings/search"
+        if inject_id:
+            path = f"/api/findings/injects/{quote(inject_id, safe='')}/search"
+            action, used = "search findings of inject", f"inject {inject_id}"
+            narrower = "a more specific search text or a lower limit"
+        elif simulation_id:
+            path = f"/api/findings/exercises/{quote(simulation_id, safe='')}/search"
+            action, used = "search findings of simulation", f"simulation {simulation_id}"
+            narrower = "inject_id"
+        else:
+            path = "/api/findings/search"
+            action, used = "search findings", "the whole tenant"
+            narrower = "simulation_id or inject_id"
         resp, err = await _api(
             base_url,
             hdrs,
             "post",
             path,
-            "search findings of inject" if inject_id else "search findings",
+            action,
             params={"distinct": "true"},
             json=_search_body(
                 size=min(limit, 50), text_search=search, filter_group=filter_group
@@ -1443,7 +1466,7 @@ def register_core(
             retry_transient=True,
         )
         if err:
-            return err
+            return _findings_timeout_hint(err, used, narrower)
         resp = _require_response(resp)
         data = resp.json()
         items = data.get("content", [])
