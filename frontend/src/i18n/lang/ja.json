@@ -22076,5 +22076,14 @@
   "Resync from the sources": "ソースから再同期",
   "Resume signal intake": "シグナルの受信を再開",
   "{signals, plural, one {# signal} other {# signals}}, {cases, plural, one {# case} other {# cases}}": "{signals, plural, other {# 件のシグナル}}、{cases, plural, other {# 件のケース}}",
-  "{count, plural, one {# signal recorded} other {# signals recorded}}": "{count, plural, other {# 件のシグナルを記録}}"
+  "{count, plural, one {# signal recorded} other {# signals recorded}}": "{count, plural, other {# 件のシグナルを記録}}",
+  "Deleting browser profile": "ブラウザープロファイルを削除中",
+  "Also signs in (optional)": "ほかにサインインするアプリ (任意)",
+  "Other applications this profile's session opens signed in, for example through the same single sign-on. Agents find this profile by their URL and record them with it.": "このプロファイルのセッションでサインイン済みで開くほかのアプリケーション (同じシングルサインオン経由など)。エージェントはその URL からこのプロファイルを見つけ、このプロファイルで記録します。",
+  "Application name": "アプリケーション名",
+  "Application URL": "アプリケーションの URL",
+  "Remove application": "アプリケーションを削除",
+  "Add application": "アプリケーションを追加",
+  "Also signs in": "ほかにサインインするアプリ",
+  "Also signs in: {name} - {url}": "ほかにサインイン: {name} - {url}"
 }
