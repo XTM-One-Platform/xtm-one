@@ -22085,5 +22085,7 @@
   "Remove application": "アプリケーションを削除",
   "Add application": "アプリケーションを追加",
   "Also signs in": "ほかにサインインするアプリ",
-  "Also signs in: {name} - {url}": "ほかにサインイン: {name} - {url}"
+  "Also signs in: {names}": "ほかにサインイン: {names}",
+  "{name} - {url}": "{name} - {url}",
+  "Enter an http or https address with a host, for example https://app.example.com/.": "ホストを含む http または https のアドレスを入力してください (例: https://app.example.com/)。"
 }
