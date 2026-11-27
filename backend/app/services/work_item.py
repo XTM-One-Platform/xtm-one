@@ -82,7 +82,7 @@ from app.services.company_managed_writes import (
     restricted_governors,
 )
 from app.services.ownership_scope import ownership_clause
-from app.services.work_item_a2a_refs import names_a2a_task, refuse_unknown_a2a_tasks
+from app.services.work_item_a2a_refs import delegating_agents, names_a2a_task, refuse_unknown_a2a_tasks
 from app.services.work_item_blocked_refs import all_satisfied as all_refs_satisfied
 from app.services.work_item_blocked_refs import (
     blocked_why,
@@ -2330,7 +2330,7 @@ async def create_work_item(
         await check_targets(db, impact, owner_agent_id=owner_uuid, created_by_agent_id=creator_uuid)
         if names_a2a_task(refs):
             # A task id no delegation of this user answered would never release it (#2265).
-            await refuse_unknown_a2a_tasks(db, user_uuid, refs)
+            await refuse_unknown_a2a_tasks(db, user_uuid, refs, agent_ids=delegating_agents(creator_uuid, owner_uuid))
         structured_ask = await _complete_case_ask(db, key, structured_ask)
         named_workspace = workspace_id
         if workspace_id is None:
@@ -2760,7 +2760,12 @@ async def update_work_item(
         refuse_unobserved_deployment_refs(refs)
         if names_a2a_task(refs):
             # A task id no delegation of the item's user answered would never release it (#2265).
-            await refuse_unknown_a2a_tasks(db, item.user_id, refs)
+            await refuse_unknown_a2a_tasks(
+                db,
+                item.user_id,
+                refs,
+                agent_ids=delegating_agents(item.created_by_agent_id, item.owner_agent_id),
+            )
         stored_reason = getattr(item, "blocked_reason", None)
         reason = stored_reason if blocked_reason is None else normalize_blocked_reason(blocked_reason)
         stored_human = getattr(item, "needs_human", None)

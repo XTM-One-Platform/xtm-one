@@ -43,6 +43,7 @@ import app.models.ctem_case
 import app.models.ctem_metric
 import app.models.ctem_posture_snapshot
 import app.models.ctem_signal
+import app.models.ctem_signal_inbox
 import app.models.ctem_signal_source
 import app.models.ctem_surface_observation
 import app.models.ctem_surface_pass

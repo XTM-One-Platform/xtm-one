@@ -155,6 +155,10 @@ export interface RoiReportResponse {
   cost_source?: string;
   /** The part of the AI cost no recorded unit carries (the "Cost not tied to a unit" row); `null` when costs are masked. */
   unallocated_cost?: number | null;
+  /** A fleet report: its factory reset time when it falls inside the window (#2580), the views' "Measured since <date> (reset)". */
+  value_measured_since?: string | null;
+  /** How many fleets are measured since a reset inside the window: the platform total leaves their earlier value out (#2580). */
+  reset_fleets?: number;
   /** The ledger's figures of the same scope and reader (#12077, design 12.8): what the Value page draws (slice L6a). */
   figures?: RoiLedgerFigures;
 }

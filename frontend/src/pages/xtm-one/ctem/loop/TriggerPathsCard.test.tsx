@@ -59,7 +59,7 @@ describe("TriggerPathsCard", () => {
     expect(within(leak as HTMLElement).getByTestId("ctem-trigger-path-status").textContent).toBe("Not connected");
     expect(within(leak as HTMLElement).getByRole("button", { name: "Connect" })).toBeTruthy();
     // No connected-count caption nor sources button any more (Sam, 23 Nov 2026, #1344).
-    expect(screen.queryByText("1 of 2 trigger paths connected")).toBeNull();
+    expect(screen.queryByText("1 of 2 signal types connected")).toBeNull();
     expect(screen.queryByRole("link", { name: "Signal sources" })).toBeNull();
   });
 

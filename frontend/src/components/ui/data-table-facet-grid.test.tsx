@@ -31,7 +31,8 @@ function Location() {
   return <output data-testid="location">{useLocation().search}</output>;
 }
 
-function renderTable(url = "/", facetGrid = true) {
+// "default" leaves the prop out, so the DataTable's own default is what renders.
+function renderTable(url = "/", facetGrid: boolean | "default" = true, filters: DataTableFilter<Row>[] = FILTERS) {
   return renderWithProviders(
     <MemoryRouter initialEntries={[url]}>
       <Routes>
@@ -43,9 +44,9 @@ function renderTable(url = "/", facetGrid = true) {
                 rows={ROWS}
                 columns={COLUMNS}
                 rowKey={(row) => row.id}
-                filters={FILTERS}
+                filters={filters}
                 filtersInPill
-                facetGrid={facetGrid}
+                {...(facetGrid === "default" ? {} : { facetGrid })}
                 emptyLabel="None"
                 urlKey=""
               />
@@ -105,7 +106,31 @@ describe("DataTable facetGrid (#2556)", () => {
     expect(chip.querySelector("[title]")?.getAttribute("title")).toBe("Status: active and paused");
   });
 
-  it("draws no chip and no count without facetGrid", () => {
+  it("is the default of a client-mode filtersInPill table (#2573)", () => {
+    renderTable("/?f_status=active", "default");
+    expect(screen.getByTestId("data-table-filter-chips")).toBeTruthy();
+    const panel = openPanel();
+    expect(panel.querySelectorAll("[data-facet]")).toHaveLength(2);
+  });
+
+  it("sizes the panel to its groups: one column per group, at most four (UX r1 B1 on #2576)", () => {
+    renderTable("/", true, FILTERS.slice(0, 1));
+    openPanel();
+    expect(screen.getByTestId("data-table-facet-columns").getAttribute("data-facet-columns")).toBe("1");
+  });
+
+  it("draws two columns for two groups and four for more than four", () => {
+    const { unmount } = renderTable();
+    openPanel();
+    expect(screen.getByTestId("data-table-facet-columns").getAttribute("data-facet-columns")).toBe("2");
+    unmount();
+    const many = ["a", "b", "c", "d", "e"].map((key) => ({ key, label: key.toUpperCase(), values: (row: Row) => [row.status] }));
+    renderTable("/", true, many);
+    openPanel();
+    expect(screen.getByTestId("data-table-facet-columns").getAttribute("data-facet-columns")).toBe("4");
+  });
+
+  it("draws no chip and no count with facetGrid={false}", () => {
     renderTable("/?f_status=active", false);
     expect(screen.queryByTestId("data-table-filter-chips")).toBeNull();
     openPanel();

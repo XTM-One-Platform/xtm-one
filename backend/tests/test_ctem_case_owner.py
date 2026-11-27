@@ -393,3 +393,99 @@ async def test_the_repair_writes_nothing_when_no_case_is_left() -> None:
 
     db = Session([])
     assert await owner_of.backfill_owners(cast("Any", db), now=datetime.now(UTC)) == 0 and db.added == []
+
+
+# --- #2577: a platform group as the owning team ---------------------------------------
+
+PAYMENTS = owner_of.Team(uuid.uuid4(), "Payments team", CLOUD)
+
+
+def test_a_group_owned_by_a_platform_group_routes_to_that_team_and_its_lead() -> None:
+    route = owner_of.pick_route(
+        [Candidate("Payments servers", "Payments Team", 8), Candidate("All endpoints", "it@example.com", 2)],
+        [],
+        USERS,
+        affected=10,
+        teams={"payments team": PAYMENTS},
+    )
+    assert route.owner == CLOUD and route.team == PAYMENTS and route.team_id == PAYMENTS.id
+    assert route.reason == "asset group: Payments servers (8 of 10 affected assets)"
+    assert route.contributors == ((IT, "asset group: All endpoints"),)
+    basis = json.loads(route.evidence())["basis"]
+    assert basis["kind"] == "asset_group" and basis["team"] == {"id": str(PAYMENTS.id), "name": "Payments team"}
+
+
+def test_a_team_with_no_active_member_is_passed_over_and_an_email_keeps_todays_routing() -> None:
+    # No team resolved (no active member, or no such group): the next group's email owner wins, no team.
+    route = owner_of.pick_route(
+        [Candidate("Payments servers", "Payments team", 8), Candidate("All endpoints", "it@example.com", 2)],
+        [],
+        USERS,
+        affected=10,
+        teams={},
+    )
+    assert route.owner == IT and route.team is None and route.team_id is None
+    assert "team" not in json.loads(route.evidence())["basis"]
+
+
+def test_a_primary_asset_owned_by_a_team_routes_to_it() -> None:
+    route = owner_of.pick_route(
+        [], [Candidate("billing", "payments team", 1)], USERS, affected=1, teams={"payments team": PAYMENTS}
+    )
+    assert route == owner_of.Route(CLOUD, "primary asset: billing", team=PAYMENTS)
+
+
+def test_team_names_are_the_owner_texts_without_an_email() -> None:
+    assert owner_of.team_names(
+        [Candidate("a", " Payments  Team ", 1), Candidate("b", "it@example.com", 1), Candidate("c", "", 1)]
+    ) == ["payments team"]
+
+
+@pytest.mark.asyncio
+async def test_team_owners_take_a_manager_before_a_member_and_read_nothing_for_no_name() -> None:
+    gid = uuid.uuid4()
+    db = Session([(gid, "Payments team", SAM)], [(gid, "Payments team", BOB)])  # managers, then members
+    assert await owner_of.team_owners(cast("Any", db), ["payments team"]) == {
+        "payments team": owner_of.Team(gid, "Payments team", SAM)
+    }
+    members_only = Session([], [(gid, "Payments team", BOB)])
+    found = await owner_of.team_owners(cast("Any", members_only), ["payments team"])
+    assert found["payments team"].lead == BOB
+    none = Session(fail=True)
+    assert await owner_of.team_owners(cast("Any", none), []) == {}
+
+
+@pytest.mark.asyncio
+async def test_route_case_reads_the_teams_after_the_users(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CTEM_CASE_DEFAULT_OWNER", raising=False)
+    _no_decider(monkeypatch)
+    rec, group, gid = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    db = Session(
+        [(rec, "pay-01")],
+        [(group, rec, "Payments servers", "Payments team")],
+        [],  # primary asset links (no user read: no email owner)
+        [],  # team managers
+        [(gid, "Payments team", BOB)],  # team members
+    )
+    route = await owner_of.route_case(cast("Any", db), uuid.uuid4(), ["pay-01"], profile_owners={})
+    assert route.owner == BOB and route.team == owner_of.Team(gid, "Payments team", BOB)
+
+
+@pytest.mark.asyncio
+async def test_the_repair_sets_the_team_and_a_kept_owner_keeps_its_team(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import UTC, datetime
+
+    _sweep(
+        monkeypatch, owner_of.Route(CLOUD, "asset group: Payments servers (1 of 1 affected assets)", team=PAYMENTS), []
+    )
+    case = SimpleNamespace(id=uuid.uuid4(), organization_id=uuid.uuid4(), owner_user_id=SAM, owner_group_id=None)
+    db = Session([case], [])
+    assert await owner_of.route_open_cases(cast("Any", db), now=datetime.now(UTC)) == 1
+    assert case.owner_user_id == CLOUD and case.owner_group_id == PAYMENTS.id
+
+    _sweep(monkeypatch, owner_of.Route(), [])
+    team = uuid.uuid4()
+    kept = SimpleNamespace(id=uuid.uuid4(), organization_id=uuid.uuid4(), owner_user_id=SAM, owner_group_id=team)
+    db = Session([kept], [])
+    assert await owner_of.route_open_cases(cast("Any", db), now=datetime.now(UTC)) == 1
+    assert kept.owner_group_id == team

@@ -21,7 +21,9 @@ record of it is :class:`~app.models.a2a.A2ADelegation` (``partner_task_id``,
 
 - At the write, :func:`refuse_unknown_a2a_tasks` refuses a task id the item's user
   has no delegation for (unknown, or another user's), so a wait that nothing could
-  ever release is never stored.
+  ever release is never stored. A company-managed item with no person (``user_id``
+  NULL, #2591) is matched by the delegating agent instead: a task its creator or
+  owner agent delegated is known, another agent's is refused.
 - :func:`release_ended_a2a_tasks` (the polling pass of the autonomous tick, and once
   at the write through :func:`schedule_a2a_task_check`) records the end of each
   task on its reference: ``state`` ``completed`` when the outcome is completed,
@@ -115,18 +117,38 @@ def a2a_release_note(released: list[str], now: datetime) -> str:
     return f"released: {'; '.join(released)}; released at {_stamp(now)}"
 
 
-async def _outcomes(db: AsyncSession, user_id: Any, task_ids: list[str]) -> dict[str, str | None]:
-    """Each task id of *user_id*'s delegations among *task_ids*: its outcome (``None`` while running).
+def delegating_agents(*agent_ids: Any) -> list[uuid.UUID]:
+    """The distinct agent ids among *agent_ids* (UUIDs or their text), ``None`` and junk left out. Pure."""
+    out: list[uuid.UUID] = []
+    for value in agent_ids:
+        agent = value if isinstance(value, uuid.UUID) else _uuid(value) if value else None
+        if agent is not None and agent not in out:
+            out.append(agent)
+    return out
 
-    Where one task id has several rows, an outstanding one wins (the wait tool's rule).
+
+async def _outcomes(
+    db: AsyncSession, user_id: Any, task_ids: list[str], agent_ids: list[uuid.UUID] | None = None
+) -> dict[str, str | None]:
+    """Each task id of the item's delegations among *task_ids*: its outcome (``None`` while running).
+
+    The delegations of *user_id*; on an item with no user (company-managed, #2591),
+    the delegations *agent_ids* (its creator and owner agents) made. Where one task
+    id has several rows, an outstanding one wins (the wait tool's rule).
     """
     from app.models.a2a import A2ADelegation
 
-    if not task_ids or user_id is None:
+    if not task_ids:
+        return {}
+    if user_id is not None:
+        whose = A2ADelegation.user_id == user_id
+    elif agent_ids:
+        whose = A2ADelegation.agent_id.in_(agent_ids)
+    else:
         return {}
     rows = await db.execute(
         select(A2ADelegation.partner_task_id, A2ADelegation.outcome, A2ADelegation.terminal_at)
-        .where(A2ADelegation.partner_task_id.in_(task_ids), A2ADelegation.user_id == user_id)
+        .where(A2ADelegation.partner_task_id.in_(task_ids), whose)
         .order_by(A2ADelegation.outcome.is_(None).desc(), A2ADelegation.submitted_at.desc())
     )
     out: dict[str, str | None] = {}
@@ -137,17 +159,24 @@ async def _outcomes(db: AsyncSession, user_id: Any, task_ids: list[str]) -> dict
     return out
 
 
-async def refuse_unknown_a2a_tasks(db: AsyncSession, user_id: Any, refs: object) -> None:
-    """Raise :class:`BlockedRefError` on an ``a2a_task`` reference *user_id* has no delegation for."""
+async def refuse_unknown_a2a_tasks(
+    db: AsyncSession, user_id: Any, refs: object, *, agent_ids: list[uuid.UUID] | None = None
+) -> None:
+    """Raise :class:`BlockedRefError` on an ``a2a_task`` reference the item has no delegation for.
+
+    *user_id*'s delegations; with no user, those of *agent_ids* (the item's creator
+    and owner agents, :func:`delegating_agents`).
+    """
     ids = a2a_task_ids(refs)
     if not ids:
         return
-    uid = user_id if isinstance(user_id, uuid.UUID) else _uuid(user_id)
-    known = await _outcomes(db, uid, ids) if uid is not None else {}
+    uid = user_id if isinstance(user_id, uuid.UUID) else _uuid(user_id) if user_id else None
+    known = await _outcomes(db, uid, ids, agent_ids)
     unknown = [t for t in ids if t not in known]
     if unknown:
+        whose = "this item's user" if uid is not None else "this item's creator or owner agent"
         raise BlockedRefError(
-            f"blocked_on_refs: no outbound A2A delegation of this item's user has task {unknown[0]!r}: name the "
+            f"blocked_on_refs: no outbound A2A delegation of {whose} has task {unknown[0]!r}: name the "
             "collect_task_id (or continue_task_id) the delegation tool answered; nothing else would release the item"
         )
 
@@ -189,7 +218,12 @@ async def release_ended_a2a_tasks(now: datetime | None = None, *, item_id: uuid.
             )
             for item in rows.scalars().all():
                 refs = [r for r in (item.blocked_on_refs or []) if isinstance(r, dict)]
-                outcomes = await _outcomes(db, item.user_id, a2a_task_ids(refs))
+                outcomes = await _outcomes(
+                    db,
+                    item.user_id,
+                    a2a_task_ids(refs),
+                    delegating_agents(item.created_by_agent_id, item.owner_agent_id),
+                )
                 refs, ended = apply_outcomes(refs, outcomes, now)
                 if not ended:
                     continue

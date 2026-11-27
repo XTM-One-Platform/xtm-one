@@ -382,7 +382,44 @@ async def test_a_re_sighting_of_an_unmatched_signal_runs_the_gate_again(fake_io,
     parked = _row()
     await store.evaluate_after_record(db, parked, created=False)
     assert parked.state == "confirmed" and opened == ["langfuse.example.com"]
-    # A re-sighting of any other state changes nothing.
+    # A re-sighting of a discarded signal changes nothing.
+    dropped = _row(state="discarded", ref="d.example.com", decision={"reason_code": "out_of_scope"})
+    await store.evaluate_after_record(db, dropped, created=False)
+    assert dropped.state == "discarded" and opened == ["langfuse.example.com"]
+
+
+async def test_a_re_sighting_of_a_watchlist_signal_runs_the_gate_again(fake_io, monkeypatch):
+    """#2581: the gate decides a watchlist signal again on every new sighting; a confirm opens its case."""
+    from app.services import ctem_case_loop
+
+    opened: list[str] = []
+
+    async def _open(_db, row, *, events):
+        opened.append(row.id)
+
+    monkeypatch.setattr(ctem_case_loop, "open_from_signal", _open)
+    decided: list[str] = []
+
+    async def _evaluate(_db, row, **_kw):
+        decided.append(row.id)
+        row.state = "confirmed"
+
+    monkeypatch.setattr(store, "evaluate", _evaluate)
+    db = SimpleNamespace(begin_nested=lambda: _Nested())
     watched = _row(state="watchlist", ref="w.example.com", decision={"reason_code": "below_scope_threshold"})
     await store.evaluate_after_record(db, watched, created=False)
-    assert watched.state == "watchlist" and opened == ["langfuse.example.com"]
+    assert decided == ["w.example.com"]
+    assert watched.state == "confirmed" and opened == ["w.example.com"]
+
+
+async def test_a_re_sighting_of_a_dismissed_signal_is_not_decided_again(fake_io, monkeypatch):
+    decided: list[str] = []
+
+    async def _evaluate(_db, row, **_kw):
+        decided.append(row.id)
+
+    monkeypatch.setattr(store, "evaluate", _evaluate)
+    db = SimpleNamespace(begin_nested=lambda: _Nested())
+    kept = _row(state="discarded", ref="k.example.com", decision={"reason_code": store.DISMISSED_CODE})
+    await store.evaluate_after_record(db, kept, created=False)
+    assert decided == [] and kept.state == "discarded"
