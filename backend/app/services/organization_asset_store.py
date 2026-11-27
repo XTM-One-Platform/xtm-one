@@ -1211,6 +1211,36 @@ def _source_reference(value: str) -> tuple[str, str] | None:
     return (found.group(1), found.group(2)) if found else None
 
 
+#: The prefix of a source record id as the inventory change log names it (``record:<uuid>``).
+_RECORD_PREFIX = "record:"
+
+
+def record_reference(value: str) -> uuid.UUID | None:
+    """The source record id *value* names (a bare UUID or ``record:<uuid>``), else ``None`` (#2702)."""
+    text_value = value[len(_RECORD_PREFIX) :] if value.lower().startswith(_RECORD_PREFIX) else value
+    try:
+        return uuid.UUID(text_value.strip())
+    except ValueError:
+        return None
+
+
+async def assets_of_records(
+    db: AsyncSession, organization_id: uuid.UUID, record_ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, uuid.UUID]:
+    """The merged asset id of each source record of the organisation that is in an asset (#2702)."""
+    if not record_ids:
+        return {}
+    rec = OrganizationAssetRecord
+    rows = (
+        await db.execute(
+            select(rec.id, rec.asset_id).where(
+                rec.organization_id == organization_id, rec.id.in_(list(record_ids)), rec.asset_id.is_not(None)
+            )
+        )
+    ).all()
+    return {record_id: asset_id for record_id, asset_id in rows}
+
+
 def _lookup_keys(value: str) -> set[tuple[str, str]]:
     """The (kind, normalised value) pairs *value* may be: an FQDN and its hostname, a MAC, an IP."""
     return {(kind, key) for kind in LOOKUP_KINDS if (key := identity.normalize_identifier(kind, value))}
@@ -1230,20 +1260,26 @@ async def find_assets_by_identifier(
     against the asset's name. A value of the form ``<source>:<external id>``
     (``openaev:<asset id>``) names one source record: it is matched exactly on
     the records' source and external id and, when found, wins over every
-    weak reading of the same value. A value no asset holds is absent; when
+    weak reading of the same value. A source record id (a bare UUID or
+    ``record:<uuid>``, what the inventory change log names, #2702) answers the
+    asset the record is merged into. A value no asset holds is absent; when
     several assets hold it (a weak key such as a shared IP), the first by name
     answers. The profile caps its rows at 5,000, so one scan of the records is bounded.
     """
     asked: dict[str, set[tuple[str, str]]] = {}
     references: dict[str, tuple[str, str]] = {}
+    record_refs: dict[str, uuid.UUID] = {}
     for value in values[:MAX_LOOKUP_KEYS]:
         text_value = str(value or "").strip()
         if text_value and text_value not in asked:
             asked[text_value] = _lookup_keys(text_value)
-            if (reference := _source_reference(text_value)) is not None:
+            if (record_id := record_reference(text_value)) is not None:
+                record_refs[text_value] = record_id
+            elif (reference := _source_reference(text_value)) is not None:
                 references[text_value] = reference
     if not asked:
         return {}
+    of_records = await assets_of_records(db, organization_id, set(record_refs.values()))
     held: dict[tuple[str, str], set[uuid.UUID]] = {}
     by_reference: dict[tuple[str, str], set[uuid.UUID]] = {}
     wanted_references = set(references.values())
@@ -1275,6 +1311,9 @@ async def find_assets_by_identifier(
         by_name.setdefault(name_key, set()).add(asset_id)
     matched: dict[str, set[uuid.UUID]] = {}
     for value, keys in asked.items():
+        if value in record_refs and (record_asset := of_records.get(record_refs[value])) is not None:
+            matched[value] = {record_asset}
+            continue
         exact = by_reference.get(references[value], set()) if value in references else set()
         if exact:
             matched[value] = exact

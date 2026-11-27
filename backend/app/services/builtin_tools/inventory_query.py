@@ -352,7 +352,8 @@ def build_inventory_query_tools() -> tuple[list[ToolDefinition], CallableToolExe
         (
             LIST_INVENTORY_CHANGES,
             _changes,
-            "The inventory change log, newest first: what was created, updated or deleted, by whom, when.",
+            "The inventory change log, newest first: what was created, updated or deleted, by whom, when. "
+            "A record row's entity_id is a source record id; asset_id and asset_name name its merged asset.",
             {
                 "since": {"type": "string", "description": "ISO date or time."},
                 "before_id": {"type": "integer", "description": "Next page: the last change id read."},
