@@ -188,7 +188,9 @@ listener row of section 2 has no source row.
 
 `status`, one per path, the one its sources say (UX round 1 on #2442):
 `error` (a source XTM One provisions is in error on one of its integrations,
-`error_count` on the source; critical tone, the chip says "N sources in
+`error_count` on the source, and per integration in `errors` its `reason`,
+`reason_code`, `last_attempt_at` (the last check) and `fix` / `fix_route`
+(#2637); critical tone, the chip says "N sources in
 error"), `enabled` (one source bound and every source used on the path, of a
 connected provider and not taken off it, is on; low tone) or `partly_enabled`
 (one bound, another used source off or not set up; medium tone), never
@@ -475,6 +477,16 @@ The tools are offered to the built-in `ctem-assistant`,
 `ctem-threat-relevance-analyst`, acting for the person the turn or run acts
 for. No persona or seeded assignment uses them yet: the fleets are rewired on
 signals and cases in a later step of the loop.
+
+`list_ctem_signal_sources` (#2637) answers every path with its `status`,
+`sources_in_error` and each source's `state` (`error`, `on`, `off`,
+`not_used_here`, `not_configured`, `not_set_up`, `not_connected`), an error
+carrying its reason, last attempt and fix: the status and text of the Signal
+sources page, so a monitoring agent reads why a source is in error. A source
+switched off after a refused enable for a missing setting (no run-as, run-as
+without the integration, no webhook secret, organization context missing;
+`ctem_platform_sources.CONFIGURATION_CODES`) is `not_configured`, never
+`error`, and counts in no path's errors.
 
 Any other agent reads the signals through the read-only built-in group
 `ctem_read` (`list_ctem_signals` with the same visibility as section 5, plus
