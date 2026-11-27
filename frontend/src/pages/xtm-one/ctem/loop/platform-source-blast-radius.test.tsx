@@ -131,5 +131,11 @@ describe("Open in links of a per-path source (#2627)", () => {
     renderWithProviders(<PlatformSourceControls source={{ provider: "opencti", kind: "pir_playbook" }} platformSources={[pir]} isAdmin onEnable={() => {}} />);
     const texts = screen.getAllByTestId("ctem-platform-source-object-link").map((a) => a.textContent);
     expect(texts).toEqual(["Notifier", "Playbook: New vulnerability on a running version", "Playbook: Relevant new threat or actor"]);
+    // #2649 UX r1 B1: the links take their own line under the name and switch, not the first line beside them.
+    const objects = screen.getByTestId("ctem-platform-source-objects");
+    const row = screen.getByTestId("ctem-platform-source-switch").closest("li");
+    expect(objects.parentElement).toBe(row);
+    expect(screen.getByTestId("ctem-platform-source-switch").parentElement).not.toContainElement(objects);
+    expect(screen.getByTestId("ctem-platform-source-name")).toHaveTextContent(pir.integration_name);
   });
 });

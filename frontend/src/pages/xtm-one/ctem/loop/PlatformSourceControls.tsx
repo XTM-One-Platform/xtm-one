@@ -57,7 +57,7 @@ function PlatformObjectLinks({ source }: { source: CtemPlatformSource }) {
   const platform = PLATFORM_NAME[source.provider] ?? source.provider;
   const perKind = links.reduce<Record<string, number>>((n, link) => ({ ...n, [link.kind]: (n[link.kind] ?? 0) + 1 }), {});
   return (
-    <span className="flex min-w-0 shrink items-center" data-testid="ctem-platform-source-objects">
+    <span className="flex min-w-0 flex-wrap items-center gap-2" data-testid="ctem-platform-source-objects">
       {links.map((link) => {
         const path = perKind[link.kind] > 1 && link.pathLabel ? t_i18n(link.pathLabel) : null;
         const open = t_i18n(PLATFORM_OBJECT_OPEN_LABEL[link.kind], { platform });
@@ -65,9 +65,9 @@ function PlatformObjectLinks({ source }: { source: CtemPlatformSource }) {
         const label = path ? t_i18n("{label}: {value}", { label: open, value: path }) : open;
         return (
           <Tip key={link.href} content={label}>
-            <Button asChild variant="ghost" size="sm" className="min-w-0">
+            <Button asChild variant="ghost" size="sm" className="shrink-0">
               <a href={link.href} target="_blank" rel="noopener noreferrer" aria-label={label} data-testid="ctem-platform-source-object-link" data-kind={link.kind}>
-                <span className="truncate">{path ? t_i18n("{label}: {value}", { label: kind, value: path }) : kind}</span>
+                <span>{path ? t_i18n("{label}: {value}", { label: kind, value: path }) : kind}</span>
                 <Icon name="external-link" size={16} aria-hidden />
               </a>
             </Button>
@@ -220,9 +220,11 @@ function PlatformSourceLine({
   return (
     <li className="flex flex-col gap-1 content-compact" data-testid="ctem-platform-source" data-status={source.status} data-integration={source.integration_id}>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0 truncate" title={source.integration_name}>
-          {source.integration_name}
-        </span>
+        <Tip content={source.integration_name}>
+          <span className="min-w-0 truncate" data-testid="ctem-platform-source-name">
+            {source.integration_name}
+          </span>
+        </Tip>
         <Chip
           label={t_i18n(PLATFORM_SOURCE_STATUS_LABEL[source.status])}
           severity={PLATFORM_SOURCE_STATUS_TONE[source.status]}
@@ -230,7 +232,6 @@ function PlatformSourceLine({
           data-testid="ctem-platform-source-status"
         />
         <span className="ml-auto" />
-        {source.enabled && <PlatformObjectLinks source={source} />}
         <Switch
           className="shrink-0"
           checked={source.enabled}
@@ -240,6 +241,8 @@ function PlatformSourceLine({
           data-testid="ctem-platform-source-switch"
         />
       </div>
+      {/* The Open in links take their own wrapping line under the name, so neither the name nor a link label is cut (#2649 UX r1 B1). */}
+      {source.enabled && <PlatformObjectLinks source={source} />}
       {source.enabled && (
         <span className="text-default-secondary" data-testid="ctem-platform-source-run-as">
           {t_i18n("Runs as: {user}", { user: runAs })}
