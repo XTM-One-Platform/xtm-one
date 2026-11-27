@@ -15274,6 +15274,7 @@
   "ROI figures are estimated from default baselines until your organization sets its own.": "Les chiffres de ROI sont estimés à partir des références par défaut tant que votre organisation n'a pas défini les siennes.",
   "Screen left empty between two inserts": "Écran laissé vide entre deux incrustations",
   "Simulation finished": "Simulation terminée",
+  "Atomic test finished": "Test atomique terminé",
   "Inject or atomic test finished": "Inject ou test atomique terminé",
   "Finding created": "Constat créé",
   "Stored": "Enregistré",
@@ -20083,6 +20084,7 @@
   "Step in progress": "Étape en cours",
   "Asset created": "Actif créé",
   "Asset updated": "Actif modifié",
+  "Asset stale": "Actif obsolète",
   "Asset turned stale": "Actif devenu obsolète",
   "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "Se déclenche quand un actif n'a pas été vu dans OpenAEV au-delà du seuil d'obsolescence du tenant (inactif tant que le seuil n'est pas défini).",
   "Finding deleted": "Constat supprimé",
@@ -22172,7 +22174,7 @@
   "Triggers": "Déclencheurs",
   "Playbook": "Playbook",
   "Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.": "Alimente {count, plural, one {# chemin} other {# chemins}} : {paths}. La désactiver les arrête tous.",
-  "Objects in {platform}:": "Objets dans {platform} :",
+  "Owner: {owner}": "Propriétaire : {owner}",
   "No legacy object left.": "Aucun ancien objet restant.",
   "{count, plural, one {# object would be removed:} other {# objects would be removed:}}": "{count, plural, one {# objet serait supprimé :} other {# objets seraient supprimés :}}",
   "{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}": "{count, plural, =0 {Aucun objet supprimé.} one {# objet supprimé.} other {# objets supprimés.}}",
@@ -22217,5 +22219,8 @@
   "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.": "La tâche d'un partenaire lit les flottes, leur santé et les exécutions que le propriétaire peut lire, et la version en service. Jamais d'écriture ; chaque lecture est auditée avec la tâche du partenaire.",
   "This fleet's runs only. The organization total counts every agent.": "Exécutions de cette flotte uniquement. Le total de l'organisation compte tous les agents.",
   "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, one {{shown} agent extérieur supervise cette flotte : {cost} de coût IA, compté dans le total de l'organisation uniquement.} other {{shown} agents extérieurs supervisent cette flotte : {cost} de coût IA, comptés dans le total de l'organisation uniquement.}}",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} agent extérieur supervise cette flotte : ses exécutions comptent dans le total de l'organisation uniquement.} other {{shown} agents extérieurs supervisent cette flotte : leurs exécutions comptent dans le total de l'organisation uniquement.}}"
+  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} agent extérieur supervise cette flotte : ses exécutions comptent dans le total de l'organisation uniquement.} other {{shown} agents extérieurs supervisent cette flotte : leurs exécutions comptent dans le total de l'organisation uniquement.}}",
+  "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objets dans {platform}, appartenant à Signals ({count, plural, one {# objet} other {# objets}}) :",
+  "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Autres objets XTM One dans {platform}, appartenant à des flottes, non comptés ici ({count, plural, one {# objet} other {# objets}}) :",
+  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} écoute aussi l'événement « {event} » avec son propre déclencheur} other {{owners} écoutent aussi l'événement « {event} », chacun avec son propre déclencheur}} : chaque propriétaire reçoit sa propre livraison et lance sa propre exécution, avec son propre utilisateur d'exécution."
 }
