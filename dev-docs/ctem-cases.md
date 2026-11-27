@@ -811,6 +811,19 @@ then the existing AI assessment and facts grid unchanged.
   item goes to the CTEM deciders, `ctem_access.gate_recipient`, who the owner
   may not be); owned and unowned cases read alike, and "A decision" is left only for a case with no owner, which the case
   sweep no longer leaves open (`ctem_case_owner.backfill_owners`).
+- **Owner routing (#2560)**: `ctem_case_owner.route_case` routes a case to the owner of the asset group holding the
+  most affected assets (membership rows, ties by group name), the other group owners recorded as contributors;
+  else the owner of a primary asset the case reaches (an inventory link of an affected record or group, or a
+  `primary_asset` scope source; the owner text is read from the organization profile); else
+  `CTEM_CASE_DEFAULT_OWNER`; else the CTEM decider. The asset record's `owner` (the device user an endpoint source
+  fills) is never a candidate. An owner text counts only when it is an active account's email. The `owner` case
+  event carries the reason (`asset group: All MacOS x86_64 (12 of 15 affected assets)`,
+  `fallback: CTEM decider (administrator)`) and, as JSON evidence, the routing version, whether it is a fallback
+  and the contributors; the case read answers them as `owner_reason` and `owner_contributors`. The sweep's owner
+  pass (`route_open_cases`) re-routes at most `ROUTE_BATCH` open cases per sweep that this routing version did not
+  route (or routed to a fallback before an asset group or the profile changed), one `owner` event each, no
+  platform event, no agent run; a case where a person ever set or cleared the owner is never touched. A team
+  (platform group) as owner is a follow-up.
 - **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
   (quick filters, search and filters applied) at `/ctem/cases` or as columns
   at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.

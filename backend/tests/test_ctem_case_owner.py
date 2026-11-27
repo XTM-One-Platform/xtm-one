@@ -1,12 +1,12 @@
-"""The owner a new CTEM case starts with (#1736 slice 3).
+"""The owner a CTEM case is routed to (#1736 slice 3, #2452, #2560).
 
-Rules of ``services/ctem_case_owner.py``: an asset's owner first, then its
-group's owner, then the instance default; only an active account's email
-counts; a failed read opens the case without an owner.
+Group owner over device user, the majority group with contributors, the primary
+asset owner, the default then the decider, and the sweep's capped re-routing.
 """
 
 from __future__ import annotations
 
+import json
 import uuid
 from types import SimpleNamespace
 from typing import Any, cast
@@ -15,10 +15,19 @@ import pytest
 
 from app.services import ctem_case_owner as owner_of
 
-ALICE = uuid.uuid4()
-TEAM = uuid.uuid4()
+IT = uuid.uuid4()
+CLOUD = uuid.uuid4()
+RISK = uuid.uuid4()
 DEFAULT = uuid.uuid4()
-USERS = {"alice@example.com": ALICE, "team@example.com": TEAM, "default@example.com": DEFAULT}
+EMPLOYEE = uuid.uuid4()
+USERS = {
+    "it@example.com": IT,
+    "cloud@example.com": CLOUD,
+    "risk@example.com": RISK,
+    "default@example.com": DEFAULT,
+    "abdulaziz@example.com": EMPLOYEE,
+}
+Candidate = owner_of.Candidate
 
 
 def _signal(**kw: Any) -> SimpleNamespace:
@@ -46,20 +55,78 @@ def test_asset_names_reads_the_subject_then_the_asset_sources() -> None:
     assert owner_of.asset_names(_signal(subject_kind="software", decision={"scope": "bad"})) == []
 
 
-def test_an_asset_owner_wins_then_a_group_owner_then_the_default() -> None:
-    assert owner_of.pick_owner(["Alice@Example.com"], ["team@example.com"], USERS, "default@example.com") == (
-        ALICE,
-        owner_of.FROM_ASSET,
-    )
-    assert owner_of.pick_owner(["ops team"], ["team@example.com"], USERS, "default@example.com") == (
-        TEAM,
-        owner_of.FROM_GROUP,
-    )
-    assert owner_of.pick_owner([], [], USERS, "default@example.com") == (DEFAULT, owner_of.FROM_DEFAULT)
+def test_primary_asset_names_read_the_scope() -> None:
+    assert owner_of.primary_asset_names(_signal()) == ["customer portal"]
+    assert owner_of.primary_asset_names(_signal(decision=None)) == []
 
 
-def test_a_name_that_is_no_account_is_never_guessed() -> None:
-    assert owner_of.pick_owner(["Alice"], ["unknown@example.com"], USERS, "") == (None, None)
+def test_the_group_owner_wins_and_the_device_user_is_never_a_candidate() -> None:
+    # The device user (a record's owner) is not an input of the routing at all: only groups and primary assets are.
+    route = owner_of.pick_route(
+        [Candidate("All MacOS x86_64", "IT@example.com", 3)],
+        [Candidate("customer portal", "risk@example.com", 3)],
+        USERS,
+        affected=3,
+        default="default@example.com",
+    )
+    assert route.owner == IT
+    assert route.reason == "asset group: All MacOS x86_64 (3 of 3 affected assets)"
+    assert EMPLOYEE not in {route.owner, *(c[0] for c in route.contributors)}
+
+
+def test_a_case_on_several_groups_takes_the_majority_group_and_lists_the_others() -> None:
+    route = owner_of.pick_route(
+        [
+            Candidate("OVHCloud Servers", "cloud@example.com", 20),
+            Candidate("All endpoints", "it@example.com", 174),
+            Candidate("All Windows x86_64", "it@example.com", 60),
+        ],
+        [],
+        USERS,
+        affected=194,
+    )
+    assert route.owner == IT
+    assert route.reason == "asset group: All endpoints (174 of 194 affected assets)"
+    assert route.contributors == ((CLOUD, "asset group: OVHCloud Servers"),)
+    assert route.fallback is False
+    evidence = json.loads(route.evidence())
+    assert evidence["route"] == owner_of.ROUTE_VERSION and evidence["fallback"] is False
+    assert evidence["contributors"] == [{"user_id": str(CLOUD), "via": "asset group: OVHCloud Servers"}]
+
+
+def test_a_tie_is_broken_by_the_group_name() -> None:
+    route = owner_of.pick_route(
+        [Candidate("b group", "cloud@example.com", 5), Candidate("A group", "it@example.com", 5)], [], USERS, affected=5
+    )
+    assert route.owner == IT and route.contributors == ((CLOUD, "asset group: b group"),)
+
+
+def test_a_group_whose_owner_is_no_account_gives_way_to_the_next_group() -> None:
+    route = owner_of.pick_route(
+        [Candidate("All endpoints", "IT team", 100), Candidate("All MacOS x86_64", "it@example.com", 10)],
+        [],
+        USERS,
+        affected=100,
+    )
+    assert route.owner == IT and route.reason == "asset group: All MacOS x86_64 (10 of 100 affected assets)"
+
+
+def test_the_primary_asset_owner_when_no_group_has_an_owner() -> None:
+    route = owner_of.pick_route(
+        [Candidate("All endpoints", "", 12)],
+        [Candidate("billing", "", 2), Candidate("customer portal", "risk@example.com", 1)],
+        USERS,
+        affected=12,
+        default="default@example.com",
+    )
+    assert route == owner_of.Route(RISK, "primary asset: customer portal")
+    assert route.fallback is False
+
+
+def test_the_default_then_nobody() -> None:
+    route = owner_of.pick_route([], [], USERS, affected=0, default="default@example.com")
+    assert route == owner_of.Route(DEFAULT, owner_of.FROM_DEFAULT) and route.fallback is True
+    assert owner_of.pick_route([Candidate("g", "Adam Pagliuca", 1)], [], USERS, affected=1) == owner_of.Route()
 
 
 def test_the_default_reads_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -88,12 +155,13 @@ class _Result:
         return self
 
 
-class OwnerSession:
-    """Answers the reads in order: asset records, group owners, users."""
+class Session:
+    """Answers the reads in order; collects the rows added."""
 
     def __init__(self, *reads: list[Any], fail: bool = False) -> None:
         self.reads = list(reads)
         self.fail = fail
+        self.added: list[Any] = []
 
     def begin_nested(self) -> _Savepoint:
         return _Savepoint()
@@ -103,37 +171,81 @@ class OwnerSession:
             raise RuntimeError("inventory unavailable")
         return _Result(self.reads.pop(0) if self.reads else [])
 
+    def add(self, row: Any) -> None:
+        self.added.append(row)
+
+
+def _no_decider(monkeypatch: pytest.MonkeyPatch, who: tuple[Any, Any] = (None, None)) -> None:
+    async def decider(_db: Any) -> tuple[Any, Any]:
+        return who
+
+    monkeypatch.setattr(owner_of, "decider_owner", decider)
+
 
 @pytest.mark.asyncio
-async def test_a_group_owner_is_read_when_the_assets_have_none(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_route_case_reads_groups_by_membership_and_never_the_record_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("CTEM_CASE_DEFAULT_OWNER", raising=False)
-    db = OwnerSession([("", "web servers")], ["team@example.com"], [(TEAM, "team@example.com")])
-    assert await owner_of.owner_for_signal(cast("Any", db), _signal()) == (TEAM, owner_of.FROM_GROUP)
+    _no_decider(monkeypatch)
+    rec_a, rec_b, group = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    db = Session(
+        [(rec_a, "abdulaziz's macbook air"), (rec_b, "adams-macbook-pro")],  # records (no owner column read)
+        [(group, rec_a, "All MacOS x86_64", "it@example.com"), (group, rec_b, "All MacOS x86_64", "it@example.com")],
+        [],  # primary asset links
+        [(IT, "it@example.com")],  # users
+    )
+    route = await owner_of.route_case(
+        cast("Any", db), uuid.uuid4(), ["abdulaziz's macbook air", "adams-macbook-pro"], profile_owners={}
+    )
+    assert route.owner == IT and route.reason == "asset group: All MacOS x86_64 (2 of 2 affected assets)"
 
 
 @pytest.mark.asyncio
-async def test_the_default_owner_when_the_inventory_names_nobody(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CTEM_CASE_DEFAULT_OWNER", "default@example.com")
-    db = OwnerSession([], [(DEFAULT, "default@example.com")])
-    assert await owner_of.owner_for_signal(cast("Any", db), _signal()) == (DEFAULT, owner_of.FROM_DEFAULT)
-
-
-@pytest.mark.asyncio
-async def test_a_failed_read_opens_the_case_without_owner(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CTEM_CASE_DEFAULT_OWNER", "default@example.com")
-    db = OwnerSession(fail=True)
-    assert await owner_of.owner_for_signal(cast("Any", db), _signal()) == (None, None)
-
-
-@pytest.mark.asyncio
-async def test_nothing_is_read_without_asset_or_default(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_route_case_reaches_the_primary_asset_through_a_link(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CTEM_CASE_DEFAULT_OWNER", raising=False)
-    db = OwnerSession(fail=True)
-    signal = _signal(subject_kind="software", decision={})
-    assert await owner_of.owner_for_signal(cast("Any", db), signal) == (None, None)
+    _no_decider(monkeypatch)
+    rec = uuid.uuid4()
+    db = Session(
+        [(rec, "air-dmz.dev.filigran.io")],
+        [],  # no group
+        [("Customer Portal", rec, None)],  # a direct link
+        [(RISK, "risk@example.com")],
+    )
+    route = await owner_of.route_case(
+        cast("Any", db),
+        uuid.uuid4(),
+        ["air-dmz.dev.filigran.io"],
+        profile_owners={"customer portal": "risk@example.com"},
+    )
+    assert route == owner_of.Route(RISK, "primary asset: customer portal")
 
 
-# --- #2452: the CTEM decider fallback and the backfill -------------------------
+@pytest.mark.asyncio
+async def test_a_failed_inventory_read_falls_to_the_decider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CTEM_CASE_DEFAULT_OWNER", "default@example.com")
+    _no_decider(monkeypatch, (IT, "fallback: CTEM decider (administrator)"))
+    route = await owner_of.route_case(cast("Any", Session(fail=True)), uuid.uuid4(), ["web-01"], profile_owners={})
+    assert route == owner_of.Route(IT, "fallback: CTEM decider (administrator)")
+
+
+@pytest.mark.asyncio
+async def test_the_default_wins_over_the_decider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CTEM_CASE_DEFAULT_OWNER", "default@example.com")
+    _no_decider(monkeypatch, (IT, "fallback: CTEM decider (administrator)"))
+    db = Session([], [(DEFAULT, "default@example.com")])  # no record, then the users
+    route = await owner_of.route_case(cast("Any", db), uuid.uuid4(), ["web-01"], profile_owners={})
+    assert route == owner_of.Route(DEFAULT, owner_of.FROM_DEFAULT)
+
+
+@pytest.mark.asyncio
+async def test_nobody_decides_answers_no_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CTEM_CASE_DEFAULT_OWNER", raising=False)
+    _no_decider(monkeypatch)
+    assert await owner_of.route_case(cast("Any", Session()), None, [], profile_owners={}) == owner_of.Route()
+
+
+# --- #2452: the CTEM decider -------------------------------------------------------
 
 SAM = uuid.uuid4()
 BOB = uuid.uuid4()
@@ -143,15 +255,15 @@ SEED = uuid.uuid4()
 def test_the_decider_is_a_decide_group_member_before_an_administrator() -> None:
     assert owner_of.pick_decider([(BOB, "bob@example.com")], [(SAM, "sam@example.com")]) == (
         BOB,
-        "CTEM decider (decide group member)",
+        "fallback: CTEM decider (decide group member)",
     )
-    assert owner_of.pick_decider([], [(SAM, "sam@example.com")]) == (SAM, "CTEM decider (administrator)")
+    assert owner_of.pick_decider([], [(SAM, "sam@example.com")]) == (SAM, "fallback: CTEM decider (administrator)")
     assert owner_of.pick_decider([], []) == (None, None)
 
 
 def test_several_deciders_take_the_first_by_creation_and_say_so() -> None:
     owner, how = owner_of.pick_decider([], [(SAM, "sam@example.com"), (BOB, "bob@example.com")])
-    assert owner == SAM and how == "CTEM decider (administrator, first of 2 by account creation)"
+    assert owner == SAM and how == "fallback: CTEM decider (administrator, first of 2 by account creation)"
 
 
 def test_the_seed_account_decides_only_when_it_is_alone() -> None:
@@ -160,58 +272,96 @@ def test_the_seed_account_decides_only_when_it_is_alone() -> None:
     assert owner_of.pick_decider([], people[:1], "admin@filigran.io")[0] == SEED
 
 
-@pytest.mark.asyncio
-async def test_a_single_admin_owns_a_case_nobody_else_owns(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CTEM_CASE_DEFAULT_OWNER", raising=False)
-    # asset records (no owner), then the decide groups (none), then the administrators.
-    db = OwnerSession([("", None)], [], [(SAM, "sam@example.com")])
-    assert await owner_of.owner_for_signal(cast("Any", db), _signal()) == (SAM, "CTEM decider (administrator)")
+# --- the case read and the sweep ---------------------------------------------------
+
+
+def test_owner_details_read_the_newest_owner_event() -> None:
+    route = owner_of.Route(IT, "asset group: All endpoints (3 of 4 affected assets)", ((CLOUD, "asset group: DNS"),))
+    newest = SimpleNamespace(kind="owner", reason=route.reason, evidence=route.evidence())
+    older = SimpleNamespace(kind="owner", reason="fallback: CTEM decider (administrator)", evidence=None)
+    note = SimpleNamespace(kind="note", reason="x", evidence=None)
+    assert owner_of.owner_details([note, newest, older]) == {
+        "owner_reason": "asset group: All endpoints (3 of 4 affected assets)",
+        "owner_contributors": [{"user_id": str(CLOUD), "via": "asset group: DNS"}],
+    }
+    assert owner_of.owner_details([older]) == {
+        "owner_reason": "fallback: CTEM decider (administrator)",
+        "owner_contributors": [],
+    }
+    assert owner_of.owner_details([]) == {"owner_reason": None, "owner_contributors": []}
+
+
+def _sweep(monkeypatch: pytest.MonkeyPatch, route: owner_of.Route, calls: list[Any]) -> None:
+    async def routed(_db: Any, org: Any, names: Any, primaries: Any, **kw: Any) -> owner_of.Route:
+        calls.append((org, list(names), list(primaries), kw.get("decider")))
+        return route
+
+    async def no_running(_db: Any, _signal: Any, _case: Any = None) -> list[str]:
+        return []
+
+    async def owners(_db: Any, _org: Any) -> dict[str, str]:
+        return {}
+
+    async def changed(_db: Any) -> None:
+        return None
+
+    monkeypatch.setattr(owner_of, "route_case", routed)
+    monkeypatch.setattr(owner_of, "case_asset_names", no_running)
+    monkeypatch.setattr(owner_of, "primary_asset_owners", owners)
+    monkeypatch.setattr(owner_of, "_owners_changed_at", changed)
+    _no_decider(monkeypatch, (SAM, "fallback: CTEM decider (administrator)"))
+
+    from app.services import platform_events
+
+    async def no_publish(*_a: Any, **_k: Any) -> str:
+        raise AssertionError("the owner repair publishes no platform event")
+
+    monkeypatch.setattr(platform_events, "publish", no_publish)
 
 
 @pytest.mark.asyncio
-async def test_the_default_wins_over_the_decider(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CTEM_CASE_DEFAULT_OWNER", "default@example.com")
-    db = OwnerSession([], [(DEFAULT, "default@example.com")], [], [(SAM, "sam@example.com")])
-    assert await owner_of.owner_for_signal(cast("Any", db), _signal()) == (DEFAULT, owner_of.FROM_DEFAULT)
-
-
-class BackfillSession(OwnerSession):
-    """The unowned open cases, then the decider reads; collects the rows added."""
-
-    def __init__(self, *reads: list[Any]) -> None:
-        super().__init__(*reads)
-        self.added: list[Any] = []
-
-    def add(self, row: Any) -> None:
-        self.added.append(row)
-
-
-@pytest.mark.asyncio
-async def test_the_backfill_owns_each_unowned_case_once() -> None:
+async def test_the_repair_reroutes_a_thousand_open_cases_without_an_event_or_a_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from datetime import UTC, datetime
 
     from app.models.ctem_case import CtemCaseEvent
 
-    now = datetime(2026, 11, 26, 7, 0, tzinfo=UTC)
-    first = SimpleNamespace(id=uuid.uuid4(), owner_user_id=None)
-    second = SimpleNamespace(id=uuid.uuid4(), owner_user_id=None)
-    db = BackfillSession([first, second], [], [(SAM, "sam@example.com")])
-    assert await owner_of.backfill_owners(cast("Any", db), now=now) == 2
-    assert first.owner_user_id == SAM and second.owner_user_id == SAM
+    calls: list[Any] = []
+    route = owner_of.Route(IT, "asset group: All endpoints (1 of 1 affected assets)")
+    _sweep(monkeypatch, route, calls)
+    org = uuid.uuid4()
+    cases = [SimpleNamespace(id=uuid.uuid4(), organization_id=org, owner_user_id=SAM) for _ in range(1000)]
+    signal = _signal(organization_id=org)
+    db = Session(cases, *([[signal]] * 1000))
+    now = datetime(2026, 11, 27, 6, 0, tzinfo=UTC)
+    assert await owner_of.route_open_cases(cast("Any", db), now=now, limit=1000) == 1000
+    assert all(c.owner_user_id == IT for c in cases)
     events = [r for r in db.added if isinstance(r, CtemCaseEvent)]
-    assert [(e.kind, e.to_value, e.reason) for e in events] == [
-        ("owner", str(SAM), "CTEM decider (administrator), backfill")
-    ] * 2
-    # The next pass finds no unowned case (the owner event keeps it out): nothing is written.
-    again = BackfillSession([])
-    assert await owner_of.backfill_owners(cast("Any", again), now=now) == 0 and again.added == []
+    assert len(events) == 1000 and {e.kind for e in events} == {"owner"} and {e.actor for e in events} == {"system"}
+    assert events[0].from_value == str(SAM) and events[0].to_value == str(IT) and events[0].reason == route.reason
+    assert json.loads(events[0].evidence or "{}")["route"] == owner_of.ROUTE_VERSION
+    # One decider read for the whole pass, handed to every routing.
+    assert {c[3] for c in calls} == {(SAM, "fallback: CTEM decider (administrator)")}
+    assert calls[0][1] == ["web-01", "db-02"] and calls[0][2] == ["customer portal"]
 
 
 @pytest.mark.asyncio
-async def test_the_backfill_writes_nothing_when_nobody_decides() -> None:
+async def test_a_case_with_nobody_to_route_to_keeps_its_owner_and_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
     from datetime import UTC, datetime
 
-    case = SimpleNamespace(id=uuid.uuid4(), owner_user_id=None)
-    db = BackfillSession([case], [], [])
-    assert await owner_of.backfill_owners(cast("Any", db), now=datetime.now(UTC)) == 0
-    assert case.owner_user_id is None and db.added == []
+    _sweep(monkeypatch, owner_of.Route(), [])
+    kept = SimpleNamespace(id=uuid.uuid4(), organization_id=uuid.uuid4(), owner_user_id=SAM)
+    unowned = SimpleNamespace(id=uuid.uuid4(), organization_id=uuid.uuid4(), owner_user_id=None)
+    db = Session([kept, unowned], [], [])
+    assert await owner_of.route_open_cases(cast("Any", db), now=datetime.now(UTC)) == 1
+    assert kept.owner_user_id == SAM and unowned.owner_user_id is None
+    assert [(e.to_value, e.reason) for e in db.added] == [(str(SAM), "fallback: kept, no owner found")]
+
+
+@pytest.mark.asyncio
+async def test_the_repair_writes_nothing_when_no_case_is_left() -> None:
+    from datetime import UTC, datetime
+
+    db = Session([])
+    assert await owner_of.backfill_owners(cast("Any", db), now=datetime.now(UTC)) == 0 and db.added == []

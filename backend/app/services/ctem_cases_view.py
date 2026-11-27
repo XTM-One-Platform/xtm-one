@@ -1498,10 +1498,13 @@ def hydrate(
         _visible_issue(r, view.issues.get(_member_id(r)), view.signal_details.get(_member_id(r))) for r in visible
     ] + [{"restricted": True} for _ in range(restricted)]
     from app.services import ctem_case_assets as case_assets
+    from app.services import ctem_case_owner
     from app.services import ctem_validation_scenario as case_scenario
 
     return {
         **head,
+        # Why the case has its owner and the other asset group owners who contribute (#2560).
+        **ctem_case_owner.owner_details(events),
         "keys": list(case.keys or []),
         "issues": issues,
         # The issues' assets, then the hosts a validation ran on, each with its provenance (#2395).

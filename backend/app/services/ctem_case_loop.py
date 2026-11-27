@@ -510,13 +510,15 @@ async def open_from_signal(
         db.add(case)
         await db.flush()
         db.add(_event(case.id, rules.SYSTEM_ACTOR, "created", now, to_value=fix.key, reason=f"signal {signal.id}"))
-        # #1736 slice 3, #2452: the asset or asset group owner, else the instance default, else the CTEM decider.
-        from app.services.ctem_case_owner import owner_for_signal
+        # #2560: the majority asset group's owner, else a primary asset's, the default, the CTEM decider;
+        # never the device user. The reason and the contributors go on the owner event.
+        from app.services import ctem_case_owner
 
-        owner, how = await owner_for_signal(db, signal)
+        owner, how, contributors = await ctem_case_owner.owner_for_signal(db, signal, case)
         if owner is not None:
             case.owner_user_id = owner
-            db.add(_event(case.id, rules.SYSTEM_ACTOR, "owner", now, to_value=str(owner), reason=how))
+            route = ctem_case_owner.Route(owner, how, contributors)
+            db.add(ctem_case_owner.owner_event(case.id, route, now=now, actor=rules.SYSTEM_ACTOR))
     else:
         # A second signal on the same fix: the most urgent severity and the earliest SLA win.
         if severity and (case.severity is None or _SEVERITY_RANK[severity] < _SEVERITY_RANK.get(case.severity, 9)):
@@ -1491,7 +1493,8 @@ async def sweep(
         )
     if writer and await case_opening.may_open_waiting(db, vertical):
         await open_waiting(db, vertical=vertical, events=events, now=now, counts=counts)
-    # #2452: an open case never waits with no owner; the cases opened before the decider fallback get it.
+    # #2452, #2560: an open case never waits with no owner, and the system-set owners are re-routed
+    # to the asset group owner once (capped batch, no platform event).
     from app.services.ctem_case_owner import backfill_owners
 
     counts["owned"] = await backfill_owners(db, now=now, actor=rules.SYSTEM_ACTOR)
