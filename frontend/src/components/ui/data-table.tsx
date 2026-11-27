@@ -61,6 +61,7 @@ import {
   TABLE_STORAGE_PREFIX,
 } from "@/lib/data-table-state";
 import { activeFilterChips, facetValueCounts } from "@/lib/data-table-facets";
+import { formatList } from "@/lib/format-list";
 import { formatCount } from "@/lib/number-format";
 import { sortFilterOptions } from "@/lib/select-options";
 import { groupRows, matchesSearch, pageOf, sortRows, type RowGrouping, type SortDirection, type SortValue } from "@/lib/table-rows";
@@ -1534,11 +1535,22 @@ function DataTableView<T>({
       )}
       {filterChips.length > 0 && (
         <ul data-testid="data-table-filter-chips" aria-label={t_i18n("Active filters")} className="flex flex-wrap items-center gap-1.5">
-          {filterChips.map((chip) => (
+          {filterChips.map((chip) => {
+            // The chip text is one catalog string (UX r1 B1 on #2559): the locale's
+            // separator (fr "Statut : Nouveau" with a no-break space) and its list
+            // join; the label stays bold when the string opens with it.
+            const text = t_i18n("{label}: {value}", { label: chip.label, value: formatList(chip.values, locale) });
+            const rest = text.startsWith(chip.label) ? text.slice(chip.label.length) : null;
+            return (
             <li key={chip.key}>
               <span className={cn(PANEL_CHIP_HEIGHT, "inline-flex max-w-[28rem] items-center gap-1 rounded-sm border border-accent/30 bg-accent/15 pl-2.5 pr-1 content-compact text-accent")}>
-                <span className="min-w-0 truncate" title={`${chip.label}: ${chip.values.join(", ")}`}>
-                  <span className="font-medium">{chip.label}:</span> {chip.values.join(", ")}
+                <span className="min-w-0 truncate" title={text}>
+                  {rest === null ? text : (
+                    <>
+                      <span className="font-medium">{chip.label}</span>
+                      {rest}
+                    </>
+                  )}
                 </span>
                 <button
                   type="button"
@@ -1550,7 +1562,8 @@ function DataTableView<T>({
                 </button>
               </span>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
       {body}

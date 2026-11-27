@@ -90,11 +90,19 @@ describe("DataTable facetGrid (#2556)", () => {
     renderTable("/?f_status=active&f_kind=report");
     const chips = screen.getByTestId("data-table-filter-chips");
     expect(within(chips).getAllByRole("listitem")).toHaveLength(2);
-    expect(chips.textContent).toContain("Status:");
+    expect(chips.textContent).toContain("Status: active");
     fireEvent.click(within(chips).getByRole("button", { name: "Remove filter Status" }));
     expect(screen.getByTestId("location").textContent).not.toContain("f_status");
     expect(screen.getByTestId("location").textContent).toContain("f_kind=report");
     expect(within(screen.getByTestId("data-table-filter-chips")).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("writes a chip as one catalog string with the locale's list join", () => {
+    renderTable("/?f_status=active&f_status=paused");
+    const chip = within(screen.getByTestId("data-table-filter-chips")).getByRole("listitem");
+    // One string, no separator outside the catalog (UX r1 B1 on #2559).
+    expect(chip.textContent).toBe("Status: active and paused");
+    expect(chip.querySelector("[title]")?.getAttribute("title")).toBe("Status: active and paused");
   });
 
   it("draws no chip and no count without facetGrid", () => {
