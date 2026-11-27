@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from app.services.ctem_primary_assets import PrimaryAssetIndex, contains_word, link_basis
+from app.services.ctem_primary_assets import PrimaryAssetIndex, contains_word, is_family_word, link_basis
 from app.services.organization_context import (
     PROFILE_ASSET_CAP,
     AssetEntry,
@@ -323,14 +323,57 @@ def host_owned_domain(profile: OrganizationProfile, ref: str) -> str:
 
 
 def _product_matches(product: str, ref: str) -> bool:
-    """A software product named in a software reference (a name, or a CPE's product part)."""
+    """A software product named in a software reference (a name, or a CPE's product part).
+
+    #2628: a bare OS or vendor family (``Windows``, ``Linux``) names only itself, never
+    ``Windows Server`` or ``Linux Kernel``.
+    """
     p, r = product.strip().lower(), ref.strip().lower()
     if not p or not r:
         return False
     if r.startswith("cpe:"):
         parts = r.split(":")
         r = parts[4] if len(parts) > 4 else r
+    if is_family_word(p) and p != r.replace("_", " "):
+        return False
     return contains_word(p, r)
+
+
+#: #2628: the paths whose subject is a vulnerability on software the organization may run.
+VERSION_PATHS: frozenset[str] = frozenset({"new_vulnerability"})
+
+
+def version_not_verified(facts: SignalFacts, resolution: Resolution) -> int:
+    """How many inventory assets an unproven CVE match reached, 0 when the match is proven (#2628).
+
+    A ``new_vulnerability`` signal resolved only through the inventory software index
+    (no asset key, no typed software row, no shipped product or repository, no proof)
+    names a product family at most: when no reached asset reports the product from an
+    installed row with a version, nobody verified the running version, so it goes to
+    ``to_validate``. A versioned installed row, a typed software row, an asset or
+    repository the signal names, or a proving verdict keeps today's path to a case.
+    """
+    if facts.trigger_path not in VERSION_PATHS or not resolution.primary_assets:
+        return 0
+    # A typed software row that is a bare family (``Windows``) proves no product either.
+    if (
+        resolution.assets
+        or resolution.groups
+        or resolution.named_primary_assets
+        or any(not is_family_word(p) for p in resolution.products)
+        or resolution.repositories
+        or resolution.domains
+        or resolution.hosted_domains
+    ):
+        return 0
+    if _verdict(facts.evidence) in PROVING_VERDICTS:
+        return 0
+    hits = resolution.primary_assets
+    if not all(str(hit.get("software") or "") for hit in hits):
+        return 0
+    if any(hit.get("version_verified") for hit in hits):
+        return 0
+    return max(1, sum(int(row.get("assets") or 0) for row in resolution.primary_asset_totals.values()))
 
 
 def _cpe_vendor_product(ref: str) -> tuple[str, str] | None:
@@ -809,6 +852,17 @@ def decide(
             "subject not resolved to an asset, a primary asset, the software inventory or a shipped product",
             code="subject_unresolved",
             params={"keys": len(resolution.keys), "software": len(resolution.software_refs)},
+        )
+
+    unverified = version_not_verified(facts, resolution)
+    if unverified:
+        # #2628: a CVE reached only through inventory software whose running version nobody
+        # verified (no typed software row, no asset key) is a candidate, never a case.
+        return done(
+            "to_validate",
+            "version not verified: the CVE matched inventory software only, no running version proven",
+            code="version_not_verified",
+            params={"assets": unverified},
         )
 
     # Scope criticality: assets, their primary assets, the risk scenarios holding them.

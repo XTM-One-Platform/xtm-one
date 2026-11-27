@@ -91,6 +91,13 @@ describe("decisionSentence", () => {
       "Contradicted by the verdict of its own source",
     );
     expect(decisionSentence({ outcome: "to_validate", reason_code: "subject_unresolved", reason_params: {} }, t)).toBe("Not in your inventory");
+    // #2628: an unproven CVE match says the running version was not verified.
+    expect(decisionSentence({ outcome: "to_validate", reason_code: "version_not_verified", reason_params: { assets: 3 } }, t)).toMatch(
+      /^Version not verified/,
+    );
+    expect(nextStepSentence({ outcome: "to_validate", reason_code: "version_not_verified" }, t)).toBe(
+      "Becomes a case once an asset reports the affected product with its version",
+    );
     expect(decisionSentence({ outcome: "discarded", reason_code: "dismissed_by_user", reason_params: { by: "Ana" } }, t)).toBe("Dismissed by {by}");
     const watch = { outcome: "watchlist", reason_code: "below_scope_threshold", reason_params: { criticality: "low", threshold: "high" } };
     const seen: Record<string, string | number>[] = [];

@@ -65,6 +65,8 @@ const REASON_SENTENCE = {
   in_scope: "In scope: criticality {criticality} (threshold {threshold}), confidence {confidence}",
   no_dependency: "No primary asset depends on this organization",
   account_disabled: "Not exposed: the account is disabled",
+  version_not_verified:
+    "Version not verified: matched on {assets, plural, one {# asset} other {# assets}} by software name, no running version proven",
 } as const;
 const REASON_SENTENCES: Readonly<Record<string, string>> = REASON_SENTENCE;
 
@@ -89,6 +91,7 @@ const NEXT_STEP = {
   below_scope_threshold: "Becomes a case if criticality rises to {threshold}",
   no_dependency: "Becomes a case once a primary asset depends on this organization",
   account_disabled: "Becomes a case if the account is enabled again",
+  version_not_verified: "Becomes a case once an asset reports the affected product with its version",
 } as const;
 const NEXT_STEPS: Readonly<Record<string, string>> = NEXT_STEP;
 
