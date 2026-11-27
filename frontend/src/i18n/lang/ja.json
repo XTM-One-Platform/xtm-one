@@ -17719,7 +17719,7 @@
   "Set a prioritization policy": "優先順位付けポリシーを設定",
   "Open issues": "未解決の課題",
   "Open at source": "ソース側で未解決",
-  "Case closed by decision": "判断によりクローズされたケース",
+  "Case closed by decision": "ケースはクローズ済み（判断による）",
   "Case mitigated, watching": "ケースは緩和済み（監視中）",
   "Case closed, risk accepted": "ケースはクローズ済み（リスク受容）",
   "Case closed as mitigated": "ケースはクローズ済み（緩和済み）",
