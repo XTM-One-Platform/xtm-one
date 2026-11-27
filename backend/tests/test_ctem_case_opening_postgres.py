@@ -43,8 +43,8 @@ def _quiet(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
     """No owner lookup, no inventory read, no live frame or event bus: the switch is under test."""
     from app.services import ctem_case_owner, ctem_loop_stream, platform_events
 
-    async def no_owner(_db: Any, _signal: Any, _case: Any = None) -> tuple[None, str, tuple[()]]:
-        return None, "none", ()
+    async def no_owner(_db: Any, _signal: Any, _case: Any = None) -> ctem_case_owner.Route:
+        return ctem_case_owner.Route()
 
     async def not_resolved(*_a: Any, **_k: Any) -> bool:
         return False
@@ -69,7 +69,7 @@ def _quiet(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
     async def no_backfill(_db: Any, **_k: Any) -> int:
         return 0
 
-    monkeypatch.setattr(ctem_case_owner, "owner_for_signal", no_owner)
+    monkeypatch.setattr(ctem_case_owner, "route_for_signal", no_owner)
     monkeypatch.setattr(ctem_case_owner, "backfill_owners", no_backfill)
     monkeypatch.setattr(loop, "_resolved_on_inventory", not_resolved)
     monkeypatch.setattr(ctem_loop_stream, "publish_case_updates", no_frames)

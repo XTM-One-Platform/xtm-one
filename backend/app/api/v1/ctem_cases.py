@@ -273,6 +273,12 @@ async def list_ctem_cases(
     # A case deleted between the case read and the view read is gone, never hidden (#2113).
     async with view_of.timed("gone"):
         cases = await view_of.drop_gone(db, cases, view)
+    # The owner filter also keeps the cases a team the person belongs to owns (#2577).
+    owner_groups: list[str] = []
+    if owner_user_id:
+        from app.api.v1.helpers import get_user_group_ids
+
+        owner_groups = await get_user_group_ids(db, owner_user_id)
     with view_of.timed_sync("rows"):
         rows, counts = view_of.list_for_viewer(
             cases,
@@ -285,6 +291,7 @@ async def list_ctem_cases(
             signal_type=signal_types,
             limit=limit,
             offset=offset,
+            owner_group_ids=owner_groups,
         )
     # The CTEM phase of each case on the page and what it waits on (#1503): the list groups by
     # phase, the Kanban lays its columns out by it, a case waiting for decision says on whom.
