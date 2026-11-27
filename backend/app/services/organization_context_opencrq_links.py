@@ -195,6 +195,8 @@ def plan_links(
     *,
     records_by_loose_name: dict[str, list[uuid.UUID]] | None = None,
     asset_of: dict[uuid.UUID, uuid.UUID] | None = None,
+    complete: bool = True,
+    profile_keys: set[str] | None = None,
 ) -> LinkPlan:
     """Plan the synced links (no I/O).
 
@@ -206,6 +208,10 @@ def plan_links(
     *records_by_name* holds the exact keys (name, hostname, FQDN),
     *records_by_loose_name* the :func:`loose_key` ones, *asset_of* the merged
     asset of each record: candidates count per asset, never per record.
+    *complete* False (a read cut at :data:`MAX_LINKS`) plans no removal (#2629);
+    a stored link is removed only when its primary asset was read, or when its
+    primary asset is no longer in the profile at all (*profile_keys*, the keys of
+    every profile primary asset; ``None`` reads as the OpenCRQ ones).
     """
     plan = LinkPlan()
     assets = asset_of or {}
@@ -257,7 +263,17 @@ def plan_links(
             or current.source != source
         ):
             plan.update.append(wanted)
-    plan.delete = [row.id for row in stored if row.external_id not in seen and not row.removed]
+    if complete:
+        # #2629: a link is removed only when OpenCRQ answered for its primary asset; a cut read removes nothing.
+        read_keys = {_key(name)[:200] for name in pa_row_names.values()}
+        known = read_keys if profile_keys is None else profile_keys | read_keys
+        plan.delete = [
+            row.id
+            for row in stored
+            if row.external_id not in seen
+            and not row.removed
+            and (row.primary_asset_key in read_keys or row.primary_asset_key not in known)
+        ]
     return plan
 
 
@@ -308,11 +324,12 @@ async def apply_links(db: AsyncSession, organization_id: uuid.UUID, plan: LinkPl
 
 async def _read_links(
     base_url: str, headers: Any, tenant: str, primary_ids: list[str]
-) -> tuple[list[dict[str, Any]], str | None]:
+) -> tuple[list[dict[str, Any]], str | None, bool]:
+    """``(links, error, complete)``: *complete* is False when the read stopped at :data:`MAX_LINKS`."""
     from app.integrations.providers.opencrq._common import _trpc
 
     links: list[dict[str, Any]] = []
-    for primary_id in primary_ids:
+    for index, primary_id in enumerate(primary_ids):
         items, err = await _trpc(
             base_url,
             headers,
@@ -322,13 +339,13 @@ async def _read_links(
             tenant_id=tenant,
         )
         if err:
-            return links, str(err)
+            return links, str(err), False
         for item in items or []:
             if isinstance(item, dict):
                 links.append({**item, "primaryAssetId": item.get("primaryAssetId") or primary_id})
-        if len(links) >= MAX_LINKS:
-            break
-    return links[:MAX_LINKS], None
+        if len(links) > MAX_LINKS or (len(links) == MAX_LINKS and index < len(primary_ids) - 1):
+            return links[:MAX_LINKS], None, False
+    return links, None, True
 
 
 async def sync_links(
@@ -343,7 +360,7 @@ async def sync_links(
     }
     if not pa_row_names:
         return LinkPlan(), None
-    links, err = await _read_links(base_url, headers, tenant, list(pa_row_names))
+    links, err, complete = await _read_links(base_url, headers, tenant, list(pa_row_names))
     if err:
         return None, err
     rows = (
@@ -387,7 +404,15 @@ async def sync_links(
         ).scalars()
     )
     plan = plan_links(
-        pa_row_names, links, by_opencrq, by_name, stored, records_by_loose_name=by_loose, asset_of=asset_of
+        pa_row_names,
+        links,
+        by_opencrq,
+        by_name,
+        stored,
+        records_by_loose_name=by_loose,
+        asset_of=asset_of,
+        complete=complete,
+        profile_keys={_key(getattr(j, "name", "") or "")[:200] for j in pa_rows} - {""},
     )
     await apply_links(db, organization_id, plan)
     return plan, None

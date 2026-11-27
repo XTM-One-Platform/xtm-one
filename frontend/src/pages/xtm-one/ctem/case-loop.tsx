@@ -25,11 +25,20 @@ const OPEN_STATES: ReadonlySet<string> = new Set(CTEM_OPEN_CASE_STATES);
 /** The loop severity in the hot tones of a priority (#1267): P1 red, P2 orange, P3 yellow. */
 const SEVERITY_TONE: Record<CtemCaseSeverity, HotTone> = { P1: "red", P2: "orange", P3: "yellow" };
 
-/** The countdown to the SLA: what is left, or how late, in the largest whole unit. */
+/** The days under which a countdown also names the hours ("2 d 23 h left", #2633). */
+const DAY_HOUR_DAYS = 3;
+
+/**
+ * The one countdown to a case deadline (#2633): the SLA chip, the "Why this case
+ * needs attention now" line, the Cases list and board, the Kanban card and Act now
+ * all read it, so the same due date reads the same everywhere. Every unit rounds
+ * down: whole days from 3 days, days and hours from 1 day ("2 d 23 h", or whole
+ * days when the hours are 0), hours under a day, minutes in the last hour.
+ */
 export function slaCountdown(
   slaDueAt: string | null | undefined,
   now: number,
-): { late: boolean; value: number; unit: "minute" | "hour" | "day" } | null {
+): { late: boolean; value: number; hours: number; unit: "minute" | "hour" | "dayHour" | "day" } | null {
   if (!slaDueAt) return null;
   const due = Date.parse(slaDueAt);
   if (Number.isNaN(due)) return null;
@@ -39,9 +48,11 @@ export function slaCountdown(
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
   const late = diff < 0;
-  if (days >= 2) return { late, value: days, unit: "day" };
-  if (hours >= 1) return { late, value: hours, unit: "hour" };
-  return { late, value: Math.max(minutes, 0), unit: "minute" };
+  const restHours = hours % 24;
+  if (days >= DAY_HOUR_DAYS || (days >= 1 && restHours === 0)) return { late, value: days, hours: 0, unit: "day" };
+  if (days >= 1) return { late, value: days, hours: restHours, unit: "dayHour" };
+  if (hours >= 1) return { late, value: hours, hours: 0, unit: "hour" };
+  return { late, value: Math.max(minutes, 0), hours: 0, unit: "minute" };
 }
 
 /** The sentences of a countdown, by side of the SLA and unit. @i18n-keys */
@@ -49,18 +60,20 @@ const SLA_SENTENCES = {
   left: {
     minute: "{count, plural, one {{shown} min left} other {{shown} min left}}",
     hour: "{count, plural, one {{shown} h left} other {{shown} h left}}",
+    dayHour: "{shown} d {shownHours} h left",
     day: "{count, plural, one {{shown} day left} other {{shown} days left}}",
   },
   late: {
     minute: "{count, plural, one {{shown} min past the SLA} other {{shown} min past the SLA}}",
     hour: "{count, plural, one {{shown} h past the SLA} other {{shown} h past the SLA}}",
+    dayHour: "{shown} d {shownHours} h past the SLA",
     day: "{count, plural, one {{shown} day past the SLA} other {{shown} days past the SLA}}",
   },
 } as const;
 
 /** The sentence of a countdown. */
 export function slaSentence(countdown: NonNullable<ReturnType<typeof slaCountdown>>, t_i18n: Translate, locale: string): string {
-  const values = { count: countdown.value, shown: formatCount(locale, countdown.value) };
+  const values = { count: countdown.value, shown: formatCount(locale, countdown.value), shownHours: formatCount(locale, countdown.hours) };
   return t_i18n(SLA_SENTENCES[countdown.late ? "late" : "left"][countdown.unit], values);
 }
 
@@ -195,15 +208,23 @@ export function CaseLoopLine({ c, now }: { c: CtemCaseSummary; now: number }) {
   const { t_i18n, intl } = useFormatter();
   const tabIndex = useTriggerTabIndex();
   const marks = caseLoopMarks(c);
+  const dueDate = c.sla_due_at ? intl.formatDate(c.sla_due_at, { dateStyle: "medium", timeStyle: "short" }) : null;
   const countdown = OPEN_STATES.has(c.state) ? slaCountdown(c.sla_due_at, now) : null;
   if (!countdown && !marks.reopened && !marks.escalated && !marks.closedOnRetest && !marks.closedAtSource) return null;
   const closedDate = marks.closedAt ? intl.formatDate(marks.closedAt, { dateStyle: "medium" }) : null;
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 content-caption" data-testid="ctem-case-loop-line">
       {countdown && (
-        <span className={countdown.late ? "text-feedback-error-primary" : "text-default-secondary"} data-testid="ctem-case-sla">
-          {slaSentence(countdown, t_i18n, intl.locale)}
-        </span>
+        // The absolute due date behind the countdown (#2633).
+        <Tip content={dueDate ? t_i18n("SLA due {date}", { date: dueDate }) : null}>
+          <span
+            tabIndex={tabIndex}
+            className={cn(countdown.late ? "text-feedback-error-primary" : "text-default-secondary", TIP_WRAP_FOCUS_RING)}
+            data-testid="ctem-case-sla"
+          >
+            {slaSentence(countdown, t_i18n, intl.locale)}
+          </span>
+        </Tip>
       )}
       {marks.reopened && (
         <span className="flex items-center gap-1 text-default-primary" data-testid="ctem-case-reopened">
