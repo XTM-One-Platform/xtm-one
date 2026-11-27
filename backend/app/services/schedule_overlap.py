@@ -19,7 +19,7 @@ guard. A run resumed again and again across rollouts could stay active for
 hours, its per-attempt timeout restarting at every resume, and every fire in
 between would be lost without a trace.
 
-Four rules close it:
+Five rules close it:
 
 * a fire whose previous fire is still waiting for a worker and never started
   supersedes it (:func:`supersede_never_started`, #2040): the stale fire ends
@@ -35,7 +35,11 @@ Four rules close it:
 * a run with a fire of its schedule due behind it is given
   :data:`STARVING_GRACEFUL_STREAK` graceful resumes in a row with no tool call
   completed between them, not ``MAX_GRACEFUL_STREAK``
-  (:func:`graceful_streak_bound`).
+  (:func:`graceful_streak_bound`);
+* the windows a starved scheduler never reached (a tick that overran, a sweep
+  failed on the pool timeout) are recorded as ``skipped`` runs too, and the
+  late fire serves the latest window, stamped on its cron slot (#2562):
+  :func:`missed_windows`, :func:`missed_window_runs`.
 """
 
 from __future__ import annotations
@@ -43,7 +47,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from app.core.utils import next_cron_run, schedule_timezone
+from app.core.utils import next_cron_run, previous_cron_run, schedule_timezone
 from app.services.background_checkpoint import MAX_GRACEFUL_STREAK, RESUME_CAP_REACHED
 
 #: The graceful resumes in a row with no progress a run may make while a fire
@@ -62,6 +66,17 @@ SUPERSEDED_STOP_REASON = "superseded"
 
 #: The run statuses of a fire that may still be superseded: waiting, never started.
 SUPERSEDABLE_STATUSES = frozenset({"pending", "delayed"})
+
+#: Where a ``skipped`` run says it records a window the scheduler never reached (#2562).
+MISSED_WINDOW_KEY = "missed_windows"
+
+#: Up to this many missed windows get one ``skipped`` run each; past it, one
+#: summary run names them all.
+MISSED_RECORD_CAP = 3
+
+#: The missed windows counted at most: a day of a per-minute cron. Past it the
+#: summary says "at least".
+MISSED_SCAN_LIMIT = 1440
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -182,6 +197,88 @@ async def supersede_never_started(db: Any, run: Any, *, now: datetime | None = N
     run.completed_at = now
     await db.flush()
     return True
+
+
+def missed_windows(
+    cron: str, base: datetime, now: datetime, *, tz: Any = None
+) -> tuple[datetime | None, list[datetime], bool]:
+    """The window a late fire serves and the earlier windows it missed (#2562).
+
+    *base* is the schedule's base (:func:`app.core.utils.schedule_base`), *now*
+    the sweep's time. Answers ``(served, missed, truncated)``: *served* is the
+    latest cron slot at or before *now* (``None`` for an unreadable cron),
+    *missed* the slots after *base* and before *served* in order, at most
+    :data:`MISSED_SCAN_LIMIT` of them, *truncated* whether more were left
+    uncounted. A sweep on time misses nothing: *served* is the first slot
+    after *base*.
+    """
+    served = previous_cron_run(cron, now, tz=tz)
+    if served is None or served <= base:
+        return served, [], False
+    missed: list[datetime] = []
+    slot = next_cron_run(cron, base, tz=tz)
+    while slot is not None and slot < served and len(missed) < MISSED_SCAN_LIMIT:
+        missed.append(slot)
+        slot = next_cron_run(cron, slot, tz=tz)
+    return served, missed, slot is not None and slot < served
+
+
+def missed_window_summary(missed: list[datetime], *, truncated: bool = False, reason: str | None = None) -> str:
+    """The summary of the ``skipped`` run recording *missed* windows."""
+    why = f" ({reason})" if reason else ""
+    if len(missed) == 1:
+        return f"Scheduled fire missed: the scheduler did not reach the window of {missed[0].isoformat()}{why}."
+    count = f"at least {len(missed)}" if truncated else str(len(missed))
+    return (
+        f"Scheduled fire missed: {count} windows missed between {missed[0].isoformat()} and "
+        f"{missed[-1].isoformat()}, the scheduler did not reach them{why}."
+    )
+
+
+def missed_window_runs(
+    assignment: Any,
+    missed: list[datetime],
+    *,
+    cron: str,
+    now: datetime,
+    truncated: bool = False,
+    reason: str | None = None,
+) -> list[dict[str, Any]]:
+    """The columns of the ``skipped`` runs recording *missed* windows (#2562).
+
+    One run per window up to :data:`MISSED_RECORD_CAP`, else one summary run
+    for them all, whatever their number. Each has the shape of a schedule run,
+    ``scheduled_at`` the window it records (the first one for a summary),
+    ``triggered_at`` *now*, plus :data:`MISSED_WINDOW_KEY`; never executed.
+    """
+    if not missed:
+        return []
+    groups = [[slot] for slot in missed] if len(missed) <= MISSED_RECORD_CAP and not truncated else [missed]
+    stamp = now.isoformat()
+    runs = []
+    for group in groups:
+        slot = group[0].isoformat()
+        runs.append(
+            {
+                "assignment_id": assignment.id,
+                "agent_id": assignment.agent_id,
+                "user_id": getattr(assignment, "run_as_user_id", None) or assignment.user_id,
+                "is_company_managed": assignment.is_company_managed,
+                "trigger_payload": {"trigger_type": "schedule", "scheduled_at": slot},
+                "trigger_context": {
+                    "type": "schedule",
+                    "cron": cron,
+                    "scheduled_at": slot,
+                    "triggered_at": stamp,
+                    MISSED_WINDOW_KEY: len(group),
+                },
+                "status": "skipped",
+                "result_summary": missed_window_summary(group, truncated=truncated and len(groups) == 1, reason=reason),
+                "started_at": now,
+                "completed_at": now,
+            }
+        )
+    return runs
 
 
 def skipped_fire_summary(active_run: Any, *, now: datetime | None = None) -> str:

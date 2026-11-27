@@ -1295,6 +1295,48 @@ def next_cron_run(
         return None
 
 
+def previous_cron_run(
+    cron_expr: object,
+    at: datetime,
+    tz: tzinfo | None = None,
+) -> datetime | None:
+    """Return the latest time a cron expression fires at or before *at*.
+
+    The cron slot a late fire serves (#2562): ``next_cron_run`` read
+    backwards, with the same zone rules (the cron's fields read on *tz*'s wall
+    clock, daylight saving included, the result in UTC). ``None`` for a
+    missing / non-string / unparseable expression.
+
+    >>> previous_cron_run("*/15 * * * *", datetime(2026, 11, 27, 5, 42, 17, tzinfo=UTC)).isoformat()
+    '2026-11-27T05:30:00+00:00'
+    >>> previous_cron_run("*/15 * * * *", datetime(2026, 11, 27, 5, 30, tzinfo=UTC)).isoformat()
+    '2026-11-27T05:30:00+00:00'
+    >>> previous_cron_run("0 7 * * *", datetime(2026, 10, 31, 12, 0, tzinfo=UTC),
+    ...                   tz=ZoneInfo("Europe/Paris")).isoformat()
+    '2026-10-31T06:00:00+00:00'
+    """
+    if not isinstance(cron_expr, str) or not cron_expr.strip():
+        return None
+    from croniter import CroniterBadCronError, croniter
+
+    # One second past *at* (croniter drops microseconds), so a slot exactly
+    # at *at* is its own answer.
+    base_utc = at.astimezone(UTC).replace(microsecond=0) + timedelta(seconds=1)
+    try:
+        if tz is None or tz is UTC:
+            previous: datetime = croniter(cron_expr.strip(), base_utc).get_prev(datetime)
+            return previous
+        wall = base_utc.astimezone(tz).replace(tzinfo=None)
+        itr = croniter(cron_expr.strip(), wall)
+        for _ in range(1000):
+            instant = _wall_time_instant(itr.get_prev(datetime), tz)
+            if instant < base_utc:
+                return instant
+        return None
+    except (CroniterBadCronError, ValueError, TypeError, AttributeError):
+        return None
+
+
 def schedule_base(assignment: object) -> datetime | None:
     """The instant a schedule assignment's cron advances from.
 
