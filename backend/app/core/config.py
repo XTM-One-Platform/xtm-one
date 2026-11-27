@@ -1198,12 +1198,6 @@ class Settings(BaseSettings):
     # queue above still bounds how many of those become runs. Clamped to
     # ``>= 1`` at use time. A throttled delivery gets HTTP 429 + ``Retry-After``.
     webhook_requests_per_minute: int = 60
-    # Queued intake of the platform signal source webhook (#2584): how many
-    # deliveries each process records at once, and the connections of the
-    # intake's own engine (never the web pool). Keep the concurrency at or
-    # under the pool size: a slot waits for a connection, never overflows.
-    ctem_signal_intake_concurrency: int = 4
-    ctem_signal_intake_db_pool_size: int = 4
     # Event matching of integration-event and webhook triggers. A
     # trigger saved before exact matching existed keeps its prefix match
     # (``pull_request`` also fires on ``pull_request_review``) until a person
@@ -2613,6 +2607,17 @@ class Settings(BaseSettings):
     #     parent of a kept run never is. A window saved in Settings >
     #     Observability wins. 0 (or negative) keeps every run.
     assignment_run_retention_days: int = 90
+
+    # --- CTEM signal retention (#2581, services/ctem_signal_retention.py) ---
+    #   - A signal the scope gate discarded is deleted by the hourly retention
+    #     pass once not seen (``last_seen_at``) for this many days; a later
+    #     sighting records it again through the gate. A signal a person
+    #     dismissed or linked to a case never is. A window saved in Settings >
+    #     Observability wins. 0 (or negative) turns the rule off.
+    ctem_signal_discarded_retention_days: int = 30
+    #   - The same for a watchlist signal (re-decided by the gate on every new
+    #     sighting).
+    ctem_signal_watchlist_retention_days: int = 90
 
     # --- Workset lifecycle ---
     # A workset is a WORKSPACE, not a deliverable: a scoped corpus an agent

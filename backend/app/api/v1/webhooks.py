@@ -163,7 +163,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, NoReturn
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import String, cast, literal, select, union_all
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -216,7 +216,13 @@ from app.models.assignment import (
 )
 from app.models.integration import Integration
 from app.models.oauth_default import OAuthDefault
-from app.services import ctem_analyst_mark, ctem_openaev_events, ctem_signal_listeners, github_token_installations
+from app.services import (
+    ctem_analyst_mark,
+    ctem_openaev_events,
+    ctem_signal_inbox,
+    ctem_signal_listeners,
+    github_token_installations,
+)
 from app.services import event_enrichment_retry as enrichment_retry
 from app.services.assignment_engine import (
     QUOTA_DROP_REASON,
@@ -4808,7 +4814,6 @@ async def receive_signal_source_webhook(
     integration_id: str,
     source_id: str,
     request: Request,
-    response: Response,
 ) -> dict:
     """Receive a delivery of a platform signal source (#2434): records the signal, starts no run.
 
@@ -4817,19 +4822,23 @@ async def receive_signal_source_webhook(
     The same gates as the per-assignment receiver: the integration's
     ``webhook_secret`` (``X-OpenCTI-Token`` / ``X-OpenAEV-Token``), a
     per-source throttle and the delivery de-duplication. A verified delivery
-    records its signal (``ctem_signal_listeners.note_event``) and moves the CTEM
-    cases an OpenAEV result concerns (``ctem_openaev_events.note_event``);
+    is written to the durable inbox and answered at once (#2570:
+    ``ctem_signal_inbox.accept``); the autonomous tick then records its signal
+    (``ctem_signal_listeners.note_event``) and moves the CTEM cases an OpenAEV
+    result concerns (``ctem_openaev_events.note_event``);
     fleets subscribe through ``ctem_signal.recorded``. A source that is off or
     unknown is ignored, so disabling it stops its deliveries at once.
-
-    #2584: a verified delivery is queued (``ctem_signal_intake``) and answered
-    202 at once; the intake's drain records it on its own connection budget,
-    so an OpenCTI catch-up never holds the web pool. A verified delivery is
-    never throttled: the per-source limit applies to an unsigned one only.
     """
     source_uuid = safe_uuid(source_id)
     if not is_valid_uuid(integration_id) or source_uuid is None:
         return {"status": "ignored", "reason": "invalid integration or source id"}
+    await enforce_rate_limit(
+        request,
+        "webhook-signal-source",
+        limit=_webhook_requests_per_minute(),
+        window_seconds=60,
+        bucket=str(source_uuid),
+    )
     body = await request.body()
     from app.models.ctem_signal_source import CtemSignalSource
 
@@ -4847,15 +4856,6 @@ async def receive_signal_source_webhook(
     context = f"integration={integration_id} signal_source={source_id}"
     _try_verify_webhook_signature(body, integration.extra_config_enc, request, context=context)
     _verify_opencti_token_header(integration.extra_config_enc, request, context=context)
-    verified = _signed_with_webhook_secret(integration.extra_config_enc)
-    if not verified:
-        await enforce_rate_limit(
-            request,
-            "webhook-signal-source",
-            limit=_webhook_requests_per_minute(),
-            window_seconds=60,
-            bucket=str(source_uuid),
-        )
     if not source.enabled:
         return {"status": "ignored", "reason": "signal source is off"}
     is_duplicate, cached_response, dedup_key = await _claim_webhook_dedup_slot(
@@ -4875,26 +4875,15 @@ async def receive_signal_source_webhook(
             _normalize_opencti_payload(payload)
         elif provider == "openaev":
             event_key = _normalize_openaev_payload(payload) or event_key
-        from app.services import ctem_signal_intake
-
-        delivery = ctem_signal_intake.Delivery(
-            provider=provider,
-            event_key=event_key,
-            payload=payload,
-            verified=verified,
-            integration_id=str(integration_id),
-            source_id=str(source_uuid),
-        )
-        # An unsigned delivery records nothing (note_event refuses it): no queue entry for it.
-        if verified and await ctem_signal_intake.enqueue(delivery):
-            response.status_code = status.HTTP_202_ACCEPTED
-            return await _finalize_dedup(dedup_key, {"status": "queued", "event_key": event_key, "recorded": False})
-        # Redis unreachable (the dedup and the throttle fail open too): recorded inline as before.
-        recorded = await ctem_signal_intake.record(delivery)
+        verified = _signed_with_webhook_secret(integration.extra_config_enc)
+        # #2570: written to the durable inbox and answered at once. OpenCTI never retries a
+        # webhook, so a delivery is never answered 429/503 nor held while it is recorded; the
+        # autonomous tick records it off the request path (ctem_signal_inbox.drain).
+        await ctem_signal_inbox.accept(provider, str(integration_id), event_key, payload, verified=verified)
     except Exception:
         await _release_webhook_dedup_slot(dedup_key)
         raise
-    return await _finalize_dedup(dedup_key, {"status": "ok", "event_key": event_key, "recorded": bool(recorded)})
+    return await _finalize_dedup(dedup_key, {"status": "ok", "event_key": event_key, "queued": True})
 
 
 @router.post("/integrations/{integration_id}/assignments/{assignment_id}")
