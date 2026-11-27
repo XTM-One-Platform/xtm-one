@@ -59,6 +59,70 @@ if TYPE_CHECKING:
 
 # ── Sub-Agent Background Tasks ───────────────────────────────────────────────
 
+#: Characters of the sample item the ``collect_task_results`` answer shows.
+_COLLECTED_SAMPLE_CHARS = 400
+#: Keys the answer lists, the most common first.
+_COLLECTED_KEYS_SHOWN = 20
+#: Keys a per-item example path prefers, in order, when item 0 carries one.
+_COLLECTED_EXAMPLE_KEYS = ("name", "title", "rule_name", "id")
+
+
+def _path_segment(key: str) -> str:
+    """One session-path segment for *key*: ``.key``, or ``["key"]`` when it needs quoting."""
+    if key.isidentifier():
+        return f".{key}"
+    escaped = key.replace("\\", "\\\\").replace('"', '\\"')
+    return f'["{escaped}"]'
+
+
+def _collected_summary(merged: Mapping[str, object], task_count: int, output_key: str) -> str:
+    """The ``collect_task_results`` answer: what was stored, told truthfully.
+
+    The item count, the keys the items carry (with how many items carry each),
+    one sample item cut to a few hundred characters, and a per-item example
+    path built only from a key item 0 really has, so the path it advertises
+    resolves.
+    """
+    import json as _json
+
+    items = list(merged.values())
+    counts: dict[str, int] = {}
+    for item in items:
+        if isinstance(item, dict):
+            for key in item:
+                counts[key] = counts.get(key, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: -kv[1])
+    shown = ", ".join(f"{key} ({n}/{len(items)})" for key, n in ranked[:_COLLECTED_KEYS_SHOWN])
+    if len(ranked) > _COLLECTED_KEYS_SHOWN:
+        shown += f", and {len(ranked) - _COLLECTED_KEYS_SHOWN} more"
+    base = f"$collected{_path_segment(output_key)}"
+    lines = [
+        f"Collected {len(items)} items from {task_count} tasks, stored as `$collected` "
+        f"(items under `{base}`, indexed 0 to {len(items) - 1}).",
+        f"Keys of the items: {shown or 'none'}.",
+    ]
+    first = items[0] if items else None
+    if isinstance(first, dict):
+        sample = _json.dumps(first, ensure_ascii=False, default=str)
+        if len(sample) > _COLLECTED_SAMPLE_CHARS:
+            sample = sample[:_COLLECTED_SAMPLE_CHARS] + f"... [{len(sample)} characters in all]"
+        lines.append(f"Item 0: {sample}")
+        example = next((k for k in _COLLECTED_EXAMPLE_KEYS if k in first), None)
+        if example is None:
+            example = next((k for k, v in first.items() if not isinstance(v, (dict, list))), None)
+        if example is not None:
+            lines.append(
+                f"Per-item path: `{base}[0]{_path_segment(example)}` (an item a key above "
+                f"does not list for all items may lack it)."
+            )
+    lines.append(
+        "Pass `$collected`, an item path or a field path as a tool argument value: the "
+        "platform resolves it to the real value. A key with a dash, dot or space goes in "
+        'quoted brackets: `["my-key"]`. To read one task\'s whole answer, call '
+        "get_full_task_result with its task id."
+    )
+    return "\n".join(lines)
+
 
 def build_sub_agent_tools(
     db: AsyncSession,
@@ -709,6 +773,7 @@ def build_sub_agent_tools(
         task_ids: str,
         output_key: str = "items",
         extra_json: str = "",
+        item_key: str = "",
     ) -> str:
         """Collect completed task results and store them as a session variable.
 
@@ -723,6 +788,7 @@ def build_sub_agent_tools(
         from app.services.sub_agent import get_task_result_by_id
 
         _id_keys = ("id", "injector_contract_id", "contract_id", "payload_id")
+        item_key = (item_key or "").strip()
 
         ids = [tid.strip() for tid in task_ids.split(",") if tid.strip()]
         if not ids:
@@ -749,20 +815,53 @@ def build_sub_agent_tools(
             _seq += 1
             merged[key] = raw
 
-        def _extract_items(data: object) -> None:
-            """Recursively extract item dicts from nested structures.
+        def _is_envelope(value: object) -> bool:
+            return isinstance(value, dict) and ("raw_configuration" in value or any(k in value for k in _id_keys))
 
-            Handles four shapes, in priority order:
+        def _holds_items(value: object) -> bool:
+            """True for a list of dicts, an envelope, or a wrapper of either.
+
+            A wrapper is a dict with no text value: a dict carrying text (a
+            name, a title) is an item whose nested lists are its own fields.
+            """
+            if isinstance(value, list):
+                return any(isinstance(el, dict) for el in value)
+            if not isinstance(value, dict):
+                return False
+            if _is_envelope(value):
+                return True
+            if any(isinstance(v, str) for v in value.values()):
+                return False
+            return any(_holds_items(v) for v in value.values())
+
+        def _named_list(data: dict[str, object]) -> list[object] | None:
+            """The ``item_key`` list of *data*, at any depth, first found."""
+            named = data.get(item_key)
+            if isinstance(named, list):
+                return named
+            for v in data.values():
+                found = _named_list(v) if isinstance(v, dict) else None
+                if found is not None:
+                    return found
+            return None
+
+        def _extract_items(data: object) -> None:
+            """Extract whole item dicts from one task result.
+
+            Handles these shapes, in priority order:
 
             1. A list -> each element is an item.
-            2. A dict carrying a known id-key / ``raw_configuration`` (the
+            2. A dict holding the ``item_key`` list (at any depth) -> that
+               list is the items.
+            3. A dict carrying a known id-key / ``raw_configuration`` (the
                OpenCTI / OpenAEV envelope) -> the dict itself is one item.
-            3. A dict that wraps the real items under nested list/dict values
-               -> recurse into those containers.
-            4. Otherwise a *flat* structured dict (no id-key, no nested
-               containers) -> the dict itself IS the item. This is the generic
-               structured-output case (e.g. a per-batch JSON result); without
-               it a flat object silently yielded nothing.
+            4. A dict whose values hold items (lists of dicts, envelopes, or
+               dicts wrapping them) -> those values are walked; its other
+               values (counts, summaries) are metadata, never items.
+            5. A dict with a single key wrapping one object
+               (``{"rule": {...}}``) -> that object is the item.
+            6. Otherwise the dict itself IS one item, kept whole: its nested
+               objects are fields of the item, never items of their own.
             """
             if isinstance(data, list):
                 for el in data:
@@ -770,16 +869,27 @@ def build_sub_agent_tools(
                 return
             if not isinstance(data, dict):
                 return
-            has_known_key = any(k in data for k in _id_keys)
-            has_raw_cfg = "raw_configuration" in data
-            if has_known_key or has_raw_cfg:
+            named = _named_list(data) if item_key else None
+            if named is not None:
+                for el in named:
+                    _merge_item(el)
+                return
+            if _is_envelope(data):
                 _merge_item(data)
                 return
-            nested = [v for v in data.values() if isinstance(v, (list, dict))]
-            if nested:
-                for v in nested:
-                    _extract_items(v)
+            holders = [v for v in data.values() if _holds_items(v)]
+            if holders:
+                for v in holders:
+                    if _is_envelope(v):
+                        _merge_item(v)
+                    else:
+                        _extract_items(v)
                 return
+            if len(data) == 1:
+                only = next(iter(data.values()))
+                if isinstance(only, dict):
+                    _merge_item(only)
+                    return
             _merge_item(data)
 
         for tid in ids:
@@ -819,13 +929,7 @@ def build_sub_agent_tools(
                 with contextlib.suppress(Exception):
                     await session_persist()
 
-        return (
-            f"Collected {len(merged)} items from {task_count} tasks. "
-            f"Stored as `$collected`. Reference it in your next tool calls: pass "
-            f"`$collected` whole, or a per-item path like `$collected.{output_key}[0].name` "
-            f'(a key with a dash, dot or space in quoted brackets: `["my-key"]`; '
-            f"the platform resolves it automatically to the real value)."
-        )
+        return _collected_summary(merged, task_count, output_key)
 
     async def _clear_collected() -> str:
         """Release ``$collected`` once the orchestration has consumed it.
@@ -1064,6 +1168,11 @@ def build_sub_agent_tools(
                         "extra_json": {
                             "type": "string",
                             "description": 'Optional JSON string with additional fields to include (e.g. \'{"name": "...", "description": "..."}\')',
+                            "default": "",
+                        },
+                        "item_key": {
+                            "type": "string",
+                            "description": "Optional key of the list holding the items in each task result (e.g. 'rules'); its sibling fields are left out",
                             "default": "",
                         },
                     },

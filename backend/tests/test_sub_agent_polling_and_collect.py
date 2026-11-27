@@ -19,13 +19,16 @@ so a self-fan-out agent can read and synthesize its workers' output.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services import sub_agent
 from app.services.builtin_tools import build_sub_agent_tools
 from app.services.sub_agent import wait_for_tasks
+from app.tools.agent_loop import _resolve_session_reference
 
 
 def _make_agent(name: str = "Worker") -> SimpleNamespace:
@@ -219,6 +222,83 @@ async def test_collect_nested_response_envelope():
     with patch.object(sub_agent, "get_task_result_by_id", new=AsyncMock(return_value=payload)):
         await collect(str(uuid.uuid4()))
     assert len(sv["$collected"]["items"]) == 2
+
+
+def _advertised_path(out: str) -> str | None:
+    match = re.search(r"Per-item path: `([^`]+)`", out)
+    return match.group(1) if match else None
+
+
+async def _collect_results(results: list[object], **kwargs: str) -> tuple[dict[str, Any], str]:
+    sv, collect = _build_collect()  # type: ignore[no-untyped-call]
+    texts = {str(uuid.uuid4()): json.dumps(r) for r in results}
+
+    async def _result(tid: str) -> str:
+        return texts[tid]
+
+    with patch.object(sub_agent, "get_task_result_by_id", new=_result):
+        out = await collect(",".join(texts), **kwargs)
+    return sv, out
+
+
+async def test_collect_keeps_whole_items_and_drops_sibling_metadata() -> None:
+    """#2661: lists of items plus metadata, and an item with nested objects."""
+    rules = [{"name": f"r{i}", "pattern": f"p{i}"} for i in range(1, 7)]
+    single = {"name": "single", "mitre": {"technique": "T1059"}}
+    sv, out = await _collect_results(
+        [
+            {"rules": rules[:3], "summary": {"count": 3}},
+            {"rules": rules[3:], "summary": {"count": 3}},
+            {"rule": single},
+        ],
+        output_key="rules",
+    )
+    assert len(sv["$collected"]["rules"]) == 7
+    assert _resolve_session_reference("$collected.rules[5].name", sv) == (True, True, "r6")
+    assert _resolve_session_reference("$collected.rules[6]", sv) == (True, True, single)
+    assert "Collected 7 items from 3 tasks" in out
+    assert "name (7/7)" in out
+    assert "count" not in out
+    path = _advertised_path(out)
+    assert path == "$collected.rules[0].name"
+    assert _resolve_session_reference(path, sv) == (True, True, "r1")
+
+
+async def test_collect_items_list_with_a_total_adds_only_the_items() -> None:
+    sv, out = await _collect_results([{"items": [{"name": str(i)} for i in range(4)], "total": 4}])
+    assert len(sv["$collected"]["items"]) == 4
+    assert "Collected 4 items" in out
+
+
+async def test_collect_advertises_only_a_key_item_zero_carries() -> None:
+    sv, out = await _collect_results([[{"batch": "A", "score": 3}, {"batch": "B"}]], output_key="my-key")
+    assert "name" not in out
+    path = _advertised_path(out)
+    assert path == '$collected["my-key"][0].batch'
+    assert _resolve_session_reference(path, sv) == (True, True, "A")
+    assert "score (1/2)" in out
+
+
+async def test_collect_advertises_no_path_when_item_zero_has_no_scalar() -> None:
+    _sv, out = await _collect_results([[{"steps": [1, 2]}]])
+    assert _advertised_path(out) is None
+
+
+async def test_collect_item_key_names_the_list() -> None:
+    sv, _out = await _collect_results(
+        [{"rules": [{"name": "a"}], "errors": [{"pattern": "bad"}]}],
+        output_key="rules",
+        item_key="rules",
+    )
+    assert list(sv["$collected"]["rules"].values()) == [{"name": "a"}]
+
+
+async def test_collect_widget_envelopes_unchanged() -> None:
+    """OpenCTI widget envelopes, alone, in a list or wrapped by id, stay one item each."""
+    widget = {"title": "t", "raw_configuration": {"id": "w1", "type": "number"}}
+    other = {"title": "u", "raw_configuration": {"id": "w2", "type": "list"}}
+    sv, _out = await _collect_results([widget, [other], {"widgets": {"x": {"id": "w3"}}}], output_key="widgets")
+    assert list(sv["$collected"]["widgets"]) == ["w1", "w2", "w3"]
 
 
 # ── chat-path tool exposure ─────────────────────────────────────────────────
