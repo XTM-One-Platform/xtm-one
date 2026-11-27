@@ -114,6 +114,10 @@ class FolderDirectory:
         found: list[MailFolder] = []
         queue: list[tuple[str, str, int]] = [(f"{self._base_url}/me/mailFolders", "", 0)]
         while queue:
+            if len(found) >= MAX_FOLDERS:
+                # The cap is reached: the folders still queued are not read.
+                self._truncated = True
+                break
             url, parent_path, depth = queue.pop(0)
             items, err = await self._pages(url)
             if err:

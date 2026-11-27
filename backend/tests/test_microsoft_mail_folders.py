@@ -224,5 +224,14 @@ async def test_a_search_in_an_unknown_folder_is_refused(graph: list[str]) -> Non
     assert _messages_urls(graph) == []
 
 
+@pytest.mark.asyncio
+async def test_the_walk_stops_at_the_folder_cap(graph: list[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.integrations.providers.microsoft._mail_folders.MAX_FOLDERS", 2)
+    executor = await _executor()
+    await _call(executor, "list_microsoft_mail_folders")
+
+    assert graph == [f"{_BASE}/me/mailFolders"]
+
+
 def test_the_folder_listing_is_a_read() -> None:
     assert infer_tool_type("list_microsoft_mail_folders") == "read"
