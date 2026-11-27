@@ -641,6 +641,34 @@ DEFAULT_ASSISTANT_MODULE_SKILL_SLUGS: dict[str, tuple[str, ...]] = {
     "fimi-analyst": ("cti-orchestrator",),
 }
 
+#: The OpenCTI customization tools that write live platform settings (the names of
+#: ``customization.CUSTOMIZATION_WRITE_TOOLS``, kept equal by a test, #2660). An
+#: autonomous agent that stages knowledge in drafts denies them: settings are not
+#: staged, so a write would bypass the review its draft stands for.
+OPENCTI_SETTINGS_WRITE_TOOLS: tuple[str, ...] = (
+    "manage_opencti_entity_setting",
+    "manage_opencti_vocabulary",
+    "manage_opencti_status_template",
+    "manage_opencti_decay_rule",
+    "manage_opencti_retention_rule",
+    "manage_opencti_exclusion_list",
+)
+
+
+def deny_opencti_settings_writes(agents: list[dict[str, Any]]) -> None:
+    """Add the OpenCTI settings writes to the deny list of each agent bound to OpenCTI.
+
+    For the autonomous fleet agents (#2660): none of them owns a platform setting,
+    and each writes knowledge through drafts. Additive: an agent's own denials stay.
+    """
+    for agent in agents:
+        if "opencti" not in (agent.get("integration_template_bindings") or []):
+            continue
+        denied = list(agent.get("tool_deny_list") or [])
+        denied += [name for name in OPENCTI_SETTINGS_WRITE_TOOLS if name not in denied]
+        agent["tool_deny_list"] = denied
+
+
 BUILTIN_AGENTS: list[dict] = [
     {
         "slug": "xtm-one-assistant",
@@ -764,6 +792,9 @@ BUILTIN_AGENTS: list[dict] = [
         "tags": ["builtin", "opencti"],
         "builtin_tool_ids": ["web_fetch"],
         "integration_template_bindings": ["opencti"],
+        # Delegated by the Threat Hunt Creator: converts rules, never changes a
+        # platform setting (#2660).
+        "tool_deny_list": list(OPENCTI_SETTINGS_WRITE_TOOLS),
     },
     {
         "slug": "opencti-threat-hunt-creator",
@@ -792,6 +823,11 @@ BUILTIN_AGENTS: list[dict] = [
         },
         "builtin_tool_ids": ["web_fetch"],
         "integration_template_bindings": ["opencti"],
+        # A hunt package is knowledge, staged in a draft for review; a platform
+        # setting (vocabulary, entity setting, workflow status, decay, retention,
+        # exclusion list) is never staged and was changed live on a partner
+        # platform (#2660). The vocabulary stays readable: list_opencti_vocabulary.
+        "tool_deny_list": list(OPENCTI_SETTINGS_WRITE_TOOLS),
     },
     {
         "slug": "opencti-assistant",
@@ -2331,6 +2367,19 @@ CTEM_FLEET_AGENTS: list[dict] = [
 ]
 
 BUILTIN_AGENTS.extend(CTEM_FLEET_AGENTS)
+
+# The autonomous CTEM fleet agents bound to OpenCTI never change a platform
+# setting (#2660): the loop, the stage analysts, the PIR desk, AI security and
+# third-party risk. The person-facing assistants keep the tools.
+deny_opencti_settings_writes(
+    [
+        *CTEM_FLEET_AGENTS,
+        *_STAGE_AGENTS,
+        *PIR_DESK_AGENTS,
+        *AI_SECURITY_AGENTS,
+        *THIRD_PARTY_RISK_AGENTS,
+    ]
+)
 
 # CTEM seeded fleet F4 (#9112, dev-docs/ctem-fleets.md section 4.4): the
 # orchestrator of the posture and reporting fleet. The five stage analysts and
