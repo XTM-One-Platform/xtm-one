@@ -186,6 +186,33 @@ def _opencti_listener_spec(excluded: dict[str, set[tuple[str, ...]]] | None = No
     return spec
 
 
+#: Path 11 (#2583 comment point 5): the reports and incidents naming a tracked organization reach
+#: the live listener source through a trigger of their own, scoped to the tracked organizations'
+#: identities, so the vulnerability intake is never widened to every report.
+THIRD_PARTY_PATH = "third_party_event"
+THIRD_PARTY_ENTITY_TYPES: tuple[str, ...] = ("Report", "Incident")
+
+
+def _opencti_third_party_spec() -> dict[str, Any]:
+    from app.services import opencti_trigger_provisioning as prov
+
+    spec = prov.read_provision_spec(
+        {
+            "provider": "opencti",
+            "provision": {
+                "fleet": OBJECT_FLEET,
+                "purpose": f"OpenCTI live listener - {path_label(THIRD_PARTY_PATH)}",
+                "entity_types": list(THIRD_PARTY_ENTITY_TYPES),
+                "event_types": ["create", "update"],
+                "organizations": prov.TRACKED_SCOPE,
+            },
+        }
+    )
+    if spec is None:  # the block above always declares one
+        raise RuntimeError("the OpenCTI third-party listener spec is empty")
+    return spec
+
+
 @dataclass(frozen=True)
 class Provisioned:
     """How one source kind of one provider is provisioned."""
@@ -197,6 +224,9 @@ class Provisioned:
     per_pir_path: bool = False
     #: What it provisions follows the sources on per path (#2583): ``spec(excluded=...)`` builds it.
     follows_paths: bool = False
+    #: Paths that need objects of their own next to the main ones, ``(path, spec)`` (#2583 point 5):
+    #: held under ``state["paths"][path]``, provisioned while the source is on that path.
+    path_objects: tuple[tuple[str, Callable[[], dict[str, Any]]], ...] = ()
 
 
 #: ``(provider, kind)`` -> how it is provisioned.
@@ -205,7 +235,11 @@ PROVISIONED: dict[tuple[str, str], Provisioned] = {
         "app.services.openaev_trigger_provisioning", _openaev_spec, "OpenAEV", follows_paths=True
     ),
     ("opencti", "listener"): Provisioned(
-        "app.services.opencti_trigger_provisioning", _opencti_listener_spec, "OpenCTI", follows_paths=True
+        "app.services.opencti_trigger_provisioning",
+        _opencti_listener_spec,
+        "OpenCTI",
+        follows_paths=True,
+        path_objects=((THIRD_PARTY_PATH, _opencti_third_party_spec),),
     ),
     ("opencti", "pir_playbook"): Provisioned(
         "app.services.opencti_trigger_provisioning", _opencti_pir_spec, "OpenCTI", per_pir_path=True
@@ -241,6 +275,10 @@ def status_of(row: Any) -> tuple[str, str | None]:
     state = row.state if isinstance(getattr(row, "state", None), dict) else {}
     if row.enabled and state.get("status") == IDLE:
         # Switched on, every path it feeds off: it holds nothing and is never an error (#2583 point 7).
+        # A path with objects of its own still delivers (#2583 point 5): connected through it.
+        subs = [s for s in (state.get("paths") or {}).values() if isinstance(s, dict)]
+        if any(is_connected(s) for s in subs):
+            return "connected", None
         return "off", state.get("error")
     if not row.enabled:
         return ("error", state.get("error")) if state.get("status") == "error" else ("off", None)
@@ -432,21 +470,84 @@ async def _reconcile(db: Any, row: Any, now: datetime) -> dict[str, Any]:
     if PROVISIONED[(row.provider, row.kind)].per_pir_path:
         return await _reconcile_pir_paths(db, row, conn, now)
     client, integration_id, secret = conn
+    url = receiver_url(settings.base_url, integration_id, str(row.id))
+    top = {k: v for k, v in state.items() if k != "paths"}
+    paths = await _reconcile_path_objects(db, row, client, dict(state.get("paths") or {}), url, secret, now)
     try:
         spec = await _spec(db, row.provider, row.kind)
     except NothingToListenError as exc:
         # Every path is off: the objects go, so the source platform stops delivering (#2583 point 7).
-        leftover = await module.remove(client, state) if _held(state) else None
+        leftover = await module.remove(client, top) if _held(top) else None
         if leftover:
-            return {**state, "status": "error", "error": f"{exc}; objects not removed: {leftover}", "checked_at": stamp}
-        return {"status": IDLE, "error": str(exc), "checked_at": stamp, "integration_id": integration_id}
+            return {
+                **state,
+                "paths": paths,
+                "status": "error",
+                "error": f"{exc}; objects not removed: {leftover}",
+                "checked_at": stamp,
+            }
+        out = {"status": IDLE, "error": str(exc), "checked_at": stamp, "integration_id": integration_id}
+        return {**out, "paths": paths} if paths else out
     except SourceRefusedError as exc:
         return {**state, "status": "error", "error": str(exc), "checked_at": stamp}
-    url = receiver_url(settings.base_url, integration_id, str(row.id))
     spec = {**spec, "origin": {"source_id": str(row.id)}}
-    new_state = await module.reconcile(client, spec, state, url=url, secret=secret, now=now)
+    new_state = await module.reconcile(client, spec, top, url=url, secret=secret, now=now)
     new_state["integration_id"] = integration_id
+    if paths:
+        new_state["paths"] = paths
     return new_state
+
+
+async def _tracked_organizations(db: Any, provider: str, spec: dict[str, Any]) -> dict[str, Any]:
+    """*spec* with the tracked organizations of its scope; called by name so the session stays visible: it only reads."""
+    if provider == "opencti":
+        from app.services.opencti_trigger_provisioning import with_tracked_organizations as opencti_tracked
+
+        return await opencti_tracked(db, spec)
+    return spec
+
+
+async def _reconcile_path_objects(
+    db: Any, row: Any, client: Any, previous: dict[str, Any], url: str, secret: str, now: datetime
+) -> dict[str, Any]:
+    """The objects of the paths that need their own (#2583 point 5), as ``{path: state}``.
+
+    A path set to Not used here, or with nothing to scope it to (no tracked organization
+    with monitoring on and an OpenCTI identity), holds nothing: its objects are removed and
+    the path is quiet, never an error of the source.
+    """
+    entry = PROVISIONED[(row.provider, row.kind)]
+    if not entry.path_objects:
+        return {}
+    from app.services.ctem_signal_sources import excluded_sources
+
+    module = _module(row.provider, row.kind)
+    excluded = await excluded_sources(db, None)
+    out: dict[str, Any] = {}
+    for path, build in entry.path_objects:
+        sub = dict(previous.pop(path, None) or {})
+        spec = build()
+        try:
+            if _listened(excluded, path, row.provider, "") and spec.get("organizations") not in (None, "primary"):
+                spec = await _tracked_organizations(db, row.provider, spec)
+        except Exception as exc:  # one path never breaks the source
+            logger.warning("signal source %s: the tracked organizations of %s were not read", row.id, path)
+            out[path] = {**sub, "status": "error", "error": str(exc)[:500], "checked_at": now.isoformat()}
+            continue
+        wanted = _listened(excluded, path, row.provider, "") and (
+            spec.get("organizations") in (None, "primary") or bool(spec.get("organization_refs"))
+        )
+        if not wanted:
+            leftover = await module.remove(client, sub) if _held(sub) else None
+            if leftover:
+                out[path] = {**sub, "status": "error", "error": f"objects not removed: {leftover}"}
+            continue
+        spec = {**spec, "origin": {"source_id": str(row.id)}}
+        out[path] = await module.reconcile(client, spec, sub, url=url, secret=secret, now=now)
+    for gone in previous.values():
+        if _held(gone):
+            await module.remove(client, gone)
+    return out
 
 
 async def _remove(db: Any, row: Any) -> str | None:

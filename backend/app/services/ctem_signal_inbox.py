@@ -72,9 +72,38 @@ async def record(
     )
     if provider == "opencti":
         await ctem_analyst_mark.note_event(provider, payload, verified=verified)
+        named = payload.get(TRACKED_KEY)
+        if isinstance(named, list) and named:
+            # #2583 point 5: path 11, one signal per tracked organization the report or incident names.
+            recorded = bool(
+                await ctem_signal_listeners.note_tracked_organizations(
+                    payload, [str(n) for n in named], verified=verified, session_factory=intake_session
+                )
+            ) or bool(recorded)
     if provider == "openaev":
         await ctem_openaev_events.note_event(event_key, payload, verified=verified)
     return bool(recorded)
+
+
+#: Where the receiver records the tracked organizations an OpenCTI delivery names (#2583 point 5).
+TRACKED_KEY = "_tracked_organizations"
+#: The path whose source state holds the tracked organizations' resolved ids.
+_THIRD_PARTY_PATH = "third_party_event"
+
+
+def tracked_named(source_state: Any, payload: Mapping[str, Any]) -> list[str]:
+    """The XTM One ids of the tracked organizations an OpenCTI delivery names by identity. Pure.
+
+    Read from the organizations the source's path 11 trigger resolved at provisioning
+    (internal and standard ids, ``opencti_trigger_provisioning._organization_scope``).
+    """
+    from app.services.organization_events import named_organizations
+
+    paths = source_state.get("paths") if isinstance(source_state, dict) else None
+    sub = paths.get(_THIRD_PARTY_PATH) if isinstance(paths, dict) else None
+    if not isinstance(sub, dict):
+        return []
+    return named_organizations(payload.get("data"), sub.get("organizations"))
 
 
 def _object_key(provider: str, integration_id: str, event_key: str, payload: Any) -> str | None:

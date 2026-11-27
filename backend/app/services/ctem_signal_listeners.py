@@ -897,14 +897,21 @@ async def _pir_floor(db: Any, organization_id: Any, pirs: object, *, kind: str =
     return pir_floor_met(pirs, threshold_for(policy, kind), getattr(profile, "pir_min_scores", None) or {})
 
 
-async def note_tracked_organizations(payload: Mapping[str, Any], organization_ids: list[str], *, verified: bool) -> int:
+async def note_tracked_organizations(
+    payload: Mapping[str, Any],
+    organization_ids: list[str],
+    *,
+    verified: bool,
+    session_factory: Any = None,
+) -> int:
     """CTEM-29: one path 11 signal per tracked organization an OpenCTI report or incident names.
 
     *organization_ids* are the XTM One organizations ``organization_events.annotate_payload``
     found in the delivery. The subject is the organization's name, so the scope gate
     resolves it to the asset row that names it and, through a primary asset's asset names,
     to the primary asset its services support; no dependency sends it to the watchlist.
-    No model call; never raises. How many signals were recorded.
+    No model call; never raises. How many signals were recorded. *session_factory* opens the
+    session (the signal inbox drain passes the intake engine's, #2583 point 5); the web pool's by default.
     """
     from app.core.config import settings
 
@@ -921,7 +928,7 @@ async def note_tracked_organizations(payload: Mapping[str, Any], organization_id
     recorded = 0
     internal_id = opencti_internal_id(data)
     try:
-        async with async_session() as db:
+        async with (session_factory or async_session)() as db:
             primary = await get_primary(db)
             if primary is None:
                 return 0

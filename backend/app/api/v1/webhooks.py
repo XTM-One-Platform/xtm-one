@@ -4893,6 +4893,13 @@ async def receive_signal_source_webhook(
         event_key = _extract_event_key(request, payload)
         if provider == "opencti":
             _normalize_opencti_payload(payload)
+            # #2583 point 5: the tracked organizations a report or incident names, from the ids the
+            # source's third-party trigger resolved at provisioning; recorded as path 11 by the drain.
+            from app.services.ctem_signal_inbox import TRACKED_KEY, tracked_named
+
+            named = tracked_named(source.state, payload)
+            if named:
+                payload[TRACKED_KEY] = named
         elif provider == "openaev":
             event_key = _normalize_openaev_payload(payload) or event_key
         # #2570: written to the durable inbox and answered at once. OpenCTI never retries a
