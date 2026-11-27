@@ -255,7 +255,7 @@ async def _asset_groups(db: AsyncSession, organization_id: uuid.UUID, asset_id: 
     grp, member, rec = OrganizationAssetGroup, OrganizationAssetGroupMember, OrganizationAssetRecord
     rows = (
         await db.execute(
-            select(grp.id, grp.name, grp.source)
+            select(grp.id, grp.name, grp.source, grp.external_id)
             .join(member, member.group_id == grp.id)
             .join(rec, rec.id == member.record_id)
             .where(grp.organization_id == organization_id, rec.asset_id == asset_id)
@@ -263,7 +263,39 @@ async def _asset_groups(db: AsyncSession, organization_id: uuid.UUID, asset_id: 
             .order_by(grp.name)
         )
     ).all()
-    return [{"id": str(gid), "name": str(name), "source": str(source)} for gid, name, source in rows]
+    return [
+        {"id": str(gid), "name": str(name), "source": str(source), "source_id": str(external_id)}
+        for gid, name, source, external_id in rows
+    ]
+
+
+async def group_source_id(
+    db: AsyncSession, group_ref: str, *, source: str, organization_id: uuid.UUID | None = None
+) -> str | None:
+    """The *source*'s own id of the inventory asset group *group_ref* names (its inventory id), else ``None`` (#2714).
+
+    A source module's tools take the source's id, never the inventory row id: this maps one to the
+    other for a group synced from *source*. *organization_id* defaults to the primary organization.
+    """
+    try:
+        group_id = uuid.UUID(str(group_ref or "").strip())
+    except ValueError:
+        return None
+    if organization_id is None:
+        from app.services.organization_context import current_version
+
+        organization_id = getattr(await current_version(db), "organization_id", None)
+        if not isinstance(organization_id, uuid.UUID):
+            return None
+    grp = OrganizationAssetGroup
+    value = (
+        await db.execute(
+            select(grp.external_id).where(
+                grp.organization_id == organization_id, grp.id == group_id, grp.source == source
+            )
+        )
+    ).scalar()
+    return str(value) if value else None
 
 
 async def lookup_assets(db: AsyncSession, organization_id: uuid.UUID, values: Sequence[str]) -> dict[str, Any]:
@@ -670,7 +702,7 @@ async def list_asset_groups(
     counts = select(member.group_id, func.count().label("members")).group_by(member.group_id).subquery()
     rows = (
         await db.execute(
-            select(grp.id, grp.name, grp.source, func.coalesce(counts.c.members, 0))
+            select(grp.id, grp.name, grp.source, grp.external_id, func.coalesce(counts.c.members, 0))
             .outerjoin(counts, counts.c.group_id == grp.id)
             .where(*where)
             .order_by(grp.name_key, grp.id)
@@ -678,9 +710,16 @@ async def list_asset_groups(
             .limit(size)
         )
     ).all()
+    # source_id: the id the source module's own tools take (an OpenAEV asset_group_id), never ``id`` (#2714).
     items = [
-        {"id": str(gid), "name": str(name), "source": str(source), "members": int(members)}
-        for gid, name, source, members in rows
+        {
+            "id": str(gid),
+            "name": str(name),
+            "source": str(source),
+            "source_id": str(external_id),
+            "members": int(members),
+        }
+        for gid, name, source, external_id, members in rows
     ]
     return page(items, total=int(total), offset=start, limit=size)
 

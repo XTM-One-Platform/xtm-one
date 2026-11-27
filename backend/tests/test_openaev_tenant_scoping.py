@@ -1180,6 +1180,60 @@ async def test_a_scoped_404_names_the_other_tenant_cause(monkeypatch, tool, argu
     assert "an entity of another tenant: this request only sees the tenant t1" in result.content
 
 
+# ── An asset-group 404 names the inventory id first (#2714) ─────────────
+
+INVENTORY_ID = "0f6c3e1a-6b0e-4d55-9a37-1c2b3d4e5f60"
+AEV_GROUP_ID = "de799619-00cb-409c-8f29-8013e50fdb08"
+
+
+async def _read_group(executor: CallableToolExecutor, arguments: dict[str, object]) -> str:
+    call = ToolCall(id="call-group", name="get_openaev_asset_group", arguments=arguments)
+    return (await executor.execute_tool(call)).content
+
+
+async def test_an_asset_group_404_names_the_inventory_id_before_any_tenant(monkeypatch: pytest.MonkeyPatch) -> None:
+    _, executor = _install(monkeypatch, settings=MT, memberships=["t1", "tB"], fail=_NOT_FOUND)
+    text = await _read_group(executor, {"group_id": INVENTORY_ID})
+    assert text.startswith(f"Asset group '{INVENTORY_ID}' not found in OpenAEV.")
+    assert "XTM One row id" in text and "source_id" in text and "search_openaev_asset_groups" in text
+    assert "Tenant field" not in text
+
+
+async def test_a_denied_asset_group_keeps_the_tenant_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    _, executor = _install(monkeypatch, settings=MT, memberships=["t1", "tB"], fail=_DENIED)
+    text = await _read_group(executor, {"group_id": AEV_GROUP_ID})
+    assert "tenant t1 (chosen automatically; set the integration's Tenant field" in text
+    assert "XTM One row id" not in text
+
+
+async def test_an_inventory_id_of_an_openaev_group_is_read_as_its_openaev_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import organization_inventory_query
+
+    asked: list[tuple[str, str]] = []
+
+    async def mapped(_db: object, ref: str, *, source: str, organization_id: object = None) -> str | None:
+        asked.append((ref, source))
+        return AEV_GROUP_ID if ref == INVENTORY_ID else None
+
+    monkeypatch.setattr(organization_inventory_query, "group_source_id", mapped)
+    monkeypatch.setattr("app.core.database.async_session", _NoDb)
+    transport, executor = _install(monkeypatch, settings={})
+    text = await _read_group(executor, {"group_id": INVENTORY_ID, "members_limit": 0})
+    assert asked == [(INVENTORY_ID, "openaev")]
+    assert transport.urls == [f"{BASE}/api/asset_groups/{AEV_GROUP_ID}"]
+    assert text.startswith(f"Read as OpenAEV asset group {AEV_GROUP_ID}: '{INVENTORY_ID}'")
+
+
+class _NoDb:
+    """An ``async_session()`` stand-in: the mapping is patched, no session is used."""
+
+    async def __aenter__(self) -> None:
+        return None
+
+    async def __aexit__(self, *_exc: object) -> bool:
+        return False
+
+
 async def test_an_unscoped_404_has_no_tenant_cause(monkeypatch):
     _, executor = _install(monkeypatch, settings={}, fail=_NOT_FOUND)
     result = await _run(executor, "get_openaev_scenario", {"scenario_id": "s9"})

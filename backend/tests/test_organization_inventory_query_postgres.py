@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager, contextmanager
 from typing import Any
 
 import pytest
-from sqlalchemy import event, insert
+from sqlalchemy import event, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.models  # noqa: F401 - registers every mapper on Base.metadata
@@ -33,6 +33,7 @@ from app.models.organization_asset_record import (
     OrganizationPrimaryAssetLink,
 )
 from app.services import organization_inventory_query as q
+from app.services.organization_inventory_query import group_source_id  # the real one: conftest stubs q's
 from tests.scratch_database import ALL_TABLES, scratch_database
 
 pytestmark = pytest.mark.integration
@@ -194,7 +195,9 @@ async def test_the_inventory_is_queried_by_pages_with_bounded_statements() -> No
         with _statements(session) as seen:
             groups = await q.list_asset_groups(session, org)
             primary = await q.list_primary_assets(session, org)
-        assert groups["items"] == [{"id": str(world["group"]), "name": "DMZ", "source": "manual", "members": 1}]
+        assert groups["items"] == [
+            {"id": str(world["group"]), "name": "DMZ", "source": "manual", "source_id": "g-1", "members": 1}
+        ]
         assert primary["items"] == [{"primary_asset": "payments", "records": 1, "groups": 0}]
         assert len(seen) == 4
 
@@ -285,6 +288,42 @@ async def test_group_by_source_totals_the_distinct_assets_not_the_overlapping_bu
         found = await q.search_assets(session, org.id, os_family=["linux"])
         assert by_os["total"] == found["total"] == 3
         assert "bucket_sum" not in by_os and "multi_valued" not in by_os
+
+
+async def test_a_source_synced_group_answers_the_id_its_source_module_takes() -> None:
+    """#2714: an OpenAEV group's row names OpenAEV's id; the inventory id maps to it."""
+    async with _database() as sessions, sessions() as session:
+        world = await _inventory(session)
+        org, first = world["org"], world["assets"][0]
+        aev_id = "de799619-00cb-409c-8f29-8013e50fdb08"
+        group = OrganizationAssetGroup(
+            organization_id=org,
+            source="openaev",
+            external_id=aev_id,
+            name="All Linux x86_64",
+            name_key="all linux x86_64",
+        )
+        session.add(group)
+        await session.flush()
+        record = (
+            await session.execute(select(OrganizationAssetRecord.id).where(OrganizationAssetRecord.asset_id == first))
+        ).scalar_one()
+        session.add(OrganizationAssetGroupMember(group_id=group.id, record_id=record))
+        await session.commit()
+
+        listed = await q.list_asset_groups(session, org, query="linux")
+        assert listed["items"] == [
+            {"id": str(group.id), "name": "All Linux x86_64", "source": "openaev", "source_id": aev_id, "members": 1}
+        ]
+        detail = await q.get_asset(session, org, str(first))
+        assert detail is not None
+        assert {g["source_id"] for g in detail["groups"]} == {"g-1", aev_id}
+
+        assert await group_source_id(session, str(group.id), source="openaev", organization_id=org) == aev_id
+        # Another source's group, an unknown id or a non-id never map.
+        assert await group_source_id(session, str(world["group"]), source="openaev", organization_id=org) is None
+        assert await group_source_id(session, str(uuid.uuid4()), source="openaev", organization_id=org) is None
+        assert await group_source_id(session, "not-an-id", source="openaev", organization_id=org) is None
 
 
 def test_version_in_range_is_semantic_and_says_when_it_cannot_compare() -> None:

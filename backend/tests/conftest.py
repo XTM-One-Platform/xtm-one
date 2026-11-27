@@ -843,6 +843,24 @@ def _reset_attachment_cache():
 
 
 @pytest.fixture(autouse=True)
+def _no_inventory_group_reading(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the inventory read behind an OpenAEV asset-group id out of the unit suite (#2714).
+
+    ``get_openaev_asset_group`` first asks the organization inventory whether the id
+    is an inventory row synced from OpenAEV (``group_source_id``), through the database.
+    A unit test has none: the read could only wait on a refused connection. It answers
+    "not an inventory id" here; the tests OF the mapping call the real one on a scratch
+    database or patch their own.
+    """
+    from app.services import organization_inventory_query
+
+    async def not_an_inventory_id(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(organization_inventory_query, "group_source_id", not_an_inventory_id)
+
+
+@pytest.fixture(autouse=True)
 def _no_prompt_camera_reading(monkeypatch):
     """Keep the prompt reading a take's stabilisation asks for out of the unit suite.
 
