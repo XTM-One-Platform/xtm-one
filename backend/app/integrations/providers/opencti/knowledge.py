@@ -300,6 +300,37 @@ def _offers_file_download(surface: tuple[ToolDefinition, ...] | list[ToolDefinit
     return any(tool.name == _DOWNLOAD_FILE_TOOL for tool in surface or ())
 
 
+#: The most objects one ``get_opencti_container_full`` page holds; the rest
+#: of a larger container is read by cursor (``after``).
+_CONTAINER_PAGE_MAX = 1000
+
+
+def _container_page_summary(
+    *,
+    shown: int,
+    total: int,
+    first: int,
+    after: str | None,
+    next_cursor: str | None,
+    type_filter: list[str] | None,
+) -> str:
+    """The closing line of a ``get_opencti_container_full`` page.
+
+    It names the next call when OpenCTI has more objects: the cursor, and
+    a larger ``limit`` only while the limit is under the page maximum, so
+    the hint never asks for a value the tool refuses.
+    """
+    scope = f" of type {', '.join(type_filter)}" if type_filter else ""
+    if next_cursor is None:
+        if not after and shown >= total:
+            return f"\nTotal objects{scope}: {total}"
+        if after:
+            return f"\n(Showing {shown} objects{scope}: the last page of {total}.)"
+        return f"\n(Showing {shown} of {total} objects{scope}.)"
+    larger = f", limit={_CONTAINER_PAGE_MAX} for fewer pages" if first < _CONTAINER_PAGE_MAX else ""
+    return f'\n(Showing {shown} of {total} objects{scope}. Next page: call again with after="{next_cursor}"{larger}.)'
+
+
 def _container_full_description(file_download_offered: bool) -> str:
     """The ``get_opencti_container_full`` description for a surface."""
     files = (
@@ -3140,13 +3171,22 @@ def register_knowledge(
     async def get_opencti_container_full(
         container_id: str,
         limit: int = 200,
+        after: str | None = None,
+        types: list[str] | None = None,
+        compact: bool = False,
     ) -> str | ToolResult:
         """Fetch a container and resolve all entities and relationships.
 
+        The objects come by page of at most ``_CONTAINER_PAGE_MAX``: ``after``
+        (the cursor a previous page named) reads the next one, ``types``
+        keeps the objects of those types, ``compact`` drops the object
+        descriptions so a whole page fits the tool-output cap.
+
         The container also comes back structured: its own scalar fields, the
         object count, ``entities`` and ``relationships`` (each record as
-        OpenCTI answered it), so a ``to_workset`` JSON split on either list
-        stores one workset item per object.
+        OpenCTI answered it), ``next_cursor`` and ``has_more``, so a
+        ``to_workset`` JSON split on either list stores one workset item per
+        object.
         """
         # Compact from/to resolution for relationship endpoints
         ft = (
@@ -3230,9 +3270,9 @@ def register_knowledge(
         )
         # Objects connection block (reused for each container type)
         oc = (
-            "objects(first: $first) { edges { node { "
+            "objects(first: $first, after: $after, types: $types) { edges { node { "
             + nd
-            + " } } pageInfo { globalCount } }"
+            + " } } pageInfo { endCursor hasNextPage globalCount } }"
         )
         # Author resolution
         cb = (
@@ -3246,7 +3286,7 @@ def register_knowledge(
             "} } }"
         )
         query = (
-            "query ContainerFull($id: String!, $first: Int) { "
+            "query ContainerFull($id: String!, $first: Int, $after: ID, $types: [String]) { "
             "stixDomainObject(id: $id) { "
             "id entity_type standard_id created_at "
             "... on Report { name description report_types published "
@@ -3270,14 +3310,20 @@ def register_knowledge(
             + cb + " " + fi + " " + oc + " } "
             "} }"
         )
-        first = min(max(limit, 1), 1000)
+        first = min(max(limit, 1), _CONTAINER_PAGE_MAX)
+        type_filter = [t for t in (types or []) if t] or None
         async with _client(headers, timeout=60) as client:
             data, err = await _graphql(
                 client,
                 base_url,
                 headers,
                 query,
-                {"id": container_id, "first": first},
+                {
+                    "id": container_id,
+                    "first": first,
+                    "after": after or None,
+                    "types": type_filter,
+                },
             )
         if err:
             return err
@@ -3366,11 +3412,10 @@ def register_knowledge(
         if not isinstance(obj_data, dict):
             obj_data = {}
         edges = obj_data.get("edges", [])
-        total = (obj_data.get("pageInfo") or {}).get(
-            "globalCount",
-            len(edges),
-        )
+        page_info = obj_data.get("pageInfo") or {}
+        total = page_info.get("globalCount", len(edges))
         nodes = [e["node"] for e in edges if e.get("node")]
+        next_cursor = page_info.get("endCursor") if page_info.get("hasNextPage") else None
 
         # Separate entities from relationships
         ent_list: list[dict] = []
@@ -3407,7 +3452,7 @@ def register_knowledge(
                 or ent.get("content")
                 or ""
             )
-            if ed:
+            if ed and not compact:
                 ed = clip_text(ed, LISTING_CONTAINER_ITEM_TEXT_LIMIT, _entity_read_call(ent))
                 line += f"\n    Description: {ed}"
             lines.append(line)
@@ -3427,7 +3472,7 @@ def register_knowledge(
             )
             line += f"\n    From: [{fr.get('entity_type', '?')}] {fn} (ID: {fr.get('id', 'N/A')})"
             line += f"\n    To: [{to.get('entity_type', '?')}] {tn} (ID: {to.get('id', 'N/A')})"
-            if rel.get("description"):
+            if rel.get("description") and not compact:
                 rd = clip_text(
                     rel["description"],
                     LISTING_CONTAINER_ITEM_TEXT_LIMIT,
@@ -3437,12 +3482,16 @@ def register_knowledge(
             lines.append(line)
 
         # ── Summary ──
-        if total > first:
-            lines.append(
-                f"\n(Showing {len(nodes)} of {total} objects. Increase limit to see more.)"
+        lines.append(
+            _container_page_summary(
+                shown=len(nodes),
+                total=total,
+                first=first,
+                after=after,
+                next_cursor=next_cursor,
+                type_filter=type_filter,
             )
-        else:
-            lines.append(f"\nTotal objects: {total}")
+        )
         structured = {
             "id": sdo_id,
             "entity_type": etype,
@@ -3450,6 +3499,8 @@ def register_knowledge(
             "standard_id": sdo.get("standard_id"),
             "total_objects": total,
             "shown_objects": len(nodes),
+            "next_cursor": next_cursor,
+            "has_more": next_cursor is not None,
             "entities": ent_list,
             "relationships": rel_list,
         }
@@ -6829,6 +6880,20 @@ def register_knowledge(
                             "Start with small limits and increase only if needed."
                         ),
                         "default": 200,
+                    },
+                    "after": {
+                        "type": "string",
+                        "description": "Cursor of the next page, as the previous answer names it.",
+                    },
+                    "types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": 'Only the objects of these types, e.g. ["Indicator"].',
+                    },
+                    "compact": {
+                        "type": "boolean",
+                        "description": "Leave out object descriptions (type, name, ID only).",
+                        "default": False,
                     },
                 },
                 "required": ["container_id"],
