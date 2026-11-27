@@ -33,7 +33,7 @@ import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
   CTEM_CASE_LIST_KEY,
   cachedCaseSummary,
-  isClosedCaseState,
+  ctemCaseMaxCvss,
   isOpenCaseState,
   isRestrictedIssue,
   useCtemCase,
@@ -538,11 +538,10 @@ export default function CtemCaseDetail() {
 
   const ownerName = personName(kase.owner_user_id);
   const restricted = kase.restricted_count;
-  // A closed case works none of its members: those still open at source are shown apart (#2675).
-  const caseClosed = isClosedCaseState(kase.state);
   // A member seen without its details makes KEV, CVSS and asset counts unknown, never computed (UX round 1 on #1931, B1).
   const aggregatesRestricted = kase.aggregates_restricted === true;
   const withoutDetails = kase.members_without_details ?? 0;
+  const maxCvss = ctemCaseMaxCvss(kase);
   const aggregatesSubtitle = aggregatesRestricted
     ? t_i18n("Unknown: {count, plural, one {# open issue} other {# open issues}} not readable with details", { count: withoutDetails })
     : t_i18n("On the issues you can see");
@@ -840,24 +839,29 @@ export default function CtemCaseDetail() {
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <StatCard
           icon={IssuesGlyph}
-          label={caseClosed ? t_i18n("Open at source") : t_i18n("Open issues")}
-          value={caseClosed ? (kase.open_at_source_count ?? 0) : kase.open_issue_count}
+          label={t_i18n("Open issues")}
+          value={kase.open_issue_count}
           subtitle={
-            caseClosed
-              ? t_i18n("Case closed by decision")
-              : restricted > 0
-                ? t_i18n("{count, plural, one {# restricted} other {# restricted}}", { count: restricted })
-                : aggregatesRestricted
-                  ? t_i18n("{count, plural, one {# without details} other {# without details}}", { count: withoutDetails })
-                  : t_i18n("All visible to you")
+            restricted > 0
+              ? t_i18n("{count, plural, one {# restricted} other {# restricted}}", { count: restricted })
+              : aggregatesRestricted
+                ? t_i18n("{count, plural, one {# without details} other {# without details}}", { count: withoutDetails })
+                : t_i18n("All visible to you")
           }
         />
         <StatCard icon={KevGlyph} label={t_i18n("KEV")} value={formatCount(intl.locale, kase.kev_count)} subtitle={aggregatesSubtitle} />
         <StatCard
           icon={ScoreGlyph}
           label={t_i18n("Max CVSS")}
-          value={formatCount(intl.locale, kase.max_cvss)}
-          subtitle={aggregatesSubtitle}
+          value={formatCount(intl.locale, maxCvss.value)}
+          // The card agrees with the issues of the page; "-" always says why (#2630, UX round 1 on #2645, B1).
+          subtitle={
+            maxCvss.basis === "not_scored"
+              ? t_i18n("Not scored")
+              : maxCvss.basis === "facts_unread"
+                ? t_i18n("Unknown: CVE facts not readable for you")
+                : aggregatesSubtitle
+          }
         />
         <StatCard
           icon={AssetsGlyph}
