@@ -35,7 +35,13 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from app.services.ctem_primary_assets import PrimaryAssetIndex, contains_word, is_family_word, link_basis
+from app.services.ctem_primary_assets import (
+    PrimaryAssetIndex,
+    contains_word,
+    is_family_word,
+    is_url_like,
+    link_basis,
+)
 from app.services.organization_context import (
     PROFILE_ASSET_CAP,
     AssetEntry,
@@ -400,6 +406,9 @@ def _product_matches(product: str, ref: str) -> bool:
         parts = r.split(":")
         r = parts[4] if len(parts) > 4 else r
     if is_family_word(p) and p != r.replace("_", " "):
+        return False
+    # #2679: a URL or host name label (a web-app shortcut row) names only itself.
+    if p != r and (is_url_like(p) or is_url_like(r)):
         return False
     return contains_word(p, r)
 
