@@ -162,6 +162,7 @@ async def list_ctem_signal_sources(
     from app.models.ctem_signal_source import CtemSignalSource
     from app.models.integration import Integration
     from app.services import ctem_platform_sources as platform_sources
+    from app.services.integration_tools import get_integration_public_url
 
     providers = sorted({p for p, _ in platform_sources.PROVISIONED})
     integrations = (
@@ -198,9 +199,12 @@ async def list_ctem_signal_sources(
                     "reason_code": None,
                     "reason_params": {},
                     "checked_at": None,
+                    "objects": [],
                 }
             )
             item["integration_name"] = integration.name
+            # The platform's web UI host, for the Open in links of its objects (#2583 point 2).
+            item["integration_url"] = get_integration_public_url(integration)
             item["integration_connected"] = integration.status == "connected"
             item["label"] = spec.label
             out.append(item)
@@ -254,6 +258,26 @@ async def disable_ctem_signal_source(
     await platform_sources.disable(db, row)
     await db.commit()
     return platform_sources.to_dict(row)
+
+
+@router.post("/sources/legacy-opencti-objects")
+async def remove_legacy_opencti_objects(
+    dry_run: bool = Query(True, description="List what would be removed without removing it"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+) -> dict[str, Any]:
+    """Remove legacy OpenCTI objects (#2583 point 4): the Threat response triggers, playbooks and
+    notifiers left in OpenCTI, per integration a Signals source is on for; ``dry_run`` (default) lists them.
+
+    A holder whose objects are removed while its Signals source is not connected yet provisions them
+    again at its next pass, so no delivery is lost.
+    """
+    _require_xtm_one()
+    from app.services.opencti_trigger_provisioning import legacy_cleanup
+
+    report = await legacy_cleanup(db, dry_run=dry_run)
+    await db.commit()
+    return {"dry_run": dry_run, "integrations": report}
 
 
 class WebhookMapping(BaseModel):
