@@ -233,6 +233,66 @@ def is_family_word(value: str) -> bool:
     return _needle(str(value or "")) in FAMILY_WORDS
 
 
+#: #2685: words that name a kind of software, never one product. As a reference alone (a CVE
+#: whose OpenCTI software list holds only ``Client``) they name only an equal label: ``Client``
+#: is not ``Cisco AnyConnect Secure Mobility Client`` nor ``TrueConf Client``.
+GENERIC_PRODUCT_WORDS: frozenset[str] = frozenset(
+    {
+        "agent",
+        "app",
+        "application",
+        "client",
+        "core",
+        "daemon",
+        "desktop",
+        "driver",
+        "framework",
+        "helper",
+        "installer",
+        "launcher",
+        "library",
+        "manager",
+        "module",
+        "plugin",
+        "runtime",
+        "sdk",
+        "server",
+        "service",
+        "tool",
+        "tools",
+        "update",
+        "updater",
+    }
+)
+
+
+def is_generic_word(value: str) -> bool:
+    """Whether *value* is a bare generic product word (``Client``, ``Agent``, ``Updater``), not a product (#2685)."""
+    return _needle(str(value or "")) in GENERIC_PRODUCT_WORDS
+
+
+@lru_cache(maxsize=65536)
+def _generic_cpe(ref: str) -> tuple[str, str] | None:
+    """``(vendor, product)`` of a CPE whose product part is a generic word (#2685), else ``None``.
+
+    ``cpe:2.3:a:trueconf:client:...`` names TrueConf's client: an installed label matches it
+    only when it names both the vendor and the product, never by the word ``client`` alone.
+    """
+    text = ref.strip().lower()
+    if text.startswith("cpe:2.3:"):
+        parts = text.split(":")
+        vendor, product = (parts[3], parts[4]) if len(parts) > 4 else ("", "")
+    elif text.startswith("cpe:/"):
+        parts = text[len("cpe:/") :].split(":")
+        vendor, product = (parts[1], parts[2]) if len(parts) > 2 else ("", "")
+    else:
+        return None
+    vendor, product = vendor.replace("_", " ").strip(), product.replace("_", " ").strip()
+    if product not in GENERIC_PRODUCT_WORDS or vendor in {"", "*", "-"}:
+        return None
+    return vendor, product
+
+
 def product_matches(product: str, ref: str, *, family_exact: bool = True) -> bool:
     """An installed *product* named by a software reference *ref* (a name, or a CPE's product part).
 
@@ -245,46 +305,24 @@ def product_matches(product: str, ref: str, *, family_exact: bool = True) -> boo
     A URL or host name label (:func:`is_url_like`, a web-app shortcut such as
     ``tenant-my.sharepoint.com-1A2B``) matches only itself (#2679): ``SharePoint`` is a
     word of it, yet the device runs no SharePoint.
+    A generic product word (:data:`GENERIC_PRODUCT_WORDS`) matches only itself whatever
+    *family_exact* says, and a CPE whose product is one names only a label that also
+    names its vendor (#2685).
     """
     p, r = _needle(str(product or "")), _haystack(str(ref or ""))
     if not p or not r:
         return False
     if p != r and (is_url_like(p) or is_url_like(r)):
         return False
+    generic = _generic_cpe(str(ref or ""))
+    if generic is not None:
+        vendor, word = generic
+        return contains_word(vendor, p) and contains_word(word, p)
+    if p in GENERIC_PRODUCT_WORDS:
+        return p == r
     if family_exact and p in FAMILY_WORDS and p != r:
         return False
     return contains_word(p, r)
-
-
-#: #2680: OS family strings an inventory import writes that name no platform word of
-#: ``ctem_fixed_version._PLATFORM_WORDS`` (``Darwin`` is the kernel name macOS reports).
-_OS_FAMILY_ALIASES: tuple[tuple[str, str], ...] = (("darwin", "macOS"),)
-
-
-def device_platform(os_family: str) -> str | None:
-    """The platform a device's reported *os_family* names, else ``None`` (#2680).
-
-    The import's strings as they come (``Windows``, ``Windows NT``, ``Mac OS X``,
-    ``Darwin``, ``macOS Sonoma``) are read to one of the platform names
-    :func:`~app.services.ctem_fixed_version.platform_of_software` answers.
-    """
-    text = " ".join(str(os_family or "").split()).casefold()
-    if not text:
-        return None
-    for word, platform in _OS_FAMILY_ALIASES:
-        if contains_word(word, text):
-            return platform
-    from app.services.ctem_fixed_version import platform_of_software
-
-    return platform_of_software(text, None, None)
-
-
-def _platform_of_ref(ref: str) -> str | None:
-    from app.services.ctem_fixed_version import platform_of_software
-
-    text = str(ref or "")
-    cpe = text if text.strip().lower().startswith("cpe:") else ""
-    return platform_of_software("" if cpe else text, None, cpe or None)
 
 
 def platform_compatible(ref: str, os_family: str) -> bool:
@@ -296,29 +334,13 @@ def platform_compatible(ref: str, os_family: str) -> bool:
     """
     if not os_family:
         return True
-    built_for = _platform_of_ref(ref)
-    device = device_platform(os_family)
+    from app.services.ctem_fixed_version import platform_of_software
+
+    text = str(ref or "")
+    cpe = text if text.strip().lower().startswith("cpe:") else ""
+    built_for = platform_of_software("" if cpe else text, None, cpe or None)
+    device = platform_of_software(os_family, None, None)
     return not built_for or not device or built_for == device
-
-
-def family_reach_allowed(ref: str, os_family: str, *, repository: bool = False, labels: Iterable[str] = ()) -> bool:
-    """Whether a bare family reference *ref* (``Windows``) may reach an asset (#2680).
-
-    A family names no product: it reaches only a device whose reported OS family is
-    known and of that family. Never a code repository (a ``windows`` crate or npm
-    package in its SBOM is not the OS), never a device of another OS family. A device
-    that reports no OS family is of that family only when one of its own *labels*
-    names a product of it (``Microsoft Windows 11``), never by a bare family label.
-    """
-    if repository:
-        return False
-    family = _platform_of_ref(ref)
-    if not family:
-        return False
-    device = device_platform(os_family)
-    if device:
-        return device == family
-    return any(not is_family_word(label) and _platform_of_ref(label) == family for label in labels)
 
 
 class ProductIndex:
@@ -340,7 +362,10 @@ class ProductIndex:
         self._untokened: list[int] = []
         for i, value in enumerate(self.values):
             first = _TOKEN.search(_needle(value))
-            if first:
+            if _generic_cpe(value) is not None:
+                # #2685: a generic CPE matches a label by its vendor, whatever word the label starts with.
+                self._untokened.append(i)
+            elif first:
                 self._by_first.setdefault(first.group(), []).append(i)
             else:
                 self._untokened.append(i)
@@ -356,7 +381,7 @@ class ProductIndex:
         for token in set(_TOKEN.findall(_haystack(text))):
             candidates.update(self._by_first.get(token, ()))
         first = _TOKEN.search(_needle(text))
-        if first:
+        if first and _generic_cpe(text) is None:
             candidates.update(self._by_token.get(first.group(), ()))
         else:
             candidates = set(range(len(self.values)))
@@ -400,7 +425,7 @@ class Reacher:
     os_family: str = ""
     #: #2628: the product labels an installed software row reports with a version (a running version known).
     versioned: set[str] = field(default_factory=set)
-    #: #2680: a code repository record: a bare family reference never reaches it.
+    #: #2685: a code repository record: its SBOM dependencies never run a bare generic word (``client``).
     repository: bool = False
     #: (link, through kind ``asset`` or ``asset_group``, through name)
     links: list[tuple[Link, str, str]] = field(default_factory=list)
@@ -432,28 +457,21 @@ class PrimaryAssetIndex:
         return hit
 
     def _matching(self, software: list[str], keys: list[str] | None) -> list[tuple[Reacher, str]]:
-        """The reachers *software* or subject *keys* name, each with the software reference it runs.
-
-        A named product is preferred over a bare family reference; a family reference
-        reaches only a device of that known OS family, never a repository (#2680).
-        """
+        """The reachers *software* or subject *keys* name, each with the software reference it runs."""
         wanted = {k for k in (keys or []) if k}
-        refs = [(ref, is_family_word(ref)) for ref in software if ref]
         out: list[tuple[Reacher, str]] = []
         for i, reacher in enumerate(self.reachers):
-            named = family = ""
-            for ref, is_family in refs:
-                if (family if is_family else named) or i not in self._running(ref):
-                    continue
-                if is_family:
-                    if family_reach_allowed(
-                        ref, reacher.os_family, repository=reacher.repository, labels=reacher.products.values()
-                    ):
-                        family = ref
-                elif platform_compatible(ref, reacher.os_family):
-                    named = ref
-                    break
-            matched = named or family
+            matched = next(
+                (
+                    ref
+                    for ref in software
+                    if ref
+                    and i in self._running(ref)
+                    and platform_compatible(ref, reacher.os_family)
+                    and not (reacher.repository and is_generic_word(ref))
+                ),
+                "",
+            )
             if matched or wanted & reacher.keys:
                 out.append((reacher, matched))
         return out
@@ -462,11 +480,9 @@ class PrimaryAssetIndex:
         """The primary assets *software* (names, CPEs, products) or subject *keys* reach.
 
         One entry per (primary asset key, through, source), best source first:
-        ``{primary_asset_key, software, version_verified, family_only, asset, through, through_kind,
-        source, roles, via}``. ``version_verified`` holds over every asset the chain reaches (a group
-        of many devices included), not only the first one met: one versioned installed row is enough.
-        ``family_only`` (#2680) holds when every asset of the chain is reached only by a bare OS
-        family reference (``Windows``): a possible exposure, never a running product.
+        ``{primary_asset_key, software, version_verified, asset, through, through_kind, source, roles, via}``.
+        ``version_verified`` holds over every asset the chain reaches (a group of many devices
+        included), not only the first one met: one versioned installed row is enough.
         """
         if not self.reachers:
             return []
@@ -476,20 +492,16 @@ class PrimaryAssetIndex:
         found: dict[tuple[str, str, str], dict[str, Any]] = {}
         for reacher, matched in self._matching(ordered, keys):
             verified = matched not in generic and runs_versioned(reacher, matched)
-            family_only = bool(matched) and is_family_word(matched)
             for link, kind, through in reacher.links:
                 key = (link.primary_asset_key, through, link.source)
                 if key in found:
                     if not found[key]["version_verified"] and verified:
                         found[key]["version_verified"] = True
-                    if found[key]["family_only"] and not family_only:
-                        found[key]["family_only"], found[key]["software"] = False, matched
                     continue
                 found[key] = {
                     "primary_asset_key": link.primary_asset_key,
                     "software": matched,
                     "version_verified": verified,
-                    "family_only": family_only,
                     "asset": reacher.name,
                     "through": through,
                     "through_kind": kind,
@@ -537,20 +549,14 @@ class PrimaryAssetIndex:
 
         The decision record stores these next to the first chains, so a primary asset
         reached by 10,000 workstations reads 10,000, never the five chains kept (#1979).
-        An asset reached only by a bare OS family reference is counted apart, in
-        ``family_only``, never in ``assets`` (#2680): it inflates no scope.
         """
         out: dict[str, dict[str, int]] = {}
-        for reacher, matched in self._matching(software, keys):
-            family_only = bool(matched) and is_family_word(matched)
+        for reacher, _ in self._matching(software, keys):
             kinds: dict[str, set[str]] = {}
             for link, kind, _through in reacher.links:
                 kinds.setdefault(link.primary_asset_key, set()).add(kind)
             for primary_asset_key, seen in kinds.items():
                 row = out.setdefault(primary_asset_key, {"assets": 0, "direct": 0, "via_group": 0})
-                if family_only:
-                    row["family_only"] = row.get("family_only", 0) + 1
-                    continue
                 row["assets"] += 1
                 if "asset" in seen:
                     row["direct"] += 1
@@ -599,9 +605,10 @@ def generic_refs(software: list[str]) -> frozenset[str]:
 def runs_versioned(reacher: Reacher, ref: str) -> bool:
     """Whether *reacher* runs software *ref* from an installed row that reports its version (#2628).
 
-    A bare family reference (``Windows``) is never verified: it names no product to version.
+    A bare family reference (``Windows``) is never verified: it names no product to version,
+    nor is a bare generic word (``Client``, #2685).
     """
-    if not ref or is_family_word(ref):
+    if not ref or is_family_word(ref) or is_generic_word(ref):
         return False
     return any(product_matches(label, ref) or product_matches(ref, label) for label in reacher.versioned)
 
