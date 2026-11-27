@@ -52,6 +52,8 @@ def _sync(**kwargs: Any) -> SimpleNamespace:
         "TimeoutError: ",
         "Intune: throttled, retry later",
         "DBAPIError: connection was closed in the middle of operation",
+        "GitHub: HTTP 429",
+        "OpenAEV answered 503",
         QueryCanceledError("canceling statement due to statement timeout"),
         TimeoutError(),
     ],
@@ -60,7 +62,17 @@ def test_timeouts_and_throttles_are_transient(error: Any) -> None:
     assert osync.is_transient(error)
 
 
-@pytest.mark.parametrize("error", [None, "", "OpenAEV: not connected, or no token", "section must be one of"])
+@pytest.mark.parametrize(
+    "error",
+    [
+        None,
+        "",
+        "OpenAEV: not connected, or no token",
+        "section must be one of",
+        "asset 5f4290ab-1503-4c29-a503-000000004290 not found",
+        "14290 rows refused",
+    ],
+)
 def test_a_missing_token_or_a_refusal_is_not_transient(error: Any) -> None:
     assert not osync.is_transient(error)
 

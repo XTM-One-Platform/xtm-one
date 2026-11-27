@@ -26,6 +26,7 @@ Rules:
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -66,13 +67,13 @@ _TRANSIENT_ERRORS = (
     "throttled",
     "retry later",
     "too many requests",
-    "429",
-    "503",
     "service unavailable",
     "dbapierror",
     "connection reset",
     "connection was closed",
 )
+#: HTTP throttle and unavailable statuses, matched as whole numbers: never digits inside an id or a count.
+_TRANSIENT_STATUSES = re.compile(r"\b(?:429|503)\b")
 RETRY_DELAYS: tuple[timedelta, ...] = (timedelta(minutes=5), timedelta(minutes=15), timedelta(minutes=30))
 #: Watchlist signals one recheck savepoint decides again; halved on a statement timeout (#2629).
 RECHECK_SYNC_BATCH = 100
@@ -258,7 +259,7 @@ def is_transient(error: BaseException | str | None) -> bool:
     if _pausing(text):
         return False
     lowered = text.lower()
-    return any(marker in lowered for marker in _TRANSIENT_ERRORS)
+    return any(marker in lowered for marker in _TRANSIENT_ERRORS) or bool(_TRANSIENT_STATUSES.search(lowered))
 
 
 def schedule_after(sync: Any, result: dict[str, Any] | None, *, prior_attempts: int, now: datetime) -> datetime:
