@@ -1387,9 +1387,15 @@ async def read_view(db: AsyncSession, user_id: str, vertical: str) -> Any:
     view.opencti = await _reads_opencti(db, user_id)
     view.openaev = await _reads_openaev(db, user_id)
     lap("access")
-    for issue in [*read.closed, *read.looked_up]:
+    closed, opened = [*read.closed, *read.looked_up], list(read.issues)
+    if primary is not None:
+        # #2563: a product member reaches the primary assets its software or its assets reach.
+        reached = await _reach_primary_assets(db, primary.id, [*closed, *opened])
+        closed, opened = reached[: len(closed)], reached[len(closed) :]
+    lap("primary assets")
+    for issue in closed:
         view.issues[issue.member_id] = issue
-    for issue in read.issues:
+    for issue in opened:
         view.issues[issue.member_id] = issue
         view.open_ids.add(issue.member_id)
     if primary is not None:
@@ -1437,9 +1443,13 @@ async def read_case_view(db: AsyncSession, user_id: str, vertical: str, members:
     view.opencrq = await _reads_opencrq(db, user_id)
     view.opencti = await _reads_opencti(db, user_id)
     view.openaev = await _reads_openaev(db, user_id)
-    for issue in [*out.closed, *out.looked_up]:
+    closed, opened = [*out.closed, *out.looked_up], list(out.issues)
+    # #2563: the same primary assets as the list row the viewer's view gives this case.
+    reached = await _reach_primary_assets(db, None, [*closed, *opened])
+    closed, opened = reached[: len(closed)], reached[len(closed) :]
+    for issue in closed:
         view.issues[issue.member_id] = issue
-    for issue in out.issues:
+    for issue in opened:
         view.issues[issue.member_id] = issue
         view.open_ids.add(issue.member_id)
     signal_ids = wanted.get("signal") or []
@@ -1449,6 +1459,76 @@ async def read_case_view(db: AsyncSession, user_id: str, vertical: str, members:
             view.issues[issue.member_id] = issue
             view.open_ids.add(issue.member_id)
     return view
+
+
+def with_primary_assets(
+    issues: Iterable[rules.SourceIssue], index: Any, names: Mapping[str, str]
+) -> list[rules.SourceIssue]:
+    """*issues* with the primary assets each product member reaches through the inventory links (pure, #2563).
+
+    An OpenCTI member reaches them through the product it runs, an OpenAEV member
+    through the assets it was found on. A signal member keeps the primary assets
+    its gate decision recorded. One reach per distinct (software, assets) pair:
+    the members of one product share it.
+    """
+    from app.services import ctem_primary_assets as pa
+
+    out: list[rules.SourceIssue] = []
+    reached: dict[tuple[tuple[str, ...], tuple[str, ...]], tuple[tuple[str, ...], tuple[str, ...]]] = {}
+    for issue in issues:
+        if issue.source == "signal" or not getattr(index, "reachers", None):
+            out.append(issue)
+            continue
+        software = tuple(s for s in (issue.product,) if s)
+        keys = tuple(sorted({pa.primary_asset_key(a) for a in issue.assets if pa.primary_asset_key(a)}))
+        if not software and not keys:
+            out.append(issue)
+            continue
+        hit = reached.get((software, keys))
+        if hit is None:
+            hit = pa.member_primary_assets(index, dict(names), software=list(software), keys=list(keys))
+            reached[(software, keys)] = hit
+        found, inferred = hit
+        out.append(replace(issue, primary_assets=found, inferred_primary_assets=inferred) if found else issue)
+    return out
+
+
+async def _primary_asset_reach(db: AsyncSession, organization_id: uuid.UUID | None) -> tuple[Any, dict[str, str]]:
+    """The inventory link index and the profile's primary asset names by link key (#2563).
+
+    *organization_id* ``None`` reads the primary organization. An unreadable index
+    or profile reaches nothing: the members stay as they are, never a failure.
+    """
+    from app.services import ctem_primary_assets as pa
+    from app.services import organization_context as org_context
+    from app.services.organizations import get_primary
+
+    try:
+        if organization_id is None:
+            primary = await get_primary(db)
+            if primary is None:
+                return pa.PrimaryAssetIndex(), {}
+            organization_id = primary.id
+        async with db.begin_nested():
+            index = await pa.load_index(db, organization_id)
+            row = await org_context.current_version(db, organization_id)
+        profile = org_context.parse_profile(row.profile if row else {})
+    except Exception as exc:  # the case list never fails on the inventory links
+        logger.info("CTEM cases: primary asset links unread: %s", format_exception_message(exc))
+        return pa.PrimaryAssetIndex(), {}
+    return index, {pa.primary_asset_key(j.name): j.name for j in profile.primary_assets}
+
+
+async def _reach_primary_assets(
+    db: AsyncSession, organization_id: uuid.UUID | None, issues: list[rules.SourceIssue]
+) -> list[rules.SourceIssue]:
+    """*issues* through :func:`with_primary_assets`, the index read once and the matching off the event loop."""
+    if not any(i.source != "signal" for i in issues):
+        return issues
+    index, names = await _primary_asset_reach(db, organization_id)
+    if not index.reachers:
+        return issues
+    return await asyncio.to_thread(with_primary_assets, issues, index, names)
 
 
 async def _read_case_members(db: AsyncSession, user_id: str, out: SourceRead, wanted: dict[str, list[str]]) -> None:

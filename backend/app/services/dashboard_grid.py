@@ -14,18 +14,23 @@
 """Where the widgets of a custom dashboard sit: a 12-column grid.
 
 Each widget has a ``layout`` ``{x, y, w, h}``: ``x`` and ``w`` in columns,
-``y`` and ``h`` in rows of the XTM One grid (``components/dashboard-grid``: a
-20 px row and a 16 px gap, so 36 px from one row to the next). A widget
+``y`` and ``h`` in rows of OpenCTI's grid, which a custom dashboard uses as its
+own (``dev-docs/dashboard-studio-next.md`` D8: a 62 px row and a 20 px gap, so
+82 px from one row to the next), so an OpenCTI widget sits where it sat in
+OpenCTI. A widget
 written without one (an older dashboard, an agent that gave only a
 ``width``) is placed by :func:`fill_layouts`: below the placed widgets, in
 order, as wide as its ``width`` and as tall as its kind needs. Below the
 grid's breakpoint every renderer stacks the widgets in reading order
 (:func:`reading_order`).
 
-OpenCTI and OpenAEV use the same 12 columns with taller rows; a layout is
-converted by the row pitch of each platform (:func:`rows_from_platform`,
-:func:`rows_to_platform`). The XTM One row is the shortest, so a platform's
-rows come back exactly from a round trip.
+OpenAEV uses the same 12 columns with shorter rows; a layout is converted by
+the row pitch of each platform (:func:`rows_from_platform`,
+:func:`rows_to_platform`), OpenCTI's unchanged.
+
+Dashboards, versions and widget packs stored before D8 hold rows of 36 px
+(:data:`LEGACY_ROW_PITCH`); they are read in today's rows when they are loaded
+(:func:`legacy_rows`, the models' ``load`` listeners), never rewritten in bulk.
 """
 
 from __future__ import annotations
@@ -34,32 +39,36 @@ GRID_COLUMNS = 12
 #: The tallest a widget may be, in rows (the frontend's ``MAX_WIDGET_HEIGHT``).
 MAX_ROWS = 40
 
-#: Pixels from one grid row to the next: the row height plus the gap.
-ROW_PITCH = {"xtm": 36, "opencti": 82, "openaev": 70}
+#: Pixels from one grid row to the next: the row height plus the gap. XTM One's grid is OpenCTI's.
+ROW_PITCH = {"xtm": 82, "opencti": 82, "openaev": 70}
+#: The row pitch of the grid custom dashboards had before D8 (20 px rows, 16 px gaps).
+LEGACY_ROW_PITCH = 36
+#: Marks a stored form whose rows are today's (``dashboard_native``, widget packs).
+GRID_UNIT = "opencti"
 
 _WIDTH_COLUMNS = {"full": 12, "half": 6, "third": 4}
 
 #: The rows a widget of a kind takes when nothing says otherwise.
 _KIND_ROWS = {
-    "score": 7,
-    "stats": 4,
-    "stages": 5,
-    "decision": 7,
-    "feed": 8,
-    "callout": 4,
-    "ranked_list": 7,
-    "steps": 7,
-    "checklist": 7,
-    "progress": 5,
-    "prompts": 4,
-    "text": 4,
+    "score": 3,
+    "stats": 2,
+    "stages": 2,
+    "decision": 3,
+    "feed": 4,
+    "callout": 2,
+    "ranked_list": 3,
+    "steps": 3,
+    "checklist": 3,
+    "progress": 2,
+    "prompts": 2,
+    "text": 2,
 }
 #: The rows of a platform widget by how it is drawn; a type drawn as a link is short.
-_VIEW_ROWS = {"number": 6, "list": 8, "table": 8}
-_CHART_ROWS = 8
-_LINK_ROWS = 4
+_VIEW_ROWS = {"number": 3, "list": 4, "table": 4}
+_CHART_ROWS = 4
+_LINK_ROWS = 2
 #: The old ``size`` of a platform widget, as rows.
-_SIZE_ROWS = {"s": 6, "m": 8, "l": 10}
+_SIZE_ROWS = {"s": 3, "m": 4, "l": 5}
 
 
 def width_columns(width: object) -> int:
@@ -86,7 +95,7 @@ def default_rows(widget: dict) -> int:
         if view in _VIEW_ROWS:
             return _VIEW_ROWS[view]
         return _SIZE_ROWS.get(widget.get("size"), _CHART_ROWS)
-    return _KIND_ROWS.get(kind, 6) if isinstance(kind, str) else 6
+    return _KIND_ROWS.get(kind, 3) if isinstance(kind, str) else 3
 
 
 def _valid(layout: object) -> bool:
@@ -161,6 +170,25 @@ def _int(value: object) -> int | None:
     return round(value)
 
 
+def legacy_rows(y: int, h: int) -> tuple[int, int]:
+    """A place stored in rows of 36 px (``y``, ``h``) in today's rows.
+
+    The top and the bottom are converted, not the height: two widgets that
+    touched still touch, and none overlaps the next.
+    """
+    top = round(y * LEGACY_ROW_PITCH / ROW_PITCH["xtm"])
+    bottom_row = round((y + h) * LEGACY_ROW_PITCH / ROW_PITCH["xtm"])
+    return top, min(max(bottom_row - top, 1), MAX_ROWS)
+
+
+def legacy_layout(layout: object) -> object:
+    """A stored ``{x, y, w, h}`` in rows of 36 px, in today's rows; anything else as it is."""
+    if not isinstance(layout, dict) or not all(isinstance(layout.get(k), int) and not isinstance(layout.get(k), bool) for k in ("y", "h")):
+        return layout
+    y, h = legacy_rows(layout["y"], layout["h"])
+    return {**layout, "y": y, "h": h}
+
+
 def rows_from_platform(rows: int, platform: str) -> int:
     """*rows* of *platform*'s grid as XTM One rows."""
     return max(1, round(rows * ROW_PITCH[platform] / ROW_PITCH["xtm"]))
@@ -199,6 +227,8 @@ def layout_to_platform(layout: dict, platform: str) -> dict:
 
 __all__ = [
     "GRID_COLUMNS",
+    "GRID_UNIT",
+    "LEGACY_ROW_PITCH",
     "MAX_ROWS",
     "ROW_PITCH",
     "bottom",
@@ -206,6 +236,8 @@ __all__ = [
     "fill_layouts",
     "layout_from_platform",
     "layout_to_platform",
+    "legacy_layout",
+    "legacy_rows",
     "reading_order",
     "reflow",
     "rows_from_platform",

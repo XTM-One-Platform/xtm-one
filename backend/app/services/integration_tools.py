@@ -117,6 +117,9 @@ from app.integrations.providers.kubernetes import build_tools as kubernetes_tool
 from app.integrations.providers.kubernetes import encode_ca_segment as kubernetes_ca_segment
 from app.integrations.providers.letsignit import build_tools as letsignit_tools
 from app.integrations.providers.linkedin import build_tools as linkedin_tools
+from app.integrations.providers.lmstudio import (
+    build_tools as lmstudio_tools,
+)
 from app.integrations.providers.logrhythm import build_tools as logrhythm_tools
 from app.integrations.providers.mattermost import build_tools as mattermost_tools
 from app.integrations.providers.metabase import build_tools as metabase_tools
@@ -1082,6 +1085,7 @@ PROVIDER_TOOLS = {
     "abuseipdb": abuseipdb_tools,
     "abusech": abusech_tools,
     "ransomware_live": ransomware_live_tools,
+    "lmstudio": lmstudio_tools,
     "misp": misp_tools,
     "mitre_atlas": mitre_atlas_tools,
     "mitre_attack": mitre_attack_tools,
@@ -4319,6 +4323,11 @@ async def _resolve_token(
     # ``base_url||token``). These providers
     # REQUIRE a base URL, so a missing one is a real misconfiguration and
     # warrants the warning below.
+    # --- LM Studio: the server URL and the optional API token both live in extra_config (``auth_type`` none) ---
+    if provider == "lmstudio":
+        extra = await _reveal_extra(integ) if integ.extra_config_enc else {}
+        return f"{str(extra.get('base_url') or '').strip()}||{str(extra.get('api_token') or '').strip()}"
+
     if provider in (
         "metabase",
         "opencti",
@@ -6047,6 +6056,9 @@ class BindingBasis(enum.StrEnum):
     CALLER_CHECKED = "caller_checked"
     #: An administrator bound them for everyone (the General Assistant).
     ADMIN_CONFIGURED = "admin_configured"
+    #: The agent binds them and is shared with the person: sharing an agent
+    #: lends what it binds, used as bound (maintainer decision of 2026-09-27).
+    SHARED_AS_BOUND = "shared_as_bound"
     #: Used as bound for whoever acts, with no check: a known gap, to close.
     UNCHECKED = "unchecked"
 

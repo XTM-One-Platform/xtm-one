@@ -459,7 +459,7 @@ async def test_get_document_rejects_an_out_of_scope_knowledge_base(monkeypatch):
         "get_knowledge_document",
         {"document_id": DOC_ID, "knowledge_base": "Elsewhere"},
     )
-    assert "not a readable knowledge base" in out
+    assert "not one of the knowledge bases this tool reads" in out
 
 
 # ---------------------------------------------------------------------------

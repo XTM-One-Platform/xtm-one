@@ -22,11 +22,13 @@ change by an agent, a colleague or a restore can be taken back.
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, event
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.database import Base
 from app.models.visibility import VisibilityColumns
@@ -159,6 +161,43 @@ class CustomDashboardPublication(Base):
     )
 
 
+class CustomDashboardSourceSnapshot(Base):
+    """What a data source refreshed on the server read last (``dashboard_refresh``).
+
+    A source whose ``refreshMode`` is ``server`` is read again every
+    ``refresh`` by the platform, whoever has the page open, and ``manual`` when
+    someone asks; viewers are shown this snapshot. It is read with the access
+    of its publisher - the person who last set the source (decision D1 of
+    ``dev-docs/dashboard-studio-next.md``) - as a published link is read with
+    its publisher's. ``source_key`` is the digest of the source as it was
+    read: a source changed since is read again, by its new publisher.
+    """
+
+    __tablename__ = "custom_dashboard_source_snapshots"
+    __table_args__ = (UniqueConstraint("dashboard_id", "source_id", name="uq_custom_dashboard_source_snapshot"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dashboard_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("custom_dashboards.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_id: Mapped[str] = mapped_column(String(60), nullable=False)
+    publisher_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    source_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: ``{"status": "ok", "shape", "data", "fetched_at"}`` or ``{"status": "error", "code"}``; none before the first read.
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: When the scheduler reads it again; far in the future for a ``manual`` or ``event`` source until asked.
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    #: An ``event`` source's event (``dashboard_refresh.trigger_of``): ``platform:<name>`` or
+    #: ``integration:<event>:<integration id or *>``; none otherwise.
+    trigger: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
+    #: The ids of the source's alerts that held at its last read (``dashboard_refresh.evaluate_alerts``): an alert
+    #: tells its people when it starts to hold, not on every read.
+    alert_state: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+
 class CustomDashboardPublicLink(Base):
     """The published link of one dashboard: anyone holding the URL sees it, without signing in.
 
@@ -200,3 +239,33 @@ class CustomDashboardPublicLink(Base):
     snapshot_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: The dashboard's revision the snapshot was read for: an edit reads it again.
     snapshot_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+# ── Dashboards stored before the native form ─────────────────────────────────
+
+
+def _read_stored_spec(target: Any) -> None:
+    """A row stored before today's form (version 1 or 2, rows of 36 px) loads as today's manifest.
+
+    Committed, not dirty: loading a row never writes it back; its next save
+    stores the manifest (``dashboard_native.current_form``).
+    """
+    from app.services.dashboard_native import current_form
+
+    spec = target.__dict__.get("spec")
+    read = current_form(spec)
+    if read is not spec:
+        set_committed_value(target, "spec", read)
+
+
+@event.listens_for(CustomDashboard, "load")
+@event.listens_for(CustomDashboardVersion, "load")
+def _load_spec(target: Any, _context: Any) -> None:
+    _read_stored_spec(target)
+
+
+@event.listens_for(CustomDashboard, "refresh")
+@event.listens_for(CustomDashboardVersion, "refresh")
+def _refresh_spec(target: Any, _context: Any, attrs: Any) -> None:
+    if attrs is None or "spec" in attrs:
+        _read_stored_spec(target)

@@ -21,7 +21,7 @@ added after the lock pre-flight under the lock timeout. The backfill walks
 The downgrade drops the column, which carried nothing before this revision.
 
 Revision ID: u1906scimlnk01
-Revises: r2524relcve01
+Revises: b2549profapps01
 """
 
 from collections.abc import Sequence
@@ -34,7 +34,7 @@ from app.core.migration_ddl import DEFAULT_LOCK_TIMEOUT, column_exists, set_lock
 revision: str = "u1906scimlnk01"
 # NOT a constant: must always be main's CURRENT head, re-pointed whenever main
 # gains a migration (backend/AGENTS.md > "Database migrations (safety)", rule 1).
-down_revision: str | Sequence[str] | None = "r2524relcve01"
+down_revision: str | Sequence[str] | None = "b2549profapps01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

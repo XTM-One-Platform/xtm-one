@@ -14,11 +14,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The dashboard's source editor, like Splunk's: its definition as JSON, the
- * whole of it or one element (the picked widget's visualization or data
- * source, the defaults).
+ * The dashboard's source editor: the whole dashboard as it is stored - an
+ * OpenCTI manifest, OpenCTI and OpenAEV widgets in their platform's own shape
+ * and what XTM One adds under `x_xtm_one` (`manifest`, `dashboard_native.py`)
+ * - or one element of the working definition (the picked widget's
+ * visualization or data source, the defaults).
  *
- * The whole definition is written with `PUT /definition`, an element with a
+ * The whole manifest is written with `PUT /definition`, an element with a
  * `set` operation; both at the revision read and validated server-side like
  * an agent's write, so a mistake comes back as the field it is about
  * (`visualizations.kev.dataSources.primary names no data source 'x'`) and the
@@ -81,9 +83,9 @@ export function DashboardSourceDialog({
   // The text is the stored one each time the dialog opens, the scope changes or a new revision lands.
   useEffect(() => {
     if (!open) return;
-    setText(sourceText(dashboard.spec, scope.path));
+    setText(scope.path === null ? sourceText(dashboard.manifest ?? dashboard.spec, null) : sourceText(dashboard.spec, scope.path));
     setError(null);
-  }, [open, scope.path, dashboard.spec]);
+  }, [open, scope.path, dashboard.spec, dashboard.manifest]);
 
   const save = () => {
     const parsed = parseSource(text);
@@ -125,7 +127,11 @@ export function DashboardSourceDialog({
             {t_i18n("Dashboard source")}
           </DialogTitle>
           <DialogDescription>
-            {t_i18n("The definition as JSON: data sources, visualizations, inputs, tabs and their layouts. It is checked when you save.")}
+            {scope.path === null
+              ? t_i18n(
+                  "The dashboard as an OpenCTI manifest: OpenCTI and OpenAEV widgets as their platform stores them, and under x_xtm_one what XTM One adds - its own widgets, data sources, inputs, tabs. It is checked when you save.",
+                )
+              : t_i18n("The definition as JSON: data sources, visualizations, inputs, tabs and their layouts. It is checked when you save.")}
           </DialogDescription>
         </DialogHeader>
         {scopes.length > 1 && (

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.services import assignment_engine, event_coalescing
@@ -117,6 +118,60 @@ def test_the_executor_rereads_a_coalesced_payload_under_the_row_lock_before_it_s
     assert "event_coalescing.context_key(" in source[reread - 400 : reread]
     assert "with_for_update()" in source[reread : reread + 200]
     assert reread < source.index('run.status = "running"')
+
+
+_T0 = datetime(2026, 11, 26, 18, 0, tzinfo=UTC)
+
+
+def _debounced(run_id: str, quiet: Any = 300, cap: Any = 900) -> dict[str, Any]:
+    return {**_event(run_id), event_coalescing.QUIET_KEY: quiet, event_coalescing.MAX_KEY: cap}
+
+
+def test_an_event_without_the_declaration_is_not_debounced() -> None:
+    """Every provider that declares no quiet period keeps today's dispatch (#2544)."""
+    assert event_coalescing.debounce(_event("a")) is None
+    assert event_coalescing.debounce(_debounced("a", quiet=0)) is None
+    assert event_coalescing.debounce(_debounced("a", quiet=True)) is None
+    assert event_coalescing.debounce({"coalesce_quiet_seconds": 300}) is None, "no coalesce key, no hold"
+    assert event_coalescing.held_context({"type": "integration_event"}, _event("a"), _T0) is None
+    assert event_coalescing.hold_seconds({"type": "integration_event"}, _T0) == 0
+    assert event_coalescing.hold_seconds(None, _T0) == 0
+
+
+def test_the_cap_is_never_below_the_quiet_period_nor_past_the_bound() -> None:
+    assert event_coalescing.debounce(_debounced("a", 300, 900)) == (300, 900)
+    assert event_coalescing.debounce(_debounced("a", 300, 60)) == (300, 300)
+    assert event_coalescing.debounce(_debounced("a", 10**6, 10**7)) == (
+        event_coalescing.MAX_HOLD_SECONDS,
+        event_coalescing.MAX_HOLD_SECONDS,
+    )
+
+
+def test_a_hold_starts_after_the_quiet_period_and_never_past_the_cap() -> None:
+    first = event_coalescing.held_context({"type": "integration_event"}, _debounced("a"), _T0)
+    assert first is not None
+    assert event_coalescing.hold_seconds(first, _T0) == 300
+    # Each later event keeps the burst's first instant and moves the last one.
+    later: dict[str, Any] | None = first
+    for minute in (1, 2, 3):
+        moment = _T0 + timedelta(minutes=minute)
+        later = event_coalescing.held_context(later, _debounced("b"), moment)
+        assert later is not None
+        assert later[event_coalescing.HOLD_CONTEXT]["first_at"] == _T0.isoformat()
+        assert event_coalescing.hold_seconds(later, moment) == 300
+    # Twelve minutes in, the cap (15 min from the first event) wins over the quiet period.
+    moment = _T0 + timedelta(minutes=12)
+    late = event_coalescing.held_context(later, _debounced("c"), moment)
+    assert event_coalescing.hold_seconds(late, moment) == 180
+    assert event_coalescing.hold_seconds(late, _T0 + timedelta(minutes=20)) == 0
+
+
+def test_the_dispatcher_records_the_hold_before_it_folds_or_starts_a_run() -> None:
+    source = inspect.getsource(assignment_engine.trigger_or_queue_assignment)
+    held = source.index("event_coalescing.held_context(")
+    assert held < source.index("_fold_into_queued_run(") < source.index("_slot_usage(db, assignment.id)")
+    schedule = inspect.getsource(assignment_engine._schedule_run_execution)
+    assert "event_coalescing.hold_seconds(trigger_context, event_coalescing.now())" in schedule
 
 
 def test_the_fold_targets_a_waiting_run_of_the_same_assignment_and_key_under_a_row_lock() -> None:

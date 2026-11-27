@@ -86,7 +86,7 @@ test("a definition is read tab by tab, each visualization as the widget it draws
 
 test("an absolute layout's pixels are no grid cell: its widgets are placed in rows", () => {
   const [later] = normalizeDashboard(definition()).tabs[1].widgets;
-  assert.deepEqual(later.layout, { x: 0, y: 0, w: 12, h: 4 });
+  assert.deepEqual(later.layout, { x: 0, y: 0, w: 12, h: 2 });
 });
 
 test("the defaults go under each visualization's own options, global then by type", () => {
@@ -241,6 +241,32 @@ test("each source type is drawn as a data widget naming its source, type and ref
   );
 });
 
+test("an integration's read tool and a knowledge base table are drawn as data widgets", () => {
+  const definition = sourcesDefinition();
+  definition.dataSources = {
+    ...definition.dataSources,
+    tool: { type: "integration", options: { integration_id: INTEGRATION, tool: "list_issues", shape: "rows" } },
+    table: { type: "knowledge", options: { knowledge_base_id: INTEGRATION, document_id: INTEGRATION, shape: "distribution" } },
+  } as typeof definition.dataSources;
+  definition.visualizations = {
+    ...definition.visualizations,
+    d: { type: "xtm.table", dataSources: { primary: "tool" } },
+    e: { type: "xtm.bar", dataSources: { primary: "table" } },
+  } as typeof definition.visualizations;
+  definition.layout.layoutDefinitions.main.structure.push(
+    { item: "d", position: { x: 0, y: 16, w: 6, h: 6 } },
+    { item: "e", position: { x: 6, y: 16, w: 6, h: 6 } },
+  );
+  const widgets = normalizeDashboard(definition).widgets.filter((w) => w.id === "d" || w.id === "e");
+  assert.deepEqual(
+    widgets.map((w) => [w.id, w.kind, w.kind === "data" ? w.sourceType : null]),
+    [
+      ["d", "data", "integration"],
+      ["e", "data", "knowledge"],
+    ],
+  );
+});
+
 test("a derived widget is read again when the source it derives from changes", () => {
   const before = normalizeDashboard(sourcesDefinition()).widgets[0];
   const changed = sourcesDefinition();
@@ -291,7 +317,7 @@ test("a new visualization of a source is placed below the others in the tab name
   assert.deepEqual(layout.layoutDefinitions.main.structure[layout.layoutDefinitions.main.structure.length - 1], {
     item: "viz_unused",
     type: "block",
-    position: { x: 0, y: 16, w: 6, h: 8 },
+    position: { x: 0, y: 16, w: 6, h: 4 },
   });
   // An unknown layout falls back to the first tab's.
   assert.equal(addVisualizationOperations(sourcesDefinition(), "kev", "xtm.singlevalue", "", "ghost").operations[1].path, "layout");

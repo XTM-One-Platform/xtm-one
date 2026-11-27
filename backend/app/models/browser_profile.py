@@ -87,6 +87,10 @@ class BrowserProfile(VisibilityColumns, Base):
     #: option is on; public addresses are always reachable, loopback and cloud
     #: metadata never.
     allowed_hosts: Mapped[list | None] = mapped_column(JSON(none_as_null=True), nullable=True, default=None)
+    #: The other applications the saved session signs in (``[{name, url}]``): an application that signs in
+    #: through this one's identity provider opens signed in with this session. Their hosts are hosts of the
+    #: profile (recordings, page snapshots, session checks per application, lookups by URL).
+    apps: Mapped[list[dict[str, str]] | None] = mapped_column(JSON(none_as_null=True), nullable=True, default=None)
     #: Optional selectors the sign-in uses before its own heuristics
     #: (``services/browser_profiles/profiles.py``: ``LOGIN_CONFIG_KEYS``).
     login_config: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True, default=None)

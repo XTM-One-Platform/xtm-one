@@ -59,6 +59,7 @@ from app.services.browser_profiles.profiles import (
     ProfileError,
     apply_fields,
     clean_fields,
+    covers_url,
     destination,
     load_usable_profile,
     referenced_credentials,
@@ -150,8 +151,9 @@ def _vault_providers(profile: BrowserProfile) -> list[str]:
 
 @router.get("")
 async def list_profiles(
-    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    url: str | None = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> BrowserProfileList:
+    """The profiles the caller may use; with *url*, those whose application or declared applications cover its host."""
     groups = await get_user_group_ids(db, user.id)
     rows = (
         (
@@ -165,6 +167,8 @@ async def list_profiles(
         .scalars()
         .all()
     )
+    if url:
+        rows = [profile for profile in rows if covers_url(profile, url)]
     return BrowserProfileList(items=await _served(db, user, [(p, can_manage(user, p, groups)) for p in rows]))
 
 
@@ -174,6 +178,8 @@ def _write_profile(profile: BrowserProfile, body: BrowserProfileWrite) -> bool:
         start_url=body.start_url,
         login_url=body.login_url,
         allowed_hosts=body.allowed_hosts,
+        # Omitted: keep the profile's applications.
+        apps=[app.model_dump() for app in body.apps] if body.apps is not None else list(profile.apps or []),
         login_config=body.login_config,
         options=body.browser_options,
         description=body.description,

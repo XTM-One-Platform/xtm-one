@@ -128,7 +128,7 @@ export function rowsToGraph(rows: WidgetRowsData, options: Options = {}): Widget
 }
 
 /**
- * A link graph from a table, Splunk's way: each column a stage, each value of
+ * A link graph from a table: each column a stage, each value of
  * it a node of that stage, and a link between the values of two adjacent
  * columns of a row, counted. `options.fields` picks the stages.
  */

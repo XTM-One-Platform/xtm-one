@@ -520,6 +520,7 @@ async def test_the_sweep_skips_a_signal_it_cannot_open_and_goes_on(monkeypatch):
         "stalled": 0,
         "retired": 0,
         "owned": 0,
+        "merged": 0,
     }
     bad.expired = False
     assert bad.state == "confirmed" and good.state == "case_opened"

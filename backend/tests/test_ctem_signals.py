@@ -152,6 +152,42 @@ def test_a_pir_playbook_delivery_records_pir_ids_and_score_only() -> None:
     assert "not kept" not in json.dumps(fields)
 
 
+def test_merge_evidence_keeps_pir_and_floor_and_takes_the_latest_facts() -> None:
+    """#2543: the merge a known signal's evidence goes through at each new sighting. Pure."""
+    stored = {
+        "pir": [{"pir_id": "a", "score_at_delivery": 75}],
+        "pir_floor_met": True,
+        "name": "old",
+        signals.SOURCE_KEY_EVIDENCE: "opencti:pir_playbook",
+    }
+    merged = signals.merge_evidence(stored, {"name": "new", signals.SOURCE_KEY_EVIDENCE: "opencti:listener"})
+    assert merged["pir"] == stored["pir"] and merged["pir_floor_met"] is True and merged["name"] == "new"
+    assert merged[signals.SOURCES_EVIDENCE] == ["opencti:pir_playbook", "opencti:listener"]
+    # A sighting that names a PIR floor of its own never downgrades a stored true one either.
+    assert signals.merge_evidence(stored, {"pir_floor_met": False})["pir_floor_met"] is True
+    # A floor reached later is taken; one never written stays absent.
+    assert signals.merge_evidence({"pir_floor_met": False}, {"pir_floor_met": True})["pir_floor_met"] is True
+    assert "pir_floor_met" not in signals.merge_evidence({"a": 1}, {"b": 2})
+    # One source only: no list written.
+    same = {signals.SOURCE_KEY_EVIDENCE: "opencti:listener"}
+    assert signals.SOURCES_EVIDENCE not in signals.merge_evidence(same, dict(same))
+
+
+def test_merge_evidence_keeps_the_highest_score_per_pir_and_stays_under_the_cap() -> None:
+    low = {"pir": [{"pir_id": "a", "score_at_delivery": 40}, {"pir_id": "b", "score_at_delivery": 90}]}
+    high = {"pir": [{"pir_id": "a", "score_at_delivery": 80}, {"pir_id": "c", "score_at_delivery": 10}]}
+    assert signals.merge_evidence(low, high)["pir"] == [
+        {"pir_id": "a", "score_at_delivery": 80},
+        {"pir_id": "b", "score_at_delivery": 90},
+        {"pir_id": "c", "score_at_delivery": 10},
+    ]
+    many = {"pir": [{"pir_id": f"p{i:03d}", "score_at_delivery": i} for i in range(200)], "pir_floor_met": True}
+    merged = signals.merge_evidence(many, {"pir": [{"pir_id": "z" * 40, "score_at_delivery": 1}], "x": "y" * 2000})
+    assert len(repr(merged)) <= signals.MAX_EVIDENCE_CHARS
+    assert merged["pir_floor_met"] is True and merged["x"] == "y" * 2000
+    assert {"pir_id": "p199", "score_at_delivery": 199} in merged["pir"]
+
+
 def test_pir_information_outside_a_pir_playbook_delivery_is_not_read() -> None:
     payload = {
         "type": "update",
@@ -670,7 +706,7 @@ class _Store:
         if row is not None:
             row.last_seen_at = max(row.last_seen_at, at)
             row.seen_count += 1
-            row.evidence = clean.evidence
+            row.evidence = signals.merge_evidence(row.evidence, clean.evidence)
             row.subject_label = clean.subject_label or row.subject_label
             return row, False
         row = CtemSignal(
@@ -740,13 +776,14 @@ class _Store:
     ) -> dict[str, dict[str, dict[str, Any]]]:
         out: dict[str, dict[str, dict[str, Any]]] = {}
         for r in self._mine(organization_id, recorded_by):  # type: ignore[no-untyped-call]
-            key = str((r.evidence or {}).get(signals.SOURCE_KEY_EVIDENCE) or r.source_provider)
-            row = out.setdefault(r.trigger_path, {}).setdefault(key, {"count_30d": 0, "last_signal_at": None})
-            if r.last_seen_at >= since:
-                row["count_30d"] = int(row["count_30d"]) + 1
-            last = row["last_signal_at"]
-            if last is None or r.last_seen_at.isoformat() > last:
-                row["last_signal_at"] = r.last_seen_at.isoformat()
+            own = str((r.evidence or {}).get(signals.SOURCE_KEY_EVIDENCE) or r.source_provider)
+            for key in (r.evidence or {}).get(signals.SOURCES_EVIDENCE) or [own]:
+                row = out.setdefault(r.trigger_path, {}).setdefault(key, {"count_30d": 0, "last_signal_at": None})
+                if r.last_seen_at >= since:
+                    row["count_30d"] = int(row["count_30d"]) + 1
+                last = row["last_signal_at"]
+                if last is None or r.last_seen_at.isoformat() > last:
+                    row["last_signal_at"] = r.last_seen_at.isoformat()
         return out
 
 

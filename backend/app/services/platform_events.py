@@ -1532,6 +1532,10 @@ async def dispatch_event(name: str, payload: Mapping[str, Any]) -> list[str]:
     from app.services.flow_triggers import dispatch_flow_platform_event
 
     outcomes.extend(await dispatch_flow_platform_event(name, dict(payload)))
+    # The dashboard sources read again on it, and the pages drawing an assignment's answers (no run started).
+    from app.services.dashboard_refresh import hear_platform_event
+
+    await hear_platform_event(name, payload)
     if outcomes:
         logger.info("Platform event %s %s: %s", name, payload.get("event_id"), outcomes)
     return outcomes

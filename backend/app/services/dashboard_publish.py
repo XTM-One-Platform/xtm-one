@@ -218,18 +218,22 @@ async def export_dashboard_file(
 
 def build_export(dashboard: CustomDashboard, fmt: ExportFormat, *, name: str | None = None, widgets: list[dict] | None = None) -> ExportFile:
     """The file *fmt* imports, from the stored dashboard (or *widgets*, its widgets as they leave); :class:`PublishError` when nothing fits."""
+    from app.services.dashboard_definition import upgrade
     from app.services.dashboard_interop import InteropError
     from app.services.dashboard_interop import openaev as aev
     from app.services.dashboard_interop import opencti as cti
     from app.services.dashboard_interop.pack_format import build_pack
 
     title = (name or dashboard.title or "Dashboard").strip()
-    description = (dashboard.spec or {}).get("subtitle")
+    definition = upgrade(dashboard.spec)
+    description = definition.get("description")
     widgets = _widgets(dashboard) if widgets is None else widgets
     stem = _file_stem(title)
     try:
         if fmt == "opencti":
-            export, report = cti.build_dashboard_export(title, widgets, description=description)
+            export, report = cti.build_dashboard_export(
+                title, widgets, description=description, inputs=definition.get("inputs") or {}
+            )
             return ExportFile(json.dumps(export, ensure_ascii=False).encode("utf-8"), f"{stem}.json", "application/json", report.notes)
         if fmt == "opencti-custom-view":
             entity = custom_view_entity(dashboard)
@@ -393,7 +397,9 @@ async def share_on_hub(
     export = await export_dashboard_file(db, user_id, dashboard, "opencti", name=name)
     version = str(json.loads(export.content).get("openCTI_version") or "")
     title = (name or dashboard.title or "Dashboard").strip()[:200]
-    subtitle = (dashboard.spec or {}).get("subtitle")
+    from app.services.dashboard_definition import upgrade
+
+    subtitle = upgrade(dashboard.spec).get("description")
     short = " ".join(
         (short_description or subtitle or f"{title}: an OpenCTI dashboard shared from XTM One").split()
     )[:_HUB_SHORT_DESCRIPTION]

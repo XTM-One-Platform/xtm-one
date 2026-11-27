@@ -1,7 +1,7 @@
 """The options of a data visualization: closed per type, bounded, and the dynamic options grammar.
 
-A definition's data visualizations carry Splunk Dashboard Studio's options
-under their names; each type's options are a closed model, so an unknown key,
+A definition's data visualizations carry their options
+under their camelCase names; each type's options are a closed model, so an unknown key,
 an enum outside its list, a number out of bounds, a colour that is not a token
 or a strict hex, or an expression outside the subset is a 422 naming the field.
 """
@@ -93,7 +93,7 @@ def test_every_data_type_has_an_options_model_and_the_new_types_are_data_types()
     assert set(VIEW_TO_TYPE) - {None} == set(PLATFORM_VIEWS)
 
 
-def test_options_are_stored_under_their_splunk_names():
+def test_options_are_stored_under_their_camel_case_names():
     stored = validate_options(
         "xtm.column",
         {

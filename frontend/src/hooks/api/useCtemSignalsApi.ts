@@ -33,6 +33,14 @@ export interface CtemDecisionRecord {
     assets_capped?: boolean;
     primary_assets_named?: string[];
     products?: string[];
+    /** #1720 / #2523: every software reference the gate tried against the inventory and shipped products. */
+    software_refs?: string[];
+    /**
+     * #2171 / #2523: how the OpenCTI software read went ("read", "no reader", "no OpenCTI access",
+     * "OpenCTI did not answer"; #2542: "not needed", "not applicable", "not read"; null on older records).
+     */
+    cve_lookup?: string | null;
+    threat_lookup?: string | null;
     lenses?: string[];
     confidence?: string;
   } & Record<string, unknown>;
@@ -50,6 +58,12 @@ export interface CtemDecisionRecord {
   policy_checks?: { rule: string; value?: unknown; threshold?: unknown; passed: boolean }[];
   severity?: string | null;
   decided_at?: string;
+  /** #2542: an OpenCTI software read the subject needed did not answer; the gate retries it. */
+  incomplete?: boolean;
+  /** #2542: how many decisions were taken while that read kept failing. */
+  lookup_attempts?: number;
+  /** #2542: "scheduled" while the retry pass takes it again, "exhausted" once it stopped. */
+  lookup_retry?: "scheduled" | "exhausted";
 }
 
 /** One signal as the API answers it (`to_dict` in backend/app/services/ctem_signals.py). */
@@ -349,6 +363,10 @@ export interface CtemSignalPurgeJob {
   step: "pause" | "purge" | "resync" | "resume";
   steps: Record<"pause" | "purge" | "resync" | "resume", { state: CtemSignalPurgeStepState; counts: Record<string, unknown> }>;
   error: string | null;
+  /** The job stopped before its end, its process restarted (#2539): read back failed, a new purge can start. */
+  interrupted?: boolean;
+  /** With interrupted: signal intake is still paused (its pause key not yet expired); false: intake runs again. */
+  intake_paused?: boolean;
   started_at: string;
   finished_at: string | null;
 }

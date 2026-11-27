@@ -92,6 +92,26 @@ const NEXT_STEP = {
 } as const;
 const NEXT_STEPS: Readonly<Record<string, string>> = NEXT_STEP;
 
+/** #2542: the lookups that settle a decision (`ctem_scope_gate.LOOKUP_SETTLED`); any other one is a read that did not answer. */
+const SETTLED_LOOKUPS = new Set(["read", "not needed", "not applicable"]);
+const FAILED_LOOKUPS = new Set(["OpenCTI did not answer", "no OpenCTI access"]);
+
+/**
+ * #2542: whether an unmatched decision waits for an OpenCTI software read: "scheduled" (the
+ * retry pass takes it again), "exhausted" (retries stopped, the failure stays shown), else null.
+ * A record of a build before #2542 carries no `incomplete` flag: a failed lookup reads as scheduled.
+ */
+export function lookupRetry(decision: CtemDecisionRecord | null | undefined): "scheduled" | "exhausted" | null {
+  if (!decision || decision.reason_code !== "subject_unresolved") return null;
+  if (decision.incomplete === false) return null;
+  if (decision.incomplete !== true) {
+    const reconcile = decision.reconcile ?? {};
+    const failed = [reconcile.threat_lookup, reconcile.cve_lookup].some((value) => typeof value === "string" && FAILED_LOOKUPS.has(value));
+    if (!failed) return null;
+  }
+  return decision.lookup_retry === "exhausted" ? "exhausted" : "scheduled";
+}
+
 /** The level words a record carries (criticality, threshold, confidence), translated before they fill a sentence. */
 const LEVEL_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
 const LEVEL_PARAMS = new Set(["criticality", "threshold", "minimum", "confidence"]);
@@ -139,9 +159,23 @@ function policyCheckLabel(rule: string, passed: boolean, t_i18n: Translate): str
   return passed ? t_i18n("{rule}: passed", { rule: label }) : t_i18n("{rule}: failed", { rule: label });
 }
 
-function SignalStateChip({ state }: { state: CtemSignalState }) {
+/**
+ * The English label of a signal's state, read with its decision: an Unmatched decision
+ * taken while OpenCTI did not answer is not final and says so (UX r1 B1 on #2548):
+ * "Waiting for OpenCTI" while a retry is scheduled, "OpenCTI not read" once retries stopped.
+ */
+export function signalStateLabel(state: CtemSignalState, decision: CtemDecisionRecord | null | undefined): string {
+  if (state === "to_validate") {
+    const lookup = lookupRetry(decision);
+    if (lookup === "scheduled") return "Waiting for OpenCTI";
+    if (lookup === "exhausted") return "OpenCTI not read";
+  }
+  return SIGNAL_STATE_LABEL[state] ?? state;
+}
+
+function SignalStateChip({ state, decision }: { state: CtemSignalState; decision?: CtemDecisionRecord | null }) {
   const { t_i18n } = useFormatter();
-  return <ToneBadge tone={SIGNAL_STATE_TONE[state] ?? "neutral"}>{t_i18n(SIGNAL_STATE_LABEL[state] ?? state)}</ToneBadge>;
+  return <ToneBadge tone={SIGNAL_STATE_TONE[state] ?? "neutral"}>{t_i18n(signalStateLabel(state, decision))}</ToneBadge>;
 }
 
 /**
@@ -155,6 +189,10 @@ export function decisionSentence(
   formatDay: (iso: string) => string = (iso) => iso,
 ): string {
   if (!decision || (!decision.reason_code && !decision.outcome)) return t_i18n("Waiting for reconcile");
+  // #2542: an unmatched decision taken while OpenCTI did not answer is not final, and says so.
+  const lookup = lookupRetry(decision);
+  if (lookup === "scheduled") return t_i18n("OpenCTI software not read, will retry");
+  if (lookup === "exhausted") return t_i18n("OpenCTI software not read, retries stopped");
   const sentence = decision.reason_code ? REASON_SENTENCES[decision.reason_code] : undefined;
   if (!sentence) return t_i18n("Reason not available in this version");
   return t_i18n(sentence, sentenceParams(decision, t_i18n, formatDay));
@@ -186,6 +224,9 @@ export function nextStepSentence(
   formatDay: (iso: string) => string = (iso) => iso,
 ): string | null {
   if (!decision?.reason_code || decision.outcome === "case") return null;
+  if (lookupRetry(decision) === "scheduled") return t_i18n("Decided again once OpenCTI answers");
+  // The control is named by its label in the signals list (UX r1 B2 on #2548).
+  if (lookupRetry(decision) === "exhausted") return t_i18n("Once OpenCTI answers, select it and choose Check again");
   const sentence = NEXT_STEPS[decision.reason_code];
   return sentence ? t_i18n(sentence, sentenceParams(decision, t_i18n, formatDay)) : null;
 }
@@ -220,7 +261,7 @@ export function gateStep(
   if (stage !== "reconcile" && stage !== "scope") return null;
   if (status === "stopped" || status === "parked") {
     return {
-      decision: t_i18n(SIGNAL_STATE_LABEL[state] ?? state),
+      decision: t_i18n(signalStateLabel(state, decision)),
       reason: decisionSentence(decision, t_i18n, formatDay),
       next: nextStepSentence(decision, t_i18n, formatDay),
     };
@@ -251,7 +292,21 @@ export type DecisionInput = {
   names?: string[];
   /** UX r2 B7 on #1995: the names are a floor (the record's list was cut), so the count reads "At least". */
   capped?: boolean;
+  /** UX r1 B1 on #2533: what the names count ("assets" by default, "software" for the software tried). */
+  noun?: "assets" | "software";
 };
+
+/**
+ * UX r1 B2 on #2533: why the software of the signal was never read from OpenCTI, from the record's
+ * `threat_lookup` then `cve_lookup` (#2523 / #2171); empty when the read went through or was not needed.
+ */
+function softwareNotRead(reconcile: NonNullable<CtemDecisionRecord["reconcile"]>, t_i18n: Translate): string {
+  const lookup = [reconcile.threat_lookup, reconcile.cve_lookup].find((value) => typeof value === "string" && value && !SETTLED_LOOKUPS.has(value));
+  if (lookup === "no OpenCTI access") return t_i18n("Not read: no OpenCTI access");
+  if (lookup === "OpenCTI did not answer") return t_i18n("Not read: OpenCTI did not answer");
+  if (lookup === "no reader") return t_i18n("Not read: no OpenCTI reader");
+  return "";
+}
 
 /**
  * Whether the matched asset list of a record is shorter than what it matched (UX r2 B7 on #1995):
@@ -288,6 +343,11 @@ export function decisionInputs(decision: CtemDecisionRecord | null | undefined, 
   const assetsCapped = assetNames.length > 0 && matchedAssetsCapped(reconcile, assetNames.length);
   const matched = list(assetNames) || (decision.reconcile && !domains ? t_i18n("None matched") : "");
   const reached = primaryAssetsRow(decision, t_i18n);
+  // #2523: an unmatched signal names the software the gate tried, so a reader sees why nothing matched;
+  // UX r1 B2 on #2533: a read that never happened says so instead of an empty row.
+  const unresolved = decision.reason_code === "subject_unresolved";
+  const triedNames = unresolved && Array.isArray(reconcile.software_refs) ? [...new Set(reconcile.software_refs.filter(Boolean).map(String))] : [];
+  const notRead = unresolved ? softwareNotRead(reconcile, t_i18n) : "";
   const rows: DecisionInput[] = [
     { key: "lenses", label: t_i18n("Lenses"), value: lenses },
     { key: "confidence", label: t_i18n("Confidence"), value: level(reconcile.confidence) },
@@ -301,6 +361,15 @@ export function decisionInputs(decision: CtemDecisionRecord | null | undefined, 
     // UX r1 B3 on #1796: the names the record matched, next to the primary assets reached below.
     { key: "primary_assets_named", label: t_i18n("Primary assets named"), value: list(reconcile.primary_assets_named) },
     { key: "software", label: t_i18n("Software"), value: list(reconcile.products) },
+    {
+      key: "software_tried",
+      label: t_i18n("Software tried"),
+      value: list(triedNames) || notRead,
+      names: triedNames.length > 0 ? triedNames : undefined,
+      noun: "software",
+    },
+    // UX r1 B2 on #2533: names were tried from the evidence, but the OpenCTI read of more never happened.
+    { key: "software_not_read", label: t_i18n("OpenCTI software read"), value: triedNames.length > 0 ? notRead : "" },
     { key: "owned_domain", label: t_i18n("Owned domain"), value: domains },
     { key: "criticality", label: t_i18n("Criticality"), value: criticalityAgainstThreshold(scope, t_i18n) },
     // #1591 S3: the primary assets reached and their chains, then the one threshold and where it comes from.
@@ -358,14 +427,48 @@ function criticalityAgainstThreshold(scope: CtemDecisionRecord["scope"], t_i18n:
  * "2.5K assets: pay-api-01, vpn-gw-01, vpn-gw-lyon, +2.5K": the count compact, the first names,
  * the rest counted; a capped list reads "At least 5K assets: ..." (UX r2 B7 on #1995), never a cut length as the total.
  */
-function listSummary(names: readonly string[], locale: string, t_i18n: Translate, capped = false): string {
+export function listSummary(
+  names: readonly string[],
+  locale: string,
+  t_i18n: Translate,
+  capped = false,
+  noun: "assets" | "software" = "assets",
+): string {
   const shown = names.slice(0, LIST_INPUT_NAMES).join(", ");
   const rest = names.length - LIST_INPUT_NAMES;
   const values = { total: formatCount(locale, names.length), count: names.length, names: shown };
-  const head = capped
-    ? t_i18n("At least {total} {count, plural, one {asset} other {assets}}: {names}", values)
-    : t_i18n("{total} {count, plural, one {asset} other {assets}}: {names}", values);
+  // UX r1 B1 on #2533: the software tried are counted as software, never as assets.
+  const head =
+    noun === "software"
+      ? t_i18n("{total} {count, plural, one {software name} other {software names}}: {names}", values)
+      : capped
+        ? t_i18n("At least {total} {count, plural, one {asset} other {assets}}: {names}", values)
+        : t_i18n("{total} {count, plural, one {asset} other {assets}}: {names}", values);
   return rest > 0 ? `${head}, ${t_i18n("+{count} more", { count: formatCount(locale, rest) })}` : head;
+}
+
+/**
+ * How many names a list tooltip draws before "+N more": a matched asset list can hold thousands,
+ * and a tooltip neither scrolls by keyboard nor leaves the viewport, so the list stays at one screen.
+ */
+const TIP_LIST_NAMES = 20;
+
+/**
+ * The names of a list input, one per line, up to TIP_LIST_NAMES (UX r2 B1 on #2533):
+ * a joined string went through the tooltip's 280-character cut and lost the last names.
+ */
+function NameListTip({ names, testId }: { names: readonly string[]; testId: string }) {
+  const { t_i18n, intl } = useFormatter();
+  const shown = names.slice(0, TIP_LIST_NAMES);
+  const rest = names.length - shown.length;
+  return (
+    <ul className="flex max-w-xs flex-col break-words" data-testid={testId}>
+      {shown.map((name, index) => (
+        <li key={`${index}-${name}`}>{name}</li>
+      ))}
+      {rest > 0 && <li className="text-default-secondary">{t_i18n("+{count} more", { count: formatCount(intl.locale, rest) })}</li>}
+    </ul>
+  );
 }
 
 export function DecisionInputs({ decision, omit = [] }: { decision: CtemDecisionRecord | null | undefined; omit?: readonly string[] }) {
@@ -389,9 +492,9 @@ export function DecisionInputs({ decision, omit = [] }: { decision: CtemDecision
           ) : input.names && input.names.length > LIST_INPUT_NAMES ? (
             // UX r1 B5 on #1995: the count and the first names, every name in the design-system tooltip.
             <dd className="min-w-0" data-testid={`ctem-decision-input-${input.key}`}>
-              <Tip content={input.value}>
+              <Tip content={<NameListTip names={input.names} testId={`ctem-decision-input-tip-${input.key}`} />}>
                 <span className={cn("block truncate", TIP_WRAP_FOCUS_RING)} tabIndex={0}>
-                  {listSummary(input.names, intl.locale, t_i18n, input.capped)}
+                  {listSummary(input.names, intl.locale, t_i18n, input.capped, input.noun)}
                 </span>
               </Tip>
             </dd>
@@ -425,7 +528,7 @@ export function DecisionReason({
   return (
     <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-decision-reason">
       <div className="flex min-w-0 items-center gap-2">
-        <SignalStateChip state={state} />
+        <SignalStateChip state={state} decision={decision} />
         {/* Cut with an ellipsis and named whole by the tooltip in a narrow column (UX r1 B2 on #1272). */}
         <TruncatedText text={decisionSentence(decision, t_i18n, formatDay)} className="content-compact text-default-secondary" />
       </div>

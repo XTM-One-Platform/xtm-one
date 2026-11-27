@@ -168,8 +168,6 @@ describe("DashboardDesignBar", () => {
     const { unmount } = bar(d, null);
     const buttons = screen.getAllByRole("button");
     expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual([
-      "Undo",
-      "Redo",
       "Add a chart",
       "Add an input",
       "Add a rectangle - on a canvas tab",
@@ -182,8 +180,8 @@ describe("DashboardDesignBar", () => {
       "Dashboard source",
       "Light theme",
     ]);
-    expect(buttons.filter((b) => (b as HTMLButtonElement).disabled).length).toBe(8);
-    expect(screen.getByTestId("dashboard.toolbar.save-state").textContent).toBe("Saved");
+    // The canvas elements only: undo, redo and the save state are the studio bar's.
+    expect(buttons.filter((b) => (b as HTMLButtonElement).disabled).length).toBe(6);
     unmount();
     bar(d, "wall");
     expect((screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement).disabled).toBe(true);
@@ -225,8 +223,4 @@ describe("DashboardDesignBar", () => {
     expect(onOpenSource.mock.calls.length).toBe(1);
   });
 
-  it("says when changes are being saved", () => {
-    bar({ ...designer(), saveState: "unsaved" }, null);
-    expect(screen.getByTestId("dashboard.toolbar.save-state").textContent).toBe("Saving…");
-  });
 });

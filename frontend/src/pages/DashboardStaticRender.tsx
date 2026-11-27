@@ -31,6 +31,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *     (the charts have drawn their data and finished animating) and the fonts
  *     are ready;
  *   - `dashboardError = <message>` when the dashboard cannot be loaded.
+ *
+ * Its entity inputs show the entities they start on by the names the render
+ * route gives (`entity_names`): the page has no session to search with.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -50,7 +53,10 @@ const SETTLE_MS = 2000;
 /** The width one visualization is drawn at, alone. */
 const VISUALIZATION_WIDTH = 960;
 
-type LoadState = { status: "loading" } | { status: "ready"; dashboard: CustomDashboard } | { status: "error"; message: string };
+type LoadState =
+  | { status: "loading" }
+  | { status: "ready"; dashboard: CustomDashboard & { entity_names?: Record<string, string> } }
+  | { status: "error"; message: string };
 
 /** The dashboard reduced to one visualization, alone on a grid tab of its own. */
 function aloneOf(dashboard: NormalizedDashboard, vizId: string): NormalizedDashboard | null {
@@ -110,7 +116,7 @@ export default function DashboardStaticRender() {
     })
       .then(async (res) => {
         if (!res.ok) throw new Error(`The dashboard could not be loaded (HTTP ${res.status}).`);
-        return (await res.json()) as CustomDashboard;
+        return (await res.json()) as CustomDashboard & { entity_names?: Record<string, string> };
       })
       .then((dashboard) => {
         if (!cancelled) setState({ status: "ready", dashboard });
@@ -147,7 +153,9 @@ export default function DashboardStaticRender() {
     if (title) document.title = title;
   }, [title]);
 
-  const access = useMemo<DashboardAccess>(() => ({ kind: "render", token }), [token]);
+  // The entity inputs' entities, named by the server: this page has no session to search a platform with.
+  const entityNames = state.status === "ready" ? state.dashboard.entity_names : undefined;
+  const access = useMemo<DashboardAccess>(() => ({ kind: "render", token, entityNames }), [token, entityNames]);
   useSettled(!!normalized && !failure);
 
   if (!normalized || failure) return null;

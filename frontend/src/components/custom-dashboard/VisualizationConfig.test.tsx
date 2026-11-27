@@ -81,7 +81,7 @@ function draw(extra: { onEditSource?: (sid: string | null) => void; onOpenDataPa
 }
 
 describe("VisualizationConfig", () => {
-  it("shows Splunk's sections for a single value", () => {
+  it("shows the configuration sections for a single value", () => {
     draw();
     const titles = screen.getAllByRole("button", { expanded: true }).map((b) => b.textContent);
     expect(titles).toEqual(["General", "Data source", "Data display", "Coloring", "Interactions", "Position"]);
@@ -131,7 +131,7 @@ describe("VisualizationConfig", () => {
     expect(onOpenDataPanel.mock.calls.length).toBe(1);
   });
 
-  it("colours the value by ranges, written as Splunk's expression and its config", async () => {
+  it("colours the value by ranges, written as a dynamic option and its config", async () => {
     const user = userEvent.setup();
     const { d } = draw();
     await user.click(screen.getByRole("combobox", { name: "Value colour" }));

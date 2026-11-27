@@ -15,7 +15,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /**
  * The interactions and the visibility of the picked visualization, in the
- * studio's Widget panel - Splunk's "Interactions" and "Visibility" sections.
+ * studio's Widget panel - its "Interactions" and "Visibility" sections.
  *
  * - Interactions (a visualization drawing data): what a click does, in order -
  *   set a token from what was clicked (its name, its value, a row's field) or

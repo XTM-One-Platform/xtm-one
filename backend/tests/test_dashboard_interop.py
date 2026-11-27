@@ -561,8 +561,8 @@ def test_an_opencti_dashboard_export_leaves_out_the_widgets_reading_an_input():
     assert [w["type"] for w in manifest["widgets"].values()] == ["text"]
     assert "$entity$" not in json.dumps(manifest)
     assert report.notes == [
-        "Widget 'What targets it' reads the dashboard's input $entity$; an OpenCTI dashboard has no inputs, so it was left out.",
-        "Widget 'Reports about it' reads the dashboard's input $entity$; an OpenCTI dashboard has no inputs, so it was left out.",
+        "Widget 'What targets it' reads the dashboard's input $entity$; it is not a variable of the OpenCTI dashboard, so it was left out.",
+        "Widget 'Reports about it' reads the dashboard's input $entity$; it is not a variable of the OpenCTI dashboard, so it was left out.",
     ]
 
 
@@ -594,7 +594,8 @@ def test_a_single_opencti_widget_export_is_read_and_written():
     parsed = parse_any(json.dumps({"openCTI_version": "6.4.0", "type": "widget", "configuration": encode_base64_json(widget)}).encode())
     assert (parsed.origin, parsed.name, len(parsed.widgets)) == ("opencti-widget", "Reports by type", 1)
     assert parsed.widgets[0]["width"] == "half"
-    assert parsed.widgets[0]["layout"] == {"x": 0, "y": 0, "w": 6, "h": 9}
+    # The dashboard's grid is OpenCTI's: the place is kept as it is.
+    assert parsed.widgets[0]["layout"] == {"x": 0, "y": 0, "w": 6, "h": 4}
     export = build_widget_export(bind_widget(parsed.widgets[0], INTEGRATION), version="6.4.0")
     written = decode_base64_json(export["configuration"], what="widget")
     assert (written["type"], written["layout"]) == ("donut", {"x": 0, "y": 0, "w": 6, "h": 4})
@@ -675,7 +676,13 @@ def test_the_openaev_starter_dashboard_is_read_whole_and_written_back_unchanged(
         (w["attributes"]["widget_layout"] for w in document["included"] if w["type"] == "widgets"),
         key=lambda c: (c["widget_layout_y"], c["widget_layout_x"]),
     )
-    assert cells == seeded_cells
+    # The dashboard's grid is OpenCTI's (82 px rows), coarser than OpenAEV's (70 px): a place comes back
+    # within a row of where it was, the columns exactly.
+    assert len(cells) == len(seeded_cells)
+    for cell, seeded in zip(cells, seeded_cells, strict=True):
+        assert (cell["widget_layout_x"], cell["widget_layout_w"]) == (seeded["widget_layout_x"], seeded["widget_layout_w"])
+        assert abs(cell["widget_layout_y"] - seeded["widget_layout_y"]) <= 1
+        assert abs(cell["widget_layout_h"] - seeded["widget_layout_h"]) <= 1
     assert sorted(entries) == ["custom_dashboards.json", "meta.json"]
     assert json.loads(entries["meta.json"]) == {"schema": {"kind": "jsonapi", "version": 1}}
 
@@ -788,7 +795,7 @@ def _zip(entries: dict[str, bytes]) -> bytes:
     [
         (b"not json", "is not valid JSON"),
         (json.dumps({"hello": 1}).encode(), "is not a widget pack, an OpenCTI"),
-        (json.dumps({"format": PACK_FORMAT, "version": 2, "name": "P", "widgets": []}).encode(), "this platform reads version 1"),
+        (json.dumps({"format": PACK_FORMAT, "version": 3, "name": "P", "widgets": []}).encode(), "this platform reads versions 1 and 2"),
         (b"PK\x03\x04garbage", "not a readable ZIP"),
         (_zip({"bomb.json": b"0" * (4 * 1024 * 1024 + 1)}), "expands beyond 4 MB"),
         (_zip({f"{i}.json": b"{}" for i in range(17)}), "more than 16 entries"),
@@ -813,11 +820,25 @@ def test_a_reader_without_the_grid_gets_the_closest_width(columns, width):
     assert width_of(columns) == width
 
 
-@pytest.mark.parametrize("platform", ["opencti", "openaev"])
-def test_a_platform_row_count_comes_back_from_a_round_trip(platform):
-    assert ROW_PITCH[platform] > ROW_PITCH["xtm"]
-    assert [rows_to_platform(rows_from_platform(rows, platform), platform) for rows in range(1, 60)] == list(range(1, 60))
+def test_opencti_rows_are_the_dashboard_s_and_openaev_rows_come_back_within_one():
+    # The dashboard's grid is OpenCTI's (D8): its rows are kept as they are.
+    assert ROW_PITCH["opencti"] == ROW_PITCH["xtm"]
+    assert [rows_to_platform(rows_from_platform(rows, "opencti"), "opencti") for rows in range(1, 60)] == list(range(1, 60))
+    # OpenAEV's rows are shorter: a row count comes back within one.
+    assert all(abs(rows_to_platform(rows_from_platform(rows, "openaev"), "openaev") - rows) <= 1 for rows in range(1, 60))
 
 
 def test_widgets_are_read_top_to_bottom_left_to_right():
     assert reading_order([(6, 0), (0, 0), (None, None), (0, 4)]) == [1, 0, 3, 2]
+
+
+def test_a_pack_file_of_version_1_is_read_in_opencti_rows_and_one_written_now_is_version_2():
+    from app.services.dashboard_interop.pack_format import PACK_VERSION, build_pack, parse_pack_document
+
+    widget = {"kind": "text", "id": "note", "body": "hi", "layout": {"x": 0, "y": 8, "w": 6, "h": 8}}
+    old = parse_pack_document({"format": PACK_FORMAT, "version": 1, "name": "Old", "widgets": [widget]})
+    # Rows of 36 px, read in rows of 82 px: 8-16 is 4-7.
+    assert old.widgets[0]["layout"] == {"x": 0, "y": 4, "w": 6, "h": 3}
+    written = build_pack("New", None, old.widgets)
+    assert written["version"] == PACK_VERSION == 2
+    assert parse_pack_document(written).widgets[0]["layout"] == {"x": 0, "y": 4, "w": 6, "h": 3}

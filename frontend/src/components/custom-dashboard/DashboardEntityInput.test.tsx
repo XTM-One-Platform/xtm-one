@@ -18,6 +18,8 @@ vi.mock("react-grid-layout", async (importOriginal) => ({
   useContainerWidth: () => ({ width: 1280, mounted: true, containerRef: { current: null } }),
 }));
 
+import { DashboardAccessContext } from "@/hooks/api/dashboard-access";
+
 import { CustomDashboardView } from "./CustomDashboardView";
 import { normalizeDashboard } from "./spec";
 
@@ -82,5 +84,24 @@ describe("an entity input", () => {
     expect(searched.every((q) => q.source === "opencti" && q.integration_id === CTI && JSON.stringify(q.types) === '["Country"]')).toBe(true);
     // The chosen entity is named, never shown as its id.
     await waitFor(() => expect((screen.getByRole("combobox", { name: "Country" }) as HTMLInputElement).value).toBe("France"));
+  }, 30_000);
+
+  it("searches nothing where there is no session (an export's page), and shows the entity by the name it was given", async () => {
+    // A refused search sent the export's page to the sign-in page, and the export never finished.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const withDefault = { ...DEFINITION, inputs: { country: { ...DEFINITION.inputs.country, defaultValue: "c1" } } };
+    renderWithProviders(
+      <MemoryRouter>
+        <DashboardAccessContext.Provider value={{ kind: "render", token: "t", entityNames: { c1: "France" } }}>
+          <CustomDashboardView dashboard={normalizeDashboard(withDefault)} dashboardId={ID} revision={1} />
+        </DashboardAccessContext.Provider>
+      </MemoryRouter>,
+      client,
+    );
+    expect(await screen.findByRole("combobox", { name: "Country" }, { timeout: 15_000 })).toBeTruthy();
+    // ... and names the entity it starts on by the name the render route gave, not its id.
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Country" }) as HTMLInputElement).value).toBe("France"));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(api.post.mock.calls.filter(([url]) => url.endsWith("/platform-schema"))).toEqual([]);
   }, 30_000);
 });

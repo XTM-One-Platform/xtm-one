@@ -120,10 +120,12 @@ async def store_refreshed_session(
 
 
 def profile_hosts(profile: BrowserProfile) -> frozenset[str]:
-    """The hosts a profile stands for: its start URL's, its sign-in URL's and the ones it declares."""
+    """The hosts a profile stands for: its start URL's, its sign-in URL's, its applications' and the ones it declares."""
     from app.services.browser_profiles.browser import normalise_hosts
+    from app.services.browser_profiles.profiles import app_hosts
 
     hosts = set(normalise_hosts(list(profile.allowed_hosts or [])))
+    hosts.update(app_hosts(profile.apps))
     hosts.update(normalise_hosts([url for url in (profile.start_url, profile.login_url) if url]))
     return frozenset(hosts)
 

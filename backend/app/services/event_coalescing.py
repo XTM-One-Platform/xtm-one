@@ -41,11 +41,25 @@ never below either side, and ``sum`` counts add up, less what the covers both
 events list carry under the same name (an event covered twice counts once).
 A field the spec does not name takes the newer event's value, as before. A
 field also carried on ``entity`` is mirrored there.
+
+Debounce (#2544). Folding into a run that has not started only merges the
+events of one poll tick when the run it starts ends before the next tick:
+a burst spread over several ticks still started one run per tick. A poller
+may therefore declare a quiet period on its event (:data:`QUIET_KEY`, with
+its cap :data:`MAX_KEY`): the run of the key is created ``delayed`` and held
+until no event of the key arrived for the quiet period, never past the cap
+counted from the burst's first event. Every event that arrives meanwhile
+folds into the held run and moves its start (:func:`hold_seconds`). The
+hold is the run row and its orchestration execution, both in PostgreSQL, so
+a worker restart neither loses nor doubles a held burst. An event without
+the declaration is dispatched as before.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 #: Event payload key a poller sets to make its events coalesce.
@@ -58,6 +72,17 @@ MAX_COVERED = 50
 MERGE_KEY = "coalesce_merge"
 #: Run statuses a coalescing event folds into: the run has not started.
 FOLDABLE_STATUSES = ("queued", "pending")
+#: Event payload key: seconds without a new event of the key before its run starts.
+QUIET_KEY = "coalesce_quiet_seconds"
+#: Event payload key: most seconds a burst is held, from its first event.
+MAX_KEY = "coalesce_max_seconds"
+#: Trigger-context keys of a held run: the declaration and the burst's first and last events.
+HOLD_CONTEXT = "coalesce_hold"
+#: A held run is ``delayed`` until its start: a debounced event folds into it too.
+HELD_STATUS = "delayed"
+#: Longest hold a poller may declare: half the stale-run sweep's default
+#: (``STALE_ASSIGNMENT_RUN_SECONDS``, 1800 s), well under the queue-wait bound.
+MAX_HOLD_SECONDS = 900
 
 
 def payload_key(payload: Mapping[str, Any] | None) -> str | None:
@@ -74,6 +99,78 @@ def context_key(trigger_context: Mapping[str, Any] | None) -> str | None:
         return None
     key = trigger_context.get(CONTEXT_KEY)
     return key if isinstance(key, str) and key else None
+
+
+def now() -> datetime:
+    """The clock the holds are counted on (a test moves it)."""
+    return datetime.now(UTC)
+
+
+def _seconds(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return 0
+    return max(0, min(int(value), MAX_HOLD_SECONDS))
+
+
+def debounce(payload: Mapping[str, Any] | None) -> tuple[int, int] | None:
+    """``(quiet, cap)`` seconds an event declares, or ``None`` (dispatched as before).
+
+    The cap is never below the quiet period.
+    """
+    if not isinstance(payload, Mapping) or payload_key(payload) is None:
+        return None
+    quiet = _seconds(payload.get(QUIET_KEY))
+    if quiet <= 0:
+        return None
+    return quiet, max(quiet, _seconds(payload.get(MAX_KEY)))
+
+
+def _instant(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def held_context(
+    trigger_context: Mapping[str, Any] | None, payload: Mapping[str, Any] | None, now: datetime
+) -> dict[str, Any] | None:
+    """*trigger_context* with the hold of a debounced event recorded, or ``None`` when it declares none.
+
+    A context already holding keeps its burst's first event; the last moves to *now*.
+    """
+    declared = debounce(payload)
+    if declared is None:
+        return None
+    context = dict(trigger_context or {})
+    hold = context.get(HOLD_CONTEXT)
+    first = _instant(hold.get("first_at")) if isinstance(hold, Mapping) else None
+    context[HOLD_CONTEXT] = {
+        "quiet_seconds": declared[0],
+        "max_seconds": declared[1],
+        "first_at": (first or now).isoformat(),
+        "last_at": now.isoformat(),
+    }
+    return context
+
+
+def hold_seconds(trigger_context: Mapping[str, Any] | None, now: datetime) -> int:
+    """Seconds from *now* until a held run may start: the quiet period after the
+    last event, never past the cap from the first one; 0 when nothing is held."""
+    hold = trigger_context.get(HOLD_CONTEXT) if isinstance(trigger_context, Mapping) else None
+    if not isinstance(hold, Mapping):
+        return 0
+    first = _instant(hold.get("first_at"))
+    last = _instant(hold.get("last_at")) or first
+    if first is None or last is None:
+        return 0
+    quiet = _seconds(hold.get("quiet_seconds"))
+    cap = max(quiet, _seconds(hold.get("max_seconds")))
+    start = min(last + timedelta(seconds=quiet), first + timedelta(seconds=cap))
+    return max(0, math.ceil((start - now).total_seconds()))
 
 
 def _covers(payload: Mapping[str, Any]) -> list[dict[str, Any]]:

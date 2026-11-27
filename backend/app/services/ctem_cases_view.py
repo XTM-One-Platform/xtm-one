@@ -32,7 +32,7 @@ import logging
 import re
 import time
 import uuid
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field, replace
@@ -74,6 +74,11 @@ STALE_VIEW_TTL_SECONDS = 7 * 24 * 3600
 BUILD_LOCK_SECONDS = 60
 #: How often the building pod extends its lock, well inside :data:`BUILD_LOCK_SECONDS`.
 BUILD_LOCK_REFRESH_SECONDS = 20
+#: At most one generation bump per vertical in this window, across pods (#2555): a burst of case
+#: events (93 cases opened in 14 minutes on ctem.one) bumped once per case and made every viewer
+#: rebuild a full view (8 to 56 s) per event until the database pool ran out. A change inside the
+#: window marks the vertical pending and a trailing bump retires the views at the window's end.
+VIEW_BUMP_INTERVAL_SECONDS = 30.0
 #: The reasons a product gives about one identity (``ctem_cases_source.IDENTITY_REASONS``): the
 #: viewer has no access there, so what it did not return is refused, not unjudged (#2113).
 _IDENTITY_REASONS = frozenset({"rejected", "not_connected"})
@@ -861,20 +866,78 @@ async def forget_view(user_id: str, vertical: str) -> None:
         logger.info("CTEM cases: view cache not dropped for %s", user_id, exc_info=True)
 
 
+def _bump_window_key(vertical: str) -> str:
+    return f"ctem:cases:view-bump-window:{vertical}"
+
+
+def _bump_pending_key(vertical: str) -> str:
+    return f"ctem:cases:view-bump-pending:{vertical}"
+
+
+#: The trailing bump of each vertical this worker waits to run (#2555), one per vertical.
+_TRAILING_BUMPS: dict[str, asyncio.Task[None]] = {}
+
+
 async def forget_all_views(vertical: str) -> None:
     """Drop every viewer's cached view of *vertical* (a case opened, a signal joined one).
 
     The cases changed for everyone, not only for the caller, so the views are
     retired by bumping their generation: the next read of each viewer misses
     and reads its own source again; the old entries expire with their TTL.
+
+    Bumps are coalesced (#2555): the first change of a window bumps at once; a
+    change inside :data:`VIEW_BUMP_INTERVAL_SECONDS` of a bump marks the
+    vertical pending and one trailing bump runs at the end of the window, so a
+    burst of N events retires the views about once per window, never N times,
+    and the last change is never lost.
     """
     client = await _redis()
     if client is None:
         return
     try:
-        await client.incr(_generation_key(vertical))
+        if await client.set(_bump_window_key(vertical), "1", nx=True, ex=_bump_window_seconds()):
+            await client.incr(_generation_key(vertical))
+            return
+        await client.set(_bump_pending_key(vertical), "1", ex=_bump_window_seconds() * 4)
     except Exception:
         logger.info("CTEM cases: view generation not bumped for %s", vertical, exc_info=True)
+        return
+    _schedule_trailing_bump(vertical)
+
+
+def _bump_window_seconds() -> int:
+    return max(1, int(VIEW_BUMP_INTERVAL_SECONDS))
+
+
+def _schedule_trailing_bump(vertical: str) -> None:
+    """Start this worker's trailing bump of *vertical* unless one already waits."""
+    running = _TRAILING_BUMPS.get(vertical)
+    if running is not None and not running.done():
+        return
+    task = asyncio.create_task(_trailing_bump(vertical), name=f"ctem-view-trailing-bump:{vertical}")
+    _TRAILING_BUMPS[vertical] = task
+
+
+async def _trailing_bump(vertical: str) -> None:
+    """Bump *vertical* once its window ends, while a change is pending; never raises.
+
+    Any pod may run it: the pending mark is shared, so the first trailing bump that takes the
+    next window retires the views and clears the mark; the others find nothing pending.
+    """
+    try:
+        while True:
+            await asyncio.sleep(VIEW_BUMP_INTERVAL_SECONDS)
+            client = await _redis()
+            if client is None or not await client.get(_bump_pending_key(vertical)):
+                return
+            if await client.set(_bump_window_key(vertical), "1", nx=True, ex=_bump_window_seconds()):
+                await client.delete(_bump_pending_key(vertical))
+                await client.incr(_generation_key(vertical))
+                return
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.info("CTEM cases: trailing view generation bump failed for %s", vertical, exc_info=True)
 
 
 def _member_id(row: CtemCaseIssue) -> str:
@@ -953,6 +1016,37 @@ def _member_label(member: str, view: ViewerView) -> str | None:
 
 def visible_members(rows: list[CtemCaseIssue], view: ViewerView) -> list[CtemCaseIssue]:
     return [r for r in rows if view.sees(_member_id(r))]
+
+
+#: The ``signal_type`` filter value of a case no signal member of which the viewer sees (split, legacy).
+NO_SIGNAL_TYPE = "none"
+
+
+def signal_types(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> list[str]:
+    """The trigger paths of the signals behind *case* this viewer sees, sorted (#2556).
+
+    Read from ``view.signal_details``, already read for the row: no query. A visible
+    signal member whose details were unreadable falls back to the case's own trigger
+    path; a case with no visible signal member answers ``[]`` (the "No signal" value).
+    """
+    members = [_member_id(r) for r in rows if r.source == SIGNAL_SOURCE and view.sees(_member_id(r))]
+    if not members:
+        return []
+    paths = {str(path) for m in members if (path := (view.signal_details.get(m) or {}).get("trigger_path"))}
+    if not paths and case.trigger_path:
+        paths.add(case.trigger_path)
+    return sorted(paths)
+
+
+def matches_signal_types(row: dict[str, Any], wanted: Iterable[str]) -> bool:
+    """Whether a list row carries one of *wanted* (a trigger path, or ``none`` for no signal; OR inside the filter)."""
+    wanted = set(wanted)
+    if not wanted:
+        return True
+    types = row.get("signal_types") or []
+    if not types:
+        return NO_SIGNAL_TYPE in wanted
+    return any(t in wanted for t in types)
 
 
 SEVERITY_PRIORITY: dict[str, str] = {"P1": "critical", "P2": "high", "P3": "medium"}
@@ -1085,6 +1179,8 @@ def summary(case: CtemCase, rows: list[CtemCaseIssue], view: ViewerView) -> dict
         "updated_at": case.updated_at.isoformat() if case.updated_at else None,
         # The signals that opened or joined the case, counted on every member, seen or not.
         "signal_count": sum(1 for r in rows if r.source == SIGNAL_SOURCE),
+        # The trigger paths of the signals this viewer sees (#2556): the list's Signal type filter.
+        "signal_types": signal_types(case, rows, view),
         "details_unavailable": unavailable,
         # The loop (#857): ids, enums, dates and references only, the same for every viewer.
         "trigger_path": case.trigger_path,
@@ -1435,10 +1531,13 @@ def hydrate(
         _visible_issue(r, view.issues.get(_member_id(r)), view.signal_details.get(_member_id(r))) for r in visible
     ] + [{"restricted": True} for _ in range(restricted)]
     from app.services import ctem_case_assets as case_assets
+    from app.services import ctem_case_owner
     from app.services import ctem_validation_scenario as case_scenario
 
     return {
         **head,
+        # Why the case has its owner and the other asset group owners who contribute (#2560).
+        **ctem_case_owner.owner_details(events),
         "keys": list(case.keys or []),
         "issues": issues,
         # The issues' assets, then the hosts a validation ran on, each with its provenance (#2395).
@@ -1531,6 +1630,7 @@ def list_for_viewer(
     priority: str | None = None,
     asset: str | None = None,
     primary_asset: str | None = None,
+    signal_type: Iterable[str] | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
@@ -1541,6 +1641,9 @@ def list_for_viewer(
     (case-insensitive), the counts included: the cases on one asset.
     *primary_asset* keeps the cases one of whose visible issues reaches that
     primary asset (#1980 S2): the primary asset page's cases.
+    *signal_type* keeps the cases one of whose visible signals has one of those
+    trigger paths, ``none`` the cases with no visible signal (#2556); like *state*,
+    it narrows the page, not the counts by state.
     """
     if asset and asset.strip():
         cases = [(c, members) for c, members in cases if names_asset(members, view, asset)]
@@ -1556,6 +1659,8 @@ def list_for_viewer(
         rows = [r for r in rows if r["owner_user_id"] == owner_user_id]
     if priority:
         rows = [r for r in rows if r["priority"] == priority]
+    if signal_type:
+        rows = [r for r in rows if matches_signal_types(r, signal_type)]
     rows.sort(key=lambda r: (_PRIORITY_RANK.get(r["priority"], 9), -r["open_issue_count"], r["id"]))
     start = max(0, offset)
     return rows[start : start + max(1, limit)], counts

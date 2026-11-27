@@ -2564,6 +2564,7 @@ FEATURE_GATED_BUILTIN_AGENTS: dict[str, FeatureFlag] = {
 # the flag was on (``seed.seed_builtin_skills``).
 FEATURE_GATED_BUILTIN_SKILLS: dict[str, FeatureFlag] = {
     "video-production": "VIDEO_STUDIO",
+    "dashboard-design": "DASHBOARD_STUDIO",
 }
 
 
@@ -4199,6 +4200,34 @@ BUILTIN_SKILLS: list[dict] = [
         "tags": ["builtin", "video", "design"],
         "platform_targets": ["global"],
         "bind_to_agent_slugs": [*DEFAULT_ASSISTANT_SLUGS],
+        "bind_to_general_assistant": True,
+    },
+    {
+        # Dashboard craft. The custom dashboards tool descriptions are the CONTRACT
+        # (every source, visualization and operation); this skill is the CRAFT:
+        # plan the widgets as questions, find the data instead of inventing it
+        # (platform widgets described and looked up, assignments, static samples
+        # said as such), preview each source, pick the visualization from the
+        # data's shape, add each widget in one step, check every widget's data and
+        # look at the rendered tab before handing over. Bound to the General
+        # Assistant and the CTEM Assistant, which carry the tools out of the box; behind
+        # DASHBOARD_STUDIO (``FEATURE_GATED_BUILTIN_SKILLS``).
+        "slug": "dashboard-design",
+        "name": "Dashboard Design",
+        "description": (
+            "How to build a custom dashboard with the Dashboard Studio tools that shows live data: plan each widget "
+            "as a question with its source and freshness, find the data instead of inventing it (describe a platform "
+            "widget, look up its keys and values, an assignment's JSON answer, a static sample said as such), "
+            "preview each source before saving it, pick the visualization from the data's shape, add each widget "
+            "in one step, check every widget's data and look at the rendered tab before handing over. Load it "
+            "before building or reworking any dashboard."
+        ),
+        "compatibility": "custom_dashboards",
+        "content": "dashboard-design",
+        "tags": ["builtin", "dashboard", "design"],
+        "platform_targets": ["global"],
+        # The CTEM Assistant is the General Assistant in XTM One mode, and carries its tools.
+        "bind_to_agent_slugs": ["ctem-assistant"],
         "bind_to_general_assistant": True,
     },
     {

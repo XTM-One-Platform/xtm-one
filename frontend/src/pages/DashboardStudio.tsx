@@ -23,7 +23,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * - Centre: the stage, the dashboard as everyone sees it - live platform
  *   widgets drawn with the viewer's own access - where a click picks a widget.
  * - Right: the picked visualization's configuration panel
- *   (`VisualizationConfig`, Splunk's: general, data source, data display,
+ *   (`VisualizationConfig`: general, data source, data display,
  *   coloring, interactions, visibility, position, source), each field a step
  *   of the designer's history - for a reader, the inspector
  *   (`DashboardInspector`), read-only - and the Packs panel (`DashboardPacksPanel`):
@@ -32,11 +32,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *   Inputs panel (`DashboardInputsPanel`): its inputs and token manager.
  * - The source editor (`DashboardSourceDialog`): the definition as JSON, whole
  *   or the picked widget's visualization and data source.
- * - Edit and View modes: in Edit mode (those who may edit) the toolbar
- *   (`DashboardDesignBar`) adds charts and inputs, elements to a canvas tab,
- *   layers, aligns, duplicates and deletes them, undoes and redoes, opens the
- *   data sources and the source editor, switches the theme and says whether
- *   everything is saved; the tab bar adds, renames,
+ * - The bar, the Presentation and Video Studios' (`StudioChrome`): the title,
+ *   renamed in place while editing, and whether everything is saved; the
+ *   primary verb, `Present` (the viewers' view, full screen); the edit toggle,
+ *   undo and redo; Refresh; the studio, sharing, downloads and `More actions`
+ *   (publish, source, history, the settings panel, duplicate, delete).
+ * - Editing and the viewers' view: while editing (those who may edit) the
+ *   toolbar (`DashboardDesignBar`) adds charts and inputs, elements to a canvas
+ *   tab, layers, aligns, duplicates and deletes them, opens the data sources
+ *   and the source editor and switches the theme; the tab bar adds, renames,
  *   moves, retypes and removes tabs; the inspector edits the picked element,
  *   the canvas and the dashboard's theme and tab bar (`CanvasInspector`). All
  *   of it is the designer's history (`useDashboardDesigner`), saved as it
@@ -44,12 +48,30 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *   fullscreen.
  *
  * The rail is out unless the URL folds it (`?studio=0`), on the conversation
- * the URL names (`?c=`). Only those who may edit the dashboard get the rail
+ * the URL names (`?c=`). The "Create a dashboard" dialog hands the page a
+ * brief to send and the agent to send it to (`DashboardStudioLaunch`, the
+ * navigation state, read once). When a dashboard tool saves, the stage
+ * follows it: the widget it added or changed is selected and scrolled into
+ * view once that revision has loaded. Only those who may edit the dashboard get the rail
  * and the inspector's controls; others see the stage. Behind `DASHBOARD_STUDIO`.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Braces, History, LayoutGrid, Maximize, Minimize, PanelRightClose, PanelRightOpen, Send } from "lucide-react";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  Braces,
+  Copy,
+  History,
+  LayoutGrid,
+  Minimize,
+  MonitorPlay,
+  PanelRightClose,
+  PanelRightOpen,
+  Pencil,
+  Redo2,
+  Send,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 
 import {
   CanvasItemInspector,
@@ -61,6 +83,7 @@ import {
 import { placeBlocks, removeItems } from "@/components/custom-dashboard/canvas";
 import { DashboardDesignBar } from "@/components/custom-dashboard/DashboardDesignBar";
 import { useDashboardDesigner } from "@/components/custom-dashboard/useDashboardDesigner";
+import { ToolbarVerb } from "@/components/presentation/DeckToolbar";
 import { useElementFullscreen } from "@/components/presentation/fullscreen";
 
 import { CustomDashboardView } from "@/components/custom-dashboard/CustomDashboardView";
@@ -83,22 +106,45 @@ import {
   STUDIO_BAR_BUTTON,
   STUDIO_BAR_TITLE,
   StudioBarLeading,
+  STUDIO_STAGE_BACKDROP,
   StudioLoading,
+  StudioSaveState,
   StudioShareButton,
+  StudioTitleField,
   StudioToggle,
   StudioUnavailable,
 } from "@/components/studio/StudioChrome";
 import { Button } from "@/components/ui/button";
+import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
+import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/overflow-menu";
+import { PanelResizeHandle } from "@/components/ui/panel-resize-handle";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { useToast } from "@/components/ui/toast";
 import { Tip } from "@/components/ui/tooltip";
-import { useCustomDashboard, useQueuedDashboardEdit } from "@/hooks/api/useCustomDashboardApi";
+import {
+  useCustomDashboard,
+  useDeleteCustomDashboard,
+  useDuplicateCustomDashboard,
+  useQueuedDashboardEdit,
+} from "@/hooks/api/useCustomDashboardApi";
+import { useResizableWidth } from "@/hooks/useResizableWidth";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { CustomDashboardOperation } from "@/types";
 
 const STUDIO_PARAM = "studio";
 const STUDIO_CONVERSATION_PARAM = "c";
+/** A title, at most (`custom_dashboard_spec.MAX_TITLE_CHARS`). */
+const MAX_TITLE = 120;
+/** The settings panel: the video inspector's width, to a third of the screen. */
+const INSPECTOR_WIDTH = { defaultWidth: 360, minWidth: 320, maxWidth: (viewport: number) => Math.floor(viewport / 3) };
+
+/** What the "Create a dashboard" dialog hands the studio: the brief to send the assistant, and who answers. */
+export interface DashboardStudioLaunch {
+  send?: string;
+  /** An agent id, or `null` for the General Assistant. */
+  agentId?: string | null;
+}
 
 /** The dashboard's visualizations as stored widgets (the response's `widgets`): what an upsert starts from. */
 function storedWidgets(widgets: unknown): Record<string, unknown>[] {
@@ -110,6 +156,7 @@ export default function DashboardStudio() {
   const { t_i18n } = useFormatter();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { data, isLoading, isError } = useCustomDashboard(id);
   const update = useQueuedDashboardEdit(id, data?.revision);
@@ -133,6 +180,26 @@ export default function DashboardStudio() {
   const [zoom, setZoom] = useState<number | null>(null);
   const stage = useRef<HTMLElement>(null);
   const fullscreen = useElementFullscreen(stage);
+  // The mode an editor presented from, given back when full screen ends.
+  const presentedFrom = useRef<"edit" | "view" | null>(null);
+  useEffect(() => {
+    if (fullscreen.isFullscreen || !presentedFrom.current) return;
+    setMode(presentedFrom.current);
+    presentedFrom.current = null;
+  }, [fullscreen.isFullscreen]);
+  // Esc leaves the presentation: the browser's own full screen hears it, the app's viewport mode does not.
+  const { isFullscreen, exit: leaveFullscreen } = fullscreen;
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) leaveFullscreen();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isFullscreen, leaveFullscreen]);
+  const duplicate = useDuplicateCustomDashboard();
+  const remove = useDeleteCustomDashboard();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const selectedId = designer.selection.length === 1 ? designer.selection[0] : null;
   const setSelectedId = useCallback(
     (next: string | null | ((current: string | null) => string | null)) => {
@@ -148,9 +215,19 @@ export default function DashboardStudio() {
   const [studioOpen, setStudioOpen] = useState(() => searchParams.get(STUDIO_PARAM) !== "0");
   const [studioConvId, setStudioConvId] = useState<string | null>(() => searchParams.get(STUDIO_CONVERSATION_PARAM));
   const [primed, setPrimed] = useState<string | null>(null);
+  // The dialog's brief is sent once: the launch state leaves the history
+  // entry, so a reload or a return to this page never sends it again.
+  const launch = (location.state ?? null) as DashboardStudioLaunch | null;
+  const [autoSend, setAutoSend] = useState<string | null>(launch?.send ?? null);
+  const [initialAgentId] = useState(() => (launch && "agentId" in launch ? launch.agentId : undefined));
+  useEffect(() => {
+    if (location.state) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, location.state, navigate]);
+  const clearAutoSend = useCallback(() => setAutoSend(null), []);
   const [panel, setPanel] = useState<"widget" | "data" | "inputs" | "packs">("widget");
   // The settings panel folds away to give the canvas the whole width; asking for one of its tabs unfolds it.
   const [panelOpen, setPanelOpen] = useState(true);
+  const inspectorPanel = useResizableWidth({ ...INSPECTOR_WIDTH, storageKey: "xtm-dashboard-inspector-width", edge: "start" });
   const showPanel = (next: typeof panel) => {
     setPanel(next);
     setPanelOpen(true);
@@ -178,7 +255,26 @@ export default function DashboardStudio() {
     () => (selected ? { id: selected.id, label: selected.title || selected.id } : null),
     [selected],
   );
-  const onSaved = useCallback(() => undefined, []);
+  // Follow the pen: the widget a dashboard tool added or changed, once its revision is on the stage.
+  const [follow, setFollow] = useState<{ revision: number; widgetId: string } | null>(null);
+  const onSaved = useCallback((revision: number, widgetId: string | null) => {
+    if (widgetId) setFollow({ revision, widgetId });
+  }, []);
+  useEffect(() => {
+    if (!follow || !dashboard || (data?.revision ?? 0) < follow.revision) return;
+    const home = dashboard.tabs.find((candidate) => candidate.widgets.some((w) => w.id === follow.widgetId));
+    setFollow(null);
+    if (!home) return;
+    setTabId(home.id);
+    setSelectedId(follow.widgetId);
+    // After the tab switch has drawn the widget.
+    window.requestAnimationFrame(() => {
+      const element = Array.from(stage.current?.querySelectorAll<HTMLElement>("[data-widget-id]") ?? []).find(
+        (candidate) => candidate.dataset.widgetId === follow.widgetId,
+      );
+      element?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    });
+  }, [follow, dashboard, data?.revision, setSelectedId]);
   const editing = Boolean(data?.can_manage) && mode === "edit";
   const tab = dashboard?.tabs.find((candidate) => candidate.id === tabId) ?? dashboard?.tabs[0];
   const canvasLayoutId = editing && tab?.type === "absolute" ? tab.id : null;
@@ -241,6 +337,42 @@ export default function DashboardStudio() {
       },
     );
 
+  const title = typeof designer.definition?.title === "string" ? designer.definition.title : data.title;
+  const rename = (next: string) =>
+    designer.change((current) => ({ ...current, title: next.slice(0, MAX_TITLE) }), "dashboard.title");
+  // Present: the dashboard as its viewers see it, full screen; leaving full screen gives the editor back its mode.
+  const present = () => {
+    presentedFrom.current = mode;
+    setMode("view");
+    designer.select([]);
+    if (!fullscreen.isFullscreen) fullscreen.toggle();
+  };
+  const menu: OverflowMenuItem[] = [
+    { id: "publish", label: t_i18n("Publish or export"), icon: Send, onSelect: () => setPublishing(true) },
+    { id: "source", label: t_i18n("Dashboard source"), icon: Braces, onSelect: () => openSource(null) },
+    { id: "history", label: t_i18n("Dashboard history"), icon: History, onSelect: () => setHistory(true) },
+    {
+      id: "panel",
+      label: panelOpen ? t_i18n("Hide the settings panel") : t_i18n("Show the settings panel"),
+      icon: panelOpen ? PanelRightClose : PanelRightOpen,
+      onSelect: () => setPanelOpen((open) => !open),
+    },
+    {
+      id: "duplicate",
+      label: t_i18n("Duplicate"),
+      icon: Copy,
+      separatorBefore: true,
+      onSelect: () =>
+        duplicate.mutate(data.id, {
+          onSuccess: (copy) => navigate(`/dashboards/${copy.id}/studio`),
+          onError: (error) => toast({ title: t_i18n("The dashboard could not be duplicated"), description: error.message, variant: "error" }),
+        }),
+    },
+    ...(data.can_manage
+      ? [{ id: "delete", label: t_i18n("Delete"), icon: Trash2, destructive: true, onSelect: () => setConfirmingDelete(true) }]
+      : []),
+  ];
+
   return (
     <div className="flex h-dvh w-screen overflow-hidden bg-elevation-default text-default-primary" data-testid="dashboard.studio">
       {data.can_manage &&
@@ -254,54 +386,91 @@ export default function DashboardStudio() {
             onCollapse={() => setStudioOpen(false)}
             primedMessage={primed}
             onPrimedMessageApplied={() => setPrimed(null)}
+            autoSendMessage={autoSend}
+            onAutoSendApplied={clearAutoSend}
+            initialAgentId={initialAgentId}
           />
         ) : (
           <DashboardStudioHandle onOpen={() => setStudioOpen(true)} />
         ))}
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-12 shrink-0 items-center gap-2 border-b border-elevation-subtle-soft layer-1 bg-elevation-default px-3 py-1.5">
+        {/* A container: under 56rem of bar the save state drops its word, so the title keeps its room. */}
+        <header className="@container flex min-h-12 shrink-0 items-center gap-2 border-b border-elevation-subtle-soft layer-1 bg-elevation-default px-3 py-1.5">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <StudioBarLeading
               backLabel={t_i18n("Back to the dashboard")}
               onBack={() => navigate(`/dashboards/${data.id}`)}
               icon={LayoutGrid}
             >
-              <h1 className={STUDIO_BAR_TITLE}>{data.title}</h1>
+              {editing ? (
+                <StudioTitleField
+                  value={title}
+                  onChange={rename}
+                  onBlur={() => !title.trim() && rename(data.title)}
+                  maxLength={MAX_TITLE}
+                  testId="dashboard.studio.title"
+                />
+              ) : (
+                <h1 className={STUDIO_BAR_TITLE}>{title}</h1>
+              )}
             </StudioBarLeading>
-            <span className="hidden shrink-0 content-caption text-default-secondary md:inline">
-              {t_i18n("Revision {revision}", { revision: data.revision })}
-            </span>
-          </div>
-          <div className="flex shrink-0 items-center gap-0.5">
             {data.can_manage && (
-              <SegmentedFilter
-                ariaLabel={t_i18n("Mode")}
-                className="mr-2"
-                value={mode}
-                onChange={(next) => {
-                  setMode(next);
-                  if (next === "view") designer.select([]);
-                }}
-                options={[
-                  { key: "edit", label: t_i18n("Edit") },
-                  { key: "view", label: t_i18n("View") },
-                ]}
+              <StudioSaveState
+                status={designer.saveState === "saved" ? "saved" : designer.saveState === "saving" ? "saving" : "unsaved"}
+                testId="dashboard.studio.saveState"
               />
             )}
-            <DashboardRefresh dashboardId={data.id} className="mr-1" />
-            <Tip content={fullscreen.isFullscreen ? t_i18n("Leave fullscreen") : t_i18n("Fullscreen")}>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={STUDIO_BAR_BUTTON}
-                aria-label={fullscreen.isFullscreen ? t_i18n("Leave fullscreen") : t_i18n("Fullscreen")}
-                onClick={fullscreen.toggle}
-                data-testid="dashboard.studio.fullscreen"
-              >
-                {fullscreen.isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
-              </Button>
-            </Tip>
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <ToolbarVerb
+              icon={MonitorPlay}
+              label={t_i18n("Present")}
+              tooltip={t_i18n("Present: the dashboard as its viewers see it, full screen")}
+              onClick={present}
+              primary
+              labelClassName="@max-4xl:hidden"
+              testId="dashboard.studio.present"
+            />
+            {data.can_manage && (
+              <Tip content={editing ? t_i18n("Show it as its viewers see it") : t_i18n("Edit the dashboard")}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setMode(editing ? "view" : "edit");
+                    if (editing) designer.select([]);
+                  }}
+                  aria-label={t_i18n("Edit the dashboard")}
+                  aria-pressed={editing}
+                  className={cn(STUDIO_BAR_BUTTON, "ml-1", editing && "bg-accent/15 text-accent")}
+                  data-testid="dashboard.studio.edit"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              </Tip>
+            )}
+            {editing && (
+              <>
+                <Tip content={`${t_i18n("Undo")} (Ctrl+Z)`}>
+                  <Button variant="ghost" size="sm" className={STUDIO_BAR_BUTTON} onClick={designer.undo} disabled={!designer.canUndo} aria-label={t_i18n("Undo")}>
+                    <Undo2 className="h-4 w-4" />
+                  </Button>
+                </Tip>
+                <Tip content={`${t_i18n("Redo")} (Ctrl+Shift+Z)`}>
+                  <Button variant="ghost" size="sm" className={STUDIO_BAR_BUTTON} onClick={designer.redo} disabled={!designer.canRedo} aria-label={t_i18n("Redo")}>
+                    <Redo2 className="h-4 w-4" />
+                  </Button>
+                </Tip>
+              </>
+            )}
+            <DashboardRefresh dashboardId={data.id} compact />
+            {data.can_manage && (
+              <>
+                <StudioToggle open={studioOpen} onToggle={() => setStudioOpen((open) => !open)} testId="dashboard.studio" />
+                <StudioShareButton onClick={() => setSharing(true)} testId="dashboard.studio.share" />
+              </>
+            )}
             {!dashboard.appProperties.hideExport && (
               <DashboardExportMenu
                 dashboardId={data.id}
@@ -312,50 +481,7 @@ export default function DashboardStudio() {
                 className={STUDIO_BAR_BUTTON}
               />
             )}
-            <Tip content={t_i18n("Publish or export")}>
-              <Button variant="ghost" size="sm" className={STUDIO_BAR_BUTTON} aria-label={t_i18n("Publish or export")} onClick={() => setPublishing(true)}>
-                <Send className="h-4 w-4" />
-              </Button>
-            </Tip>
-            {/* In Edit mode the toolbar has it. */}
-            {!editing && (
-              <Tip content={t_i18n("Dashboard source")}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={STUDIO_BAR_BUTTON}
-                  aria-label={t_i18n("Dashboard source")}
-                  onClick={() => openSource(null)}
-                  data-testid="dashboard.studio.source"
-                >
-                  <Braces className="h-4 w-4" />
-                </Button>
-              </Tip>
-            )}
-            <Tip content={panelOpen ? t_i18n("Hide the settings panel") : t_i18n("Show the settings panel")}>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn(STUDIO_BAR_BUTTON, "hidden lg:inline-flex")}
-                aria-label={panelOpen ? t_i18n("Hide the settings panel") : t_i18n("Show the settings panel")}
-                aria-pressed={panelOpen}
-                onClick={() => setPanelOpen((open) => !open)}
-                data-testid="dashboard.studio.panel"
-              >
-                {panelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
-              </Button>
-            </Tip>
-            <Tip content={t_i18n("History")}>
-              <Button variant="ghost" size="sm" className={STUDIO_BAR_BUTTON} aria-label={t_i18n("Dashboard history")} onClick={() => setHistory(true)}>
-                <History className="h-4 w-4" />
-              </Button>
-            </Tip>
-            {data.can_manage && (
-              <>
-                <StudioToggle open={studioOpen} onToggle={() => setStudioOpen((open) => !open)} testId="dashboard.studio" />
-                <StudioShareButton onClick={() => setSharing(true)} testId="dashboard.studio.share" />
-              </>
-            )}
+            <OverflowMenu items={menu} label={t_i18n("More actions")} />
           </div>
         </header>
 
@@ -378,11 +504,23 @@ export default function DashboardStudio() {
             ref={stage}
             className={cn(
               "min-w-0 flex-1 overflow-y-auto p-6",
+              STUDIO_STAGE_BACKDROP,
               fullscreen.isFullscreen && "layer-0 bg-elevation-default",
               fullscreen.mode === "viewport" && "fixed inset-0 m-0 h-dvh w-screen max-w-none border-0",
             )}
             aria-label={t_i18n("Dashboard")}
           >
+            {fullscreen.isFullscreen && (
+              // The bar is under the presented stage: the way out stays on it.
+              <div className="sticky top-0 z-10 flex h-0 justify-end">
+                <Tip content={`${t_i18n("Leave fullscreen")} (Esc)`}>
+                  <Button variant="outline" size="sm" className="gap-1.5" onClick={fullscreen.exit} data-testid="dashboard.studio.leave">
+                    <Minimize className="h-4 w-4" aria-hidden="true" />
+                    {t_i18n("Leave fullscreen")}
+                  </Button>
+                </Tip>
+              </div>
+            )}
             {dashboard.subtitle && <p className="mb-4 content-base text-default-secondary">{dashboard.subtitle}</p>}
             <CustomDashboardView
               dashboard={dashboard}
@@ -429,21 +567,35 @@ export default function DashboardStudio() {
             />
           </section>
           <aside
-            className={cn("hidden w-80 shrink-0 flex-col border-l border-elevation-subtle-soft layer-1", panelOpen && "lg:flex")}
-            aria-label={t_i18n("Widget")}
+            className={cn(
+              "relative hidden shrink-0 flex-col border-l border-elevation-subtle-soft layer-1 bg-elevation-default",
+              panelOpen && "lg:flex",
+              inspectorPanel.isResizing && "select-none",
+            )}
+            style={{ width: inspectorPanel.width }}
+            aria-label={t_i18n("Inspector")}
           >
-            <SegmentedFilter
-              ariaLabel={t_i18n("Panel")}
-              className="m-3 mb-0"
-              value={panel}
-              onChange={setPanel}
-              options={[
-                { key: "widget", label: t_i18n("Widget") },
-                { key: "data", label: t_i18n("Data") },
-                { key: "inputs", label: t_i18n("Inputs") },
-                { key: "packs", label: t_i18n("Packs") },
-              ]}
+            <PanelResizeHandle
+              panel={inspectorPanel}
+              edge="left"
+              label={t_i18n("Resize the inspector")}
+              tip={t_i18n("Drag to resize the panel - double-click to reset")}
+              testId="dashboard.studio.inspector.resize"
             />
+            <div className="shrink-0 border-b border-elevation-subtle-soft p-2">
+              <SegmentedFilter
+                ariaLabel={t_i18n("Inspector")}
+                className="w-full justify-between"
+                value={panel}
+                onChange={setPanel}
+                options={[
+                  { key: "widget", label: t_i18n("Widget") },
+                  { key: "data", label: t_i18n("Data") },
+                  { key: "inputs", label: t_i18n("Inputs") },
+                  { key: "packs", label: t_i18n("Packs") },
+                ]}
+              />
+            </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               {panel === "widget" ? (
                 configured ? (
@@ -471,6 +623,20 @@ export default function DashboardStudio() {
                       barPosition={dashboard.tabBarPosition ?? "top"}
                     />
                   </>
+                ) : editing && !selected ? (
+                  // Nothing picked: one line, and the dashboard's own settings in view, as the Video Studio's
+                  // inspector always shows what can be set.
+                  <>
+                    <p className="p-4 pb-0 content-compact text-default-secondary" data-testid="dashboard.studio.nothingPicked">
+                      {t_i18n("Pick a widget on the page to see and change it.")}
+                    </p>
+                    <DashboardSettings
+                      designer={designer}
+                      theme={dashboard.theme}
+                      showTabBar={dashboard.showTabBar}
+                      barPosition={dashboard.tabBarPosition ?? "top"}
+                    />
+                  </>
                 ) : (
                   <>
                     <DashboardInspector
@@ -487,14 +653,6 @@ export default function DashboardStudio() {
                         dashboard={data}
                         vizId={selected.id}
                         edit={update.edit}
-                      />
-                    )}
-                    {editing && !selected && (
-                      <DashboardSettings
-                        designer={designer}
-                        theme={dashboard.theme}
-                        showTabBar={dashboard.showTabBar}
-                        barPosition={dashboard.tabBarPosition ?? "top"}
                       />
                     )}
                   </>
@@ -530,6 +688,18 @@ export default function DashboardStudio() {
       </main>
 
       <DashboardShareDialog dashboard={data} open={sharing} onOpenChange={setSharing} />
+      <ConfirmDeleteDialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        name={data.title}
+        onConfirm={() =>
+          remove.mutate(data.id, {
+            onSuccess: () => navigate("/dashboards"),
+            onError: (error) =>
+              toast({ title: t_i18n("The dashboard could not be deleted"), description: error.message, variant: "error" }),
+          })
+        }
+      />
       <DashboardHistoryDialog dashboard={data} open={history} onOpenChange={setHistory} />
       <DashboardPublishDialog dashboard={data} open={publishing} onOpenChange={setPublishing} />
       <DashboardSourceDialog

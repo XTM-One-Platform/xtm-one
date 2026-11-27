@@ -58,6 +58,7 @@ import {
   VolumeX,
 } from "lucide-react";
 
+import { STUDIO_STAGE_BACKDROP } from "@/components/studio/StudioChrome";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tip } from "@/components/ui/tooltip";
@@ -357,7 +358,7 @@ export function PreviewStage({
         boxRef.current = node;
         stageRef.current = node;
       }}
-      className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(ellipse_at_center,color-mix(in_srgb,_var(--text-default-primary)_calc(0.05_*_100%),_transparent),transparent_70%)]"
+      className={cn("relative flex min-h-0 flex-1 items-center justify-center overflow-hidden", STUDIO_STAGE_BACKDROP)}
       data-testid="video.editor.stage"
     >
       <div

@@ -278,6 +278,53 @@ async def _record_skipped_fire(
         )
 
 
+#: Why the last scheduler pass of this process may have missed windows: its
+#: sweep failed, or its tick overran (#2562). Read by the next sweep into the
+#: summary of the windows it records missed; per process, so a tick run by
+#: another replica records them without a reason.
+_schedule_trouble: str | None = None
+
+
+async def _record_missed_windows(
+    db: AsyncSession,
+    assignment: Assignment,
+    cron_expr: object,
+    missed: list[datetime],
+    *,
+    truncated: bool,
+    now: datetime,
+) -> None:
+    """Record the windows no sweep reached before *assignment*'s late fire as ``skipped`` runs (#2562).
+
+    One run per window up to ``schedule_overlap.MISSED_RECORD_CAP``, else one
+    summary run. Committed; best effort: a failure is logged and rolled back,
+    never undoing the fire already created.
+    """
+    from app.services import schedule_overlap
+
+    try:
+        runs = schedule_overlap.missed_window_runs(
+            assignment, missed, cron=str(cron_expr), now=now, truncated=truncated, reason=_schedule_trouble
+        )
+        for fields in runs:
+            db.add(AssignmentRun(**fields))
+        await db.commit()
+        logger.warning(
+            "Scheduled assignment '%s' (%s): %s",
+            assignment.name,
+            assignment.id,
+            runs[-1]["result_summary"] if len(runs) == 1 else f"{len(runs)} windows missed",
+        )
+    except Exception as exc:
+        await db.rollback()
+        logger.warning(
+            "Scheduled assignment '%s' (%s): missed windows not recorded: %s",
+            assignment.name,
+            assignment.id,
+            format_exception_message(exc),
+        )
+
+
 async def _supersede_stale_fires(db: AsyncSession, assignment: Assignment, now: datetime) -> bool:
     """Supersede the earlier fires of *assignment* still waiting for a worker (#2040); whether none is left active.
 
@@ -1527,6 +1574,64 @@ async def _cleanup_worksets(db: AsyncSession) -> dict:
 
 _tick_lock = asyncio.Lock()
 
+#: The window one tick is given (``main._autonomous_loop`` sleeps 60 s between
+#: ticks, its Redis window lock lives 55 s): a tick longer than it overran.
+_TICK_WINDOW_SECONDS = 60.0
+
+
+class _TickClock:
+    """How long a tick ran and its slowest step (#2562).
+
+    ``mark(step)`` closes the step running and opens *step*; the steps are the
+    numbered sections of :func:`_run_autonomous_tick_inner`.
+    """
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self._started = time.monotonic()
+        self._step = "start"
+        self._step_started = self._started
+        self.slowest: tuple[str, float] = ("start", 0.0)
+
+    def mark(self, step: str) -> None:
+        now = time.monotonic()
+        took = now - self._step_started
+        if took > self.slowest[1]:
+            self.slowest = (self._step, took)
+        self._step = step
+        self._step_started = now
+
+    def finish(self) -> tuple[float, tuple[str, float]]:
+        """The tick's duration and its slowest step with that step's duration."""
+        self.mark("end")
+        return time.monotonic() - self._started, self.slowest
+
+
+_tick_clock = _TickClock()
+
+
+def _warn_if_tick_overran() -> None:
+    """One WARNING for a tick past its window, naming its duration and slowest step (#2562).
+
+    The overrun is also kept as the reason the next sweep gives for the
+    windows it records missed.
+    """
+    global _schedule_trouble
+    took, (step, step_took) = _tick_clock.finish()
+    if took <= _TICK_WINDOW_SECONDS:
+        return
+    logger.warning(
+        "Scheduler tick overran its %ds window: %.1fs, slowest step '%s' (%.1fs)",
+        int(_TICK_WINDOW_SECONDS),
+        took,
+        step,
+        step_took,
+    )
+    if _schedule_trouble is None:
+        _schedule_trouble = f"scheduler tick overran: {int(took)}s, slowest step {step} ({int(step_took)}s)"
+
 
 async def run_autonomous_tick() -> int:
     """Run one tick of the autonomous scheduler.
@@ -1543,8 +1648,12 @@ async def run_autonomous_tick() -> int:
     # A tick serves no one: a step that resolves a model for a user must not
     # leave that user bound for the next step, nor for the next tick.
     async with _tick_lock:
-        with acting_for(None):
-            return await _run_autonomous_tick_inner()
+        _tick_clock.reset()
+        try:
+            with acting_for(None):
+                return await _run_autonomous_tick_inner()
+        finally:
+            _warn_if_tick_overran()
 
 
 #: The refusal the "no AI dispatch" notice was last logged for, in the current
@@ -1641,7 +1750,7 @@ async def _run_autonomous_tick_inner() -> int:
         # graph that contains an AI node and lets every other graph through.
         from app.services.agentic_gate import AI_DISABLED_CODE, agentic_refusal
 
-        global _dispatch_refusal_logged, _blocked_refs_poll_tick_counter
+        global _dispatch_refusal_logged, _blocked_refs_poll_tick_counter, _schedule_trouble
 
         _refusal = await agentic_refusal(db)
         _ai_on = _refusal is None
@@ -1699,6 +1808,7 @@ async def _run_autonomous_tick_inner() -> int:
         # desyncs) are swept by ``_cleanup_stale_assignment_runs`` in step 5c
         # below. There is no ``delayed_run:*`` poll here anymore.
 
+        _tick_clock.mark("1")
         # --- 1. Refresh expiring OAuth tokens ---
         # Tokens must be fresh before any assignment or event polling reads them.
         try:
@@ -1711,19 +1821,26 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Token refresh error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("3")
         # --- 3. Process schedule-based assignments ---
         try:
             if _ai_on:
                 triggered += await _process_scheduled_assignments(db)
+                # The windows missed meanwhile were recorded with their reason.
+                _schedule_trouble = None
         except Exception as e:
             logger.error("Scheduled assignments error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
+            # Said by the next sweep on the windows it records missed (#2562).
+            _schedule_trouble = f"scheduler sweep failed: {format_exception_message(e)}"[:200]
 
+        _tick_clock.mark("3-bis")
         # --- 3-bis. One admin alert per episode of assignment runs starved of workers (#2040) ---
         from app.services.run_queue_starvation import check_queue_starvation
 
         await check_queue_starvation(db)  # never raises
 
+        _tick_clock.mark("3a-bis")
         # --- 3a-bis. Fire due flow schedules ---
         # Same tick, same Redis window lock as assignment crons — firing flow
         # crons from the worker's adapter.periodic too would double-trigger.
@@ -1735,6 +1852,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Scheduled flows error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("3a-quater")
         # --- 3a-quater. Tracked organizations' digests of held events (#9157 M6) ---
         try:
             if _ai_on:
@@ -1745,6 +1863,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Organization digest error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("3a-ter")
         # --- 3a-ter. Release the claims of runs that ended ---
         # A run that claimed an item and ended without settling it (cancelled,
         # failed, timed out, dead-lettered after a rollout) leaves it held:
@@ -1792,6 +1911,11 @@ async def _run_autonomous_tick_inner() -> int:
                 undecided = await ctem_scope_gate_store.drain_new(db)
                 if undecided:
                     logger.info("CTEM signals left new decided by the scheduled recheck: %s", undecided)
+                # #2542: the unmatched signals whose remote software read failed, read again with backoff.
+                retried = await ctem_scope_gate_store.recheck_lookup_failed(db)
+                await db.commit()
+                if retried:
+                    logger.info("CTEM signals decided again after a failed software read: %s", retried)
         except Exception as e:
             logger.error("CTEM new-signal recheck error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
@@ -2062,6 +2186,7 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Platform event retry error: %s", format_exception_message(e), exc_info=True)
 
+        _tick_clock.mark("3b")
         # --- 3b. Process work-item inbox assignments (autonomous pickup) ---
         # The consumer half of the work-item primitive: dispatch due,
         # owned work items to their agent's ``work_item``-trigger inbox
@@ -2073,6 +2198,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Work-item assignments error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("3b-bis")
         # --- 3b-bis. Fire work-item flow triggers ---
         # The flow twin of 3b: `trigger.work_item` nodes on active flows drain
         # their owner agent's queue; the atomic claim keeps the two consumers
@@ -2085,6 +2211,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Work-item flows error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("3c")
         # --- 3c. Dispatch due scheduled work items ---
         # One-off actions an agent scheduled from a chat: no assignment, no
         # flow. Not gated on the AI state here - the run re-checks the edition
@@ -2102,6 +2229,7 @@ async def _run_autonomous_tick_inner() -> int:
             )
             await db.rollback()
 
+        _tick_clock.mark("4")
         # --- 4. Graph subscriptions, then poll integration events ---
         # A subscribed assignment is skipped by the poll below; one whose
         # subscription cannot be created, or lapses, is polled.
@@ -2116,6 +2244,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Graph subscription pass error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("4-pre")
         # --- 4-pre. Triggers provisioned in source platforms for assignments ---
         try:
             from app.services.trigger_provisioning import maintain_trigger_provisioning
@@ -2137,6 +2266,7 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Event poller error: %s", format_exception_message(e), exc_info=True)
 
+        _tick_clock.mark("4-bis")
         # --- 4-bis. Poll integration events for flows ---
         try:
             from app.services.flow_triggers import poll_flow_integration_events
@@ -2151,6 +2281,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Flow event poller error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("5")
         # --- 5. Process scheduled knowledge base syncs ---
         try:
             from app.services.kb_sync_scheduler import (
@@ -2170,6 +2301,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("KB sync scheduler error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("conversation-search")
         # --- Workspace conversation search ---
         # Reclaims the documents of conversations that left their workspace
         # whatever AI says, and queues idle conversations only while it is on.
@@ -2189,6 +2321,7 @@ async def _run_autonomous_tick_inner() -> int:
             )
             await db.rollback()
 
+        _tick_clock.mark("rule-syncs")
         # --- Process scheduled Nova rule syncs (pull .nov rule repos) ---
         try:
             from app.services.nova_rule_sync import process_scheduled_nova_syncs
@@ -2202,6 +2335,7 @@ async def _run_autonomous_tick_inner() -> int:
             )
             await db.rollback()
 
+        _tick_clock.mark("custom-tool-syncs")
         # --- Scheduled custom tool repository syncs ---
         # No AI gate: a custom tool is a sandboxed script and its tests call no
         # model; the licence and the custom-tools switch are checked inside.
@@ -2217,6 +2351,7 @@ async def _run_autonomous_tick_inner() -> int:
             )
             await db.rollback()
 
+        _tick_clock.mark("5b-0")
         # --- 5b-0. Embedding-readiness gate for the KB recovery sweeps ---
         # All three sweeps below exist to get documents *embedded*. With no
         # embedding-capable provider configured (a normal state for an install
@@ -2235,6 +2370,7 @@ async def _run_autonomous_tick_inner() -> int:
         # ``kb_helpers`` reads as ``False``, since the sweeps import from it.
         embedding_ready = await _probe_embedding_readiness()
 
+        _tick_clock.mark("5a-2")
         # --- 5a-2. Settle workset items behind retries nobody will run ---
         # Outside the gate below on purpose: a missing provider is exactly
         # when failed embeddings pile up, and an item left `pending` for a
@@ -2339,6 +2475,7 @@ async def _run_autonomous_tick_inner() -> int:
                 logger.error("Stale KB document remediation error: %s", format_exception_message(e), exc_info=True)
                 await db.rollback()
 
+        _tick_clock.mark("5b-4")
         # --- 5b-4. Clear the provider reference of chunks a deleted config embedded ---
         # The provider deletion no longer cascades onto ``embeddings`` inside
         # its locked transaction; this tick nulls the id afterwards, in
@@ -2357,6 +2494,7 @@ async def _run_autonomous_tick_inner() -> int:
             )
             await db.rollback()
 
+        _tick_clock.mark("5c-0")
         # --- 5c-0. Orchestration recovery backstop (worker-down safety net) ---
         # The worker reconciler sweeps deadlines + reclaims crashed leases every
         # cycle. If the worker is DOWN, those sweeps never run and every run/task
@@ -2380,6 +2518,7 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Orchestration backstop error: %s", format_exception_message(e), exc_info=True)
 
+        _tick_clock.mark("5c-0b")
         # --- 5c-0b. Video Studio renders no worker resumed ---
         # A render a stopped worker handed back (or one taken back from a worker
         # gone) waits first in the queue; one no worker took within the rolling
@@ -2395,6 +2534,7 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Video Studio unresumed render sweep error: %s", format_exception_message(e), exc_info=True)
 
+        _tick_clock.mark("5c-0b1")
         # --- 5c-0b1. Video Studio renders left running with no lease ---
         # A relaunch that lost its lease record leaves the render's execution
         # running with no holder: no lease expires and no worker is named gone.
@@ -2409,6 +2549,7 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Video Studio lease-less render sweep error: %s", format_exception_message(e), exc_info=True)
 
+        _tick_clock.mark("5c-0b2")
         # --- 5c-0b2. Video Studio renders nothing runs any more ---
         # A render row still queued or running whose execution ended, is gone or
         # lost its lease, quiet for 15 min, is failed with the reason, so a fresh
@@ -2422,6 +2563,7 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Video Studio orphaned render sweep error: %s", format_exception_message(e), exc_info=True)
 
+        _tick_clock.mark("5c-0c")
         # --- 5c-0c. Video Studio videos indexed by an older rule ---
         # A deletion's refusal and a shot's file cleanup read the media index as
         # stored: a video an older rule indexed is indexed again within a tick of
@@ -2437,6 +2579,7 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Video Studio media index error: %s", format_exception_message(e), exc_info=True)
 
+        _tick_clock.mark("5c-1")
         # --- 5c-1. Recover orphaned background (sub-agent) tasks ---
         # Companion to 5c for the decoupled ``sub_agent_tasks`` table. A task
         # whose execution reached a terminal state via ``engine.fail()`` (a
@@ -2473,6 +2616,7 @@ async def _run_autonomous_tick_inner() -> int:
                 "Orphaned background task recovery error: %s", format_exception_message(e), exc_info=True
             )
 
+        _tick_clock.mark("5c-2")
         # --- 5c-2. Runner presence sweep ---
         # Declares offline (and fires "Runner offline" for) the runners whose
         # heartbeat went stale. A closed socket no longer does - every deploy
@@ -2504,6 +2648,7 @@ async def _run_autonomous_tick_inner() -> int:
                     exc_info=True,
                 )
 
+        _tick_clock.mark("5c")
         # --- 5c. Recover stale/orphaned assignment runs ---
         # Safety net for assignment runs the orchestration engine can't recover
         # because they have no live execution row: in-process chat-handover /
@@ -2532,6 +2677,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Stale assignment run cleanup error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("5c-bis")
         # --- 5c-bis. Handed-back runs no worker resumed ---
         # A run handed back by a stopping worker stays ``running`` with its
         # execution live, so the sweep above skips it: nudged after
@@ -2556,6 +2702,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Handed-back run sweep error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("5d")
         # --- 5d. Delete expired KB export packages ---
         try:
             expired_exports = await _cleanup_expired_kb_export_packages(db)
@@ -2565,6 +2712,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("KB export package cleanup error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("5e")
         # --- 5e. Periodic model-prices git sync (optional) ---
         if settings.model_prices_git_sync_enabled:
             _prices_claim = await wall_clock_schedule.claim(
@@ -2603,12 +2751,15 @@ async def _run_autonomous_tick_inner() -> int:
 
         await _run_trace_storage_maintenance(db)
 
+        _tick_clock.mark("6b")
         # --- 6b. Graph subscriptions of private Teams channels (hourly + first tick) ---
         await _run_teams_subscription_maintenance()
 
+        _tick_clock.mark("6c")
         # --- 6c. Agent accounts: subscriptions, chat polls, grace periods ---
         await _run_agent_account_maintenance()
 
+        _tick_clock.mark("6")
         # --- 6. Periodic memory maintenance and retention sweeps (once per hour) ---
         # Due when the last COMPLETED pass, in Redis, is an hour old; one
         # process runs it under a cluster-wide lock, and a pass a deploy cut
@@ -2829,6 +2980,7 @@ async def _run_autonomous_tick_inner() -> int:
                 await _run_retention_pass(db)
                 await wall_clock_schedule.complete(_drain_claim)
 
+        _tick_clock.mark("7")
         # --- 7. Periodic skill auto-refresh (check once per hour) ---
         _skills_claim = await wall_clock_schedule.claim(wall_clock_schedule.SKILL_REFRESH)
         if _skills_claim is not None:
@@ -2841,6 +2993,7 @@ async def _run_autonomous_tick_inner() -> int:
                 await db.rollback()
             await wall_clock_schedule.complete(_skills_claim)
 
+        _tick_clock.mark("8")
         # --- 8. Flush Redis-buffered API key usage stats (every 5 min) ---
         global _apikey_stats_tick_counter
         _apikey_stats_tick_counter += 1
@@ -2853,6 +3006,7 @@ async def _run_autonomous_tick_inner() -> int:
             except Exception as e:
                 logger.error("API key stats flush error: %s", format_exception_message(e), exc_info=True)
 
+        _tick_clock.mark("9")
         # --- 9. Process scheduled evaluations ---
         # (Evaluation episode callback timeouts are handled by the
         # EvaluationAdapter.periodic() hook in the orchestration reconciler.)
@@ -2866,6 +3020,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Evaluation scheduler error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("9a")
         # --- 9a. Scheduled syncs of the organization profile (#11913) ---
         # No model call: platform reads mapped to profile rows, so it runs with
         # AI off too, like the import it repeats.
@@ -2879,6 +3034,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Organization sync scheduler error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("9a'")
         # --- 9a'. The Intelligence policy's PIRs, read from every connected OpenCTI (#2435) ---
         # No model call, no configuration: at most once an hour per process.
         try:
@@ -2889,6 +3045,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Intelligence policy refresh error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+        _tick_clock.mark("9b")
         # --- 9b. Settle applied improvement proposals (#1044, #8256) ---
         # No model call: a verdict and, on a regression, a rollback. Runs with
         # AI, evaluation or Platform Health off too (#5503), so a change applied
@@ -2902,6 +3059,7 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Improvement proposal settling error: %s", format_exception_message(e), exc_info=True)
 
+        _tick_clock.mark("9c")
         # --- 9c. Purge expired Platform Health sandbox copies (#8255) ---
         # No model call; one indexed read when nothing has expired.
         try:
@@ -2911,6 +3069,22 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Sandbox copy purge error: %s", format_exception_message(e), exc_info=True)
 
+        _tick_clock.mark("9b9")
+        # --- 9b9. Dashboard data sources refreshed on the server ---
+        # No model call (a source that needs one is never refreshed on the server);
+        # one indexed read when nothing is due, then a bounded batch, each source read
+        # as its publisher (``dashboard_refresh``).
+        try:
+            from app.core.feature_flags import is_feature_enabled
+
+            if is_feature_enabled("DASHBOARD_STUDIO"):
+                from app.services.dashboard_refresh import refresh_due
+
+                await refresh_due(async_session)
+        except Exception as e:
+            logger.error("Dashboard source refresh error: %s", format_exception_message(e), exc_info=True)
+
+        _tick_clock.mark("9c0")
         # --- 9c0. Component versions of the connected platforms ---
         # No model call; nothing is read while no assignment subscribes to
         # integration.version.changed, one read per platform every 5 minutes.
@@ -2921,6 +3095,7 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Component versions tick error: %s", format_exception_message(e), exc_info=True)
 
+        _tick_clock.mark("9c")
         # --- 9c. Platform Health cycles, schedules and signals (#8261) ---
         # Settling a cycle (and its digest) runs whatever the switches; starting
         # work needs agentic AI and Platform Health switched on (``cycles.health_tick``).
@@ -2931,6 +3106,7 @@ async def _run_autonomous_tick_inner() -> int:
             await health_tick(ai_on=_ai_on)
         except Exception as e:
             logger.error("Platform Health tick error: %s", format_exception_message(e), exc_info=True)
+        _tick_clock.mark("9c bis")
         # --- 9c bis. Platform Health checks (#101 S2, dev-docs/platform-health.md 3) ---
         # Deterministic, no model call, never metered: runs whatever the AI
         # switch, so health stays visible with AI off.
@@ -2940,6 +3116,7 @@ async def _run_autonomous_tick_inner() -> int:
             await health_pass_tick()
         except Exception as e:
             logger.error("Platform Health pass error: %s", format_exception_message(e), exc_info=True)
+        _tick_clock.mark("9c ter")
         # --- 9c ter. Platform Health analysis (#101 S9, dev-docs/platform-health.md 6) ---
         # One model call per module whose findings changed, at most once a day,
         # within the analysis ceiling; nothing with AI off or analysis off.
@@ -2949,6 +3126,7 @@ async def _run_autonomous_tick_inner() -> int:
             await analysis_tick(ai_on=_ai_on)
         except Exception as e:
             logger.error("Platform Health analysis error: %s", format_exception_message(e), exc_info=True)
+        _tick_clock.mark("9d")
         # --- 9d. Advance flow shadows, switch-overs and their watch (#8260) ---
         # The watch and its rollback need no model and run whatever the flags,
         # so a switch-over applied before is never left unwatched; pairing new
@@ -2962,6 +3140,7 @@ async def _run_autonomous_tick_inner() -> int:
         except Exception as e:
             logger.error("Flow shadow step error: %s", format_exception_message(e), exc_info=True)
 
+        _tick_clock.mark("10")
         # --- 10. Flush Redis-buffered usage counters (every 5 min) ---
         # Quota usage and agentic-execution counts are independent sinks, so
         # each gets its own guard: a failure in one must not skip the other.
@@ -2988,6 +3167,7 @@ async def _run_autonomous_tick_inner() -> int:
                     exc_info=True,
                 )
 
+        _tick_clock.mark("11")
         # --- 11. AI adoption metrics sync (every hour, every agentic mode) ---
         # AI adoption is generic AI (dev-docs/mode-split.md, S2): it runs in
         # Copilot, dev and XTM One mode alike. Never in ``ai_disabled``: this
@@ -3020,6 +3200,7 @@ async def _run_autonomous_tick_inner() -> int:
         # assignment fan-out uses) if we ever wanted scheduled collection. See
         # services/ctem_metrics_collector.build_posture_for_user. ---
 
+        _tick_clock.mark("12")
         # --- 12. Usage telemetry export, once per install per interval ---
         # Every tick asks; the telemetry window lease decides (one export per
         # interval install-wide, whichever process runs the tick).
@@ -3031,6 +3212,7 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("Telemetry export error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
 
+    _tick_clock.mark("13")
     # --- 13. Purge the objects a removed built-in template left (hourly, install-wide) ---
     # Not AI content: the Filigran Brand Deck's assets must leave a non-Copilot
     # platform whatever its AI state, even when the object store was unreachable
@@ -3045,6 +3227,7 @@ async def _run_autonomous_tick_inner() -> int:
     except Exception as e:
         logger.error("Removed template asset purge error: %s", format_exception_message(e), exc_info=True)
 
+    _tick_clock.mark("13b")
     # --- 13b. Delete the files public widget visitors attached once their session is over (hourly, install-wide) ---
     # Not AI work: a visitor's file must go whatever the AI state.
     # Also the files of queued Slack / Teams messages that never ran.
@@ -3057,6 +3240,7 @@ async def _run_autonomous_tick_inner() -> int:
     except Exception as e:
         logger.error("Widget upload purge error: %s", format_exception_message(e), exc_info=True)
 
+    _tick_clock.mark("13c")
     # --- 13c. Drop relay request logs past their retention (hourly, install-wide) ---
     # Not AI work: relays carry traffic whatever the AI state. Not gated on
     # RELAYS_ENABLED either: switching relays off keeps no log past its retention.
@@ -3067,6 +3251,7 @@ async def _run_autonomous_tick_inner() -> int:
     except Exception as e:
         logger.error("Relay request log purge error: %s", format_exception_message(e), exc_info=True)
 
+    _tick_clock.mark("14")
     # --- 14. Notify administrators of new critical / warning security audit findings (hourly, install-wide) ---
     # Not AI work: the audit covers every edition and AI state. Every tick asks
     # and a Redis lease decides; the audit then runs in the background
@@ -3078,6 +3263,7 @@ async def _run_autonomous_tick_inner() -> int:
     except Exception as e:
         logger.error("Security audit notification error: %s", format_exception_message(e), exc_info=True)
 
+    _tick_clock.mark("14b")
     # --- 14b. Tell owners their API keys are about to expire (hourly, install-wide) ---
     # Not AI work: a key authenticates every surface. A Redis lease decides; the
     # scan runs on a session of its own, after the tick's closed.
@@ -3088,6 +3274,7 @@ async def _run_autonomous_tick_inner() -> int:
     except Exception as e:
         logger.error("API key expiry notice error: %s", format_exception_message(e), exc_info=True)
 
+    _tick_clock.mark("14c")
     # --- 14c. Check this platform's XTM Hub registration (hourly, install-wide) ---
     # Not AI work: the registration is the platform's, whatever the edition
     # and AI state. Every tick asks and a Redis lease decides; the Hub is
@@ -3100,6 +3287,7 @@ async def _run_autonomous_tick_inner() -> int:
     except Exception as e:
         logger.error("Platform registration heartbeat error: %s", format_exception_message(e), exc_info=True)
 
+    _tick_clock.mark("14d")
     # --- 14d. Keep the running build's last_seen_at current ---
     # One row upserted at most every TOUCH_INTERVAL_SECONDS per process, on a session of
     # its own: the release history tells a build still running from a replaced one.
@@ -3110,6 +3298,7 @@ async def _run_autonomous_tick_inner() -> int:
     except Exception as e:
         logger.error("Running build refresh error: %s", format_exception_message(e), exc_info=True)
 
+    _tick_clock.mark("14e")
     # --- 14e. Tell administrators of the models traces ran on without a price (daily, install-wide) ---
     # A NULL cost leaves the analytics under-reported with nothing to say so.
     # A Redis lease decides; the check runs in the background on a
@@ -3121,6 +3310,7 @@ async def _run_autonomous_tick_inner() -> int:
     except Exception as e:
         logger.error("Unpriced model notice error: %s", format_exception_message(e), exc_info=True)
 
+    _tick_clock.mark("15")
     # --- 15. Email the users about a model catalog change ---
     # A bounded batch per tick, on sessions of its own opened after the tick's
     # closed (SMTP is slow). Only while agentic AI runs: an announcement held
@@ -3133,6 +3323,7 @@ async def _run_autonomous_tick_inner() -> int:
     except Exception as e:
         logger.error("Model catalog announcement error: %s", format_exception_message(e), exc_info=True)
 
+    _tick_clock.mark("16")
     # --- 16. Answer Slack / Teams messages a dead turn left queued ---
     # Every release of a turn lock starts its conversation's queue; a process
     # that died holding the lock released nothing, so once that lock's TTL ran
@@ -3147,6 +3338,7 @@ async def _run_autonomous_tick_inner() -> int:
     except Exception as e:
         logger.error("Channel queue sweep error: %s", format_exception_message(e), exc_info=True)
 
+    _tick_clock.mark("16b")
     # --- 16b. Answer web widget messages a stopped turn left unanswered ---
     # A widget session's queue is its stored messages, answered by the turn
     # holder only: a worker stopped or killed mid-turn left the visitor's
@@ -4089,9 +4281,26 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
                 await db.commit()
                 continue
 
+            # The cron slot this fire serves and the earlier windows no sweep
+            # reached (#2562): the late fire serves the latest due slot and is
+            # stamped on it, so the next fire stays on the cron; the windows
+            # before it are recorded as ``skipped`` runs once the fire exists.
+            # A first run (no base) serves ``now``, as before.
+            served_at = now
+            missed: list[datetime] = []
+            missed_truncated = False
+            base = schedule_base(assignment)
+            if base is not None:
+                from app.services import schedule_overlap
+
+                zone, _ = schedule_timezone(assignment.trigger_config)
+                slot, missed, missed_truncated = schedule_overlap.missed_windows(cron_expr, base, now, tz=zone)
+                if slot is not None and slot <= now:
+                    served_at = slot
+
             # Mark as triggered FIRST to prevent re-triggering on next tick
             previous_triggered_at = assignment.last_triggered_at
-            assignment.last_triggered_at = now
+            assignment.last_triggered_at = served_at
             await db.commit()
 
             # Trigger the assignment
@@ -4103,12 +4312,12 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
                 run_id = await trigger_assignment(
                     assignment=assignment,
                     agent=agent,
-                    payload={"trigger_type": "schedule", "scheduled_at": now.isoformat()},
+                    payload={"trigger_type": "schedule", "scheduled_at": served_at.isoformat()},
                     db=db,
                     trigger_context={
                         "type": "schedule",
                         "cron": cron_expr,
-                        "scheduled_at": now.isoformat(),
+                        "scheduled_at": served_at.isoformat(),
                         "triggered_at": now.isoformat(),
                         # Internal flag (``_`` prefix → hidden from the run-detail
                         # UI): the first post-creation run skips the spread delay
@@ -4158,6 +4367,8 @@ async def _process_scheduled_assignments(db: AsyncSession) -> int:
                     refusal,
                 )
                 break
+            if missed:
+                await _record_missed_windows(db, assignment, cron_expr, missed, truncated=missed_truncated, now=now)
             logger.info(
                 "Scheduled assignment '%s' (agent '%s') triggered: run %s",
                 assignment.name,

@@ -41,7 +41,8 @@ interface DashboardSnapshot {
 
 export type DashboardAccess =
   | { kind: "session" }
-  | { kind: "render"; token: string }
+  /** `entityNames`: the entity inputs' starting entities named by the server, by id - this page cannot search. */
+  | { kind: "render"; token: string; entityNames?: Record<string, string> }
   | { kind: "snapshot"; publicToken: string; snapshot: DashboardSnapshot };
 
 const SESSION_ACCESS: DashboardAccess = { kind: "session" };

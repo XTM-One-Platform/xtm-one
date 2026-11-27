@@ -26,24 +26,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 import { lazy, Suspense, useEffect, useMemo } from "react";
 import { Spinner } from "@filigran/design-system";
-import { ExternalLink, MessageCircleQuestion, Radar } from "lucide-react";
+import { ExternalLink, MessageCircleQuestion, Radar, RefreshCw } from "lucide-react";
 
 import { useWidgetSize } from "@/components/dashboard-grid/widget-size-context";
 import { AiActionGate } from "@/components/ui/ai-disabled";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboardAccess } from "@/hooks/api/dashboard-access";
-import { useAskDataSource, useDataSourceData, useWidgetData } from "@/hooks/api/useCustomDashboardApi";
+import { useAskDataSource, useDataSourceData, useRefreshSnapshot, useWidgetData } from "@/hooks/api/useCustomDashboardApi";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { useFormatter } from "@/i18n";
+import { formatCount } from "@/lib/number-format";
 import { safeExternalUrl, timeAgo } from "@/lib/utils";
-import type { WidgetDataErrorCode } from "@/types";
+import type { WidgetChanges, WidgetDataErrorCode, WidgetSnapshot } from "@/types";
 
 import { accentStyle } from "./charts/colors";
 import { presentedOptions } from "./definition";
 import { withoutLinks } from "./viz/shapes";
-import { chartHeight } from "./grid";
+import { chartHeight, MIN_CHART_HEIGHT } from "./grid";
 import { useDashboardTokens } from "./token-state";
 import { useDashboardLive } from "./live";
 import { hasNoData, type ClickEvent } from "./interactions";
@@ -135,6 +137,9 @@ function OpenLink({ href, platform }: { href: string | undefined; platform: stri
   );
 }
 
+/** The pixels the line saying what changed since the previous read takes (`ChangesLine`). */
+const CHANGES_LINE_HEIGHT = 18;
+
 function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget | DataDashboardWidget; dashboardId: string }) {
   const { t_i18n, locale } = useFormatter();
   const live = useDashboardLive();
@@ -166,7 +171,8 @@ function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget |
   const asks = widget.kind === "data" && widget.sourceType === "ask";
   const annotation = useDataSourceData(dashboardId, widget.annotation?.id, live?.range, widget.annotation?.fingerprint ?? "");
   // The chart fills the widget's cell on the grid, less its description; stacked, it takes its old height.
-  const height = Math.max(80, chartHeight(widget.kind === "platform" ? widget.size : "m", useWidgetSize()) - (widget.description ? 24 : 0));
+  const room = chartHeight(widget.kind === "platform" ? widget.size : "m", useWidgetSize()) - (widget.description ? 24 : 0);
+  const height = Math.max(MIN_CHART_HEIGHT, room);
 
   if (!widget.view) {
     return (
@@ -201,7 +207,8 @@ function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget |
       <Card className="flex h-full min-h-28 flex-col justify-center gap-2 border-dashed p-5" data-error-code={code}>
         <span className="flex items-center gap-2 content-compact text-default-secondary">
           {code === "running" && <Spinner size="sm" tone="inherit" />}
-          {t_i18n(ERROR_MESSAGES[code], { platform })}
+          {/* A source refreshed on the server that was not read yet waits for the platform, not for an agent. */}
+          {code === "running" && data?.snapshot ? t_i18n("Read on the server in a moment.") : t_i18n(ERROR_MESSAGES[code], { platform })}
         </span>
         {asks && widget.kind === "data" && code !== "running" && <AskButton sourceId={widget.sourceId} />}
         <OpenLink href={safeExternalUrl(data?.open_url)} platform={platform} />
@@ -209,6 +216,8 @@ function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget |
     );
   }
   const annotationData = annotation.data?.status === "ok" ? annotation.data : undefined;
+  // What changed since the previous read takes a line of its own under the freshness line: the chart gives it room.
+  const drawnHeight = Math.max(MIN_CHART_HEIGHT, height - (data.snapshot && data.changes ? CHANGES_LINE_HEIGHT : 0));
   // The link into the platform is in the widget's menu, as the modules keep theirs in the card's header.
   const footer = widget.showLastUpdated && data.fetched_at;
   const options = presentedOptions(widget.options, widget.view, data.presentation);
@@ -237,7 +246,7 @@ function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget |
             <PlatformChart
               data={shown}
               view={widget.view}
-              height={height}
+              height={drawnHeight}
               options={options}
               context={widget.context}
               annotation={annotationData}
@@ -245,16 +254,20 @@ function LiveWidget({ widget, dashboardId }: { widget: PlatformDashboardWidget |
               onBrush={onBrush}
             />
           ) : (
-            <StudioViz data={shown} view={widget.view === "text" ? undefined : widget.view} height={height} options={options} />
+            <StudioViz data={shown} view={widget.view === "text" ? undefined : widget.view} height={drawnHeight} options={options} />
           )}
         </Suspense>
       </div>
       {asks && widget.kind === "data" && <AskButton sourceId={widget.sourceId} again />}
-      {footer && (
-        <span className="mt-auto min-w-0 truncate content-caption text-default-secondary">
-          {widget.kind === "platform" ? `${platform} · ` : null}
-          {t_i18n("Updated {when}", { when: timeAgo(data.fetched_at, locale) })}
-        </span>
+      {data.snapshot ? (
+        <SnapshotLine widget={widget} snapshot={data.snapshot} changes={data.changes ?? null} />
+      ) : (
+        footer && (
+          <span className="mt-auto min-w-0 truncate content-caption text-default-secondary">
+            {widget.kind === "platform" ? `${platform} · ` : null}
+            {t_i18n("Updated {when}", { when: timeAgo(data.fetched_at, locale) })}
+          </span>
+        )
       )}
     </Card>
   );
@@ -280,4 +293,67 @@ export function DataWidget({ widget }: { widget: DataDashboardWidget }) {
     );
   }
   return <LiveWidget widget={widget} dashboardId={live.dashboardId} />;
+}
+
+/**
+ * A widget drawing a source refreshed on the server says whose access read it
+ * and when (decision D1), and offers Refresh now on the page of a signed-in
+ * viewer; a published link's snapshot says it on its own page.
+ */
+function SnapshotLine({ widget, snapshot, changes }: { widget: DashboardWidget; snapshot: WidgetSnapshot; changes: WidgetChanges | null }) {
+  const { t_i18n, locale } = useFormatter();
+  const { dashboardId } = useDashboardLive() ?? {};
+  const access = useDashboardAccess();
+  const refresh = useRefreshSnapshot(dashboardId);
+  const { toast } = useToast();
+  // A derived source drawing a server-read one shows that one's snapshot: Refresh now reads that one again.
+  const sourceId = snapshot.source_id ?? (widget.kind === "data" || widget.kind === "platform" ? widget.sourceId : undefined);
+  if (!snapshot.refreshed_at) return null;
+  return (
+    <span className="mt-auto flex min-w-0 flex-col gap-0.5 content-caption text-default-secondary" data-testid="widget.snapshot">
+      {changes && <ChangesLine changes={changes} />}
+      <span className="flex min-w-0 items-center gap-1">
+      <span className="min-w-0 truncate">
+        {t_i18n("Data read {time} with {name}'s access.", { time: timeAgo(snapshot.refreshed_at, locale), name: snapshot.publisher ?? "?" })}
+      </span>
+      {access.kind === "session" && sourceId && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 shrink-0 px-0"
+          aria-label={t_i18n("Refresh now")}
+          disabled={refresh.isPending}
+          onClick={() =>
+            refresh.mutate(sourceId, {
+              onError: (error) => toast({ title: t_i18n("The data could not be read again"), description: error.message, variant: "error" }),
+            })
+          }
+        >
+          <RefreshCw className={refresh.isPending ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
+        </Button>
+      )}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * What changed since the previous read, said from the two reads alone
+ * (`dashboard_refresh.with_changes`): the figure before and after, and for a
+ * breakdown the items that moved the most.
+ */
+function ChangesLine({ changes }: { changes: WidgetChanges }) {
+  const { t_i18n, locale } = useFormatter();
+  const number = (value: number) => formatCount(locale, value);
+  const { before, after } = changes.figure;
+  const delta = after - before;
+  const moved = (changes.items ?? []).slice(0, 3).map((item) => `${item.label} ${number(item.before)} → ${number(item.after)}`);
+  return (
+    <span className="min-w-0 truncate" data-testid="widget.changes">
+      {delta === 0
+        ? t_i18n("Unchanged since {time}.", { time: timeAgo(changes.since, locale) })
+        : t_i18n("{before} → {after} since {time}.", { before: number(before), after: number(after), time: timeAgo(changes.since, locale) })}
+      {moved.length > 0 && ` ${moved.join(" · ")}`}
+    </span>
+  );
 }

@@ -41,7 +41,9 @@ def access(monkeypatch):
     async def _agent(_db, _uid, _agent_id, _groups, *, is_admin):
         return state.agent
 
-    async def _restore(db, user, conv, *, supports_artifacts):
+    async def _restore(db, user, conv, *, supports_artifacts, keep_dashboards=False):
+        # XTM One's own panel draws a dashboard's marker as the dashboard: always kept here.
+        assert keep_dashboards is True
         state.restored.append((conv, supports_artifacts))
         session = platform_api.PlatformChatSessionResponse(
             conversation_id=str(conv.id),
@@ -51,7 +53,8 @@ def access(monkeypatch):
         )
         return session, True
 
-    async def _page(db, user, conv, *, before, limit, supports_artifacts):
+    async def _page(db, user, conv, *, before, limit, supports_artifacts, keep_dashboards=False):
+        assert keep_dashboards is True
         state.paged.append((conv, before, limit, supports_artifacts))
         return {"messages": [], "has_more": False}
 

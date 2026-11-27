@@ -10495,6 +10495,12 @@ async def trigger_assignment(
     an assignment that is not company-managed and whose owner's account is
     deactivated.
     """
+    if trigger_context and trigger_context.get("type") in ("integration_event", "webhook"):
+        # The dashboard sources read again on this integration event, whatever becomes of the run
+        # (``dashboard_refresh``: no model call, so before the AI gates).
+        from app.services.dashboard_refresh import hear_integration_event
+
+        await hear_integration_event(trigger_context)
     await _refuse_if_ai_disabled(assignment)
     await _refuse_if_group_ai_disabled(_run_person(assignment, triggered_by_user_id, agent))
     payload = _with_partner_scope(payload)
@@ -10776,6 +10782,11 @@ async def _schedule_run_execution(
     budget — as one that never had to wait.
     """
     run_id = str(run.id)
+    # A run of a debounced coalesce key waits out its hold (#2544), however
+    # it was created: started now in a free slot, or promoted from the queue.
+    extra_delay_seconds = max(
+        extra_delay_seconds, event_coalescing.hold_seconds(trigger_context, event_coalescing.now())
+    )
     configured_delay_seconds = parse_delay(assignment.delay)
     schedule_spread_seconds = _schedule_spread_delay_seconds(
         assignment.id, trigger_context
@@ -11132,7 +11143,9 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
 
 async def _assignment_cap(assignment: Assignment) -> int:
     """The assignment's concurrency cap, halved while a provider answers it 429."""
-    cap = assignment_dispatch.assignment_concurrency_cap(assignment.trigger_config)
+    cap = assignment_dispatch.assignment_concurrency_cap(
+        assignment.trigger_config, getattr(assignment, "trigger_type", None)
+    )
     throttled = await assignment_dispatch.is_throttled(assignment.id)
     return assignment_dispatch.throttled_cap(cap) if throttled else cap
 
@@ -11430,7 +11443,12 @@ async def trigger_or_queue_assignment(
     if coalesce_key is not None:
         # A burst of polled events that stand for one change (an OpenCRQ batch
         # recompute, #1417): folded into the run of the same key still waiting
-        # in the queue, so at most one waits behind the one running.
+        # in the queue, so at most one waits behind the one running. An event
+        # that declares a quiet period (#2544) also folds into the run its key
+        # holds back, and a run it creates is held: one run per burst.
+        held = event_coalescing.held_context(trigger_context, payload, event_coalescing.now())
+        if held is not None:
+            trigger_context = held
         folded_into = await _fold_into_queued_run(db, assignment, coalesce_key, payload)
         if folded_into is not None:
             await db.commit()
@@ -11589,29 +11607,88 @@ async def _fold_into_queued_run(
     """Fold a coalescing event into the waiting run of the same key; its id, or ``None``.
 
     The oldest run of *assignment* that has not started (queued, or pending
-    in a free slot: ``event_coalescing.FOLDABLE_STATUSES``, #2117) whose
-    trigger context carries *coalesce_key* (``services/event_coalescing.py``),
-    locked so two events folding at once never lose one; the executor re-reads
-    the payload under the same lock when it starts the run. Flushes, the
-    caller commits.
+    in a free slot: ``event_coalescing.FOLDABLE_STATUSES``, #2117; or delayed
+    in the hold of a debounced key, #2544) whose trigger context carries
+    *coalesce_key* (``services/event_coalescing.py``), locked so two events
+    folding at once never lose one; the executor re-reads the payload under
+    the same lock when it starts the run. A debounced event also moves the
+    hold's last event to now and the run's start with it
+    (:func:`_extend_coalesce_hold`). Flushes, the caller commits.
     """
-    result = await db.execute(
+    debounced = event_coalescing.debounce(payload) is not None
+    not_started = AssignmentRun.status.in_(event_coalescing.FOLDABLE_STATUSES)
+    held = and_(
+        AssignmentRun.status == event_coalescing.HELD_STATUS,
+        AssignmentRun.trigger_context[event_coalescing.HOLD_CONTEXT].as_string().is_not(None),
+    )
+    waiting = or_(not_started, held) if debounced else not_started
+    query = (
         select(AssignmentRun)
         .where(
             AssignmentRun.assignment_id == assignment.id,
-            AssignmentRun.status.in_(event_coalescing.FOLDABLE_STATUSES),
+            waiting,
             AssignmentRun.trigger_context[event_coalescing.CONTEXT_KEY].as_string() == coalesce_key,
         )
         .order_by(AssignmentRun.created_at.asc())
-        .limit(1)
         .with_for_update()
     )
-    run = result.scalar_one_or_none()
+    if not debounced:
+        query = query.limit(1)
+    run = None
+    now = event_coalescing.now()
+    for candidate in (await db.execute(query)).scalars():
+        # A held run whose hold is spent (the cap reached) is due: the burst's
+        # next window opens a run of its own (#2544).
+        if candidate.status == event_coalescing.HELD_STATUS and not event_coalescing.hold_seconds(
+            candidate.trigger_context, now
+        ):
+            continue
+        run = candidate
+        break
     if run is None:
         return None
     run.trigger_payload = event_coalescing.merged_payload(run.trigger_payload or {}, payload or {})
+    if debounced:
+        await _extend_coalesce_hold(db, run, payload)
     await db.flush()
     return str(run.id)
+
+
+async def _extend_coalesce_hold(db: AsyncSession, run: AssignmentRun, payload: dict[str, Any] | None) -> None:
+    """Record a debounced event on *run*'s hold and move its start (#2544).
+
+    The hold's last event becomes now. A queued run takes the hold when the
+    drain promotes it (``_schedule_run_execution``); a held run's pending
+    execution, not claimed yet, is moved to the new start, its queue-wait
+    deadline by the same span. An execution a worker already claimed is left:
+    the executor reads the folded payload under the run's row lock.
+    """
+    from app.models.orchestration import OrchestrationExecution
+
+    now = event_coalescing.now()
+    context = event_coalescing.held_context(run.trigger_context, payload, now)
+    if context is None:
+        return
+    run.trigger_context = context
+    if run.status != event_coalescing.HELD_STATUS:
+        return
+    execution = (
+        await db.execute(
+            select(OrchestrationExecution)
+            .where(
+                OrchestrationExecution.dedup_key == f"assignment_run:{run.id}",
+                OrchestrationExecution.state == "pending",
+                OrchestrationExecution.lease_owner.is_(None),
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if execution is None:
+        return
+    start = now + timedelta(seconds=event_coalescing.hold_seconds(context, now))
+    if execution.deadline_at is not None and execution.run_at is not None:
+        execution.deadline_at = execution.deadline_at + (start - execution.run_at)
+    execution.run_at = start
 
 
 async def _split_batch_run(db: AsyncSession, assignment: Assignment, run: AssignmentRun) -> str | None:
@@ -12184,10 +12261,10 @@ async def _load_queue_states(
         ).all()
     }
     configs = {
-        row[0]: (row[1], row[2])
+        row[0]: (row[1], row[2], row[3])
         for row in (
             await db.execute(
-                select(Assignment.id, Assignment.agent_id, Assignment.trigger_config).where(
+                select(Assignment.id, Assignment.agent_id, Assignment.trigger_config, Assignment.trigger_type).where(
                     Assignment.id.in_(ids)
                 )
             )
@@ -12195,7 +12272,7 @@ async def _load_queue_states(
     }
     states: list[assignment_dispatch.QueueState] = []
     for assignment_id, depth, oldest_at, unordered in queued:
-        agent_id, trigger_config = configs.get(assignment_id, (None, None))
+        agent_id, trigger_config, trigger_type = configs.get(assignment_id, (None, None, None))
         active, held, exclusive = usage.get(assignment_id, (0, False, False))
         states.append(
             assignment_dispatch.QueueState(
@@ -12204,7 +12281,7 @@ async def _load_queue_states(
                 depth=int(depth),
                 oldest_at=oldest_at,
                 active=active,
-                cap=assignment_dispatch.assignment_concurrency_cap(trigger_config),
+                cap=assignment_dispatch.assignment_concurrency_cap(trigger_config, trigger_type),
                 held=held,
                 exclusive=exclusive,
                 startable=int(unordered or 0) + free_keys.get(assignment_id, 0),
@@ -12370,7 +12447,9 @@ async def _drain_one_assignment(
                 )
             break
 
-        cap = assignment_dispatch.assignment_concurrency_cap(assignment.trigger_config)
+        cap = assignment_dispatch.assignment_concurrency_cap(
+            assignment.trigger_config, getattr(assignment, "trigger_type", None)
+        )
         if throttled:
             cap = assignment_dispatch.throttled_cap(cap)
         usage = await _slot_usage(db, assignment_id)

@@ -819,10 +819,7 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
                 fields["evidence"][PIR_FLOOR_KEY] = await _pir_floor(
                     db, primary.id, fields["evidence"].get("pir"), kind=floor
                 )
-            elif row.trigger_path == "relevant_threat":
-                from app.services.ctem_trigger_rules import PIR_FLOOR_KEY
-
-                fields["evidence"][PIR_FLOOR_KEY] = False
+            # #2543: a sighting with no PIR data writes no floor; record_signal merges it with the stored one.
             from app.services.ctem_signal_sources import source_key
 
             # #2436: the source that recorded it, so the signal sources view counts each source apart.

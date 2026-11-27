@@ -48,6 +48,24 @@ describe("DashboardSourceDialog", () => {
     );
   });
 
+  it("shows and writes the whole dashboard as its stored manifest when the server sends one", async () => {
+    const manifest = {
+      config: { relativeDate: null, startDate: null, endDate: null },
+      variables: [],
+      widgets: { big: { id: "big", type: "x_xtm_one.singlevalue", perspective: null, dataSelection: [], parameters: { title: "Answer" } } },
+      x_xtm_one: { version: 3, title: "Threat board" },
+    };
+    api.put.mockResolvedValue({ ...DASHBOARD, revision: 4 });
+    const editor = open(null, { ...DASHBOARD, manifest } as CustomDashboard);
+    expect(JSON.parse(editor.value)).toEqual(manifest);
+    const renamed = { ...manifest, x_xtm_one: { ...manifest.x_xtm_one, title: "Renamed" } };
+    fireEvent.change(editor, { target: { value: JSON.stringify(renamed) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(api.put.mock.calls).toEqual([["/custom-dashboards/d1/definition", { revision: 3, definition: renamed }]]),
+    );
+  });
+
   it("writes the picked widget's visualization alone as a set operation", async () => {
     api.patch.mockResolvedValue({ ...DASHBOARD, revision: 4 });
     open("big");

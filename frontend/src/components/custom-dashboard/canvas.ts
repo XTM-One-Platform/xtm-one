@@ -14,8 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The absolute layout of a dashboard: a canvas in pixels, like Splunk
- * Dashboard Studio's, and every edit the studio makes to it.
+ * The absolute layout of a dashboard: a canvas in pixels,
+ * and every edit the studio makes to it.
  *
  * A tab whose layout is `absolute` (`backend/app/services/dashboard_canvas.py`)
  * has a size, a way to fit the screen (`display`), a background, and places
@@ -776,7 +776,7 @@ export function copyItems(definition: Raw, layoutId: string, ids: readonly strin
  * Paste a copy into a layout, `offset` pixels from where it was, on top.
  * Every element gets a new id; a line held to a pasted block holds to its
  * copy, one held to anything else lets go. `newDataSources`: each copy reads
- * a copy of its data source (Splunk's "clone with a new data source") instead
+ * a copy of its data source ("clone with a new data source") instead
  * of the same one. Returns the new ids.
  */
 export function pasteItems(
@@ -901,12 +901,12 @@ export function removeTab(definition: Raw, layoutId: string): Raw | null {
   return removeItems(next, orphans);
 }
 
-/** The pixels of a grid cell, and back (the grid's rows are 36 px: `GRID_ROW_HEIGHT`). */
-const CELL = { width: 120, height: 36 } as const;
+/** The pixels of a grid cell, and back (the grid's rows are OpenCTI's: 62 px and a 20 px gap, `OPENCTI_GRID_ROWS`). */
+const CELL = { width: 120, height: 82 } as const;
 
 /**
  * Switch a tab between a grid and a canvas. Places are converted (a column is
- * `canvas width / 12` pixels, a row 36); `null` when a canvas holding
+ * `canvas width / 12` pixels, a row 82); `null` when a canvas holding
  * elements a grid cannot draw (shapes, lines, icons, images, markdown) would
  * become a grid.
  */

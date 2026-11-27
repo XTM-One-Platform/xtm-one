@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * A subset of Splunk Dashboard Studio's dynamic options syntax, read on the closed data.
+ * The dynamic options syntax, read on the closed data.
  *
  * An option whose value starts with `>` is an expression: a source, then
  * selectors and formatters piped one after the other, e.g.

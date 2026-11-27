@@ -2567,12 +2567,13 @@ async def record_take(
             opened.update(await reset_page(rb, start_url, reset, keep))
         else:
             await rb.goto(start_url)
-        if signed_in:
+        if signed_in and profile is not None:
             # The page may paint its sign-in form while it reads the session: the take
             # starts once the application shows signed in, so nothing painted before is in it.
             if progress:
                 await progress(9, "Waiting for the application to open signed in")
-            landed = await signin.wait_signed_in(rb, profile)
+            # A start URL on an application the profile declares is judged as that application (its own host).
+            landed = await signin.wait_signed_in(rb, profile.scoped_to(start_url))
             if not landed.authenticated:
                 if _cleared_any(opened.get("cleared") or {}):
                     raise ResetSignedOutError(landed, opened["cleared"])

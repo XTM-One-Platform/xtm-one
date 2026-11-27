@@ -37,6 +37,7 @@ function profile(overrides: Partial<BrowserProfile> = {}): BrowserProfile {
     start_url: "https://app.example.test/",
     login_url: null,
     allowed_hosts: [],
+    apps: [],
     login_config: {},
     browser_options: {},
     username_hint: null,
@@ -134,5 +135,27 @@ describe("BrowserProfileCard on an application that did not answer", () => {
     await waitFor(() => expect(screen.getAllByText("Dry run: signed in, not checked")).toHaveLength(2));
     expect(screen.queryByText("Dry run did not finish")).toBeNull();
     expect(screen.queryByText("Dry run: did not finish")).toBeNull();
+  });
+});
+
+describe("BrowserProfileCard of a profile that signs in other applications", () => {
+  it("names the applications on one line, without their URLs on the card face", () => {
+    card(
+      profile({
+        apps: [
+          { name: "Risk", url: "https://risk.example.test/" },
+          { name: "Intel", url: "https://intel.example.test/" },
+          { name: "", url: "https://third.example.test/path" },
+        ],
+      }),
+    );
+    const line = screen.getByTestId("browser-profile-apps");
+    expect(line).toHaveTextContent("Also signs in: Risk, Intel+1");
+    expect(line).not.toHaveTextContent("https://");
+  });
+
+  it("shows no application line when the profile declares none", () => {
+    card(profile({ apps: [] }));
+    expect(screen.queryByTestId("browser-profile-apps")).toBeNull();
   });
 });

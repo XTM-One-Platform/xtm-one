@@ -203,7 +203,7 @@ describe("CustomDashboardView", () => {
     const editing = { onLayout: vi.fn(), onRemove: vi.fn() };
     draw(normalizeDashboard(TWO), { editing });
     fireEvent.keyDown(handle("First"), { key: "ArrowDown", shiftKey: true });
-    expect(editing.onLayout.mock.calls).toEqual([[{ op: "layout", items: [{ id: "a", x: 0, y: 0, w: 6, h: 5 }] }]]);
+    expect(editing.onLayout.mock.calls).toEqual([[{ op: "layout", items: [{ id: "a", x: 0, y: 0, w: 6, h: 3 }] }]]);
   });
 
   it("removes a widget in edit mode and keeps the last one", () => {

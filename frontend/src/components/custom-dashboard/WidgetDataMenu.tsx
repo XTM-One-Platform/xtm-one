@@ -16,7 +16,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 /**
  * A data visualization's menu: Inspect (its data source and the result it
  * drew), Export CSV (that result as a file) and Download PNG (the
- * visualization rendered on the server, `useExportDashboard`), like Splunk's;
+ * visualization rendered on the server, `useExportDashboard`);
  * for a platform's widget, Open in its platform (as the modules keep their
  * links in the card's header, not under the chart).
  *

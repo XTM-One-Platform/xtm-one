@@ -13,8 +13,8 @@
 
 """The options of a dashboard visualization that draws data, by type, and the dynamic options grammar.
 
-A data visualization (``dashboard_definition.DATA_TYPES``) carries Splunk
-Dashboard Studio's options under their Splunk names (``stackMode``,
+A data visualization (``dashboard_definition.DATA_TYPES``) carries its
+options under their camelCase names (``stackMode``,
 ``legendDisplay``, ``majorValue``, ``columnFormat``...). Each family has a
 closed model here: an unknown key, an enum outside its list, a number out of
 bounds or a malformed colour is refused with the field's path, like the rest of
@@ -195,7 +195,7 @@ class TrellisOptions(BaseModel):
 
 
 class _Options(BaseModel):
-    """Every data visualization's options: Splunk's camelCase names, nothing else."""
+    """Every data visualization's options: their camelCase names, nothing else."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, alias_generator=to_camel, populate_by_name=True)
 
@@ -229,6 +229,7 @@ STUDIO_VIZ_TYPES = (
     "xtm.parallelcoordinates",
     "xtm.timeline",
     "xtm.treemap",
+    "xtm.attackflow",
 )
 
 
@@ -576,6 +577,32 @@ OPTIONS_BY_TYPE: dict[str, type[_Options]] = {
     "xtm.timeline": TimelineOptions,
     "xtm.map": MapOptions,
 }
+
+
+def _choices(annotation: Any) -> list | None:
+    """The values a ``Literal`` annotation (or an optional one) allows; ``None`` for anything else."""
+    from typing import Literal, get_args, get_origin
+
+    if get_origin(annotation) is Literal:
+        return list(get_args(annotation))
+    for arg in get_args(annotation):
+        found = _choices(arg)
+        if found:
+            return found
+    return None
+
+
+def option_names(viz_type: str) -> list[dict]:
+    """The options *viz_type* takes, read from its model: each name as stored, and its values when they are a list."""
+    model = OPTIONS_BY_TYPE.get(viz_type, _Options)
+    described = []
+    for name, info in model.model_fields.items():
+        entry: dict = {"name": info.alias or name}
+        choices = _choices(info.annotation)
+        if choices:
+            entry["values"] = choices
+        described.append(entry)
+    return described
 
 
 def validate_options(viz_type: str, options: dict[str, Any]) -> dict[str, Any]:

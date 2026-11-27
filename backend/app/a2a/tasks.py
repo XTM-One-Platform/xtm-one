@@ -108,6 +108,11 @@ LIFETIME_CANCEL_TASK_REASON = (
 #: reported ``canceled``, and it is failed at the cut, not a lease later.
 INTERRUPTED_ERROR_TEXT = "External task interrupted by a platform restart"
 
+#: The reason of a task whose run met a pool checkout timeout (#2561): the
+#: platform was under load, the task can be sent again as is. Never the
+#: driver's QueuePool text, which names internal pool sizes.
+BUSY_ERROR_TEXT = "External task busy: the platform is under load. Send the task again in a few seconds."
+
 
 class TaskRejectedError(ValueError):
     """Submission refused before any run started."""
@@ -853,6 +858,7 @@ _PARTNER_VISIBLE_ERROR_PREFIXES = (
     "External task exceeded",  # TIMEOUT_ERROR_TEXT, LIFETIME_ERROR_TEXT
     "External task interrupted",  # INTERRUPTED_ERROR_TEXT
     "Exposure revoked",  # the executor's revoked-mid-flight text
+    "External task busy",  # BUSY_ERROR_TEXT (#2561)
 )
 
 #: The prefix the stale-run sweep writes on a run it fails
@@ -2302,7 +2308,15 @@ async def execute_task_run(task_id: uuid.UUID) -> None:
         except Exception as exc:
             # Any failure becomes a terminal FAILED task carrying a reason.
             # Leaving it non-terminal would strand the partner polling.
-            status, error = "failed", str(exc)[:2000]
+            from app.core.db_availability import is_pool_timeout
+
+            if is_pool_timeout(exc):
+                # Transient load (#2561): a partner-visible busy reason to send
+                # the task again, never the raw QueuePool text.
+                logger.warning("A2A task %s (run %s) failed on a pool timeout: answered busy", task_id, run_id)
+                status, error = "failed", BUSY_ERROR_TEXT
+            else:
+                status, error = "failed", str(exc)[:2000]
         finally:
             supervisor.cancel()
             with suppress(asyncio.CancelledError):

@@ -26,6 +26,13 @@ class _Body(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class BrowserProfileApp(_Body):
+    """Another application the profile's saved session signs in."""
+
+    name: str = Field("", max_length=200)
+    url: str = Field(min_length=1, max_length=2000)
+
+
 class BrowserProfileWrite(_Body):
     """A profile write. Credentials are write-only: omit to keep, ``""`` to clear; each may be a vault reference."""
 
@@ -33,6 +40,8 @@ class BrowserProfileWrite(_Body):
     start_url: str = Field(min_length=1, max_length=2000)
     login_url: str | None = Field(None, max_length=2000)
     allowed_hosts: list[str] = Field(default_factory=list, max_length=50)
+    #: The other applications the saved session signs in; omitted = keep, ``[]`` = none (``profiles.clean_apps``).
+    apps: list[BrowserProfileApp] | None = Field(None, max_length=20)
     #: Selectors and URL patterns by name; ``keep_storage_keys`` a list of storage keys (``profiles``).
     login_config: dict[str, str | list[str]] | None = None
     browser_options: dict[str, str] | None = None

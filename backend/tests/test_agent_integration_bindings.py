@@ -230,8 +230,9 @@ def test_resolved_bindings_say_they_were_resolved():
 #: basis in one, is reviewed here before it ships.
 _BASES = {
     # The turn's resolution; the pipeline ref's checked pin or fallback pick;
-    # its pin in the owner's own run.
-    "services/agent_chat.py": {"RESOLVED", "CALLER_CHECKED", "OWNER_RUN"},
+    # its pin in the owner's own run; its pin for a person the agent is
+    # shared with, as bound (#2568).
+    "services/agent_chat.py": {"RESOLVED", "CALLER_CHECKED", "OWNER_RUN", "SHARED_AS_BOUND"},
     "services/assignment_engine.py": {"UNCHECKED"},
     # The Integration node, unchecked; the call-tool node, the caller's own.
     "services/flow_runner.py": {"UNCHECKED", "CALLER_CHECKED"},
@@ -244,6 +245,9 @@ _BASES = {
     "integrations/providers/openapi.py": {"CALLER_CHECKED"},
     # Platform Health's module reads, as the "Run checks as" user it checked.
     "services/builtin_tools/health_modules.py": {"CALLER_CHECKED"},
+    # A dashboard integration source, read with the reader's own access and
+    # credential (``get_user_integration`` + ``usable_credential_holder``).
+    "services/dashboard_sources.py": {"CALLER_CHECKED"},
     # AgentIntegrationBindings.tool_bindings
     "services/integration_tools.py": {"RESOLVED"},
 }

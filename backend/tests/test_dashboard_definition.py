@@ -51,8 +51,8 @@ def test_a_widget_dashboard_reads_as_a_definition_with_its_places():
     assert definition["dataSources"]["ds_kev"]["options"]["source"] == "opencrq"
     structure = definition["layout"]["layoutDefinitions"]["layout_1"]["structure"]
     assert [(e["item"], e["position"]) for e in structure] == [
-        ("note", {"x": 0, "y": 0, "w": 6, "h": 4}),
-        ("kev", {"x": 0, "y": 4, "w": 12, "h": 6}),
+        ("note", {"x": 0, "y": 0, "w": 6, "h": 2}),
+        ("kev", {"x": 0, "y": 2, "w": 12, "h": 3}),
     ]
 
 
