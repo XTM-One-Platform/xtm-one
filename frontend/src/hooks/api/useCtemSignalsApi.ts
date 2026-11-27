@@ -210,6 +210,24 @@ export interface CtemSignalPath {
   /** Its sources on, and its sources that are or could be on here (#2506). */
   sources_enabled?: number;
   sources_available?: number;
+  /** Why a path that is on recorded no signal in 30 days (#2642); absent when it did or is not on. */
+  silent_reason?: CtemSignalPathSilentReason | null;
+}
+
+/** The codes `silent_reason` answers on `GET /ctem-signals/paths` (#2642). */
+export type CtemSilentReasonCode = "never_evaluated" | "no_asset_past_threshold" | "upstream_sync_failed" | "listener_never_fired" | "inventory_truncated";
+
+/** Why a path that is on records nothing, with the last inventory evaluation of path 6 when there is one (#2642). */
+export interface CtemSignalPathSilentReason {
+  code: CtemSilentReasonCode;
+  detail: string;
+  evaluation?: {
+    at?: string;
+    evaluated?: number;
+    stale_after_days?: number;
+    failed_syncs?: number;
+    withheld_sync_failed?: number;
+  };
 }
 
 /** Why an outside path raised nothing (#2634): a code the screen words (quiet-reason.ts) and its data. */

@@ -142,6 +142,8 @@ PATH_CAPABILITIES: dict[str, tuple[str, ...]] = {
 }
 
 _ATTACK_SURFACE = tuple((p, "pass") for p in ATTACK_SURFACE_PROVIDERS)
+#: The inventory evaluation of path 6 (#2642): XTM One's own records, on wherever XTM One runs.
+INVENTORY_PASS: tuple[str, str] = ("xtm_one", "pass")
 
 #: The sources of each path. Keep in step with ``ctem_signal_listeners.LISTENERS``
 #: (``test_ctem_signal_sources.py`` fails on a listener with no source row).
@@ -198,6 +200,8 @@ PATH_SOURCES: dict[str, tuple[Source, ...]] = {
             Source(p, k, "The attack-surface pass sees a name resolve to nothing or a host unseen")
             for p, k in _ATTACK_SURFACE
         ),
+        # #2642: the inventory as it stands, daily and at the resync of a purge (ctem_inventory_staleness).
+        Source("xtm_one", "pass", "The inventory evaluation finds an asset unseen past the threshold or no longer synced"),
     ),
     "surface_drift": (
         *(Source(p, k, "The attack-surface pass sees an undeclared host or a new port") for p, k in _ATTACK_SURFACE),
@@ -488,6 +492,8 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
     connected = _connected_ids([(r[0], r[1]) for r in rows])
     bound = BoundSources((p, "listener") for p in connected)
     bound.update(reader_pairs(connected))
+    # #2642: the inventory evaluation reads XTM One's own records: no integration, always on.
+    bound.add(INVENTORY_PASS)
 
     primary = await get_primary(db)
     if primary is not None:
