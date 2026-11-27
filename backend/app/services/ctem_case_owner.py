@@ -28,8 +28,11 @@ The owner comes, in order:
 5. else none (an instance with no active administrator).
 
 An owner is a platform account: an owner text is matched to an active user by
-email, case-insensitive. A name that is not an account's email is skipped,
-never guessed. The reason (``asset group: All MacOS x86_64 (12 of 15 affected
+email, case-insensitive. An owner text that names a platform group (its name,
+case-insensitive) with an active member is a team owner (#2577): the case is
+the team's (``ctem_cases.owner_group_id``) and keeps a person owner, the
+team's first active manager, else its first active member by account creation.
+Any other name is skipped, never guessed. The reason (``asset group: All MacOS x86_64 (12 of 15 affected
 assets)``, ``fallback: CTEM decider (administrator)``) is the ``reason`` of the
 ``owner`` case event, the contributors and the routing version its
 ``evidence`` (JSON), so a wrong routing is diagnosable from the case.
@@ -49,6 +52,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -70,8 +74,9 @@ FROM_GROUP = "asset group"
 FROM_PRIMARY = "primary asset"
 FROM_DEFAULT = "fallback: instance default owner"
 FROM_DECIDER = "fallback: CTEM decider"
+FROM_KEPT = "fallback: kept, no owner found"
 #: The routing version the ``owner`` event's evidence carries: a case routed by it is not re-routed.
-ROUTE_VERSION = 2
+ROUTE_VERSION = 3  # 3: a platform group owner text routes to that team (#2577)
 #: Most open cases one sweep re-routes (#2560); the rest wait for the next sweep.
 ROUTE_BATCH = 100
 
@@ -95,28 +100,83 @@ class Candidate:
 
 
 @dataclass(frozen=True)
+class Team:
+    """A platform group an owner text names (#2577): its id, name and the person who leads its cases."""
+
+    id: uuid.UUID
+    name: str
+    lead: uuid.UUID
+
+
+@dataclass(frozen=True)
 class Route:
-    """Where a case goes: the owner (``None``: nobody), why, and the contributors (other group owners)."""
+    """Where a case goes: the owner (``None``: nobody), why, the contributors and the owning team (#2577)."""
 
     owner: uuid.UUID | None = None
     reason: str | None = None
     contributors: tuple[tuple[uuid.UUID, str], ...] = field(default_factory=tuple)
+    team: Team | None = None
 
     def evidence(self) -> str:
-        """The ``evidence`` of the ``owner`` case event: the routing version and the contributors (JSON)."""
+        """The ``evidence`` of the ``owner`` case event: the routing version, the basis and the contributors (JSON)."""
+        basis = basis_of(self.reason)
+        if basis is not None and self.team is not None:
+            basis = {**basis, "team": {"id": str(self.team.id), "name": self.team.name}}
         return json.dumps(
             {
                 "route": ROUTE_VERSION,
                 "fallback": self.fallback,
+                "basis": basis,
                 "contributors": [{"user_id": str(user), "via": via} for user, via in self.contributors],
             },
             sort_keys=True,
         )
 
     @property
+    def team_id(self) -> uuid.UUID | None:
+        """The owning team's group id, ``None`` when a person owns the case."""
+        return self.team.id if self.team is not None else None
+
+    @property
     def fallback(self) -> bool:
         """Whether no asset group or primary asset owner was found (a default, the decider, or kept)."""
         return not (self.reason or "").startswith((FROM_GROUP, FROM_PRIMARY))
+
+
+def basis_of(reason: str | None) -> dict[str, Any] | None:
+    """The basis of an owner *reason* this module wrote (pure, #2571); ``None`` for any other text.
+
+    Reads an ``owner`` event written before the basis was stored, so every routed
+    case explains its owner, never only the new ones.
+    """
+    text = (reason or "").strip()
+    if not text:
+        return None
+    group = re.fullmatch(rf"{re.escape(FROM_GROUP)}: (.+) \((\d+)(?: of (\d+))? affected assets\)", text, re.S)
+    if group:
+        return {
+            "kind": "asset_group",
+            "name": group.group(1),
+            "assets": int(group.group(2)),
+            "affected": int(group.group(3)) if group.group(3) else None,
+        }
+    if text.startswith(f"{FROM_PRIMARY}: "):
+        return {"kind": "primary_asset", "name": text[len(FROM_PRIMARY) + 2 :]}
+    if text == FROM_DEFAULT:
+        return {"kind": "default"}
+    decider = re.fullmatch(
+        rf"{re.escape(FROM_DECIDER)} \((decide group member|administrator)(?:, first of (\d+) by account creation)?\)",
+        text,
+    )
+    if decider:
+        return {
+            "kind": "decider",
+            "source": "decide_group" if decider.group(1) == "decide group member" else "administrator",
+            "candidates": int(decider.group(2)) if decider.group(2) else 1,
+        }
+    if text == FROM_KEPT:
+        return {"kind": "kept"}
+    return None
 
 
 def default_owner_email() -> str:
@@ -150,6 +210,22 @@ def _ranked(candidates: Iterable[Candidate]) -> list[Candidate]:
     return sorted(candidates, key=lambda c: (-c.assets, _key(c.name)))
 
 
+def team_names(candidates: Iterable[Candidate]) -> list[str]:
+    """The owner texts that may name a platform group (no email), lower-cased (pure, #2577)."""
+    return sorted({k for k in (_key(c.owner) for c in candidates if c.owner and not _email(c.owner)) if k})
+
+
+def _resolve(
+    owner: str, users_by_email: Mapping[str, uuid.UUID], teams: Mapping[str, Team]
+) -> tuple[uuid.UUID | None, Team | None]:
+    """The person and, for a team owner, the team an owner text names; ``(None, None)`` when neither."""
+    user = users_by_email.get(_email(owner))
+    if user is not None:
+        return user, None
+    team = teams.get(_key(owner))
+    return (team.lead, team) if team is not None else (None, None)
+
+
 def pick_route(
     groups: Iterable[Candidate],
     primary_assets: Iterable[Candidate],
@@ -157,28 +233,31 @@ def pick_route(
     *,
     affected: int,
     default: str = "",
+    teams: Mapping[str, Team] | None = None,
 ) -> Route:
     """The owner of a case: the majority asset group's owner, a primary asset's, then the default (pure, #2560).
 
-    Only an owner that is an account counts: a group whose owner is no account
+    Only an owner that is an account or a platform group with an active member
+    (*teams*, by lower-cased name, #2577) counts: a group whose owner is neither
     is passed over for the next one. The device user (an asset record's owner)
-    is never a candidate. Answers an empty :class:`Route` when none is an account.
+    is never a candidate. Answers an empty :class:`Route` when none resolves.
     """
-    ranked = [(c, users_by_email.get(_email(c.owner))) for c in _ranked(groups)]
-    owned = [(c, user) for c, user in ranked if user is not None]
+    known = teams or {}
+    ranked = [(c, *_resolve(c.owner, users_by_email, known)) for c in _ranked(groups)]
+    owned = [(c, user, team) for c, user, team in ranked if user is not None]
     if owned:
-        chosen, user = owned[0]
+        chosen, user, team = owned[0]
         of = f" of {affected}" if affected else ""
         contributors: dict[uuid.UUID, str] = {}
-        for c, other in owned[1:]:
+        for c, other, _team in owned[1:]:
             if other is not None and other != user and other not in contributors:
                 contributors[other] = f"{FROM_GROUP}: {c.name}"
         reason = f"{FROM_GROUP}: {chosen.name} ({chosen.assets}{of} affected assets)"
-        return Route(user, reason, tuple(contributors.items()))
+        return Route(user, reason, tuple(contributors.items()), team)
     for c in _ranked(primary_assets):
-        accountable = users_by_email.get(_email(c.owner))
+        accountable, team = _resolve(c.owner, users_by_email, known)
         if accountable is not None:
-            return Route(accountable, f"{FROM_PRIMARY}: {c.name}")
+            return Route(accountable, f"{FROM_PRIMARY}: {c.name}", team=team)
     fallback = users_by_email.get(_email(default))
     return Route(fallback, FROM_DEFAULT) if fallback is not None else Route()
 
@@ -268,7 +347,8 @@ async def route_case(
             groups, primaries = await _candidates(db, organization_id, names, primary_names, profile_owners)
             emails = sorted({e for e in (_email(c.owner) for c in [*groups, *primaries]) if e} | ({default} - {""}))
             users = await _users(db, emails)
-        route = pick_route(groups, primaries, users, affected=len(names), default=default)
+            teams = await team_owners(db, team_names([*groups, *primaries]))
+        route = pick_route(groups, primaries, users, affected=len(names), default=default, teams=teams)
     except Exception:  # the inventory never breaks a case opening or a sweep
         logger.info("CTEM case owner routing unavailable", exc_info=True)
     if route.owner is not None:
@@ -277,13 +357,36 @@ async def route_case(
     return Route(owner, how) if owner is not None else Route()
 
 
-async def owner_for_signal(
-    db: AsyncSession, signal: Any, case: Any = None
-) -> tuple[uuid.UUID | None, str | None, tuple[tuple[uuid.UUID, str], ...]]:
-    """``(owner, reason, contributors)`` of a case opened from *signal* (#2560)."""
+async def route_for_signal(db: AsyncSession, signal: Any, case: Any = None) -> Route:
+    """The :class:`Route` of a case opened from *signal* (#2560, its team #2577)."""
     names = await case_asset_names(db, signal, case)
-    route = await route_case(db, getattr(signal, "organization_id", None), names, primary_asset_names(signal))
-    return route.owner, route.reason, route.contributors
+    return await route_case(db, getattr(signal, "organization_id", None), names, primary_asset_names(signal))
+
+
+async def team_owners(db: AsyncSession, names: Sequence[str]) -> dict[str, Team]:
+    """Lower-cased group name -> :class:`Team`, for the platform groups *names* name with an active member (#2577).
+
+    The lead is the group's first active manager, else its first active member,
+    by account creation then id. ``{}`` when no name is given (no read).
+    """
+    from app.models.group import Group, GroupManager, GroupMember
+    from app.models.user import User
+
+    if not names:
+        return {}
+    order = (User.created_at.asc(), User.id.asc())
+    found: dict[str, Team] = {}
+    for link in (GroupManager, GroupMember):
+        rows = await db.execute(
+            select(Group.id, Group.name, User.id)
+            .join(link, link.group_id == Group.id)
+            .join(User, User.id == link.user_id)
+            .where(func.lower(Group.name).in_(list(names)), User.is_active.is_(True))
+            .order_by(*order)
+        )
+        for group_id, name, user_id in rows.all():
+            found.setdefault(_key(name), Team(group_id, str(name), user_id))
+    return found
 
 
 async def _users(db: AsyncSession, emails: Sequence[str]) -> dict[str, uuid.UUID]:
@@ -402,24 +505,50 @@ def owner_event(case_id: uuid.UUID, route: Route, *, now: Any, actor: str, previ
     )
 
 
-def owner_details(events: Iterable[Any]) -> dict[str, Any]:
-    """The newest ``owner`` event's reason and contributors, for the case read (pure; *events* newest first)."""
+def _contributor_group(via: object) -> str | None:
+    text = str(via or "")
+    prefix = f"{FROM_GROUP}: "
+    return (text[len(prefix) :] or None) if text.startswith(prefix) else None
+
+
+def owner_details(events: Iterable[Any], *, system_actor: str = "system") -> dict[str, Any]:
+    """The newest ``owner`` event's reason, basis and contributors, for the case read (pure; *events* newest first).
+
+    ``owner_basis`` (#2571) is the data the case detail words in the reader's
+    language: ``{"kind": "asset_group", "name", "assets", "affected"}``,
+    ``primary_asset`` (name), ``default``, ``decider`` (source, candidates),
+    ``kept``, or ``person`` when a person set or cleared the owner; ``None``
+    when the reason is none of these. An event written before the basis was
+    stored is read from its reason.
+    """
     for event in events:
         if getattr(event, "kind", None) != "owner":
             continue
         contributors: list[dict[str, str]] = []
+        basis: Any = None
         try:
             value = json.loads(getattr(event, "evidence", None) or "")
         except ValueError:
             value = None
         if isinstance(value, Mapping):
             contributors = [
-                {"user_id": str(c.get("user_id")), "via": str(c.get("via") or "")}
+                {
+                    "user_id": str(c.get("user_id")),
+                    "via": str(c.get("via") or ""),
+                    # The asset group as data (#2571): the UI never shows the stored sentence.
+                    "group": _contributor_group(c.get("via")),
+                }
                 for c in value.get("contributors") or []
                 if isinstance(c, Mapping) and c.get("user_id")
             ]
-        return {"owner_reason": getattr(event, "reason", None), "owner_contributors": contributors}
-    return {"owner_reason": None, "owner_contributors": []}
+            basis = value.get("basis") if isinstance(value.get("basis"), Mapping) else None
+        reason = getattr(event, "reason", None)
+        if basis is None:
+            basis = basis_of(reason)
+        if basis is None and getattr(event, "actor", system_actor) != system_actor:
+            basis = {"kind": "person"}
+        return {"owner_reason": reason, "owner_basis": basis, "owner_contributors": contributors}
+    return {"owner_reason": None, "owner_basis": None, "owner_contributors": []}
 
 
 async def route_open_cases(db: AsyncSession, *, now: Any, actor: str = "system", limit: int = ROUTE_BATCH) -> int:
@@ -493,9 +622,11 @@ async def route_open_cases(db: AsyncSession, *, now: Any, actor: str = "system",
         if route.owner is None and case.owner_user_id is None:
             continue
         if route.owner is None:  # nobody to route to: the current owner stays, recorded as such.
-            route = Route(case.owner_user_id, "fallback: kept, no owner found")
+            route = Route(case.owner_user_id, FROM_KEPT)
         db.add(owner_event(case.id, route, now=now, actor=actor, previous=case.owner_user_id))
         case.owner_user_id = route.owner
+        if route.reason != FROM_KEPT:
+            case.owner_group_id = route.team_id
         count += 1
     return count
 

@@ -518,10 +518,11 @@ async def open_from_signal(
         # never the device user. The reason and the contributors go on the owner event.
         from app.services import ctem_case_owner
 
-        owner, how, contributors = await ctem_case_owner.owner_for_signal(db, signal, case)
-        if owner is not None:
-            case.owner_user_id = owner
-            route = ctem_case_owner.Route(owner, how, contributors)
+        route = await ctem_case_owner.route_for_signal(db, signal, case)
+        if route.owner is not None:
+            case.owner_user_id = route.owner
+            # A platform group owning the asset group owns the case as a team (#2577).
+            case.owner_group_id = route.team_id
             db.add(ctem_case_owner.owner_event(case.id, route, now=now, actor=rules.SYSTEM_ACTOR))
     else:
         # A second signal on the same fix: the most urgent severity and the earliest SLA win.

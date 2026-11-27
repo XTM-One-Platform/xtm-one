@@ -435,6 +435,25 @@ export interface CtemCaseDetail extends CtemCaseSummary {
   owner_fleet?: CtemCaseOwnerFleet | null;
   /** One resolved decision record per gate the case met (#1518); absent on an API older than #1524. */
   gates?: CtemCaseGateRecord[];
+  /** Why the case has its owner, as data (#2571): null when unexplained; absent on an API older than #2571. */
+  owner_basis?: CtemCaseOwnerBasis | null;
+  /** The other asset group owners who contribute (#2560); `group` is absent on an API older than #2571. */
+  owner_contributors?: CtemCaseOwnerContributor[];
+}
+
+/** How a case's owner was found (backend ctem_case_owner.owner_details, #2571). */
+export type CtemCaseOwnerBasis =
+  | { kind: "asset_group"; name: string; assets: number; affected: number | null }
+  | { kind: "primary_asset"; name: string }
+  | { kind: "default" }
+  | { kind: "decider"; source: "decide_group" | "administrator"; candidates: number }
+  | { kind: "kept" }
+  | { kind: "person" };
+
+/** Another asset group owner of a case (#2560). */
+export interface CtemCaseOwnerContributor {
+  user_id: string;
+  group?: string | null;
 }
 
 /** The status of a gate record (`ctem_case_gate_records.STATUSES`). */

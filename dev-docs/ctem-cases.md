@@ -822,8 +822,22 @@ then the existing AI assessment and facts grid unchanged.
   and the contributors; the case read answers them as `owner_reason` and `owner_contributors`. The sweep's owner
   pass (`route_open_cases`) re-routes at most `ROUTE_BATCH` open cases per sweep that this routing version did not
   route (or routed to a fallback before an asset group or the profile changed), one `owner` event each, no
-  platform event, no agent run; a case where a person ever set or cleared the owner is never touched. A team
-  (platform group) as owner is a follow-up.
+  platform event, no agent run; a case where a person ever set or cleared the owner is never touched.
+- **Team owner (#2577)**: an asset group or primary asset owner text that names a platform group (its name,
+  case-insensitive) with an active member routes the case to that team: `ctem_cases.owner_group_id` (nullable,
+  `ON DELETE SET NULL`) holds the group, `owner_user_id` its lead (first active manager, else first active member
+  by account creation; `ctem_case_owner.team_owners`). The `owner` event's `basis` carries `team: {id, name}`;
+  the case read and list rows answer `owner_group_id`. The list's `owner_user_id` filter (the "Mine" chip) also
+  keeps the cases a team of that person owns. An email owner wins as before; a team with no active member is
+  passed over. A person set or cleared by hand clears the team. Routing version 3 re-routes the open cases once.
+- **Why this owner (#2571)**: the `owner` event's evidence also carries `basis`, the routing reason as data
+  (`ctem_case_owner.basis_of`): `{kind: asset_group, name, assets, affected}`, `{kind: primary_asset, name}`,
+  `{kind: default}`, `{kind: decider, source: decide_group | administrator, candidates}` or `{kind: kept}`; an
+  event written before it is read from its reason, and a person's change answers `{kind: person}`. The case read
+  answers it as `owner_basis` and each contributor's asset group as `group`. The case header draws an info button
+  next to the owner (`ctem/CaseOwnerWhy.tsx`) that words the basis in the reader's language, never the stored
+  sentence, lists the other asset group owners by name, and on a fallback says to set owners on the asset groups
+  in Inventory.
 - **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
   (quick filters, search and filters applied) at `/ctem/cases` or as columns
   at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.

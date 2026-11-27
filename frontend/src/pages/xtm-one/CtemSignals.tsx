@@ -301,7 +301,7 @@ function SignalsTab() {
     },
     {
       key: "path",
-      header: "Trigger path",
+      header: "Signal type",
       hideable: true,
       width: COLUMN_WIDTH.path,
       cell: (s) => <TruncatedText text={t_i18n(s.trigger_path_label || s.trigger_path)} />,
@@ -399,12 +399,12 @@ function SignalsTab() {
         defaultPageSize={25}
         rowLines={2}
         searchFields={(s) => [s.subject.label, s.subject.ref, s.trigger_path_label, signalProviderName(s.source.provider)]}
-        searchPlaceholder={t_i18n("Search signal, path or source")}
+        searchPlaceholder={t_i18n("Search signal, type or source")}
         filtersInPill
         filters={[
           {
             key: "path",
-            label: "Trigger path",
+            label: "Signal type",
             values: (s) => [s.trigger_path],
             options: paths.map((p) => ({ value: p.id, label: t_i18n(p.label) })),
           },
