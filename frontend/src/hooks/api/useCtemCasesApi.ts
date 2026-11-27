@@ -35,6 +35,13 @@ export const CTEM_OPEN_CASE_STATES = ["new", "analyzing", "waiting_decision", "r
 export function isOpenCaseState(state: string | null | undefined): boolean {
   return (CTEM_OPEN_CASE_STATES as readonly string[]).includes(state ?? "");
 }
+/** The statuses a case is closed in (backend CLOSED_STATES): its members still open at source are not worked (#2675). */
+const CTEM_CLOSED_CASE_STATES: readonly string[] = ["mitigated_watching", "resolved", "accepted_risk"];
+
+/** True for a closed status; an unknown or legacy status is not closed. */
+export function isClosedCaseState(state: string | null | undefined): boolean {
+  return CTEM_CLOSED_CASE_STATES.includes(state ?? "");
+}
 export type CtemCasePriority = "critical" | "high" | "medium" | "low";
 
 /** A case as one list row (`summary` in backend/app/services/ctem_cases_view.py). */

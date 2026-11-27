@@ -33,6 +33,7 @@ import { useMe, useUserDirectoryByIds } from "@/hooks/api/useAuthApi";
 import {
   CTEM_CASE_LIST_KEY,
   cachedCaseSummary,
+  isClosedCaseState,
   isOpenCaseState,
   isRestrictedIssue,
   useCtemCase,
@@ -538,7 +539,7 @@ export default function CtemCaseDetail() {
   const ownerName = personName(kase.owner_user_id);
   const restricted = kase.restricted_count;
   // A closed case works none of its members: those still open at source are shown apart (#2675).
-  const caseClosed = !isOpenCaseState(kase.state);
+  const caseClosed = isClosedCaseState(kase.state);
   // A member seen without its details makes KEV, CVSS and asset counts unknown, never computed (UX round 1 on #1931, B1).
   const aggregatesRestricted = kase.aggregates_restricted === true;
   const withoutDetails = kase.members_without_details ?? 0;
