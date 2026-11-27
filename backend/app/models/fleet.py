@@ -260,6 +260,12 @@ class Fleet(VisibilityColumns, Base):
     #: (``case_ownership`` of ``BUILTIN_FLEETS``), a fork copies it, an
     #: administrator sets it on any other fleet. NULL = runs no case.
     case_ownership: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True, default=None)
+    #: Since when the fleet's value (ROI) is measured (#2580): a factory reset
+    #: (``services/fleet_reset.py``) stamps it, and every value read of the fleet
+    #: starts at max(window start, this time), records and AI cost alike
+    #: (``services/fleet_value_marks.py``). Nothing is deleted. NULL = never reset,
+    #: the whole window counts. Operations state: a fork never copies it.
+    value_measured_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now, server_default=func.now()
     )
