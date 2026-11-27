@@ -17718,6 +17718,8 @@
   "Left after your prioritization policy: thresholds, exclusions and accepted risk.": "優先順位付けポリシー (しきい値、除外、受容リスク) の適用後に残るもの。",
   "Set a prioritization policy": "優先順位付けポリシーを設定",
   "Open issues": "未解決の課題",
+  "Open at source": "ソース側で未解決",
+  "Case closed by decision": "判断によりクローズされたケース",
   "{count, plural, =0 {No open case} one {# open case} other {# open cases}}": "{count, plural, =0 {未解決のケースはありません} other {未解決のケース # 件}}",
   "Open cases: the issues above grouped by the fix they share, needing attention or in progress.": "未解決のケース: 上記の課題を共通の修正ごとにまとめたもので、対応が必要なものと対応中のものです。",
   "Not available yet": "まだ利用できません",
