@@ -57,11 +57,14 @@ const SILENT_REASON_LABEL = {
   no_asset_past_threshold: "No asset is past the threshold and every synced asset still has its sync",
   upstream_sync_failed: "An inventory sync failed: its assets are not judged stale until it reads again",
   listener_never_fired: "No source of this path has sent an event yet",
+  inventory_truncated: "No checked asset is past the threshold, but the inventory is larger than one evaluation reads",
 } as const satisfies Record<CtemSilentReasonCode, string>;
 
 /** The sentence a silent path's info mark shows: its reason, then its last evaluation when there is one (#2642). */
 export function silentReasonText(reason: CtemSignalPathSilentReason, t_i18n: Translate, formatDate: (iso: string) => string): string {
-  const sentence = t_i18n(SILENT_REASON_LABEL[reason.code] ?? reason.detail);
+  // A code this screen does not know yet reads a translated sentence, never the API's English detail.
+  const label = SILENT_REASON_LABEL[reason.code];
+  const sentence = label ? t_i18n(label) : t_i18n("This path records no signal yet");
   const at = reason.evaluation?.at;
   if (!at) return sentence;
   const evaluated = reason.evaluation?.evaluated ?? 0;

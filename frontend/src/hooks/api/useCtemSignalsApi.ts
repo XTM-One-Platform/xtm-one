@@ -213,7 +213,7 @@ export interface CtemSignalPath {
 }
 
 /** The codes `silent_reason` answers on `GET /ctem-signals/paths` (#2642). */
-export type CtemSilentReasonCode = "never_evaluated" | "no_asset_past_threshold" | "upstream_sync_failed" | "listener_never_fired";
+export type CtemSilentReasonCode = "never_evaluated" | "no_asset_past_threshold" | "upstream_sync_failed" | "listener_never_fired" | "inventory_truncated";
 
 /** Why a path that is on records nothing, with the last inventory evaluation of path 6 when there is one (#2642). */
 export interface CtemSignalPathSilentReason {

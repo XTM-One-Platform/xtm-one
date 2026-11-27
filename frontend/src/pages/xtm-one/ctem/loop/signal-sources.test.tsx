@@ -401,7 +401,7 @@ describe("SignalSourcesPanel", () => {
     expect(within(row("new_vulnerability")).queryByTestId("ctem-signal-sources-silent-reason")).toBeNull();
   });
 
-  it("reads each silent reason code in plain words, the API's English detail only as a fallback (#2642)", () => {
+  it("reads each silent reason code in plain words, never the API's English detail (#2642)", () => {
     const t = ((key: string) => key) as Parameters<typeof silentReasonText>[1];
     const fmt = (iso: string) => iso;
     expect(silentReasonText({ code: "never_evaluated", detail: "x" }, t, fmt)).toBe(
@@ -411,6 +411,11 @@ describe("SignalSourcesPanel", () => {
     expect(silentReasonText({ code: "no_asset_past_threshold", detail: "x" }, t, fmt)).toBe(
       "No asset is past the threshold and every synced asset still has its sync",
     );
+    expect(silentReasonText({ code: "inventory_truncated", detail: "x" }, t, fmt)).toBe(
+      "No checked asset is past the threshold, but the inventory is larger than one evaluation reads",
+    );
+    const unknown = { code: "some_future_code", detail: "English detail" } as unknown as Parameters<typeof silentReasonText>[0];
+    expect(silentReasonText(unknown, t, fmt)).toBe("This path records no signal yet");
   });
 
   it("opens the Signals tab on the path clicked, never the whole list (davidloiret review on #1194)", async () => {
