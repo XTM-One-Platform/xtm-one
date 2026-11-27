@@ -16,7 +16,10 @@ NAMES = {pa.primary_asset_key(WORKSTATIONS): WORKSTATIONS}
 
 def _index(source_kind: str = "manual") -> pa.PrimaryAssetIndex:
     link = pa.Link(pa.primary_asset_key(WORKSTATIONS), source_kind, ("used_by",))
-    reacher = pa.Reacher(name="LAPTOP-042", keys={"laptop-042"}, products={"windows 11": "Microsoft Windows 11"})
+    # #2680: a bare family product (``Windows``) reaches only a device of that known OS family.
+    reacher = pa.Reacher(
+        name="LAPTOP-042", keys={"laptop-042"}, products={"windows 11": "Microsoft Windows 11"}, os_family="Windows"
+    )
     reacher.links.append((link, "asset_group", "All Windows x86_64"))
     return pa.PrimaryAssetIndex(loaded=True, reachers=[reacher])
 
