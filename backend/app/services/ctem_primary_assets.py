@@ -315,7 +315,9 @@ class PrimaryAssetIndex:
         """The primary assets *software* (names, CPEs, products) or subject *keys* reach.
 
         One entry per (primary asset key, through, source), best source first:
-        ``{primary_asset_key, software, asset, through, through_kind, source, roles, via}``.
+        ``{primary_asset_key, software, version_verified, asset, through, through_kind, source, roles, via}``.
+        ``version_verified`` holds over every asset the chain reaches (a group of many devices
+        included), not only the first one met: one versioned installed row is enough.
         """
         if not self.reachers:
             return []
@@ -324,6 +326,8 @@ class PrimaryAssetIndex:
             for link, kind, through in reacher.links:
                 key = (link.primary_asset_key, through, link.source)
                 if key in found:
+                    if not found[key]["version_verified"] and runs_versioned(reacher, matched):
+                        found[key]["version_verified"] = True
                     continue
                 found[key] = {
                     "primary_asset_key": link.primary_asset_key,

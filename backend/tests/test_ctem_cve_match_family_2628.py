@@ -128,6 +128,24 @@ def test_a_versioned_installed_row_keeps_the_case() -> None:
     assert decision.outcome == "case"
 
 
+def test_a_group_chain_is_verified_when_any_device_of_the_group_reports_a_version() -> None:
+    """Both devices reach the primary asset through the same group: the order of the rows never decides."""
+    unversioned = {"microsoft windows 11": "Microsoft Windows 11"}
+    for order in (0, 1):
+        devices = [
+            _device("LAPTOP-A", "Windows", unversioned),
+            _device("LAPTOP-B", "Windows", unversioned, versioned={"Microsoft Windows 11"}),
+        ]
+        if order:
+            devices.reverse()
+        index = pa.PrimaryAssetIndex(loaded=True, reachers=devices)
+        hits = index.reach(["Microsoft Windows 11"])
+        assert len(hits) == 1
+        assert hits[0]["version_verified"] is True
+        decision = gate.decide(_profile(), _cve("Microsoft Windows 11"), primary_assets=index, today=TODAY)
+        assert decision.outcome == "case"
+
+
 def test_a_family_only_reference_is_never_verified() -> None:
     reacher = _device("LAPTOP-W11", "Windows", {}, versioned={"Microsoft Windows 11"})
     assert not pa.runs_versioned(reacher, "Windows")
