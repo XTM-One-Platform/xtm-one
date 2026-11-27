@@ -22167,6 +22167,7 @@
   "Legacy OpenCTI objects removed": "OpenCTI の旧オブジェクトを削除しました",
   "The legacy OpenCTI objects could not be removed": "OpenCTI の旧オブジェクトを削除できませんでした",
   "Remove legacy OpenCTI objects": "OpenCTI の旧オブジェクトを削除",
+  "Remove legacy OpenCTI objects ({count})": "OpenCTI の旧オブジェクトを削除 ({count})",
   "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.": "旧 Threat response オートメーションが OpenCTI に残したトリガー、プレイブック、通知先です。Signals ソースが置き換えます。それ以外は変更しません。",
   "Reading OpenCTI...": "OpenCTI を読み込み中...",
   "No OpenCTI integration has a Signals source on.": "Signals ソースがオンの OpenCTI 連携はありません。",

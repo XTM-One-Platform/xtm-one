@@ -22167,6 +22167,7 @@
   "Legacy OpenCTI objects removed": "Legacy OpenCTI objects removed",
   "The legacy OpenCTI objects could not be removed": "The legacy OpenCTI objects could not be removed",
   "Remove legacy OpenCTI objects": "Remove legacy OpenCTI objects",
+  "Remove legacy OpenCTI objects ({count})": "Remove legacy OpenCTI objects ({count})",
   "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.": "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.",
   "Reading OpenCTI...": "Reading OpenCTI...",
   "No OpenCTI integration has a Signals source on.": "No OpenCTI integration has a Signals source on.",
