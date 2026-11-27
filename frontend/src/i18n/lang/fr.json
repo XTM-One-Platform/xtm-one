@@ -22174,5 +22174,18 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# actif primaire prouvé} other {# actifs primaires prouvés}}, {inferred, plural, one {# déduit} other {# déduits}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# actif primaire déduit} other {# actifs primaires déduits}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# déduit} other {# déduits}}",
-  "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}"
+  "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}",
+  "Pass queued after the resync: it runs once every other source has replayed": "Passage en attente après la resynchronisation : il s’exécute une fois toutes les autres sources rejouées",
+  "No pass has run yet: the attack surface pass is turned off (Attack surface, in the organization profile)": "Aucun passage n’a encore eu lieu : le passage de surface d’attaque est désactivé (Surface d’attaque, dans le profil de l’organisation)",
+  "No pass has run yet: the organization profile declares no owned domains and no address ranges": "Aucun passage n’a encore eu lieu : le profil de l’organisation ne déclare aucun domaine possédé ni aucune plage d’adresses",
+  "No pass has run yet: the organization profile declares no attack surface provider": "Aucun passage n’a encore eu lieu : le profil de l’organisation ne déclare aucun fournisseur de surface d’attaque",
+  "No pass has run yet: the declared attack surface provider cannot be read": "Aucun passage n’a encore eu lieu : le fournisseur de surface d’attaque déclaré ne peut pas être lu",
+  "No pass has completed yet: a pass whose provider read fails records nothing and is retried later": "Aucun passage n’est encore terminé : un passage dont la lecture du fournisseur échoue n’enregistre rien et est relancé plus tard",
+  "The last pass ({at}) read no host: the provider answered nothing for {scopes}": "Le dernier passage ({at}) n’a lu aucun hôte : le fournisseur n’a rien répondu pour {scopes}",
+  "{count, plural, one {# host re-armed by the signal purge waits for the next pass that sees it (last pass {at})} other {# hosts re-armed by the signal purge wait for the next pass that sees them (last pass {at})}}": "{count, plural, one {# hôte réarmé par la purge des signaux attend le prochain passage qui le voit (dernier passage {at})} other {# hôtes réarmés par la purge des signaux attendent le prochain passage qui les voit (dernier passage {at})}}",
+  "The first pass ({at}) set the baseline: it raises no drift": "Le premier passage ({at}) a établi la référence : il ne lève aucune dérive",
+  "{count, plural, one {The last pass ({at}) withheld # new host: a partial read, or known to the provider before the previous pass} other {The last pass ({at}) withheld # new hosts: a partial read, or known to the provider before the previous pass}}": "{count, plural, one {Le dernier passage ({at}) a retenu # nouvel hôte : une lecture partielle, ou connu du fournisseur avant le passage précédent} other {Le dernier passage ({at}) a retenu # nouveaux hôtes : une lecture partielle, ou connus du fournisseur avant le passage précédent}}",
+  "The last pass ({at}) found no undeclared host and no new port": "Le dernier passage ({at}) n’a trouvé aucun hôte non déclaré ni aucun nouveau port",
+  "The last pass ({at}) found nothing new on this path": "Le dernier passage ({at}) n’a rien trouvé de nouveau sur ce type",
+  "{reason}; the provider answered nothing for {scopes}": "{reason} ; le fournisseur n’a rien répondu pour {scopes}"
 }
