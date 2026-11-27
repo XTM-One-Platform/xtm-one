@@ -117,7 +117,7 @@ export function connectedProviders(paths: readonly Pick<CtemSignalPath, "sources
  * up (its provider is connected, the source itself is not, e.g. the PIR playbook of a connected
  * OpenCTI), or not connected (no integration of its provider here).
  */
-export type SourceState = "error" | "bound" | "excluded" | "off" | "not_set_up" | "not_connected";
+export type SourceState = "error" | "bound" | "excluded" | "off" | "not_configured" | "not_set_up" | "not_connected";
 
 export function sourceState(source: CtemSignalPathSource, connected: ReadonlySet<string>): SourceState {
   // A source XTM One provisions in error on one of its integrations reads Error, as its platform line does (#2442 UX r1 B1).
@@ -127,6 +127,8 @@ export function sourceState(source: CtemSignalPathSource, connected: ReadonlySet
   if (source.off) return "off";
   // A webhook source is never "not connected": it has its own receiver, off until switched on (#2506).
   if (source.kind === "webhook") return "off";
+  // Switched off for a missing setting: Not configured, never Error (#2637).
+  if (source.not_configured && connected.has(source.provider)) return "not_configured";
   return connected.has(source.provider) ? "not_set_up" : "not_connected";
 }
 
@@ -241,13 +243,14 @@ export function connectTarget(path: Pick<CtemSignalPath, "sources">): CtemSignal
  * The status icon and word of one source (#2436, Sam 26 Nov 2026): on, off, not used here, not set up or error, so
  * a path's row alone tells what runs; the side panel says the same word. A source not connected here has none:
  * its greyed logo says it. The icon is decorative, the word travels in the tooltip and beside it. Its words are catalog keys
- * already (On, Off, Not used here, Not set up, Error).
+ * already (On, Off, Not used here, Not set up, Not configured, Error).
  */
 const SOURCE_STATE_ICON = {
   bound: { icon: "circle-check", className: "text-feedback-success-primary", label: "On" },
   off: { icon: "circle-x", className: "text-default-secondary", label: "Off" },
   excluded: { icon: "circle-x", className: "text-default-secondary", label: "Not used here" },
   not_set_up: { icon: "circle-alert", className: "text-default-secondary", label: "Not set up" },
+  not_configured: { icon: "circle-alert", className: "text-default-secondary", label: "Not configured" },
   error: { icon: "circle-alert", className: "text-feedback-error-primary", label: "Error" },
 } as const satisfies Record<Exclude<SourceState, "not_connected">, { icon: IconName; className: string; label: string }>;
 
