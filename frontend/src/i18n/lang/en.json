@@ -22182,5 +22182,5 @@
   "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}",
   "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):",
   "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):",
-  "{owners} also listens to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{owners} also listens to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user."
+  "{count, plural, one {{owners} also listens} other {{owners} also listen}} to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, one {{owners} also listens} other {{owners} also listen}} to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user."
 }

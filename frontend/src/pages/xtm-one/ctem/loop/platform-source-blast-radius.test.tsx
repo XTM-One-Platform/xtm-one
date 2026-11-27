@@ -121,6 +121,30 @@ describe("Module event in words (UX round 1 on #2664, B1)", () => {
   });
 });
 
+describe("Several other owners of one event (UX round 2 on #2664, B1)", () => {
+  it("joins the owners in words and agrees the verb with their number", () => {
+    const source = listener({
+      provider: "openaev",
+      objects: [
+        {
+          kind: "trigger",
+          id: "t1",
+          name: "XTM One - Signals - OpenAEV listener - Trigger",
+          owner: "Signals",
+          event: "simulation_finished",
+          shared_with: ["CTEM Orchestrator", "Exposure desk"],
+        },
+      ],
+    });
+    renderWithProviders(<PlatformSourceControls source={{ provider: "openaev", kind: "listener" }} platformSources={[source]} isAdmin onEnable={() => {}} />);
+    const line = screen.getByTestId("ctem-platform-source-object-shared").textContent ?? "";
+    expect(line).toBe(
+      "CTEM Orchestrator and Exposure desk also listen to the \"Simulation finished\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
+    );
+    expect(line).not.toContain("CTEM Orchestrator, Exposure desk");
+  });
+});
+
 describe("Remove legacy OpenCTI objects (#2583 point 4, #2627)", () => {
   it("counts what XTM One still holds on the OpenCTI live listener, once a source is on", () => {
     expect(legacyCleanupCount({ provider: "opencti", kind: "listener" }, [{ enabled: true, legacy_pending: 3 }, { enabled: true, legacy_pending: 1 }])).toBe(4);

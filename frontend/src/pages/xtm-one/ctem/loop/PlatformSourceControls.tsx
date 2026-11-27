@@ -29,6 +29,7 @@ import {
   useRemoveLegacyOpenctiObjects,
 } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
+import { formatList } from "@/lib/format-list";
 import {
   PLATFORM_OBJECT_KIND_TEXT,
   PLATFORM_OBJECT_OPEN_LABEL,
@@ -318,7 +319,7 @@ function PlatformSourceBlastRadius({ source }: { source: CtemPlatformSource }) {
  * also holds on the same module event says why: each owner gets its own delivery and its own run.
  */
 function PlatformObjectName({ object }: { object: CtemPlatformSourceObject }) {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, locale } = useFormatter();
   const name = object.name ?? "";
   const shared = object.shared_with ?? [];
   return (
@@ -336,8 +337,8 @@ function PlatformObjectName({ object }: { object: CtemPlatformSourceObject }) {
       {shared.length > 0 && object.event && (
         <span className="text-default-secondary" data-testid="ctem-platform-source-object-shared">
           {t_i18n(
-            "{owners} also listens to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
-            { owners: shared.join(", "), event: moduleEventText(t_i18n, object.event) },
+            "{count, plural, one {{owners} also listens} other {{owners} also listen}} to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
+            { count: shared.length, owners: formatList(shared, locale), event: moduleEventText(t_i18n, object.event) },
           )}
         </span>
       )}
