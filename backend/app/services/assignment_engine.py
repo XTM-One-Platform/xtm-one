@@ -11143,7 +11143,9 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
 
 async def _assignment_cap(assignment: Assignment) -> int:
     """The assignment's concurrency cap, halved while a provider answers it 429."""
-    cap = assignment_dispatch.assignment_concurrency_cap(assignment.trigger_config, assignment.trigger_type)
+    cap = assignment_dispatch.assignment_concurrency_cap(
+        assignment.trigger_config, getattr(assignment, "trigger_type", None)
+    )
     throttled = await assignment_dispatch.is_throttled(assignment.id)
     return assignment_dispatch.throttled_cap(cap) if throttled else cap
 
@@ -12445,7 +12447,9 @@ async def _drain_one_assignment(
                 )
             break
 
-        cap = assignment_dispatch.assignment_concurrency_cap(assignment.trigger_config, assignment.trigger_type)
+        cap = assignment_dispatch.assignment_concurrency_cap(
+            assignment.trigger_config, getattr(assignment, "trigger_type", None)
+        )
         if throttled:
             cap = assignment_dispatch.throttled_cap(cap)
         usage = await _slot_usage(db, assignment_id)
