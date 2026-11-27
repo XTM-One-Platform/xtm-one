@@ -1489,6 +1489,10 @@ async def legacy_cleanup(db: Any, *, dry_run: bool = True) -> list[dict[str, Any
             report.append({"integration_id": integration_id, "error": str(exc)[:500]})
             continue
         errors = [] if dry_run else await remove_legacy_objects(conn[0], objects)
+        if not dry_run and not errors:
+            # Nothing left under a legacy name: the holders whose Signals source delivers hold nothing
+            # either, so their pending count drops at once instead of at the next pass.
+            await _retire_cleared_holders(db, integration_id)
         report.append(
             {
                 "integration_id": integration_id,
@@ -1498,6 +1502,84 @@ async def legacy_cleanup(db: Any, *, dry_run: bool = True) -> list[dict[str, Any
             }
         )
     return report
+
+
+async def _legacy_holder_states(db: Any) -> list[tuple[Any, str, dict[str, Any]]]:
+    """``(assignment, kind, state)`` of every legacy Threat response holder that has a provisioning state."""
+    from sqlalchemy import select
+
+    from app.models.agent import Agent
+    from app.models.assignment import Assignment
+    from app.services.ctem_platform_sources import RETIRED_HOLDERS
+
+    slugs = {slug for slug, _ in RETIRED_HOLDERS}
+    rows = (
+        await db.execute(
+            select(Assignment, Agent.slug).join(Agent, Agent.id == Assignment.agent_id).where(Agent.slug.in_(slugs))
+        )
+    ).all()
+    out: list[tuple[Any, str, dict[str, Any]]] = []
+    for assignment, slug in rows:
+        kind = RETIRED_HOLDERS.get((slug, assignment.name))
+        config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
+        state = config.get(STATE_KEY)
+        if kind and isinstance(state, dict) and state.get("integration_id"):
+            out.append((assignment, kind, state))
+    return out
+
+
+def _held_legacy_ids(state: dict[str, Any]) -> list[str]:
+    if state.get("status") == RETIRED:
+        return []
+    return [v for v in (state.get(k) for k in ("trigger_id", "playbook_id", "notifier_id")) if isinstance(v, str) and v]
+
+
+async def legacy_pending(db: Any) -> dict[str, int]:
+    """Per OpenCTI integration a Signals source is on for, how many legacy Threat response objects its
+    holders still hold (#2627): read from XTM One's database only, never from OpenCTI.
+
+    An object created outside a holder (an assignment since deleted) is not known here; the dry run of
+    :func:`legacy_cleanup` reads OpenCTI itself.
+    """
+    from sqlalchemy import select
+
+    from app.models.ctem_signal_source import CtemSignalSource
+
+    on = {
+        str(r.integration_id)
+        for r in (
+            await db.execute(
+                select(CtemSignalSource).where(
+                    CtemSignalSource.provider == "opencti", CtemSignalSource.enabled.is_(True)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    }
+    pending: dict[str, int] = {}
+    for _, _, state in await _legacy_holder_states(db):
+        integration_id = str(state["integration_id"])
+        held = len(_held_legacy_ids(state))
+        if integration_id in on and held:
+            pending[integration_id] = pending.get(integration_id, 0) + held
+    return pending
+
+
+async def _retire_cleared_holders(db: Any, integration_id: str, *, now: datetime | None = None) -> None:
+    """After a removal that left nothing, tombstone the holders of *integration_id* whose Signals source
+    delivers, as the maintenance pass would; a holder whose source is not connected keeps its state
+    and provisions again (no delivery lost)."""
+    from app.services.ctem_platform_sources import source_connected
+
+    stamp = (now or datetime.now(UTC)).isoformat()
+    for assignment, kind, state in await _legacy_holder_states(db):
+        if str(state["integration_id"]) != integration_id or state.get("status") == RETIRED:
+            continue
+        if not await source_connected(db, "opencti", kind, integration_id):
+            continue
+        tombstone = {"status": RETIRED, "integration_id": state["integration_id"], "checked_at": stamp}
+        assignment.trigger_config = _with_state(dict(assignment.trigger_config), tombstone)
 
 
 def due_for_check(state: Any, now: datetime) -> bool:

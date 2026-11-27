@@ -22,8 +22,8 @@ from app.services.ctem_funnel import funnel_scope
 from app.services.ctem_scope_gate import _product_matches as gate_product_matches
 
 
-def _former_rule(product: str, ref: str) -> bool:
-    """The regex rule of ``product_matches`` before #2032, the reference."""
+def _former_rule(product: str, ref: str, *, family_exact: bool = True) -> bool:
+    """The regex rule of ``product_matches`` before #2032, the reference, with the #2628 family guard."""
     p, r = str(product or "").strip().lower(), str(ref or "").strip().lower()
     if not p or not r:
         return False
@@ -32,6 +32,8 @@ def _former_rule(product: str, ref: str) -> bool:
         r = parts[4] if len(parts) > 4 else r
     r = r.replace("_", " ")
     p = p.replace("_", " ")
+    if family_exact and p in pa.FAMILY_WORDS and p != r:
+        return False
     return p == r or re.search(rf"(^|[^a-z0-9]){re.escape(p)}($|[^a-z0-9])", r) is not None
 
 
@@ -82,13 +84,15 @@ def _gate_former(product: str, ref: str) -> bool:
     if r.startswith("cpe:"):
         parts = r.split(":")
         r = parts[4] if len(parts) > 4 else r
+    if p in pa.FAMILY_WORDS and p != r.replace("_", " "):
+        return False
     return p == r or re.search(rf"(^|[^a-z0-9]){re.escape(p)}($|[^a-z0-9])", r) is not None
 
 
 def test_product_index_answers_what_a_full_scan_answers() -> None:
     index = pa.ProductIndex(_SAMPLES)
     for ref in _SAMPLES:
-        expected = [v for v in index.values if _former_rule(v, ref) or _former_rule(ref, v)]
+        expected = [v for v in index.values if _former_rule(v, ref) or _former_rule(ref, v, family_exact=False)]
         assert index.matching(ref) == expected, ref
 
 

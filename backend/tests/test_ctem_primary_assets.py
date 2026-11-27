@@ -20,7 +20,7 @@ def _profile(**policy: object) -> oc.OrganizationProfile:
             "primary_assets": [
                 {"name": WORKSTATIONS, "criticality": "high", "source": "opencrq", "external_id": "pa-1"}
             ],
-            "software": [{"product": "Windows"}],
+            "software": [{"product": "Windows 11"}],
             "prioritization_policy": {"min_primary_asset_criticality": "medium", "cvss_min": 7, **policy},
         }
     )
@@ -48,7 +48,7 @@ def _cve(**evidence: object) -> gate.SignalFacts:
         subject_kind="vulnerability",
         subject_ref="CVE-2026-88249",
         source_provider="opencti",
-        evidence={"software": ["Windows"], "cvss": 8.8, **evidence},
+        evidence={"software": ["Windows 11"], "cvss": 8.8, **evidence},
     )
 
 
@@ -65,17 +65,23 @@ def test_a_link_through_an_asset_group_of_intune_devices_opens_the_case_with_the
     pa_row = next(s for s in decision.record["scope"]["sources"] if s["from"] == "primary_asset")
     assert pa_row["name"] == WORKSTATIONS and pa_row["criticality"] == "high"
     hop = pa_row["chain"][0]
-    assert hop["software"] == "Windows" and hop["asset"] == "LAPTOP-042"
+    assert hop["software"] == "Windows 11" and hop["asset"] == "LAPTOP-042"
     assert hop["through_kind"] == "asset_group" and hop["through"] == "All Windows x86_64"
     assert hop["source"] == "rule" and hop["roles"] == ["used_by"]
     assert decision.record["reconcile"]["primary_assets"][0]["primary_asset_key"] == _key(WORKSTATIONS)
 
 
-def test_a_direct_record_link_and_the_device_os_family_reach_the_primary_asset() -> None:
+def test_a_direct_record_link_and_the_device_os_family_reach_the_primary_asset_to_validate() -> None:
+    """#2628: a CVE naming only the OS family reaches the device, never proven: to_validate."""
     decision = gate.decide(
-        _profile(), _cve(), primary_assets=_index(via_group=False, products=("Windows",)), today=TODAY
+        _profile(),
+        _cve(software=["Windows"]),
+        primary_assets=_index(via_group=False, products=("Windows",)),
+        today=TODAY,
     )
-    assert decision.outcome == "case"
+    assert decision.record["reconcile"]["primary_assets"]
+    assert decision.outcome == "to_validate"
+    assert decision.record["reason_code"] == "version_not_verified"
 
 
 def test_software_the_devices_do_not_run_reaches_nothing() -> None:
@@ -153,6 +159,9 @@ def test_supporting_lists_each_asset_once_best_link_first_sorted_by_name() -> No
 
 
 def test_product_matching_is_by_whole_word_and_reads_a_cpe() -> None:
-    assert pa.product_matches("Windows", "Microsoft Windows 11 Enterprise")
+    assert pa.product_matches("Windows 11", "Microsoft Windows 11 Enterprise")
+    # #2628: a bare family word names only itself unless the caller reads it as a family reference.
+    assert not pa.product_matches("Windows", "Microsoft Windows 11 Enterprise")
+    assert pa.product_matches("Windows", "Microsoft Windows 11 Enterprise", family_exact=False)
     assert pa.product_matches("windows_11", "cpe:2.3:o:microsoft:windows_11:22h2:*:*:*:*:*:*:*")
     assert not pa.product_matches("win", "Windows")
