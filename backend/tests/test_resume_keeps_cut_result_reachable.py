@@ -165,6 +165,22 @@ async def test_a_failed_file_write_keeps_the_whole_text_for_the_next_resume(redi
     assert entry["whole"] == RESULT, "the next resume tries again"
 
 
+async def test_a_failed_file_write_at_the_stop_keeps_the_whole_text(redis, monkeypatch):
+    """The flushing write of a stop whose file write fails does not drop the text the earlier write kept."""
+
+    async def _fails(**kwargs):
+        raise RuntimeError("storage down")
+
+    monkeypatch.setattr("app.services.builtin_tools._shared._persist_generated_file", _fails)
+    checkpoint = TaskCheckpoint(uuid.UUID(TASK), attempt=1, user_id=USER, files_conversation_id=CONV)
+    checkpoint.offer(_round("a", RESULT))
+    await _settle(checkpoint)
+    await checkpoint.aclose(flush=True)
+    stored = json.loads(redis.store[background_checkpoint.checkpoint_key(TASK)])
+    (tool_entry,) = [e for e in stored["entries"] if e["role"] == "tool"]
+    assert tool_entry["spill"]["file_id"] is None and tool_entry["whole"] == RESULT
+
+
 def test_the_whole_texts_kept_stay_bounded():
     head = {"role": "tool", "content": "h" * 100, "tool_call_id": "a", "whole": "x" * 300}
     newer = {"role": "tool", "content": "h" * 100, "tool_call_id": "b", "whole": "y" * 300}

@@ -1371,9 +1371,10 @@ class TurnCheckpoint:
                             files_conversation_id=self._files_conversation_id,
                             files_run_id=self._files_run_id,
                             kept_text=self._kept_text,
-                            # Before any stop, a turn with an acting user keeps the whole text in the
-                            # checkpoint itself: a file no longer depends on the stop's write (#2689).
-                            keep_whole=bool(self.user_id) and not self._keep_files,
+                            # A turn with an acting user keeps the whole text of a cut result no file
+                            # holds in the checkpoint itself, the stop's write included (its file write
+                            # may fail): a file no longer depends on that write (#2689).
+                            keep_whole=bool(self.user_id),
                         )
                     )
                 )
