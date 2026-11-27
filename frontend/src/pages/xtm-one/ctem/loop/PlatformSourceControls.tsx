@@ -337,7 +337,7 @@ function PlatformObjectName({ object }: { object: CtemPlatformSourceObject }) {
       {shared.length > 0 && object.event && (
         <span className="text-default-secondary" data-testid="ctem-platform-source-object-shared">
           {t_i18n(
-            "{count, plural, one {{owners} also listens} other {{owners} also listen}} to the \"{event}\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
+            "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.",
             { count: shared.length, owners: formatList(shared, locale), event: moduleEventText(t_i18n, object.event) },
           )}
         </span>

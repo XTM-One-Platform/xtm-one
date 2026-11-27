@@ -139,7 +139,7 @@ describe("Several other owners of one event (UX round 2 on #2664, B1)", () => {
     renderWithProviders(<PlatformSourceControls source={{ provider: "openaev", kind: "listener" }} platformSources={[source]} isAdmin onEnable={() => {}} />);
     const line = screen.getByTestId("ctem-platform-source-object-shared").textContent ?? "";
     expect(line).toBe(
-      "CTEM Orchestrator and Exposure desk also listen to the \"Simulation finished\" event with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
+      "CTEM Orchestrator and Exposure desk also listen to the \"Simulation finished\" event, each with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
     );
     expect(line).not.toContain("CTEM Orchestrator, Exposure desk");
   });
