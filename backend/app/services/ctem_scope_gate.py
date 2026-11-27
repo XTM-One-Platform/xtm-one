@@ -698,7 +698,9 @@ def _primary_assets_of(profile: OrganizationProfile, resolution: Resolution) -> 
     names |= {g.name.lower() for a in resolution.assets for g in groups_of(profile, a)}
     names |= {g.lower() for g in resolution.groups}
     named = {n.lower() for n in resolution.named_primary_assets}
-    linked = {str(h["primary_asset_key"]) for h in resolution.primary_assets}
+    # #2680: a hop reached only by a bare OS family reference is a possible exposure, never a
+    # running product: it sets no scope criticality.
+    linked = {str(h["primary_asset_key"]) for h in resolution.primary_assets if not h.get("family_only")}
     out: list[tuple[str, str]] = []
     for pa_row in profile.primary_assets:
         if (
