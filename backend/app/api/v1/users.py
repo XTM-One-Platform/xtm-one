@@ -768,6 +768,40 @@ async def preview_user_deactivation(
     return preview
 
 
+class ModuleRunAsCandidate(BaseModel):
+    """One user of the "Act in <module> as" dialog (#2650)."""
+
+    id: str
+    name: str
+    email: str
+    is_self: bool
+    #: False: listed disabled, ``reason`` says why (``no_integration``).
+    selectable: bool
+    reason: str | None = None
+
+
+@router.get("/module-run-as", response_model=list[ModuleRunAsCandidate])
+async def list_module_run_as_candidates(
+    provider: str = Query(..., description="opencti, openaev or opencrq"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[ModuleRunAsCandidate]:
+    """Who XTM One may act as in a module (#2650): the caller first; an administrator sees every
+    active user, those without a connected integration of the module listed disabled."""
+    from app.services import module_run_as
+
+    try:
+        rows = await module_run_as.candidates(db, actor=user, provider=provider)
+    except module_run_as.RunAsRefusedError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
+    return [
+        ModuleRunAsCandidate(
+            id=str(c.id), name=c.name, email=c.email, is_self=c.is_self, selectable=c.selectable, reason=c.reason
+        )
+        for c in rows
+    ]
+
+
 @router.get("/{user_id}", response_model=UserDetailResponse)
 async def get_user(
     user_id: str,
