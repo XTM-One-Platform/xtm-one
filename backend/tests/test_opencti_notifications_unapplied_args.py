@@ -86,6 +86,37 @@ async def test_notifier_delete_with_its_own_field_runs(monkeypatch: pytest.Monke
     assert calls.count == 1
 
 
+async def test_notifier_update_sends_the_stored_connector_and_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2632: OpenCTI notifierEdit validates both keys read from the edit input on every patch."""
+    sent: list[dict[str, Any]] = []
+
+    @contextlib.asynccontextmanager
+    async def _client(*_args: Any, **_kwargs: Any) -> AsyncIterator[None]:
+        yield None
+
+    async def _gql(
+        _c: Any, _b: Any, _h: Any, query: str, variables: dict[str, Any] | None = None, **_kw: Any
+    ) -> tuple[dict[str, Any], str | None]:
+        if "NotifierEditBase" in query:
+            return {"notifier": {"notifier_connector": {"id": "conn-1"}, "notifier_configuration": "{}"}}, None
+        sent.extend((variables or {}).get("input") or [])
+        return {"notifierFieldPatch": {"id": "n1"}}, None
+
+    monkeypatch.setattr(notifications_mod, "_client", _client)
+    monkeypatch.setattr(notifications_mod, "_graphql", _gql)
+    executor = CallableToolExecutor()
+    build_tools(TOKEN, executor, live_writes=True)
+    result = await _run(
+        executor, "manage_opencti_notifier", {"action": "update", "notifier_id": "n1", "description": "d"}
+    )
+    assert "Updated notifier n1" in result.content, result.content
+    assert {e["key"]: e["value"] for e in sent} == {
+        "description": ["d"],
+        "notifier_configuration": ["{}"],
+        "notifier_connector_id": ["conn-1"],
+    }
+
+
 async def test_trigger_list_with_defaults_is_not_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     executor, calls = _build(monkeypatch)
     result = await _run(executor, "manage_opencti_trigger", {"action": "list", "limit": 50, "period": "day"})

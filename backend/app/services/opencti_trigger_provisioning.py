@@ -808,6 +808,21 @@ async def _find_by_name(gql: Gql, root: str, name: str) -> str | None:
     return None
 
 
+def notifier_edit_input(edits: list[dict[str, Any]], config: str) -> list[dict[str, Any]]:
+    """*edits* plus the connector id and the full configuration (#2632).
+
+    OpenCTI ``notifierEdit`` validates ``notifier_connector_id`` and
+    ``notifier_configuration`` read from the edit input on every patch, a missing
+    key reading as an empty string ("Invalid notifier connector"), so both always travel.
+    """
+    rest = [e for e in edits if e["key"] not in ("notifier_connector_id", "notifier_configuration")]
+    return [
+        *rest,
+        {"key": "notifier_connector_id", "value": [WEBHOOK_CONNECTOR_ID]},
+        {"key": "notifier_configuration", "value": [config]},
+    ]
+
+
 async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config: str, description: str = "") -> str:
     description = description or "Provisioned by XTM One: delivers this trigger's events to an assignment."
     notifier_id = notifier_id or await _find_by_name(gql, "notifiers", name)
@@ -829,13 +844,15 @@ async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config:
             if current.get("notifier_configuration") != config:
                 edits.append({"key": "notifier_configuration", "value": [config]})
             if edits:
+                changed = ", ".join(str(e["key"]) for e in edits)
                 _, err = await gql(
                     "mutation XtmNotifierPatch($id: ID!, $input: [EditInput!]!) "
                     "{ notifierFieldPatch(id: $id, input: $input) { id } }",
-                    {"id": notifier_id, "input": edits},
+                    {"id": notifier_id, "input": notifier_edit_input(edits, config)},
                 )
                 if err:
-                    raise RuntimeError(err)
+                    # #2632: the row names what was patched and OpenCTI's answer; the next pass retries.
+                    raise RuntimeError(f"notifier patch of {changed} refused: {err}")
             return notifier_id
     data, err = await gql(
         "mutation XtmNotifierAdd($input: NotifierAddInput!) { notifierAdd(input: $input) { id } }",
