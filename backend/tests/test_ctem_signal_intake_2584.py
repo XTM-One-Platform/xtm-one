@@ -142,3 +142,40 @@ def test_a_growing_inbox_is_logged_once_per_growth_step(monkeypatch: Any, caplog
     lines = [r.getMessage() for r in caplog.records if "signal inbox" in r.getMessage()]
     assert len(lines) == 3
     assert f"{2 * inbox.DEPTH_WARNING} verified deliveries waiting" in lines[1]
+
+
+async def test_a_tick_drains_batch_after_batch_until_the_inbox_is_empty(monkeypatch: Any) -> None:
+    # #2584 gate line 2: one batch per tick drained a 10,000-update catch-up in about 50 minutes.
+    batches = [{"recorded": 150, "retried": 0, "dropped": 0, "coalesced": 50}] * 3
+    calls: list[int] = []
+
+    async def drain(limit: int) -> dict[str, int]:
+        calls.append(limit)
+        return dict(batches[len(calls) - 1]) if len(calls) <= len(batches) else dict.fromkeys(batches[0], 0)
+
+    monkeypatch.setattr(inbox, "drain", drain)
+    totals = await inbox.drain_within(60)
+    assert len(calls) == 4
+    assert totals == {"recorded": 450, "retried": 0, "dropped": 0, "coalesced": 150}
+
+
+async def test_a_tick_stops_at_its_budget_and_on_retries_alone(monkeypatch: Any) -> None:
+    calls: list[int] = []
+
+    async def busy(limit: int) -> dict[str, int]:
+        calls.append(limit)
+        return {"recorded": 200, "retried": 0, "dropped": 0, "coalesced": 0}
+
+    monkeypatch.setattr(inbox, "drain", busy)
+    await inbox.drain_within(0)
+    assert len(calls) == 1
+
+    calls.clear()
+
+    async def failing(limit: int) -> dict[str, int]:
+        calls.append(limit)
+        return {"recorded": 0, "retried": 200, "dropped": 0, "coalesced": 0}
+
+    monkeypatch.setattr(inbox, "drain", failing)
+    assert (await inbox.drain_within(60))["retried"] == 200
+    assert len(calls) == 1

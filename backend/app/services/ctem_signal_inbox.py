@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 DRAIN_BATCH = 200
 #: Recording attempts before a row is dropped.
 MAX_ATTEMPTS = 5
+#: Seconds one tick spends draining, batch after batch (#2584 gate line 2): one batch per 60 s tick
+#: recorded 10,000 catch-up updates in about 50 minutes in the lab; about 1,100 rows fit in 20 s
+#: there, a third of the tick's window, so the scheduler's other steps keep theirs.
+DRAIN_BUDGET_SECONDS = 20.0
 
 
 async def accept(
@@ -201,6 +205,25 @@ async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
         counts["recorded"] += 1
         await _delete(row_id)
     return counts
+
+
+async def drain_within(budget_seconds: float = DRAIN_BUDGET_SECONDS, limit: int = DRAIN_BATCH) -> dict[str, int]:
+    """Drain batch after batch until the inbox is empty or *budget_seconds* have passed; the summed counts.
+
+    A batch is never cut: the budget is read between batches, so a tick overruns it by one batch at most.
+    """
+    import time
+
+    totals = {"recorded": 0, "retried": 0, "dropped": 0, "coalesced": 0}
+    deadline = time.monotonic() + budget_seconds
+    while True:
+        counts = await drain(limit)
+        for key, value in counts.items():
+            totals[key] = totals.get(key, 0) + value
+        handled = counts["recorded"] + counts["dropped"] + counts["coalesced"]
+        # Empty, or only retries left (a batch that recorded nothing): wait for the next tick.
+        if handled == 0 or time.monotonic() >= deadline:
+            return totals
 
 
 #: Waiting deliveries past which a growing inbox is logged (#2584 point 4): a catch-up the drain does not keep up with.

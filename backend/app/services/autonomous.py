@@ -2040,11 +2040,11 @@ async def _run_autonomous_tick_inner() -> int:
             logger.error("CTEM new-signal recheck error: %s", format_exception_message(e), exc_info=True)
             await db.rollback()
         # #2570: the verified signal-source deliveries the webhook accepted, recorded off
-        # the request path, a bounded batch per tick (ctem_signal_inbox).
+        # the request path, batch after batch within a time budget per tick (ctem_signal_inbox, #2584).
         try:
             from app.services import ctem_signal_inbox
 
-            drained = await ctem_signal_inbox.drain()
+            drained = await ctem_signal_inbox.drain_within()
             if any(drained.values()):
                 logger.info("CTEM signal inbox drained: %s", drained)
         except Exception as e:
