@@ -1836,6 +1836,9 @@ async def update_agent(
 
     old_name = agent.name
     audience_before = agent_audience(agent)
+    from app.services.agent_integration_shares import principal_keys, sync_agent_integration_shares
+
+    integration_share_keys_before = principal_keys(agent)
     versioned_before = versioned_agent_values(agent)
     stored_work_item_owner_agent_ids = list(agent.work_item_owner_agent_ids or [])
     stored_trace_supervision_target_agent_ids = list(agent.trace_supervision_target_agent_ids or [])
@@ -2427,6 +2430,19 @@ async def update_agent(
     # Whoever no longer reaches the agent stops naming it from their agents.
     if agent_audience(agent) != audience_before:
         await unlink_agent_from_lost_holders(db, agent)
+
+    # The agent's audience carries onto its personal integrations (#2715):
+    # the people and groups it is shared with get "use" on each one the
+    # editor may manage; an unshare removes only the grants it gave.
+    if principal_keys(agent) != integration_share_keys_before or "integration_bindings" in body.model_fields_set:
+        await sync_agent_integration_shares(
+            db,
+            agent,
+            before=integration_share_keys_before,
+            actor_id=user.id,
+            actor_is_admin=user.is_admin,
+            actor_group_ids=user_group_ids,
+        )
 
     # Public catalog toggle (admin-only for company-managed entities)
     if body.is_public_catalog is not None:

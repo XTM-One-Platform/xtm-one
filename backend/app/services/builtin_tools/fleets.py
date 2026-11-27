@@ -1789,6 +1789,8 @@ def build_fleet_tools(
         holder: dict[str, signals.FleetHealthReport] = {}
         suggestions: list[str] = []
         missing: list[bool] = []
+        #: The caller, for the integration shares the safe fix grants (#2715).
+        actor: list[Any] = []
 
         async def _action(db: AsyncSession, user: User) -> str:
             try:
@@ -1801,6 +1803,11 @@ def build_fleet_tools(
                 db, fleet, user_id=str(user.id), run_scope=run_visible_filter(user.id)
             )
             holder["report"] = report
+            if apply_safe_fixes:
+                from app.api.v1.helpers import get_user_group_ids
+
+                # The integration shares are granted as the caller (#2715).
+                actor.extend([user.id, bool(user.is_admin), await get_user_group_ids(db, user.id)])
             holder["automations"] = (await _automation_state(db, user, fleet)).structured()
             suggestions.extend(await _suggestion_lines(db, user, fleet))
             return signals.format_report(report)
@@ -1817,7 +1824,14 @@ def build_fleet_tools(
                     structured={"fleet_id": str(fleet_id), "healthy": None, TARGET_MISSING_KEY: True},
                 )
             return text
-        applied = await signals.apply_safe_fixes(report) if apply_safe_fixes else None
+        applied = None
+        if apply_safe_fixes:
+            applied = await signals.apply_safe_fixes(
+                report,
+                actor_id=actor[0] if actor else None,
+                actor_is_admin=bool(actor[1]) if actor else False,
+                actor_group_ids=actor[2] if actor else None,
+            )
         structured = report.structured()
         if "automations" in holder:
             structured["automations"] = holder["automations"]
@@ -2579,7 +2593,10 @@ def build_fleet_tools(
                 "type": "object",
                 "properties": {
                     "fleet_id": fleet_ref,
-                    "apply_safe_fixes": {"type": "boolean", "description": "Release orphaned claims."},
+                    "apply_safe_fixes": {
+                        "type": "boolean",
+                        "description": "Release orphaned claims; share integrations a member's sharees lack (use).",
+                    },
                 },
                 "required": ["fleet_id"],
             },

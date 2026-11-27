@@ -147,8 +147,11 @@ def test_a_report_with_no_finding_is_healthy():
 def test_every_kind_has_a_fix_and_advice():
     assert set(signals.FINDING_FIX) == set(signals.FINDING_ADVICE)
     assert set(signals.FINDING_FIX.values()) <= {signals.FIX_AUTO, signals.FIX_OWNER}
-    # The only safe fix the orchestrator applies by itself.
-    assert [k for k, v in signals.FINDING_FIX.items() if v == signals.FIX_AUTO] == ["orphaned_claim"]
+    # The safe fixes the orchestrator applies by itself.
+    assert [k for k, v in signals.FINDING_FIX.items() if v == signals.FIX_AUTO] == [
+        "orphaned_claim",
+        "integration_not_shared",
+    ]
 
 
 def test_findings_carry_their_evidence_capped_with_the_whole_count():

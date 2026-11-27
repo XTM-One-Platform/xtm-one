@@ -5772,6 +5772,10 @@ def build_agent_builder_tool(
             # What the REST update versions, versioned here too.
             versioned_before = versioned_agent_values(agent)
             audience_before = agent_audience(agent)
+            from app.services.agent_integration_shares import principal_keys as _share_keys
+
+            _integration_keys_before = _share_keys(agent)
+            _bindings_before = dict(agent.integration_bindings or {})
             updated: list[str] = []
             text_read_back = ""
             if text_mode != "replace":
@@ -7488,6 +7492,27 @@ def build_agent_builder_tool(
             # agents, as on the REST update.
             if agent_audience(agent) != audience_before:
                 await unlink_agent_from_lost_holders(_db, agent)
+            # The agent's audience carries onto its personal integrations
+            # (#2715), as on the REST update.
+            _integration_share_lines: list[str] = []
+            if (
+                _share_keys(agent) != _integration_keys_before
+                or dict(agent.integration_bindings or {}) != _bindings_before
+            ):
+                from app.api.v1.helpers import get_user_group_ids
+                from app.services.agent_integration_shares import sync_agent_integration_shares
+
+                _sync_caller = _update_caller or await _load_caller_user_for_builder(_db, uid)
+                _integration_share_lines = (
+                    await sync_agent_integration_shares(
+                        _db,
+                        agent,
+                        before=_integration_keys_before,
+                        actor_id=uid,
+                        actor_is_admin=bool(getattr(_sync_caller, "is_admin", False)),
+                        actor_group_ids=await get_user_group_ids(_db, uid),
+                    )
+                ).lines()
             _audience = await _agent_audience_lines(_db, agent) if _share_lines else []
 
             try:
@@ -7517,6 +7542,8 @@ def build_agent_builder_tool(
                     "open it any more.\n"
                     + "\n".join(_audience)
                 )
+            if _integration_share_lines:
+                _result += "\n" + "\n".join(f"  • {line}" for line in _integration_share_lines)
             # A skip is reported even when nothing else changed: silently dropping
             # a skill's knowledge base is exactly the surprise the caller needs to
             # hear about.
@@ -12668,6 +12695,18 @@ def build_agent_builder_tool(
                 )
             else:
                 parts.append("  • Shared with groups: None")
+            # The people it is shared with (#2715), each with its tier and id.
+            from app.services.share_principals import load_principals, stored_grants
+
+            people = stored_grants(integ.shared_user_ids, integ.shared_user_permissions)
+            if people:
+                index = await load_principals(_db, integ)
+                parts.append(
+                    "  • Shared with people: "
+                    + ", ".join(f"{index.user(key).label} (`{key}`, {_share_tier_label(tier)})" for key, tier in people)
+                )
+            else:
+                parts.append("  • Shared with people: None")
             # Agents bound to it whose owner lost access: their runs refuse
             # its tools. Names only of the agents the caller can see.
             from app.models.agent import Agent
@@ -12979,6 +13018,9 @@ def build_agent_builder_tool(
         tags: str = "",
         shared_group_ids: str = "",
         shared_group_permissions: str = "",
+        users: object = None,
+        users_permission: object = None,
+        binding_mode: object = None,
         openapi: dict | str | None = None,
         tool_slug: str = "",
         share_connected_account: object = None,
@@ -13346,6 +13388,30 @@ def build_agent_builder_tool(
                     return share_err
                 updated.append("sharing")
 
+            # Person-level sharing (#2715), the skill and prompt tools' write:
+            # ``users`` with ``users_permission`` (use | manage), following
+            # ``binding_mode``, through ``apply_user_share_fields``.
+            people_lines: list[str] = []
+            if _arg_provided(users) or _arg_provided(users_permission):
+                people_updated, people_lines, people_err = await _apply_catalog_access(
+                    _db,
+                    integ,
+                    noun="integration",
+                    entity_type="integration",
+                    caller=await _load_caller_user_for_builder(_db, uid),
+                    owner=None,
+                    users=users,
+                    users_permission=users_permission,
+                    shared_group_ids=None,
+                    shared_group_permissions=None,
+                    binding_mode=binding_mode,
+                )
+                if people_err:
+                    await _db.rollback()
+                    return f"Integration not updated - {people_err}"
+                if people_updated and "sharing" not in updated:
+                    updated.append("sharing")
+
             # Company-managed status: the REST update's write, through the
             # same helper (grants cleared going company-managed, agents of
             # other owners unbound going private).
@@ -13448,6 +13514,8 @@ def build_agent_builder_tool(
                 note = f"\n  • Tool suffix: `__{integ.tool_slug}`" + note
             if share_choice is not None:
                 note += _unapplied_share_choice_note(integ, share_choice)
+            for line in people_lines:
+                note += f"\n  • {line}"
             if mode_line := _credential_mode_line(integ):
                 note += f"\n  • Credential mode: {mode_line}"
             if new_extra is not None:
@@ -16007,6 +16075,19 @@ def build_agent_builder_tool(
                             "(default) binds and runs, 'manage' also edits; keys in shared_group_ids"
                         ),
                         "default": "",
+                    },
+                    "users": {
+                        "type": ["array", "string"],
+                        "items": {"type": "string"},
+                        "description": "People (emails or user ids) to share it with; 'none' unshares every person",
+                    },
+                    "users_permission": {
+                        "type": "string",
+                        "description": "'use' (default: bind and run) or 'manage' (also edit) for `users`",
+                    },
+                    "binding_mode": {
+                        "type": "string",
+                        "description": "For `users`: 'replace' (default), 'add' or 'remove'",
                     },
                     _spec_tools.SPEC_ARGUMENT: _spec_tools.SPEC_ARGUMENT_SCHEMA,
                     "tool_slug": _TOOL_SLUG_SCHEMA,

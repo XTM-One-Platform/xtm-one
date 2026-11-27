@@ -136,6 +136,13 @@ class Integration(Base):
     access_restricted: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false", default=False
     )
+    # The grants above that an agent's sharing gave (#2715):
+    # ``{"user:<id>" | "group:<id>": [agent ids]}``. A grant with no origin was
+    # given by hand and no agent unshare removes it; one several agents gave
+    # goes with the last of them (``app.services.agent_integration_shares``).
+    agent_share_origins: Mapped[dict[str, list[str]] | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True, default=None
+    )
 
     # OAuth tokens are personal to whoever connected them; this records the
     # owner's consent to share theirs. Sharing the integration (group,

@@ -55,6 +55,10 @@ was read from, so one read tells a fleet orchestrator everything the seeded
   (:func:`app.services.fleets.fleet_boundary_violations`).
 * ``cost_spike``: a member whose tokens of the last day are over
   :data:`SPIKE_FACTOR` times its own daily average of the week before.
+* ``integration_not_shared``: a person or group a member is shared with
+  cannot use an integration bound to it
+  (:func:`app.services.agent_integration_shares.agent_share_drift`); the
+  safe fix grants "use" on the integrations the caller may manage.
 
 Reads only, on the caller's session and under the caller's visibility (the
 runs of ``run_visible_filter``, the work items and entries the caller may
@@ -114,6 +118,7 @@ FINDING_FIX: dict[str, str] = {
     "oversize_state": FIX_OWNER,
     "handover_not_allowed": FIX_OWNER,
     "cost_spike": FIX_OWNER,
+    "integration_not_shared": FIX_AUTO,
 }
 
 #: The recommendation each kind carries, one line.
@@ -157,6 +162,10 @@ FINDING_ADVICE: dict[str, str] = {
         "expose it only when that is wanted."
     ),
     "cost_spike": "Read the member's runs of the day for a loop or an oversized read.",
+    "integration_not_shared": (
+        "Share each integration with that audience (use): apply_safe_fixes=true does it on the integrations "
+        "you may manage; ask the owner of any other one. Evidence: agent:integration:user|group:id."
+    ),
 }
 
 
@@ -322,6 +331,7 @@ async def build_fleet_health_report(
     findings += await _work_item_findings(db, fleet, ids, user_id=user_id, now=now, person_waits=person_waits)
     findings += await _shared_state_findings(db, fleet, ids, user_id=user_id)
     findings += await _handover_findings(db, fleet)
+    findings += await _integration_share_findings(db, ids)
     findings += await _cost_findings(db, ids, run_scope=run_scope, now=now)
     findings = with_ids(fleet.id, findings)
     active, dismissed = split_findings(findings, getattr(fleet, "health_dismissals", None), now)
@@ -863,11 +873,20 @@ async def _cost_findings(
 # ── The safe fixes ───────────────────────────────────────────────────────────
 
 
-async def apply_safe_fixes(report: FleetHealthReport) -> dict[str, int]:
+async def apply_safe_fixes(
+    report: FleetHealthReport,
+    *,
+    actor_id: object = None,
+    actor_is_admin: bool = False,
+    actor_group_ids: list[str] | None = None,
+) -> dict[str, int]:
     """Apply the ``auto`` fixes of *report*; ``{kind: rows changed}``.
 
-    Only the release of orphaned claims, through the platform's own sweep scoped
-    to the items' ended runs: it never touches a claim a live run holds.
+    The release of orphaned claims, through the platform's own sweep scoped
+    to the items' ended runs: it never touches a claim a live run holds. And
+    the integration shares an agent's audience lacks (#2715), granted "use"
+    by *actor_id* on the integrations they may manage, origin recorded so the
+    agent's unshare takes them back.
     """
     from app.core import database
     from app.models.work_item import WorkItem
@@ -875,6 +894,20 @@ async def apply_safe_fixes(report: FleetHealthReport) -> dict[str, int]:
 
     applied: dict[str, int] = {}
     for finding in report.findings:
+        if finding.kind == "integration_not_shared" and actor_id is not None:
+            from app.services.agent_integration_shares import Drift, grant_missing_shares
+
+            drifts = [d for d in (Drift.parse(e) for e in finding.all_evidence) if d is not None]
+            async with database.async_session() as db:
+                applied["integration_not_shared"] = await grant_missing_shares(
+                    db,
+                    drifts,
+                    actor_id=actor_id,
+                    actor_is_admin=actor_is_admin,
+                    actor_group_ids=actor_group_ids,
+                )
+                await db.commit()
+            continue
         if finding.kind != "orphaned_claim" or not finding.evidence:
             continue
         item_ids = [uuid.UUID(i) for i in finding.evidence]
@@ -885,6 +918,35 @@ async def apply_safe_fixes(report: FleetHealthReport) -> dict[str, int]:
         runs = [r for r in run_ids if r is not None]
         applied["orphaned_claim"] = await release_ended_run_claims(run_ids=runs) if runs else 0
     return applied
+
+
+async def _integration_share_findings(db: AsyncSession, agent_ids: Sequence[object]) -> list[FleetFinding]:
+    """Members shared with people or groups who cannot use an integration bound to them (#2715)."""
+    from app.models.agent import Agent
+    from app.services.agent_integration_shares import agent_share_drift
+
+    parsed = [u for u in (_uuid_or_none(a) for a in agent_ids) if u is not None]
+    if not parsed:
+        return []
+    agents = (await db.execute(select(Agent).where(Agent.id.in_(parsed)))).scalars().all()
+    drift = await agent_share_drift(db, agents)
+    if not drift:
+        return []
+    members = len({d.agent_id for d in drift})
+    return [
+        _finding(
+            "integration_not_shared",
+            f"{len(drift)} integration share(s) missing on {members} member(s): their sharees cannot use them",
+            [d.evidence for d in drift],
+        )
+    ]
+
+
+def _uuid_or_none(value: object) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def format_report(report: FleetHealthReport, *, applied: dict[str, int] | None = None) -> str:

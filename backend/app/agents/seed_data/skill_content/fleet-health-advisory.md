@@ -40,6 +40,7 @@ No finding means healthy: stop there. Send nothing, write nothing.
 | `oversize_state` | owner | a shared-state entry is over the size limit |
 | `handover_not_allowed` | owner | a handover from an agent outside the fleet points at a member the fleet does not expose; the summary names each source with its home fleet. Recommend re-pointing the handover at the orchestrator; exposing the target opens it to every other fleet |
 | `cost_spike` | owner | a member used over 3 times its daily tokens |
+| `integration_not_shared` | auto | a person or group a member is shared with cannot use an integration bound to it, so their chats lack its tools; `apply_safe_fixes=true` shares it with them (use) on the integrations you may manage, and the member's unshare takes that share back. Ask the owner of any other one |
 
 A finding you can explain and that needs nothing (a member disabled on purpose, a schedule paused for a known reason you can cite) is **ignore**: leave it out of the advisory and say why in your run summary. When the owner tells you a finding needs nothing and you hold the tool, dismiss it once with `dismiss_fleet_health_findings(fleet_id, ids, reason)`, using the finding's id or its kind and the owner's reason. A dismissed finding no longer counts and is listed under Dismissed.
 
