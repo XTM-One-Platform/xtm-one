@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Path 6 evaluates the inventory as it stands and says why it records nothing (#2642)."""
 
 from __future__ import annotations

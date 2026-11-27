@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The inventory evaluation of trigger path 6, stale or orphaned asset (#2642).
 
 The two other sources of path 6 fire on a change: the OpenAEV listener when an
