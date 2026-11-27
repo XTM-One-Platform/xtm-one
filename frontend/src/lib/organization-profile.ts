@@ -387,6 +387,8 @@ export interface PrioritizationPolicy {
   cvss_min: number | null;
   epss_min: number | null;
   kev_always_in: boolean;
+  /** #2631: a set minimum with no score read anywhere: "hold" (backend default) keeps the signal on the watchlist, "pass" lets it through. */
+  missing_score?: "hold" | "pass";
   internet_exposure_required: boolean;
   min_primary_asset_criticality: string;
   exclusions: { kind: string; value: string; reason: string }[];
