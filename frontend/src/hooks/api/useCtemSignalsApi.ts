@@ -339,6 +339,46 @@ export function useDisableCtemPlatformSource() {
   });
 }
 
+/** One step of a purge job (#2528): pause, purge, resync, resume. */
+export type CtemSignalPurgeStepState = "pending" | "running" | "done" | "failed" | "skipped";
+
+export interface CtemSignalPurgeJob {
+  id: string;
+  state: "running" | "done" | "failed";
+  resync: boolean;
+  step: "pause" | "purge" | "resync" | "resume";
+  steps: Record<"pause" | "purge" | "resync" | "resume", { state: CtemSignalPurgeStepState; counts: Record<string, unknown> }>;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface CtemSignalPurgeInfo {
+  counts: { signals: number; cases: number };
+  confirm_word: string;
+  job: CtemSignalPurgeJob | null;
+}
+
+/** What a purge would delete now and the running or last job (administrators only); polled while a job runs. */
+export function useCtemSignalPurge(enabled: boolean) {
+  return useQuery<CtemSignalPurgeInfo>({
+    queryKey: ["ctem-signals", "purge"],
+    queryFn: () => api.get("/ctem-signals/purge"),
+    enabled,
+    refetchInterval: (query) => (query.state.data?.job?.state === "running" ? 2000 : false),
+  });
+}
+
+/** Start the purge of every signal (#2528): 422 without the word, 409 while a job runs. */
+export function useStartCtemSignalPurge() {
+  const qc = useQueryClient();
+  return useMutation<{ job: CtemSignalPurgeJob }, Error, { confirm: string; resync: boolean }>({
+    mutationFn: (body) => api.post("/ctem-signals/purge", body),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals", "purge"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
 /** The 12 trigger paths with their counts, for the Discovery stage's signals card. */
 export function useCtemSignalPaths() {
   return useQuery<{ paths: CtemSignalPath[] }>({

@@ -81,6 +81,14 @@ class SignalError(ValueError):
     """A signal refused before anything is written; the message says which field and why."""
 
 
+class SignalIntakePausedError(SignalError):
+    """An administrator's purge of every signal holds intake paused (#2528): nothing is recorded."""
+
+
+#: What a source is answered while a purge holds intake paused (#2528).
+INTAKE_PAUSED_DETAIL = "Signal intake is paused while an administrator purges every signal; nothing was recorded."
+
+
 @dataclass(frozen=True)
 class SignalInput:
     """One change in exposure, as a caller describes it."""
@@ -203,6 +211,12 @@ async def record_signal(
     """
     if recorded_via not in INTAKES:
         raise SignalError(f"recorded_via must be one of: {', '.join(INTAKES)}")
+    from app.services import ctem_signal_purge as purge
+
+    # #2528: every source records through here, so one check pauses them all during a purge;
+    # the purge job's own resync step records through its bypass.
+    if not purge.RESYNC_BYPASS.get() and await purge.intake_paused():
+        raise SignalIntakePausedError(INTAKE_PAUSED_DETAIL)
     clean = normalize(signal)
     at = now or datetime.now(UTC)
     observed = clean.observed_at or at
