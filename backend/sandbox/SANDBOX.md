@@ -179,6 +179,8 @@ backend's own `pyproject.toml` for consistency:
 | pycryptodomex | 3.24.2 |
 | cryptography | 50.0.0 |
 | av (PyAV) | 19.0.2 |
+| pypdf | 6.21.4 |
+| pypdfium2 | 5.13.0 |
 
 `pyzipper`, `pycryptodomex` and `cryptography` give `code_interpreter` a
 password-protected archive without a 7z binary or a subprocess (the image is
@@ -216,6 +218,28 @@ with av.open("attachments/render.mp4") as video:
 CI encodes a short MP4 inside the image with no network and reads the frame at
 1 s back on every build of `sandbox-python` (`sandbox-images.yml`, "Video frame
 round trip"), the h264, hevc, vp9 and mpeg4 decoders checked present.
+
+`pypdf` (BSD-3-Clause, pure Python) and `pypdfium2` (BSD-3-Clause and
+Apache-2.0, its wheel bundles PDFium: no system library) let `code_interpreter`
+read a PDF a user attached: the AcroForm fields, the signature fields (`/Sig`:
+signer name, signing time, `/ByteRange`, `/Contents`), the text and the images
+with `pypdf`, and a page rendered to an image with `pypdfium2`. Both carry the
+backend's own pins; PyMuPDF is left out on purpose (AGPL).
+
+```python
+import pypdf, pypdfium2
+reader = pypdf.PdfReader("attachments/contract.pdf")
+for name, field in (reader.get_fields() or {}).items():
+    if field.get("/FT") == "/Sig":
+        sig = field.get("/V")  # None while the field is unsigned
+        print(name, sig and sig.get("/Name"), sig and sig.get("/M"), sig and sig.get("/ByteRange"))
+pypdfium2.PdfDocument("attachments/contract.pdf")[0].render(scale=2).to_pil().save("page-1.png")
+```
+
+CI writes a 2-page PDF with one text field and one empty signature field inside
+the image with no network, reads both fields back with their type and renders
+page 1 to a PNG on every build of `sandbox-python` (`sandbox-images.yml`, "PDF
+round trip").
 
 ---
 

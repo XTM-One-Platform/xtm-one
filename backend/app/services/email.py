@@ -819,6 +819,35 @@ def platform_invitation_email(
     return html, text
 
 
+def email_changed_email(*, old_email: str, new_email: str) -> tuple[str, str]:
+    """Return (html, text) bodies for the notice of an account's email change.
+
+    Sent to the old and the new address. It carries no link to act on: the
+    owner who did not expect it contacts an administrator."""
+    name = get_cached_branding().name
+    title = "Your email address changed"
+    old_esc, new_esc = html_escape(old_email), html_escape(new_email)
+    body = email_heading(title) + email_paragraph_html(
+        f"An administrator changed the email address of your {html_escape(name)} account "
+        f"from <strong>{old_esc}</strong> to <strong>{new_esc}</strong>. "
+        "You now sign in and receive account emails at the new address."
+    )
+    html = render_email(
+        title=title,
+        preheader=f"The email address of your {name} account changed.",
+        body_html=body,
+        fine_print_html=html_escape(
+            "If you didn't expect this change, contact your administrator."
+        ),
+    )
+    text = (
+        f"An administrator changed the email address of your {name} account "
+        f"from {old_email} to {new_email}.\n\n"
+        "If you didn't expect this change, contact your administrator."
+    )
+    return html, text
+
+
 def password_reset_email(link: str, expire_hours: int) -> tuple[str, str]:
     """Return (html, text) bodies for a password reset email."""
     name = get_cached_branding().name

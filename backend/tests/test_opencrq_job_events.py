@@ -259,6 +259,34 @@ def _priced(run_id: str, finished: str, summary: dict[str, Any], key: str = "cur
     return {**_run(run_id, finished, kind="crq-price-recompute"), key: json.dumps(summary)}
 
 
+def test_a_price_pass_that_moved_nothing_is_no_event() -> None:
+    """movedCount 0 and an empty moved: the re-pricing changed nothing a reader sees (#2544)."""
+    still = _priced("p0", "2026-11-26T18:00:00Z", {"walked": 53, "priced": 53, "moved": [], "movedCount": 0})
+    assert opencrq_job_events.processed_nothing(still)
+    assert opencrq_job_events.coalesce_events([still], "risk_scenario_recomputed", base_url="", tenant_id="t") == []
+    # No summary (an older OpenCRQ): kept, as before.
+    plain = {**_run("p1", "2026-11-26T18:01:00Z", kind="crq-price-recompute"), "expectedTotal": None}
+    (kept,) = opencrq_job_events.coalesce_events([plain], "risk_scenario_recomputed", base_url="", tenant_id="t")
+    assert kept["message_id"] == "opencrq:t:p1"
+    # A pass that moved one, or whose ids say so, is an event.
+    moved = _priced("p2", "2026-11-26T18:02:00Z", {"moved": ["s1"], "movedCount": 1})
+    inconsistent = _priced("p3", "2026-11-26T18:03:00Z", {"moved": ["s2"], "movedCount": 0})
+    assert not opencrq_job_events.processed_nothing(moved)
+    assert not opencrq_job_events.processed_nothing(inconsistent)
+    # A Monte Carlo run is not a re-pricing pass: its summary is never read that way.
+    simulation = {**_run("m", "2026-11-26T18:04:00Z"), "currentStep": json.dumps({"movedCount": 0})}
+    assert not opencrq_job_events.processed_nothing(simulation)
+
+
+def test_the_event_declares_the_burst_debounce() -> None:
+    """OpenCRQ events hold their run 300 s after the last job, 900 s at most (#2544)."""
+    (event,) = opencrq_job_events.coalesce_events(_burst(2), "risk_scenario_recomputed", base_url="", tenant_id="t")
+    assert event[event_coalescing.QUIET_KEY] == opencrq_job_events.COALESCE_QUIET_SECONDS == 300
+    assert event[event_coalescing.MAX_KEY] == opencrq_job_events.COALESCE_MAX_SECONDS == 900
+    assert event_coalescing.debounce(event) == (300, 900)
+    assert opencrq_job_events.COALESCE_MAX_SECONDS <= event_coalescing.MAX_HOLD_SECONDS
+
+
 def test_the_moved_scenarios_of_a_price_pass_travel_on_the_event() -> None:
     """Today's OpenCRQ summary (moved, movedCount; no movedAle) read from currentStep (#1663)."""
     run = _priced("p", "2026-11-06T07:00:00Z", {"walked": 3, "priced": 2, "moved": ["s1", "s2"], "movedCount": 2})

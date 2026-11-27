@@ -33,6 +33,7 @@ Dependabot alert fixed or dismissed closes its members the same way.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -197,6 +198,46 @@ def opencti_internal_id(data: Mapping[str, Any]) -> str:
     return internal or _text(data.get("id"))
 
 
+#: A CVE id anywhere in a text (#2524).
+_CVE = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.IGNORECASE)
+
+
+def first_cve(text: object) -> str:
+    """#2524: the first CVE id *text* names, upper case, ``""`` when none."""
+    found = _CVE.search(text) if isinstance(text, str) else None
+    return found.group(0).upper() if found else ""
+
+
+def _target_value(kind: str, data: Mapping[str, Any]) -> str:
+    """#2524: the name OpenCTI gives the target of a relationship or sighting, ``""`` when absent.
+
+    The OpenCTI extension names it (``target_value``, ``sighting_of_value`` for a
+    sighting), symmetric to the ``source_value`` ``ctem_trigger_rules.source_name`` reads.
+    """
+    field = "sighting_of_value" if kind == "sighting" else "target_value"
+    extensions = data.get("extensions")
+    found = ""
+    if isinstance(extensions, Mapping):
+        found = next(
+            (_text(v.get(field)) for v in extensions.values() if isinstance(v, Mapping) and _text(v.get(field))), ""
+        )
+    return found or _text(data.get(field))
+
+
+def _target_subject(kind: str, data: Mapping[str, Any], payload: Mapping[str, Any], target: str) -> tuple[str, str]:
+    """#2524: the subject name of a relationship or sighting to a vulnerability, and its CVE.
+
+    The target's value (its CVE id for a vulnerability), else the CVE id the event
+    message names, else the target's STIX id when nothing else exists, so the same
+    CVE delivered as an object and as a relationship lands on one subject.
+    """
+    value = _target_value(kind, data)
+    meta = payload.get("_opencti_event")
+    message = _text(meta.get("message")) if isinstance(meta, Mapping) else ""
+    cve = first_cve(value) or first_cve(message)
+    return (value or cve or target)[:300], cve
+
+
 def _stix_ids(data: Mapping[str, Any], evidence: dict[str, Any]) -> None:
     """#2505: the STIX id and the earlier STIX ids of the object into *evidence*, for display only."""
     stix_id = _text(data.get("id"))
@@ -248,13 +289,20 @@ def _opencti_signal(row: Listener, payload: Mapping[str, Any]) -> dict[str, Any]
         target = _text(data.get("sighting_of_ref" if kind == "sighting" else "target_ref"))
         if not target.startswith("vulnerability--"):
             return None
-        ref, label = target, None
+        ref, cve = _target_subject(kind, data, payload, target)
+        label = ref if ref != target else None
     else:
+        target, cve = "", ""
         ref = _text(data.get("name")) or external_id
         label = _text(data.get("name")) or None
     if not ref:
         return None
     evidence: dict[str, Any] = {"event": _text(payload.get("type")), "stix_type": kind}
+    if target:
+        # #2524: the target's STIX id stays in evidence; its CVE goes where signal_cve_ids reads it.
+        evidence["target_ref"] = target
+        if cve:
+            evidence["cve"] = cve
     for key in ("x_opencti_cvss_base_score", "x_opencti_epss_score", "x_opencti_cisa_kev", "source_ref"):
         if data.get(key) not in (None, ""):
             evidence[key.removeprefix("x_opencti_")] = data[key]
@@ -771,10 +819,7 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
                 fields["evidence"][PIR_FLOOR_KEY] = await _pir_floor(
                     db, primary.id, fields["evidence"].get("pir"), kind=floor
                 )
-            elif row.trigger_path == "relevant_threat":
-                from app.services.ctem_trigger_rules import PIR_FLOOR_KEY
-
-                fields["evidence"][PIR_FLOOR_KEY] = False
+            # #2543: a sighting with no PIR data writes no floor; record_signal merges it with the stored one.
             from app.services.ctem_signal_sources import source_key
 
             # #2436: the source that recorded it, so the signal sources view counts each source apart.

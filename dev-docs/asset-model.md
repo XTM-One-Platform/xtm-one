@@ -39,7 +39,8 @@ answered as it is, so an endpoint is never downgraded by an unrelated failure.
 The OpenAEV write tools read before they write (xtm-one #1702): `manage_openaev_asset`, `manage_openaev_asset_group`
 and `manage_openaev_inject` `update` read the stored object and send it back with only the asked fields changed,
 since OpenAEV's PUT replaces the whole object. An explicit `clear` list on the asset `update` unsets a field (`url`
-alone on `bulk_update`), and `get_openaev_asset` prints every field the write sets (category, subcategory,
+alone on `bulk_update`; `bulk_update` sets `internet_facing` true or false with OpenAEV #9936, and an older
+OpenAEV that refuses or drops it is answered as such, never as applied), and `get_openaev_asset` prints every field the write sets (category, subcategory,
 criticality, internet-facing, URL, external reference), so a write can be read back.
 OpenCTI to XTM One: a `System` is `generic_asset` until a person classifies it.
 

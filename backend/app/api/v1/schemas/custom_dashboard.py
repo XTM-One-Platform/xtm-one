@@ -79,6 +79,9 @@ class CustomDashboardResponse(CustomDashboardSummaryResponse):
     """
 
     spec: dict
+    #: The stored form: an OpenCTI manifest, OpenCTI and OpenAEV widgets in their platform's own shape and
+    #: what XTM One adds under ``x_xtm_one`` (``dashboard_native``). What the source editor shows and writes.
+    manifest: dict = Field(default_factory=dict)
     #: The visualizations that have a widget form (``dashboard_definition.widget_view``): what
     #: the studio's inspector edits and sends back as an ``upsert``.
     widgets: list[dict] = Field(default_factory=list)
@@ -94,6 +97,13 @@ class CustomDashboardResponse(CustomDashboardSummaryResponse):
     #: Whether the caller may show it on their /dashboard (they read it as
     #: themselves, not through an admin's reach). Set on ``GET`` only.
     can_use_as_home: bool = False
+
+
+class CustomDashboardRenderResponse(CustomDashboardResponse):
+    """The dashboard as an export's page draws it: it has no session to search a platform with, so the entity
+    inputs' starting entities come named (``dashboard_platform_schema.entity_input_names``)."""
+
+    entity_names: dict[str, str] = Field(default_factory=dict)
 
 
 class CustomDashboardTagsUpdate(BaseModel):
@@ -135,6 +145,7 @@ class CustomDashboardVersionResponse(BaseModel):
     author_name: str | None = None
     created_at: str | None = None
     spec: dict | None = None
+    manifest: dict | None = None
 
 
 class DashboardRestoreRequest(BaseModel):
@@ -254,6 +265,12 @@ class WidgetDataResponse(BaseModel):
     open_url: str | None = None
     #: How the widget's module draws it (``dashboard_live.presentation_of``): ``{"view", "options"}``.
     presentation: dict | None = None
+    #: A source refreshed on the server (``dashboard_refresh``): ``{"mode", "every", "refreshed_at", "publisher"}`` -
+    #: the snapshot shown, read with its publisher's access.
+    snapshot: dict | None = None
+    #: What changed since the source's previous read on the server (``dashboard_refresh.with_changes``):
+    #: ``{"since", "figure": {"before", "after"}, "items"?}``.
+    changes: dict | None = None
 
 
 class PlatformSchemaRequest(BaseModel):

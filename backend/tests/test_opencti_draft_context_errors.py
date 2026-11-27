@@ -775,3 +775,23 @@ async def test_a_file_download_runs_where_the_run_works(ui_draft, expected):
             ToolCall(id="d", name="download_opencti_file", arguments={"file_id": "import/global/a.txt"})
         )
     assert sent == [expected]
+
+
+@pytest.mark.asyncio
+async def test_a_freshly_minted_token_refused_names_the_identity_not_the_token():
+    """A re-minted token refused again is no expired token: OpenCTI knows no user with the person's email, and
+    re-authorizing would change nothing (a registered platform's integration matches people by email)."""
+    remints = {"n": 0}
+
+    async def _remint() -> str:
+        remints["n"] += 1
+        return _jwt(1800)
+
+    headers = _headers(_jwt(600), draft=None, refresh_fn=_remint)
+    body = _error_body("You must be logged in to do this.", "AUTH_REQUIRED")
+    _data, err, seen = await _run_graphql(headers, lambda n, _h: (body, 200))
+    assert remints["n"] == 1 and len(seen) == 2
+    assert "OpenCTI refused the identity XTM One vouched for" in err
+    assert "same email" in err
+    assert "re-authorize" not in err
+    assert is_error_shaped_result(err)

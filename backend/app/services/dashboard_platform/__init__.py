@@ -91,7 +91,7 @@ def platform_list(sources: tuple[str, ...] | list[str] = PLATFORM_SOURCES, *, la
 PLATFORM_VIEWS: tuple[str, ...] = (
     "number", "list", "distribution", "bar", "hbar", "line", "area", "donut", "table",
     "scatter", "bubble", "punchcard", "icon", "radial", "filler", "marker",
-    "map", "choroplethsvg", "linkgraph", "networkgraph", "sankey", "parallel", "timeline", "treemap",
+    "map", "choroplethsvg", "linkgraph", "networkgraph", "sankey", "parallel", "timeline", "treemap", "attackflow",
     "radar", "polar", "wordcloud", "heatmap",
     "outcomematrix", "pathgraph", "exposureconsole", "scoregauge", "ringgauge", "domaincards",
 )  # fmt: skip
@@ -106,7 +106,7 @@ SHAPE_VIEWS: dict[str, tuple[str, ...]] = {
     "distribution": ("distribution", "donut", "hbar", "bar", "treemap", "radar", "polar", "wordcloud"),
     "rows": ("list", "table", "scatter", "bubble", "punchcard", "timeline", "linkgraph", "networkgraph", "sankey", "parallel"),
     "geo": ("map", "choroplethsvg"),
-    "graph": ("networkgraph", "linkgraph", "sankey"),
+    "graph": ("networkgraph", "linkgraph", "sankey", "attackflow"),
     "events": ("timeline",),
     "tree": ("treemap",),
     # Validation outcomes: a technique matrix, a path graph, an exposure console, a score gauge, a ring gauge, domain cards.
@@ -139,6 +139,9 @@ class NativeCheck:
     title: str | None = None
     #: How the platform itself draws it, when XTM One has that view (a donut is drawn as a donut).
     preferred_view: str | None = None
+    #: The parts the platform does not read, each with what to write instead: kept as written (a widget made in the
+    #: platform comes back as it was), told to whoever writes the widget.
+    ignored: tuple[str, ...] = ()
 
 
 def canonical_size(native: object) -> int:
@@ -165,6 +168,16 @@ def check_native(source: str, native: object) -> NativeCheck:
     if canonical_size(check.native) > MAX_NATIVE_BYTES:
         raise NativeError(f"The {source} configuration is too large (more than {MAX_NATIVE_BYTES // 1024} KB).")
     return check
+
+
+def describe_widget(source: str, widget_type: str | None = None) -> dict:
+    """What *source*'s widgets are (without *widget_type*), or one type with an example configuration that
+    passes :func:`check_native` and the rules it follows: what an agent reads before writing one."""
+    if source not in PLATFORM_SOURCES:
+        raise NativeError(f"source must be one of: {', '.join(PLATFORM_SOURCES)}.")
+    from importlib import import_module
+
+    return {"source": source, **import_module(f"{__name__}.{source}").describe(widget_type)}
 
 
 def resolve_view(check: NativeCheck, view: str | None) -> str | None:

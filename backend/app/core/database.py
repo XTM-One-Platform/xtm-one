@@ -310,6 +310,28 @@ engine = create_async_engine(
 
 _pool_capacity = settings.db_pool_size + settings.db_max_overflow
 
+#: The readiness probe's own engine (#2555): one connection, never the request pool. Under a burst
+#: that held every request connection, ``/api/health/ready`` waited on that pool, timed out and
+#: answered 503 on every pod at once, so the ingress dropped a platform whose database was up.
+_health_engine: Any = None
+
+
+def health_engine() -> Any:
+    """The engine ``/api/health/ready`` reads the database with: a pool of one, created on first use."""
+    global _health_engine
+    if _health_engine is None:
+        _health_engine = create_async_engine(
+            settings.database_url,
+            pool_size=1,
+            max_overflow=0,
+            pool_timeout=2,
+            pool_recycle=settings.db_pool_recycle,
+            pool_pre_ping=True,
+            connect_args=ENGINE_CONNECT_ARGS,
+        )
+    return _health_engine
+
+
 # ── Pool-holder diagnostics ─────────────────────────────────────────
 # The bare "Pool near exhaustion: N/N" warning proved useless for root-causing
 # exhaustion: it fires on EVERY checkout at >= capacity-2 (flooding the logs)

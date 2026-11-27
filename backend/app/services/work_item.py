@@ -3034,8 +3034,10 @@ async def update_work_item(
             item.blocked_reason = reason
         if needs_human is not None:
             if human and not stored_human:
-                # A new decision gate: watched afresh for being opened (#2390).
+                # A new decision gate: watched afresh for being opened (#2390), and
+                # an answer to an earlier gate no longer stands for it (#2500).
                 clear_decision_marks(item)
+                item.payload = _without_answer(item.payload)
             item.needs_human = human
             if not human and ask is None:
                 # The card goes with the decision it asked for (#762).
@@ -3051,7 +3053,13 @@ async def update_work_item(
 
             # The sources the reader opens, from the item's own text when the agent gave none (#834).
             completed = await _complete_case_ask(db, item.correlation_key, new_ask)
+            asked_before = getattr(item, "ask", None)
             item.ask = with_source_links(completed, item.description, item.payload)
+            if human and item.ask != asked_before:
+                # A new ask is a new question: the answer recorded on the previous one
+                # (a keep-waiting answer included) no longer stands, so the item waits
+                # for the person again in the list, its count and the inbox (#2500).
+                item.payload = _without_answer(item.payload)
         if item.status != "blocked" and previous_status == "blocked":
             # No longer blocked: what it waited for no longer applies. An item put
             # back to work keeps the pull requests it still waited for, so a
@@ -5199,6 +5207,13 @@ async def _refuse_decided_for_group_member(
     raise WorkItemNotWaitingError(_not_waiting_message(decided))
 
 
+def _without_answer(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    """*payload* without its ``answer`` (a copy when there is one to drop). Pure."""
+    if isinstance(payload, dict) and "answer" in payload:
+        return {k: v for k, v in payload.items() if k != "answer"}
+    return payload
+
+
 def _repeats_kept_answer(payload: object, key: str | None, words: str) -> bool:
     """Whether *key* and *words* repeat the answer already stored on the item (#2500). Pure.
 
@@ -6488,7 +6503,7 @@ async def _resolved_recipients(
     )
 
 
-def _answered_keeps_waiting_clause() -> ColumnElement[bool]:
+def answered_keeps_waiting_clause() -> ColumnElement[bool]:
     """SQL: the item's ``payload.answer.option`` is a ``keeps_waiting`` option of its ask (#2500).
 
     The frontend's ``answeredKeepsWaiting`` in SQL: the answer is recorded and
@@ -6520,7 +6535,8 @@ def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):
     else its user, else every administrator when it names nobody (#11893,
     :func:`app.services.work_item_recipient.recipient_clause`). One the
     person already answered with a ``keeps_waiting`` option waits for its
-    agent, not for them (#2500, :func:`_answered_keeps_waiting_clause`).
+    agent, not for them (#2500, :func:`answered_keeps_waiting_clause`; the
+    decisions inbox applies the same clause, ``decision_inbox.waiting_for``).
     """
     from app.services.work_item_recipient import recipient_clause
 
@@ -6529,7 +6545,7 @@ def _waits_for_person_clause(user_uuid: uuid.UUID, now: datetime):
         or_(
             and_(
                 WorkItem.needs_human.is_(True),
-                not_(_answered_keeps_waiting_clause()),
+                not_(answered_keeps_waiting_clause()),
                 recipient_clause(user_uuid),
             ),
             and_(

@@ -99,7 +99,8 @@ const LOCKED_CHIP_HIDING = {
  * The wrapped chip row of a locked field holds every chip to the field's width: the row, each item,
  * the chip and its label body may shrink, so a long label ends in the chip's ellipsis (its tooltip
  * carries the whole name) and no chip runs under the clear and open controls or past the field
- * (UX r1 B2 of #2428).
+ * (UX r1 B2 of #2428). Every chip row is bounded so, a long option name (a PIR, #2506 A2 of #2436)
+ * ends in the chip's ellipsis with its whole name in the chip's tooltip, never a silent cut.
  */
 const BOUNDED_CHIP_ROW =
   "min-w-0 max-w-full [&>li]:min-w-0 [&>li]:max-w-full [&>li>span]:max-w-full [&>li>span>:first-child]:min-w-0";
@@ -195,7 +196,7 @@ export function MultiSelect({
           className={
             lockedSelected.length > 0
               ? cn(BOUNDED_CHIP_ROW, LOCKED_CHIP_HIDING[Math.min(lockedSelected.length, 2) as 1 | 2])
-              : undefined
+              : BOUNDED_CHIP_ROW
           }
           overflowLabel={(count, labels) => t_i18n("+{count} more: {labels}", { count, labels: labels.join(", ") })}
         />

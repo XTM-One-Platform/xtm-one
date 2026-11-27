@@ -14,8 +14,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * Trellis: one chart split into small multiples by a field, Splunk's
- * "trellis layout". What a split is depends on the closed shape:
+ * Trellis: one chart split into small multiples by a field (a
+ * "trellis layout"). What a split is depends on the closed shape:
  *
  * - `series`: one panel per series (the field is `series`);
  * - `tree`: one panel per top-level name, a distribution of what is under it

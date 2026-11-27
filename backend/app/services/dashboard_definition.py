@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
-"""The definition of a custom dashboard (version 2): Splunk Dashboard Studio's split.
+"""The definition of a custom dashboard (version 2): data sources, visualizations and layout kept apart.
 
 A dashboard is stored as one JSON definition::
 
@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import re
 import uuid
 from typing import Annotated, Any, Literal
@@ -72,6 +73,8 @@ from app.services.dashboard_canvas import (
 from app.services.dashboard_grid import GRID_COLUMNS, MAX_ROWS, fill_layouts, reflow, width_columns, width_of
 from app.services.dashboard_pipeline import MAX_STEPS, Step
 from app.services.dashboard_visualization_options import validate_options
+
+logger = logging.getLogger(__name__)
 
 DEFINITION_VERSION = 2
 
@@ -126,6 +129,8 @@ DATA_TYPES: tuple[str, ...] = (
     "xtm.parallelcoordinates",
     "xtm.timeline",
     "xtm.treemap",
+    # A flow of attack steps (``graph`` data: an Attack Flow, or a kill chain's stages from a ``flow`` step).
+    "xtm.attackflow",
     # A distribution or a series drawn as a radar, a polar area, a word cloud or a heatmap.
     "xtm.radar",
     "xtm.polararea",
@@ -177,6 +182,7 @@ VIEW_TO_TYPE: dict[str | None, str] = {
     "parallel": "xtm.parallelcoordinates",
     "timeline": "xtm.timeline",
     "treemap": "xtm.treemap",
+    "attackflow": "xtm.attackflow",
     "radar": "xtm.radar",
     "polar": "xtm.polararea",
     "wordcloud": "xtm.wordcloud",
@@ -269,11 +275,101 @@ def refresh_seconds(value: str | None) -> int | None:
     return int(match.group(1)) * {"s": 1, "m": 60, "h": 3600}[match.group(2)]
 
 
+#: Where a source is read: ``live`` (unset) by each viewer's page, with their access, every ``refresh`` while it is
+#: open; on the server, whoever watches, kept as a snapshot read with the publisher's access (``dashboard_refresh``):
+#: ``server`` every ``refresh``, ``schedule`` on a ``cron`` (UTC), ``event`` when an event of ``on`` happens,
+#: ``manual`` when someone asks.
+REFRESH_MODES = ("live", "server", "schedule", "event", "manual")
+#: The modes a snapshot is kept for.
+SERVER_REFRESH_MODES = ("server", "schedule", "event", "manual")
+#: The shortest ``refresh`` of a source read on the server.
+MIN_SERVER_REFRESH_SECONDS = 300
+#: The sources a server refresh reads: those that read without a person pressing anything and without an agent.
+SERVER_REFRESH_TYPES = ("platform", "integration", "knowledge", "variable", "derived")
+
+
+#: Alerts one source holds, at most.
+MAX_ALERTS = 5
+
+
+class SourceAlert(_Model):
+    """A threshold on a source read on the server: its people are told when the figure starts to cross it.
+
+    The figure is the source's own (``dashboard_refresh.figure_of``): a number's value, a series' last point, a
+    distribution's total, a table's row count.
+    """
+
+    id: ElementId
+    op: Literal["gt", "gte", "lt", "lte", "eq", "ne"]
+    value: float
+    label: Annotated[str | None, Field(default=None, max_length=120)]
+    severity: Literal["info", "warning", "critical"] = "warning"
+
+
+class RefreshEvent(_Model):
+    """What an ``event`` source is read again on: a platform event, or an event an integration raises."""
+
+    platform_event: Annotated[str | None, Field(default=None, max_length=100, alias="platformEvent")]
+    integration_event: Annotated[str | None, Field(default=None, max_length=200, alias="integrationEvent")]
+    #: The integration raising it; any integration of the provider when unset.
+    integration_id: Annotated[uuid.UUID | None, Field(default=None, alias="integrationId")]
+
+    @model_validator(mode="after")
+    def _one(self) -> RefreshEvent:
+        if (self.platform_event is None) == (self.integration_event is None):
+            raise ValueError("on names one event: platformEvent or integrationEvent")
+        if self.integration_id is not None and self.integration_event is None:
+            raise ValueError("integrationId goes with integrationEvent")
+        return self
+
+
+def check_refresh_cron(cron: str) -> str:
+    """A refresh cron, valid and firing at most every 5 minutes (``MIN_SERVER_REFRESH_SECONDS``)."""
+    from datetime import UTC, datetime
+    from itertools import pairwise
+
+    from croniter import croniter
+
+    from app.core.utils import validate_cron_expression
+
+    checked = validate_cron_expression(cron)
+    beats = croniter(checked, datetime(2026, 1, 5, tzinfo=UTC))
+    times = [beats.get_next(datetime) for _ in range(12)]
+    if min((b - a).total_seconds() for a, b in pairwise(times)) < MIN_SERVER_REFRESH_SECONDS:
+        raise ValueError("a source refreshed on a schedule is read at most every 5 minutes")
+    return checked
+
+
 class _Refreshed(_Model):
     """Read again every ``refresh`` (``delay``: after the last answer; ``interval``: on a fixed beat)."""
 
     refresh: Annotated[str | None, Field(default=None, max_length=8)]
     refresh_type: Annotated[Literal["delay", "interval"], Field(default="delay", alias="refreshType")]
+    refresh_mode: Annotated[Literal[REFRESH_MODES] | None, Field(default=None, alias="refreshMode")]  # type: ignore[valid-type]
+    #: ``schedule``: when it is read (cron, UTC), at most every 5 minutes.
+    cron: Annotated[str | None, Field(default=None, max_length=100)]
+    #: ``event``: what it is read on.
+    on: RefreshEvent | None = None
+    #: Thresholds checked at each read on the server (``dashboard_refresh.evaluate_alerts``).
+    alerts: Annotated[list[SourceAlert] | None, Field(default=None, max_length=MAX_ALERTS)]
+
+    @model_validator(mode="after")
+    def _server(self) -> _Refreshed:
+        if self.refresh_mode == "server":
+            seconds = refresh_seconds(self.refresh)
+            if seconds is None or seconds < MIN_SERVER_REFRESH_SECONDS:
+                raise ValueError("a source refreshed on the server says how often, every 5 minutes at least: refresh '15m'")
+        if (self.refresh_mode == "schedule") != (self.cron is not None):
+            raise ValueError("cron goes with refreshMode 'schedule', and a schedule needs one: cron '0 7 * * 1-5'")
+        if self.cron is not None:
+            self.cron = check_refresh_cron(self.cron)
+        if (self.refresh_mode == "event") != (self.on is not None):
+            raise ValueError("on goes with refreshMode 'event', and an event refresh needs one: on {platformEvent} or {integrationEvent}")
+        if self.alerts and self.refresh_mode in (None, "live"):
+            raise ValueError("alerts are checked when the server reads the source: set a refreshMode other than live")
+        if self.alerts and len({alert.id for alert in self.alerts}) != len(self.alerts):
+            raise ValueError("each alert of a source has an id of its own")
+        return self
 
     @field_validator("refresh")
     @classmethod
@@ -313,7 +409,7 @@ class PlatformSourceOptions(_Refreshed):
 
 
 class StaticSourceOptions(_Model):
-    """Data written in the definition (Splunk's test data): one of the closed shapes."""
+    """Data written in the definition (sample or test data): one of the closed shapes."""
 
     shape: Shape
     data: dict
@@ -343,10 +439,23 @@ class _AnswerOptions(_Refreshed):
         return value
 
 
+#: The most completed runs an assignment source reads as a trend.
+MAX_HISTORY = 60
+
+
 class AssignmentSourceOptions(_AnswerOptions):
-    """The answer of an assignment's last completed run the viewer may see."""
+    """The answer of an assignment's last completed run the viewer may see; with ``history``, the figure of each
+    of its last ``history`` runs as a series over their completion times (a feed's trend), read as ``shape``
+    ``number`` from each answer."""
 
     assignment_id: uuid.UUID
+    history: Annotated[int | None, Field(default=None, ge=2, le=MAX_HISTORY)]
+
+    @model_validator(mode="after")
+    def _trend(self) -> AssignmentSourceOptions:
+        if self.history is not None and self.shape != "series":
+            raise ValueError("history draws each run's figure as a point: shape 'series'")
+        return self
 
 
 class AskSourceOptions(_AnswerOptions):
@@ -364,10 +473,58 @@ class VariableSourceOptions(_Refreshed):
 
 
 class DerivedSourceOptions(_Refreshed):
-    """Another source's result through closed steps (Splunk's chain search, ``dashboard_pipeline``)."""
+    """Another source's result through closed steps (a chain of steps, ``dashboard_pipeline``)."""
 
     extends: ElementId
     steps: Annotated[list[Step], Field(default_factory=list, max_length=MAX_STEPS)]
+
+
+class IntegrationSourceOptions(_Refreshed):
+    """A read tool of an integration, called with fixed arguments, its answer read as a shape (at ``path``).
+
+    Only a tool that reads (``tool_classification``) is called; the reader is the viewer, through an
+    integration they may use with their own credential, as the integration's Test does.
+    """
+
+    integration_id: uuid.UUID
+    tool: Annotated[str, Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9_.:-]+$")]
+    arguments: FreeObject
+    shape: Shape = "rows"
+    path: Annotated[str | None, Field(default=None, max_length=600)]
+
+    @field_validator("arguments")
+    @classmethod
+    def _bounded(cls, value: dict) -> dict:
+        return _bounded_object(value, "arguments")  # type: ignore[return-value]
+
+    @field_validator("path")
+    @classmethod
+    def _path(cls, value: str | None) -> str | None:
+        if value is not None and not PATH_RE.match(value):
+            raise ValueError("path is up to 10 keys or indexes joined by '.', like 'data.items'")
+        return value
+
+
+#: How a knowledge base document's table is written; ``auto`` tries JSON, JSON lines, CSV, then a Markdown table.
+TABLE_FORMATS = ("auto", "json", "jsonl", "csv", "markdown")
+
+
+class KnowledgeSourceOptions(_Refreshed):
+    """A table kept in a knowledge base document (whole, or one heading section), read as a shape."""
+
+    knowledge_base_id: uuid.UUID
+    document_id: uuid.UUID
+    section: Annotated[str | None, Field(default=None, max_length=300)]
+    format: Literal[TABLE_FORMATS] = "auto"  # type: ignore[valid-type]
+    shape: Shape = "rows"
+    path: Annotated[str | None, Field(default=None, max_length=600)]
+
+    @field_validator("path")
+    @classmethod
+    def _path(cls, value: str | None) -> str | None:
+        if value is not None and not PATH_RE.match(value):
+            raise ValueError("path is up to 10 keys or indexes joined by '.', like 'response.findings'")
+        return value
 
 
 class PlatformDataSource(_Model):
@@ -400,6 +557,18 @@ class VariableDataSource(_Model):
     options: VariableSourceOptions
 
 
+class IntegrationDataSource(_Model):
+    type: Literal["integration"]
+    name: Annotated[str | None, Field(default=None, max_length=80)]
+    options: IntegrationSourceOptions
+
+
+class KnowledgeDataSource(_Model):
+    type: Literal["knowledge"]
+    name: Annotated[str | None, Field(default=None, max_length=80)]
+    options: KnowledgeSourceOptions
+
+
 class DerivedDataSource(_Model):
     type: Literal["derived"]
     name: Annotated[str | None, Field(default=None, max_length=80)]
@@ -407,11 +576,18 @@ class DerivedDataSource(_Model):
 
 
 DataSource = Annotated[
-    PlatformDataSource | StaticDataSource | AssignmentDataSource | AskDataSource | VariableDataSource | DerivedDataSource,
+    PlatformDataSource
+    | StaticDataSource
+    | AssignmentDataSource
+    | AskDataSource
+    | VariableDataSource
+    | IntegrationDataSource
+    | KnowledgeDataSource
+    | DerivedDataSource,
     Field(discriminator="type"),
 ]
 #: The sources that read something of the platform's with the viewer's access (checked against the writer too).
-REFERENCE_SOURCE_TYPES = ("platform", "assignment", "ask", "variable")
+REFERENCE_SOURCE_TYPES = ("platform", "assignment", "ask", "variable", "integration", "knowledge")
 
 
 # ── Visualizations and inputs ────────────────────────────────────────────────
@@ -925,6 +1101,13 @@ class Definition(_Model):
                     if len(seen) > MAX_CHAIN_DEPTH + 1:
                         raise ValueError(f"dataSources.{sid}: a chain stacks at most {MAX_CHAIN_DEPTH} derived sources")
                     current = self.data_sources[parent]
+        for sid, source in self.data_sources.items():
+            mode = getattr(source.options, "refresh_mode", None)
+            if mode in SERVER_REFRESH_MODES and source.type not in SERVER_REFRESH_TYPES:
+                raise ValueError(
+                    f"dataSources.{sid}: a source of type '{source.type}' is not refreshed on the server "
+                    f"(refreshMode server or manual: {', '.join(SERVER_REFRESH_TYPES)})"
+                )
         for iid, item in self.inputs.items():
             sid = item.data_sources.get("primary")
             if sid is not None and sid not in self.data_sources:
@@ -1077,11 +1260,23 @@ def _upgrade_types(definition: dict) -> dict:
 
 
 def upgrade(spec: object) -> dict:
-    """A stored dashboard as a definition: a version 2 one as it is, a version 1 one converted.
+    """A stored dashboard as the working definition: a version 2 one as it is, a manifest (version 3,
+    ``dashboard_native``) read back, a version 1 one converted.
 
     A legacy validation view becomes its replacement (:data:`LEGACY_TYPES`). Never
     validates: what was stored is read; a write validates what it writes.
     """
+    from app.services.dashboard_native import is_native
+
+    if is_native(spec):
+        from app.services.dashboard_native import NativeFormatError, from_native
+
+        try:
+            return _upgrade_types(from_native(spec))  # type: ignore[arg-type]
+        except NativeFormatError as exc:
+            # Only XTM One writes a stored manifest; one it cannot read is shown empty, never a crash of the page.
+            logger.error("A stored dashboard manifest could not be read: %s", exc)
+            return {**upgrade({}), "title": str((spec.get("x_xtm_one") or {}).get("title") or "Dashboard")}  # type: ignore[union-attr]
     if is_definition(spec):
         return _upgrade_types(copy.deepcopy(spec))  # type: ignore[arg-type]
     spec = spec if isinstance(spec, dict) else {}
@@ -1181,6 +1376,28 @@ def widget_view(definition: dict, *, layout_id: str | None = None) -> list[dict]
         widgets.append(widget)
     fill_layouts(widgets)
     return sorted(widgets, key=lambda w: (w["layout"]["y"], w["layout"]["x"]))
+
+
+#: The shape of an answer in words (an agent's, an assignment's, a variable's).
+_ANSWER_SHAPES = ("text",)
+
+
+def visualization_catalog(shape: str | None = None) -> list[dict]:
+    """The data visualizations, each with the data shapes it draws and its options (read from their models):
+    what an agent reads to pick one. Narrowed to those drawing *shape* when given."""
+    from app.services.dashboard_platform import SHAPE_VIEWS
+    from app.services.dashboard_visualization_options import option_names
+
+    catalog = []
+    for viz_type in DATA_TYPES:
+        view = TYPE_TO_VIEW.get(viz_type)
+        if viz_type == "xtm.platformlink":
+            continue
+        shapes = list(_ANSWER_SHAPES) if viz_type == "xtm.answer" else [s for s, views in SHAPE_VIEWS.items() if view in views]
+        if shape is not None and shape not in shapes:
+            continue
+        catalog.append({"type": viz_type, "shapes": shapes, "options": option_names(viz_type)})
+    return catalog
 
 
 def summary_widgets(spec: object) -> list[dict]:

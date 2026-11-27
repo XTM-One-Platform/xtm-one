@@ -276,3 +276,42 @@ async def test_the_agent_tools_build_and_edit_the_users_own_dashboard(monkeypatc
         async with scratch.sessions() as db:
             stored = await db.get(CustomDashboard, dashboard_id)
             assert (stored.revision, stored.widget_count) == (2, 2)
+
+
+async def test_a_dashboard_stored_with_rows_of_36_px_loads_in_opencti_rows_and_is_kept_until_saved() -> None:
+    """A row written before D8 (a version 2 definition, rows of 36 px) reads in today's manifest, placed in
+    OpenCTI's rows; loading writes nothing back; its next save stores the manifest."""
+    from sqlalchemy import text
+
+    from app.services.dashboard_native import EXTENSION
+
+    legacy = {
+        "version": 2, "title": "Old board",
+        "dataSources": {}, "visualizations": {"note": {"type": "xtm.text", "options": {"body": "hi"}}}, "inputs": {},
+        "layout": {"tabs": {"items": [{"layoutId": "main", "label": "Main"}]},
+                   "layoutDefinitions": {"main": {"structure": [{"item": "note", "position": {"x": 0, "y": 8, "w": 6, "h": 8}}]}}},
+    }  # fmt: skip
+    async with _world() as (scratch, owner, _other, _admin, _dashboard_id):
+        async with scratch.sessions() as db:
+            row = CustomDashboard(user_id=owner.id, title="Old board", spec=legacy, widget_count=1, revision=1)
+            db.add(row)
+            await db.commit()
+            board = row.id
+        async with scratch.sessions() as db:
+            loaded = await db.get(CustomDashboard, board)
+            assert loaded.spec[EXTENSION]["grid"] == "opencti"
+            # 8-16 rows of 36 px are 4-7 rows of 82 px (3.5 and 7.0 rounded).
+            assert {k: loaded.spec["widgets"]["note"]["layout"][k] for k in "xywh"} == {"x": 0, "y": 4, "w": 6, "h": 3}
+            assert not db.dirty
+            await db.commit()
+            stored = (await db.execute(text("SELECT spec FROM custom_dashboards WHERE id = :id"), {"id": board})).scalar_one()
+            assert stored["version"] == 2  # loading wrote nothing back
+        async with _client(scratch.sessions, owner) as client:
+            patched = await client.patch(
+                f"/api/v1/custom-dashboards/{board}", json={"revision": 1, "title": "Old board, saved"}
+            )
+            assert patched.status_code == 200, patched.text
+        async with scratch.sessions() as db:
+            stored = (await db.execute(text("SELECT spec FROM custom_dashboards WHERE id = :id"), {"id": board})).scalar_one()
+            assert stored[EXTENSION]["grid"] == "opencti"
+            assert {k: stored["widgets"]["note"]["layout"][k] for k in "xywh"} == {"x": 0, "y": 4, "w": 6, "h": 3}

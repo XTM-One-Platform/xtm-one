@@ -63,7 +63,7 @@ A partner's task runs as the agent's owner — never as the person who bound the
 
 Read that line before you send the card URL. The partner reaches everything that user can see, their personal and group-shared data included, through the agent's whole tool set and the agents it hands work to. There is no per-partner narrowing of tools. If that is too much, do not expose the agent, or duplicate it under an owner whose reach fits.
 
-The work counts against that user's agentic quota. A partner is still treated as an outside caller: it gets no trace inspection and cannot change platform objects, whatever the owner may do. See [Sharing and access](sharing-and-access.md#through-what) for how this fits with the agent's other audiences.
+The work counts against that user's agentic quota. A partner is still treated as an outside caller: it gets no trace inspection, cannot change platform objects and cannot drive the owner's machines (XTM One Desktop runners), whatever the owner may do. See [Sharing and access](sharing-and-access.md#through-what) for how this fits with the agent's other audiences.
 
 ## What a partner can do
 

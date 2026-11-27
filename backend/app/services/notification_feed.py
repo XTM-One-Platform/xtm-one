@@ -85,6 +85,7 @@ NOTIFICATION_KINDS: tuple[str, ...] = (
     "run_action_request",
     "work_item_waiting",
     "builtin_tools_outside_allowlist",
+    "dashboard_alert",
 )
 
 #: The former decision kinds, read as ``decision`` for one release (#842, S4).
@@ -349,6 +350,11 @@ def present_activity(activity: Any, *, flows_enabled: bool) -> NotificationItem 
         )
     if source == "api_key":
         return item("api_key", "/profile/api-keys", "API keys")
+    if source == "dashboard_alert":
+        # A threshold of a dashboard's source started to hold (``dashboard_refresh.alert_people``): the dashboard.
+        dashboard_id = _str(metadata, "dashboard_id")
+        route = f"/dashboards/{dashboard_id}" if _is_uuid(dashboard_id) else "/dashboards"
+        return item("dashboard_alert", route, "Dashboard", critical=_str(metadata, "severity") == "critical")
     if source == "agent_account":
         return item(
             "agent_account",

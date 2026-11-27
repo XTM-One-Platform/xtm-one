@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * A data source's result as CSV (the per-visualization export, like Splunk's).
+ * A data source's result as CSV (the per-visualization export).
  *
  * The data is the closed shape the server answered (`WidgetData`), never
  * anything else. Each cell is quoted when it must be, and a cell a

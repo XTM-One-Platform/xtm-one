@@ -1515,6 +1515,44 @@ async def test_update_integration_switches_auth_type_to_platform_managed(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_update_integration_switching_oauth_to_an_api_key_connects_it(monkeypatch):
+    """#2553: an OAuth integration left "configured" and switched to an API key
+    with the key is connected, as in the REST update; never Pre-configured."""
+    import app.api.v1.integration_catalog as integration_catalog_module
+
+    monkeypatch.setattr(
+        integration_catalog_module,
+        "PROVIDER_CATALOG",
+        {"acme": {"supported_auth_types": ["oauth", "api_key"]}},
+        raising=False,
+    )
+    integ = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="Acme",
+        provider="acme",
+        auth_type="oauth",
+        status="configured",
+        api_key_enc=None,
+        client_id_enc="ENC(app)",
+        access_token_enc=None,
+        refresh_token_enc=None,
+        extra_config_enc=None,
+    )
+    _stub_manageable_gate(monkeypatch, entity=integ)
+    created: list = []
+    monkeypatch.setattr(database, "async_session", _session_factory(created))
+
+    _, executor = build_agent_builder_tool(SimpleNamespace(), str(uuid.uuid4()))
+    result = await _call(
+        executor, "update_integration", integration_id=str(integ.id), auth_type="api_key", api_key="key-2553"
+    )
+
+    assert not result.is_error, result.content
+    assert integ.auth_type == "api_key"
+    assert integ.status == "connected"
+
+
+@pytest.mark.asyncio
 async def test_update_integration_refuses_platform_managed_without_a_base_url(monkeypatch):
     """#8386: a platform_managed integration with no base_url has no credential
     at all; the switch is refused before anything is written."""

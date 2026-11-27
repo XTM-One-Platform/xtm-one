@@ -5,7 +5,7 @@
     "req_file": "requirements.sandbox.base.txt",
     "runtime_apt_file": "apt.sandbox.base.runtime.txt",
     "final_target": "final-minimal",
-    "smoke_imports": ["numpy", "pandas", "matplotlib", "scipy", "tabulate", "yaml", "openpyxl", "xlsxwriter", "pyzipper", "Cryptodome", "cryptography", "av"]
+    "smoke_imports": ["numpy", "pandas", "matplotlib", "scipy", "tabulate", "yaml", "openpyxl", "xlsxwriter", "pyzipper", "Cryptodome", "cryptography", "av", "pypdf", "pypdfium2"]
   },
   {
     "image": "sandbox-python-cti",

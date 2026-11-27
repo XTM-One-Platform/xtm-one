@@ -1371,6 +1371,23 @@ kinds and `event_poller` polls them every 60 s.
   (`services/event_coalescing.py`, status `coalesced`). The risk desk's three
   event assignments run with `max_concurrent_runs: 1`: a burst of 30 jobs
   starts one run and queues at most one more.
+- Debounce (#2544): a fold only reaches a run that has not started, and a
+  desk run ends within one 60 s poll tick, so a burst spread over several
+  ticks used to start one run per tick. The event also declares
+  `coalesce_quiet_seconds` 300 and `coalesce_max_seconds` 900
+  (`COALESCE_QUIET_SECONDS`, `COALESCE_MAX_SECONDS`): the run of the key is
+  created `delayed` with a `coalesce_hold` in its trigger context (the
+  burst's first and last event), every later event of the key folds into it
+  and moves its orchestration execution's `run_at` to 300 s after itself,
+  never past 900 s after the first. A burst longer than the cap is one run
+  per window. A queued run of the key takes its hold when the drain
+  promotes it. The hold lives in the run row and its execution, so a
+  restart neither loses nor doubles it. A provider that declares nothing
+  is dispatched as before; a declared hold is bounded at 900 s.
+- No-op re-pricing (#2544): a `crq-price-recompute` run whose summary says
+  `movedCount` 0 with an empty `moved` is no event, as a
+  `finding-score-recompute` run whose `changedCount` is 0 (#2169); a run
+  with no summary (an older OpenCRQ) is kept.
 
 ### 8.6 Known limit and the next slices
 

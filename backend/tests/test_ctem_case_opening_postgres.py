@@ -43,8 +43,8 @@ def _quiet(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
     """No owner lookup, no inventory read, no live frame or event bus: the switch is under test."""
     from app.services import ctem_case_owner, ctem_loop_stream, platform_events
 
-    async def no_owner(_db: Any, _signal: Any) -> tuple[None, str]:
-        return None, "none"
+    async def no_owner(_db: Any, _signal: Any, _case: Any = None) -> tuple[None, str, tuple[()]]:
+        return None, "none", ()
 
     async def not_resolved(*_a: Any, **_k: Any) -> bool:
         return False
@@ -218,6 +218,67 @@ async def test_a_paused_drain_stops_at_its_next_pass():
         await _pause(sessions, world["admin"])
         totals = await case_opening.drain("cyber", session_factory=sessions)
         assert totals == {"passes": 1, "opened": 0, "joined": 0, "skipped": 0}
+
+
+async def test_off_open_from_signal_itself_opens_and_joins_nothing() -> None:
+    """#2536: the choke point refuses on its own, whatever its caller checked."""
+    async with _database() as sessions:
+        async with sessions() as session:
+            world = await _world(session, signals=2, subjects=1)
+        async with sessions() as session:
+            first, _second = (await session.execute(select(CtemSignal))).scalars().all()
+            case = await loop.open_from_signal(session, first, events=loop.PendingEvents(), now=NOW)
+            await session.commit()
+            assert case is not None
+        await _pause(sessions, world["admin"])
+        async with sessions() as session:
+            second = (await session.execute(select(CtemSignal).where(CtemSignal.case_id.is_(None)))).scalar_one()
+            held = (await session.execute(select(CtemCase))).scalar_one()
+            assert await loop.open_from_signal(session, second, events=loop.PendingEvents(), now=NOW) is None
+            assert await loop.join_case(session, second, held, now=NOW) is False
+            await session.commit()
+            assert second.case_id is None and second.state == "confirmed"
+            assert await _cases(session) == 1
+
+
+async def test_off_mid_pass_stops_a_drain_at_the_next_signal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2536: an administrator pauses while a drain pass runs: nothing opens after the pause commits."""
+    async with _database() as sessions:
+        async with sessions() as session:
+            world = await _world(session, signals=10)
+        real = loop.open_from_signal
+        calls: list[int] = []
+
+        async def open_then_pause(db: Any, signal: CtemSignal, **kwargs: Any) -> Any:
+            case = await real(db, signal, **kwargs)
+            calls.append(1)
+            if len(calls) == 2:
+                await _pause(sessions, world["admin"])
+            return case
+
+        monkeypatch.setattr(loop, "open_from_signal", open_then_pause)
+        totals = await case_opening.drain("cyber", session_factory=sessions)
+        # Pass 1 stops after its second signal; pass 2 reads the switch off and opens nothing.
+        assert totals["opened"] == 2 and totals["passes"] == 2
+        async with sessions() as session:
+            assert await _cases(session) == 2
+            assert await case_opening.waiting_count(session) == 8
+
+
+async def test_off_the_sweep_after_a_pause_mid_transaction_reads_the_committed_switch() -> None:
+    """#2536: a session that read the switch on before the pause reads it off after, no stale copy."""
+    async with _database() as sessions:
+        async with sessions() as session:
+            world = await _world(session, signals=3)
+        async with sessions() as session:
+            assert await case_opening.is_on(session, "cyber") is True
+            await _pause(sessions, world["admin"])
+            assert await case_opening.is_on(session, "cyber") is False
+            counts = {"opened": 0, "joined": 0, "skipped": 0}
+            await loop.open_waiting(session, vertical="cyber", events=loop.PendingEvents(), now=NOW, counts=counts)
+            await session.commit()
+            assert counts == {"opened": 0, "joined": 0, "skipped": 0}
+            assert await _cases(session) == 0
 
 
 async def test_every_change_writes_one_audit_row_and_the_same_value_none():

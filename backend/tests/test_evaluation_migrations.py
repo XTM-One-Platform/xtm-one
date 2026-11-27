@@ -338,12 +338,21 @@ async def _insert(conn, table: str, **values) -> uuid.UUID:
     return row["id"]
 
 
+async def _speed_tolerance(conn, evaluation: uuid.UUID) -> float | None:
+    from app.core.migration_ddl import column_exists
+
+    if not await conn.run_sync(column_exists, "evaluations", "speed_tolerance"):
+        return None
+    return (
+        await conn.execute(sa.text("SELECT speed_tolerance FROM evaluations WHERE id = :id"), {"id": evaluation})
+    ).scalar_one()
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_an_install_on_mains_schema_upgrades_keeping_its_data():
     """Every value main stored survives the upgrade and the downgrade, a result outlives
-    its deleted entry, no constraint is left unvalidated, and the code after the upgrade
-    creates an evaluation without the column the code before it reads."""
+    its deleted entry, and no constraint is left unvalidated."""
     import json
 
     from tests.scratch_database import ALL_TABLES, scratch_database
@@ -370,12 +379,11 @@ async def test_an_install_on_mains_schema_upgrades_keeping_its_data():
 
         _alembic(db.url, "upgrade", "head")
         async with db.engine.begin() as conn:
-            tolerances = (
+            tolerance = (
                 await conn.execute(
-                    sa.text("SELECT speed_tolerance, performance_tolerance FROM evaluations WHERE id = :id"),
-                    {"id": evaluation},
+                    sa.text("SELECT performance_tolerance FROM evaluations WHERE id = :id"), {"id": evaluation}
                 )
-            ).one()
+            ).scalar_one()
             config = json.loads(
                 (
                     await conn.execute(
@@ -395,20 +403,44 @@ async def test_an_install_on_mains_schema_upgrades_keeping_its_data():
             kept = (
                 await conn.execute(sa.text("SELECT entry_id FROM evaluation_results WHERE id = :id"), {"id": result})
             ).one_or_none()
-            created = await _insert(conn, "evaluations", name="Created after", timeout_seconds=300, performance_tolerance=3.0)
-            created_speed = (
-                await conn.execute(sa.text("SELECT speed_tolerance FROM evaluations WHERE id = :id"), {"id": created})
-            ).scalar_one()
 
         _alembic(db.url, "downgrade", _MAIN_REVISION)
         async with db.engine.begin() as conn:
-            restored = (
-                await conn.execute(sa.text("SELECT speed_tolerance FROM evaluations WHERE id = :id"), {"id": evaluation})
-            ).scalar_one()
+            restored = await _speed_tolerance(conn, evaluation)
 
-    assert tuple(tolerances) == (7.5, 7.5)
+    assert tolerance == 7.5
     assert "resume_secret" not in config and config.get("resume_secret_enc")
     assert unvalidated == []
     assert kept is not None and kept.entry_id is None
-    assert created_speed == 5.0
     assert restored == 7.5
+
+
+_DROP_REVISION = "e686spdtol01"
+_BEFORE_DROP = "e684cbkeys01"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_speed_tolerance_is_dropped_and_its_downgrade_restores_the_current_tolerances():
+    from tests.scratch_database import ALL_TABLES, scratch_database
+
+    async with scratch_database("speedtolerance", tables=ALL_TABLES, extensions=("vector",), bind_app_sessions=False) as db:
+        _alembic(db.url, "stamp", _BEFORE_DROP)
+        _alembic(db.url, "upgrade", _DROP_REVISION)
+        async with db.engine.begin() as conn:
+            evaluation = await _insert(conn, "evaluations", name="Eval", timeout_seconds=300, performance_tolerance=3.0)
+            fresh = await _speed_tolerance(conn, evaluation)
+
+        _alembic(db.url, "downgrade", _BEFORE_DROP)
+        async with db.engine.begin() as conn:
+            restored = await _speed_tolerance(conn, evaluation)
+            created = await _insert(conn, "evaluations", name="Created before", timeout_seconds=300)
+            defaulted = await _speed_tolerance(conn, created)
+
+        _alembic(db.url, "upgrade", _DROP_REVISION)
+        async with db.engine.begin() as conn:
+            dropped = await _speed_tolerance(conn, evaluation)
+
+    assert fresh is None
+    assert (restored, defaulted) == (3.0, 5.0)
+    assert dropped is None

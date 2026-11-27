@@ -317,6 +317,13 @@ same way.
   `max_cvss` and `max_epss` are `null` with `members_facts_unread` and
   `facts_reason` (`ctem_cases_view.FACTS_UNREAD_REASON`), never "0 KEV" or
   "no CVSS"; `aggregates_restricted` keeps its scope meaning.
+- primary assets of a member (#2563): a signal member carries the primary
+  assets its gate decision recorded; an OpenCTI or OpenAEV member reaches them
+  at each view build (`ctem_cases_source.with_primary_assets`, one
+  `ctem_primary_assets.load_index` read per build) through the product it runs
+  or the assets it was found on, with the same proven (manual, OpenCRQ link) /
+  inferred (rule link) split. No backfill: an open case counts them at the next
+  view build.
 - scope-limited aggregates: `summary()` counts the open product members the
   viewer reads WITHOUT their details (outside their scope, or seen before from
   a product that does not answer now) as `members_without_details`. When it is
@@ -804,6 +811,19 @@ then the existing AI assessment and facts grid unchanged.
   item goes to the CTEM deciders, `ctem_access.gate_recipient`, who the owner
   may not be); owned and unowned cases read alike, and "A decision" is left only for a case with no owner, which the case
   sweep no longer leaves open (`ctem_case_owner.backfill_owners`).
+- **Owner routing (#2560)**: `ctem_case_owner.route_case` routes a case to the owner of the asset group holding the
+  most affected assets (membership rows, ties by group name), the other group owners recorded as contributors;
+  else the owner of a primary asset the case reaches (an inventory link of an affected record or group, or a
+  `primary_asset` scope source; the owner text is read from the organization profile); else
+  `CTEM_CASE_DEFAULT_OWNER`; else the CTEM decider. The asset record's `owner` (the device user an endpoint source
+  fills) is never a candidate. An owner text counts only when it is an active account's email. The `owner` case
+  event carries the reason (`asset group: All MacOS x86_64 (12 of 15 affected assets)`,
+  `fallback: CTEM decider (administrator)`) and, as JSON evidence, the routing version, whether it is a fallback
+  and the contributors; the case read answers them as `owner_reason` and `owner_contributors`. The sweep's owner
+  pass (`route_open_cases`) re-routes at most `ROUTE_BATCH` open cases per sweep that this routing version did not
+  route (or routed to a fallback before an asset group or the profile changed), one `owner` event each, no
+  platform event, no agent run; a case where a person ever set or cleared the owner is never touched. A team
+  (platform group) as owner is a follow-up.
 - **List and Kanban (#1503)**: the toolbar's view switch draws the same rows
   (quick filters, search and filters applied) at `/ctem/cases` or as columns
   at `/ctem/cases/kanban`, a path never a query (#10203), the query kept.
@@ -888,6 +908,21 @@ then the existing AI assessment and facts grid unchanged.
   "No open exposure on your software", or the products that could not be read
   when `details_unavailable` is not empty, #12139), no results (filters match nothing, with
   "Clear all filters").
+- **Filters panel and Signal type** (#2556): the Filters pill opens the
+  DataTable's faceted panel (`facetGrid`): the groups in columns of at least
+  12 rem within 56 rem (fits 1080p with no inner scroller), each value with
+  the count of rows it would keep given the other filters and the search
+  (`lib/data-table-facets.ts`, on the rows loaded: no request), and the
+  active filters as removable chips under the toolbar, beside "Clear all
+  filters"; the state stays in the URL (`c_f_<key>`). The **Signal type**
+  facet (`c_f_signal_type`) lists the 12 trigger paths and "No signal"
+  (a split or legacy case, or one whose signals the reader does not see).
+  Each row of `GET /ctem-cases` carries `signal_types`, the trigger paths of
+  the signal members the reader sees (`ctem_cases_view.signal_types`, read
+  from the view's `signal_details`, no query); the body carries
+  `signal_types`, the label of each path. The repeatable `signal_type` query
+  parameter (a trigger path or `none`, 422 otherwise) narrows the page as
+  `state` does, never the counts by state.
 
 ### 7.2bis Attention score and its points (#1176)
 
@@ -1236,7 +1271,7 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 
 **Model (migration `c857ctemcaseloop1`, additive).** A case carries `trigger_path` (the path of the signal that opened it; `new_vulnerability` for a case from the two readers), `risk_scenario_ids`, `severity` (P1 to P3), `sla_due_at`, `sla_breached_at` (set once), `tickets` (`[{integration, key, url, status, at}]`, written by CTEM-19), `validations` (`[{provider, kind, ref, result, at, mitigation_only, note}]`, newest last, 50 kept), `validation_plan` and `resolution_kind` (`not_exposed`, `mitigated`, `fixed`, `accepted_risk`). New state `mitigated_watching`; new remediation kinds `close_exposure`, `decommission`, `rotate_credential`, `restore_control`, `supplier_action`, `restore_coverage`; new member source `signal`. Existing cases read as path `new_vulnerability` with no origin signal. The list and case reads (`GET /api/v1/ctem-cases`, `GET /api/v1/ctem-cases/{id}`, `list_ctem_cases`, `get_ctem_case`) return these fields as stored, the same for every viewer: ids, enums, dates and references, never a source issue's content.
 
-**Opening.** A signal the scope gate leaves `confirmed` with outcome `case` opens the case of its fix in the same transaction (`ctem_scope_gate_store.evaluate_after_record`), or joins the open case with the same key: one case per remediation, every origin signal a `signal` member. Key: a software subject on a vulnerability path is `upgrade:-/<product>@latest` (the reader's key, so both meet); any other is `<kind>:<subject kind>/<subject ref>`, the kind from the trigger path. Severity, SLA (`sla_hours` of the decision record, else P1 24 h, P2 72 h, P3 30 days) and risk scenarios come from the decision record; a joining signal keeps the most urgent severity and the earliest SLA. The signal moves to `case_opened`. Paths `proven_exploitable` and `mitigation_regression` open with a validation plan.
+**Opening.** A signal the scope gate leaves `confirmed` with outcome `case` opens the case of its fix in the same transaction (`ctem_scope_gate_store.evaluate_after_record`), or joins the open case with the same key: one case per remediation, every origin signal a `signal` member. The lookup and the insert run under a transaction advisory lock on the key (`ctem_case_loop.hold_key_lock`, #2558), so a listener delivery, a drain pass and a recompute that open one fix meet on one case; a vulnerability patch keys on its CVE id (`patch:vulnerability/cve-...`) whether the subject is the CVE, its STIX id or a name, and joins an open case that holds the older spelling. The sweep folds any open duplicates of one fix into the oldest case (`merge_open_duplicates`, a system `merge` event through `ctem_cases_store.merge_cases`). Key: a software subject on a vulnerability path is `upgrade:-/<product>@latest` (the reader's key, so both meet); any other is `<kind>:<subject kind>/<subject ref>`, the kind from the trigger path. Severity, SLA (`sla_hours` of the decision record, else P1 24 h, P2 72 h, P3 30 days) and risk scenarios come from the decision record; a joining signal keeps the most urgent severity and the earliest SLA. The signal moves to `case_opened`. Paths `proven_exploitable` and `mitigation_regression` open with a validation plan.
 
 **Proof.** `POST /api/v1/ctem-cases/{id}/validations` (any caller who sees the case) records a validation reference and sets the validation plan. `passed` or `not_exposed` resolves (`fixed` or `not_exposed`); with `mitigation_only` it goes to `mitigated_watching` and the re-test stays on; `failed` reopens a resolved or watched case to `needs_attention`; `pending` only records. A case with a validation plan resolves only on a passing newest reference (the PATCH route refuses with 422) and never on absence at source in a recompute, unless a person decided otherwise (#1675): a person's own move, or an agent's move once a person answered the case's `ctem.close_without_retest` decision (a `gate` event, `from` that key, `to` `answered`; `ctem_cases_store.close_without_retest_answered`). **A person's answer never moves the case by code (#1675)**: `ctem_case_status.after_gate` keeps only the bookkeeping (waited parks the case in `waiting_decision`; a gate that passed without a person moves it to `GATE_NEXT`); approve, reject or a free-text answer, the Gate answered run reads `payload.answer` and sets the next state itself with `update_ctem_case`. A case with no plan keeps the accepted proof of its kind as evidence (ticket done, re-scan, directory check). Accepted risk keeps its 90-day ceiling.
 
@@ -1264,11 +1299,13 @@ The third brick of the spine: signal (`dev-docs/ctem-signals.md`) -> reconcile a
 
 **Off: nothing opens, the signals wait.** The three paths that open a case from a confirmed signal read the switch first: the scope gate's confirmation (`ctem_scope_gate_store.evaluate_after_record`), a source read (`ctem_cases_store._case_of_signal`) and the scheduled sweep (`ctem_case_loop.sweep`, through `open_waiting`). A confirmed signal stays `confirmed` with `case_id` null. The rest of the sweep (SLA breaches, announce, stall) keeps running; a manual split still creates a case.
 
+**Enforced at the choke point, read fresh (#2536).** `ctem_case_loop.open_from_signal` and `join_case` read the switch themselves (a column read, never the session's cached row) and open or join nothing while it is off, whatever the caller checked; `open_waiting` re-reads it before every signal and stops the batch at once. `PUT {on: false}` cancels the drains of the vertical this process runs (`stop_drains`; the pass in flight rolls back), and a drain on another worker stops at its next signal. A pass in flight when the pause commits opens nothing after it.
+
 **On again: an immediate drain.** `PUT /api/v1/ctem-cases/opening {on: true}` starts `ctem_case_opening.drain` in the background: sweep batches (`SWEEP_BATCH`) back to back, each in its own transaction under `pg_advisory_xact_lock(hashtext('ctem-case-drain:<vertical>'))`, committed, then its events and live frames published, so the Cases list fills while the viewer watches. It stops when a pass opens and joins nothing, when case opening is paused again, or after `DRAIN_MAX_PASSES` (100); it logs its totals. Two concurrent drains never open a fix twice: the second pass waits for the first's commit and then finds those signals linked.
 
 **API.** `GET /api/v1/ctem-cases/opening` answers `{vertical, on, waiting}` (`waiting`: confirmed signals with no case) to anyone who reads cases. `PUT` takes `{on, vertical?}`, `require_admin`; a change writes one audit row (`entity_type` `ctem_case_opening`, who, when, on or off) and raises the platform-wide event `ctem_case.opening_changed` (`vertical`, `on`, `changed_by`, `waiting`); the same value again changes nothing (`changed: false`). It answers `{vertical, on, waiting, changed, draining}`.
 
-**Screens.** `CaseOpeningSwitch` is a discreet control for administrators only (Sam, 24 Nov 2026); anyone else sees nothing in every state. On Cases it sits in the table toolbar beside Group by and Views, a 32 px control with their border, padding and label, drawn disabled until the setting is read so the toolbar never shifts; on the Signal sources header it is the same control. Its tooltip is one line, with the waiting count while it is off. While it is off the empty Cases list keeps its usual sentence and adds one muted line, "Case opening is off" (`CaseOpeningOffEmptyState`). Turning it on or off toasts one line, "Case opening on" or "Case opening off"; the opening read is polled every 3 s while signals wait.
+**Screens.** `CaseOpeningSwitch` is a discreet control for administrators only (Sam, 24 Nov 2026); anyone else sees nothing in every state. On Cases it sits in the table toolbar beside Group by and Views, a 32 px control with their border, padding and label, drawn disabled until the setting is read so the toolbar never shifts; on the Signal sources header it is the same control. Its tooltip is one line, with the waiting count while it is off. While it is off the empty Cases list keeps its usual sentence and adds one muted line, "Case opening is off" (`CaseOpeningOffEmptyState`). Turning it on while signals wait asks first (#2536): a warning `ConfirmDialog`, "Turn case opening on?", names how many confirmed signals will open or join a case at once (the count frozen when the dialog opens); cancel sends nothing; turning it off, or on with nothing waiting, never asks. The switch is disabled while its `PUT` is in flight, so a second flip cannot race the first. Turning it on or off toasts one line, "Case opening on" or "Case opening off"; the opening read is polled every 3 s while signals wait.
 
 ### 9bis.2 Same-kind decisions asked once per person (#2451)
 

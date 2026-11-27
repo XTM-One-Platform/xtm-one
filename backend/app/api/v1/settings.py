@@ -146,7 +146,7 @@ from app.models.llm_trace import LLMTrace
 from app.models.mcp_server import MCPServer
 from app.models.oauth_default import OAuthDefault
 from app.models.sso_config import SSOConfig
-from app.models.user import User, is_platform_admin
+from app.models.user import User
 from app.services import ai_state, general_assistant_skills
 from app.services.audit import log_audit
 from app.services.audit_retention import audit_log_retention_days
@@ -4547,29 +4547,14 @@ async def update_preferences(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    new_email = body.email.strip().lower() if body.email is not None else None
-    if new_email is not None and new_email != user.email:
-        # The platform admin is the ADMIN_EMAIL account: another address would
-        # hand that standing to whoever registers it.
-        if is_platform_admin(user):
-            raise HTTPException(
-                status_code=400,
-                detail="The platform admin account's email is set by ADMIN_EMAIL and cannot be changed",
-            )
-        # An address exempt from the Terms of Use gate is not self-service:
-        # taking it would skip the gate for this account.
-        from app.core.config import settings as app_settings
-
-        if app_settings.terms_of_use_exempt(new_email):
-            raise HTTPException(status_code=403, detail="This email address cannot be used")
-        # Check email isn't taken by another user (any case: one account per
-        # address, ``ix_users_email_lower``)
-        existing = await db.execute(
-            select(User).where(func.lower(User.email) == new_email, User.id != user.id)
+    # The email is the identity other products match their account on (the
+    # cross-platform JWT and the product sign-in carry it): a person never
+    # chooses it. An administrator changes it; the unchanged address is accepted.
+    if body.email is not None and body.email.strip().lower() != (user.email or "").strip().lower():
+        raise HTTPException(
+            status_code=422,
+            detail="The email is changed by an administrator (PUT /api/v1/users/{user_id}/email), not here",
         )
-        if existing.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="Email already in use")
-        user.email = new_email
     if body.full_name is not None:
         user.full_name = body.full_name
     if body.title is not None:

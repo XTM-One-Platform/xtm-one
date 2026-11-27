@@ -436,8 +436,9 @@ async def restore_agent_chat_panel_session(
     if not body.conversation_id:
         raise HTTPException(status_code=404, detail="Conversation not found")
     conv = await _viewable_agent_conversation(db, user, agent_id, body.conversation_id)
+    # XTM One's own panel draws a dashboard's marker as the dashboard: kept, not made a link.
     restored, has_more = await platform_api.restore_chat_session_window(
-        db, user, conv, supports_artifacts=body.supports_artifacts
+        db, user, conv, supports_artifacts=body.supports_artifacts, keep_dashboards=True
     )
     return platform_api.ChatPanelSessionResponse(**restored.model_dump(), has_more=has_more)
 
@@ -487,7 +488,7 @@ async def list_agent_chat_panel_messages(
     """One page of one of the agent's conversations, older than ``before``, as the chat panel pages a thread."""
     conv = await _viewable_agent_conversation(db, user, agent_id, conversation_id)
     return await platform_api.read_message_page(
-        db, user, conv, before=before, limit=limit, supports_artifacts=supports_artifacts
+        db, user, conv, before=before, limit=limit, supports_artifacts=supports_artifacts, keep_dashboards=True
     )
 
 

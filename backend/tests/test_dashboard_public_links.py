@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.dashboard_public_links import _without_links, asks_an_agent, default_tokens, public_definition
+from app.services.dashboard_public_links import _without_links, asks_an_agent, public_definition
+from app.services.dashboard_tokens import default_tokens
 
 
 def test_a_result_loses_every_link_into_a_platform() -> None:

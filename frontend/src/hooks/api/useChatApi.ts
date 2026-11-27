@@ -63,7 +63,8 @@ export const VIDEO_SAVED_EVENT = "video_saved";
 /**
  * `event` of a `tool_progress` frame: a custom dashboard revision is committed
  * and readable (`DASHBOARD_SAVED_EVENT` on the backend, Dashboard Studio).
- * Carries `dashboard_id` and `revision`; the studio page follows the agent's edit.
+ * Carries `dashboard_id`, `revision` and `focus_widget_id` (the widget the save
+ * added or changed, or null); the studio page follows the agent's edit.
  */
 export const DASHBOARD_SAVED_EVENT = "dashboard_saved";
 

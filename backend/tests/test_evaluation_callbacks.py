@@ -1023,6 +1023,60 @@ async def test_a_repeat_of_the_same_callback_stays_a_duplicate():
         await cleanup()
 
 
+async def test_a_replay_of_an_earlier_callback_is_a_duplicate():
+    """A, then B, then A replayed: the replay is a duplicate and B's payload
+    stays; a new key is still accepted.
+    """
+    from app.services.evaluation_continuation import (
+        CallbackOutcome,
+        ConversationContinuationService,
+    )
+
+    sm, cleanup = await _make_db()
+    try:
+        run_id, _, _ = await _stranded_fixture(sm, episodes=("waiting_callback",))
+        async with sm() as s:
+            correlation_id = (
+                await s.execute(
+                    select(EvaluationEpisode.correlation_id).where(
+                        EvaluationEpisode.run_id == run_id
+                    )
+                )
+            ).scalar_one()
+
+        async def deliver(key: str) -> CallbackOutcome:
+            async with sm() as s:
+                _, outcome = await ConversationContinuationService.resume_from_callback(
+                    s,
+                    correlation_id=correlation_id,
+                    idempotency_key=key,
+                    payload={"final_output": key},
+                )
+                await s.commit()
+            return outcome
+
+        async def stored() -> tuple[dict | None, list[str]]:
+            async with sm() as s:
+                episode = (
+                    await s.execute(
+                        select(EvaluationEpisode).where(EvaluationEpisode.run_id == run_id)
+                    )
+                ).scalar_one()
+            return episode.callback_payload, episode.accepted_idempotency_keys
+
+        assert [await deliver(key) for key in ("A", "B", "A")] == [
+            CallbackOutcome.ACCEPTED,
+            CallbackOutcome.ACCEPTED,
+            CallbackOutcome.DUPLICATE,
+        ], "a validly signed replay of an earlier callback was accepted again"
+        assert await stored() == ({"final_output": "B"}, ["A", "B"])
+
+        assert await deliver("C") is CallbackOutcome.ACCEPTED
+        assert await stored() == ({"final_output": "C"}, ["A", "B", "C"])
+    finally:
+        await cleanup()
+
+
 @pytest.mark.parametrize(
     "repair_first,expect_gone,why",
     [

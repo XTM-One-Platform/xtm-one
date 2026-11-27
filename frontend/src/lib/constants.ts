@@ -1447,6 +1447,7 @@ const TOOL_DISPLAY_NAMES = {
   submit_browser_mfa_code: "Checking MFA code",
   check_browser_profile_session: "Checking browser session",
   snapshot_browser_profile_page: "Looking at application page",
+  delete_browser_profile: "Deleting browser profile",
   record_browser_demo: "Recording demo",
   get_video_recording: "Reading recording",
   list_video_recordings: "Listing recordings",

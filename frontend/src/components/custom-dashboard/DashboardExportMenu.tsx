@@ -16,8 +16,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 /**
  * Download a dashboard as a PDF (every tab, or the tab on screen, each tab a
  * page) or as a PNG (the tab on screen), rendered on the server with the
- * caller's own access (`useExportDashboard`, `dashboard_export.py`), like
- * Splunk Dashboard Studio's "Download PDF" and "Download PNG" - or schedule
+ * caller's own access (`useExportDashboard`, `dashboard_export.py`) - or schedule
  * it by email (`DashboardScheduleDialog`).
  */
 import { useState } from "react";

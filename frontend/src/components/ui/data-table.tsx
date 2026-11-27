@@ -28,7 +28,7 @@ import { Check, Columns3, Download, ListFilter } from "lucide-react";
 import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { CardGridSkeleton, cardSkeletonCount } from "@/components/ui/card-grid";
-import { FilterClearButton, FilterPillPanel, FilterPillTrigger, FiltersPill, useFilterPopover } from "@/components/ui/filter-pill";
+import { FilterClearButton, FilterPillPanel, FilterPillTrigger, FiltersPill, PANEL_CHIP_HEIGHT, useFilterPopover } from "@/components/ui/filter-pill";
 import { Label } from "@/components/ui/label";
 import { SelectionBox } from "@/components/ui/list-control-bar";
 import { TagFilter } from "@/components/ui/tag-filter";
@@ -60,6 +60,9 @@ import {
   type DataTableState,
   TABLE_STORAGE_PREFIX,
 } from "@/lib/data-table-state";
+import { activeFilterChips, facetValueCounts } from "@/lib/data-table-facets";
+import { formatList } from "@/lib/format-list";
+import { formatCount } from "@/lib/number-format";
 import { sortFilterOptions } from "@/lib/select-options";
 import { groupRows, matchesSearch, pageOf, sortRows, type RowGrouping, type SortDirection, type SortValue } from "@/lib/table-rows";
 import { cn, saveBlobAs, toggleArrayItem } from "@/lib/utils";
@@ -397,6 +400,13 @@ export interface DataTableProps<T> {
    */
   filtersInPill?: boolean;
   /**
+   * With `filtersInPill` (#2556): the Filters panel lays its groups out in columns that fit
+   * a 1080p viewport, each value shows how many rows it would keep (counted on the rows
+   * the table holds, given the other filters and the search), and the active filters show
+   * as removable chips under the toolbar. Client mode only: a `server` table keeps the stack.
+   */
+  facetGrid?: boolean;
+  /**
    * The row's own action (open its page or its detail): the whole row is the target, by
    * pointer and by keyboard (focusable, Enter), never a link drawn in a cell (#12070).
    */
@@ -587,6 +597,7 @@ function DataTableView<T>({
   showToolbar = true,
   compactSearch = false,
   filtersInPill = false,
+  facetGrid = false,
   onRowClick,
   rowOpens,
   rowHref,
@@ -771,6 +782,21 @@ function DataTableView<T>({
     ? { rows, page: state.page, lastPage: Math.max(0, Math.ceil(total / state.pageSize) - 1) }
     : pageOf(shown, state.page, state.pageSize);
   const filterCount = activeFilterCount(state.filters) + externalFilterCount;
+  // The faceted panel (#2556): its counts over the rows the search keeps, and its chips.
+  const faceted = facetGrid && filtersInPill && !server;
+  const facetCounts = useMemo(() => {
+    if (!faceted) return null;
+    const searched =
+      searchFields && state.search.trim() ? rows.filter((row) => matchesSearch(searchFields(row), state.search)) : rows;
+    return facetValueCounts(searched, filters, state.filters);
+  }, [faceted, rows, filters, state.filters, state.search, searchFields]);
+  const filterChips = faceted
+    ? activeFilterChips(
+        filters.map((filter) => ({ key: filter.key, label: t_i18n(filter.label) })),
+        filterOptions,
+        state.filters,
+      )
+    : [];
   const narrowing = !!state.search.trim() || !!search?.value.trim() || filterCount > 0;
   // "Clear all filters" shows when a filter or the page's own search narrows the list
   // (standard v2: a search, tag or pill; never the scope alone, UX round 1 on #10920, B2).
@@ -1374,19 +1400,33 @@ function DataTableView<T>({
           )}
           {filtersInPill ? (
             (filters.length > 0 || filterPills) && (
-              <FiltersPill label={t_i18n("Filters")} count={filterCount} testId="data-table-filters">
+              <FiltersPill
+                label={t_i18n("Filters")}
+                count={filterCount}
+                testId="data-table-filters"
+                panelClassName={faceted ? FACET_GRID_PANEL : undefined}
+              >
+                <FacetColumns faceted={faceted}>
                 {filters.map((filter, index) =>
                   filterOptions[index].length === 0 ? null : (
-                    <div key={filter.key} role="group" aria-labelledby={`${filterHeadingId}-${filter.key}`} className="space-y-1">
+                    <div
+                      key={filter.key}
+                      role="group"
+                      aria-labelledby={`${filterHeadingId}-${filter.key}`}
+                      className={cn("space-y-1", faceted && "mb-3 min-w-0 break-inside-avoid")}
+                      data-facet={faceted ? filter.key : undefined}
+                    >
                       <Label id={`${filterHeadingId}-${filter.key}`}>{t_i18n(filter.label)}</Label>
                       <FilterOptionList
                         options={filterOptions[index]}
                         selected={state.filters[filter.key] ?? []}
+                        counts={facetCounts?.[filter.key]}
                         onChange={(values) => update({ filters: { ...state.filters, [filter.key]: values } })}
                       />
                     </div>
                   ),
                 )}
+                </FacetColumns>
                 {filterPills}
               </FiltersPill>
             )
@@ -1493,8 +1533,62 @@ function DataTableView<T>({
           </div>
         </div>
       )}
+      {filterChips.length > 0 && (
+        <ul data-testid="data-table-filter-chips" aria-label={t_i18n("Active filters")} className="flex flex-wrap items-center gap-1.5">
+          {filterChips.map((chip) => {
+            // The chip text is one catalog string (UX r1 B1 on #2559): the locale's
+            // separator (fr "Statut : Nouveau" with a no-break space) and its list
+            // join; the label stays bold when the string opens with it.
+            const text = t_i18n("{label}: {value}", { label: chip.label, value: formatList(chip.values, locale) });
+            const rest = text.startsWith(chip.label) ? text.slice(chip.label.length) : null;
+            return (
+            <li key={chip.key}>
+              <span className={cn(PANEL_CHIP_HEIGHT, "inline-flex max-w-[28rem] items-center gap-1 rounded-sm border border-accent/30 bg-accent/15 pl-2.5 pr-1 content-compact text-accent")}>
+                <span className="min-w-0 truncate" title={text}>
+                  {rest === null ? text : (
+                    <>
+                      <span className="font-medium">{chip.label}</span>
+                      {rest}
+                    </>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  aria-label={t_i18n("Remove filter {name}", { name: chip.label })}
+                  onClick={() => update({ filters: { ...state.filters, [chip.key]: [] } })}
+                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                >
+                  <Icon name="x" size={16} aria-hidden />
+                </button>
+              </span>
+            </li>
+            );
+          })}
+        </ul>
+      )}
       {body}
     </div>
+  );
+}
+
+/**
+ * The faceted Filters panel (#2556): its groups packed into balanced columns of at least
+ * 13 rem (a long group never stretches a row, as a grid would): four in its 60 rem, three
+ * when the panel's fitted width (filterPanelMaxWidth) is narrower. The CTEM cases list's
+ * 11 groups fit a 1080p viewport without the panel's own scroller (measured in the lab:
+ * 958 px of content in a grid, 586 px in four columns). The columns live in an inner block
+ * with no height cap: on a short viewport the panel scrolls down, never sideways (a capped
+ * multi-column box spills its extra columns to the right).
+ */
+const FACET_GRID_PANEL = "w-[60rem]";
+
+function FacetColumns({ faceted, children }: { faceted: boolean; children: ReactNode }) {
+  return faceted ? (
+    <div data-testid="data-table-facet-columns" className="columns-[13rem] gap-x-4">
+      {children}
+    </div>
+  ) : (
+    <>{children}</>
   );
 }
 
@@ -1644,12 +1738,16 @@ function FilterPill({
 function FilterOptionList({
   options,
   selected,
+  counts,
   onChange,
 }: {
   options: DataTableFilterOption[];
   selected: string[];
+  /** How many rows each value would keep (the faceted panel, #2556); none: no count drawn. */
+  counts?: Record<string, number>;
   onChange: (values: string[]) => void;
 }) {
+  const { locale } = useFormatter();
   return (
     <>
       {options.map((option) => {
@@ -1668,6 +1766,11 @@ function FilterOptionList({
             <span className="min-w-0 flex-1 truncate" title={option.label}>
               {option.label}
             </span>
+            {counts && (
+              <span data-testid="filter-option-count" className={cn("shrink-0 tabular-nums", isSelected ? "text-accent" : "text-default-secondary")}>
+                {formatCount(locale, counts[option.value] ?? 0)}
+              </span>
+            )}
             {isSelected && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
           </button>
         );

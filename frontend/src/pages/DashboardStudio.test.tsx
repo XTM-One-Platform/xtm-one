@@ -14,8 +14,24 @@ vi.mock("@/lib/api", async (importOriginal) => ({ ...(await importOriginal<objec
 vi.mock("@/hooks/useFeatureFlag", () => ({ useFeatureFlag: () => true }));
 // The chat rail has its own tests: here it says what it was told.
 vi.mock("@/components/custom-dashboard/DashboardStudioRail", () => ({
-  DashboardStudioRail: ({ focusedWidget }: { focusedWidget: { id: string } | null }) => (
-    <div data-testid="rail">rail:{focusedWidget?.id ?? "none"}</div>
+  DashboardStudioRail: ({
+    focusedWidget,
+    autoSendMessage,
+    initialAgentId,
+    onSaved,
+  }: {
+    focusedWidget: { id: string } | null;
+    autoSendMessage?: string | null;
+    initialAgentId?: string | null;
+    onSaved?: (revision: number, focusWidgetId: string | null) => void;
+  }) => (
+    <>
+      <div data-testid="rail">rail:{focusedWidget?.id ?? "none"}</div>
+      <div data-testid="rail-launch">{JSON.stringify({ send: autoSendMessage ?? null, agent: initialAgentId })}</div>
+      <button type="button" onClick={() => onSaved?.(4, "note")}>
+        agent saved note
+      </button>
+    </>
   ),
   DashboardStudioHandle: () => <div data-testid="handle" />,
 }));
@@ -47,9 +63,9 @@ function serve(canManage: boolean, spec: object = { title: "Threat board", widge
   return dashboard;
 }
 
-function draw() {
+function draw(state?: object) {
   return renderWithProviders(
-    <MemoryRouter initialEntries={[`/dashboards/${ID}/studio`]}>
+    <MemoryRouter initialEntries={[{ pathname: `/dashboards/${ID}/studio`, state }]}>
       <Routes>
         <Route path="/dashboards/:id/studio" element={<DashboardStudio />} />
       </Routes>
@@ -60,6 +76,26 @@ function draw() {
 describe("DashboardStudio", () => {
   beforeEach(() => {
     for (const fn of Object.values(api)) fn.mockReset();
+  });
+
+  it("hands the rail the create dialog's brief and agent, once", async () => {
+    serve(true);
+    draw({ send: "Build this dashboard:\n\nCritical detections", agentId: "ag1" });
+    await waitFor(() =>
+      expect(JSON.parse(screen.getByTestId("rail-launch").textContent ?? "")).toEqual({
+        send: "Build this dashboard:\n\nCritical detections",
+        agent: "ag1",
+      }),
+    );
+  });
+
+  it("follows the agent: the widget a dashboard tool saved is selected", async () => {
+    serve(true);
+    draw();
+    expect(await screen.findByText("Hello")).toBeTruthy();
+    expect(screen.getByTestId("rail").textContent).toBe("rail:none");
+    fireEvent.click(screen.getByRole("button", { name: "agent saved note" }));
+    await waitFor(() => expect(screen.getByTestId("rail").textContent).toBe("rail:note"));
   });
 
   it("picks a widget, tells the rail, and saves its heading as an upsert", async () => {
@@ -101,7 +137,10 @@ describe("DashboardStudio", () => {
     expect(body.revision).toBe(4);
     expect(body.operations.map((op: { op: string; path: string }) => `${op.op} ${op.path}`)).toEqual(["set visualizations.rectangle", "set layout"]);
     expect(body.operations[0].value).toEqual({ type: "xtm.shape.rectangle", options: { fillOpacity: 0.15, strokeWidth: 2, rx: 8 } });
-    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    const edit = screen.getByRole("button", { name: "Edit the dashboard" });
+    expect(edit.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(edit);
+    expect(edit.getAttribute("aria-pressed")).toBe("false");
     expect(screen.queryByRole("toolbar", { name: "Design" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add a tab" })).toBeNull();
   });
@@ -110,20 +149,26 @@ describe("DashboardStudio", () => {
     const dashboard = serve(true, WALL);
     api.patch.mockImplementation(async (_url: string, body: { revision: number }) => ({ ...dashboard, revision: body.revision + 1 }));
     draw();
-    const toggle = await screen.findByRole("button", { name: "Hide the settings panel" });
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(toggle);
-    expect(screen.getByRole("button", { name: "Show the settings panel" }).getAttribute("aria-pressed")).toBe("false");
+    // The panel's switch is in More actions, as the Video Studio keeps its secondary actions.
+    const more = async () => {
+      fireEvent.pointerDown(await screen.findByRole("button", { name: "More actions" }), { button: 0, ctrlKey: false });
+      return screen.findAllByRole("menuitem");
+    };
+    fireEvent.click((await more()).find((item) => item.textContent === "Hide the settings panel")!);
+    await waitFor(() => expect(screen.queryByRole("menuitem")).toBeNull());
+    expect((await more()).map((item) => item.textContent)).toContain("Show the settings panel");
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menuitem")).toBeNull());
     // Adding an element opens its settings.
     fireEvent.click(screen.getByRole("button", { name: "Add a rectangle" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Hide the settings panel" }).getAttribute("aria-pressed")).toBe("true"));
+    await waitFor(async () => expect((await more()).map((item) => item.textContent)).toContain("Hide the settings panel"));
   });
 
   it("gives a reader no mode switch and no design tools", async () => {
     serve(false, WALL);
     draw();
     expect(await screen.findByTestId("dashboard.canvas")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit the dashboard" })).toBeNull();
     expect(screen.queryByRole("toolbar", { name: "Design" })).toBeNull();
   });
 });

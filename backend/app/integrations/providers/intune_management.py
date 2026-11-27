@@ -12,7 +12,8 @@ per-device tools of ``intune``:
 - device health scripts (remediations, Graph beta ``deviceHealthScripts``) and
   macOS shell scripts (``deviceShellScripts``): create, update, assign, delete,
   run a remediation on demand on one device, read the per-device run states;
-- apps: list the mobile apps, assign one to groups, read its install status;
+- apps: list the mobile apps, assign one to groups, read its assignments and its
+  per-device install status (the Intune reports API, which serves every app type);
 - detected apps: a name filter (contains or exact) with paging, and the devices
   of one detected app with the version each runs.
 
@@ -64,6 +65,39 @@ _MAX_APP_VERSIONS = 20
 _MAX_DEVICES = 500
 #: Characters of a read-back JSON body shown in a tool result.
 _READ_BACK_CHARS = 6000
+
+#: Intune reports API: per-device install status and the per-app overview counts.
+#: ``mobileApps/{id}/deviceStatuses`` is not served on most app types ("Resource not
+#: found for the segment 'deviceStatuses'"), the reports are, for every type.
+_INSTALL_REPORT = f"{_BETA}/deviceManagement/reports/getDeviceInstallStatusReport"
+_APP_OVERVIEW_REPORT = f"{_BETA}/deviceManagement/reports/getAppStatusOverviewReport"
+_INSTALL_COLUMNS = (
+    "DeviceName",
+    "UserPrincipalName",
+    "Platform",
+    "AppVersion",
+    "InstallState",
+    "InstallStateDetail",
+    "ErrorCode",
+    "HexErrorCode",
+    "LastModifiedDateTime",
+    "DeviceId",
+)
+#: Count columns of ``getAppStatusOverviewReport``, as an agent reads them.
+_OVERVIEW_WORDS = {
+    "InstalledDeviceCount": "installed",
+    "FailedDeviceCount": "failed",
+    "PendingInstallDeviceCount": "pending",
+    "NotInstalledDeviceCount": "not installed",
+    "NotApplicableDeviceCount": "not applicable",
+}
+#: Assignment target types, as an agent reads them.
+_TARGET_NAMES = {
+    "#microsoft.graph.allLicensedUsersAssignmentTarget": "all users",
+    "#microsoft.graph.allDevicesAssignmentTarget": "all devices",
+    "#microsoft.graph.groupAssignmentTarget": "group",
+    "#microsoft.graph.exclusionGroupAssignmentTarget": "group",
+}
 
 
 @dataclass(frozen=True)
@@ -366,12 +400,64 @@ def _fmt_run_state(s: dict[str, Any]) -> str:
     return f"{line}\n  Output: {clip_text(str(out), 300)}" if out else line
 
 
-def _fmt_install(s: dict[str, Any]) -> str:
-    error = f" (error {s['errorCode']})" if s.get("errorCode") else ""
+def _report_rows(report: Any) -> tuple[list[dict[str, Any]], int | None]:
+    """The rows of an Intune report (``Schema`` + ``Values``) as dicts, and its total.
+
+    A ``<Column>_loc`` column (the localised text of an enum) wins over the raw value.
+    """
+    if not isinstance(report, dict):
+        return [], None
+    columns = [str(c.get("Column", "")) for c in report.get("Schema") or [] if isinstance(c, dict)]
+    rows: list[dict[str, Any]] = []
+    for values in report.get("Values") or []:
+        if not isinstance(values, list):
+            continue
+        row = dict(zip(columns, values, strict=False))
+        for column in columns:
+            if column.endswith("_loc") and row.get(column) not in (None, ""):
+                row[column.removesuffix("_loc")] = row[column]
+        rows.append(row)
+    total = report.get("TotalRowCount")
+    return rows, total if isinstance(total, int) else None
+
+
+def _fmt_install_row(r: dict[str, Any]) -> str:
+    code = r.get("HexErrorCode") or r.get("ErrorCode")
+    error = f" (error {code})" if code not in (None, "", 0, "0", "0x0") else ""
+    detail = r.get("InstallStateDetail")
+    detail_text = f", {detail}" if detail not in (None, "", 0, "0", "None") else ""
+    version = f", version {r['AppVersion']}" if r.get("AppVersion") else ""
     return (
-        f"• {s.get('deviceName', '?')} (ID: {s.get('deviceId', '?')}) — {s.get('installState', '?')}{error}, "
-        f"user {s.get('userPrincipalName', '?')}, last sync {s.get('lastSyncDateTime', '?')}"
+        f"• {r.get('DeviceName') or '?'} (ID: {r.get('DeviceId') or '?'}, {r.get('Platform') or '?'}) — "
+        f"{r.get('InstallState') or '?'}{detail_text}{error}{version}, user {r.get('UserPrincipalName') or '?'}, "
+        f"last modified {r.get('LastModifiedDateTime') or '?'}"
     )
+
+
+def _fmt_overview(rows: list[dict[str, Any]]) -> str:
+    """The count columns of the app overview report, in its own order."""
+    if not rows:
+        return ""
+    counts = [
+        f"{_OVERVIEW_WORDS.get(k, k.removesuffix('Count'))} {v}"
+        for k, v in rows[0].items()
+        if k.endswith("Count") and v is not None
+    ]
+    return "Summary: " + ", ".join(counts) if counts else ""
+
+
+def _fmt_assignment(a: dict[str, Any]) -> str:
+    target = a.get("target") or {}
+    odata = str(target.get("@odata.type", ""))
+    name = _TARGET_NAMES.get(odata, odata.rsplit(".", 1)[-1] or "?")
+    if target.get("groupId"):
+        mode = "exclude" if "exclusion" in odata.lower() else "include"
+        name = f"{name} {target['groupId']} ({mode})"
+    line = f"• {name} — intent {a.get('intent') or '?'}"
+    if target.get("deviceAndAppManagementAssignmentFilterId"):
+        filter_type = target.get("deviceAndAppManagementAssignmentFilterType") or "?"
+        line += f", filter {target['deviceAndAppManagementAssignmentFilterId']} ({filter_type})"
+    return line
 
 
 def _with_next(text: str, next_link: str) -> str:
@@ -474,37 +560,41 @@ def management_tools(
 
     # ── Assignments, read with the route Graph serves for each kind ─────
 
-    async def _read_assignments(client: AutoRefreshClient, kind: str, object_id: str, action: str) -> list[Any]:
+    async def _read_assignments(
+        client: AutoRefreshClient, kind: str, object_id: str, action: str, scope: str = ""
+    ) -> list[Any]:
         """The assignments of one object, through the route Graph serves for *kind*.
 
         ``deviceShellScripts`` has no GET route on ``/assignments`` ("No OData route
         exists"): it is read with ``$expand=assignments`` on the object. The other kinds
         read the ``/assignments`` collection, which Graph always fills, where an
         ``$expand=assignments`` beside another expand comes back empty on a settings
-        catalog policy.
+        catalog policy. *scope* is the permission a 403 names (default: the kind's).
         """
         spec = _KINDS[kind]
+        scope = scope or spec.scope
         if spec.assignments_read == "expand":
             obj = await _graph(
-                client, "get", _url(kind, object_id), action, spec.scope, params={"$expand": "assignments"}
+                client, "get", _url(kind, object_id), action, scope, params={"$expand": "assignments"}
             )
             return list(obj.get("assignments") or [])
-        data = await _graph(client, "get", _url(kind, object_id, "assignments"), action, spec.scope)
+        data = await _graph(client, "get", _url(kind, object_id, "assignments"), action, scope)
         return list(data.get("value") or [])
 
     async def _object_with_assignments(
-        client: AutoRefreshClient, kind: str, object_id: str, action: str, expand: str = ""
+        client: AutoRefreshClient, kind: str, object_id: str, action: str, expand: str = "", scope: str = ""
     ) -> dict[str, Any]:
         """One object with its ``assignments`` filled, never an empty list by omission."""
         spec = _KINDS[kind]
+        scope = scope or spec.scope
         if spec.assignments_read == "expand":
             expand = ",".join(p for p in (expand, "assignments") if p)
         kwargs: dict[str, Any] = {"params": {"$expand": expand}} if expand else {}
-        obj: dict[str, Any] = await _graph(client, "get", _url(kind, object_id), action, spec.scope, **kwargs)
+        obj: dict[str, Any] = await _graph(client, "get", _url(kind, object_id), action, scope, **kwargs)
         if spec.assignments_read == "expand":
             obj["assignments"] = list(obj.get("assignments") or [])
         else:
-            obj["assignments"] = await _read_assignments(client, kind, object_id, f"{action} assignments")
+            obj["assignments"] = await _read_assignments(client, kind, object_id, f"{action} assignments", scope)
         return obj
 
     # ── Settings catalog policies ───────────────────────────────────────
@@ -904,21 +994,62 @@ def management_tools(
         return _with_next(format_entity_list(items, _fmt_named, noun="app"), nxt)
 
     @_tool
-    async def intune_get_app_install_status(app_id: str, top: int = 100) -> str:
+    async def intune_get_app_install_status(app_id: str, top: int = 100, skip: int = 0) -> str:
         app = _check_id(app_id, "app_id")
+        top = max(1, min(top, 500))
+        skip = max(0, skip)
+        app_filter = f"(ApplicationId eq '{_odata_quote(app)}')"
         async with client_factory() as client:
-            data = await _graph(
+            report = await _graph(
                 client,
-                "get",
-                f"{_BETA}/deviceAppManagement/mobileApps/{app}/deviceStatuses",
+                "post",
+                _INSTALL_REPORT,
                 "read the app install status",
                 SCOPE_APPS_READ,
-                params={"$top": max(1, min(top, 500))},
+                json={
+                    "filter": app_filter,
+                    "select": list(_INSTALL_COLUMNS),
+                    "orderBy": ["DeviceName"],
+                    "top": top,
+                    "skip": skip,
+                },
             )
-        return _with_next(
-            format_entity_list(data.get("value", []), _fmt_install, noun="device install status"),
-            data.get("@odata.nextLink", ""),
-        )
+            summary = ""
+            if skip == 0:
+                try:
+                    overview = await _graph(
+                        client,
+                        "post",
+                        _APP_OVERVIEW_REPORT,
+                        "read the app install overview",
+                        SCOPE_APPS_READ,
+                        json={"filter": app_filter},
+                    )
+                    summary = _fmt_overview(_report_rows(overview)[0])
+                except _ToolError as exc:
+                    # The per-device rows answered: say the summary failed, never hide the rows.
+                    summary = f"Summary unavailable: {str(exc).removeprefix('Error: ')}"
+        rows, total = _report_rows(report)
+        if not rows:
+            text = "No device reports an install status for this app." if skip == 0 else "No more devices."
+        else:
+            shown = f"{skip + 1}-{skip + len(rows)}" + (f" of {total}" if total is not None else "")
+            text = f"Device install status (devices {shown}):\n" + "\n".join(_fmt_install_row(r) for r in rows)
+            if total is not None and skip + len(rows) < total:
+                text += f"\nMore results: call again with skip={skip + len(rows)}"
+        return f"{summary}\n{text}" if summary else text
+
+    @_tool
+    async def intune_get_app_assignments(app_id: str) -> str:
+        async with client_factory() as client:
+            app = await _object_with_assignments(client, "mobile_app", app_id, "read the app", scope=SCOPE_APPS_READ)
+        kind_name = str(app.get("@odata.type", "")).rsplit(".", 1)[-1] or "app"
+        head = f"{app.get('displayName') or 'Unnamed'} (ID: {app.get('id', app_id)}, {kind_name})"
+        assignments = app["assignments"]
+        if not assignments:
+            return f"{head}: not assigned to any group, user or device."
+        lines = "\n".join(_fmt_assignment(a) for a in assignments)
+        return f"{head}: {len(assignments)} assignment(s):\n{lines}"
 
     # ── Assign and delete, every kind ───────────────────────────────────
 
@@ -1205,8 +1336,20 @@ def _definitions() -> list[ToolDefinition]:
             name="intune_get_app_install_status",
             # Polled: the same call later answers a state that moved on its own.
             live_state=True,
-            description="Read the per-device install status of an app.",
-            input_schema=_obj({"app_id": s, "top": {"type": "integer", "default": 100}}, ["app_id"]),
+            description="Read an app's install summary and per-device install status (Intune reports API, every app type).",
+            input_schema=_obj(
+                {
+                    "app_id": s,
+                    "top": {"type": "integer", "description": "Devices per page (1-500, default 100)", "default": 100},
+                    "skip": {"type": "integer", "description": "Devices to skip, from a previous answer"},
+                },
+                ["app_id"],
+            ),
+        ),
+        ToolDefinition(
+            name="intune_get_app_assignments",
+            description="Read an app's assignments: all users, all devices or groups (include / exclude), intent, filter.",
+            input_schema=_obj({"app_id": s}, ["app_id"]),
         ),
         ToolDefinition(
             name="intune_assign",

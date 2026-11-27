@@ -673,6 +673,17 @@ def _owner_run_handed_on(owner_run: bool, agent: Any, target: Any) -> bool:
     return owner is not None and owner == normalize_acting_user_id(getattr(target, "user_id", None))
 
 
+def _agent_shared_with(agent: Agent, user_id: uuid.UUID, user_group_ids: list[str]) -> bool:
+    """Whether *agent* is given to *user_id*: published to everyone (company-
+    managed, not narrowed by ``access_restricted``) or shared with them or one
+    of their groups. An administrator's reach over every agent is not a share."""
+    from app.api.v1.helpers import get_effective_permission
+
+    if getattr(agent, "is_company_managed", False) and not getattr(agent, "access_restricted", False):
+        return True
+    return get_effective_permission(agent, user_id, user_group_ids) is not None
+
+
 async def _load_pipeline_tool_standalone(
     db: AsyncSession,
     tool_ref: dict,
@@ -780,14 +791,26 @@ async def _load_pipeline_tool_unbound(
                     integ_id_str,
                 )
 
-        # Checked like a direct binding, for the owner too: a pin copied from
-        # another agent names that agent's owner's integration.
+        # The agent's own binding: everyone it is shared with uses it as bound
+        # (sharing an agent lends what it binds), as long as its owner may use
+        # it, since a pin copied from another agent names that agent's owner's
+        # integration. Anyone else (an administrator the agent is not shared
+        # with) loads it only when they may use it as a direct binding. A run
+        # with no person is checked as the owner when it is the owner's own
+        # (``owner_run``) and keeps no pin otherwise.
         from app.services.integration_credentials import normalize_acting_user_id
 
         _acting = normalize_acting_user_id(user_id)
         _owner = normalize_acting_user_id(getattr(agent, "user_id", None))
-        _check_as = _acting if _acting is not None else (_owner if owner_run else None)
+        _shared_pin = False
         _withheld_pin = False
+        _acting_groups: list[str] = []
+        if integ is not None and _acting is not None and _acting != _owner:
+            from app.api.v1.helpers import get_user_group_ids
+
+            _acting_groups = await get_user_group_ids(db, _acting)
+            _shared_pin = _agent_shared_with(agent, _acting, _acting_groups)
+        _check_as = _owner if _shared_pin else _acting if _acting is not None else (_owner if owner_run else None)
         if integ is not None and _check_as is not None:
             from app.api.v1.helpers import get_user_group_ids
             from app.services.integration_credentials import lent_integration_ids
@@ -799,7 +822,7 @@ async def _load_pipeline_tool_unbound(
                 _pinned,
                 {},
                 acting_user_id=str(_check_as),
-                user_group_ids=await get_user_group_ids(db, _check_as),
+                user_group_ids=_acting_groups if _check_as == _acting else await get_user_group_ids(db, _check_as),
                 lent_ids=lent_integration_ids(agent),
                 lent_owner_id=_owner,
             )
@@ -809,6 +832,7 @@ async def _load_pipeline_tool_unbound(
                     integ.id,
                     _check_as,
                 )
+                _shared_pin = False
                 _withheld_pin = True
         elif integ is not None and not owner_run:
             logger.info("Pipeline LOAD: pinned integration %s withheld from a run with no person", integ.id)
@@ -902,10 +926,19 @@ async def _load_pipeline_tool_unbound(
             db,
             ToolBindings(
                 {provider: [str(integ.id)]},
-                basis=BindingBasis.OWNER_RUN if _owner_run_pin else BindingBasis.CALLER_CHECKED,
+                basis=(
+                    BindingBasis.OWNER_RUN
+                    if _owner_run_pin
+                    else BindingBasis.SHARED_AS_BOUND
+                    if _shared_pin
+                    else BindingBasis.CALLER_CHECKED
+                ),
                 reason=(
                     "the pipeline tool ref's pinned integration, for the owner's own run"
                     if _owner_run_pin
+                    else "the pipeline tool ref's pinned integration, lent with the agent shared with the person "
+                    "(maintainer decision of 2026-09-27)"
+                    if _shared_pin
                     else "the pinned integration the person may use, else one picked through template_candidate_filter"
                 ),
             ),
@@ -4960,8 +4993,15 @@ async def run_agent_chat(
         # synthetic input on an enrolled machine. Runner targeting deliberately
         # runs as the acting user (``is_admin=False``): an agent reaches the
         # user's own + company-managed + group-shared runners, never another
-        # user's private machine, whatever the caller's role.
-        if _app_settings.runners_enabled and "computer_use" in agent_builtin_tool_ids:
+        # user's private machine, whatever the caller's role. A partner's A2A
+        # task never gets it (``partner_scope.withhold_runner_tools``).
+        from app.a2a.partner_scope import withhold_runner_tools
+
+        if (
+            _app_settings.runners_enabled
+            and "computer_use" in agent_builtin_tool_ids
+            and not withhold_runner_tools(composite)
+        ):
             from app.api.v1.helpers import get_user_group_ids
             from app.services.builtin_tools import build_computer_use_tools
 

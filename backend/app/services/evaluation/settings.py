@@ -22,9 +22,48 @@ neither list here.
 from __future__ import annotations
 
 import copy
-from typing import Any
+import math
+from typing import Any, Self
+
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_validator
 
 from app.models.evaluation import Evaluation, EvaluationAgent
+
+
+class SubScoreWeights(BaseModel):
+    """The judge's criterion weights: known criteria only, each from 0 to 1, summing to 1.
+
+    Otherwise the judge's score can leave 0-100 or drop a criterion the author
+    never meant to drop. A criterion left out weighs 0, as the stored weighting
+    leaves it out (``_compute_global_score``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tool_selection_quality: FiniteFloat = Field(0.0, ge=0, le=1)
+    response_completeness: FiniteFloat = Field(0.0, ge=0, le=1)
+    response_accuracy: FiniteFloat = Field(0.0, ge=0, le=1)
+    instruction_adherence: FiniteFloat = Field(0.0, ge=0, le=1)
+    coherence: FiniteFloat = Field(0.0, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def _sums_to_one(self) -> Self:
+        total = sum(self.model_dump().values())
+        if not math.isclose(total, 1.0, abs_tol=1e-6):
+            raise ValueError(f"the weights must sum to 1, got {total:g}")
+        return self
+
+    def stored(self) -> dict[str, float]:
+        """The weights as the JSON column keeps them: the criteria sent, no others."""
+        return self.model_dump(exclude_unset=True)
+
+
+#: The judge's criteria and their default weights. The judge's verdict schema is
+#: built from these keys, and ``sub_score_weights`` may weigh only these.
+SUB_SCORE_WEIGHTS: dict[str, float] = dict.fromkeys(SubScoreWeights.model_fields, 0.2)
+
+#: The highest ``penalty_factor``: the scoring card's slider goes from 0 to this.
+PENALTY_FACTOR_MAX = 1.5
 
 EVALUATION_SETTINGS: tuple[str, ...] = (
     "description",

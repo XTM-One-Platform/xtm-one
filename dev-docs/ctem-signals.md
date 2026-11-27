@@ -82,6 +82,15 @@ card. The case is recognised by its platform title
 A caller may name another lens than the default (a `has` relationship is the
 inside lens of path 1). `GET /api/v1/ctem-signals/paths` answers this table.
 
+OpenCTI `has` relationship and sighting of a vulnerability (#2524): the signal
+is named by the target's value (the OpenCTI extension's `target_value`, a CVE
+id), else by the CVE id the event message names, and by the target's STIX id
+only when neither exists. The STIX id stays in `evidence.target_ref` and the
+CVE goes to `evidence.cve`, so the same CVE delivered as a vulnerability object
+and as a relationship is one subject (related signals, case key, KEV/EPSS).
+The dedupe key is unchanged (the relationship's internal id). Migration
+`r2524relcve01` renames the earlier rows the same way.
+
 Aikido (CTEM-25): the code repository and container image of an issue (name
 and id) go to `evidence.assets`, so the scope gate resolves them to a profile
 asset row (source `aikido`, `external_id` the Aikido id) and to its primary
@@ -295,8 +304,17 @@ is part of the key: a caller never reads back, nor overwrites, a row another
 user or a listener recorded under the same (guessable) key; it gets its own
 row, and the reconcile step merges what several recorders saw. A sighting of
 a known key by the same recorder moves `last_seen_at` to the later of the stored value and its own time, adds
-one to `seen_count`, keeps its evidence and label; recorder, state, decision
-and case stay as the first sighting and the next steps left them.
+one to `seen_count`, merges its evidence into the stored one (#2543,
+`merge_evidence`, the stored row read under a row lock) and keeps its label;
+recorder, state, decision and case stay as the first sighting and the next
+steps left them. The merge takes the latest sighting's facts, except that the
+PIR matches (`pir`) are merged by PIR id with the highest `score_at_delivery`
+kept, `pir_floor_met` is the stored value OR the new one (a sighting with no
+PIR data never downgrades it, and the listener writes no floor without PIR
+data), and every source key that saw the signal is kept in `xtm_sources`
+(written once two sources saw it), so `activity_by_source` counts the signal
+under each of them. The result stays under 8,000 characters (the lowest PIR
+scores dropped first).
 
 ## 4. Three ways in
 
@@ -359,6 +377,38 @@ source.
   (`webhooks.receive_signal_source_webhook`): integration `webhook_secret`,
   per-source throttle, delivery de-duplication, then `note_event` records the
   signal. A source that is off or unknown is ignored. No run starts here.
+
+## 4ter. Generic signed webhook sources (#2506)
+
+A tool XTM One has no integration for records signals on one trigger path
+through a webhook source (`ctem_webhook_sources`, model
+`models/ctem_webhook_source.py`, migration `w2506webhooksrc01`). It is a
+source of its path in the signal sources view: kind `webhook`, provider
+`webhook`, key `webhook:webhook:<id>`, listed with its 30-day count.
+
+- **Off by default.** `POST /api/v1/ctem-signals/webhook-sources`
+  (administrator) creates the source off, with its name, path, subject kind
+  and mapping; `PATCH .../{id}` switches it on or off, renames it or changes
+  the mapping; `DELETE .../{id}` removes it (its signals stay).
+- **Per-source secret, shown once.** The create and
+  `POST .../{id}/rotate` answers carry `secret` once; it is stored encrypted
+  and never read back. A rotation refuses the old secret at once.
+- **Signed receiver.** `POST /api/hooks/ctem-webhook-sources/{id}`
+  (`webhooks.receive_ctem_webhook_source`) checks `X-XTM-Signature:
+  sha256=<hex HMAC-SHA256 of the raw body>` before anything else: a wrong or
+  missing signature answers 401 and records nothing, the source on or off. A
+  verified delivery to a source that is off answers `ignored`.
+- **Mapping.** `mapping` names the dotted path (`event.id`, `items.0.name`)
+  of the signal fields in the posted JSON: `id` (required, the signal's
+  external id and dedupe key), `label` (the subject label), `severity` (kept
+  in the evidence). A delivery with no id at its path answers `unmapped` and
+  keeps the reason on the source (`last_error`).
+- **Test.** `POST .../{id}/test` with a sample answers what the mapping reads
+  in it, recording nothing.
+- **Counts.** Every path of `GET /api/v1/ctem-signals/paths` carries
+  `sources_enabled` (its sources on) and `sources_available` (its sources that
+  are or could be on here); a source of a provider with no integration here
+  counts in neither.
 
 **Fleets route on signals.** The F2 triage assignments of the vulnerability
 prioritization orchestrator (New KEV or EPSS jump, Vulnerability on software
@@ -478,6 +528,65 @@ deadline or scope, reopens on the tile (`frontend/src/lib/ctem-signal-trigger.ts
 (the platform-event queue). Platform events have no batching today, so the
 trigger offers no "batch every N minutes" setting.
 
+## 6ter. Purge every signal (#2528)
+
+When the scope threshold was set wrong and too many cases were opened, an
+administrator starts over from the Signals page: a destructive icon button next
+to **Sources**, administrators only. `app.services.ctem_signal_purge` runs one
+job at a time on the platform (Redis lock `ctem:signals:purge-job`), in a strict
+order:
+
+1. **Pause intake.** The flag `ctem:signals:intake-paused` (2 h TTL, so a lost
+   pod never leaves intake off) is read by `ctem_signals.record_signal`, which
+   every source goes through: while it is set each one is refused with
+   `SignalIntakePausedError` (a `SignalError`) and records nothing. The scheduled
+   recheck and case sweep, the attack surface pass and the evidence health pass
+   skip their tick (their cadence slot is left for after the purge).
+2. **Purge.** The cases a signal opened or joined (a signal names it, a
+   `signal` member, or a `created ... signal` or `signal` event) go 200 at a time
+   through `ctem_case_delete.delete_cases`: members, history, open work items,
+   armed timers, coverage, one tombstone audit row per case. Their signals are
+   never handed back to the scope gate: every signal is deleted next, 1,000 per
+   transaction. Then the raised state outside `ctem_signals`: the attack surface
+   pass's `ctem_surface_observations.signalled` keys, each undone so the next pass
+   finds its difference again (a raised port leaves the host's baseline ports, a
+   raised new host leaves the baseline). No other source keeps raised state
+   outside the signal row.
+3. **Resync**, only when the administrator ticked it (unchecked by default),
+   `app.services.ctem_signal_resync`, recording through the paused intake for this
+   step only: the OpenCTI entities of the live listener's types (paths 1, 2, 10)
+   created or updated in the last 30 days, from every enabled OpenCTI source as
+   its run-as, each fed to `ctem_signal_listeners.note_event` as an `update`
+   delivery (same extractor, exclusions, internal-id dedupe and scope gate as
+   live); then the attack surface (5, 6, 7) and evidence health (9, 12) passes,
+   once each. Not resynced, named in the job's `skipped` counts: PIR scores
+   (OpenCTI attaches them on its playbook delivery only), path 11 (needs a live
+   delivery's organization annotation), and the open findings of paths 3, 4, 8
+   (Aikido, GitHub and OpenAEV deliver them by event; no listing is wired).
+4. **Resume intake**, always, also after a failure, which the job status and the
+   audit row report.
+
+Sources, trigger paths, webhook sources, exclusions and the case-opening switch
+are never touched. One `audit_logs` row (`entity_type` `ctem_signal_purge`)
+holds the actor, the resync choice and the counts per step.
+
+`GET /api/v1/ctem-signals/purge` (administrators): the live counts
+(`{signals, cases}`), the confirmation word and the running or last job.
+`POST /api/v1/ctem-signals/purge` `{confirm, resync}` (administrators): 422
+without the word `PURGE`, 409 while a job runs, else 202 with the job's first
+status. A non-administrator gets 403 on both.
+
+A job whose process restarts mid-job never writes its end: its status stays
+`running` while the job lock and the intake pause expire (2 h). `read_status`
+reports such a status (`running` with no job lock) as interrupted (#2539):
+`state` `failed`, `interrupted` true, a reason in `error`, the step it reached
+failed and the counts reached kept. Its steps say what is true now:
+`intake_paused` reads `PAUSE_KEY`; once the pause is gone, intake runs again, so
+`resume` reads `done` and a `resync` that never started reads `skipped`; while
+the pause is still there, `resume` stays `pending` and the dialog says intake is
+still paused. The progress dialog stops polling and the purge button opens the
+confirm dialog again.
+
 ## 7. Tests
 
 `tests/test_ctem_signals.py` (input rules, listener table, API and tools:
@@ -491,4 +600,8 @@ a non-admin subscriber does not hear an admin-only signal, filters match),
 with a run-as provisions, refusals with their reason, disable deprovisions,
 an assignment off never stops a source, adoption new before old, status reads
 Connected only when provisioned), `tests/test_ctem_f2_vuln_prioritization.py`
-(the F2 assignments on `ctem_signal.recorded` and their routing facts).
+(the F2 assignments on `ctem_signal.recorded` and their routing facts),
+`tests/test_ctem_signal_purge.py` and `tests/test_ctem_signal_purge_postgres.py`
+(section 6ter: the admin gate, the paused intake refuses every source, the job
+order, intake resumed after a forced failure, the cascade with no orphan, a large
+set in batches, the attack surface pass raising again after a purge).

@@ -175,6 +175,7 @@ class ExtractorSampleResultResponse(BaseModel):
 
 from app.api.v1.schemas.column_limits import column_length_validator, lone_surrogate_validator
 from app.models.evaluation import Evaluation, EvaluationResult, EvaluationRun
+from app.services.evaluation.settings import PENALTY_FACTOR_MAX, SubScoreWeights
 from app.services.evaluation_placebo import PlaceboConfig, placebo_mode_error
 
 _EVALUATION_COLUMN_FIELDS = ("name", "execution_mode", "run_mode", "evaluator_model", "quality_source")
@@ -183,6 +184,11 @@ _EVALUATION_COLUMN_FIELDS = ("name", "execution_mode", "run_mode", "evaluator_mo
 #: any other string.
 EvaluationExecutionMode = Literal["llm_only", "full_loop"]
 EVALUATION_EXECUTION_MODES: tuple[str, ...] = ("llm_only", "full_loop")
+
+#: How an evaluation launches its runs: all at once or one at a time. Create,
+#: update and import refuse any other string, which would run in parallel.
+EvaluationRunMode = Literal["parallel", "sequential"]
+EVALUATION_RUN_MODES: tuple[str, ...] = ("parallel", "sequential")
 
 # Cap shared by both bulk-selection endpoints. ``trigger-from-runs`` and
 # ``rescore-from-runs`` build an ``IN (...)`` over the whole list, and the rescore
@@ -242,15 +248,16 @@ class CreateEvaluationRequest(BaseModel):
             "Off by default: nobody can approve during an evaluation."
         ),
     )
-    run_mode: str = "parallel"
+    run_mode: EvaluationRunMode = "parallel"
     evaluator_model: str | None = None
     evaluator_prompt: str | None = None
     evaluation_instructions: str | None = None
     performance_tolerance: float = Field(5.0, ge=0.0)
     quality_weight: float | None = _retired_quality_weight()
-    sub_score_weights: dict[str, float] | None = None
+    sub_score_weights: SubScoreWeights | None = None
     quality_source: str = "judge"
-    penalty_factor: float = 0.5
+    # The scoring card's bounds: a negative factor would reward inconsistency.
+    penalty_factor: float = Field(0.5, ge=0.0, le=PENALTY_FACTOR_MAX)
     timeout_seconds: int = Field(3600, ge=60)
     # Per-evaluation judge response budget.
     judge_max_tokens: int = Field(8192, ge=256, le=131072)
@@ -312,15 +319,15 @@ class UpdateEvaluationRequest(BaseModel):
     execution_mode: EvaluationExecutionMode | None = None
     apply_prompt_guards: bool | None = None
     require_tool_approval: bool | None = None
-    run_mode: str | None = None
+    run_mode: EvaluationRunMode | None = None
     evaluator_model: str | None = None
     evaluator_prompt: str | None = None
     evaluation_instructions: str | None = None
     performance_tolerance: float | None = Field(None, ge=0.0)
     quality_weight: float | None = _retired_quality_weight()
-    sub_score_weights: dict[str, float] | None = None
+    sub_score_weights: SubScoreWeights | None = None
     quality_source: str | None = None
-    penalty_factor: float | None = None
+    penalty_factor: float | None = Field(None, ge=0.0, le=PENALTY_FACTOR_MAX)
     timeout_seconds: int | None = Field(None, ge=60)
     judge_max_tokens: int | None = Field(None, ge=256, le=131072)
     enabled: bool | None = None

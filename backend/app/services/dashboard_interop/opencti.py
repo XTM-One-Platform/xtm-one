@@ -30,10 +30,16 @@ become ``platform`` widgets (source ``opencti``) with the widget as their
 native configuration, in reading order, width from their columns. A custom
 view's ``SELF_ID`` becomes the ``$entity$`` token, which an entity input of
 its target type sets (:data:`CUSTOM_VIEW_TOKEN`): the viewer picks the entity
-the page is about.
+the page is about. A dashboard's ``variables`` (OpenCTI's dashboard inputs,
+named ``$var:<id>`` in filter values): an entity variable becomes an entity
+input whose token the widgets read; another type has no input here, so its
+widgets read its default value, or are left out when it has none.
 Writing: ``text`` widgets and OpenCTI platform widgets become an OpenCTI
 dashboard export, packed on the grid in order; anything else is listed as left
 out - an OpenCTI dashboard cannot draw an XTM One score or an OpenAEV widget.
+The dashboard inputs its widgets read become its variables when OpenCTI has
+their type (an entity, a text, a number: ``dashboard_native.opencti_variable``),
+with the ids the stored manifest gives them.
 """
 
 from __future__ import annotations
@@ -233,6 +239,59 @@ def _with_token(value: object) -> object:
     return value
 
 
+_TOKEN_CHARS = re.compile(r"[^A-Za-z0-9_]+")
+
+
+def _variables_as_inputs(manifest: object, report: ConversionReport) -> tuple[object, list[dict]]:
+    """*manifest* with its variables read: an entity variable as an entity input (its ``$var:<id>`` written as
+    the input's ``$token$``), another as its default value; a widget left reading a variable is left out."""
+    from app.services.dashboard_definition import Input
+    from app.services.dashboard_native import rewrite_filter_values
+
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("variables"), list):
+        return manifest, []
+    inputs: list[dict] = []
+    mapping: dict[str, str] = {}
+    tokens: set[str] = set()
+    for variable in manifest["variables"][:50]:
+        if not isinstance(variable, dict) or not isinstance(variable.get("id"), str):
+            continue
+        name = variable.get("name") if isinstance(variable.get("name"), str) and variable.get("name") else "variable"
+        reference = f"$var:{variable['id']}"
+        if variable.get("type") == "entity":
+            base = (_TOKEN_CHARS.sub("_", name).strip("_").lower() or "variable")[:50]
+            base = base if base[0].isalpha() or base[0] == "_" else f"v_{base}"
+            token, n = base, 2
+            while token in tokens or token == CUSTOM_VIEW_TOKEN:
+                token, n = f"{base}_{n}", n + 1
+            types = [t for t in variable.get("entityTypes") or [] if isinstance(t, str) and _ENTITY_TYPE_RE.match(t)][:10]
+            entry = {"type": "input.entity", "title": name[:120], "token": token,
+                     "options": {"source": "opencti", "entityTypes": types or ["Stix-Core-Object"]}}  # fmt: skip
+            checked = Input.model_validate(entry).model_dump(mode="json", by_alias=True, exclude_none=True)
+            inputs.append({**checked, "id": f"input_{token}"})
+            tokens.add(token)
+            mapping[reference] = f"${token}$"
+            report.note(f"The dashboard variable '{name}' is the dashboard's '{name}' input.")
+            continue
+        default = variable.get("defaultValue")
+        if isinstance(default, str | int | float) and not isinstance(default, bool) and str(default).strip():
+            mapping[reference] = str(default)
+            report.note(
+                f"The dashboard variable '{name}' ({variable.get('type')}) has no input here: "
+                f"its widgets read its default value, {default}."
+            )
+        else:
+            report.note(f"The dashboard variable '{name}' ({variable.get('type')}) has no input here and no default value.")
+    read = rewrite_filter_values(manifest, mapping)
+    widgets = read.get("widgets") if isinstance(read.get("widgets"), dict) else {}
+    for wid, widget in list(widgets.items()):
+        if "$var:" in json.dumps(widget):
+            params = widget.get("parameters") if isinstance(widget, dict) and isinstance(widget.get("parameters"), dict) else {}
+            report.note(f"Widget '{params.get('title') or wid}' reads a dashboard variable that has no value here and was left out.")
+            del widgets[wid]
+    return read, inputs
+
+
 def custom_view_input(target_type: object) -> dict:
     """The input picking a custom view's entity: an entity of its target type (any entity when it names none)."""
     kind = target_type if isinstance(target_type, str) and _ENTITY_TYPE_RE.match(target_type) else None
@@ -260,6 +319,9 @@ def parse_export_document(document: object) -> ParsedWidgets:
         name = configuration.get("name") if isinstance(configuration.get("name"), str) else "OpenCTI dashboard"
         description = configuration.get("description") if isinstance(configuration.get("description"), str) else None
         origin = "opencti-dashboard"
+        if kind == "dashboard":
+            manifest, variable_inputs = _variables_as_inputs(manifest, report)
+            inputs.extend(variable_inputs)
         if kind == "custom-view":
             from app.services.dashboard_definition import Input
 
@@ -342,12 +404,15 @@ def _config_of(widgets: list[dict], report: ConversionReport) -> dict:
     return config
 
 
-def _opencti_widgets(widgets: list[dict], report: ConversionReport, *, token: str | None = None) -> list[dict]:
+def _opencti_widgets(
+    widgets: list[dict], report: ConversionReport, *, token: str | None = None, variables: dict[str, dict] | None = None
+) -> list[dict]:
     """The widgets an OpenCTI dashboard (or, with *token*, a custom view) can hold; the others reported.
 
-    A widget reading an input it cannot hold is left out: an OpenCTI dashboard has
-    no inputs, and a custom view has one, its entity (*token*, written ``SELF_ID``).
-    Its filters would otherwise keep a ``$token$`` OpenCTI matches nothing with.
+    A widget reading an input it cannot hold is left out: an OpenCTI dashboard holds
+    the inputs that are its *variables* (by token), and a custom view has one, its
+    entity (*token*, written ``SELF_ID``). Its filters would otherwise keep a
+    ``$token$`` OpenCTI matches nothing with.
     """
     from app.services.dashboard_tokens import names_in
 
@@ -358,21 +423,30 @@ def _opencti_widgets(widgets: list[dict], report: ConversionReport, *, token: st
             what = widget.get("source") if widget.get("kind") == "platform" else widget.get("kind")
             report.note(f"Widget '{label}' ({what}) has no OpenCTI equivalent and was left out.")
             continue
-        read = names_in(widget.get("native")) - ({token} if token else set())
+        read = names_in(widget.get("native")) - ({token} if token else set()) - set(variables or {})
         if read:
             names = ", ".join(f"${name}$" for name in sorted(read))
-            where = "a custom view has only its entity" if token else "an OpenCTI dashboard has no inputs"
+            where = "a custom view has only its entity" if token else "it is not a variable of the OpenCTI dashboard"
             report.note(f"Widget '{label}' reads the dashboard's input {names}; {where}, so it was left out.")
             continue
         kept.append(widget)
     return kept
 
 
-def _manifest(kept: list[dict], report: ConversionReport, *, token: str | None = None) -> str:
-    """The base64 manifest of *kept*, laid out as OpenCTI's grid, with their period; *token* written ``SELF_ID``."""
+def _manifest(
+    kept: list[dict], report: ConversionReport, *, token: str | None = None, variables: dict[str, dict] | None = None
+) -> str:
+    """The base64 manifest of *kept*, laid out as OpenCTI's grid, with their period; *token* written ``SELF_ID``,
+    the inputs that are its *variables* written ``$var:<id>`` and listed."""
+    from app.services.dashboard_native import rewrite_filter_values
+    from app.services.dashboard_tokens import names_in
+
     converted = [_to_opencti_widget(w) for w in kept]
     if token:
         converted = json.loads(json.dumps(converted).replace(f"${token}$", SELF_ID))
+    used = [variables[name] for name in sorted(set().union(*(names_in(w) for w in converted)) & set(variables or {}))]
+    if used:
+        converted = rewrite_filter_values(converted, {f"${v['name']}$": f"$var:{v['id']}" for v in used})
     placed = platform_layouts(kept, "opencti")
     manifest_widgets: dict[str, dict] = {}
     for item, position in zip(converted, placed, strict=True):
@@ -382,7 +456,10 @@ def _manifest(kept: list[dict], report: ConversionReport, *, token: str | None =
             **item,
             "layout": {"i": wid, **position, "moved": False, "static": False},
         }
-    return encode_base64_json({"config": _config_of(kept, report), "widgets": manifest_widgets})
+    manifest: dict = {"config": _config_of(kept, report), "widgets": manifest_widgets}
+    if used:
+        manifest["variables"] = used
+    return encode_base64_json(manifest)
 
 
 def _version(version: str | None) -> str:
@@ -390,14 +467,27 @@ def _version(version: str | None) -> str:
 
 
 def build_dashboard_export(
-    name: str, widgets: list[dict], *, version: str | None = None, description: str | None = None
+    name: str,
+    widgets: list[dict],
+    *,
+    version: str | None = None,
+    description: str | None = None,
+    inputs: dict[str, dict] | None = None,
 ) -> tuple[dict, ConversionReport]:
-    """An OpenCTI dashboard export of the widgets OpenCTI can draw; the others reported."""
+    """An OpenCTI dashboard export of the widgets OpenCTI can draw; the others reported.
+
+    *inputs*: the dashboard's inputs by id; those OpenCTI has a variable type for become its variables.
+    """
+    from app.services.dashboard_native import opencti_variable
+
+    variables = {
+        v["name"]: v for iid, item in (inputs or {}).items() if isinstance(item, dict) and (v := opencti_variable(iid, item))
+    }
     report = ConversionReport()
-    kept = _opencti_widgets(widgets, report)
+    kept = _opencti_widgets(widgets, report, variables=variables)
     if not kept:
         raise InteropError("This dashboard has no widget OpenCTI can draw (OpenCTI widgets or text).")
-    configuration: dict = {"name": name[:MAX_TITLE_CHARS], "manifest": _manifest(kept, report)}
+    configuration: dict = {"name": name[:MAX_TITLE_CHARS], "manifest": _manifest(kept, report, variables=variables)}
     if description:
         configuration["description"] = description
     return {"openCTI_version": _version(version), "type": "dashboard", "configuration": configuration}, report

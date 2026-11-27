@@ -11,29 +11,75 @@ const state = vi.hoisted(() => ({
   isAdmin: false,
   opening: undefined as CtemCaseOpening | undefined,
   calls: [] as unknown[],
+  pending: false,
 }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: state.isAdmin }) }));
 vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useCtemCasesApi")>()),
   useCtemCaseOpening: () => ({ data: state.opening }),
-  useSetCtemCaseOpening: () => ({ isPending: false, mutate: (body: unknown) => state.calls.push(body) }),
+  useSetCtemCaseOpening: () => ({ isPending: state.pending, mutate: (body: unknown) => state.calls.push(body) }),
 }));
 
 beforeEach(() => {
   state.isAdmin = false;
   state.opening = undefined;
   state.calls = [];
+  state.pending = false;
 });
 
 describe("CaseOpeningSwitch (#1951)", () => {
-  it("gives an administrator the switch, and flipping it sends the new value", () => {
+  it("gives an administrator the switch, and turning it on with nothing waiting sends at once", () => {
     state.isAdmin = true;
-    state.opening = { vertical: "cyber", on: false, waiting: 12 };
+    state.opening = { vertical: "cyber", on: false, waiting: 0 };
     renderWithProviders(<CaseOpeningSwitch />);
     const toggle = screen.getByRole("switch", { name: "Case opening" });
     expect(toggle).not.toBeChecked();
     fireEvent.click(toggle);
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(state.calls).toEqual([{ on: true }]);
+  });
+
+  it("asks before turning on while signals wait, naming the count, and sends only on confirm (#2536)", () => {
+    state.isAdmin = true;
+    state.opening = { vertical: "cyber", on: false, waiting: 12 };
+    renderWithProviders(<CaseOpeningSwitch />);
+    fireEvent.click(screen.getByRole("switch", { name: "Case opening" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("Turn case opening on?");
+    expect(dialog).toHaveTextContent("12 confirmed signals are waiting");
+    expect(state.calls).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Turn on" }));
+    expect(state.calls).toEqual([{ on: true }]);
+  });
+
+  it("sends nothing when the confirmation is cancelled (#2536)", () => {
+    state.isAdmin = true;
+    state.opening = { vertical: "cyber", on: false, waiting: 1 };
+    renderWithProviders(<CaseOpeningSwitch />);
+    fireEvent.click(screen.getByRole("switch", { name: "Case opening" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("1 confirmed signal is waiting");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(state.calls).toEqual([]);
+  });
+
+  it("turns off without asking", () => {
+    state.isAdmin = true;
+    state.opening = { vertical: "cyber", on: true, waiting: 0 };
+    renderWithProviders(<CaseOpeningSwitch />);
+    fireEvent.click(screen.getByRole("switch", { name: "Case opening" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(state.calls).toEqual([{ on: false }]);
+  });
+
+  it("is disabled while its change is in flight, so a second flip cannot race it (#2536)", () => {
+    state.isAdmin = true;
+    state.pending = true;
+    state.opening = { vertical: "cyber", on: true, waiting: 0 };
+    renderWithProviders(<CaseOpeningSwitch />);
+    const toggle = screen.getByRole("switch", { name: "Case opening" });
+    expect(toggle).toBeDisabled();
+    fireEvent.click(toggle);
+    expect(state.calls).toEqual([]);
   });
 
   it("is drawn disabled before the setting is read, so the toolbar does not shift", () => {
@@ -53,7 +99,7 @@ describe("CaseOpeningSwitch (#1951)", () => {
 
   it("drops its visible label in a compact toolbar and stays named, so the row fits 1080 (UX r2 B1 on #1963)", () => {
     state.isAdmin = true;
-    state.opening = { vertical: "cyber", on: false, waiting: 4 };
+    state.opening = { vertical: "cyber", on: false, waiting: 0 };
     renderWithProviders(
       <ToolbarCompactContext.Provider value={true}>
         <CaseOpeningSwitch />

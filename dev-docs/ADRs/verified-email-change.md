@@ -1,6 +1,6 @@
 # ADR Verified Email Change for XTM One Users
 
-Status: Proposed
+Status: Proposed. Step 1 (the administrator change and the 422 on the preferences endpoint) is implemented
 Scope: `backend/` (account settings, user management, password reset, transactional email), `frontend/` (Profile page, user management)
 Reviewed in refinement: not yet
 
@@ -73,7 +73,7 @@ The notice to the old address says that the email changed, to which address, and
 
 The administrator change and the 422 on the preferences endpoint come first: they close the hole on their own. The self-service code comes second.
 
-`UPGRADING.md` states that changing one's email now asks for the current password and a code, is not possible from the profile without SMTP, and that SSO accounts change their email in their IdP.
+With step 1, `UPGRADING.md` states that only an administrator changes an email and that the preferences endpoint answers 422 to a new address. Once step 2 ships, it states that changing one's email asks for the current password and a code, is not possible from the profile without SMTP, and that SSO accounts change their email in their IdP.
 
 ## Rationale
 

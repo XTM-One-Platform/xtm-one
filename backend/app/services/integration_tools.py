@@ -117,6 +117,9 @@ from app.integrations.providers.kubernetes import build_tools as kubernetes_tool
 from app.integrations.providers.kubernetes import encode_ca_segment as kubernetes_ca_segment
 from app.integrations.providers.letsignit import build_tools as letsignit_tools
 from app.integrations.providers.linkedin import build_tools as linkedin_tools
+from app.integrations.providers.lmstudio import (
+    build_tools as lmstudio_tools,
+)
 from app.integrations.providers.logrhythm import build_tools as logrhythm_tools
 from app.integrations.providers.mattermost import build_tools as mattermost_tools
 from app.integrations.providers.metabase import build_tools as metabase_tools
@@ -1082,6 +1085,7 @@ PROVIDER_TOOLS = {
     "abuseipdb": abuseipdb_tools,
     "abusech": abusech_tools,
     "ransomware_live": ransomware_live_tools,
+    "lmstudio": lmstudio_tools,
     "misp": misp_tools,
     "mitre_atlas": mitre_atlas_tools,
     "mitre_attack": mitre_attack_tools,
@@ -2359,12 +2363,23 @@ async def _generate_platform_jwt(
     audience_url:
         The target platform's identity (becomes the ``aud`` claim), as
         :func:`app.core.platform_identity.platform_token_audience` resolves it.
+
+    Only a user gets one: the target platform matches the token's email to one
+    of its users. A non-user caller (``/mcp/global`` with the platform key acts
+    as ``mcp_endpoint.GLOBAL_KEY_CALLER``, an anonymous caller) is refused
+    before any lookup, and answers ``None``.
     """
+    from app.core.utils import safe_uuid
     from app.core.xtm_auth import issue_xtm_jwt
     from app.models.user import User
 
+    caller = safe_uuid(user_id)
+    if caller is None:
+        logger.info("No platform JWT for %r: not a user", user_id)
+        return None
+
     result = await db.execute(
-        select(User.email).where(User.id == uuid.UUID(user_id))
+        select(User.email).where(User.id == caller)
     )
     row = result.one_or_none()
     if not row:
@@ -2373,7 +2388,7 @@ async def _generate_platform_jwt(
 
     (email,) = row
     return issue_xtm_jwt(
-        user_id=uuid.UUID(user_id),
+        user_id=caller,
         user_email=email,
         audience_url=audience_url,
     )
@@ -4308,6 +4323,11 @@ async def _resolve_token(
     # ``base_url||token``). These providers
     # REQUIRE a base URL, so a missing one is a real misconfiguration and
     # warrants the warning below.
+    # --- LM Studio: the server URL and the optional API token both live in extra_config (``auth_type`` none) ---
+    if provider == "lmstudio":
+        extra = await _reveal_extra(integ) if integ.extra_config_enc else {}
+        return f"{str(extra.get('base_url') or '').strip()}||{str(extra.get('api_token') or '').strip()}"
+
     if provider in (
         "metabase",
         "opencti",
@@ -6054,6 +6074,9 @@ class BindingBasis(enum.StrEnum):
     CALLER_CHECKED = "caller_checked"
     #: An administrator bound them for everyone (the General Assistant).
     ADMIN_CONFIGURED = "admin_configured"
+    #: The agent binds them and is shared with the person: sharing an agent
+    #: lends what it binds, used as bound.
+    SHARED_AS_BOUND = "shared_as_bound"
 
 
 class ToolBindings(Mapping[str, Any]):

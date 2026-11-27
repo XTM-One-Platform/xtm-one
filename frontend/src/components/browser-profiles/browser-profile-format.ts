@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /** Labels and pure helpers of the browser profile screens. */
-import type { BrowserProfileLoginConfig, BrowserSessionStatus } from "@/types";
+import type { BrowserProfileApp, BrowserProfileLoginConfig, BrowserSessionStatus } from "@/types";
 
 /** The English label of a browser session status: the last probe's answer, never the cookies'. @i18n-keys */
 export const SESSION_STATUS_LABELS = {
@@ -56,6 +56,42 @@ export function parseHosts(text: string): string[] {
     .split(/[\n,]/)
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean);
+}
+
+/** The form's application rows as the profile stores them: a row without a URL left out, names and URLs trimmed. */
+export function appsFrom(rows: BrowserProfileApp[]): BrowserProfileApp[] {
+  return rows
+    .map((row) => ({ name: row.name.trim(), url: row.url.trim() }))
+    .filter((row) => row.url);
+}
+
+/** Whether an application row's URL would be refused on save: the rule of the backend's clean_apps (http(s), a host, no credentials, at most 2000 characters). A blank URL is no problem: the row is left out. */
+export function appUrlInvalid(url: string): boolean {
+  const text = url.trim();
+  if (!text) return false;
+  if (text.length > 2000) return true;
+  try {
+    const parsed = new URL(text);
+    return !(parsed.protocol === "http:" || parsed.protocol === "https:") || !parsed.hostname || Boolean(parsed.username || parsed.password);
+  } catch {
+    return true;
+  }
+}
+
+/** The label an application wears on the profile card: its name, else its host. */
+export function appLabel(app: BrowserProfileApp): string {
+  if (app.name.trim()) return app.name.trim();
+  try {
+    return new URL(app.url).hostname;
+  } catch {
+    return app.url;
+  }
+}
+
+/** The applications on one line of the card: the first two labels, and how many more (shown apart, so a cut name never hides the count). */
+export function appsSummary(apps: BrowserProfileApp[]): { names: string; more: number } {
+  const labels = apps.map(appLabel);
+  return { names: labels.slice(0, 2).join(", "), more: Math.max(labels.length - 2, 0) };
 }
 
 /** The sign-in setting listing the storage keys the application keeps its session in. */

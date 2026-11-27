@@ -1377,8 +1377,8 @@ def build_kb_document_read_tools(
         scope = resolver.resolve_scope(knowledge_base)
         if scope is None:
             return (
-                f"Error: '{knowledge_base}' is not a readable knowledge base "
-                "(or its name is ambiguous - use the id). "
+                f"Error: '{knowledge_base}' is not one of the knowledge bases this tool reads - those this agent "
+                "is given -, or its name is ambiguous (use the id). "
                 f"Choose one of: {resolver.options}."
             )
         # A non-positive or unparseable limit falls back to the default rather
@@ -1584,8 +1584,8 @@ def build_kb_document_read_tools(
             return await _document_sections(scope, document_id, title, section, bool(outline))
         if scope is None:
             return (
-                f"Error: '{knowledge_base}' is not a readable knowledge base "
-                "(or its name is ambiguous - use the id). "
+                f"Error: '{knowledge_base}' is not one of the knowledge bases this tool reads - those this agent "
+                "is given -, or its name is ambiguous (use the id). "
                 f"Choose one of: {resolver.options}."
             )
         try:

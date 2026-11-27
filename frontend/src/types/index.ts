@@ -12267,6 +12267,8 @@ export interface CustomDashboardSummary {
 export interface CustomDashboard extends CustomDashboardSummary {
   /** The definition (version 2): data sources, visualizations, inputs, tabs and their layouts. */
   spec: unknown;
+  /** The stored form: an OpenCTI manifest, platform widgets in their own shape, the rest under `x_xtm_one`. */
+  manifest?: Record<string, unknown>;
   /** Its visualizations as widgets, in reading order: what a reader of widgets draws. */
   widgets: Record<string, unknown>[];
   /** Whether the caller may rearrange, refine and share it (owner, `config`
@@ -12454,7 +12456,18 @@ export interface WidgetGeoData {
 }
 /** Nodes and the edges between them; every edge's ends are nodes. */
 export interface WidgetGraphData {
-  nodes: { id: string; label: string; group: string | null; value: number | null }[];
+  nodes: {
+    id: string;
+    label: string;
+    group: string | null;
+    value: number | null;
+    /** A flow's node (an Attack Flow, a kill chain's stages): its kind and what its card shows. */
+    kind?: "start" | "action" | "condition" | "operator" | "asset";
+    technique?: string;
+    tactic?: string;
+    description?: string;
+    operator?: "AND" | "OR";
+  }[];
   edges: { source: string; target: string; label: string | null; value: number | null }[];
 }
 /** Events in time, by start: an ISO date (`2026-01-31`) or UTC date-time (`2026-01-31T10:00:00Z`). */
@@ -12569,9 +12582,37 @@ interface WidgetPresentation {
 }
 
 /** A live platform widget's data, as the viewer may read it, or the reason it has none. */
+/**
+ * A data source refreshed on the server (`dashboard_refresh.py`): the snapshot
+ * shown, read with its publisher's access, every `every` (`server`) or when
+ * someone asks (`manual`).
+ */
+export interface WidgetSnapshot {
+  /** The source holding the snapshot: the widget's own, or the one its derived source reads. */
+  source_id?: string;
+  mode: "server" | "manual";
+  every: string | null;
+  refreshed_at: string | null;
+  publisher: string | null;
+}
+
+/** What changed since a server-read source's previous read (`dashboard_refresh.with_changes`): computed from the data. */
+export interface WidgetChanges {
+  since: string;
+  figure: { before: number; after: number };
+  items?: { label: string; before: number; after: number }[];
+}
+
 export type WidgetData =
-  | ({ status: "ok"; fetched_at: string; open_url: string | null; presentation?: WidgetPresentation | null } & (WidgetChartData | WidgetStudioData))
-  | { status: "error"; code: WidgetDataErrorCode; open_url: string | null };
+  | ({
+      status: "ok";
+      fetched_at: string;
+      open_url: string | null;
+      presentation?: WidgetPresentation | null;
+      snapshot?: WidgetSnapshot | null;
+      changes?: WidgetChanges | null;
+    } & (WidgetChartData | WidgetStudioData))
+  | { status: "error"; code: WidgetDataErrorCode; open_url: string | null; snapshot?: WidgetSnapshot | null };
 
 // ---------------------------------------------------------------------------
 // Platform widget editors: one form, described by each platform's adapter
@@ -12737,7 +12778,8 @@ export type NotificationKind =
   | "agent_message"
   | "run_action_request"
   | "work_item_waiting"
-  | "builtin_tools_outside_allowlist";
+  | "builtin_tools_outside_allowlist"
+  | "dashboard_alert";
 
 /** One notification as the server presents it: the page it opens included. */
 export interface NotificationItem {
@@ -15932,6 +15974,12 @@ interface BrowserProfileProbe {
  */
 export type BrowserProfileLoginConfig = Record<string, string | string[]>;
 
+/** Another application a browser profile's saved session signs in. */
+export interface BrowserProfileApp {
+  name: string;
+  url: string;
+}
+
 export interface BrowserProfile {
   id: string;
   user_id: string | null;
@@ -15940,6 +15988,8 @@ export interface BrowserProfile {
   start_url: string;
   login_url: string | null;
   allowed_hosts: string[];
+  /** The other applications the saved session signs in (through the same identity provider). */
+  apps: BrowserProfileApp[];
   login_config: BrowserProfileLoginConfig;
   browser_options: Record<string, string>;
   username_hint: string | null;
@@ -15979,6 +16029,8 @@ export interface BrowserProfileWrite {
   start_url: string;
   login_url?: string | null;
   allowed_hosts?: string[];
+  /** Omitted: keep; `[]`: none. */
+  apps?: BrowserProfileApp[];
   login_config?: BrowserProfileLoginConfig | null;
   browser_options?: Record<string, string> | null;
   description?: string | null;

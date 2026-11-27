@@ -45,7 +45,9 @@ from app.services.custom_dashboard_spec import (
 from . import MAX_PACK_WIDGETS, ConversionReport, InteropError, ParsedWidgets, loads_bounded
 
 PACK_FORMAT = "xtm-one-widget-pack"
-PACK_VERSION = 1
+#: Version 2 places its widgets in rows of OpenCTI's grid; version 1 (rows of 36 px) is still read.
+PACK_VERSION = 2
+_READ_VERSIONS = (1, 2)
 PACK_ENTRY = "pack.json"
 
 #: Stands in for the integration while a pack widget is checked: never stored.
@@ -100,8 +102,8 @@ def parse_pack_document(document: object) -> ParsedWidgets:
     if not isinstance(document, dict) or document.get("format") != PACK_FORMAT:
         raise InteropError(f"A widget pack names its format: '{PACK_FORMAT}'.")
     version = document.get("version")
-    if version != PACK_VERSION:
-        raise InteropError(f"This widget pack is of version {version!r:.20}; this platform reads version {PACK_VERSION}.")
+    if version not in _READ_VERSIONS:
+        raise InteropError(f"This widget pack is of version {version!r:.20}; this platform reads versions 1 and {PACK_VERSION}.")
     name = document.get("name")
     if not isinstance(name, str) or not name.strip() or len(name) > MAX_TITLE_CHARS:
         raise InteropError(f"A widget pack needs a name of at most {MAX_TITLE_CHARS} characters.")
@@ -115,6 +117,10 @@ def parse_pack_document(document: object) -> ParsedWidgets:
     if len(widgets) > MAX_PACK_WIDGETS:
         report.note(f"The pack holds {len(widgets)} widgets; the first {MAX_PACK_WIDGETS} were kept.")
         widgets = widgets[:MAX_PACK_WIDGETS]
+    if version == 1:
+        from app.services.dashboard_grid import legacy_layout
+
+        widgets = [{**w, "layout": legacy_layout(w["layout"])} if isinstance(w, dict) and "layout" in w else w for w in widgets]
     kept: list[dict] = []
     for index, widget in enumerate(widgets):
         try:

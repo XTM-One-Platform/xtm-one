@@ -15,7 +15,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 /**
  * The configuration panel of the visualization picked in the Dashboard
- * Studio - Splunk Dashboard Studio's, section by section:
+ * Studio, section by section:
  *
  * - General: heading, description, the type (those drawing the same data,
  *   `viz-config.typesLike`), the panel's progress bar and read time.

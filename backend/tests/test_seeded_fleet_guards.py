@@ -204,7 +204,7 @@ def test_the_video_production_loops_are_capped():
     assert "At most 3 regenerations of one shot" in body
 
 
-@pytest.mark.parametrize("slug", ["video-production", "presentation-design", "report-design"])
+@pytest.mark.parametrize("slug", ["video-production", "presentation-design", "report-design", "dashboard-design"])
 def test_every_studio_skill_lets_the_person_choose(slug):
     # Sam, 13 Nov 2026 (#11538): the studio skills make the person aware and never impose a taste.
     body = _resolve_seed_content("skill_content", slug) or ""

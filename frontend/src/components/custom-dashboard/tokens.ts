@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 */
 
 /**
- * The tokens of a dashboard page, like Splunk Dashboard Studio's.
+ * The tokens of a dashboard page.
  *
  * A definition refers to a token as `$name$`; `$name|f$` says how its value
  * is written: `s` quoted, `h` HTML-escaped, `u` URL-encoded, `n` as is. The

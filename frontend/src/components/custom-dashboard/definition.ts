@@ -17,7 +17,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * A version 2 dashboard definition read as widget records, tab by tab.
  *
  * The definition (`backend/app/services/dashboard_definition.py`) keeps data
- * sources, visualizations and layouts apart, like Splunk Dashboard Studio. The
+ * sources, visualizations and layouts apart. The
  * renderer draws widgets, so each visualization placed in a tab becomes the
  * record `normalizeWidget` reads: a content type (`xtm.<kind>`) its kind with
  * its options as fields; a data type on a platform source a `platform` widget;
@@ -37,6 +37,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import { isElementType, readCanvas, type CanvasModel } from "./canvas.ts";
 
 import { readInputs, type ReadInputs } from "./inputs.ts";
+
+/** The data sources XTM One reads itself (`dashboard_definition.DataSource`, less `platform`). */
+export const DATA_SOURCE_TYPES = ["static", "assignment", "ask", "variable", "integration", "knowledge", "derived"] as const;
 
 type Raw = Record<string, unknown>;
 
@@ -66,6 +69,7 @@ export const TYPE_TO_VIEW: Record<string, string | undefined> = {
   "xtm.choropleth.svg": "choroplethsvg",
   "xtm.linkgraph": "linkgraph",
   "xtm.networkgraph": "networkgraph",
+  "xtm.attackflow": "attackflow",
   "xtm.sankey": "sankey",
   "xtm.parallelcoordinates": "parallel",
   "xtm.timeline": "timeline",
@@ -223,7 +227,7 @@ function widgetRecord(vid: string, viz: Raw, sources: Raw, defaults: Raw): Raw |
       ...drawing,
     };
   }
-  if (typeof sid === "string" && ["static", "assignment", "ask", "variable", "derived"].includes(source.type as string)) {
+  if (typeof sid === "string" && (DATA_SOURCE_TYPES as readonly string[]).includes(source.type as string)) {
     // Read again when the source, a source it derives from or the view changes, not on every save.
     return {
       kind: "data",
@@ -436,9 +440,10 @@ export const VISUALIZATION_TYPES_BY_SHAPE: Record<string, string[]> = {
 };
 
 /** The rows a new visualization of a type takes on the grid (`dashboard_grid._VIEW_ROWS`). */
+/** The rows (OpenCTI's) a new visualization of `type` takes. */
 function rowsOf(type: string): number {
-  if (type === "xtm.singlevalue") return 6;
-  return type === "xtm.answer" || type === "xtm.table" || type === "xtm.list" ? 8 : 9;
+  if (type === "xtm.singlevalue") return 3;
+  return 4;
 }
 
 /**

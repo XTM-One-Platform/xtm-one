@@ -4189,9 +4189,18 @@ async def _present_answer_artifacts(
 
 
 async def _present_restored_artifacts(
-    db: AsyncSession, messages: list[dict], *, supported: bool, conversation_id: object, user: User
+    db: AsyncSession,
+    messages: list[dict],
+    *,
+    supported: bool,
+    conversation_id: object,
+    user: User,
+    keep_dashboards: bool = False,
 ) -> None:
-    """:func:`_present_answer_artifacts` for the answers of a restore, one read per kind for them all."""
+    """:func:`_present_answer_artifacts` for the answers of a restore, one read per kind for them all.
+
+    *keep_dashboards* (a panel that draws dashboards: the web chat's) leaves the dashboard markers in place.
+    """
     from app.services.channel_notices import notice_language
     from app.services.platform_chat_artifacts import describe_answers, link_only_markers_as_links, markers_as_links
 
@@ -4206,9 +4215,10 @@ async def _present_restored_artifacts(
         for entry, artifacts in zip(answers, described, strict=True):
             if artifacts:
                 entry["artifacts"] = artifacts
-            entry["content"] = await link_only_markers_as_links(
-                db, entry["content"], conversation_id=conversation_id, user_id=user.id, language=language
-            )
+            if not keep_dashboards:
+                entry["content"] = await link_only_markers_as_links(
+                    db, entry["content"], conversation_id=conversation_id, user_id=user.id, language=language
+                )
         return
     for entry in answers:
         entry["content"] = await markers_as_links(
@@ -4341,7 +4351,13 @@ async def list_platform_chat_prompts_route(
 
 
 async def restored_message_entries(
-    db: AsyncSession, user: User, rows: list, *, conversation_id: uuid.UUID, supports_artifacts: bool
+    db: AsyncSession,
+    user: User,
+    rows: list,
+    *,
+    conversation_id: uuid.UUID,
+    supports_artifacts: bool,
+    keep_dashboards: bool = False,
 ) -> list[dict]:
     """*rows* (chronological) as the chatbot panel restores messages: hidden wakes left out.
 
@@ -4422,7 +4438,7 @@ async def restored_message_entries(
 
     await _drop_deleted_attachments(db, messages)
     await _present_restored_artifacts(
-        db, messages, supported=supports_artifacts, conversation_id=conversation_id, user=user
+        db, messages, supported=supports_artifacts, conversation_id=conversation_id, user=user, keep_dashboards=keep_dashboards
     )
     return messages
 
@@ -4466,11 +4482,12 @@ async def _drop_deleted_attachments(db: AsyncSession, messages: list[dict[str, A
 
 
 async def restore_chat_session_window(
-    db: AsyncSession, user: User, conv: Any, *, supports_artifacts: bool
+    db: AsyncSession, user: User, conv: Any, *, supports_artifacts: bool, keep_dashboards: bool = False
 ) -> tuple[PlatformChatSessionResponse, bool]:
     """The latest messages of *conv*, as the chatbot panel restores them, and whether older ones exist.
 
-    Shared by the embedded chat and the web chat.
+    Shared by the embedded chat and the web chat; *keep_dashboards* for the web chat, whose panel draws a
+    dashboard's marker as the dashboard (the embedded panels get its link).
     """
     from app.models.chat import Message
     from app.services.chat_messages import read_visible_message_page
@@ -4531,7 +4548,7 @@ async def restore_chat_session_window(
     )
 
     messages = await restored_message_entries(
-        db, user, _rows, conversation_id=conv.id, supports_artifacts=supports_artifacts
+        db, user, _rows, conversation_id=conv.id, supports_artifacts=supports_artifacts, keep_dashboards=keep_dashboards
     )
     attribute_message_agents(messages, _running_agent, await recorded_message_agents(db, _rows))
 
@@ -4569,7 +4586,14 @@ class ChatPanelSessionResponse(PlatformChatSessionResponse):
 
 
 async def read_message_page(
-    db: AsyncSession, user: User, conv: Any, *, before: str | None, limit: int, supports_artifacts: bool
+    db: AsyncSession,
+    user: User,
+    conv: Any,
+    *,
+    before: str | None,
+    limit: int,
+    supports_artifacts: bool,
+    keep_dashboards: bool = False,
 ) -> dict:
     """The page of *conv* older than message *before*, as the chat panel pages a thread: ``{messages, has_more}``.
 
@@ -4595,7 +4619,7 @@ async def read_message_page(
         criteria.append(message_cursor_filter(anchor))
     rows, has_more = await read_visible_message_page(db, criteria, limit)
     messages = await restored_message_entries(
-        db, user, rows, conversation_id=conv.id, supports_artifacts=supports_artifacts
+        db, user, rows, conversation_id=conv.id, supports_artifacts=supports_artifacts, keep_dashboards=keep_dashboards
     )
     # A page starts mid-thread: only the handovers and recorded authors inside it name an agent.
     attribute_message_agents(messages, None, await recorded_message_agents(db, rows))

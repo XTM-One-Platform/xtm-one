@@ -258,6 +258,33 @@ async def test_a_restore_describes_or_links_the_answers_by_the_client_promise(mo
 
 
 @pytest.mark.asyncio
+async def test_the_web_chat_keeps_a_dashboard_s_marker_the_embedded_panels_get_as_a_link(monkeypatch):
+    """The XTM One panel draws ``[[DASHBOARD:<id>]]`` as the dashboard; made a link on restore, the card never showed."""
+    dashboard = uuid.uuid4()
+
+    async def _describe(_db, texts, *, conversation_id, user_id):
+        return [[] for _ in texts]
+
+    async def _dashboard_links(_db, text, **_kw):
+        return text.replace(f"[[DASHBOARD:{dashboard}]]", "[Posture](https://xtm.example/dashboards/x)")
+
+    monkeypatch.setattr(artifacts, "describe_answers", _describe)
+    monkeypatch.setattr(artifacts, "link_only_markers_as_links", _dashboard_links)
+    user = SimpleNamespace(id=uuid.uuid4(), language="en")
+    answer = f"Built.\n\n[[DASHBOARD:{dashboard}]]"
+
+    embedded = [{"role": "assistant", "content": answer}]
+    await platform_api._present_restored_artifacts(object(), embedded, supported=True, conversation_id="c", user=user)
+    assert embedded[0]["content"] == "Built.\n\n[Posture](https://xtm.example/dashboards/x)"
+
+    web = [{"role": "assistant", "content": answer}]
+    await platform_api._present_restored_artifacts(
+        object(), web, supported=True, conversation_id="c", user=user, keep_dashboards=True
+    )
+    assert web[0]["content"] == answer
+
+
+@pytest.mark.asyncio
 async def test_a_non_streaming_answer_carries_descriptors_or_links_and_stores_its_markers(monkeypatch):
     answer = f"Here is the readout [[REPORT:{REPORT}]]"
     stored = []

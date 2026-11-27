@@ -212,20 +212,27 @@ def _ref(provider: str, integration_id: uuid.UUID) -> dict:
     }
 
 
-async def test_a_colleague_s_pipeline_ref_never_runs_the_owner_s_pinned_integration(session, built):
+def _unshared_agent() -> SimpleNamespace:
+    """The same agent shared with nobody: the colleague reaches it as an admin only."""
+    agent = _shared_agent()
+    agent.shared_group_ids = []
+    return agent
+
+
+async def test_an_admin_the_agent_is_not_shared_with_never_runs_the_owner_s_pinned_integration(session, built):
     loaded = await agent_chat._load_pipeline_tool_standalone(
-        session, _ref("github", _PERSONAL), str(_COLLEAGUE), _shared_agent()
+        session, _ref("github", _PERSONAL), str(_COLLEAGUE), _unshared_agent()
     )
 
-    # Withheld, and the colleague has no GitHub of their own to fall back on.
+    # Withheld (#683), and the colleague has no GitHub of their own to fall back on.
     assert loaded is None
     assert "bindings" not in built
 
 
 @pytest.mark.parametrize(
     ("provider", "pinned", "acting"),
-    [("jira", _LENT, _COLLEAGUE), ("github", _PERSONAL, _OWNER)],
-    ids=["lent-to-the-colleague", "the-owner-s-own-run"],
+    [("jira", _LENT, _COLLEAGUE), ("github", _PERSONAL, _COLLEAGUE), ("github", _PERSONAL, _OWNER)],
+    ids=["lent-to-the-colleague", "bound-and-shared-with-the-colleague", "the-owner-s-own-run"],
 )
 async def test_a_pinned_integration_the_person_may_use_stays(session, built, provider, pinned, acting):
     await agent_chat._load_pipeline_tool_standalone(session, _ref(provider, pinned), str(acting), _shared_agent())

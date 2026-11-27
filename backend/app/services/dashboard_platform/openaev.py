@@ -216,6 +216,80 @@ def check_native(native: object) -> NativeCheck:
     )
 
 
+# ── What an agent reads before writing a widget (``describe_widget``) ──────
+
+
+def _entity(entity: str) -> dict:
+    return {"key": "base_entity", "operator": "eq", "mode": "or", "values": [entity]}
+
+
+def _example(widget_type: str) -> dict:
+    """A configuration of *widget_type* OpenAEV's editor could have written: valid, and a sensible start."""
+    spec = EDITOR_TYPES[widget_type]
+    config_type = spec["configs"][0]
+    config: dict = {"widget_configuration_type": config_type, "title": "", "date_attribute": "base_created_at", "time_range": "DEFAULT"}
+    if spec["kind"] == "perspective":
+        config.update(perspective={"name": "Findings", "filter": {"mode": "and", "filters": [_entity("finding")]}},
+                      columns=["finding_type", "base_created_at"], sorts=[{"fieldName": "base_created_at", "direction": "DESC"}], limit=20)  # fmt: skip
+    elif spec["kind"] == "coverage":
+        config["series"] = [
+            {"name": status, "filter": {"mode": "and", "filters": [
+                _entity("expectation-inject"),
+                {"key": "inject_expectation_status", "operator": "eq", "mode": "or", "values": [status]},
+                {"key": "inject_expectation_type", "operator": "eq", "mode": "or", "values": ["DETECTION"]},
+            ]}}
+            for status in ("SUCCESS", "FAILED")
+        ]  # fmt: skip
+    elif spec["kind"] == "domains":
+        config["series"] = [{"name": "", "filter": {"mode": "and", "filters": [_entity("expectation-inject")]}}]
+    else:
+        entity = "expectation-inject" if widget_type in ("command-center", "exposure-score", "resilience-gauge", "posture-radar") else "finding"
+        config["series"] = [{"name": "", "filter": {"mode": "and", "filters": [_entity(entity)]}}]
+    if config_type == "temporal-histogram":
+        config.update(mode="temporal", interval="week")
+    if config_type == "structural-histogram":
+        config["mode"] = "structural"
+        config["field"] = (
+            "base_attack_patterns_side" if spec["kind"] == "coverage"
+            else "inject_expectation_status" if config["series"][0]["filter"]["filters"][0]["values"] == ["expectation-inject"]
+            else "finding_type"
+        )  # fmt: skip
+        if spec["limit"]:
+            config["limit"] = 10
+    return {"widget_type": widget_type, "widget_config": config}
+
+
+def describe(widget_type: str | None = None) -> dict:
+    """OpenAEV's widget types, or one of them with an example configuration and the rules it follows."""
+    if widget_type is None:
+        return {
+            "types": [
+                {"type": t, "label": _TYPE_LABELS.get(t), "configurations": spec["configs"], "series": f"1-{spec['maxSeries']}"}
+                for t, spec in EDITOR_TYPES.items()
+            ]
+        }
+    if widget_type not in EDITOR_TYPES:
+        raise NativeError(f"OpenAEV widget_type must be one of: {', '.join(EDITOR_TYPES)}.")
+    spec = EDITOR_TYPES[widget_type]
+    return {
+        "type": widget_type,
+        "label": _TYPE_LABELS.get(widget_type),
+        "configurations": spec["configs"],
+        "series": f"1-{spec['maxSeries']}",
+        "simulationRequired": spec.get("simulationRequired", False),
+        "example": _example(widget_type),
+        "rules": [
+            "A series is {name, filter}; its filter's base_entity says what is counted: " + ", ".join(EDITOR_ENTITIES) + ".",
+            "A filter group is {mode: and|or, filters: [{key, operator, mode, values}]}, without nested groups; "
+            f"operators: {', '.join(sorted(OPERATORS))}.",
+            "Filter keys by entity: " + "; ".join(f"{e}: {', '.join(keys)}" for e, keys in _FILTER_KEYS.items()) + ".",
+            f"time_range: {', '.join(TIME_RANGES)}; a temporal histogram's interval: {', '.join(INTERVALS)}; a "
+            "structural histogram's field is the attribute it breaks down by.",
+            "A simulation or scenario input is read as '$token$' in a base_simulation_side / base_scenario_side value.",
+        ],
+    }
+
+
 # ── The widget editor (``forms``): OpenAEV's own, ``openaev-front/.../custom_dashboards/widgets/configuration/*`` ──
 
 #: Widget type -> what OpenAEV's editor offers for it (``WidgetUtils.tsx``), in its order: its

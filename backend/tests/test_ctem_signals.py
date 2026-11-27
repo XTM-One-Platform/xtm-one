@@ -152,6 +152,42 @@ def test_a_pir_playbook_delivery_records_pir_ids_and_score_only() -> None:
     assert "not kept" not in json.dumps(fields)
 
 
+def test_merge_evidence_keeps_pir_and_floor_and_takes_the_latest_facts() -> None:
+    """#2543: the merge a known signal's evidence goes through at each new sighting. Pure."""
+    stored = {
+        "pir": [{"pir_id": "a", "score_at_delivery": 75}],
+        "pir_floor_met": True,
+        "name": "old",
+        signals.SOURCE_KEY_EVIDENCE: "opencti:pir_playbook",
+    }
+    merged = signals.merge_evidence(stored, {"name": "new", signals.SOURCE_KEY_EVIDENCE: "opencti:listener"})
+    assert merged["pir"] == stored["pir"] and merged["pir_floor_met"] is True and merged["name"] == "new"
+    assert merged[signals.SOURCES_EVIDENCE] == ["opencti:pir_playbook", "opencti:listener"]
+    # A sighting that names a PIR floor of its own never downgrades a stored true one either.
+    assert signals.merge_evidence(stored, {"pir_floor_met": False})["pir_floor_met"] is True
+    # A floor reached later is taken; one never written stays absent.
+    assert signals.merge_evidence({"pir_floor_met": False}, {"pir_floor_met": True})["pir_floor_met"] is True
+    assert "pir_floor_met" not in signals.merge_evidence({"a": 1}, {"b": 2})
+    # One source only: no list written.
+    same = {signals.SOURCE_KEY_EVIDENCE: "opencti:listener"}
+    assert signals.SOURCES_EVIDENCE not in signals.merge_evidence(same, dict(same))
+
+
+def test_merge_evidence_keeps_the_highest_score_per_pir_and_stays_under_the_cap() -> None:
+    low = {"pir": [{"pir_id": "a", "score_at_delivery": 40}, {"pir_id": "b", "score_at_delivery": 90}]}
+    high = {"pir": [{"pir_id": "a", "score_at_delivery": 80}, {"pir_id": "c", "score_at_delivery": 10}]}
+    assert signals.merge_evidence(low, high)["pir"] == [
+        {"pir_id": "a", "score_at_delivery": 80},
+        {"pir_id": "b", "score_at_delivery": 90},
+        {"pir_id": "c", "score_at_delivery": 10},
+    ]
+    many = {"pir": [{"pir_id": f"p{i:03d}", "score_at_delivery": i} for i in range(200)], "pir_floor_met": True}
+    merged = signals.merge_evidence(many, {"pir": [{"pir_id": "z" * 40, "score_at_delivery": 1}], "x": "y" * 2000})
+    assert len(repr(merged)) <= signals.MAX_EVIDENCE_CHARS
+    assert merged["pir_floor_met"] is True and merged["x"] == "y" * 2000
+    assert {"pir_id": "p199", "score_at_delivery": 199} in merged["pir"]
+
+
 def test_pir_information_outside_a_pir_playbook_delivery_is_not_read() -> None:
     payload = {
         "type": "update",
@@ -200,6 +236,81 @@ def test_a_has_relationship_to_a_vulnerability_is_a_path_1_signal_on_the_target(
     assert row.lens == "inside"
     assert fields["ref"] == "vulnerability--1"
     assert fields["evidence"]["source_ref"] == "software--nginx"
+    assert fields["evidence"]["target_ref"] == "vulnerability--1"
+    assert fields["label"] is None and "cve" not in fields["evidence"]
+
+
+def _has_relationship(*, target_value: str | None = None, message: str | None = None) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        "type": "relationship",
+        "relationship_type": "has",
+        "id": "relationship--81176c5c",
+        "source_ref": "software--86a9d0f5",
+        "target_ref": "vulnerability--c0cdd6e3",
+    }
+    if target_value is not None:
+        data["extensions"] = {
+            listeners.OPENCTI_EXTENSION: {
+                "id": "rel-internal",
+                "source_value": "Veeam Plug-In for AWS",
+                "target_value": target_value,
+            }
+        }
+    payload: dict[str, Any] = {"type": "create", "data": data}
+    if message is not None:
+        payload["_opencti_event"] = {"message": message}
+    return payload
+
+
+def test_a_has_relationship_is_named_by_the_target_value_cve() -> None:
+    """#2524: the subject is the target's CVE, the STIX id stays in evidence, the CVE reaches the gate."""
+    from app.services.ctem_scope_gate import signal_cve_ids
+
+    _row, fields = _matched("create", _has_relationship(target_value="CVE-2026-123634"))
+    assert (fields["ref"], fields["label"]) == ("CVE-2026-123634", "CVE-2026-123634")
+    assert fields["evidence"]["target_ref"] == "vulnerability--c0cdd6e3"
+    assert fields["evidence"]["cve"] == "CVE-2026-123634"
+    assert fields["external_id"] == "rel-internal"
+    assert signal_cve_ids(fields["ref"], fields["label"], fields["evidence"]) == ["CVE-2026-123634"]
+
+
+def test_a_has_relationship_without_target_value_takes_the_cve_of_the_message() -> None:
+    message = "[relationship] Veeam Plug-In for AWS has cve-2026-123634"
+    _row, fields = _matched("create", _has_relationship(message=message))
+    assert (fields["ref"], fields["label"]) == ("CVE-2026-123634", "CVE-2026-123634")
+    assert fields["evidence"]["cve"] == "CVE-2026-123634"
+    assert fields["evidence"]["message"] == message
+
+
+def test_a_has_relationship_with_neither_keeps_the_stix_id() -> None:
+    _row, fields = _matched("create", _has_relationship(message="[relationship] Veeam has a vulnerability"))
+    assert (fields["ref"], fields["label"]) == ("vulnerability--c0cdd6e3", None)
+    assert "cve" not in fields["evidence"]
+
+
+def test_a_vulnerability_object_and_a_relationship_on_one_cve_share_the_subject_and_the_case_key() -> None:
+    """#2524: one CVE delivered both ways is one subject, so related signals and the case key match."""
+    from app.services.ctem_case_loop import fix_of
+
+    vuln = {
+        "type": "create",
+        "data": {"type": "vulnerability", "id": "vulnerability--c0cdd6e3", "name": "CVE-2026-123634"},
+    }
+    signals_seen = []
+    for payload in (vuln, _has_relationship(target_value="CVE-2026-123634")):
+        row, fields = _matched("create", payload)
+        signals_seen.append(
+            SimpleNamespace(
+                trigger_path=row.trigger_path,
+                subject_kind=row.subject_kind,
+                subject_ref=fields["ref"],
+                subject_label=fields["label"],
+                evidence=fields["evidence"],
+            )
+        )
+    obj, rel = signals_seen
+    assert (obj.subject_kind, obj.subject_ref.lower()) == (rel.subject_kind, rel.subject_ref.lower())
+    assert fix_of(obj).key == fix_of(rel).key  # type: ignore[arg-type]
 
 
 def test_an_opencti_actor_is_a_path_2_signal_and_a_report_is_nothing():
@@ -595,7 +706,7 @@ class _Store:
         if row is not None:
             row.last_seen_at = max(row.last_seen_at, at)
             row.seen_count += 1
-            row.evidence = clean.evidence
+            row.evidence = signals.merge_evidence(row.evidence, clean.evidence)
             row.subject_label = clean.subject_label or row.subject_label
             return row, False
         row = CtemSignal(
@@ -665,13 +776,14 @@ class _Store:
     ) -> dict[str, dict[str, dict[str, Any]]]:
         out: dict[str, dict[str, dict[str, Any]]] = {}
         for r in self._mine(organization_id, recorded_by):  # type: ignore[no-untyped-call]
-            key = str((r.evidence or {}).get(signals.SOURCE_KEY_EVIDENCE) or r.source_provider)
-            row = out.setdefault(r.trigger_path, {}).setdefault(key, {"count_30d": 0, "last_signal_at": None})
-            if r.last_seen_at >= since:
-                row["count_30d"] = int(row["count_30d"]) + 1
-            last = row["last_signal_at"]
-            if last is None or r.last_seen_at.isoformat() > last:
-                row["last_signal_at"] = r.last_seen_at.isoformat()
+            own = str((r.evidence or {}).get(signals.SOURCE_KEY_EVIDENCE) or r.source_provider)
+            for key in (r.evidence or {}).get(signals.SOURCES_EVIDENCE) or [own]:
+                row = out.setdefault(r.trigger_path, {}).setdefault(key, {"count_30d": 0, "last_signal_at": None})
+                if r.last_seen_at >= since:
+                    row["count_30d"] = int(row["count_30d"]) + 1
+                last = row["last_signal_at"]
+                if last is None or r.last_seen_at.isoformat() > last:
+                    row["last_signal_at"] = r.last_seen_at.isoformat()
         return out
 
 
@@ -711,6 +823,12 @@ def store(monkeypatch):
         return set(fake.bound)  # type: ignore[attr-defined]
 
     monkeypatch.setattr("app.services.ctem_signal_sources.bound_sources", _bound)
+
+    async def _no_webhooks(_db):
+        return []
+
+    # #2506: no webhook source on the paths unless a test adds one.
+    monkeypatch.setattr("app.services.ctem_webhook_sources.list_sources", _no_webhooks)
     return fake
 
 

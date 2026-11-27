@@ -143,6 +143,46 @@ def _dump(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+def _write_failed(exc: BaseException, case_id: object, what: str) -> str:
+    """The answer of a case write that failed before its commit, by class of failure (#2517).
+
+    A lock wait (another transaction held the case row past the lock timeout) is
+    busy and retryable; any other failure keeps the generic answer and names
+    whether the database or something else failed, so a caller never guesses a cause.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.core.db_availability import POOL_BUSY_WRITE_ANSWER, is_pool_timeout
+    from app.services import ctem_cases_store as store
+
+    if store.is_lock_wait(exc):
+        return store.busy_answer(case_id)
+    # No pooled connection became free in time (#2561): busy too, never a failure.
+    if is_pool_timeout(exc):
+        return POOL_BUSY_WRITE_ANSWER
+    kind = "a database error" if isinstance(exc, SQLAlchemyError) else "an unexpected error"
+    return f"Error: {what} right now ({kind}). Say so; nothing was changed."
+
+
+#: What a case read answers on a failure that is not a pool timeout.
+CASE_READ_FAILED = "Error: the case could not be read right now. Say so; do not guess it."
+
+
+def case_read_failed(exc: BaseException, log_line: str, generic: str) -> str:
+    """The answer of a case read that failed (#2561): busy on a pool timeout, else *generic*.
+
+    A pool checkout timeout is transient load, so the agent is told to retry
+    rather than report a failure; anything else keeps the generic answer.
+    """
+    from app.core.db_availability import POOL_BUSY_ANSWER, is_pool_timeout
+
+    if is_pool_timeout(exc):
+        logger.info("%s: no pooled connection became free in time", log_line)
+        return POOL_BUSY_ANSWER
+    logger.warning(log_line, exc_info=True)
+    return generic
+
+
 def _bounded_issues(rendered: dict[str, Any], offset: int = 0) -> dict[str, Any]:
     """*rendered* with at most :data:`_ISSUE_PAGE` issues from *offset*, the total and a truncated flag (#2092).
 
@@ -401,9 +441,10 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "scope": scope_block,
                     }
                 )
-        except Exception:
-            logger.warning("CTEM case list failed", exc_info=True)
-            return "Error: the cases could not be read right now. Say so; do not guess them."
+        except Exception as exc:
+            return case_read_failed(
+                exc, "CTEM case list failed", "Error: the cases could not be read right now. Say so; do not guess them."
+            )
 
     async def _get(case_id: str = "", issues_offset: int = 0) -> str:
         from app.core.database import async_session
@@ -467,9 +508,8 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                         "CTEM case read of %s took %.1f s (%d issues)", wanted, elapsed, rendered["issues_total"]
                     )
                 return _dump({**rendered, "running_versions": running, "version_match": match})
-        except Exception:
-            logger.warning("CTEM case read failed", exc_info=True)
-            return "Error: the case could not be read right now. Say so; do not guess it."
+        except Exception as exc:
+            return case_read_failed(exc, "CTEM case read failed", CASE_READ_FAILED)
 
     async def _create(title: str = "", issue_ids: list[str] | None = None, reason: str = "") -> str:
         from app.core.database import async_session
@@ -703,12 +743,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 )
         except rules.CaseRuleError as exc:
             return f"Refused: {exc}. Nothing was changed."
-        except Exception:
+        except Exception as exc:
             logger.warning("CTEM case update failed", exc_info=True)
             if committed:
                 # The write is in (#2092): never report a failure for a committed change.
                 return _dump({"updated": {"id": str(wanted), "committed": True}})
-            return "Error: the case could not be changed right now. Say so; nothing was changed."
+            return _write_failed(exc, wanted, "the case could not be changed")
 
     async def _validation(
         case_id: str,
@@ -797,12 +837,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 return _dump(answer)
         except rules.CaseRuleError as exc:
             return f"Refused: {exc}. Nothing was changed."
-        except Exception:
+        except Exception as exc:
             logger.warning("CTEM case validation failed", exc_info=True)
             if committed:
                 # The write is in (#2473): never report a failure for a committed validation.
                 return _dump({"updated": {"id": str(wanted), "committed": True}})
-            return "Error: the validation could not be recorded right now. Say so; nothing was changed."
+            return _write_failed(exc, wanted, "the validation could not be recorded")
 
     async def _ticket(case_id: str, integration: str = "", key: str = "", url: str = "", status: str = "open") -> str:
         from app.core.database import async_session
@@ -841,12 +881,12 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 )
         except rules.CaseRuleError as exc:
             return f"Refused: {exc}. Nothing was changed."
-        except Exception:
+        except Exception as exc:
             logger.warning("CTEM case ticket failed", exc_info=True)
             if committed:
                 # The write is in (#2473): never report a failure for a committed ticket reference.
                 return _dump({"updated": {"id": str(wanted), "committed": True}})
-            return "Error: the ticket reference could not be recorded right now. Say so; nothing was changed."
+            return _write_failed(exc, wanted, "the ticket reference could not be recorded")
 
     async def _remediation(
         case_id: str = "",
@@ -963,9 +1003,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 )
         except (rules.CaseRuleError, decision_rules.DecisionInputError) as exc:
             return f"Refused: {exc}. Nothing was changed."
-        except Exception:
+        except Exception as exc:
             logger.warning("CTEM remediation decision failed", exc_info=True)
-            return "Error: the remediation decision could not be recorded right now. Say so; nothing was changed."
+            return _write_failed(exc, wanted, "the remediation decision could not be recorded")
 
     async def _opencrq_readable(db: AsyncSession) -> bool:
         """Whether the acting user may read OpenCRQ figures (the option figures are left out otherwise)."""
@@ -1168,9 +1208,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 return _dump({"merged": [str(s) for s in sources], "into": shown[2] if shown else {"id": str(target)}})
         except rules.CaseRuleError as exc:
             return f"Refused: {exc}. Nothing was changed."
-        except Exception:
+        except Exception as exc:
             logger.warning("CTEM case merge failed", exc_info=True)
-            return "Error: the cases could not be merged right now. Say so; nothing was changed."
+            return _write_failed(exc, target, "the cases could not be merged")
 
     async def _delete(
         case_ids: list[str] | None = None,
@@ -1462,7 +1502,9 @@ def build_ctem_case_tools(*, user_id: str, agent_id: str) -> tuple[list[ToolDefi
                 "Change a CTEM case: owner, due date, note, state with its reason, exploitation, attack "
                 "path, gate, treatment plan, threat package, scenario, or a change applied through an "
                 "integration (gate ctem.production_change); these move the status. resolved needs evidence, "
-                "reopening a reason; accepted_risk and dismissed need a person."
+                "reopening a reason; accepted_risk and dismissed need a person. note has no size limit; a state's "
+                "reason and evidence keep 2000 characters. Writes of one case run one at a time; a Busy answer "
+                "changed nothing: retry it."
             ),
             input_schema={
                 "type": "object",

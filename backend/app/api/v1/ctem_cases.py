@@ -23,6 +23,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_admin
@@ -30,6 +31,7 @@ from app.core.config import settings
 from app.core.database import async_session, get_db
 from app.core.redis import redis_client
 from app.models.ctem_case import CASE_STATES
+from app.models.ctem_signal import TRIGGER_PATHS
 from app.models.user import User
 from app.services import ctem_access
 from app.services import ctem_case_assets as case_assets
@@ -169,7 +171,15 @@ async def visible_case(
     view of the current generation. *for_update* (#2373): a change locks the case row
     until its commit, so concurrent writes of one case are serialized.
     """
-    found = await store.get_case(db, case_id, organization_id=await _organization_id(db), for_update=for_update)
+    organization_id = await _organization_id(db)
+    try:
+        found = await store.get_case(db, case_id, organization_id=organization_id, for_update=for_update)
+    except DBAPIError as exc:
+        # Another transaction held the case row past the lock timeout (#2517): busy, retryable.
+        if not store.is_lock_wait(exc):
+            raise
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=store.busy_answer(case_id)) from exc
     if found is None:
         return None
     case, rows, events = found
@@ -219,6 +229,7 @@ async def list_ctem_cases(
     owner_user_id: uuid.UUID | None = Query(default=None),
     asset: str | None = Query(default=None, max_length=300),
     primary_asset: str | None = Query(default=None, max_length=200),
+    signal_type: list[str] | None = Query(default=None, max_length=len(TRIGGER_PATHS) + 1),
     limit: int = Query(default=50, ge=1, le=store.MAX_PAGE),
     offset: int = Query(default=0, ge=0),
     *,
@@ -230,9 +241,12 @@ async def list_ctem_cases(
 
     ``asset`` keeps the cases on one asset (an issue the caller sees names it): the asset page's cases.
     ``primary_asset`` keeps the cases one of whose issues reaches that primary asset (#1980 S2).
+    ``signal_type`` (repeatable) keeps the cases one of whose signals the caller sees has one of
+    those trigger paths; ``none`` keeps the cases with no such signal (split, legacy; #2556).
     The ``Server-Timing`` header names the time of each phase (#1986).
     """
     _require_xtm_one()
+    signal_types = _signal_type_filter(signal_type)
     phases = view_of.start_timing()
     vertical = normalize_vertical(vertical or getattr(user, "ctem_vertical", None))
     primary = await get_primary(db)
@@ -268,6 +282,7 @@ async def list_ctem_cases(
             priority=priority,
             asset=asset,
             primary_asset=primary_asset,
+            signal_type=signal_types,
             limit=limit,
             offset=offset,
         )
@@ -306,9 +321,27 @@ async def list_ctem_cases(
         "ticketing": target,
         # When the cases were last recomputed, and a product that did not answer since (s.4.3).
         "freshness": fresh,
+        # The label of each trigger path a row's signal_types names (#2556): the Signal type filter.
+        "signal_types": SIGNAL_TYPE_LABELS,
     }
     response.headers["Server-Timing"] = view_of.server_timing(phases)
     return body
+
+
+#: The label of each trigger path, in the order of the CTEM trigger model (#2556).
+SIGNAL_TYPE_LABELS: dict[str, str] = {path: signal_store.PATH_CATALOG[path][0] for path in TRIGGER_PATHS}
+
+
+def _signal_type_filter(values: list[str] | None) -> list[str]:
+    """The ``signal_type`` values of a list read: trigger paths or ``none``; 422 on any other."""
+    wanted = [v.strip() for v in values or [] if v and v.strip()]
+    unknown = sorted({v for v in wanted if v not in SIGNAL_TYPE_LABELS and v != view_of.NO_SIGNAL_TYPE})
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown signal_type {', '.join(unknown)}: a trigger path ({', '.join(TRIGGER_PATHS)}) or none",
+        )
+    return wanted
 
 
 async def _apply_update(

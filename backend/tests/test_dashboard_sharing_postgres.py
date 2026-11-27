@@ -320,7 +320,8 @@ async def test_two_versions_are_compared_by_whoever_reads_the_dashboard() -> Non
         ("add", '"title": "Board brief v2",'),
     ]
     assert (body["added"], body["removed"]) == (1, 1)
-    assert '-  "title": "Board brief",' in body["unified_diff"]
+    # The compare shows the stored manifest: the title is XTM One's, under its extension key.
+    assert '-    "title": "Board brief",' in body["unified_diff"]
     assert (unknown.status_code, malformed.status_code, hidden.status_code) == (404, 422, 404)
 
 
@@ -364,3 +365,82 @@ async def test_the_agent_reads_one_part_and_places_a_new_visualization_in_one_st
     assert unknown.is_error is True
     assert edited.is_error is False, edited.content
     assert structure[-1]["item"] == "gauge" and structure[-1]["position"] == {"x": 6, "y": 20, "w": 6, "h": 5}
+
+
+async def test_the_agent_adds_a_widget_in_one_step_and_checks_the_dashboard(monkeypatch, dashboard_studio_enabled) -> None:
+    """add_widget saves a source, its visualization and its place in one revision and says what it reads;
+    check_dashboard reads every visualization's data and, with capture, attaches the tab as rendered."""
+    import app.core.database as database
+    from app.services import dashboard_export
+    from app.services.builtin_tools import _shared, build_custom_dashboard_tools
+    from app.services.dashboard_definition import upgrade
+    from app.tools.base import ToolCall
+
+    class _Png:
+        data = b"\x89PNG\r\n\x1a\n"
+
+    async def _export(**_kw):
+        return _Png()
+
+    async def _persist(**kw):
+        return {"filename": kw["filename"], "source": kw["source"]}
+
+    monkeypatch.setattr(dashboard_export, "export_dashboard", _export)
+    monkeypatch.setattr(_shared, "persist_tool_artifact", _persist)
+    async with _world() as (scratch, ids):
+        monkeypatch.setattr(database, "async_session", scratch.sessions)
+
+        async def _call(name: str, arguments: dict):
+            _defs, executor = build_custom_dashboard_tools(None, str(ids["editor"]))
+            return await executor.execute_tool(ToolCall(id="c", name=name, arguments=arguments))
+
+        dashboard = str(ids["dashboard"])
+        added = await _call("add_widget", {
+            "dashboard_id": dashboard,
+            "visualization": {"type": "xtm.singlevalue", "title": "Open findings"},
+            "source": {"type": "static", "options": {"shape": "number", "data": {"value": 12}}},
+        })  # fmt: skip
+        empty = await _call("add_widget", {
+            "dashboard_id": dashboard,
+            "visualization": {"type": "xtm.table", "title": "Nothing yet"},
+            "source": {"type": "static", "options": {"shape": "rows", "data": {"columns": ["a"], "rows": []}}},
+        })  # fmt: skip
+        reused = await _call("add_widget", {
+            "dashboard_id": dashboard, "visualization": {"type": "xtm.fillergauge", "title": "Same figure"},
+            "source_id": "ds_open_findings",
+        })  # fmt: skip
+        both = await _call("add_widget", {"dashboard_id": dashboard, "visualization": {"type": "xtm.line"}})
+        # A derived figure and its base, which no widget draws, in one step.
+        derived = await _call("add_widget", {
+            "dashboard_id": dashboard, "visualization": {"type": "xtm.singlevalue", "title": "Total"},
+            "source": {"type": "derived", "options": {"extends": "base_rows", "steps": [{"op": "stats", "agg": "sum", "field": "n"}]}},
+            "sources": {"base_rows": {"type": "static", "options": {"shape": "rows", "data": {"columns": ["n"], "rows": [{"n": 2}, {"n": 5}]}}}},
+        })  # fmt: skip
+        clash = await _call("add_widget", {
+            "dashboard_id": dashboard, "visualization": {"type": "xtm.singlevalue"},
+            "source": {"type": "static", "options": {"shape": "number", "data": {"value": 1}}},
+            "sources": {"ds_open_findings": {"type": "static", "options": {"shape": "number", "data": {"value": 2}}}},
+        })  # fmt: skip
+        checked = await _call("check_dashboard", {"dashboard_id": dashboard})
+        captured = await _call("check_dashboard", {"dashboard_id": dashboard, "capture": True})
+        async with scratch.sessions() as db:
+            stored = upgrade((await db.get(CustomDashboard, ids["dashboard"])).spec)
+    assert added.is_error is False, added.content
+    assert "Widget `open_findings` added; its data: ok (number)." in added.content
+    assert "its data: empty (rows)" in empty.content
+    assert reused.is_error is False, reused.content
+    assert both.is_error and "either 'source'" in both.content
+    assert derived.is_error is False and "its data: ok (number)" in derived.content, derived.content
+    assert clash.is_error and "would replace what the dashboard has: ds_open_findings" in clash.content
+    assert stored["dataSources"]["base_rows"]["type"] == "static"
+    assert stored["dataSources"]["ds_open_findings"]["options"]["data"]["value"] == 12
+    assert stored["visualizations"]["same_figure"]["dataSources"] == {"primary": "ds_open_findings"}
+    placed = {e["item"]: e["position"] for e in next(iter(stored["layout"]["layoutDefinitions"].values()))["structure"]}
+    # Below the others, half the width, as tall as its view (OpenCTI rows).
+    assert placed["open_findings"]["w"] == 6 and placed["open_findings"]["h"] == 3
+    assert placed["nothing_yet"]["y"] >= placed["open_findings"]["y"] + placed["open_findings"]["h"]
+    assert "- open_findings [xtm.singlevalue <- ds_open_findings]: ok (number)" in checked.content
+    assert "- nothing_yet [xtm.table <- ds_nothing_yet]: empty (rows)" in checked.content
+    assert "capture=true" in checked.content
+    assert [f["source"] for f in captured.files] == ["agent_check"]
+    assert "look at it before saying the dashboard is done" in captured.content

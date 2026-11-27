@@ -33,6 +33,14 @@ export interface CtemDecisionRecord {
     assets_capped?: boolean;
     primary_assets_named?: string[];
     products?: string[];
+    /** #1720 / #2523: every software reference the gate tried against the inventory and shipped products. */
+    software_refs?: string[];
+    /**
+     * #2171 / #2523: how the OpenCTI software read went ("read", "no reader", "no OpenCTI access",
+     * "OpenCTI did not answer"; #2542: "not needed", "not applicable", "not read"; null on older records).
+     */
+    cve_lookup?: string | null;
+    threat_lookup?: string | null;
     lenses?: string[];
     confidence?: string;
   } & Record<string, unknown>;
@@ -50,6 +58,12 @@ export interface CtemDecisionRecord {
   policy_checks?: { rule: string; value?: unknown; threshold?: unknown; passed: boolean }[];
   severity?: string | null;
   decided_at?: string;
+  /** #2542: an OpenCTI software read the subject needed did not answer; the gate retries it. */
+  incomplete?: boolean;
+  /** #2542: how many decisions were taken while that read kept failing. */
+  lookup_attempts?: number;
+  /** #2542: "scheduled" while the retry pass takes it again, "exhausted" once it stopped. */
+  lookup_retry?: "scheduled" | "exhausted";
 }
 
 /** One signal as the API answers it (`to_dict` in backend/app/services/ctem_signals.py). */
@@ -141,7 +155,7 @@ export type CtemSignalPathStatus = "enabled" | "partly_enabled" | "error" | "not
 /** One way a trigger path is fired (#1189): an integration listener, a scheduled pass or the OpenCTI PIR playbook. */
 export interface CtemSignalPathSource {
   provider: string;
-  kind: "listener" | "pass" | "pir_playbook";
+  kind: "listener" | "pass" | "pir_playbook" | "webhook";
   /** The English line naming the event that fires the path (an i18n key). */
   event: string;
   /** Bound for the caller: a connected integration they can see (and, for a pass, the pass runs on it). */
@@ -167,6 +181,9 @@ export interface CtemSignalPathSource {
   /** Signals this source recorded on the path in the last 30 days, and the last one (#2436). */
   count_30d?: number;
   last_signal_at?: string | null;
+  /** A generic signed webhook source (#2506): its id, and why its last delivery recorded nothing. */
+  webhook_id?: string;
+  last_error?: string | null;
 }
 
 /** One trigger path with the signals the caller sees on it (`GET /ctem-signals/paths`, CTEM-30). */
@@ -187,6 +204,88 @@ export interface CtemSignalPath {
   /** Signals the caller sees, last seen in the last 30 days. */
   count_30d?: number;
   last_signal_at?: string | null;
+  /** Its sources on, and its sources that are or could be on here (#2506). */
+  sources_enabled?: number;
+  sources_available?: number;
+}
+
+/** A generic signed webhook source of one trigger path (#2506, dev-docs/ctem-signals.md 4ter). */
+export interface CtemWebhookSource {
+  id: string;
+  trigger_path: string;
+  name: string;
+  enabled: boolean;
+  subject_kind: string;
+  mapping: { id: string; label?: string; severity?: string };
+  receiver_path: string;
+  receiver_url: string;
+  signature_header: string;
+  secret_rotated_at: string | null;
+  last_delivery_at: string | null;
+  last_error: string | null;
+  created_at: string | null;
+  /** In the create and rotate answers only: shown once, never read back. */
+  secret?: string;
+}
+
+export interface CtemWebhookSourceCreate {
+  trigger_path: string;
+  name: string;
+  subject_kind?: string;
+  mapping: { id: string; label?: string | null; severity?: string | null };
+}
+
+/** The webhook sources, administrators only. */
+export function useCtemWebhookSources(enabled = true) {
+  return useQuery<{ sources: CtemWebhookSource[] }>({
+    queryKey: ["ctem-signals", "webhook-sources"],
+    queryFn: () => api.get("/ctem-signals/webhook-sources"),
+    enabled,
+    retry: false,
+    throwOnError: false,
+  });
+}
+
+/** Create a webhook source, off; the answer carries its secret once. */
+export function useCreateCtemWebhookSource() {
+  const qc = useQueryClient();
+  return useMutation<CtemWebhookSource, Error, CtemWebhookSourceCreate>({
+    mutationFn: (body) => api.post("/ctem-signals/webhook-sources", body),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** Switch a webhook source on or off, or change its name or mapping. */
+export function useUpdateCtemWebhookSource() {
+  const qc = useQueryClient();
+  return useMutation<CtemWebhookSource, Error, { id: string } & Partial<Pick<CtemWebhookSourceCreate, "name" | "mapping">> & { enabled?: boolean }>({
+    mutationFn: ({ id, ...body }) => api.patch(`/ctem-signals/webhook-sources/${encodeURIComponent(id)}`, body),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** A new secret for a webhook source; the old one is refused from now on. */
+export function useRotateCtemWebhookSource() {
+  const qc = useQueryClient();
+  return useMutation<CtemWebhookSource, Error, string>({
+    mutationFn: (id) => api.post(`/ctem-signals/webhook-sources/${encodeURIComponent(id)}/rotate`, {}),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** What a webhook source's mapping reads in a sample: nothing is recorded. */
+export function useTestCtemWebhookSource() {
+  return useMutation<
+    { ok: boolean; reason?: string; id?: string; label?: string | null; severity?: string | null },
+    Error,
+    { id: string; sample: unknown }
+  >({
+    mutationFn: ({ id, sample }) => api.post(`/ctem-signals/webhook-sources/${encodeURIComponent(id)}/test`, { sample }),
+    meta: { suppressGlobalErrorToast: true },
+  });
 }
 
 /** A source XTM One provisions in its platform: off, connected, or in error with its reason (#2434). */
@@ -250,6 +349,50 @@ export function useDisableCtemPlatformSource() {
   return useMutation<CtemPlatformSource, Error, string>({
     mutationFn: (id) => api.post(`/ctem-signals/sources/${encodeURIComponent(id)}/disable`, {}),
     onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals"] }),
+    meta: { suppressGlobalErrorToast: true },
+  });
+}
+
+/** One step of a purge job (#2528): pause, purge, resync, resume. */
+export type CtemSignalPurgeStepState = "pending" | "running" | "done" | "failed" | "skipped";
+
+export interface CtemSignalPurgeJob {
+  id: string;
+  state: "running" | "done" | "failed";
+  resync: boolean;
+  step: "pause" | "purge" | "resync" | "resume";
+  steps: Record<"pause" | "purge" | "resync" | "resume", { state: CtemSignalPurgeStepState; counts: Record<string, unknown> }>;
+  error: string | null;
+  /** The job stopped before its end, its process restarted (#2539): read back failed, a new purge can start. */
+  interrupted?: boolean;
+  /** With interrupted: signal intake is still paused (its pause key not yet expired); false: intake runs again. */
+  intake_paused?: boolean;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface CtemSignalPurgeInfo {
+  counts: { signals: number; cases: number };
+  confirm_word: string;
+  job: CtemSignalPurgeJob | null;
+}
+
+/** What a purge would delete now and the running or last job (administrators only); polled while a job runs. */
+export function useCtemSignalPurge(enabled: boolean) {
+  return useQuery<CtemSignalPurgeInfo>({
+    queryKey: ["ctem-signals", "purge"],
+    queryFn: () => api.get("/ctem-signals/purge"),
+    enabled,
+    refetchInterval: (query) => (query.state.data?.job?.state === "running" ? 2000 : false),
+  });
+}
+
+/** Start the purge of every signal (#2528): 422 without the word, 409 while a job runs. */
+export function useStartCtemSignalPurge() {
+  const qc = useQueryClient();
+  return useMutation<{ job: CtemSignalPurgeJob }, Error, { confirm: string; resync: boolean }>({
+    mutationFn: (body) => api.post("/ctem-signals/purge", body),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ctem-signals", "purge"] }),
     meta: { suppressGlobalErrorToast: true },
   });
 }

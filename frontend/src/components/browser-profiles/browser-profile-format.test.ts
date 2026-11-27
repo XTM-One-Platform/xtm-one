@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { loginConfigFrom, loginConfigTexts } from "./browser-profile-format.ts";
+import { appsFrom, appsSummary, appUrlInvalid, loginConfigFrom, loginConfigTexts } from "./browser-profile-format.ts";
 
 test("the storage keys a profile keeps read as one text in the form", () => {
   assert.deepEqual(loginConfigTexts({ keep_storage_keys: ["auth", "msal.Token"], signed_in_selector: "#app" }), {
@@ -24,4 +24,35 @@ test("the form's text is saved as the list of storage keys", () => {
     { keep_storage_keys: ["auth", "msal.Token"], signed_in_selector: "#app" },
   );
   assert.deepEqual(loginConfigFrom({ keep_storage_keys: " , " }), {});
+});
+
+test("the applications a profile also signs in are saved trimmed, a row without a URL left out", () => {
+  assert.deepEqual(
+    appsFrom([
+      { name: " Risk ", url: " https://risk.example.com/ " },
+      { name: "Blank", url: "  " },
+    ]),
+    [{ name: "Risk", url: "https://risk.example.com/" }],
+  );
+});
+
+test("an application URL is refused in the form as the save would refuse it", () => {
+  assert.equal(appUrlInvalid("risk.example"), true);
+  assert.equal(appUrlInvalid("ftp://risk.example.com/"), true);
+  assert.equal(appUrlInvalid("https://user:pass@risk.example.com/"), true);
+  assert.equal(appUrlInvalid(`https://risk.example.com/${"a".repeat(2000)}`), true);
+  assert.equal(appUrlInvalid("https://risk.example.com/"), false);
+  assert.equal(appUrlInvalid("  "), false);
+});
+
+test("the card names two applications, then how many more, a nameless one by its host", () => {
+  assert.deepEqual(appsSummary([{ name: "Risk", url: "https://risk.example.com/" }]), { names: "Risk", more: 0 });
+  assert.deepEqual(
+    appsSummary([
+      { name: "", url: "https://risk.example.com/x" },
+      { name: "Intel", url: "https://intel.example.com/" },
+      { name: "Third", url: "https://third.example.com/" },
+    ]),
+    { names: "risk.example.com, Intel", more: 1 },
+  );
 });

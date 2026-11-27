@@ -220,3 +220,72 @@ async def test_the_constraints_refuse_an_unknown_path_and_a_case_opened_signal_w
                     ),
                     {"id": uuid.uuid4(), "org": org},
                 )
+
+
+def _threat(evidence: dict) -> signals.SignalInput:
+    return signals.SignalInput(
+        trigger_path="relevant_threat",
+        source_provider="opencti",
+        subject_kind="threat",
+        subject_ref="AxolotlLoader",
+        source_external_id="5b7f1c2e-internal",
+        evidence=evidence,
+    )
+
+
+async def test_a_listener_sighting_keeps_the_pir_evidence_and_floor_of_a_playbook_sighting():
+    """#2543: a later sighting with no PIR data never erases the PIR matches nor downgrades the floor."""
+    playbook = {
+        "pir": [{"pir_id": "pir-a", "score_at_delivery": 75}],
+        "pir_floor_met": True,
+        signals.SOURCE_KEY_EVIDENCE: "opencti:pir_playbook",
+    }
+    listener = {"pir_floor_met": False, "stix_id": "malware--2", signals.SOURCE_KEY_EVIDENCE: "opencti:listener"}
+    async with _database() as sessions, sessions() as session:
+        org = await _org(session, "A")
+        first, created = await signals.record_signal(
+            session, organization_id=org, signal=_threat(playbook), recorded_via="listener", recorded_by="system"
+        )
+        await session.commit()
+        again, created_again = await signals.record_signal(
+            session, organization_id=org, signal=_threat(listener), recorded_via="listener", recorded_by="system"
+        )
+        await session.commit()
+        stored = (await session.execute(select(CtemSignal))).scalars().one()
+        by_source = await signals.activity_by_source(
+            session, organization_id=org, recorded_by=None, since=T0 - timedelta(days=3650)
+        )
+    assert (created, created_again) == (True, False) and first.id == again.id == stored.id
+    assert stored.seen_count == 2
+    assert stored.evidence["pir"] == [{"pir_id": "pir-a", "score_at_delivery": 75}]
+    assert stored.evidence["pir_floor_met"] is True
+    assert stored.evidence["stix_id"] == "malware--2"
+    assert stored.evidence[signals.SOURCE_KEY_EVIDENCE] == "opencti:listener"
+    assert stored.evidence[signals.SOURCES_EVIDENCE] == ["opencti:pir_playbook", "opencti:listener"]
+    assert set(by_source["relevant_threat"]) == {"opencti:pir_playbook", "opencti:listener"}
+    assert all(row["count_30d"] == 1 for row in by_source["relevant_threat"].values())
+
+
+async def test_a_later_pir_sighting_with_a_higher_score_replaces_the_lower_one():
+    async with _database() as sessions, sessions() as session:
+        org = await _org(session, "A")
+        for pirs, floor in (
+            ([{"pir_id": "pir-a", "score_at_delivery": 40}, {"pir_id": "pir-b", "score_at_delivery": 90}], False),
+            ([{"pir_id": "pir-a", "score_at_delivery": 80}, {"pir_id": "pir-b", "score_at_delivery": 30}], True),
+        ):
+            await signals.record_signal(
+                session,
+                organization_id=org,
+                signal=_threat({"pir": pirs, "pir_floor_met": floor}),
+                recorded_via="listener",
+                recorded_by="system",
+            )
+            await session.commit()
+        stored = (await session.execute(select(CtemSignal))).scalars().one()
+    assert stored.seen_count == 2
+    assert stored.evidence["pir"] == [
+        {"pir_id": "pir-a", "score_at_delivery": 80},
+        {"pir_id": "pir-b", "score_at_delivery": 90},
+    ]
+    assert stored.evidence["pir_floor_met"] is True
+    assert signals.SOURCES_EVIDENCE not in stored.evidence

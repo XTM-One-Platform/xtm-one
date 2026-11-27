@@ -15,7 +15,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import { Icon } from "@filigran/design-system";
 /**
- * The inputs of a dashboard page, like Splunk Dashboard Studio's.
+ * The inputs of a dashboard page.
  *
  * `InputControl` draws one input: time range, dropdown (its choices written
  * or read from a data source, with the page's tokens: cascading), multiselect,
@@ -33,6 +33,7 @@ import { DateFilterInput } from "@/components/ui/date-filter-input";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { useDashboardAccess } from "@/hooks/api/dashboard-access";
 import { usePlatformSchema, useSourceData } from "@/hooks/api/useCustomDashboardApi";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useFormatter } from "@/i18n";
@@ -230,8 +231,14 @@ function EntityPicker({ input, label, value, onChange }: { input: DashboardInput
   const { t_i18n } = useFormatter();
   const [search, setSearch] = useState("");
   const settled = useDebounce(search, 300);
+  // Searched with the viewer's session only: an export's page and a published link have none, and a refused
+  // search sent the export's page to the sign-in page, which never finished rendering.
+  const access = useDashboardAccess();
+  const searchable = access.kind === "session";
   const base =
-    input.entitySource && input.integrationId ? { source: input.entitySource, integration_id: input.integrationId, types: input.entityTypes ?? [] } : null;
+    searchable && input.entitySource && input.integrationId
+      ? { source: input.entitySource, integration_id: input.integrationId, types: input.entityTypes ?? [] }
+      : null;
   const found = usePlatformSchema(base ? { ...base, kind: "entities", search: settled } : null);
   const named = usePlatformSchema(base && value ? { ...base, kind: "entities", ids: [value] } : null);
   const option = (item: { value?: string; label: string; group?: string }) => ({ value: item.value ?? "", label: item.label, description: item.group });
@@ -244,7 +251,7 @@ function EntityPicker({ input, label, value, onChange }: { input: DashboardInput
       value={value}
       onValueChange={onChange}
       options={options}
-      pinned={pinned.length ? pinned : value ? [{ value, label: value }] : []}
+      pinned={pinned.length ? pinned : value ? [{ value, label: (access.kind === "render" && access.entityNames?.[value]) || value }] : []}
       onSearchChange={setSearch}
       placeholder={input.placeholder ?? label}
       emptyMessage={failed ? t_i18n("The entities could not be read") : found.isFetching ? t_i18n("Searching…") : t_i18n("No entity found")}

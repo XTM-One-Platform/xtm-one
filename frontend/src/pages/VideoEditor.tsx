@@ -53,7 +53,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
-  Check,
   Clapperboard,
   Copy,
   Globe,
@@ -61,7 +60,6 @@ import {
   Link2,
   MonitorPlay,
   Palette,
-  Pencil,
   Play,
   Redo2,
   Trash2,
@@ -74,7 +72,9 @@ import {
   STUDIO_BAR_TITLE,
   StudioBarLeading,
   StudioLoading,
+  StudioSaveState,
   StudioShareButton,
+  StudioTitleField,
   StudioToggle,
   StudioUnavailable,
 } from "@/components/studio/StudioChrome";
@@ -132,7 +132,6 @@ import { useThemeEffect } from "@/hooks/useThemeEffect";
 import { useFormatter } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { VideoPreviewState, VideoRender } from "@/types";
-import { Spinner } from "@filigran/design-system";
 
 type Panel = "scene" | "video" | "media" | "renders";
 /** The inspector's tabs. @i18n-keys */
@@ -148,51 +147,6 @@ const TIMELINE_HEIGHT = { defaultWidth: 214, minWidth: 170, maxWidth: (viewport:
 export interface VideoEditorLaunch {
   send?: string;
   agentId?: string | null;
-}
-
-/**
- * The save state beside the title. Below 56rem of bar
- * the words become screen-reader text and a tooltip, so only the icon takes room.
- */
-function SaveIndicator({ status, problems }: { status: string; problems: { path: string; message: string }[] }) {
-  const { t_i18n } = useFormatter();
-  // Under 56rem the word is read aloud only (data-visible-from="4xl"), the icon keeps the room.
-  const word = (text: string) => (
-    <span className="@max-4xl:sr-only" data-visible-from="4xl" data-testid="video.editor.saveStateWord">
-      {text}
-    </span>
-  );
-  if (status === "saving")
-    return (
-      <Tip content={t_i18n("Saving...")}>
-        <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-default-secondary" data-testid="video.editor.saveState">
-          <Spinner size="sm" tone="inherit" /> {word(t_i18n("Saving..."))}
-        </span>
-      </Tip>
-    );
-  if (status === "dirty")
-    return (
-      <Tip content={t_i18n("Unsaved changes")}>
-        <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-default-secondary" data-testid="video.editor.saveState">
-          <Pencil className="h-3 w-3 @4xl:hidden" aria-hidden /> {word(t_i18n("Unsaved changes"))}
-        </span>
-      </Tip>
-    );
-  if (status === "error")
-    return (
-      <Tip content={problems.map((p) => (p.path ? `${p.path}: ${p.message}` : p.message)).join("\n")}>
-        <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap content-caption text-feedback-warning-primary" data-testid="video.editor.saveState">
-          <AlertTriangle className="h-3 w-3" aria-hidden /> {word(t_i18n("Not saved"))}
-        </span>
-      </Tip>
-    );
-  return (
-    <Tip content={t_i18n("Saved")}>
-      <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-default-secondary" data-testid="video.editor.saveState">
-        <Check className="h-3 w-3 text-feedback-success-primary" aria-hidden /> {word(t_i18n("Saved"))}
-      </span>
-    </Tip>
-  );
 }
 
 /** What a reader watches once the video is rendered: the render it plays, like its public link, across the stage. */
@@ -593,17 +547,7 @@ export default function VideoEditor() {
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <StudioBarLeading backLabel={t_i18n("Back to Videos")} onBack={() => navigate("/videos")} icon={Clapperboard}>
               {canEdit ? (
-                <input
-                  value={title}
-                  onChange={(event) => edit((spec) => updateVideo(spec, { title: event.target.value }), "video.title")}
-                  aria-label={t_i18n("Title (heading)")}
-                  // `size` fits the field to its title where `field-sizing` is not supported.
-                  size={Math.max(1, title.length)}
-                  className={cn(
-                    STUDIO_BAR_TITLE,
-                    "field-sizing-content min-w-24 max-w-[420px] rounded-sm bg-transparent py-1 hover:bg-elevation-hover focus:bg-elevation-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-focus",
-                  )}
-                />
+                <StudioTitleField value={title} onChange={(next) => edit((spec) => updateVideo(spec, { title: next }), "video.title")} />
               ) : (
                 <h1 className={STUDIO_BAR_TITLE}>{video.title}</h1>
               )}
@@ -613,7 +557,13 @@ export default function VideoEditor() {
               {video.template ? <LayoutTemplate className="h-2.5 w-2.5 shrink-0" /> : <Palette className="h-2.5 w-2.5 shrink-0" />}
               <span className="truncate">{video.template?.name ?? t_i18n("Free style")}</span>
             </Badge>
-            {canEdit && <SaveIndicator status={editor.status} problems={editor.problems} />}
+            {canEdit && (
+              <StudioSaveState
+                status={editor.status === "dirty" ? "unsaved" : editor.status === "saving" || editor.status === "error" ? editor.status : "saved"}
+                problems={editor.problems}
+                testId="video.editor.saveState"
+              />
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
             {(canEdit || current) && (

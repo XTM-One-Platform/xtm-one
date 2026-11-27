@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import String, cast, select, update
+from sqlalchemy import String, cast, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_case import CLOSED_STATES, OPEN_STATES, CtemCase, CtemCaseEvent, CtemCaseIssue
@@ -287,7 +287,7 @@ async def apply_recompute(
             if signal is not None:
                 from app.services import ctem_case_loop as loop
 
-                loop.join_case(db, signal, case, events=events, now=now)
+                await loop.join_case(db, signal, case, events=events, now=now)
         if platform_maps:
             # The fix of each platform follows what the members' source names now (#1572).
             platforms = fold_by_platform(platform_maps)
@@ -1018,6 +1018,45 @@ async def merged_with_prefix(
     return list(out.values())
 
 
+#: How long a write of one case waits for its row while another transaction holds it (#2517).
+#: Without it a ``FOR UPDATE`` waits the connection's whole ``statement_timeout`` (30 s).
+CASE_LOCK_TIMEOUT = "5s"
+
+
+def is_lock_wait(exc: BaseException) -> bool:
+    """A PostgreSQL lock or statement timeout (``55P03`` lock_not_available, ``57014`` query_canceled).
+
+    Reads the SQLAlchemy wrapper, the driver error it carries and that error's cause,
+    so an asyncpg ``LockNotAvailableError`` or ``QueryCanceledError`` is found whichever
+    layer raised it.
+    """
+    seen: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and current not in seen and len(seen) < 5:
+        seen.append(current)
+        code = getattr(current, "sqlstate", None) or getattr(current, "pgcode", None)
+        name = type(current).__name__
+        if code in {"55P03", "57014"} or "LockNotAvailable" in name or "QueryCanceled" in name:
+            return True
+        current = getattr(current, "orig", None) or current.__cause__
+    return False
+
+
+def busy_answer(case_id: object) -> str:
+    """What a write of a case answers when another transaction held its row past :data:`CASE_LOCK_TIMEOUT`."""
+    return (
+        f"Busy: case {case_id} is being written by another process; nothing was changed. "
+        "Retry this call in a few seconds."
+    )
+
+
+async def _bound_case_lock_wait(db: AsyncSession) -> None:
+    """Fail a case row lock after :data:`CASE_LOCK_TIMEOUT` (SQLSTATE 55P03) instead of the 30 s statement timeout."""
+    bind = getattr(db, "bind", None)
+    if getattr(getattr(bind, "dialect", None), "name", None) == "postgresql":
+        await db.execute(text("SELECT set_config('lock_timeout', :timeout, true)"), {"timeout": CASE_LOCK_TIMEOUT})
+
+
 async def get_case(
     db: AsyncSession, case_id: uuid.UUID, *, organization_id: uuid.UUID, for_update: bool = False
 ) -> tuple[CtemCase, list[CtemCaseIssue], list[CtemCaseEvent]] | None:
@@ -1028,10 +1067,13 @@ async def get_case(
     case run one after the other and the second reads the state and the history
     the first committed (a gate decision recorded once, a state event from the
     state it really left). The history is read after the lock, so it is the
-    committed one.
+    committed one. The wait for the lock is bounded by :data:`CASE_LOCK_TIMEOUT`
+    (#2517): a holder past it raises a lock wait (:func:`is_lock_wait`), which
+    the write paths answer with :func:`busy_answer`.
     """
     query = select(CtemCase).where(CtemCase.id == case_id, CtemCase.organization_id == organization_id)
     if for_update:
+        await _bound_case_lock_wait(db)
         query = query.with_for_update().execution_options(populate_existing=True)
     case = (await db.execute(query)).scalar_one_or_none()
     if case is None:

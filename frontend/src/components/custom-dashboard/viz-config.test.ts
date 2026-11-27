@@ -144,7 +144,7 @@ test("a chart added draws sample data of its own, below the others", () => {
   assert.equal(out.dataSources.ds_sample.type, "static");
   assert.equal(out.dataSources.ds_sample.name, "Sample data");
   assert.equal(out.dataSources.ds_sample.options.shape, "distribution");
-  assert.deepEqual(out.layout.layoutDefinitions.layout_1.structure[1], { item: "viz_ds_sample", type: "block", position: { x: 0, y: 9, w: 6, h: 9 } });
+  assert.deepEqual(out.layout.layoutDefinitions.layout_1.structure[1], { item: "viz_ds_sample", type: "block", position: { x: 0, y: 9, w: 6, h: 4 } });
   // A second one takes the next free ids.
   const again = addChart(added.definition, "xtm.singlevalue", "layout_1", "Sample data");
   assert.equal(again?.id, "viz_ds_sample_2");

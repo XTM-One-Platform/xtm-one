@@ -17,11 +17,13 @@ Three-tier visibility like every library entity (``VisibilityColumns``).
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, event
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.database import Base
 from app.models.visibility import VisibilityColumns
@@ -58,3 +60,39 @@ class DashboardWidgetPack(VisibilityColumns, Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
     )
+
+
+# ── Packs stored before the grid took OpenCTI's rows ─────────────────────────
+
+
+def _read_stored_widgets(target: Any) -> None:
+    """A pack stored before the grid took OpenCTI's rows (no ``grid`` in ``source_meta``) loads its widgets'
+    places in today's rows. Committed, not dirty: loading never writes it back."""
+    from app.services.dashboard_grid import GRID_UNIT, legacy_layout
+
+    meta = target.__dict__.get("source_meta")
+    widgets = target.__dict__.get("widgets")
+    if (isinstance(meta, dict) and meta.get("grid") == GRID_UNIT) or not isinstance(widgets, list):
+        return
+    if any(isinstance(w, dict) and "layout" in w for w in widgets):
+        read = [{**w, "layout": legacy_layout(w["layout"])} if isinstance(w, dict) and "layout" in w else w for w in widgets]
+        set_committed_value(target, "widgets", read)
+
+
+@event.listens_for(DashboardWidgetPack, "load")
+def _load_widgets(target: Any, _context: Any) -> None:
+    _read_stored_widgets(target)
+
+
+@event.listens_for(DashboardWidgetPack, "refresh")
+def _refresh_widgets(target: Any, _context: Any, attrs: Any) -> None:
+    if attrs is None or "widgets" in attrs or "source_meta" in attrs:
+        _read_stored_widgets(target)
+
+
+@event.listens_for(DashboardWidgetPack, "before_insert")
+def _mark_grid(_mapper: Any, _connection: Any, target: Any) -> None:
+    """A pack written now places its widgets in today's rows."""
+    from app.services.dashboard_grid import GRID_UNIT
+
+    target.source_meta = {**(target.source_meta or {}), "grid": GRID_UNIT}

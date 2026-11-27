@@ -1027,6 +1027,10 @@ _EXEMPT_READ_IN_POST = {
     # dashboard kept while AI is off still draws its figures.
     "read_platform_widget_data",
     "read_data_source",
+    # Refresh now: a source refreshed on the server read again as its
+    # publisher; an ``ask`` source is never refreshed on the server, so no
+    # model is called (``dashboard_refresh``).
+    "refresh_data_source",
     # A source editor's question to OpenCTI / OpenAEV (types, filter keys, values), no model.
     "read_platform_schema",
     "preview_platform_widget",
