@@ -213,6 +213,28 @@ async def new_item_pickup_state(item: dict) -> str | None:
     return pickup_state(item, entries, datetime.now(UTC))
 
 
+async def agent_has_work_item_inbox(agent_id: str | None) -> bool | None:
+    """Whether *agent_id* drains its own queue through a work-item inbox (#2659).
+
+    An enabled ``work_item``-trigger assignment or an active flow's work-item
+    trigger owned by the agent. ``None`` when it cannot be read.
+    """
+    from app.core.database import async_session
+    from app.services.flow_triggers import load_flow_work_item_inboxes
+    from app.services.work_item import load_assignment_inboxes
+
+    owner = _uuid(agent_id)
+    if owner is None:
+        return False
+    try:
+        async with async_session() as db:
+            inboxes = [*await load_assignment_inboxes(db), *await load_flow_work_item_inboxes(db)]
+    except Exception as exc:
+        logger.warning("Could not read the inboxes of agent %s: %s", agent_id, format_exception_message(exc))
+        return None
+    return any(_uuid(inbox.owner_agent_id) == owner for inbox in inboxes)
+
+
 def _retention(item: dict, state: str, windows: dict[str, int] | None = None) -> tuple[str | None, str | None]:
     """``(auto_cancel_at, purge_at)``: when ``work_item.reap_work_items`` will
     cancel an open item nobody picks up, or delete a finished one.

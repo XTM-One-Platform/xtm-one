@@ -59,6 +59,7 @@ _FLEET_ASSIGNMENTS = {
         for name in (
             "PIR match created",
             "Report containing a PIR entity",
+            "Follow-up due",
             "Weekly PIR answer",
             "Half-year threat landscape",
             "Stale indicator clean-up",

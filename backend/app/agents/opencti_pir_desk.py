@@ -45,7 +45,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents.fleet_opt_in import SEEDED_FLEET_OPT_IN
-from app.agents.gate_answered import gate_answered_assignment
+from app.agents.gate_answered import INHERIT_SWITCH_FROM_KEY, gate_answered_assignment
 
 ORCHESTRATOR = "opencti-pir-desk-orchestrator"
 TRIAGE_ANALYST = "opencti-pir-triage-analyst"
@@ -57,6 +57,11 @@ FLEET_NAME = "PIR intelligence desk"
 STATE_KEY = "opencti:pir-desk:state"
 #: Work-item key prefix of the approval items (indicator revocations).
 APPROVAL_PREFIX = "opencti:pir-desk:approval:"
+#: Work-item key prefix of an unfinished hunt package or detection set the orchestrator
+#: resumes itself (#2659): owned by it and taken by its "Follow-up due" inbox.
+FOLLOWUP_PREFIX = "opencti:pir-desk:followup:"
+#: The assignment that drains the follow-up items.
+FOLLOWUP_DUE = "Follow-up due"
 
 #: Existing OpenCTI agents the fleet works with; connected, never members.
 SHARED_AGENTS: tuple[str, ...] = (
@@ -226,6 +231,17 @@ PIR_DESK_AGENTS: list[dict[str, Any]] = [
     },
 ]
 
+#: #2659: the step both triage prompts end with, so an unfinished package never becomes an
+#: item nobody owns.
+_UNFINISHED = (
+    "\nWhen the hunt package or the detections of a top threat cannot be finished in this run, "
+    "delegate the rest again now until it is done; when it still cannot be finished, create one "
+    f"work item keyed {FOLLOWUP_PREFIX} followed by the entity's OpenCTI id, owner_agent_id "
+    "yourself, naming the staged draft, what is done and what remains (your Follow-up due "
+    "automation resumes it); when a person must act, create it with needs_human true and a "
+    "complete ask card instead. Never create a work item with no owner and no ask."
+)
+
 _COMMON = {
     "agent_slug": ORCHESTRATOR,
     **SEEDED_FLEET_OPT_IN,
@@ -267,7 +283,7 @@ PIR_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "add nothing and answer that it was filed before.\n"
             "Run one triage of the PIR desk loop: delegate the scoring to the PIR Triage Analyst, "
             "file each match worth it in the standing case of its PIR, and when it is a top threat "
-            "have the hunt package and the detections built. Answer with the run JSON."
+            "have the hunt package and the detections built." + _UNFINISHED + " Answer with the run JSON."
         ),
     },
     {
@@ -299,7 +315,28 @@ PIR_DESK_ASSIGNMENTS: list[dict[str, Any]] = [
             "add nothing and answer that it was filed before.\n"
             "Run one triage of the PIR desk loop: delegate the scoring to the PIR Triage Analyst, "
             "file each match worth it in the standing case of its PIR, and when it is a top threat "
-            "have the hunt package and the detections built. Answer with the run JSON."
+            "have the hunt package and the detections built." + _UNFINISHED + " Answer with the run JSON."
+        ),
+    },
+    {
+        **_COMMON,
+        "name": FOLLOWUP_DUE,
+        "description": (
+            "A hunt package or a detection set a triage run could not finish: resume it from the staged "
+            "draft, finish it and file it in the PIR case."
+        ),
+        "trigger_type": "work_item",
+        "trigger_config": {"correlation_prefix": FOLLOWUP_PREFIX},
+        # A fleet already switched on gets the inbox on upgrade (seed.seed_builtin_assignments).
+        INHERIT_SWITCH_FROM_KEY: "PIR match created",
+        "prompt": (
+            "A hunt package or a detection set of the PIR desk was left unfinished: the work item below "
+            "names the entity, the staged draft, what is done and what remains. Resume from the draft, "
+            "never from scratch: have the Threat Hunt Creator finish the package and the Detection Rule "
+            "Converter the detections, then file the result in the standing case of its PIR. Complete "
+            "the item with what was filed. When it still cannot be finished, write a note on it naming "
+            "what remains and leave it to the next pick-up; when a person must act, park it with "
+            "needs_human true and a complete ask card. Answer with the run JSON."
         ),
     },
     {

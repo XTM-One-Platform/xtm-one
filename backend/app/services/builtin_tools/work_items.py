@@ -206,6 +206,17 @@ def _not_before_text(item: dict, now: datetime | None = None) -> str:
     return f"not_before {raw}"
 
 
+#: The create_work_item answer for an item with no owner and no needs_human from an
+#: agent no work-item inbox drains (#2659): nothing will ever take it.
+_NO_OWNER_NO_INBOX_WARNING = (
+    "  - Warning: nothing will ever take this item. It has no owner and no needs_human, and "
+    "you have no work-item inbox (no work_item automation or flow drains your queue). Fix it "
+    "now with update_work_item: set owner_agent_id to an agent whose work-item inbox takes "
+    "this correlation_key, or set needs_human true with an ask card for the person who must "
+    "act; or finish the work in this run and cancel the item."
+)
+
+
 def _owner_pickup_line(owner: str, state: str | None, not_before: str | None) -> str:
     """What happens to a new item routed to *owner*, from its pickup *state*
     (``work_item_context.PICKUP_STATES``; ``None`` when it could not be read)."""
@@ -977,6 +988,9 @@ def build_work_item_tools(
             return None, None
         if not peers:
             return o, None
+        if agent_id and o.lower() == str(agent_id).lower():
+            # Its own backlog: the acting agent is always a valid owner (#2659).
+            return str(agent_id), None
         match = _peer_by_key.get(o.lower())
         if match is not None:
             return match, None
@@ -987,7 +1001,7 @@ def build_work_item_tools(
         return None, (
             f"Error: '{owner}' is not one of this agent's work-item peers. "
             f"You can assign work items to: {names}. Use the agent id or slug, "
-            "or leave owner_agent_id empty to keep the item in your own backlog."
+            "or your own id to keep the item in your own backlog."
         )
 
     # Roster line appended to the create_work_item description so the model
@@ -1000,15 +1014,19 @@ def build_work_item_tools(
         )
         _owner_help = (
             " Assign this item to one of your peer agents via owner_agent_id "
-            f"(use the id or slug): {_roster}. Leave owner_agent_id empty to "
-            "keep it in your own backlog."
+            f"(use the id or slug): {_roster}. To keep it in your own backlog, "
+            "set owner_agent_id to your own id."
         )
     else:
         _owner_help = (
-            " No peer roster is configured, so owner_agent_id is optional and "
-            "not validated - leave it empty to keep the item in your own backlog "
-            "unless you have a specific agent id to route it to."
+            " No peer roster is configured, so owner_agent_id is not validated: "
+            "set it to the agent that acts, your own id to keep the item in your "
+            "own backlog."
         )
+    _owner_help += (
+        " An item with no owner and no needs_human is routed to nobody: only an "
+        "owner whose work-item inbox takes it, or needs_human with an ask, gets it done."
+    )
 
     async def _create_work_item(
         title: str,
@@ -1233,6 +1251,14 @@ def build_work_item_tools(
                 "actually gets picked up. Leave it unowned only if another agent "
                 "is expected to drain the unassigned queue."
             )
+            # #2659: an assignment-driven agent with no inbox read "keep it in your
+            # own backlog" as "no owner" and filed items nobody ever took. A warning,
+            # not a refusal: an unowned item stays a valid, if rare, choice.
+            if agent_id:
+                from app.services import work_item_context
+
+                if await work_item_context.agent_has_work_item_inbox(agent_id) is False:
+                    lines.append(_NO_OWNER_NO_INBOX_WARNING)
         return "\n".join(lines)
 
     async def _finish_created(item: dict, status: str, result: str) -> tuple[dict, str | None]:
