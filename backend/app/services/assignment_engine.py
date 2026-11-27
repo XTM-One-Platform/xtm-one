@@ -12091,17 +12091,19 @@ PLATFORM_EVENT_QUEUE_FULL_REASON = "skipped: queue full"
 async def trim_platform_event_queues(db: AsyncSession) -> dict[Any, int]:
     """Skip the queued CTEM platform-event deliveries past each assignment's queue limit (#2570).
 
-    Answers the skipped count per assignment. A CTEM event is raised again by its source (a case
-    left waiting on nobody is raised ``ctem_case.stalled``, an unrun case is caught up by
-    ``ctem_case_routing.catch_up``), so its delivery past ``ASSIGNMENT_QUEUE_MAX_DEPTH`` is
-    dropped, never queued past it (``platform_events._deliver``). This trims the
+    Answers the skipped count per assignment. ``ctem_case.opened`` and ``ctem_case.stalled`` are
+    raised again by their source (``platform_events.RE_RAISED_EVENTS``: an unrun case is caught up
+    by ``ctem_case_routing.catch_up``, a case left waiting on nobody is raised stalled again), so
+    their delivery past ``ASSIGNMENT_QUEUE_MAX_DEPTH`` is dropped, never queued past it
+    (``platform_events._deliver``); the once-only CTEM events (SLA breach, resolution, reopening,
+    signals) are never trimmed. This trims the
     backlogs queued before that bound (a platform restarted in a storm): per assignment, the oldest
     deliveries up to the limit are kept in order and the rest are finalised ``skipped`` in one
     statement, counted once on the assignment as "skipped: queue full" (summarised, never one
     reason row each). Other queued deliveries (webhooks, integration events) are left as they are.
     A grouped count answers first: nothing over the limit costs that one query. The caller commits.
     """
-    from app.services.platform_events import CONTEXT_TYPE, is_ctem_event
+    from app.services.platform_events import CONTEXT_TYPE, is_re_raised_event
 
     max_depth = _queue_max_depth()
     over = (
@@ -12129,7 +12131,7 @@ async def trim_platform_event_queues(db: AsyncSession) -> dict[Any, int]:
         events = [
             run_id
             for run_id, ctx in rows
-            if isinstance(ctx, dict) and ctx.get("type") == CONTEXT_TYPE and is_ctem_event(ctx.get("event"))
+            if isinstance(ctx, dict) and ctx.get("type") == CONTEXT_TYPE and is_re_raised_event(ctx.get("event"))
         ]
         others = len(rows) - len(events)
         keep = max(0, max_depth - others)

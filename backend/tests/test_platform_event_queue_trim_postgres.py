@@ -60,6 +60,16 @@ async def test_a_storm_backlog_is_trimmed_to_the_queue_limit(monkeypatch: pytest
                 created_at=_T0,
             )
             session.add(webhook)
+            # A once-only CTEM event: nothing raises it again, never trimmed (review of #2574).
+            breach = AssignmentRun(
+                assignment_id=assignment.id,
+                agent_id=agent.id,
+                user_id=user.id,
+                status=ae.QUEUED_RUN_STATUS,
+                trigger_context={"type": "platform_event", "event": "ctem_case.sla_breached"},
+                created_at=_T0 + timedelta(hours=1),
+            )
+            session.add(breach)
             for index in range(550):
                 session.add(
                     AssignmentRun(
@@ -74,11 +84,12 @@ async def test_a_storm_backlog_is_trimmed_to_the_queue_limit(monkeypatch: pytest
             await session.commit()
             assignment_id = assignment.id
             webhook_id = webhook.id
+            breach_id = breach.id
 
         async with db.sessions() as session:
             trimmed = await ae.trim_platform_event_queues(session)
             await session.commit()
-        assert trimmed == {assignment_id: 531}
+        assert trimmed == {assignment_id: 532}
 
         async with db.sessions() as session:
             queued = (
@@ -91,6 +102,8 @@ async def test_a_storm_backlog_is_trimmed_to_the_queue_limit(monkeypatch: pytest
             assert queued == 20
             kept = (await session.execute(select(AssignmentRun).where(AssignmentRun.id == webhook_id))).scalar_one()
             assert kept.status == ae.QUEUED_RUN_STATUS
+            once = (await session.execute(select(AssignmentRun).where(AssignmentRun.id == breach_id))).scalar_one()
+            assert once.status == ae.QUEUED_RUN_STATUS
             skipped = (
                 (
                     await session.execute(

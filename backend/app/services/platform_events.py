@@ -1516,7 +1516,7 @@ async def _deliver(name: str, payload: Mapping[str, Any], sub: Subscription, ass
             trigger_context=context,
             overflow=delivery_overflow(name),
         )
-    if result.status == "dropped" and is_ctem_event(name) and getattr(result, "reason", None) is None:
+    if result.status == "dropped" and is_re_raised_event(name) and getattr(result, "reason", None) is None:
         await _record_queue_full(sub.assignment_id)
         return f"dropped: {QUEUE_FULL_OUTCOME}"
     return f"{result.status} run {result.run_id}"
@@ -1525,16 +1525,28 @@ async def _deliver(name: str, payload: Mapping[str, Any], sub: Subscription, ass
 #: The outcome of a CTEM delivery past its assignment's queue limit (#2570).
 QUEUE_FULL_OUTCOME = "skipped: queue full"
 
+#: The platform events a source raises again when a delivery is lost (#2570): an unrun
+#: ``ctem_case.opened`` is caught up by ``ctem_case_routing``, a case still waiting on nobody is
+#: raised ``ctem_case.stalled`` again. Every other CTEM event (``ctem_case.sla_breached``,
+#: ``resolved``, ``reopened``, ``opening_changed``, ``ctem_signal.*``) is raised once.
+RE_RAISED_EVENTS: frozenset[str] = frozenset({"ctem_case.opened", "ctem_case.stalled"})
+
+
+def is_re_raised_event(name: object) -> bool:
+    """Whether a lost delivery of *name* is raised again by its source (#2570)."""
+    return isinstance(name, str) and name in RE_RAISED_EVENTS
+
 
 def delivery_overflow(name: str) -> str:
     """What a delivery of *name* does at its assignment's queue limit (#2570).
 
-    A CTEM signal or case event is dropped there (``drop_newest``): its source raises it again
-    (a case waiting on nobody is raised ``ctem_case.stalled``, an unrun case is caught up), and a
-    storm of case openings queued past the limit kept a platform down after every restart. Every
-    other platform event has no sender that would raise it again: queued past the limit.
+    An event its source raises again (:data:`RE_RAISED_EVENTS`) is dropped there
+    (``drop_newest``): a storm of case openings queued past the limit kept a platform down after
+    every restart. Every other platform event, the once-only CTEM ones included (an SLA breach,
+    a resolution, a reopening, a signal), has no sender that would raise it again: queued past
+    the limit.
     """
-    return "drop_newest" if is_ctem_event(name) else "persist"
+    return "drop_newest" if is_re_raised_event(name) else "persist"
 
 
 async def _record_queue_full(assignment_id: object) -> None:

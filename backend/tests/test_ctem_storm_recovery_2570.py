@@ -146,7 +146,20 @@ async def test_open_waiting_stops_on_a_spent_budget(redis: FakeRedis, monkeypatc
     assert throttled is True and counts == {"opened": 0, "joined": 0, "skipped": 0}
 
 
-def test_a_ctem_delivery_past_the_queue_limit_is_dropped_any_other_persisted() -> None:
+def test_a_re_raised_delivery_past_the_queue_limit_is_dropped_any_other_persisted() -> None:
     assert pe.delivery_overflow("ctem_case.opened") == "drop_newest"
-    assert pe.delivery_overflow("ctem_signal.confirmed") == "drop_newest"
+    assert pe.delivery_overflow("ctem_case.stalled") == "drop_newest"
+    # Raised once: a lost delivery is never heard again (review of #2574).
+    for once in (
+        "ctem_case.sla_breached",
+        "ctem_case.resolved",
+        "ctem_case.reopened",
+        "ctem_case.opening_changed",
+        "ctem_signal.confirmed",
+    ):
+        assert pe.delivery_overflow(once) == "persist", once
     assert pe.delivery_overflow("work_item.note_added") == "persist"
+
+
+def test_every_re_raised_event_is_a_known_platform_event() -> None:
+    assert pe.RE_RAISED_EVENTS.issubset(pe.PLATFORM_EVENTS)
