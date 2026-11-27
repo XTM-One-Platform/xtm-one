@@ -35,7 +35,10 @@ export interface CtemDecisionRecord {
     products?: string[];
     /** #1720 / #2523: every software reference the gate tried against the inventory and shipped products. */
     software_refs?: string[];
-    /** #2171 / #2523: how the OpenCTI software read went ("read", "no reader", "no OpenCTI access", "OpenCTI did not answer"). */
+    /**
+     * #2171 / #2523: how the OpenCTI software read went ("read", "no reader", "no OpenCTI access",
+     * "OpenCTI did not answer"; #2542: "not needed", "not applicable", "not read"; null on older records).
+     */
     cve_lookup?: string | null;
     threat_lookup?: string | null;
     lenses?: string[];
@@ -55,6 +58,12 @@ export interface CtemDecisionRecord {
   policy_checks?: { rule: string; value?: unknown; threshold?: unknown; passed: boolean }[];
   severity?: string | null;
   decided_at?: string;
+  /** #2542: an OpenCTI software read the subject needed did not answer; the gate retries it. */
+  incomplete?: boolean;
+  /** #2542: how many decisions were taken while that read kept failing. */
+  lookup_attempts?: number;
+  /** #2542: "scheduled" while the retry pass takes it again, "exhausted" once it stopped. */
+  lookup_retry?: "scheduled" | "exhausted";
 }
 
 /** One signal as the API answers it (`to_dict` in backend/app/services/ctem_signals.py). */

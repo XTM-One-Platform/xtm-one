@@ -12983,6 +12983,7 @@ def build_agent_builder_tool(
             forget_key_bound_elsewhere,
             repair_onto_admin_oauth_app,
             replace_oauth_client_id,
+            status_for_auth_type,
         )
         from app.services.integration_user_credentials import (
             apply_share_choice,
@@ -13283,6 +13284,10 @@ def build_agent_builder_tool(
                     integ.refresh_token_enc = None
                     integ.client_secret_enc = None
                     integ.status = "connected"
+                elif (switched_status := status_for_auth_type(integ)) is not None:
+                    # As in the REST update: the credentials stored now
+                    # decide, never the previous type's status (#2553).
+                    integ.status = switched_status
                 elif old_auth == "platform_managed":
                     integ.status = "not_connected"
                 updated.append("auth_type")

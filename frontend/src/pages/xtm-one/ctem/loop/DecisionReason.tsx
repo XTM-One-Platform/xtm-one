@@ -92,6 +92,26 @@ const NEXT_STEP = {
 } as const;
 const NEXT_STEPS: Readonly<Record<string, string>> = NEXT_STEP;
 
+/** #2542: the lookups that settle a decision (`ctem_scope_gate.LOOKUP_SETTLED`); any other one is a read that did not answer. */
+const SETTLED_LOOKUPS = new Set(["read", "not needed", "not applicable"]);
+const FAILED_LOOKUPS = new Set(["OpenCTI did not answer", "no OpenCTI access"]);
+
+/**
+ * #2542: whether an unmatched decision waits for an OpenCTI software read: "scheduled" (the
+ * retry pass takes it again), "exhausted" (retries stopped, the failure stays shown), else null.
+ * A record of a build before #2542 carries no `incomplete` flag: a failed lookup reads as scheduled.
+ */
+export function lookupRetry(decision: CtemDecisionRecord | null | undefined): "scheduled" | "exhausted" | null {
+  if (!decision || decision.reason_code !== "subject_unresolved") return null;
+  if (decision.incomplete === false) return null;
+  if (decision.incomplete !== true) {
+    const reconcile = decision.reconcile ?? {};
+    const failed = [reconcile.threat_lookup, reconcile.cve_lookup].some((value) => typeof value === "string" && FAILED_LOOKUPS.has(value));
+    if (!failed) return null;
+  }
+  return decision.lookup_retry === "exhausted" ? "exhausted" : "scheduled";
+}
+
 /** The level words a record carries (criticality, threshold, confidence), translated before they fill a sentence. */
 const LEVEL_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", critical: "Critical" };
 const LEVEL_PARAMS = new Set(["criticality", "threshold", "minimum", "confidence"]);
@@ -139,9 +159,23 @@ function policyCheckLabel(rule: string, passed: boolean, t_i18n: Translate): str
   return passed ? t_i18n("{rule}: passed", { rule: label }) : t_i18n("{rule}: failed", { rule: label });
 }
 
-function SignalStateChip({ state }: { state: CtemSignalState }) {
+/**
+ * The English label of a signal's state, read with its decision: an Unmatched decision
+ * taken while OpenCTI did not answer is not final and says so (UX r1 B1 on #2548):
+ * "Waiting for OpenCTI" while a retry is scheduled, "OpenCTI not read" once retries stopped.
+ */
+export function signalStateLabel(state: CtemSignalState, decision: CtemDecisionRecord | null | undefined): string {
+  if (state === "to_validate") {
+    const lookup = lookupRetry(decision);
+    if (lookup === "scheduled") return "Waiting for OpenCTI";
+    if (lookup === "exhausted") return "OpenCTI not read";
+  }
+  return SIGNAL_STATE_LABEL[state] ?? state;
+}
+
+function SignalStateChip({ state, decision }: { state: CtemSignalState; decision?: CtemDecisionRecord | null }) {
   const { t_i18n } = useFormatter();
-  return <ToneBadge tone={SIGNAL_STATE_TONE[state] ?? "neutral"}>{t_i18n(SIGNAL_STATE_LABEL[state] ?? state)}</ToneBadge>;
+  return <ToneBadge tone={SIGNAL_STATE_TONE[state] ?? "neutral"}>{t_i18n(signalStateLabel(state, decision))}</ToneBadge>;
 }
 
 /**
@@ -155,6 +189,10 @@ export function decisionSentence(
   formatDay: (iso: string) => string = (iso) => iso,
 ): string {
   if (!decision || (!decision.reason_code && !decision.outcome)) return t_i18n("Waiting for reconcile");
+  // #2542: an unmatched decision taken while OpenCTI did not answer is not final, and says so.
+  const lookup = lookupRetry(decision);
+  if (lookup === "scheduled") return t_i18n("OpenCTI software not read, will retry");
+  if (lookup === "exhausted") return t_i18n("OpenCTI software not read, retries stopped");
   const sentence = decision.reason_code ? REASON_SENTENCES[decision.reason_code] : undefined;
   if (!sentence) return t_i18n("Reason not available in this version");
   return t_i18n(sentence, sentenceParams(decision, t_i18n, formatDay));
@@ -186,6 +224,9 @@ export function nextStepSentence(
   formatDay: (iso: string) => string = (iso) => iso,
 ): string | null {
   if (!decision?.reason_code || decision.outcome === "case") return null;
+  if (lookupRetry(decision) === "scheduled") return t_i18n("Decided again once OpenCTI answers");
+  // The control is named by its label in the signals list (UX r1 B2 on #2548).
+  if (lookupRetry(decision) === "exhausted") return t_i18n("Once OpenCTI answers, select it and choose Check again");
   const sentence = NEXT_STEPS[decision.reason_code];
   return sentence ? t_i18n(sentence, sentenceParams(decision, t_i18n, formatDay)) : null;
 }
@@ -220,7 +261,7 @@ export function gateStep(
   if (stage !== "reconcile" && stage !== "scope") return null;
   if (status === "stopped" || status === "parked") {
     return {
-      decision: t_i18n(SIGNAL_STATE_LABEL[state] ?? state),
+      decision: t_i18n(signalStateLabel(state, decision)),
       reason: decisionSentence(decision, t_i18n, formatDay),
       next: nextStepSentence(decision, t_i18n, formatDay),
     };
@@ -260,7 +301,7 @@ export type DecisionInput = {
  * `threat_lookup` then `cve_lookup` (#2523 / #2171); empty when the read went through or was not needed.
  */
 function softwareNotRead(reconcile: NonNullable<CtemDecisionRecord["reconcile"]>, t_i18n: Translate): string {
-  const lookup = [reconcile.threat_lookup, reconcile.cve_lookup].find((value) => typeof value === "string" && value && value !== "read");
+  const lookup = [reconcile.threat_lookup, reconcile.cve_lookup].find((value) => typeof value === "string" && value && !SETTLED_LOOKUPS.has(value));
   if (lookup === "no OpenCTI access") return t_i18n("Not read: no OpenCTI access");
   if (lookup === "OpenCTI did not answer") return t_i18n("Not read: OpenCTI did not answer");
   if (lookup === "no reader") return t_i18n("Not read: no OpenCTI reader");
@@ -487,7 +528,7 @@ export function DecisionReason({
   return (
     <div className="flex min-w-0 flex-col gap-1" data-testid="ctem-decision-reason">
       <div className="flex min-w-0 items-center gap-2">
-        <SignalStateChip state={state} />
+        <SignalStateChip state={state} decision={decision} />
         {/* Cut with an ellipsis and named whole by the tooltip in a narrow column (UX r1 B2 on #1272). */}
         <TruncatedText text={decisionSentence(decision, t_i18n, formatDay)} className="content-compact text-default-secondary" />
       </div>

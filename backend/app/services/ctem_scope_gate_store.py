@@ -388,23 +388,83 @@ async def default_scenario_reader(db: AsyncSession) -> uuid.UUID | None:
     return owner
 
 
-async def _session_cached(db: AsyncSession, key: tuple[Any, ...], load: Callable[[], Awaitable[Any]]) -> Any:
+async def _session_cached(
+    db: AsyncSession,
+    key: tuple[Any, ...],
+    load: Callable[[], Awaitable[Any]],
+    *,
+    keep: Callable[[Any], bool] | None = None,
+) -> Any:
     """*load* answered once per session and *key* for :data:`READ_CACHE_SECONDS` (#1591 S3 review).
 
     A listener records many signals in one session (``record_matches`` loops up
     to 2000 matches): the link index and the OpenCRQ read are built once for the
     pass, not once per signal. A session without ``info`` (a test double) loads
-    every time.
+    every time. *keep* False on a loaded value leaves it out of the cache (#2542:
+    a failed OpenCTI read is never reused), so the next call loads again.
     """
     hit = _session_hit(db, key)
     if hit is not None:
         return hit
     now = time.monotonic()
     value = await load()
+    if keep is not None and not keep(value):
+        return value
+    _session_put(db, key, value, now)
+    return value
+
+
+def _session_put(db: AsyncSession, key: tuple[Any, ...], value: Any, at: float | None = None) -> None:
+    """Hold *value* for *key* in this session's read cache (nothing on a session without ``info``)."""
     info = getattr(db, "info", None)
     if isinstance(info, dict):
-        info.setdefault(_READ_CACHE_KEY, {})[key] = (now, value)
-    return value
+        info.setdefault(_READ_CACHE_KEY, {})[key] = (time.monotonic() if at is None else at, value)
+
+
+def _read_ok(value: Any) -> bool:
+    """#2542: an OpenCTI software read ``(found, how)`` that answered; only those are cached."""
+    return isinstance(value, tuple) and len(value) == 2 and value[1] == gate.LOOKUP_READ
+
+
+async def _software_read(
+    db: AsyncSession,
+    key: tuple[Any, ...],
+    load: Callable[[], Awaitable[Any]],
+    *,
+    reuse_failure: bool = False,
+) -> tuple[Any, str]:
+    """An OpenCTI software read through the session cache (#2542).
+
+    A read that answered is cached for the pass; one that failed is not (the next
+    signal of the same threat or CVE list reads again), and is kept apart under
+    ``("failed", *key)`` so a ``remote=False`` decision of this pass says why it
+    was not read instead of "not read". *reuse_failure* True (the bulk prefetch,
+    :func:`prepare_cve_reads`) answers that failure instead of reading again, so a
+    slow OpenCTI costs one timeout per key and pass, not one per signal (#2548 review).
+    """
+    if reuse_failure:
+        failed = _session_hit(db, ("failed", *key))
+        if isinstance(failed, tuple):
+            return failed[0], str(failed[1])
+    found, how = await _session_cached(db, key, load, keep=_read_ok)
+    if how != gate.LOOKUP_READ:
+        _session_put(db, ("failed", *key), (found, how))
+    return found, how
+
+
+def _forget_failures(db: AsyncSession) -> None:
+    """Drop the OpenCTI read failures this session met, so a new bulk prefetch reads them again (#2542)."""
+    info = getattr(db, "info", None)
+    cache = info.get(_READ_CACHE_KEY) if isinstance(info, dict) else None
+    if isinstance(cache, dict):
+        for key in [key for key in cache if key and key[0] == "failed"]:
+            del cache[key]
+
+
+def _software_hit(db: AsyncSession, key: tuple[Any, ...]) -> Any:
+    """What this session read for *key*: the cached answer, else the failure it met, else ``None``."""
+    hit = _session_hit(db, key)
+    return hit if hit is not None else _session_hit(db, ("failed", *key))
 
 
 def _session_hit(db: AsyncSession, key: tuple[Any, ...]) -> Any:
@@ -455,6 +515,7 @@ async def _with_cve_software(
     *,
     remote: bool = True,
     release: bool = False,
+    reuse_failure: bool = False,
 ) -> gate.SignalFacts:
     """*facts* with the software OpenCTI relates to the CVEs the signal names (#2171).
 
@@ -465,6 +526,7 @@ async def _with_cve_software(
     read (:func:`prepare_cve_reads`) is used, else *facts* are answered unchanged.
     *release* True (the bulk prefetch, no savepoint open) hands the pooled
     connection back during the OpenCTI call; the record-time gate never does (#2516).
+    *reuse_failure* as :func:`_software_read`.
     """
     from app.services import ctem_cve_software
 
@@ -473,7 +535,7 @@ async def _with_cve_software(
         return facts
     if not remote:
         fallback = _session_hit(db, ("fallback_reader",))
-        hit = _session_hit(db, ("cve_software", scenario_reader(row, fallback), tuple(cves)))
+        hit = _software_hit(db, ("cve_software", scenario_reader(row, fallback), tuple(cves)))
         if hit is None:
             return facts
         found, how = hit
@@ -482,10 +544,11 @@ async def _with_cve_software(
         async with db.begin_nested():
             fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
         reader = scenario_reader(row, fallback)
-        found, how = await _session_cached(
+        found, how = await _software_read(
             db,
             ("cve_software", reader, tuple(cves)),
             lambda: ctem_cve_software.cve_software(db, reader, cves, release=release),
+            reuse_failure=reuse_failure,
         )
     except Exception:
         logger.warning("CTEM scope gate: CVE software not read for %s", getattr(row, "id", "?"), exc_info=True)
@@ -493,24 +556,9 @@ async def _with_cve_software(
     return replace(facts, cve_software=tuple(found), cve_lookup=how)
 
 
-#: #2523: the OpenCTI types a threat signal is recorded from (the ``relevant_threat`` listener).
-THREAT_STIX_TYPES: frozenset[str] = frozenset(
-    {"intrusion-set", "threat-actor", "threat-actor-group", "campaign", "malware"}
-)
-
-
-def threat_opencti_id(facts: gate.SignalFacts) -> str:
-    """#2523: the OpenCTI id of a threat signal's subject, ``""`` when it has none (pure).
-
-    Only an OpenCTI-recorded threat of :data:`THREAT_STIX_TYPES` carries one: its
-    source external id (the internal id, #2505), else the STIX id of its evidence.
-    """
-    if facts.subject_kind != "threat" or facts.source_provider != "opencti":
-        return ""
-    evidence = facts.evidence if isinstance(facts.evidence, dict) else {}
-    if str(evidence.get("stix_type") or "").strip().lower() not in THREAT_STIX_TYPES:
-        return ""
-    return str(facts.source_external_id or evidence.get("stix_id") or "").strip()
+#: #2523: the OpenCTI types a threat signal is recorded from; the pure gate owns them since #2542.
+THREAT_STIX_TYPES = gate.THREAT_STIX_TYPES
+threat_opencti_id = gate.threat_opencti_id
 
 
 async def _with_threat_software(
@@ -522,13 +570,14 @@ async def _with_threat_software(
     *,
     remote: bool = True,
     release: bool = False,
+    reuse_failure: bool = False,
 ) -> gate.SignalFacts:
     """*facts* with the software OpenCTI says the threat targets or uses (#2523).
 
     Read only for an OpenCTI threat (:func:`threat_opencti_id`) that resolves to
     nothing on its evidence alone, with the recorder's own OpenCTI access, once
-    per session, reader and threat id. Never raises. *remote* and *release* as
-    :func:`_with_cve_software`.
+    per session, reader and threat id. Never raises. *remote*, *release* and
+    *reuse_failure* as :func:`_with_cve_software`.
     """
     from app.services import ctem_cve_software, ctem_threat_software
 
@@ -537,7 +586,7 @@ async def _with_threat_software(
         return facts
     if not remote:
         fallback = _session_hit(db, ("fallback_reader",))
-        hit = _session_hit(db, ("threat_software", scenario_reader(row, fallback), threat_id))
+        hit = _software_hit(db, ("threat_software", scenario_reader(row, fallback), threat_id))
         if hit is None:
             return facts
         found, how = hit
@@ -546,10 +595,11 @@ async def _with_threat_software(
         async with db.begin_nested():
             fallback = await _session_cached(db, ("fallback_reader",), lambda: default_scenario_reader(db))
         reader = scenario_reader(row, fallback)
-        found, how = await _session_cached(
+        found, how = await _software_read(
             db,
             ("threat_software", reader, threat_id),
             lambda: ctem_threat_software.threat_software(db, reader, threat_id, release=release),
+            reuse_failure=reuse_failure,
         )
     except Exception:
         logger.warning("CTEM scope gate: threat software not read for %s", getattr(row, "id", "?"), exc_info=True)
@@ -566,10 +616,12 @@ async def _with_remote_software(
     *,
     remote: bool = True,
     release: bool = False,
+    reuse_failure: bool = False,
 ) -> gate.SignalFacts:
     """*facts* with the OpenCTI software reads the gate takes: the CVEs' (#2171), then the threat's (#2523)."""
-    facts = await _with_cve_software(db, row, facts, profile, primary_assets, remote=remote, release=release)
-    return await _with_threat_software(db, row, facts, profile, primary_assets, remote=remote, release=release)
+    kw = {"remote": remote, "release": release, "reuse_failure": reuse_failure}
+    facts = await _with_cve_software(db, row, facts, profile, primary_assets, **kw)
+    return await _with_threat_software(db, row, facts, profile, primary_assets, **kw)
 
 
 async def prepare_cve_reads(
@@ -588,7 +640,13 @@ async def prepare_cve_reads(
     cache and the pass decides with ``remote_reads=False``. *profiles* and *links*
     by organization spare a second build; a missing one is read once per session.
     Never raises: a signal not read here is decided without its CVE software.
+
+    A read that failed is met once per key in this prefetch: the rows sharing that
+    threat id or CVE list reuse the failure instead of paying one OpenCTI timeout
+    each; the failures of an earlier pass are forgotten first, so the next pass
+    reads them again (#2548 review).
     """
+    _forget_failures(db)
     for row in rows:
         if row.state not in GATED_STATES:
             continue
@@ -606,7 +664,7 @@ async def prepare_cve_reads(
             else:
                 primary_assets = await _session_cached(db, ("links", org), partial(_primary_assets, db, org))
             # No savepoint is open here: release the connection during the OpenCTI I/O (#2518 review).
-            await _with_remote_software(db, row, facts, profile, primary_assets, release=True)
+            await _with_remote_software(db, row, facts, profile, primary_assets, release=True, reuse_failure=True)
         except Exception:
             logger.warning("CTEM scope gate: CVE read not prepared for %s", getattr(row, "id", "?"), exc_info=True)
 
@@ -667,6 +725,7 @@ async def evaluate(
         today=at.date(),
     )
     decision.record["decided_at"] = at.isoformat()
+    _count_lookup_attempts(decision.record, row.decision)
     row.state = decision.state
     row.decision = decision.record
     row.updated_at = at
@@ -814,6 +873,102 @@ async def evaluate_open(
 
 #: How many parked signals one tick decides again after a profile change (#1505); the next tick takes the rest.
 RECHECK_BATCH = 500
+
+#: #2542: the decisions of a build before #2542 whose OpenCTI software read failed (no ``incomplete`` flag).
+LOOKUP_FAILURES: tuple[str, ...] = ("OpenCTI did not answer", "no OpenCTI access")
+#: #2542: how many times an incomplete decision is taken (its first decision included) before it stays failed.
+LOOKUP_ATTEMPTS_MAX = 6
+#: #2542: the wait before the first retry; each next retry waits twice the previous one (5, 10, 20, 40, 80 min).
+LOOKUP_RETRY_BASE = timedelta(minutes=5)
+
+
+def lookup_backoff(attempts: int) -> timedelta:
+    """#2542: how long a decision taken *attempts* times waits before the next retry."""
+    return LOOKUP_RETRY_BASE * (2 ** max(0, int(attempts) - 1))
+
+
+def _lookup_failed(record: Any) -> bool:
+    """#2542: *record* is a decision whose OpenCTI software read the subject needed did not answer.
+
+    A record of this build says so (``incomplete``); one of an older build is read from its lookups.
+    """
+    if not isinstance(record, dict):
+        return False
+    if "incomplete" in record:
+        return record.get("incomplete") is True
+    reconcile = record.get("reconcile") if isinstance(record.get("reconcile"), dict) else {}
+    return record.get("reason_code") == "subject_unresolved" and any(
+        reconcile.get(key) in LOOKUP_FAILURES for key in ("threat_lookup", "cve_lookup")
+    )
+
+
+def _count_lookup_attempts(record: dict[str, Any], previous: Any) -> None:
+    """#2542: count the decisions taken while an OpenCTI software read kept failing, on *record*.
+
+    A decision that follows an incomplete one carries ``lookup_attempts`` (the earlier
+    count plus this one; an older build's failed decision counts as one); an
+    incomplete one also says whether the retry pass takes it again
+    (``lookup_retry`` ``scheduled``) or gave up after :data:`LOOKUP_ATTEMPTS_MAX`
+    (``exhausted``), so the failed state stays visible.
+    """
+    before = 0
+    if _lookup_failed(previous):
+        count = previous.get("lookup_attempts")
+        before = count if isinstance(count, int) and count > 0 else 1
+    if record.get("incomplete"):
+        record["lookup_attempts"] = before + 1
+        record["lookup_retry"] = "exhausted" if before + 1 >= LOOKUP_ATTEMPTS_MAX else "scheduled"
+    elif before:
+        record["lookup_attempts"] = before + 1
+
+
+async def recheck_lookup_failed(
+    db: AsyncSession, *, now: datetime | None = None, batch: int = RECHECK_BATCH
+) -> dict[str, int]:
+    """#2542: the unmatched signals whose OpenCTI software read failed, decided again with the read retried.
+
+    Selects ``to_validate`` signals left ``subject_unresolved`` with an incomplete
+    decision (or, decided by a build before #2542, a ``threat_lookup`` /
+    ``cve_lookup`` of :data:`LOOKUP_FAILURES`), taken fewer than
+    :data:`LOOKUP_ATTEMPTS_MAX` times, whose last decision is older than
+    :func:`lookup_backoff`; *batch* per call, oldest first. The OpenCTI reads are
+    taken up front by :func:`prepare_cve_reads` (no row lock held, connection
+    released), then each row is decided in its own savepoint. The caller commits.
+    """
+    from sqlalchemy import and_, or_
+
+    at = now or datetime.now(UTC)
+    decision = CtemSignal.decision
+    attempts = func.coalesce(decision["lookup_attempts"].as_integer(), 0)
+    due = or_(
+        *(and_(attempts == n, CtemSignal.updated_at < at - lookup_backoff(n)) for n in range(LOOKUP_ATTEMPTS_MAX))
+    )
+    failed = or_(
+        decision["incomplete"].as_boolean().is_(True),
+        and_(
+            decision["incomplete"].as_boolean().is_(None),
+            or_(
+                decision[("reconcile", "threat_lookup")].as_string().in_(LOOKUP_FAILURES),
+                decision[("reconcile", "cve_lookup")].as_string().in_(LOOKUP_FAILURES),
+            ),
+        ),
+    )
+    rows = list(
+        (
+            await db.execute(
+                select(CtemSignal)
+                .where(
+                    CtemSignal.state == "to_validate",
+                    decision["reason_code"].as_string() == "subject_unresolved",
+                    failed,
+                    due,
+                )
+                .order_by(CtemSignal.updated_at)
+                .limit(max(1, int(batch)))
+            )
+        ).scalars()
+    )
+    return await _decide_again(db, rows, now=at, isolate=True)
 
 
 async def recheck_parked(
