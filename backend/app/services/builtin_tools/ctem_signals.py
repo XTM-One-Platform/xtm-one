@@ -35,7 +35,12 @@ from app.tools.base import CallableToolExecutor, ToolDefinition
 
 from ._shared import logger
 
-CTEM_SIGNAL_TOOL_NAMES: tuple[str, ...] = ("record_ctem_signal", "record_ctem_signals", "list_ctem_signals")
+CTEM_SIGNAL_TOOL_NAMES: tuple[str, ...] = (
+    "record_ctem_signal",
+    "record_ctem_signals",
+    "list_ctem_signals",
+    "list_ctem_signal_sources",
+)
 #: Rows one ``record_ctem_signals`` call takes; a sweep pages above it.
 MAX_BULK_SIGNALS = 100
 _SOURCE = "builtin:ctem_signals"
@@ -97,6 +102,54 @@ def _since(value: str) -> datetime | None:
 
 def _dump(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def source_state(source: dict[str, Any]) -> str:
+    """One source's state word as the Signal sources page reads it (#2637): ``error`` first, then ``on``,
+    ``not_used_here``, ``off``, ``not_configured``, ``not_set_up``, else ``not_connected``."""
+    if source.get("error_count"):
+        return "error"
+    if source.get("bound"):
+        return "on"
+    if source.get("excluded"):
+        return "not_used_here"
+    if source.get("off"):
+        return "off"
+    if source.get("not_configured"):
+        return "not_configured"
+    if source.get("not_set_up"):
+        return "not_set_up"
+    return "not_connected"
+
+
+def signal_sources_report(bound: Any, trigger_path: str = "") -> dict[str, Any]:
+    """Every trigger path with its status and its sources' state, each error with its reason, last
+    attempt and fix (#2637): the same status and text the Signal sources page reads. Pure."""
+    from app.services.ctem_signal_sources import PATH_SOURCES, path_sources, path_status
+
+    paths: list[dict[str, Any]] = []
+    for path in PATH_SOURCES:
+        if trigger_path and path != trigger_path:
+            continue
+        sources = path_sources(path, bound)
+        paths.append(
+            {
+                "path": path,
+                "status": path_status(sources),
+                "sources_in_error": sum(int(s.get("error_count") or 0) for s in sources),
+                "sources": [
+                    {
+                        "key": s["key"],
+                        "provider": s["provider"],
+                        "kind": s["kind"],
+                        "state": source_state(s),
+                        **({"errors": s["errors"]} if s.get("errors") else {}),
+                    }
+                    for s in sources
+                ],
+            }
+        )
+    return {"paths": paths}
 
 
 async def reader_scope(db: Any, user_id: uuid.UUID, *, agent_reach: bool = True) -> tuple[bool, dict[str, Any]]:
@@ -447,10 +500,27 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
             logger.warning("CTEM signal list failed", exc_info=True)
             return "Error: the signals could not be read right now. Say so; do not guess them."
 
+    async def _list_sources(trigger_path: str = "") -> str:
+        from app.core.database import async_session
+        from app.services.ctem_signal_sources import PATH_SOURCES, bound_sources
+
+        if scope is None:
+            return "No user: there are no signal sources to read."
+        if trigger_path and trigger_path not in PATH_SOURCES:
+            return f"Refused: trigger_path is one of {', '.join(PATH_SOURCES)}."
+        try:
+            async with async_session() as db:
+                bound = await bound_sources(db, scope)
+            return _dump(signal_sources_report(bound, trigger_path))
+        except Exception:
+            logger.warning("CTEM signal sources list failed", exc_info=True)
+            return "Error: the signal sources could not be read right now. Say so; do not guess their state."
+
     executor = CallableToolExecutor()
     executor.register("record_ctem_signal", _record)
     executor.register("record_ctem_signals", _record_many)
     executor.register("list_ctem_signals", _list)
+    executor.register("list_ctem_signal_sources", _list_sources)
     path_enum = {"type": "string", "enum": list(TRIGGER_PATHS)}
     lens_enum = {"type": "string", "enum": list(LENSES)}
     definitions = [
@@ -506,6 +576,19 @@ def build_ctem_signal_tools(*, user_id: str) -> tuple[list[ToolDefinition], Call
                     "source_provider": {"type": "string"},
                     "since": {"type": "string", "description": "ISO-8601, on last seen."},
                 },
+                "required": [],
+            },
+            source=_SOURCE,
+        ),
+        ToolDefinition(
+            name="list_ctem_signal_sources",
+            description=(
+                "The trigger paths with their status and each source's state; a source in error carries "
+                "its reason, last attempt and fix, as the Signal sources page shows them."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {"trigger_path": path_enum},
                 "required": [],
             },
             source=_SOURCE,

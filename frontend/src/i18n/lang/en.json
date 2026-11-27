@@ -22163,5 +22163,6 @@
   "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.": "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.",
   "Reading OpenCTI...": "Reading OpenCTI...",
   "No OpenCTI integration has a Signals source on.": "No OpenCTI integration has a Signals source on.",
-  "Remove {count, plural, one {# object} other {# objects}}": "Remove {count, plural, one {# object} other {# objects}}"
+  "Remove {count, plural, one {# object} other {# objects}}": "Remove {count, plural, one {# object} other {# objects}}",
+  "Last attempt {time}.": "Last attempt {time}."
 }

@@ -141,7 +141,9 @@ from app.services.builtin_tool_groups import schema_chars
 #: get_platform_health in the health_orchestrator group (#2199): +433, total 493,833 on 25 Nov 2026.
 #: Raised to 494,700 for update_organization_sync in the organization_context group (partial
 #: update of a sync, opt-in and administrator-only, +~650 on 25 Nov 2026).
-TOTAL_SCHEMA_CHARS_CEILING = 494_700
+#: Raised to 495,300 for list_ctem_signal_sources in the ctem group (#2637: the sources' status,
+#: errors and fixes for an agent, +~550, opt-in on the agent, 27 Nov 2026).
+TOTAL_SCHEMA_CHARS_CEILING = 495_300
 
 #: Ceilings of the groups that carry one of their own (group id -> characters);
 #: generate_presentation, platform and coordination since the chat-reactivity

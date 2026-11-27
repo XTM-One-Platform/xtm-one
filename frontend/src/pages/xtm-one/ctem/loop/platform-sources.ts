@@ -26,6 +26,7 @@ export const PLATFORM_SOURCE_STATUS_LABEL = {
   off: "Off",
   connected: "Connected",
   error: "Error",
+  not_configured: "Not configured",
 } as const satisfies Record<CtemPlatformSourceStatus, string>;
 
 /** Connected reads healthy, an error reads critical, off is neutral. */
@@ -33,6 +34,7 @@ export const PLATFORM_SOURCE_STATUS_TONE = {
   off: "neutral",
   connected: "low",
   error: "critical",
+  not_configured: "neutral",
 } as const satisfies Record<CtemPlatformSourceStatus, "low" | "critical" | "neutral">;
 
 /** Each reason in words, its parameters in braces. @i18n-keys */
@@ -63,6 +65,26 @@ export function platformSourceReason(
     detail: "",
     ...(source.reason_params ?? {}),
   });
+}
+
+/**
+ * The text of a source in error on a path (#2637): per integration, its reason with its fix (each reason
+ * sentence says what to do) and when it was last tried; empty when the path answer carries no error.
+ * Read from the path answer, so a reader who cannot list the platform sources still reads why.
+ */
+export function sourceErrorText(
+  source: Pick<CtemSignalPathSource, "errors">,
+  t_i18n: Translate,
+  formatTime: (iso: string) => string,
+): string {
+  return (source.errors ?? [])
+    .map((e) => {
+      const reason = platformSourceReason(e, t_i18n) ?? "";
+      const when = e.last_attempt_at ? t_i18n("Last attempt {time}.", { time: formatTime(e.last_attempt_at) }) : "";
+      return [reason, when].filter(Boolean).join(" ");
+    })
+    .filter(Boolean)
+    .join(" ");
 }
 
 /**

@@ -61,7 +61,7 @@ import {
 } from "@/lib/organization-profile";
 import { cn } from "@/lib/utils";
 import { PlatformSourceControls, PlatformSourceEnableDialog, RunAsName } from "./PlatformSourceControls";
-import { isProvisioned, platformSourceReason } from "./platform-sources";
+import { isProvisioned, platformSourceReason, sourceErrorText } from "./platform-sources";
 import { PirSelection } from "./PirSelection";
 import { WebhookSourceDialog } from "./WebhookSourceDialog";
 import {
@@ -258,7 +258,7 @@ interface SourceTableRow {
 }
 
 /** The sort order of the states: what needs a look first. */
-const STATE_RANK: Record<SourceState, number> = { error: 0, bound: 1, off: 2, not_set_up: 3, excluded: 4, not_connected: 5 };
+const STATE_RANK: Record<SourceState, number> = { error: 0, bound: 1, off: 2, not_configured: 3, not_set_up: 3, excluded: 4, not_connected: 5 };
 
 function stateLabel(state: SourceState): string {
   return sourceStateIcon(state)?.label ?? "Not connected";
@@ -281,12 +281,15 @@ function runAsUsers(source: CtemSignalPathSource, platform: readonly CtemPlatfor
 
 /** The status of a row: the one state word of the path list (A4), with the reason of an error in its tooltip. */
 function SourceStatus({ row, platformSources }: { row: SourceTableRow; platformSources: readonly CtemPlatformSource[] }) {
-  const { t_i18n } = useFormatter();
+  const { t_i18n, intl } = useFormatter();
+  const formatTime = (iso: string) => intl.formatDate(iso, { dateStyle: "medium", timeStyle: "short" });
   const icon = sourceStateIcon(row.state);
   const reasons = ownLines(row.source, platformSources)
     .map((s) => platformSourceReason(s, t_i18n))
     .filter(Boolean);
-  const reason = row.source.last_error ?? (reasons.length > 0 ? reasons.join(" ") : null);
+  // The path answer carries each error with its last attempt (#2637): a reader without the platform list reads it too.
+  const fromPath = row.state === "error" ? sourceErrorText(row.source, t_i18n, formatTime) : "";
+  const reason = row.source.last_error ?? (fromPath || (reasons.length > 0 ? reasons.join(" ") : null));
   const word = (
     <span className="flex min-w-0 items-center gap-1" data-testid="ctem-path-source-state">
       {icon && <Icon name={icon.icon} size={16} className={cn("shrink-0", icon.className)} aria-hidden />}
