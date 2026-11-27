@@ -34,7 +34,19 @@ describe("SignalsPurgeAction", () => {
   beforeEach(() => {
     state.isAdmin = true;
     state.started = [];
-    state.info = { counts: { signals: 4400, cases: 37 }, confirm_word: "PURGE", job: null };
+    state.info = {
+      counts: { signals: 4400, cases: 37 },
+      confirm_word: "PURGE",
+      resync_routes: [
+        { key: "vulnerability", group: "world", label: "Vulnerabilities", default: 7, windowed: true },
+        { key: "intrusion_set", group: "world", label: "Intrusion sets", default: 30, windowed: true },
+        { key: "aikido", group: "inside", label: "Aikido open issues", default: null, windowed: true },
+        { key: "gitlab", group: "inside", label: "GitLab dependency findings", default: null, windowed: false, note: "Recorded by the GitLab asset sync" },
+        { key: "attack_surface", group: "pass", label: "Attack surface pass", default: null, windowed: false },
+      ],
+      resync_max_days: 365,
+      job: null,
+    };
   });
 
   it("is not drawn for a non-administrator", () => {
@@ -55,14 +67,86 @@ describe("SignalsPurgeAction", () => {
     expect(screen.getByRole("button", { name: "Purge" })).toHaveProperty("disabled", true);
   });
 
-  it("starts the purge with the resync choice once the code is typed back", () => {
+  // #2578: the resync shows one window per route, its default filled in, and sends what is chosen.
+  it("starts the purge with the resync and the chosen windows once the code is typed back", () => {
+    renderWithProviders(<SignalsPurgeAction />);
+    fireEvent.click(screen.getByTestId("ctem-signals-purge"));
+    expect(screen.queryByTestId("ctem-signals-purge-windows")).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Resync signals from sources after the purge" }));
+    const vulns = screen.getByRole("textbox", { name: "Vulnerabilities" }) as HTMLInputElement;
+    expect(vulns.value).toBe("7");
+    expect((screen.getByRole("textbox", { name: "Aikido open issues" }) as HTMLInputElement).value).toBe("");
+    expect(screen.getByTestId("ctem-signals-purge-window-attack_surface").textContent).toContain("Runs once");
+    // A route the resync does not read is a read-only line with its reason, never a field (UX round 1 of #2590, B3).
+    expect(screen.queryByRole("textbox", { name: "GitLab dependency findings" })).toBeNull();
+    expect(screen.getByTestId("ctem-signals-purge-window-gitlab").textContent).toContain("Recorded by the GitLab asset sync");
+    fireEvent.change(vulns, { target: { value: "3" } });
+    const code = screen.getByTestId("confirm-challenge-code").textContent ?? "";
+    fireEvent.change(screen.getByRole("textbox", { name: "To confirm, type the code below:" }), { target: { value: code } });
+    fireEvent.click(screen.getByRole("button", { name: "Purge" }));
+    expect(state.started).toEqual([
+      { confirm: "PURGE", resync: true, resync_windows: { vulnerability: 3, intrusion_set: 30, aikido: null } },
+    ]);
+  });
+
+  it("keeps the purge disabled while a window is out of range", () => {
     renderWithProviders(<SignalsPurgeAction />);
     fireEvent.click(screen.getByTestId("ctem-signals-purge"));
     fireEvent.click(screen.getByRole("checkbox", { name: "Resync signals from sources after the purge" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Vulnerabilities" }), { target: { value: "0" } });
     const code = screen.getByTestId("confirm-challenge-code").textContent ?? "";
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: code } });
+    fireEvent.change(screen.getByRole("textbox", { name: "To confirm, type the code below:" }), { target: { value: code } });
+    // The message sits under the invalid field itself, visible and tied to it (UX round 1 of #2590, B2).
+    const field = screen.getByRole("textbox", { name: "Vulnerabilities" });
+    const error = screen.getByRole("alert");
+    expect(error.textContent).toContain("Enter a whole number from 1 to 365");
+    expect(field.getAttribute("aria-describedby")).toBe(error.id);
+    // One message, under the field: no second copy hidden at the bottom of the list.
+    expect(screen.getAllByText("Enter a whole number from 1 to 365")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Purge" })).toHaveProperty("disabled", true);
+  });
+
+  it("lists what the resync read and recorded on each route once the job ends", () => {
+    const done = { state: "done", counts: {} };
+    state.info = {
+      ...state.info,
+      job: {
+        id: "j1",
+        state: "done",
+        resync: true,
+        step: "resume",
+        steps: {
+          pause: done,
+          purge: done,
+          resync: {
+            state: "done",
+            counts: {
+              routes: {
+                vulnerability: { window_days: 7, read: 5000, recorded: 40, capped: true },
+                aikido: { window_days: null, read: 0, recorded: 0, skipped: "no Aikido integration" },
+                intrusion_set: { window_days: 30, read: 2, recorded: 0, errors: ["OpenCTI: timeout"] },
+              },
+            },
+          },
+          resume: done,
+        },
+        error: null,
+        started_at: "2026-11-27T08:00:00Z",
+        finished_at: "2026-11-27T08:10:00Z",
+      },
+    };
+    renderWithProviders(<SignalsPurgeAction />);
+    fireEvent.click(screen.getByTestId("ctem-signals-purge"));
+    const code = screen.getByTestId("confirm-challenge-code").textContent ?? "";
+    fireEvent.change(screen.getByRole("textbox", { name: "To confirm, type the code below:" }), { target: { value: code } });
     fireEvent.click(screen.getByRole("button", { name: "Purge" }));
-    expect(state.started).toEqual([{ confirm: "PURGE", resync: true }]);
+    const result = screen.getByTestId("ctem-signals-purge-result");
+    expect(screen.getByTestId("ctem-signals-purge-result-vulnerability").textContent).toContain("5000 read, 40 recorded");
+    expect(screen.getByTestId("ctem-signals-purge-result-vulnerability").textContent).toContain("Stopped at the read limit");
+    expect(screen.getByTestId("ctem-signals-purge-result-aikido").getAttribute("data-kind")).toBe("skipped");
+    expect(screen.getByTestId("ctem-signals-purge-result-aikido").textContent).toContain("no Aikido integration");
+    expect(screen.getByTestId("ctem-signals-purge-result-intrusion_set").getAttribute("data-kind")).toBe("error");
+    expect(result.textContent).toContain("Intrusion sets");
   });
 
   // #2539: a job whose process restarted is read back interrupted (failed): a new purge can start.
