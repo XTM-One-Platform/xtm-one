@@ -19,6 +19,7 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
+from prometheus_client import Gauge
 from sqlalchemy import delete, select, update
 
 from app.core.utils import format_exception_message
@@ -54,19 +55,60 @@ async def accept(
 async def record(
     provider: str, integration_id: str, event_key: str, payload: dict[str, Any], *, verified: bool
 ) -> bool:
-    """What the webhook used to do inline: hand one delivery to its recorders. ``True`` when a signal was recorded."""
+    """What the webhook used to do inline: hand one delivery to its recorders. ``True`` when a signal was recorded.
+
+    #2584: the signal is recorded on the intake engine (``database.intake_session``), its own
+    connection budget, so draining an OpenCTI catch-up never takes the web pool the UI waits on.
+    """
+    from app.core.database import intake_session
     from app.services import ctem_analyst_mark, ctem_openaev_events, ctem_signal_listeners
 
     if provider == "openaev":
         await ctem_openaev_events.stamp_reachability_assertion(
             event_key, payload, integration_id=str(integration_id), verified=verified
         )
-    recorded = await ctem_signal_listeners.note_event(provider, event_key, payload, verified=verified)
+    recorded = await ctem_signal_listeners.note_event(
+        provider, event_key, payload, verified=verified, session_factory=intake_session
+    )
     if provider == "opencti":
         await ctem_analyst_mark.note_event(provider, payload, verified=verified)
     if provider == "openaev":
         await ctem_openaev_events.note_event(event_key, payload, verified=verified)
     return bool(recorded)
+
+
+def _object_key(provider: str, integration_id: str, event_key: str, payload: Any) -> str | None:
+    """The key repeated updates of one OpenCTI object share; ``None`` for a delivery never folded."""
+    if provider != "opencti" or "delete" in (event_key or "").casefold() or not isinstance(payload, Mapping):
+        return None
+    from app.services.ctem_signal_listeners import opencti_internal_id
+
+    data = payload.get("data")
+    object_id = opencti_internal_id(data) if isinstance(data, Mapping) else ""
+    return f"{integration_id}:{event_key}:{object_id}" if object_id else None
+
+
+def coalesce(batch: list[tuple[Any, ...]]) -> tuple[list[tuple[Any, ...]], list[Any]]:
+    """Fold repeated updates of one OpenCTI object into the latest one (#2584). Pure.
+
+    *batch* is oldest first; the latest delivery of each object keeps its place, the earlier
+    ones are returned apart (their row ids), recorded never: during a catch-up OpenCTI sends one
+    update per field written, and only the object as last delivered matters. A delete, an
+    OpenAEV or OpenCRQ delivery, or one without an object id is never folded.
+    """
+    latest: dict[str, int] = {}
+    for index, row in enumerate(batch):
+        key = _object_key(row[1], row[2], row[3], row[4])
+        if key is not None:
+            latest[key] = index
+    kept, folded = [], []
+    for index, row in enumerate(batch):
+        key = _object_key(row[1], row[2], row[3], row[4])
+        if key is None or latest[key] == index:
+            kept.append(row)
+        else:
+            folded.append(row[0])
+    return kept, folded
 
 
 async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
@@ -79,7 +121,7 @@ async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
     from app.core.database import async_session
     from app.models.ctem_signal_inbox import CtemSignalInbox
 
-    counts = {"recorded": 0, "retried": 0, "dropped": 0}
+    counts = {"recorded": 0, "retried": 0, "dropped": 0, "coalesced": 0}
     async with async_session() as db:
         rows = (
             (
@@ -105,6 +147,10 @@ async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
             update(CtemSignalInbox).where(CtemSignalInbox.id.in_(ids)).values(attempts=CtemSignalInbox.attempts + 1)
         )
         await db.commit()
+    batch, folded = coalesce(batch)
+    for row_id in folded:
+        await _delete(row_id)
+    counts["coalesced"] = len(folded)
     for row_id, provider, integration_id, event_key, payload, verified, attempts in batch:
         try:
             await record(provider, integration_id, event_key, payload or {}, verified=verified)
@@ -126,6 +172,28 @@ async def drain(limit: int = DRAIN_BATCH) -> dict[str, int]:
         counts["recorded"] += 1
         await _delete(row_id)
     return counts
+
+
+QUEUE_DEPTH_GAUGE = Gauge(
+    "xtmone_ctem_signal_inbox_depth",
+    "Verified signal source deliveries accepted and waiting to be recorded (#2584)",
+)
+
+
+async def depth() -> int | None:
+    """Deliveries waiting in the inbox (sets the gauge); ``None`` when the database cannot be read."""
+    from sqlalchemy import func
+
+    from app.core.database import intake_session
+    from app.models.ctem_signal_inbox import CtemSignalInbox
+
+    try:
+        async with intake_session() as db:
+            value = int((await db.execute(select(func.count()).select_from(CtemSignalInbox))).scalar_one())
+    except Exception:
+        return None
+    QUEUE_DEPTH_GAUGE.set(value)
+    return value
 
 
 async def _delete(row_id: Any) -> None:

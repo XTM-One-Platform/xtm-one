@@ -42,7 +42,10 @@ def test_the_signal_source_webhook_queues_instead_of_recording() -> None:
 async def test_record_hands_a_delivery_to_its_recorders(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 
-    async def listeners(provider, event_key, payload, *, verified):
+    async def listeners(provider, event_key, payload, *, verified, session_factory=None):
+        from app.core.database import intake_session
+
+        assert session_factory is intake_session  # #2584: never the web pool
         calls.append(f"signal:{provider}")
         return True
 
@@ -123,7 +126,7 @@ async def test_drain_records_deletes_retries_and_drops(monkeypatch: pytest.Monke
     monkeypatch.setattr(inbox, "_delete", delete)
 
     counts = await inbox.drain()
-    assert counts == {"recorded": 1, "retried": 1, "dropped": 1}
+    assert counts == {"recorded": 1, "retried": 1, "dropped": 1, "coalesced": 0}
     assert deleted == [ok.id, last.id]  # the retried one stays for the next tick
 
 
