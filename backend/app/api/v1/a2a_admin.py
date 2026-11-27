@@ -86,6 +86,10 @@ class ExposureStatus(BaseModel):
     # exposed agent's home fleet, its health, its work items and the running
     # build. Off by default; read at each partner call.
     partner_fleet_reads: bool = False
+    # The opt-in of #2638: a partner's task on this exposure reads fleets,
+    # fleet health and runs with the owner's read scope, and the running
+    # build; writes stay refused, each read is audited. Off by default.
+    partner_owner_reads: bool = False
     # Entra federation state is deliberately NOT part of this status: the
     # opt-in is an ``entra_a2a`` integration bound through the agent's
     # ordinary integration_bindings (Tools tab), so the agent configuration
@@ -126,6 +130,7 @@ async def _status_of(
         client_id=client_id,
         token_url=token_url(external_base(request)),
         partner_fleet_reads=bool(getattr(exposure, "partner_fleet_reads", False)),
+        partner_owner_reads=bool(getattr(exposure, "partner_owner_reads", False)),
     )
 
 
@@ -179,5 +184,43 @@ async def set_partner_fleet_reads(
     if exposure is None:
         raise HTTPException(status_code=404, detail="Agent not exposed")
     exposure.partner_fleet_reads = body.enabled
+    await db.commit()
+    return await _status_of(request, db, exposure)
+
+
+@router.put("/partner-owner-reads", response_model=ExposureStatus)
+async def set_partner_owner_reads(
+    agent_id: uuid.UUID,
+    body: PartnerFleetReadsUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ExposureStatus:
+    """Switch the #2638 opt-in on the agent's live exposure.
+
+    Same authority, the same 404s and the same per-call reading as the #2202
+    switch above; the change itself is audited, naming who flipped it.
+    """
+    from app.services.audit import log_audit
+
+    agent = await _load_agent(db, agent_id)
+    if not await user_can_expose(db, user, agent):
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    exposure = await get_live_exposure(db, agent.id)
+    if exposure is None:
+        raise HTTPException(status_code=404, detail="Agent not exposed")
+    exposure.partner_owner_reads = body.enabled
+    await log_audit(
+        db,
+        user=user,
+        action="update",
+        entity_type="agent",
+        entity_id=agent.id,
+        entity_name=agent.name,
+        summary=f"A2A partner owner reads {'on' if body.enabled else 'off'}",
+        details={"exposure_id": str(exposure.id), "partner_owner_reads": body.enabled},
+        request=request,
+    )
     await db.commit()
     return await _status_of(request, db, exposure)

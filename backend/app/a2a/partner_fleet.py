@@ -25,6 +25,11 @@ of the exposed agent.
 The opt-in and the home fleet are read at every call, never cached on the
 task: switching the exposure off, revoking it or moving the agent narrows the
 next call of a task already running. Off (the default) every call refuses.
+
+The wider opt-in of #2638 (``partner_owner_reads``, ``a2a.partner_owner_reads``)
+lends the same three reads with the owner's read scope: every fleet the
+run-as identity reads, each call audited with the partner task named. It wins
+over the home-fleet scope when both are on; writes stay unregistered either way.
 """
 
 from __future__ import annotations
@@ -111,8 +116,22 @@ def scope_fleet_tools_to_partner(
     for name in list(executor.tool_names):
         if name not in PARTNER_FLEET_TOOL_NAMES:
             executor.unregister(name)
+    list_fleets = executor.handler("list_fleets")
     get_fleet = executor.handler("get_fleet")
     get_health = executor.handler("get_fleet_health")
+
+    async def _owner(tool: str, target: str = "") -> bool:
+        """Whether the #2638 opt-in lends this call the owner's scope; audits it when it does."""
+        from app.a2a.partner_owner_reads import audit_partner_read, partner_owner_id
+
+        partner = current_partner()
+        if partner is None:
+            return False
+        owner = await partner_owner_id(partner)
+        if owner is None:
+            return False
+        await audit_partner_read(partner, owner, tool, target)
+        return True
 
     async def _home() -> uuid.UUID | str:
         partner = current_partner()
@@ -126,6 +145,12 @@ def scope_fleet_tools_to_partner(
         return f"Fleet `{fleet_id}` not found or you don't have access."
 
     async def _list_fleets(include_archived: object = False) -> Any:
+        if list_fleets is not None and await _owner("list_fleets"):
+            from app.a2a.partner_owner_reads import running_build_line
+
+            text = await list_fleets(include_archived=include_archived)
+            body = text.content if isinstance(text, ToolResult) else str(text)
+            return "\n".join([body, running_build_line()])
         home = await _home()
         if not isinstance(home, uuid.UUID):
             return home
@@ -136,6 +161,8 @@ def scope_fleet_tools_to_partner(
         return "\n".join(["1 fleet readable from this task:", body, _running_build_line()])
 
     async def _get_fleet(fleet_id: str) -> Any:
+        if get_fleet is not None and await _owner("get_fleet", str(fleet_id)):
+            return await get_fleet(fleet_id=fleet_id)
         home = await _home()
         if not isinstance(home, uuid.UUID):
             return home
@@ -144,6 +171,9 @@ def scope_fleet_tools_to_partner(
         return await get_fleet(fleet_id=str(home))
 
     async def _get_fleet_health(fleet_id: str, apply_safe_fixes: bool = False) -> Any:
+        if get_health is not None and await _owner("get_fleet_health", str(fleet_id)):
+            # A read: a partner never applies a fix, whatever it asks.
+            return await get_health(fleet_id=fleet_id, apply_safe_fixes=False)
         home = await _home()
         if not isinstance(home, uuid.UUID):
             return home
