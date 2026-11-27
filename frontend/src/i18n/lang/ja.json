@@ -21908,6 +21908,7 @@
   "Only the people and groups below can see this. Access to a built-in agent cannot be changed.": "以下のユーザーとグループのみが閲覧できます。組み込みエージェントのアクセスは変更できません。",
   "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.": "プラットフォームのすべてのユーザーに表示されます。組み込みエージェントのアクセスは制限できません。",
   "Partners read this agent's fleet": "パートナーがこのエージェントのフリートを読み取る",
+  "Partners read fleets and runs as the owner": "パートナーが所有者としてフリートと実行を読み取る",
   "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "パートナーのタスクは、このエージェントのホームフリート、その健全性、作業項目、稼働中のビルドも読み取ります。他のフリートは読み取らず、書き込みも行いません。",
   "Could not change the partner fleet reads": "パートナーのフリート読み取りを変更できませんでした",
   "Defender XDR alert raised": "Defender XDR アラートの発生",
@@ -22163,5 +22164,6 @@
   "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.": "旧 Threat response オートメーションが OpenCTI に残したトリガー、プレイブック、通知先です。Signals ソースが置き換えます。それ以外は変更しません。",
   "Reading OpenCTI...": "OpenCTI を読み込み中...",
   "No OpenCTI integration has a Signals source on.": "Signals ソースがオンの OpenCTI 連携はありません。",
-  "Remove {count, plural, one {# object} other {# objects}}": "{count, plural, other {# 件のオブジェクトを削除}}"
+  "Remove {count, plural, one {# object} other {# objects}}": "{count, plural, other {# 件のオブジェクトを削除}}",
+  "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.": "パートナーのタスクは、所有者が読み取れるフリート、フリートの状態、実行、および稼働中のビルドを読み取ります。書き込みは一切行わず、各読み取りはパートナーのタスクとともに監査されます。"
 }
