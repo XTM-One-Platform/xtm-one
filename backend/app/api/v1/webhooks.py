@@ -163,7 +163,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, NoReturn
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import String, cast, literal, select, union_all
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -4808,6 +4808,7 @@ async def receive_signal_source_webhook(
     integration_id: str,
     source_id: str,
     request: Request,
+    response: Response,
 ) -> dict:
     """Receive a delivery of a platform signal source (#2434): records the signal, starts no run.
 
@@ -4820,17 +4821,15 @@ async def receive_signal_source_webhook(
     cases an OpenAEV result concerns (``ctem_openaev_events.note_event``);
     fleets subscribe through ``ctem_signal.recorded``. A source that is off or
     unknown is ignored, so disabling it stops its deliveries at once.
+
+    #2584: a verified delivery is queued (``ctem_signal_intake``) and answered
+    202 at once; the intake's drain records it on its own connection budget,
+    so an OpenCTI catch-up never holds the web pool. A verified delivery is
+    never throttled: the per-source limit applies to an unsigned one only.
     """
     source_uuid = safe_uuid(source_id)
     if not is_valid_uuid(integration_id) or source_uuid is None:
         return {"status": "ignored", "reason": "invalid integration or source id"}
-    await enforce_rate_limit(
-        request,
-        "webhook-signal-source",
-        limit=_webhook_requests_per_minute(),
-        window_seconds=60,
-        bucket=str(source_uuid),
-    )
     body = await request.body()
     from app.models.ctem_signal_source import CtemSignalSource
 
@@ -4848,6 +4847,15 @@ async def receive_signal_source_webhook(
     context = f"integration={integration_id} signal_source={source_id}"
     _try_verify_webhook_signature(body, integration.extra_config_enc, request, context=context)
     _verify_opencti_token_header(integration.extra_config_enc, request, context=context)
+    verified = _signed_with_webhook_secret(integration.extra_config_enc)
+    if not verified:
+        await enforce_rate_limit(
+            request,
+            "webhook-signal-source",
+            limit=_webhook_requests_per_minute(),
+            window_seconds=60,
+            bucket=str(source_uuid),
+        )
     if not source.enabled:
         return {"status": "ignored", "reason": "signal source is off"}
     is_duplicate, cached_response, dedup_key = await _claim_webhook_dedup_slot(
@@ -4867,16 +4875,22 @@ async def receive_signal_source_webhook(
             _normalize_opencti_payload(payload)
         elif provider == "openaev":
             event_key = _normalize_openaev_payload(payload) or event_key
-        verified = _signed_with_webhook_secret(integration.extra_config_enc)
-        if provider == "openaev":
-            await ctem_openaev_events.stamp_reachability_assertion(
-                event_key, payload, integration_id=str(integration_id), verified=verified
-            )
-        recorded = await ctem_signal_listeners.note_event(provider, event_key, payload, verified=verified)
-        if provider == "opencti":
-            await ctem_analyst_mark.note_event(provider, payload, verified=verified)
-        if provider == "openaev":
-            await ctem_openaev_events.note_event(event_key, payload, verified=verified)
+        from app.services import ctem_signal_intake
+
+        delivery = ctem_signal_intake.Delivery(
+            provider=provider,
+            event_key=event_key,
+            payload=payload,
+            verified=verified,
+            integration_id=str(integration_id),
+            source_id=str(source_uuid),
+        )
+        # An unsigned delivery records nothing (note_event refuses it): no queue entry for it.
+        if verified and await ctem_signal_intake.enqueue(delivery):
+            response.status_code = status.HTTP_202_ACCEPTED
+            return await _finalize_dedup(dedup_key, {"status": "queued", "event_key": event_key, "recorded": False})
+        # Redis unreachable (the dedup and the throttle fail open too): recorded inline as before.
+        recorded = await ctem_signal_intake.record(delivery)
     except Exception:
         await _release_webhook_dedup_slot(dedup_key)
         raise

@@ -329,6 +329,8 @@ _cut_turn_sweep_task: asyncio.Task | None = None
 # Dispatches a work item to its inbox when it becomes dispatchable: every
 # worker listens, one pass at a time across them, the scheduler tick as backstop.
 _work_item_wake_task: asyncio.Task | None = None
+# Records the queued platform signal source deliveries (#2584) on the intake's own pool.
+_signal_intake_task: asyncio.Task | None = None
 _ann_index_task: asyncio.Task | None = None
 _a2a_reaper_task: asyncio.Task | None = None
 _a2a_client_sweep_task: asyncio.Task | None = None
@@ -2055,7 +2057,7 @@ async def _do_all_startup_work() -> None:
     try/except so errors are caught without killing the process.
     """
     global _scheduler_task, _ann_index_task, _a2a_reaper_task, _a2a_client_sweep_task
-    global _a2a_owed_cancel_task, _cut_turn_sweep_task, _work_item_wake_task
+    global _a2a_owed_cancel_task, _cut_turn_sweep_task, _work_item_wake_task, _signal_intake_task
     global _branding_refresh_task, _security_options_refresh_task
 
     from app.core.database import async_session
@@ -2207,6 +2209,10 @@ async def _do_all_startup_work() -> None:
     from app.services.work_item_dispatch_wake import run_wake_loop
 
     _work_item_wake_task = asyncio.create_task(run_wake_loop(), name="work-item-dispatch-wake")
+
+    from app.services.ctem_signal_intake import run_drain_loop
+
+    _signal_intake_task = asyncio.create_task(run_drain_loop(), name="ctem-signal-intake")
 
     # The core startup path is complete at this point (migrations, bootstrap,
     # dispatcher, storage probe, scheduler). Mark the pod ready now so a
@@ -2435,7 +2441,7 @@ async def lifespan(app: FastAPI):
     # rebound names do.
     global _startup_error, _startup_retrying, _scheduler_task, _ann_index_task, _a2a_reaper_task
     global _a2a_client_sweep_task, _a2a_owed_cancel_task, _branding_refresh_task
-    global _security_options_refresh_task, _cut_turn_sweep_task, _work_item_wake_task
+    global _security_options_refresh_task, _cut_turn_sweep_task, _work_item_wake_task, _signal_intake_task
 
     # Install the asyncio exception handler on uvicorn's running loop so
     # routine WebSocket keepalive-ping-timeout exceptions are demoted from
@@ -2537,6 +2543,7 @@ async def lifespan(app: FastAPI):
     _scheduler_task = None
     _cut_turn_sweep_task = None
     _work_item_wake_task = None
+    _signal_intake_task = None
     _ann_index_task = None
     _a2a_reaper_task = None
     _a2a_client_sweep_task = None
@@ -2622,6 +2629,13 @@ async def lifespan(app: FastAPI):
         _work_item_wake_task.cancel()
         with suppress(asyncio.CancelledError):
             _ = await _work_item_wake_task
+
+    # A delivery being recorded when the drain is cancelled is lost from the queue; the
+    # deliveries still queued stay in Redis for the next process.
+    if _signal_intake_task is not None:
+        _signal_intake_task.cancel()
+        with suppress(asyncio.CancelledError):
+            _ = await _signal_intake_task
 
     if _a2a_reaper_task is not None:
         _a2a_reaper_task.cancel()

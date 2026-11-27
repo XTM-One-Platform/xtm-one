@@ -466,6 +466,29 @@ def _on_checkin(dbapi_conn, connection_record):
 
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+#: The queued signal intake's own engine (#2584): an OpenCTI catch-up records its signals on
+#: this budget (``CTEM_SIGNAL_INTAKE_DB_POOL_SIZE``), never on the web pool the UI waits on.
+_intake_sessionmaker: Any = None
+
+
+def intake_session() -> AsyncSession:
+    """A session on the intake engine, created on first use: no overflow, the drain waits instead."""
+    global _intake_sessionmaker
+    if _intake_sessionmaker is None:
+        intake_engine = create_async_engine(
+            settings.database_url,
+            json_serializer=json_serializer,
+            json_deserializer=json_deserializer,
+            pool_size=max(1, settings.ctem_signal_intake_db_pool_size),
+            max_overflow=0,
+            pool_timeout=settings.db_pool_timeout,
+            pool_recycle=settings.db_pool_recycle,
+            pool_pre_ping=settings.db_pool_pre_ping,
+            connect_args=ENGINE_CONNECT_ARGS,
+        )
+        _intake_sessionmaker = async_sessionmaker(intake_engine, class_=AsyncSession, expire_on_commit=False)
+    return _intake_sessionmaker()
+
 
 class StatementScopedSession:
     """*session*, handing its connection back to the pool after every statement.

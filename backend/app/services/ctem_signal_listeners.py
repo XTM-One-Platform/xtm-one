@@ -769,13 +769,21 @@ def match(provider: str, event_key: str, payload: Mapping[str, Any]) -> tuple[Li
     return None
 
 
-async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], *, verified: bool) -> bool:
+async def note_event(
+    provider: str,
+    event_key: str,
+    payload: Mapping[str, Any],
+    *,
+    verified: bool,
+    session_factory: Any = None,
+) -> bool:
     """Record the signal a webhook delivery carries, if any; never raises. ``True`` when one was recorded.
 
     XTM One mode only, once an organization is set up, and only for a delivery
     *verified* against a configured webhook secret: the route accepts an
     unsigned delivery when no secret is set, and such a delivery is never
-    trusted with a signal.
+    trusted with a signal. *session_factory* opens the session (the queued
+    intake passes its own engine's, #2584); the web pool's by default.
     """
     from app.core.config import settings
 
@@ -800,8 +808,10 @@ async def note_event(provider: str, event_key: str, payload: Mapping[str, Any], 
     from app.services.ctem_loop_stream import publish_signal_update
     from app.services.organizations import get_primary
 
+    open_session = session_factory or async_session
+
     try:
-        async with async_session() as db:
+        async with open_session() as db:
             primary = await get_primary(db)
             if primary is None:
                 return False

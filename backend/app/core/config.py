@@ -1198,6 +1198,12 @@ class Settings(BaseSettings):
     # queue above still bounds how many of those become runs. Clamped to
     # ``>= 1`` at use time. A throttled delivery gets HTTP 429 + ``Retry-After``.
     webhook_requests_per_minute: int = 60
+    # Queued intake of the platform signal source webhook (#2584): how many
+    # deliveries each process records at once, and the connections of the
+    # intake's own engine (never the web pool). Keep the concurrency at or
+    # under the pool size: a slot waits for a connection, never overflows.
+    ctem_signal_intake_concurrency: int = 4
+    ctem_signal_intake_db_pool_size: int = 4
     # Event matching of integration-event and webhook triggers. A
     # trigger saved before exact matching existed keeps its prefix match
     # (``pull_request`` also fires on ``pull_request_review``) until a person
