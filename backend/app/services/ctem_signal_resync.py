@@ -849,11 +849,15 @@ def pass_outcome(result: Any) -> dict[str, Any]:
 
 
 async def resync_passes(sessions: Any) -> dict[str, Any]:
-    """The attack surface (paths 5, 6, 7) and evidence health (9, 12) passes, once each, now."""
-    from app.services import ctem_attack_surface, ctem_evidence_health
+    """The attack surface (paths 5, 6, 7), evidence health (9, 12) and inventory (6, #2642) passes, once each, now."""
+    from app.services import ctem_attack_surface, ctem_evidence_health, ctem_inventory_staleness
 
     out: dict[str, Any] = {}
-    for name, module in (("attack_surface", ctem_attack_surface), ("evidence_health", ctem_evidence_health)):
+    for name, module in (
+        ("attack_surface", ctem_attack_surface),
+        ("evidence_health", ctem_evidence_health),
+        ("inventory_staleness", ctem_inventory_staleness),
+    ):
         await module.release_pass_slot()
         async with sessions() as db:
             try:

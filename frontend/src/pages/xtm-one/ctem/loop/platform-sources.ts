@@ -26,6 +26,7 @@ export const PLATFORM_SOURCE_STATUS_LABEL = {
   off: "Off",
   connected: "Connected",
   error: "Error",
+  not_configured: "Not configured",
 } as const satisfies Record<CtemPlatformSourceStatus, string>;
 
 /** Connected reads healthy, an error reads critical, off is neutral. */
@@ -33,6 +34,7 @@ export const PLATFORM_SOURCE_STATUS_TONE = {
   off: "neutral",
   connected: "low",
   error: "critical",
+  not_configured: "neutral",
 } as const satisfies Record<CtemPlatformSourceStatus, "low" | "critical" | "neutral">;
 
 /** Each reason in words, its parameters in braces. @i18n-keys */
@@ -49,7 +51,46 @@ export const PLATFORM_SOURCE_REASON = {
   provider_error: "The source platform refused: {detail}",
 } as const satisfies Record<CtemPlatformSourceReasonCode, string>;
 
+/**
+ * What fixes each reason, in the reader's language (UX round 1 on #2653, B2): mirrors the backend's
+ * `ctem_platform_sources.FIX_ACTIONS`, whose English `fix` the page never renders. @i18n-keys
+ */
+export const PLATFORM_SOURCE_FIX = {
+  no_run_as: "Turn the source on again and pick the user it provisions as.",
+  run_as_inactive: "Pick another run-as user.",
+  run_as_no_integration: "Connect the integration for the run-as user, or pick a user who has it.",
+  no_webhook_secret: "Set a webhook secret on the integration.",
+  no_token: "Authorize the integration again as the run-as user.",
+  integration_not_found: "Turn the source on again on an existing integration.",
+  organization_context_missing: "Fill the missing fields in Settings > Organization.",
+  objects_not_removed: "The next check removes them again; remove them by hand in the source platform if it keeps failing.",
+  not_provisioned_yet: "Wait for the next check, or turn the source off and on again.",
+  provider_error: "Check the integration's connection and the run-as user's rights in the source platform.",
+} as const satisfies Record<CtemPlatformSourceReasonCode, string>;
+
+/** The page a fix opens when it is not this page's own switch (the routes of `FIX_ACTIONS`). */
+const SIGNALS_PAGE = "/ctem/signals";
+
 type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+/** A sentence ending with its full stop, so the next one never runs into it (B2 of #2653). */
+function sentence(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  return /[.!?。]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+/** The fix of a reason in the reader's language; `null` when there is no reason. */
+function platformSourceFix(source: { reason_code?: CtemPlatformSourceReasonCode | null }, t_i18n: Translate): string | null {
+  if (!source.reason_code) return null;
+  return t_i18n(PLATFORM_SOURCE_FIX[source.reason_code] ?? PLATFORM_SOURCE_FIX.provider_error);
+}
+
+/** Where the fix is done, when it is another page than the signal sources page itself (its switch). */
+export function platformSourceFixRoute(source: { fix_route?: string | null }): string | null {
+  const route = source.fix_route ?? "";
+  return route.startsWith("/") && route !== SIGNALS_PAGE ? route : null;
+}
 
 /** A reason in the reader's language; `null` when there is none. */
 export function platformSourceReason(
@@ -63,6 +104,42 @@ export function platformSourceReason(
     detail: "",
     ...(source.reason_params ?? {}),
   });
+}
+
+/**
+ * One line of a source's reason on one integration (UX round 1 on #2653, B1 and B2): the integration's name
+ * when known, the reason ended by its full stop, its fix in the reader's language and, when given, the last attempt.
+ */
+export function sourceReasonLine(
+  entry: Pick<CtemPlatformSource, "reason_code" | "reason_params">,
+  integration: string | null | undefined,
+  t_i18n: Translate,
+  when?: string | null,
+): string {
+  const reason = sentence(platformSourceReason(entry, t_i18n) ?? "");
+  if (!reason) return "";
+  const fix = sentence(platformSourceFix(entry, t_i18n) ?? "");
+  const text = [reason, fix && fix !== reason && !reason.includes(fix) ? fix : "", when ?? ""].filter(Boolean).join(" ");
+  return integration ? t_i18n("{integration}: {text}", { integration, text }) : text;
+}
+
+/**
+ * The lines of a source in error on a path (#2637): one per integration, named (B1 of #2653), with its reason,
+ * its fix and when it was last tried; none when the path answer carries no error. Read from the path answer,
+ * so a reader who cannot list the platform sources still reads why (without the integration's name).
+ */
+export function sourceErrorLines(
+  source: Pick<CtemSignalPathSource, "errors">,
+  names: ReadonlyMap<string, string>,
+  t_i18n: Translate,
+  formatTime: (iso: string) => string,
+): string[] {
+  return (source.errors ?? [])
+    .map((e) => {
+      const when = e.last_attempt_at ? t_i18n("Last attempt {time}.", { time: formatTime(e.last_attempt_at) }) : "";
+      return sourceReasonLine(e, names.get(e.integration_id), t_i18n, when);
+    })
+    .filter(Boolean);
 }
 
 /**
