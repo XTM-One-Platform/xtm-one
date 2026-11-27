@@ -12,7 +12,16 @@ import { renderWithProviders } from "@/testing/providers";
 import { CTEM_CASE_LIST_KEY, ctemCaseMaxCvss, ctemCasePollInterval } from "@/hooks/api/useCtemCasesApi";
 import CtemCaseDetail from "./CtemCaseDetail";
 
-const state = vi.hoisted(() => ({ notFound: false, aggregatesRestricted: false, loading: false, waitingGate: false, noCvss: false, issuesCvss: true, factsUnread: 0 }));
+const state = vi.hoisted(() => ({
+  notFound: false,
+  aggregatesRestricted: false,
+  loading: false,
+  waitingGate: false,
+  noCvss: false,
+  issuesCvss: true,
+  factsUnread: 0,
+  closed: false,
+}));
 
 vi.mock("@/hooks/api/useAuthApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api/useAuthApi")>()),
@@ -39,7 +48,8 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
             remediation_kind: "version",
             product_label: "Apache HTTP Server",
             fixed_version: "2.4.62",
-            state: state.waitingGate ? "waiting_decision" : "needs_attention",
+            state: state.closed ? "resolved" : state.waitingGate ? "waiting_decision" : "needs_attention",
+            ...(state.closed ? { resolution_kind: "closed_by_decision", open_at_source_count: 2 } : {}),
             ...(state.waitingGate
               ? {
                   gates: [
@@ -74,7 +84,7 @@ vi.mock("@/hooks/api/useCtemCasesApi", async (importOriginal) => ({
             priority: "high",
             priority_basis: "",
             issue_count: 3,
-            open_issue_count: 3,
+            open_issue_count: state.closed ? 0 : 3,
             ...(state.aggregatesRestricted
               ? {
                   restricted_count: 0,
@@ -173,6 +183,16 @@ describe("CtemCaseDetail restricted members (#11613)", () => {
     expect(screen.getAllByTestId("ctem-case-waiting-gates")).toHaveLength(1);
     expect(screen.getAllByTestId("ctem-case-waiting-gate")).toHaveLength(1);
     state.waitingGate = false;
+  });
+
+  it("counts the members of a closed case open at source apart (#2675)", () => {
+    state.notFound = false;
+    state.closed = true;
+    page();
+    expect(screen.getByText("Open at source")).toBeInTheDocument();
+    expect(screen.getByText("Case closed by decision")).toBeInTheDocument();
+    expect(screen.queryByText("Open issues")).not.toBeInTheDocument();
+    state.closed = false;
   });
 
   it("says a case whose visible issues carry no CVSS is not scored (#2630)", () => {
