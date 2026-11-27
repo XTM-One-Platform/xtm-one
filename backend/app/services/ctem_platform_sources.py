@@ -875,26 +875,34 @@ def provisioned_objects(state: Any) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
 
-    def add(kind: str, value: Any, stem: str = "") -> None:
+    def add(kind: str, value: Any, stem: str = "", path: str = "") -> None:
         if isinstance(value, str) and value and (kind, value) not in seen:
             seen.add((kind, value))
             # #2583 point 6: the name the object carries in its platform, so the row says what it holds.
-            out.append({"kind": kind, "id": value, **({"name": f"{stem} - {kind.capitalize()}"} if stem else {})})
+            out.append(
+                {
+                    "kind": kind,
+                    "id": value,
+                    **({"name": f"{stem} - {kind.capitalize()}"} if stem else {}),
+                    # #2627: the path a per-path object serves, so two links of one kind read apart.
+                    **({"path": path, "path_label": path_label(path)} if path else {}),
+                }
+            )
 
-    def walk(sub: dict[str, Any]) -> None:
+    def walk(sub: dict[str, Any], path: str = "") -> None:
         raw = sub.get("name")
         stem = raw if isinstance(raw, str) else ""
-        add("notifier", sub.get("notifier_id"), stem)
-        add("trigger", sub.get("trigger_id"), stem)
+        add("notifier", sub.get("notifier_id"), stem, path)
+        add("trigger", sub.get("trigger_id"), stem, path)
         triggers = sub.get("trigger_ids")
         for value in triggers.values() if isinstance(triggers, dict) else triggers or []:
-            add("trigger", value, stem)
-        add("playbook", sub.get("playbook_id"), stem)
+            add("trigger", value, stem, path)
+        add("playbook", sub.get("playbook_id"), stem, path)
 
     walk(state)
-    for _, sub in sorted((state.get("paths") or {}).items()):
+    for path, sub in sorted((state.get("paths") or {}).items()):
         if isinstance(sub, dict):
-            walk(sub)
+            walk(sub, str(path))
     return out
 
 

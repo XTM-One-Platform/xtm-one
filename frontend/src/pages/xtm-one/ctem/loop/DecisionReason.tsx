@@ -56,6 +56,7 @@ const REASON_SENTENCE = {
   excluded_by_policy: "Excluded by the policy ({kind}: {value})",
   accepted_risk: "Accepted risk owned by {owner} until {until}",
   score_below_policy: "{score} {value} below the policy minimum {minimum}",
+  score_missing: "No score read: {score} held for validation (policy minimum {minimum})",
   internet_exposure_required: "No internet-facing asset, and the policy requires internet exposure",
   primary_asset_below_policy: "No primary asset at or above {minimum}",
   no_risk_scenario: "No risk scenario holds the subject",
@@ -65,6 +66,8 @@ const REASON_SENTENCE = {
   in_scope: "In scope: criticality {criticality} (threshold {threshold}), confidence {confidence}",
   no_dependency: "No primary asset depends on this organization",
   account_disabled: "Not exposed: the account is disabled",
+  version_not_verified:
+    "Version not verified: matched on {assets, plural, one {# asset} other {# assets}} by software name, no running version proven",
 } as const;
 const REASON_SENTENCES: Readonly<Record<string, string>> = REASON_SENTENCE;
 
@@ -81,6 +84,7 @@ const NEXT_STEP = {
   excluded_by_policy: "Becomes a case if the policy exclusion is removed",
   accepted_risk: "Becomes a case when the accepted risk ends on {until}",
   score_below_policy: "Becomes a case if {score} reaches {minimum}",
+  score_missing: "Decided again once a {score} is read for it",
   internet_exposure_required: "Becomes a case if an internet-facing asset holds it",
   primary_asset_below_policy: "Becomes a case if a primary asset at or above {minimum} holds it",
   no_risk_scenario: "Becomes a case once a risk scenario holds it",
@@ -89,6 +93,7 @@ const NEXT_STEP = {
   below_scope_threshold: "Becomes a case if criticality rises to {threshold}",
   no_dependency: "Becomes a case once a primary asset depends on this organization",
   account_disabled: "Becomes a case if the account is enabled again",
+  version_not_verified: "Becomes a case once an asset reports the affected product with its version",
 } as const;
 const NEXT_STEPS: Readonly<Record<string, string>> = NEXT_STEP;
 

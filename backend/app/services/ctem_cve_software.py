@@ -57,6 +57,53 @@ query CtemGateCveSoftware($to: [String], $first: Int) {
 """
 
 
+_OCTI_VULN_SCORES = """
+query CtemGateCveScores($filters: FilterGroup, $first: Int) {
+  vulnerabilities(filters: $filters, first: $first) {
+    edges { node { name x_opencti_cvss_base_score x_opencti_epss_score x_opencti_cisa_kev } }
+  }
+}
+"""
+
+
+def _number(value: Any) -> float | None:
+    if value is None or value == "" or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def highest_scores(nodes: list[dict[str, Any]]) -> tuple[float | None, float | None, bool]:
+    """#2631: the highest CVSS and EPSS of *nodes*, and whether one is in CISA KEV (pure)."""
+    cvss = [v for n in nodes if (v := _number((n or {}).get("x_opencti_cvss_base_score"))) is not None]
+    epss = [v for n in nodes if (v := _number((n or {}).get("x_opencti_epss_score"))) is not None]
+    kev = any((n or {}).get("x_opencti_cisa_kev") is True for n in nodes)
+    return (max(cvss) if cvss else None, max(epss) if epss else None, kev)
+
+
+async def read_cve_scores(
+    client: httpx.AsyncClient, base_url: str, headers: dict[str, str], cves: list[str]
+) -> tuple[float | None, float | None, bool] | None:
+    """#2631: the CVSS, EPSS and KEV OpenCTI holds on *cves*; ``None`` when OpenCTI fails."""
+    from app.integrations.providers.opencti._common import _graphql
+    from app.services.ctem_metrics_collector import _fg
+
+    data, err = await _graphql(
+        client,
+        base_url,
+        headers,
+        _OCTI_VULN_SCORES,
+        {"filters": _fg([{"key": ["name"], "values": cves}]), "first": len(cves) * 2},
+    )
+    if err:
+        logger.info("CTEM scope gate: OpenCTI CVE scores unavailable: %s", err)
+        return None
+    nodes = [(e or {}).get("node") or {} for e in ((data or {}).get("vulnerabilities") or {}).get("edges") or []]
+    return highest_scores(nodes)
+
+
 def software_names(relations: list[dict[str, Any]]) -> list[str]:
     """The names and CPEs of the Software in *relations*, each once, in order (pure)."""
     out: list[str] = []
@@ -103,6 +150,51 @@ async def read_cve_software(
         (e or {}).get("node") or {} for e in ((data or {}).get("stixCoreRelationships") or {}).get("edges") or []
     ]
     return software_names(relations)
+
+
+async def _read_with_access(
+    db: AsyncSession, reader: uuid.UUID | None, cves: list[str], read: Any, *, release: bool, what: str
+) -> tuple[Any, str]:
+    """``(answer, how the read went)``: *read* run with *reader*'s own OpenCTI access (#2631)."""
+    if reader is None:
+        return None, LOOKUP_NO_READER
+    from app.integrations.providers.opencti.capabilities import attach_probe
+    from app.services.ctem_metrics_collector import _user_creds
+
+    try:
+        cred = await _user_creds(db, str(reader), "opencti", release=release)
+    except Exception as exc:  # unreadable credentials: nothing is guessed
+        logger.info("CTEM scope gate: OpenCTI access unreadable: %s", format_exception_message(exc))
+        return None, LOOKUP_NO_ACCESS
+    if cred is None:
+        return None, LOOKUP_NO_ACCESS
+    base_url, headers = cred
+    try:
+        async with httpx.AsyncClient(timeout=LOOKUP_TIMEOUT_SECONDS) as client:
+            found = await asyncio.wait_for(
+                read(client, base_url, attach_probe(headers, base_url), cves[:MAX_CVES]),
+                timeout=LOOKUP_TIMEOUT_SECONDS,
+            )
+    except TimeoutError:
+        logger.warning("CTEM scope gate: OpenCTI %s timed out after %ss", what, LOOKUP_TIMEOUT_SECONDS)
+        found = None
+    except Exception as exc:
+        logger.warning("CTEM scope gate: OpenCTI %s failed: %s", what, format_exception_message(exc))
+        found = None
+    if found is None:
+        return None, LOOKUP_FAILED
+    return found, LOOKUP_READ
+
+
+async def cve_scores(
+    db: AsyncSession, reader: uuid.UUID | None, cves: list[str], *, release: bool = False
+) -> tuple[tuple[float | None, float | None, bool], str]:
+    """#2631: ``((cvss, epss, kev), how the read went)`` for *cves*, read with *reader*'s own access.
+
+    *release* as :func:`cve_software`.
+    """
+    found, how = await _read_with_access(db, reader, cves, read_cve_scores, release=release, what="CVE scores")
+    return (found if found is not None else (None, None, False)), how
 
 
 async def cve_software(

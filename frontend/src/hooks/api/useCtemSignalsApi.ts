@@ -327,6 +327,8 @@ export interface CtemPlatformSource {
   integration_url?: string | null;
   /** The trigger paths it feeds (#2583 point 6): turning it off stops them all. */
   feeds?: { path: string; label: string }[];
+  /** OpenCTI only: the legacy Threat response objects XTM One still holds on this integration (#2627). */
+  legacy_pending?: number;
 }
 
 /** One object a platform source provisioned: a notifier, a trigger or a playbook, by its id there. */
@@ -335,6 +337,9 @@ export interface CtemPlatformSourceObject {
   id: string;
   /** Its name in its platform ("XTM One - Signals - ... - Trigger"); empty when not known. */
   name?: string;
+  /** The trigger path a per-path object serves (the PIR playbooks, #2627), and its label. */
+  path?: string;
+  path_label?: string;
 }
 
 /** The platform signal sources, administrators only (the API answers 403 to anyone else). */

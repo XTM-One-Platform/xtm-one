@@ -602,6 +602,16 @@ async def aggregate_inventory(
                 .order_by(func.count(func.distinct(rec.asset_id)).desc(), rec.source)
             )
         ).all()
+        # One asset merged from several sources sits in one bucket per source: the
+        # total is the distinct asset count, never the bucket sum.
+        distinct = (
+            await db.execute(
+                select(func.count(func.distinct(rec.asset_id)))
+                .join(OrganizationAsset, OrganizationAsset.id == rec.asset_id)
+                .where(*where)
+            )
+        ).scalar() or 0
+        return _buckets(rows, entity, field, distinct_total=int(distinct))
     else:
         value = func.coalesce(store._field_value(field), "")
         rows = (
@@ -616,16 +626,22 @@ async def aggregate_inventory(
     return _buckets(rows, entity, field)
 
 
-def _buckets(rows: Sequence[Any], entity: str, field: str) -> dict[str, Any]:
+def _buckets(rows: Sequence[Any], entity: str, field: str, *, distinct_total: int | None = None) -> dict[str, Any]:
+    """The bucket page; ``distinct_total`` marks a multi-valued field, whose buckets overlap."""
     kept = [{"value": str(v) if v not in (None, "") else "(not set)", "count": int(c)} for v, c in rows]
     other = sum(int(str(b["count"])) for b in kept[MAX_BUCKETS:])
-    return {
+    bucket_sum = sum(int(c) for _, c in rows)
+    out: dict[str, Any] = {
         "entity": entity,
         "group_by": field,
         "buckets": kept[:MAX_BUCKETS],
         "other": other,
-        "total": sum(b["count"] for b in kept),
+        "total": bucket_sum if distinct_total is None else distinct_total,
     }
+    if distinct_total is not None:
+        out["bucket_sum"] = bucket_sum
+        out["multi_valued"] = True
+    return out
 
 
 async def list_asset_groups(

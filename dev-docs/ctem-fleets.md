@@ -1269,7 +1269,15 @@ the filters (`entity_type`, `objectLabel` by resolved label id,
   OpenCTI under a legacy name (`LEGACY_NAME_STEMS`: "XTM One - Threat
   response - ...", "XTM One - CTEM loop - New relevant threats" and "...
   Threat activity flagged in a PIR"), per integration a Signals source is on
-  for, triggers and playbooks before their notifiers.
+  for, triggers and playbooks before their notifiers. The UI shows that action
+  only while `GET /api/v1/ctem-signals/sources` reports `legacy_pending > 0` on
+  an OpenCTI source (#2627): the objects the holders still hold in their state,
+  read from XTM One's database (`opencti_trigger_provisioning.legacy_pending`),
+  never from OpenCTI on page load; a removal that leaves nothing tombstones the
+  holders whose Signals source delivers, so the count drops at once. An object
+  created outside a holder is not counted: the dry run reads OpenCTI itself. Each
+  per-path object of a source (the PIR playbooks) carries `path` and
+  `path_label`, so two links of one kind on a row read apart.
 
 ### 8.2 Event enrichment
 
