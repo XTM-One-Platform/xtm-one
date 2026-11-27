@@ -315,7 +315,7 @@ def test_a_pass_says_why_it_raised_nothing() -> None:
 
 @pytest.mark.asyncio
 async def test_each_pass_runs_once_with_its_slot_given_back(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import ctem_attack_surface, ctem_evidence_health, ctem_inventory_staleness
+    from app.services import ctem_attack_surface, ctem_evidence_health
 
     calls: list[str] = []
 
@@ -334,17 +334,8 @@ async def test_each_pass_runs_once_with_its_slot_given_back(monkeypatch: pytest.
 
     _patch(ctem_attack_surface, "surface", {"recorded": 3})
     _patch(ctem_evidence_health, "evidence", RuntimeError("OpenCRQ down"))
-    _patch(ctem_inventory_staleness, "inventory", {"recorded": 1, "unseen": 1})
     out = await resync.resync_passes(lambda: _Session())
-    assert calls == [
-        "release surface",
-        "pass surface",
-        "release evidence",
-        "pass evidence",
-        "release inventory",
-        "pass inventory",
-    ]
-    assert out["inventory_staleness"] == {"recorded": 1, "unseen": 1}
+    assert calls == ["release surface", "pass surface", "release evidence", "pass evidence"]
     assert out["attack_surface"] == {"recorded": 3}
     assert out["evidence_health"] == {"recorded": 0, "error": "RuntimeError: OpenCRQ down"}
 
@@ -377,6 +368,7 @@ async def test_the_step_reports_every_route_and_survives_a_failed_one(monkeypatc
     monkeypatch.setattr(resync, "resync_third_party", _route("third_party", 0))
     monkeypatch.setattr(resync, "resync_aikido", _boom)
     monkeypatch.setattr(resync, "resync_github", _route("github", 5))
+    monkeypatch.setattr(resync, "resync_openaev_findings", _route("openaev_findings", 3))
     monkeypatch.setattr(resync, "resync_passes", _passes)
     monkeypatch.setattr(resync, "by_trigger_path", _by_path)
     progress: dict[str, int] = {}
@@ -386,7 +378,7 @@ async def test_the_step_reports_every_route_and_survives_a_failed_one(monkeypatc
 
     out = await resync.resync(sessions=None, actor_id="admin-1", progress=_progress, windows={"vulnerability": 3})  # type: ignore[arg-type]
     # The inside-state routes read as the administrator who started the purge; the others as their sources.
-    assert actors == {"pir": None, "third_party": None, "github": "admin-1"}
+    assert actors == {"pir": None, "third_party": None, "github": "admin-1", "openaev_findings": None}
     routes = out["routes"]
     assert out["windows"]["vulnerability"] == 3
     assert routes["aikido"]["errors"] == ["RuntimeError: Aikido 503"]
@@ -398,6 +390,7 @@ async def test_the_step_reports_every_route_and_survives_a_failed_one(monkeypatc
         "third_party": 0,
         "aikido": 0,
         "github": 5,
+        "openaev_findings": 3,
         "attack_surface": 2,
         "evidence_health": 0,
     }

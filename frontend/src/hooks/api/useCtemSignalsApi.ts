@@ -205,27 +205,22 @@ export interface CtemSignalPath {
   /** Signals the caller sees, last seen in the last 30 days. */
   count_30d?: number;
   last_signal_at?: string | null;
+  /** No signal in 30 days: why its pass raised nothing, when the attack-surface pass says it (#2634). */
+  quiet_reason?: CtemSignalQuietReason;
   /** Its sources on, and its sources that are or could be on here (#2506). */
   sources_enabled?: number;
   sources_available?: number;
-  /** Why a path that is on recorded no signal in 30 days (#2642); absent when it did or is not on. */
-  silent_reason?: CtemSignalPathSilentReason | null;
 }
 
-/** The codes `silent_reason` answers on `GET /ctem-signals/paths` (#2642). */
-export type CtemSilentReasonCode = "never_evaluated" | "no_asset_past_threshold" | "upstream_sync_failed" | "listener_never_fired" | "inventory_truncated";
-
-/** Why a path that is on records nothing, with the last inventory evaluation of path 6 when there is one (#2642). */
-export interface CtemSignalPathSilentReason {
-  code: CtemSilentReasonCode;
-  detail: string;
-  evaluation?: {
-    at?: string;
-    evaluated?: number;
-    stale_after_days?: number;
-    failed_syncs?: number;
-    withheld_sync_failed?: number;
-  };
+/** Why an outside path raised nothing (#2634): a code the screen words (quiet-reason.ts) and its data. */
+export interface CtemSignalQuietReason {
+  code: string;
+  /** The last pass, ISO 8601. */
+  at?: string | null;
+  count?: number;
+  scopes?: string[];
+  /** Scopes the provider answered nothing for, on a pass that still read hosts. */
+  empty_scopes?: string[];
 }
 
 /** A generic signed webhook source of one trigger path (#2506, dev-docs/ctem-signals.md 4ter). */
@@ -345,6 +340,8 @@ export interface CtemPlatformSource {
   integration_url?: string | null;
   /** The trigger paths it feeds (#2583 point 6): turning it off stops them all. */
   feeds?: { path: string; label: string }[];
+  /** OpenCTI only: the legacy Threat response objects XTM One still holds on this integration (#2627). */
+  legacy_pending?: number;
 }
 
 /** One object a platform source provisioned: a notifier, a trigger or a playbook, by its id there. */
@@ -353,6 +350,9 @@ export interface CtemPlatformSourceObject {
   id: string;
   /** Its name in its platform ("XTM One - Signals - ... - Trigger"); empty when not known. */
   name?: string;
+  /** The trigger path a per-path object serves (the PIR playbooks, #2627), and its label. */
+  path?: string;
+  path_label?: string;
 }
 
 /** The platform signal sources, administrators only (the API answers 403 to anyone else). */
