@@ -96,6 +96,30 @@ export const PLATFORM_OBJECT_KIND_TEXT = {
   playbook: "Playbook",
 } as const satisfies Record<CtemPlatformSourceObject["kind"], string>;
 
+/**
+ * The module events a provisioned trigger listens to, in words (UX round 1 on #2664, B1): the page never shows
+ * the event code. One label per code of `openaev_trigger_provisioning.EVENTS`. @i18n-keys
+ */
+const MODULE_EVENT_LABEL = {
+  simulation_finished: "Simulation finished",
+  atomic_test_finished: "Atomic test finished",
+  finding_created: "Finding created",
+  finding_updated: "Finding updated",
+  finding_deleted: "Finding deleted",
+  asset_created: "Asset created",
+  asset_updated: "Asset updated",
+  asset_stale: "Asset stale",
+  vulnerability_created: "Vulnerability created",
+  scenario_score_degraded: "Scenario score degraded",
+  critical_asset_reached: "Critical asset reached",
+} as const;
+
+/** A module event in words, translated; the code itself only for an event this page does not know yet. */
+export function moduleEventText(t: (key: string) => string, event: string): string {
+  const label = (MODULE_EVENT_LABEL as Record<string, string>)[event];
+  return label ? t(label) : event;
+}
+
 /** One Open in link: the object, its kind, and the URL in its platform. */
 export interface PlatformObjectLink {
   kind: CtemPlatformSourceObject["kind"];
