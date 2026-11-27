@@ -2468,6 +2468,18 @@ clean-up` (monthly). One gate: `indicator.revoke`, impact destructive, so it
 waits at Low: the orchestrator files one approval work item per indicator
 (`opencti:pir-desk:approval:<id>`) and never revokes.
 
+Unfinished work (#2659): a hunt package or detection set a triage run cannot
+finish is delegated again in the run; what still remains is one work item
+keyed `opencti:pir-desk:followup:<entity id>` owned by the orchestrator,
+taken by its `Follow-up due` work-item assignment (`FOLLOWUP_PREFIX`,
+`FOLLOWUP_DUE` in `agents/opencti_pir_desk.py`; it inherits the switch of
+`PIR match created` on upgrade), which resumes from the staged draft and
+files the result in the PIR case; a step a person must take is a
+`needs_human` item with its ask. The desk never creates an item with no
+owner and no ask. `create_work_item` warns an agent with no work-item inbox
+that creates such an item (`_NO_OWNER_NO_INBOX_WARNING`,
+`work_item_context.agent_has_work_item_inbox`).
+
 PIR criteria: today's PIRs carry sectors and regions; the personas use any
 other criteria type a PIR carries and never require one, so the fleet gets
 richer when the Q1 2027 PIR types ship without a code change.

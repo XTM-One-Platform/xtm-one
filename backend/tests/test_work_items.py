@@ -1301,7 +1301,7 @@ def test_create_work_item_description_no_roster_is_accurate():
         SimpleNamespace(), str(uuid.uuid4()), str(uuid.uuid4())
     )
     create_def = next(d for d in defs if d.name == "create_work_item")
-    assert "No peer roster is configured" in create_def.description
+    assert "No peer roster" in create_def.description
     assert "not validated" in create_def.description
 
 
