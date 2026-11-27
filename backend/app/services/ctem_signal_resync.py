@@ -718,6 +718,27 @@ async def resync_passes(sessions: Any) -> dict[str, Any]:
     return out
 
 
+async def reraise_held(sessions: Any) -> dict[str, Any]:
+    """Step 3's first move (#2634): what the last committed attack surface pass held when the purge deleted it,
+    raised again at once from the stored baseline, dated now. The pass itself runs only after every route
+    (``resync_passes``), possibly 30 minutes later, and diffs against the pre-purge pass: without this, paths 5
+    and 7 stay empty meanwhile and after. The counts per path; never raises (an ``error`` instead)."""
+    from app.services import ctem_attack_surface, ctem_case_loop
+
+    try:
+        async with sessions() as db:
+            held = await ctem_attack_surface.reraise_held(db)
+            await db.commit()
+    except Exception as exc:
+        logger.warning("CTEM resync: the held attack surface signals were not raised again", exc_info=True)
+        return {"recorded": 0, "error": f"{type(exc).__name__}: {exc}"[:300]}
+    if not held:
+        return {"recorded": 0, "note": "the attack surface pass is off"}
+    await ctem_case_loop.publish_pending(held["pending"])
+    counts: dict[str, Any] = held["counts"]
+    return counts
+
+
 async def by_trigger_path(sessions: Any) -> dict[str, dict[str, int]]:
     """Per trigger path, the signals the resync recorded and the cases they opened or joined."""
     from app.models.ctem_signal import TRIGGER_PATHS, CtemSignal

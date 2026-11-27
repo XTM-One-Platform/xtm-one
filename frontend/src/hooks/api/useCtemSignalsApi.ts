@@ -205,6 +205,8 @@ export interface CtemSignalPath {
   /** Signals the caller sees, last seen in the last 30 days. */
   count_30d?: number;
   last_signal_at?: string | null;
+  /** No signal in 30 days: why its pass raised nothing, when the attack-surface pass says it (#2634). */
+  quiet_reason?: string;
   /** Its sources on, and its sources that are or could be on here (#2506). */
   sources_enabled?: number;
   sources_available?: number;

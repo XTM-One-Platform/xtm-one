@@ -553,10 +553,20 @@ order:
    raised new host keeps its row with the `rearm:new_host` mark, so the next pass
    that sees it raises it once without the provider-date check, then drops the
    mark; a deleted row was withheld `known_to_provider` and never raised again).
+   A raised port of path 5 or 7 also leaves a `rearm:<signal key>` mark.
    No other source keeps raised state outside the signal row.
 3. **Resync**, only when the administrator ticked it (unchecked by default),
    `app.services.ctem_signal_resync`, recording through the paused intake for this
-   step only, each route with its own read window and its own cap
+   step only. It opens with `reraise_held` (#2634): every `rearm:` mark of the
+   baseline is raised again at once, dated now, from what the last committed pass
+   held (a new host still undeclared on path 7, a held port on path 5 or 7), and
+   the mark is replaced by the signal key, so the next pass dedupes on it; the
+   pass itself runs only after every route and diffs against the pre-purge pass.
+   While the routes replay, the paths list gives the outside paths the reason
+   "Pass queued after the resync" (`quiet_reason`, `ctem_attack_surface.quiet_reasons`);
+   after it, an outside path with no signal in 30 days names why (first pass
+   baseline, no undeclared host, new hosts withheld, re-armed hosts waiting, or
+   an owned scope the provider read `empty`). The routes follow, each route with its own read window and its own cap
    (`MAX_PER_ROUTE`), so no type starves another. The routes and their default
    windows live in `WINDOWS`; the dialog sends the chosen ones as
    `resync_windows`, validated by `validate_windows` (1 to 365 days; an

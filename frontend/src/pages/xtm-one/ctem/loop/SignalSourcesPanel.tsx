@@ -447,7 +447,16 @@ export function SignalSourcesPanel() {
       hideable: true,
       width: 152,
       sortValue: (path) => path.last_signal_at ?? "",
-      cell: (path) => <span className={path.last_signal_at ? undefined : "text-default-secondary"}>{lastSignal(path)}</span>,
+      cell: (path) => {
+        // Why an empty outside path raised nothing (#2634): the reason its pass gives, on the empty cell.
+        const reason = !path.last_signal_at ? path.quiet_reason : undefined;
+        const word = (
+          <span className={path.last_signal_at ? undefined : "text-default-secondary"} data-testid={reason ? "ctem-signal-sources-quiet-reason" : undefined}>
+            {lastSignal(path)}
+          </span>
+        );
+        return reason ? <Tip content={reason}>{word}</Tip> : word;
+      },
     },
     {
       key: "action",
