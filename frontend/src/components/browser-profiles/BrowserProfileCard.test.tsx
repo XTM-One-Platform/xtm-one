@@ -139,14 +139,23 @@ describe("BrowserProfileCard on an application that did not answer", () => {
 });
 
 describe("BrowserProfileCard of a profile that signs in other applications", () => {
-  it("names each application its session also signs in, with its URL", () => {
-    card(profile({ apps: [{ name: "Risk", url: "https://risk.example.test/" }] }));
-    const list = screen.getByRole("list", { name: "Also signs in" });
-    expect(list).toHaveTextContent("Also signs in: Risk - https://risk.example.test/");
+  it("names the applications on one line, without their URLs on the card face", () => {
+    card(
+      profile({
+        apps: [
+          { name: "Risk", url: "https://risk.example.test/" },
+          { name: "Intel", url: "https://intel.example.test/" },
+          { name: "", url: "https://third.example.test/path" },
+        ],
+      }),
+    );
+    const line = screen.getByTestId("browser-profile-apps");
+    expect(line).toHaveTextContent("Also signs in: Risk, Intel, +1");
+    expect(line).not.toHaveTextContent("https://");
   });
 
-  it("shows no application list when the profile declares none", () => {
+  it("shows no application line when the profile declares none", () => {
     card(profile({ apps: [] }));
-    expect(screen.queryByRole("list", { name: "Also signs in" })).toBeNull();
+    expect(screen.queryByTestId("browser-profile-apps")).toBeNull();
   });
 });

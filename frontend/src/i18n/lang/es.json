@@ -22085,5 +22085,7 @@
   "Remove application": "Quitar aplicación",
   "Add application": "Añadir aplicación",
   "Also signs in": "También inicia sesión en",
-  "Also signs in: {name} - {url}": "También inicia sesión en: {name} - {url}"
+  "Also signs in: {names}": "También inicia sesión en: {names}",
+  "{name} - {url}": "{name} - {url}",
+  "Enter an http or https address with a host, for example https://app.example.com/.": "Introduzca una dirección http o https con un host, por ejemplo https://app.example.com/."
 }

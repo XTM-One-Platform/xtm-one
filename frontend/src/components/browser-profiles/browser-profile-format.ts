@@ -65,6 +65,36 @@ export function appsFrom(rows: BrowserProfileApp[]): BrowserProfileApp[] {
     .filter((row) => row.url);
 }
 
+/** Whether an application row's URL would be refused on save: the rule of the backend's clean_apps (http(s), a host, no credentials, at most 2000 characters). A blank URL is no problem: the row is left out. */
+export function appUrlInvalid(url: string): boolean {
+  const text = url.trim();
+  if (!text) return false;
+  if (text.length > 2000) return true;
+  try {
+    const parsed = new URL(text);
+    return !(parsed.protocol === "http:" || parsed.protocol === "https:") || !parsed.hostname || Boolean(parsed.username || parsed.password);
+  } catch {
+    return true;
+  }
+}
+
+/** The label an application wears on the profile card: its name, else its host. */
+export function appLabel(app: BrowserProfileApp): string {
+  if (app.name.trim()) return app.name.trim();
+  try {
+    return new URL(app.url).hostname;
+  } catch {
+    return app.url;
+  }
+}
+
+/** The applications on one line of the card: the first two labels, then how many more. */
+export function appsSummary(apps: BrowserProfileApp[]): string {
+  const labels = apps.map(appLabel);
+  const shown = labels.slice(0, 2).join(", ");
+  return labels.length > 2 ? `${shown}, +${labels.length - 2}` : shown;
+}
+
 /** The sign-in setting listing the storage keys the application keeps its session in. */
 export const KEEP_STORAGE_KEYS = "keep_storage_keys";
 

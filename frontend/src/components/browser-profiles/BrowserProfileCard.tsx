@@ -44,7 +44,7 @@ import { useFormatter } from "@/i18n";
 import { cn, isEntityShared, timeAgo } from "@/lib/utils";
 import type { BrowserProfile, BrowserSignInState } from "@/types";
 
-import { SESSION_STATUS_LABELS, SESSION_VARIANTS } from "./browser-profile-format";
+import { appLabel, appsSummary, SESSION_STATUS_LABELS, SESSION_VARIANTS } from "./browser-profile-format";
 
 /** How a credential read from a vault is named, read by `t_i18n(CREDENTIAL_LABELS[key])`. @i18n-keys */
 const CREDENTIAL_LABELS = {
@@ -254,13 +254,26 @@ export function BrowserProfileCard({
           )}
         </div>
         {profile.apps.length > 0 && (
-          <ul aria-label={t_i18n("Also signs in")} className="space-y-0.5 content-compact text-default-secondary">
-            {profile.apps.map((app) => (
-              <li key={app.url} className="break-all">
-                {t_i18n("Also signs in: {name} - {url}", { name: app.name, url: app.url })}
-              </li>
-            ))}
-          </ul>
+          <Tip
+            content={
+              <ul aria-label={t_i18n("Also signs in")} className="max-w-sm space-y-0.5 content-compact">
+                {profile.apps.map((app) => (
+                  <li key={app.url} className="break-words">
+                    {t_i18n("{name} - {url}", { name: appLabel(app), url: app.url })}
+                  </li>
+                ))}
+              </ul>
+            }
+          >
+            <p
+              tabIndex={0}
+              className="flex items-center gap-1 rounded-sm content-compact text-default-secondary outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              data-testid="browser-profile-apps"
+            >
+              <LogIn className="h-3 w-3 shrink-0" aria-hidden />
+              <span className="truncate">{t_i18n("Also signs in: {names}", { names: appsSummary(profile.apps) })}</span>
+            </p>
+          </Tip>
         )}
         <VaultSecretsNotice status={profile.vault_secrets} fieldLabels={{ credentials: t_i18n("Sign-in credentials") }} />
         {profile.last_sign_in_message && (

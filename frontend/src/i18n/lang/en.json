@@ -22085,5 +22085,7 @@
   "Remove application": "Remove application",
   "Add application": "Add application",
   "Also signs in": "Also signs in",
-  "Also signs in: {name} - {url}": "Also signs in: {name} - {url}"
+  "Also signs in: {names}": "Also signs in: {names}",
+  "{name} - {url}": "{name} - {url}",
+  "Enter an http or https address with a host, for example https://app.example.com/.": "Enter an http or https address with a host, for example https://app.example.com/."
 }

@@ -39,7 +39,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFormatter } from "@/i18n";
 import type { BrowserProfile, BrowserProfileApp, BrowserProfileWrite, VaultSecretLocation } from "@/types";
 
-import { appsFrom, KEEP_STORAGE_KEYS, KEEPALIVE_LABELS, loginConfigFrom, loginConfigTexts, parseHosts } from "./browser-profile-format";
+import { appsFrom, appUrlInvalid, KEEP_STORAGE_KEYS, KEEPALIVE_LABELS, loginConfigFrom, loginConfigTexts, parseHosts } from "./browser-profile-format";
 
 const SELECTOR_KEYS = [
   "username_selector",
@@ -98,6 +98,15 @@ export function BrowserProfileDialog({
   const [apps, setApps] = useState<BrowserProfileApp[]>(() => (profile?.apps ?? []).map((app) => ({ ...app })));
   const setApp = (index: number, change: Partial<BrowserProfileApp>) =>
     setApps((current) => current.map((app, i) => (i === index ? { ...app, ...change } : app)));
+  // An application row's URL error shows once the row was left or Save was pressed, never while it is typed.
+  const [appsTouched, setAppsTouched] = useState<Record<number, boolean>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const appUrlErrors = apps.map((app) => appUrlInvalid(app.url));
+  const appsInvalid = appUrlErrors.some(Boolean);
+  const removeApp = (index: number) => {
+    setApps((current) => current.filter((_, i) => i !== index));
+    setAppsTouched({});
+  };
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [totp, setTotp] = useState("");
@@ -124,6 +133,8 @@ export function BrowserProfileDialog({
   };
 
   const submit = async () => {
+    setSubmitted(true);
+    if (appsInvalid) return;
     const body: BrowserProfileWrite = {
       name: name.trim(),
       start_url: startUrl.trim(),
@@ -235,38 +246,55 @@ export function BrowserProfileDialog({
             )}
           </p>
           <VaultSecretsNotice status={profile?.vault_secrets} fieldLabels={{ credentials: t_i18n("Sign-in credentials") }} />
-          <div className="space-y-1.5">
-            <Label>{t_i18n("Also signs in (optional)")}</Label>
-            <p className="content-compact text-default-secondary">
+          <div className="space-y-1.5" role="group" aria-labelledby="bp-profile-apps-label" aria-describedby="bp-profile-apps-help">
+            <Label id="bp-profile-apps-label">{t_i18n("Also signs in (optional)")}</Label>
+            <p id="bp-profile-apps-help" className="content-compact text-default-secondary">
               {t_i18n(
                 "Other applications this profile's session opens signed in, for example through the same single sign-on. Agents find this profile by their URL and record them with it.",
               )}
             </p>
-            {apps.map((app, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <Input
-                  aria-label={t_i18n("Application name")}
-                  value={app.name}
-                  placeholder={t_i18n("Application name")}
-                  onChange={(e) => setApp(index, { name: e.target.value })}
-                />
-                <Input
-                  aria-label={t_i18n("Application URL")}
-                  value={app.url}
-                  placeholder="https://app.example.com/"
-                  onChange={(e) => setApp(index, { url: e.target.value })}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t_i18n("Remove application")}
-                  onClick={() => setApps((current) => current.filter((_, i) => i !== index))}
-                >
-                  <Icon name="x" size={16} />
-                </Button>
-              </div>
-            ))}
+            {apps.map((app, index) => {
+              const shownError = appUrlErrors[index] && (submitted || appsTouched[index]);
+              const errorId = `bp-profile-app-${index}-error`;
+              return (
+                <div key={index} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      className="min-w-0 flex-1"
+                      aria-label={t_i18n("Application name")}
+                      value={app.name}
+                      placeholder={t_i18n("Application name")}
+                      onChange={(e) => setApp(index, { name: e.target.value })}
+                    />
+                    <Input
+                      className="min-w-0 flex-1"
+                      aria-label={t_i18n("Application URL")}
+                      value={app.url}
+                      placeholder="https://app.example.com/"
+                      aria-invalid={shownError || undefined}
+                      aria-describedby={shownError ? errorId : undefined}
+                      onBlur={() => setAppsTouched((current) => ({ ...current, [index]: true }))}
+                      onChange={(e) => setApp(index, { url: e.target.value })}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0"
+                      aria-label={t_i18n("Remove application")}
+                      onClick={() => removeApp(index)}
+                    >
+                      <Icon name="x" size={16} />
+                    </Button>
+                  </div>
+                  {shownError && (
+                    <p id={errorId} className="content-compact text-feedback-error-primary">
+                      {t_i18n("Enter an http or https address with a host, for example https://app.example.com/.")}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
             <Button
               type="button"
               variant="outline"
@@ -375,7 +403,7 @@ export function BrowserProfileDialog({
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
               {t_i18n("Cancel")}
             </Button>
-            <Button onClick={submit} disabled={!name.trim() || !startUrl.trim() || save.isPending}>
+            <Button onClick={submit} disabled={!name.trim() || !startUrl.trim() || (submitted && appsInvalid) || save.isPending}>
               {t_i18n("Save")}
             </Button>
           </div>
