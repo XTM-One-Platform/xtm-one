@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
-from sqlalchemy import select
+from sqlalchemy import Text, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ctem_surface_observation import CtemSurfaceObservation
@@ -849,11 +849,20 @@ async def quiet_reasons(
         return {p: {"code": code} for p in paths}
     last = latest[0]
     counts = dict(last.counts or {})
+    if all(counts.get(path) for path in paths):
+        return {}
     when = last.at.isoformat() if last.at else None
-    armed = sum(
-        1
-        for row in (await _baseline(db, organization_id)).values()
-        if any(str(k).startswith(REARM_PREFIX) for k in row.signalled or [])
+    # Counted in SQL: the baseline rows (ports, signalled) are never loaded for a count (review on #2654).
+    armed = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(CtemSurfaceObservation)
+            .where(
+                CtemSurfaceObservation.organization_id == organization_id,
+                cast(CtemSurfaceObservation.signalled, Text).like(f'%"{REARM_PREFIX}%'),
+            )
+        )
+        or 0
     )
     empty = empty_reads(dict(last.statuses or {}))
     out: dict[str, dict[str, Any]] = {}
