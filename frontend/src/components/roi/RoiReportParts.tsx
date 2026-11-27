@@ -307,6 +307,8 @@ export function RoiFleetScopeNote({
   const { t_i18n } = useFormatter();
   const { locale } = useIntl();
   const cost = !costMasked && supervision?.ai_cost != null ? formatCurrency(locale, currency, supervision.ai_cost) : null;
+  // The plural reads the count, {shown} draws it compact (#10770).
+  const shown = supervision ? formatCount(locale, supervision.agents) : "";
   return (
     <div role="note" className="space-y-1 content-compact text-default-secondary" data-testid="roi-fleet-scope-note">
       <p className="flex flex-wrap items-center gap-2">
@@ -317,12 +319,12 @@ export function RoiFleetScopeNote({
         <p className="pl-6" data-testid="roi-fleet-supervision">
           {cost
             ? t_i18n(
-                "{agents, plural, one {# outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {# outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}",
-                { agents: supervision.agents, cost },
+                "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}",
+                { agents: supervision.agents, shown, cost },
               )
             : t_i18n(
-                "{agents, plural, one {# outside agent supervises this fleet: its runs count in the organization total only.} other {# outside agents supervise this fleet: their runs count in the organization total only.}}",
-                { agents: supervision.agents },
+                "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}",
+                { agents: supervision.agents, shown },
               )}
         </p>
       )}
