@@ -22192,5 +22192,8 @@
   "{count, plural, one {The last pass ({at}) withheld # new host: a partial read, or known to the provider before the previous pass} other {The last pass ({at}) withheld # new hosts: a partial read, or known to the provider before the previous pass}}": "{count, plural, other {前回のパス（{at}）は # 件の新しいホストを保留しました。部分的な読み取り、または前回のパスより前にプロバイダーが把握していたものです}}",
   "The last pass ({at}) found no undeclared host and no new port": "前回のパス（{at}）では未宣言のホストも新しいポートも見つかりませんでした",
   "The last pass ({at}) found nothing new on this path": "前回のパス（{at}）ではこのタイプに新しいものは見つかりませんでした",
-  "{reason}; the provider answered nothing for {scopes}": "{reason}。プロバイダーは {scopes} について何も返しませんでした"
+  "{reason}; the provider answered nothing for {scopes}": "{reason}。プロバイダーは {scopes} について何も返しませんでした",
+  "This fleet's runs only. The organization total counts every agent.": "このフリートの実行のみ。組織の合計にはすべてのエージェントが含まれます。",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: AI コスト {cost}、組織の合計にのみ計上されます。}}",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: その実行は組織の合計にのみ計上されます。}}"
 }
