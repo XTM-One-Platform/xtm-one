@@ -2395,7 +2395,7 @@ async def _apply_integration_lending(
                 {**agent.integration_lending, "integration_ids": still_lent} if still_lent else None
             )
         return None
-    value = _parse_bool_arg(raw)
+    value = _parse_lending_bool(raw)
     if value is None:
         return INTEGRATION_LENDING_VALUE_ERROR
     if not value:
@@ -2421,8 +2421,12 @@ async def _apply_integration_lending(
     return None
 
 
-def _parse_bool_arg(raw: object) -> bool | None:
-    """'true' / 'false' (any case, or a native bool) as a bool; anything else None."""
+def _parse_lending_bool(raw: object) -> bool | None:
+    """'true' / 'false' (any case, or a native bool) as a bool; anything else None.
+
+    Its own name: ``_parse_bool_arg(raw, label)`` is the module's tri-state
+    parser and a second definition under that name would shadow it.
+    """
     if isinstance(raw, bool):
         return raw
     text = str(raw).strip().lower()

@@ -669,6 +669,10 @@ _SHARE_COLUMN_READS_ALLOWED: dict[tuple[str, str], str] = {
         "which of the owner's own rows an agent group already gets, for the agent "
         "settings banner; decides no visibility (#8824)"
     ),
+    ("services/fleet_health_signals.py", "_lending_findings"): (
+        "whether a shared member's audience already holds its owner's bound row, "
+        "so a health finding skips it; decides no visibility (#2719)"
+    ),
     ("services/roi_access.py", "reader_scope"): (
         "which workspaces are shared with a group the caller manages, the group "
         "managers' ROI rule of fleet_roi_reader on top of user_visible_filter; "
