@@ -403,10 +403,13 @@ def _pivot_id(signal: Any, evidence: dict[str, Any]) -> str | None:
     source reader recorded it from an OpenAEV issue (``evidence.source_issue``): a listener delivery
     names a scenario or a run, which carries its own ``platform_url`` instead.
     """
+    from app.services.ctem_signals import module_entity_id
+
     external_id = (signal.source_external_id or "").strip() or None
     provider = (signal.source_provider or "").lower()
     if provider == "opencti":
-        return external_id
+        # A composite dedupe key (path 11: <OpenCTI id>:<organization id>) pivots to the OpenCTI id alone.
+        return module_entity_id(provider, external_id, evidence)
     if provider in ("openaev", "openbas") and evidence.get("source_issue"):
         return external_id
     return None

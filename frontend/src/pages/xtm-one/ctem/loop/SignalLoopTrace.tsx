@@ -60,6 +60,9 @@ const STATUS_LABEL: Record<LoopStageView["status"], string> = {
  */
 const SOURCE_LINK_KEYS = ["link", "platform_url"] as const;
 
+/** Evidence keys that are the source object's id for the pivot (path 11 `opencti_id`), not a fact. */
+const SOURCE_ID_KEYS = ["opencti_id"] as const;
+
 /** The link to the source object a signal's evidence carries, if any. */
 export function signalSourceLink(evidence: Record<string, unknown> | null | undefined): string | undefined {
   for (const key of SOURCE_LINK_KEYS) {
@@ -576,6 +579,7 @@ function useSignalFacts(signal: CtemSignal) {
   ];
   const evidence = Object.entries(signal.evidence ?? {})
     .filter(([key]) => !(SOURCE_LINK_KEYS as readonly string[]).includes(key))
+    .filter(([key]) => !(SOURCE_ID_KEYS as readonly string[]).includes(key))
     .filter(([key]) => !shownKeys.includes(key))
     .map(([key, value]) => ({ key, value: evidenceText(value) }))
     .filter((row) => row.value);
@@ -596,7 +600,7 @@ function useSignalFacts(signal: CtemSignal) {
         className="-my-1"
         module={pivotModule}
         baseUrl={pivotModule ? moduleUrls[pivotModule] : null}
-        id={signal.source.external_id}
+        id={signal.source.entity_id ?? signal.source.external_id}
         iconOnly
         testId="ctem-signal-source-pivot"
       />

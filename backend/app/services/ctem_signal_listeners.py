@@ -922,6 +922,9 @@ async def note_tracked_organizations(payload: Mapping[str, Any], organization_id
                     "organization_criticality": tracked.criticality,
                     ctem_signals.SOURCE_KEY_EVIDENCE: "opencti:listener",
                 }
+                # The dedupe key below is per organization; the OpenCTI object the link opens is this id.
+                if internal_id:
+                    evidence[ctem_signals.OPENCTI_ID_EVIDENCE] = internal_id
                 signal, created = await ctem_signals.record_signal(
                     db,
                     organization_id=primary.id,
