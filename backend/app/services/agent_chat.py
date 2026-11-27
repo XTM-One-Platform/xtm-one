@@ -642,6 +642,17 @@ async def load_conversation_files(
 _MESSAGE_PREVIEW_LENGTH = 500
 
 
+def _agent_shared_with(agent: Agent, user_id: uuid.UUID, user_group_ids: list[str]) -> bool:
+    """Whether *agent* is given to *user_id*: published to everyone (company-
+    managed, not narrowed by ``access_restricted``) or shared with them or one
+    of their groups. An administrator's reach over every agent is not a share."""
+    from app.api.v1.helpers import get_effective_permission
+
+    if getattr(agent, "is_company_managed", False) and not getattr(agent, "access_restricted", False):
+        return True
+    return get_effective_permission(agent, user_id, user_group_ids) is not None
+
+
 async def _load_pipeline_tool_standalone(
     db: AsyncSession,
     tool_ref: dict,
@@ -738,46 +749,55 @@ async def _load_pipeline_tool_unbound(
                     integ_id_str,
                 )
 
-        # The pinned integration acts for someone other than the agent's owner
-        # only when they may use it, as a direct binding: visible to them, or
-        # lent by the agent. Otherwise the fallback below picks one of theirs.
+        # The pinned integration is the agent's own binding: the owner, and
+        # everyone the agent is shared with, load it as bound (sharing an agent
+        # lends what it binds; maintainer decision of 2026-09-27, #2568). Anyone
+        # else - an administrator evaluating an agent nobody shared with them
+        # (#683) - loads it only when they may use it as a direct binding
+        # (visible to them, or lent by the agent); otherwise the fallback below
+        # picks one of theirs.
         from app.services.integration_credentials import normalize_acting_user_id
 
         _acting = normalize_acting_user_id(user_id)
         _owner = normalize_acting_user_id(getattr(agent, "user_id", None))
+        _shared_pin = False
         if integ is not None and _acting is not None and _acting != _owner:
             from app.api.v1.helpers import get_user_group_ids
-            from app.services.integration_credentials import lent_integration_ids
-            from app.services.integration_tools import shadow_invisible_bindings
 
-            _pinned = {provider: str(integ.id)}
-            await shadow_invisible_bindings(
-                db,
-                _pinned,
-                {},
-                acting_user_id=str(_acting),
-                user_group_ids=await get_user_group_ids(db, _acting),
-                lent_ids=lent_integration_ids(agent),
-                lent_owner_id=_owner,
-            )
-            if not _pinned:
-                from app.services.openapi_import.service import provider_resolves_per_user
+            _acting_groups = await get_user_group_ids(db, _acting)
+            _shared_pin = _agent_shared_with(agent, _acting, _acting_groups)
+            if not _shared_pin:
+                from app.services.integration_credentials import lent_integration_ids
+                from app.services.integration_tools import shadow_invisible_bindings
 
-                if not provider_resolves_per_user(provider):
-                    # Each integration of the provider is a different API: none
-                    # of the person's own stands in for the pinned one.
+                _pinned = {provider: str(integ.id)}
+                await shadow_invisible_bindings(
+                    db,
+                    _pinned,
+                    {},
+                    acting_user_id=str(_acting),
+                    user_group_ids=_acting_groups,
+                    lent_ids=lent_integration_ids(agent),
+                    lent_owner_id=_owner,
+                )
+                if not _pinned:
+                    from app.services.openapi_import.service import provider_resolves_per_user
+
+                    if not provider_resolves_per_user(provider):
+                        # Each integration of the provider is a different API: none
+                        # of the person's own stands in for the pinned one.
+                        logger.info(
+                            "Pipeline LOAD: pinned integration %s withheld for user %s, no per-user equivalent",
+                            integ.id,
+                            _acting,
+                        )
+                        return None
                     logger.info(
-                        "Pipeline LOAD: pinned integration %s withheld for user %s, no per-user equivalent",
+                        "Pipeline LOAD: pinned integration %s withheld for user %s, picking theirs",
                         integ.id,
                         _acting,
                     )
-                    return None
-                logger.info(
-                    "Pipeline LOAD: pinned integration %s withheld for user %s, picking theirs",
-                    integ.id,
-                    _acting,
-                )
-                integ = None
+                    integ = None
         # A run with no person is the owner's own: it keeps the pinned integration.
         _owner_run_pin = integ is not None and _acting is None
 
@@ -857,10 +877,19 @@ async def _load_pipeline_tool_unbound(
             db,
             ToolBindings(
                 {provider: [str(integ.id)]},
-                basis=BindingBasis.OWNER_RUN if _owner_run_pin else BindingBasis.CALLER_CHECKED,
+                basis=(
+                    BindingBasis.OWNER_RUN
+                    if _owner_run_pin
+                    else BindingBasis.SHARED_AS_BOUND
+                    if _shared_pin
+                    else BindingBasis.CALLER_CHECKED
+                ),
                 reason=(
                     "the pipeline tool ref's pinned integration, for the owner's own run"
                     if _owner_run_pin
+                    else "the pipeline tool ref's pinned integration, lent with the agent shared with the person "
+                    "(maintainer decision of 2026-09-27)"
+                    if _shared_pin
                     else "the pinned integration the person may use, else one picked through template_candidate_filter"
                 ),
             ),

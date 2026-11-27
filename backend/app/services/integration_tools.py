@@ -6056,6 +6056,9 @@ class BindingBasis(enum.StrEnum):
     CALLER_CHECKED = "caller_checked"
     #: An administrator bound them for everyone (the General Assistant).
     ADMIN_CONFIGURED = "admin_configured"
+    #: The agent binds them and is shared with the person: sharing an agent
+    #: lends what it binds, used as bound (maintainer decision of 2026-09-27).
+    SHARED_AS_BOUND = "shared_as_bound"
     #: Used as bound for whoever acts, with no check: a known gap, to close.
     UNCHECKED = "unchecked"
 
