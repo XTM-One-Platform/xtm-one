@@ -77,6 +77,14 @@ decision). Tests: `backend/tests/test_ctem_scope_gate.py`.
    id), asset groups, primary assets (by name or `opencrq_asset_id`), and the
    tech stack for software (a product name, or the product part of a CPE),
    which adds the assets that run that product.
+   **Named assets** (#2701): when the evidence's asset keys (`assets`,
+   `asset`, `hostnames`, `urls`, `ips`) name an asset (by name, external id
+   or hostname), an asset group or a primary asset, those are the whole
+   reach. The software still labels the case and version-checks the named
+   assets, but adds no asset, shipped repository or primary asset of its
+   own; `reconcile.scope` reads `evidence_assets` and the loop trace's
+   supporting list follows the same named assets. Without asset evidence
+   the product expansion is unchanged (`reconcile.scope` is `null`).
    **Threat subjects** (#1720, a campaign, an intrusion set, a malware): the
    software they reach is read from the evidence lists `targets`, `uses`,
    `targeted_software`, `targeted_products`, from `relationships`

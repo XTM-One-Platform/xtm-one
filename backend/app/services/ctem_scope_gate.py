@@ -129,6 +129,8 @@ class SignalFacts:
 
 #: #2171: the evidence keys the gate reads; any other key is kept on the signal but never reconciled.
 ASSET_EVIDENCE_KEYS: tuple[str, ...] = ("assets", "asset", "hostnames", "urls", "ips")
+#: #2701: ``reconcile.scope`` of a signal whose evidence names its assets: those assets are the whole reach.
+EVIDENCE_ASSETS_SCOPE = "evidence_assets"
 SOFTWARE_EVIDENCE_KEYS: tuple[str, ...] = ("software", "products", "cpe")
 READ_EVIDENCE_KEYS: tuple[str, ...] = (
     *ASSET_EVIDENCE_KEYS,
@@ -350,6 +352,9 @@ class Resolution:
     primary_asset_totals: dict[str, dict[str, int]] = field(default_factory=dict)
     #: #1720: the software references the organization's software and shipped products were matched against.
     software_refs: list[str] = field(default_factory=list)
+    #: #2701: ``evidence_assets`` when the evidence names the assets: the reach is those assets alone,
+    #: the software only labels and version-checks them; ``""`` when the software sets the reach.
+    scope: str = ""
 
     @property
     def resolved(self) -> bool:
@@ -566,22 +571,36 @@ def resolve(
     they or their groups support.
     """
     out = Resolution()
+    evidence_keys = {k for k in (stable_key(v) for v in _evidence_list(facts.evidence, *ASSET_EVIDENCE_KEYS)) if k}
     keys = [stable_key(facts.subject_ref), stable_key(facts.source_external_id)]
     keys += [stable_key(v) for v in _evidence_list(facts.evidence, *ASSET_EVIDENCE_KEYS)]
     keys = [k for k in dict.fromkeys(keys) if k]
     out.keys = keys
     wanted = set(keys)
+    # #2701: whether an asset, group or primary asset was named by the evidence itself (not the subject).
+    narrow = False
     for asset in profile.assets_exposure:
-        if {stable_key(asset.name), stable_key(asset.external_id)} & wanted - {""}:
+        names = {stable_key(asset.name), stable_key(asset.external_id), stable_key(asset.hostname)} - {""}
+        if names & wanted:
             out.assets.append(asset)
+            narrow = narrow or bool(names & evidence_keys)
     for group in profile.asset_groups:
-        if {stable_key(group.name), stable_key(group.external_id)} & wanted - {""}:
+        names = {stable_key(group.name), stable_key(group.external_id)} - {""}
+        if names & wanted:
             out.groups.append(group.name)
+            narrow = narrow or bool(names & evidence_keys)
     # CTEM-29: the primary assets a tracked organization's services support, named in the evidence.
     named = {n.strip().lower() for n in _evidence_list(facts.evidence, "primary_assets")}
     for pa in profile.primary_assets:
-        if {stable_key(pa.name), stable_key(pa.opencrq_asset_id)} & wanted - {""} or pa.name.lower() in named:
+        names = {stable_key(pa.name), stable_key(pa.opencrq_asset_id)} - {""}
+        if names & wanted or pa.name.lower() in named:
             out.named_primary_assets.append(pa.name)
+            narrow = narrow or bool(names & evidence_keys) or pa.name.lower() in named
+    if not narrow and evidence_keys and primary_assets is not None:
+        # An inventory asset the profile's capped list does not hold still names the reach.
+        narrow = any(evidence_keys & r.keys for r in primary_assets.reachers)
+    if narrow:
+        out.scope = EVIDENCE_ASSETS_SCOPE
     if facts.subject_kind == "identity":
         owned = owned_domain_of(profile, facts.subject_ref)
         if owned:
@@ -606,13 +625,15 @@ def resolve(
             _product_matches(entry.product, ref) or (entry.cpe and entry.cpe.lower() == ref.lower()) for ref in software
         ):
             out.products.append(entry.product)
-    _resolve_shipped(profile, software, out)
-    _resolve_repositories(profile, software, out)
+    if not narrow:
+        # #2701: named assets are the whole reach; the software adds no repository of its own.
+        _resolve_shipped(profile, software, out)
+        _resolve_repositories(profile, software, out)
     if primary_assets is not None:
         refs = list(dict.fromkeys([*software, *out.products]))
-        out.primary_assets = primary_assets.reach(refs, keys)
-        out.primary_asset_totals = primary_assets.totals(refs, keys)
-    if out.products:
+        out.primary_assets = primary_assets.reach(refs, keys, keys_only=narrow)
+        out.primary_asset_totals = primary_assets.totals(refs, keys, keys_only=narrow)
+    if out.products and not narrow:
         names = {p.lower() for p in out.products}
         for asset in profile.assets_exposure:
             if asset not in out.assets and names & {t.lower() for t in asset.products}:
@@ -869,6 +890,8 @@ def decide(
         },
         "reconcile": {
             "keys": resolution.keys,
+            # #2701: "evidence_assets" when the evidence named the assets and the software widened nothing.
+            "scope": resolution.scope or None,
             # UX r2 B7 on #1995: each name once, and whether the profile's asset list was cut at its
             # model cap (more assets may match than the list holds: a reader never counts it as the total).
             "assets": list(dict.fromkeys(a.name for a in resolution.assets)),

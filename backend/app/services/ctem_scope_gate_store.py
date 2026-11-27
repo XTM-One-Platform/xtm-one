@@ -278,8 +278,10 @@ async def _supporting_index(db: AsyncSession, organization_id: uuid.UUID, key: s
         return ctem_primary_assets.PrimaryAssetIndex()
 
 
-async def _reach_inputs(db: AsyncSession, row: CtemSignal) -> tuple[list[str], list[str]]:
-    """The software references and subject keys the gate followed for *row*.
+async def _reach_inputs(db: AsyncSession, row: CtemSignal) -> tuple[list[str], list[str], bool]:
+    """The software references and subject keys the gate followed for *row*, and whether the keys alone reach.
+
+    The third value (#2701) holds when the evidence named the assets (``reconcile.scope``).
 
     Read from its decision record (UX r2 B4 on #1995: no profile read on the trace's
     path); a record without them (older than #1591 S3) resolves them again.
@@ -293,10 +295,12 @@ async def _reach_inputs(db: AsyncSession, row: CtemSignal) -> tuple[list[str], l
     ):
         products = reconcile.get("products") if isinstance(reconcile.get("products"), list) else []
         refs = [str(r) for r in dict.fromkeys([*reconcile["software_refs"], *products]) if r]
-        return refs, [str(k) for k in reconcile["keys"] if k]
+        keys_only = reconcile.get("scope") == gate.EVIDENCE_ASSETS_SCOPE
+        return refs, [str(k) for k in reconcile["keys"] if k], keys_only
     profile = await _profile(db, row.organization_id)
     resolution = gate.resolve(profile, facts_of(row), None)
-    return list(dict.fromkeys([*resolution.software_refs, *resolution.products])), list(resolution.keys)
+    refs = list(dict.fromkeys([*resolution.software_refs, *resolution.products]))
+    return refs, list(resolution.keys), resolution.scope == gate.EVIDENCE_ASSETS_SCOPE
 
 
 async def _supporting_rows(db: AsyncSession, row: CtemSignal, key: str) -> tuple[list[dict[str, Any]], bool]:
@@ -313,9 +317,9 @@ async def _supporting_rows(db: AsyncSession, row: CtemSignal, key: str) -> tuple
     hit = _supporting_cached(cache_key)
     if hit is not None:
         return hit
-    refs, keys = await _reach_inputs(db, row)
+    refs, keys, keys_only = await _reach_inputs(db, row)
     index = await _supporting_index(db, row.organization_id, key, refs)
-    rows = index.supporting(refs, keys, key)
+    rows = index.supporting(refs, keys, key, keys_only=keys_only)
     truncated = bool(index.truncated)
     _supporting_keep(cache_key, rows, truncated)
     return rows, truncated
