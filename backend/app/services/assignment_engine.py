@@ -11143,7 +11143,9 @@ async def _slot_usage(db: AsyncSession, assignment_id: _uuid.UUID) -> _SlotUsage
 
 async def _assignment_cap(assignment: Assignment) -> int:
     """The assignment's concurrency cap, halved while a provider answers it 429."""
-    cap = assignment_dispatch.assignment_concurrency_cap(assignment.trigger_config)
+    cap = assignment_dispatch.assignment_concurrency_cap(
+        assignment.trigger_config, getattr(assignment, "trigger_type", None)
+    )
     throttled = await assignment_dispatch.is_throttled(assignment.id)
     return assignment_dispatch.throttled_cap(cap) if throttled else cap
 
@@ -12259,10 +12261,10 @@ async def _load_queue_states(
         ).all()
     }
     configs = {
-        row[0]: (row[1], row[2])
+        row[0]: (row[1], row[2], row[3])
         for row in (
             await db.execute(
-                select(Assignment.id, Assignment.agent_id, Assignment.trigger_config).where(
+                select(Assignment.id, Assignment.agent_id, Assignment.trigger_config, Assignment.trigger_type).where(
                     Assignment.id.in_(ids)
                 )
             )
@@ -12270,7 +12272,7 @@ async def _load_queue_states(
     }
     states: list[assignment_dispatch.QueueState] = []
     for assignment_id, depth, oldest_at, unordered in queued:
-        agent_id, trigger_config = configs.get(assignment_id, (None, None))
+        agent_id, trigger_config, trigger_type = configs.get(assignment_id, (None, None, None))
         active, held, exclusive = usage.get(assignment_id, (0, False, False))
         states.append(
             assignment_dispatch.QueueState(
@@ -12279,7 +12281,7 @@ async def _load_queue_states(
                 depth=int(depth),
                 oldest_at=oldest_at,
                 active=active,
-                cap=assignment_dispatch.assignment_concurrency_cap(trigger_config),
+                cap=assignment_dispatch.assignment_concurrency_cap(trigger_config, trigger_type),
                 held=held,
                 exclusive=exclusive,
                 startable=int(unordered or 0) + free_keys.get(assignment_id, 0),
@@ -12445,7 +12447,9 @@ async def _drain_one_assignment(
                 )
             break
 
-        cap = assignment_dispatch.assignment_concurrency_cap(assignment.trigger_config)
+        cap = assignment_dispatch.assignment_concurrency_cap(
+            assignment.trigger_config, getattr(assignment, "trigger_type", None)
+        )
         if throttled:
             cap = assignment_dispatch.throttled_cap(cap)
         usage = await _slot_usage(db, assignment_id)

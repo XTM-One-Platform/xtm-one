@@ -1205,7 +1205,7 @@ def _state_rows(assignment_id, *, depth, unordered, free_keys, active, awaiting_
     if depth > unordered:
         rows.append([(assignment_id, free_keys)] if free_keys else [])
     rows.append([(assignment_id, active, awaiting_human, not_deliveries)] if active else [])
-    rows.append([(assignment_id, uuid.uuid4(), {"max_concurrent_runs": 8})])
+    rows.append([(assignment_id, uuid.uuid4(), {"max_concurrent_runs": 8}, "integration_event")])
     return rows
 
 

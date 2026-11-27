@@ -134,6 +134,22 @@ class TestATimeoutIsAFailureNotAnAnswer:
         # as a result.
         assert finalised["summary"] is None
 
+    async def test_a_pool_timeout_fails_busy_not_with_the_queuepool_text(self, run_task):
+        """#2561: a run that could not check a connection out of the pool ends
+        with a partner-visible busy reason, never the driver's QueuePool text."""
+        from sqlalchemy import exc as sa_exc
+
+        def _pool_timeout(_kwargs):
+            raise sa_exc.TimeoutError("QueuePool limit of size 15 overflow 10 reached, connection timed out")
+
+        finalised = run_task(raises=_pool_timeout)
+        await task_svc.execute_task_run(uuid.uuid4())
+
+        assert finalised["status"] == "failed"
+        assert finalised["error"] == task_svc.BUSY_ERROR_TEXT
+        assert "QueuePool" not in finalised["error"]
+        assert task_svc.BUSY_ERROR_TEXT.startswith(task_svc._PARTNER_VISIBLE_ERROR_PREFIXES)
+
     async def test_the_reason_is_partner_visible(self):
         """A FAILED task's reason is whitelisted before it crosses the trust
         boundary; an unlisted one becomes a generic line the partner cannot
