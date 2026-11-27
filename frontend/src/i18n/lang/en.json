@@ -22155,7 +22155,7 @@
   "Triggers": "Triggers",
   "Playbook": "Playbook",
   "Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.": "Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.",
-  "Objects in {platform}:": "Objects in {platform}:",
+  "Owner: {owner}": "Owner: {owner}",
   "No legacy object left.": "No legacy object left.",
   "{count, plural, one {# object would be removed:} other {# objects would be removed:}}": "{count, plural, one {# object would be removed:} other {# objects would be removed:}}",
   "{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}": "{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}",
@@ -22165,5 +22165,8 @@
   "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.": "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.",
   "Reading OpenCTI...": "Reading OpenCTI...",
   "No OpenCTI integration has a Signals source on.": "No OpenCTI integration has a Signals source on.",
-  "Remove {count, plural, one {# object} other {# objects}}": "Remove {count, plural, one {# object} other {# objects}}"
+  "Remove {count, plural, one {# object} other {# objects}}": "Remove {count, plural, one {# object} other {# objects}}",
+  "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):",
+  "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):",
+  "{owners} also listens to {event} with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.": "{owners} also listens to {event} with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user."
 }

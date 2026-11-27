@@ -29,7 +29,7 @@ from __future__ import annotations
 import importlib
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -898,6 +898,70 @@ def provisioned_objects(state: Any) -> list[dict[str, str]]:
     return out
 
 
+#: Where an assignment keeps the state of what it provisioned in its platform, per provider (#2640).
+ASSIGNMENT_STATE_KEYS: dict[str, str] = {"opencti": "opencti_provisioning", "openaev": "openaev_provisioning"}
+
+#: The owner shown for an XTM One object whose name names none.
+UNKNOWN_OWNER = "XTM One"
+
+
+def object_owner(name: Any) -> str:
+    """The fleet or desk that owns an XTM One object, read from ``XTM One - <Owner> - <Purpose>`` (#2640)."""
+    if not isinstance(name, str):
+        return ""
+    parts = [p.strip() for p in name.split(" - ")]
+    return parts[1] if len(parts) >= 3 and parts[0] == "XTM One" and parts[1] else ""
+
+
+def owned_objects(state: Any, owner: str) -> list[dict[str, Any]]:
+    """``provisioned_objects`` with each object's *owner*, and the module event of each per-event trigger (#2640)."""
+    triggers = state.get("trigger_ids") if isinstance(state, dict) else None
+    events = {v: k for k, v in triggers.items() if isinstance(v, str) and v} if isinstance(triggers, dict) else {}
+    out: list[dict[str, Any]] = []
+    for obj in provisioned_objects(state):
+        event = events.get(obj["id"]) if obj["kind"] == "trigger" else None
+        out.append({**obj, "owner": owner, **({"event": event} if event else {})})
+    return out
+
+
+def fleet_objects(configs: Iterable[Any], provider: str, integration_id: str) -> list[dict[str, Any]]:
+    """The objects the fleets' assignments provisioned on one integration, each with its owner (#2640).
+
+    They sit beside a source's own objects in the module; the Signal sources page lists them apart,
+    so a source row counts only its own. *configs* are assignment ``trigger_config`` values. Pure.
+    """
+    key = ASSIGNMENT_STATE_KEYS.get(provider)
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    if not key:
+        return out
+    for config in configs:
+        if not isinstance(config, dict) or config.get("provider") != provider:
+            continue
+        state = config.get(key)
+        if not isinstance(state, dict) or str(state.get("integration_id") or "") != str(integration_id):
+            continue
+        owner = object_owner(state.get("name")) or UNKNOWN_OWNER
+        for obj in owned_objects(state, owner):
+            if (obj["kind"], obj["id"]) not in seen:
+                seen.add((obj["kind"], obj["id"]))
+                out.append(obj)
+    return out
+
+
+def with_shared_events(own: list[dict[str, Any]], others: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Mark each own trigger whose module event another owner also listens to, ``shared_with`` its owners (#2640).
+
+    Each owner keeps its own trigger on such an event: the delivery reaches its own receiver, which
+    starts its own run as its own run-as user. The page says so instead of hiding the second trigger.
+    """
+    owners: dict[str, set[str]] = {}
+    for obj in others:
+        if obj.get("event"):
+            owners.setdefault(obj["event"], set()).add(str(obj.get("owner") or UNKNOWN_OWNER))
+    return [{**obj, "shared_with": sorted(owners[obj["event"]])} if obj.get("event") in owners else obj for obj in own]
+
+
 def fed_paths(provider: str, kind: str) -> list[dict[str, str]]:
     """The trigger paths a source feeds, ``[{path, label}]`` in catalog order (#2583 point 6). Pure.
 
@@ -928,6 +992,6 @@ def to_dict(row: Any) -> dict[str, Any]:
         "reason_code": code,
         "reason_params": params,
         "checked_at": (row.state or {}).get("checked_at"),
-        "objects": provisioned_objects(row.state),
+        "objects": owned_objects(row.state, OBJECT_FLEET),
         "feeds": fed_paths(row.provider, row.kind),
     }

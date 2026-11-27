@@ -71,6 +71,46 @@ describe("Blast radius of a shared source (#2583 point 6)", () => {
   });
 });
 
+describe("Owner of each provisioned object (#2640)", () => {
+  it("counts only the source's own objects and lists the fleets' objects apart, each with its owner", () => {
+    const source = listener({
+      provider: "openaev",
+      objects: [
+        { kind: "notifier", id: "n1", name: "XTM One - Signals - OpenAEV listener - Notifier", owner: "Signals" },
+        {
+          kind: "trigger",
+          id: "t1",
+          name: "XTM One - Signals - OpenAEV listener - Trigger",
+          owner: "Signals",
+          event: "simulation_finished",
+          shared_with: ["Detection validation desk"],
+        },
+      ],
+      fleet_objects: [
+        {
+          kind: "trigger",
+          id: "t9",
+          name: "XTM One - Detection validation desk - Finished simulations - Trigger",
+          owner: "Detection validation desk",
+          event: "simulation_finished",
+        },
+      ],
+    });
+    renderWithProviders(<PlatformSourceControls source={{ provider: "openaev", kind: "listener" }} platformSources={[source]} isAdmin onEnable={() => {}} />);
+    const radius = screen.getByTestId("ctem-platform-source-blast-radius");
+    expect(within(radius).getByText("Objects in OpenAEV, owned by Signals (2 objects):")).toBeInTheDocument();
+    const own = within(radius).getByTestId("ctem-platform-source-object-names");
+    expect(within(own).getAllByTestId("ctem-platform-source-object")).toHaveLength(2);
+    expect(within(own).getAllByText("Owner: Signals")).toHaveLength(2);
+    expect(within(own).getByTestId("ctem-platform-source-object-shared").textContent).toBe(
+      "Detection validation desk also listens to simulation_finished with its own trigger: each owner gets its own delivery and starts its own run, as its own run-as user.",
+    );
+    const fleets = within(radius).getByTestId("ctem-platform-source-fleet-objects");
+    expect(within(fleets).getByText("Owner: Detection validation desk")).toBeInTheDocument();
+    expect(within(radius).getByText("Other XTM One objects in OpenAEV, owned by fleets, not counted here (1 object):")).toBeInTheDocument();
+  });
+});
+
 describe("Remove legacy OpenCTI objects (#2583 point 4)", () => {
   it("shows on the OpenCTI live listener once a source is on, for an administrator only", () => {
     expect(holdsLegacyCleanup({ provider: "opencti", kind: "listener" }, [{ enabled: true }])).toBe(true);
