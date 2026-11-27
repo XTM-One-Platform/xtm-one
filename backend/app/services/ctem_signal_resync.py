@@ -26,13 +26,18 @@ threat actor was read):
 - **Inside state** (paths 3, 10): the open Aikido issues and the open Dependabot
   alerts of the connected GitHub organizations, listed by API whatever their age
   unless the administrator set a window.
+- **OpenAEV findings** (path 5, #2641, #2643): the open findings of every enabled
+  OpenAEV listener source, read through ``POST /api/findings/search`` with the
+  integration owner's credential, each fed to ``note_event`` as the provisioned
+  ``finding_created`` trigger delivers it, so the dedupe key is the live one.
 - **Scheduled passes** (paths 5, 6, 7, 9, 12): the attack surface and evidence
   health passes run once now, their outcome (counts, off, skipped and why) reported.
 
 A route that cannot be listed is reported with its reason (GitLab findings come
-with the GitLab asset sync; OpenAEV delivers simulation results and score
-degradations by event only). The job result counts, per route, what was read
-and recorded with the window used, and per trigger path the signals and cases.
+with the GitLab asset sync; OpenAEV simulation results and score degradations are
+transitions of a simulation run, raised again by running a simulation). The job
+result counts, per route, what was read and recorded with the window used, and per
+trigger path the signals and cases.
 """
 
 from __future__ import annotations
@@ -89,6 +94,8 @@ WINDOWS: tuple[Window, ...] = (
     Window(
         "gitlab", "inside", "GitLab dependency findings", None, windowed=False, note="Recorded by the GitLab asset sync"
     ),
+    Window("openaev_findings", "inside", "Open findings OpenAEV reported on your assets", None),
+    # The dialog's short line (a catalog key); the job reports the full reason from UNLISTED.
     Window("openaev", "inside", "OpenAEV simulation results", None, windowed=False, note="Delivered by event only"),
     Window("attack_surface", "pass", "Attack surface pass", None, windowed=False),
     Window("evidence_health", "pass", "Evidence health pass", None, windowed=False),
@@ -105,7 +112,7 @@ _STIX_TYPE: dict[str, str] = {
 #: The routes no listing exists for, with the reason the job reports.
 UNLISTED: dict[str, str] = {
     "gitlab": "GitLab dependency findings are recorded by the GitLab asset sync: run a sync of the GitLab source",
-    "openaev": "OpenAEV delivers simulation results and score degradations by event only; no listing API is wired",
+    "openaev": "Simulation results and score degradations are transitions: run a simulation to raise them again",
 }
 
 
@@ -253,17 +260,24 @@ def _route(key: str, windows: dict[str, int | None]) -> dict[str, Any]:
     return {"window_days": windows.get(key), "read": 0, "recorded": 0, "errors": []}
 
 
-async def _opencti_sources(db: Any) -> list[Any]:
+async def _enabled_sources(db: Any, provider: str, kind: str = "") -> list[Any]:
+    """The enabled platform sources of *provider* (of *kind* when given), one per integration."""
     from app.models.ctem_signal_source import CtemSignalSource
 
-    rows = (await db.execute(select(CtemSignalSource).where(CtemSignalSource.provider == "opencti"))).scalars()
+    query = select(CtemSignalSource).where(CtemSignalSource.provider == provider)
+    if kind:
+        query = query.where(CtemSignalSource.kind == kind)
     seen: set[str] = set()
     out = []
-    for row in rows:
+    for row in (await db.execute(query)).scalars():
         if row.enabled and str(row.integration_id) not in seen:
             seen.add(str(row.integration_id))
             out.append(row)
     return out
+
+
+async def _opencti_sources(db: Any) -> list[Any]:
+    return await _enabled_sources(db, "opencti")
 
 
 async def _opencti_connections(sessions: Any) -> tuple[list[Any], list[str]]:
@@ -688,6 +702,139 @@ async def resync_github(
     return out
 
 
+#: Why the OpenAEV findings route reads nothing: its source is off on path 5 (off by default, #2436).
+OPENAEV_FINDINGS_OFF = (
+    "The OpenAEV source 'A finding is created on one of your assets' is off for new exposures "
+    "(Settings > Organization > signal sources)"
+)
+#: Only the findings still open at source (``finding_status`` is queryable on the search).
+_OPEN_FINDING = {"key": "finding_status", "mode": "or", "operator": "eq", "values": ["OPEN"]}
+#: Findings per search page.
+_FINDINGS_PAGE = 200
+
+
+async def _openaev_findings_excluded(sessions: Any) -> bool:
+    """Whether the ``finding_created`` listener source is off on path 5 in the current profile."""
+    from app.services.ctem_signal_sources import excluded_sources, is_excluded
+    from app.services.organizations import get_primary
+
+    try:
+        async with sessions() as db:
+            primary = await get_primary(db)
+            if primary is None:
+                return False
+            excluded = await excluded_sources(db, primary.id)
+    except Exception:  # an unreadable profile never stops the resync; the recording point still decides
+        logger.info("CTEM resync: signal source exclusions not read", exc_info=True)
+        return False
+    return is_excluded(excluded, "new_exposure", "openaev", "listener", "finding_created")
+
+
+def finding_delivery(raw: dict[str, Any], base_url: str) -> dict[str, Any] | None:
+    """The provisioned ``finding_created`` trigger's normalized delivery for one search row.
+
+    The ``_openaev_event`` shape ``webhooks._normalize_openaev_payload`` writes, so the
+    listener keys the signal on the finding id as live intake does (a second resync
+    adds nothing). ``None`` for a row without an id.
+    """
+    from app.integrations.providers.openaev._common import parse_finding
+
+    finding = parse_finding(raw)
+    if finding is None:
+        return None
+    what = " ".join(p for p in (finding.type.upper(), finding.value) if p) or "Finding"
+    where = ", ".join(finding.asset_labels)
+    meta = {
+        "event_type": "finding_created",
+        "operation": "CREATE",
+        "resource_type": "FINDING",
+        "resource_id": finding.id,
+        "message": f"{what} on {where}" if where else what,
+        "trigger_name": "resync after a purge of every signal",
+    }
+    if base_url:
+        meta["platform_url"] = base_url.rstrip("/")
+    return {"_openaev_event": meta}
+
+
+async def resync_openaev_findings(
+    sessions: Any,
+    *,
+    windows: dict[str, int | None] | None = None,
+    now: datetime | None = None,
+    note: Callable[..., Awaitable[bool]] | None = None,
+    connect: Callable[[str], Awaitable[Any]] | None = None,
+    api: Callable[..., Awaitable[Any]] | None = None,
+) -> dict[str, Any]:
+    """Path 5 (#2641, #2643): the open findings of every enabled OpenAEV listener source.
+
+    Read through ``POST /api/findings/search`` page by page up to :data:`MAX_PER_ROUTE`,
+    with the integration owner's credential (``ctem_openaev_events.owner_connection``),
+    each delivered to ``note_event`` as the provisioned ``finding_created`` trigger. Skipped
+    with its reason when that source is off on path 5; a refused read is one error line
+    for its integration, the other integrations and routes go on.
+    """
+    from app.integrations.providers.openaev._common import _api, _search_body
+    from app.services.ctem_openaev_events import owner_connection
+    from app.services.ctem_signal_listeners import note_event
+
+    notify = note or note_event
+    open_connection = connect or owner_connection
+    request = api or _api
+    windows = windows or default_windows()
+    out = _route("openaev_findings", windows)
+    if await _openaev_findings_excluded(sessions):
+        out["skipped"] = OPENAEV_FINDINGS_OFF
+        return out
+    async with sessions() as db:
+        sources = await _enabled_sources(db, "openaev", "listener")
+    if not sources:
+        out["skipped"] = "no OpenAEV listener source is switched on (Settings > Organization > signal sources)"
+        return out
+    since = _since(now or datetime.now(UTC), windows.get("openaev_findings"))
+    filters: list[dict[str, Any]] = [_OPEN_FINDING]
+    if since is not None:
+        stamp = since.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        filters.append({"key": "finding_updated_at", "mode": "and", "operator": "gte", "values": [stamp]})
+    group = {"mode": "and", "filters": filters}
+    for source in sources:
+        connection = await open_connection(str(source.integration_id))
+        if connection is None:
+            out["errors"].append(f"OpenAEV {source.integration_id}: no credential for the integration owner")
+            continue
+        base_url, headers = connection
+        page = 0
+        while out["read"] < MAX_PER_ROUTE:
+            resp, err = await request(
+                base_url,
+                headers,
+                "post",
+                "/api/findings/search",
+                "search the open findings",
+                json=_search_body(page=page, size=_FINDINGS_PAGE, filter_group=group),
+                retry_transient=True,
+            )
+            if err or resp is None:
+                out["errors"].append(f"OpenAEV: {err or 'no answer'}"[:300])
+                break
+            body = resp.json() or {}
+            content = [f for f in body.get("content") or [] if isinstance(f, dict)]
+            for raw in content:
+                payload = finding_delivery(raw, base_url)
+                if payload is None:
+                    continue
+                out["read"] += 1
+                if await notify("openaev", "finding_created", payload, verified=True):
+                    out["recorded"] += 1
+                if out["read"] >= MAX_PER_ROUTE:
+                    out["capped"] = True
+                    break
+            page += 1
+            if not content or page >= int(body.get("totalPages") or 0):
+                break
+    return out
+
+
 def pass_outcome(result: Any) -> dict[str, Any]:
     """A pass's answer as the job reports it: its counts, or why it raised nothing."""
     if result is None:
@@ -716,27 +863,6 @@ async def resync_passes(sessions: Any) -> dict[str, Any]:
                 logger.warning("CTEM resync: the %s pass failed", name, exc_info=True)
                 out[name] = {"recorded": 0, "error": f"{type(exc).__name__}: {exc}"[:300]}
     return out
-
-
-async def reraise_held(sessions: Any) -> dict[str, Any]:
-    """Step 3's first move (#2634): what the last committed attack surface pass held when the purge deleted it,
-    raised again at once from the stored baseline, dated now. The pass itself runs only after every route
-    (``resync_passes``), possibly 30 minutes later, and diffs against the pre-purge pass: without this, paths 5
-    and 7 stay empty meanwhile and after. The counts per path; never raises (an ``error`` instead)."""
-    from app.services import ctem_attack_surface, ctem_case_loop
-
-    try:
-        async with sessions() as db:
-            held = await ctem_attack_surface.reraise_held(db)
-            await db.commit()
-    except Exception as exc:
-        logger.warning("CTEM resync: the held attack surface signals were not raised again", exc_info=True)
-        return {"recorded": 0, "error": f"{type(exc).__name__}: {exc}"[:300]}
-    if not held:
-        return {"recorded": 0, "note": "the attack surface pass is off"}
-    await ctem_case_loop.publish_pending(held["pending"])
-    counts: dict[str, Any] = held["counts"]
-    return counts
 
 
 async def by_trigger_path(sessions: Any) -> dict[str, dict[str, int]]:
@@ -772,8 +898,10 @@ async def resync(
         ("third_party", resync_third_party),
         ("aikido", resync_aikido),
         ("github", resync_github),
+        ("openaev_findings", resync_openaev_findings),
     )
-    # The inside-state routes read with the administrator's own access to each integration.
+    # The inside-state routes read with the administrator's own access to each integration
+    # (the OpenAEV findings read as each source's integration owner, as live intake does).
     as_actor = {"aikido", "github"}
     for name, step in steps:
         try:
