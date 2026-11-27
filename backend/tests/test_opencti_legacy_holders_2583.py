@@ -24,7 +24,7 @@ def _fake_with_objects() -> FakeOpenCTI:
     return gql
 
 
-def test_legacy_names_are_the_threat_response_holders_only():
+def test_legacy_names_are_the_threat_response_holders_only() -> None:
     assert prov.is_legacy_name("XTM One - Threat response - New intrusion sets")
     assert prov.is_legacy_name("XTM One - CTEM loop - New relevant threats")
     assert prov.is_legacy_name("XTM One - CTEM loop - Threat activity flagged in a PIR - Playbook")
@@ -34,7 +34,7 @@ def test_legacy_names_are_the_threat_response_holders_only():
 
 
 @pytest.mark.asyncio
-async def test_dry_run_lists_then_removal_deletes_only_the_legacy_objects():
+async def test_dry_run_lists_then_removal_deletes_only_the_legacy_objects() -> None:
     gql = _fake_with_objects()
     found = await prov.legacy_objects(gql)
     assert {o["id"] for o in found} == {"t-old", "t-older", "p-old", "n-old"}
@@ -49,12 +49,12 @@ async def test_dry_run_lists_then_removal_deletes_only_the_legacy_objects():
 
 
 @pytest.mark.asyncio
-async def test_a_retired_holder_removes_its_objects_and_keeps_a_tombstone(monkeypatch):
+async def test_a_retired_holder_removes_its_objects_and_keeps_a_tombstone(monkeypatch: pytest.MonkeyPatch) -> None:
     gql = FakeOpenCTI()
     gql.triggers["t1"] = {"name": "XTM One - CTEM loop - New relevant threats - Trigger", "notifiers": ["n1"]}
     gql.notifiers["n1"] = {"name": "XTM One - CTEM loop - New relevant threats - Notifier"}
 
-    async def connection(_db, _assignment, _agent):
+    async def connection(_db: object, _assignment: object, _agent: object) -> tuple[FakeOpenCTI, str, str, str]:
         return gql, "i1", "https://x", "s3cret"
 
     monkeypatch.setattr(prov, "_connection", connection)
@@ -76,7 +76,7 @@ async def test_a_retired_holder_removes_its_objects_and_keeps_a_tombstone(monkey
     assert assignment.trigger_config["provision"]["purpose"] == "New relevant threats"
 
 
-def test_the_retired_holders_are_the_two_threat_response_intakes():
+def test_the_retired_holders_are_the_two_threat_response_intakes() -> None:
     from app.agents.builtin_agents import CTEM_F1_PIR_INTAKE, CTEM_F1_THREAT_INTAKE
     from app.services.ctem_platform_sources import HOLDER_ASSIGNMENTS, RETIRED_HOLDERS
 

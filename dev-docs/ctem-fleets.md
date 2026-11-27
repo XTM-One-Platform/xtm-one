@@ -1125,8 +1125,8 @@ which the registration writes without one, gets a secret generated and stored
 in its extra config by the first pass that needs it,
 `trigger_provisioning.receiver_secret`, #970), and a live knowledge trigger with
 the filters (`entity_type`, `objectLabel` by resolved label id,
-`x_opencti_score` gte) and that notifier. Both are named
-`XTM One - <fleet> - <purpose>`.
+`x_opencti_score` gte) and that notifier. Each is named
+`XTM One - <fleet> - <purpose> - <Kind>` (#2583).
 
 - Idempotent: the ids live in `trigger_config.opencti_provisioning`; a lost
   state adopts the objects by exact name instead of duplicating them.
@@ -1327,12 +1327,17 @@ disable or delete, state in `trigger_config.openaev_provisioning`):
 | `atomic_test_finished` | `INJECT` `UPDATE`, `inject_status` eq `EXECUTED`, `PARTIAL`, `ERROR` |
 | `finding_created` | `FINDING` `CREATE` |
 
+- Names follow the rule of #2583 shared with OpenCTI: the notifier is
+  `XTM One - <fleet> - <purpose> - Notifier`, its description carries the
+  instance URL, fleet, path and the assignment (name and id) or signal source
+  it serves; a recheck renames an object of the former rule in place, ids kept.
 - One WEBHOOK notifier per assignment posts OpenAEV's default body to the
   assignment's receiver with the integration's `webhook_secret` as
   `X-OpenAEV-Token` (checked by `_verify_signature`, never persisted). No
   secret: the state is `error`, nothing is wired unauthenticated.
-- One LIVE trigger per event, named `XTM One - <fleet> - <purpose> - <event>`;
-  the receiver keys the delivery on that suffix (`_normalize_openaev_payload`)
+- One LIVE trigger per event, named
+  `XTM One - <fleet> - <purpose> - Trigger - <event>`; the receiver keys the
+  delivery on the last segment (a trigger of the former rule still reads) (`_normalize_openaev_payload`)
   and records `_openaev_event` (event, operation, resource type and id,
   message, platform URL).
 - Expectation results have no notification resource in OpenAEV

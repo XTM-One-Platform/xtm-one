@@ -1553,7 +1553,7 @@ def _with_state(trigger_config: dict, state: dict | None) -> dict:
 
 async def provision_one(
     db: Any, assignment: Any, agent: Any, *, now: datetime | None = None, retired: bool = False
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Reconcile one assignment; writes and returns its new state (``None`` = nothing held).
 
     *retired*: a legacy holder whose Signals source delivers instead (#2583 point 4): its

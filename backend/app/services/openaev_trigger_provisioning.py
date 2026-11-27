@@ -52,8 +52,12 @@ simulations, injects and findings. The events map to triggers as follows
   very high criticality, a path 4 signal. Optional (:data:`OPTIONAL_EVENTS`):
   an OpenAEV that refuses it keeps the other triggers.
 
-Every object is named ``XTM One - <fleet> - <purpose>``; a trigger adds
-`` - <event>``, which is how the receiver names the event of a delivery
+Every object follows the naming rule of #2583: the notifier is
+``XTM One - <fleet> - <purpose> - Notifier`` and a trigger
+``XTM One - <fleet> - <purpose> - Trigger - <event>``; the description of
+the notifier carries the instance, the fleet, the path and who it serves. A
+recheck renames objects in place, ids kept. The trigger's last segment is
+the event, which is how the receiver names the event of a delivery
 (:func:`event_from_notification_name`): OpenAEV's default webhook body
 carries the trigger name, the operation and the resource, not our event.
 
@@ -103,6 +107,9 @@ EVENTS: dict[str, tuple[str, str, str | None, tuple[str, ...]]] = {
     "scenario_score_degraded": ("SCENARIO", "SCORE_DEGRADATION", None, ()),
     "critical_asset_reached": ("SIMULATION", "CRITICAL_ASSET_REACHED", None, ()),
 }
+#: The kind segment of an object's name (#2583, the rule shared with OpenCTI).
+OBJECT_KINDS: dict[str, str] = {"trigger": "Trigger", "notifier": "Notifier"}
+
 #: Events an older OpenAEV may not know: a refused trigger is recorded as unsupported and
 #: never fails the assignment's other triggers (``critical_asset_reached``: CTEM-13).
 OPTIONAL_EVENTS: frozenset[str] = frozenset({"critical_asset_reached"})
@@ -141,12 +148,31 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
     return {"fleet": fleet.strip(), "purpose": purpose.strip(), "events": sorted(set(events))}
 
 
-def object_name(spec: dict[str, Any]) -> str:
-    return f"{NAME_PREFIX} - {spec['fleet']} - {spec['purpose']}"
+def object_name(spec: dict[str, Any], kind: str = "") -> str:
+    """``XTM One - <Fleet> - <Path label> - <Kind>`` (#2583); without *kind*, the shared stem."""
+    stem = f"{NAME_PREFIX} - {spec['fleet']} - {spec['purpose']}"
+    return f"{stem} - {OBJECT_KINDS[kind]}" if kind else stem
 
 
 def trigger_name(spec: dict[str, Any], event: str) -> str:
-    return f"{object_name(spec)} - {event}"
+    """The trigger of *event*: its kind, then the event the receiver reads back (#2583)."""
+    return f"{object_name(spec, 'trigger')} - {event}"
+
+
+def object_description(spec: dict[str, Any], kind: str) -> str:
+    """What an OpenAEV user reads on the object: the instance, the fleet, the path and who it serves (#2583)."""
+    from app.core.config import settings
+
+    origin = spec.get("origin") or {}
+    lines = [
+        f"Provisioned by XTM One ({settings.base_url.rstrip('/')}); edits are reverted.",
+        f"Fleet: {spec['fleet']}. Path: {spec['purpose']}. Kind: {OBJECT_KINDS[kind]}.",
+    ]
+    if origin.get("assignment_id"):
+        lines.append(f"Assignment: {origin.get('assignment') or 'unnamed'} ({origin['assignment_id']}).")
+    if origin.get("source_id"):
+        lines.append(f"Signal source: {origin['source_id']}.")
+    return "\n".join(lines)
 
 
 def event_from_notification_name(name: Any) -> str | None:
@@ -161,11 +187,11 @@ def receiver_url(base_url: str, integration_id: str, assignment_id: str) -> str:
     return f"{base_url.rstrip('/')}/api/hooks/integrations/{integration_id}/assignments/{assignment_id}"
 
 
-def notifier_body(name: str, url: str, secret: str) -> dict[str, Any]:
+def notifier_body(name: str, url: str, secret: str, description: str = "") -> dict[str, Any]:
     """A WEBHOOK notifier; no template, so OpenAEV posts its default JSON body."""
     return {
         "notifier_name": name,
-        "notifier_description": "Provisioned by XTM One: do not edit, it is repaired.",
+        "notifier_description": description or "Provisioned by XTM One: do not edit, it is repaired.",
         "notifier_type": "WEBHOOK",
         "notifier_configuration": {"url": url, "verb": "POST", "headers": {AUTH_HEADER: secret}},
     }
@@ -210,6 +236,7 @@ def _notifier_drifted(stored: Any, desired: dict[str, Any]) -> bool:
     want = desired["notifier_configuration"]
     return (
         stored.get("notifier_name") != desired["notifier_name"]
+        or stored.get("notifier_description") != desired["notifier_description"]
         or stored.get("notifier_type") != "WEBHOOK"
         or not isinstance(config, dict)
         or config.get("url") != want["url"]
@@ -285,11 +312,12 @@ async def reconcile(
     state = dict(state or {})
     stamp = (now or datetime.now(UTC)).isoformat()
     name = object_name(spec)
+    notifier = notifier_body(object_name(spec, "notifier"), url, secret, object_description(spec, "notifier"))
     held = state.get("trigger_ids") if isinstance(state.get("trigger_ids"), dict) else {}
     notifier_id: str | None = None
     trigger_ids: dict[str, str] = {}
     try:
-        notifier_id = await _ensure_notifier(api, state.get("notifier_id"), notifier_body(name, url, secret))
+        notifier_id = await _ensure_notifier(api, state.get("notifier_id"), notifier)
         unsupported: list[str] = []
         for event in spec["events"]:
             try:
@@ -316,7 +344,7 @@ async def reconcile(
         "name": name,
         "notifier_id": notifier_id,
         "trigger_ids": trigger_ids,
-        "fingerprint": fingerprint(name, ",".join(spec["events"]), url),
+        "fingerprint": fingerprint(notifier["notifier_name"], ",".join(spec["events"]), url),
         "checked_at": stamp,
     }
     if unsupported:
@@ -483,6 +511,7 @@ async def provision_one(db: Any, assignment: Any, agent: Any, *, now: datetime |
         assignment.trigger_config = _with_state(config, new_state)
         return new_state
     url = receiver_url(settings.base_url, integration_id, str(assignment.id))
+    spec = {**spec, "origin": {"assignment": getattr(assignment, "name", ""), "assignment_id": str(assignment.id)}}
     new_state = await reconcile(api, spec, state, url=url, secret=secret, now=now)
     new_state["integration_id"] = integration_id
     assignment.trigger_config = _with_state(config, new_state)
