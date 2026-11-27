@@ -573,12 +573,20 @@ order:
    - inside state (paths 3, 10): the open Aikido issues and the open Dependabot
      alerts of each GitHub organization, read with the integrations visible to
      the administrator who started the purge and a token minted for them;
+   - path 5 (#2641, #2643): the open findings of every enabled OpenAEV listener
+     source (`openaev_findings`, no age limit by default), read through
+     `POST /api/findings/search` with the integration owner's credential and fed
+     to `note_event` as the provisioned `finding_created` trigger delivers them
+     (`finding_delivery`: same `_openaev_event` shape, keyed on the finding id, so
+     a second resync adds nothing); skipped with its reason when that source is
+     off on path 5, a refused read is one error line and the other routes go on;
    - the attack surface (5, 6, 7) and evidence health (9, 12) passes, once each,
      their outcome reported (recorded, off in the profile, skipped and why, the
      error, or nothing to raise).
-   GitLab findings (the GitLab asset sync) and OpenAEV results (event only) are
-   reported with that reason. The step's counts carry `windows`, `routes` (per
-   route: window, read, recorded, capped, errors, skipped) and `by_path`
+   GitLab findings (the GitLab asset sync) and OpenAEV simulation results and
+   score degradations (transitions of a simulation run: run a simulation to raise
+   them again) are reported with that reason. The step's counts carry `windows`,
+   `routes` (per route: window, read, recorded, capped, errors, skipped) and `by_path`
    (signals and cases per trigger path).
 4. **Resume intake**, always, also after a failure, which the job status and the
    audit row report.
