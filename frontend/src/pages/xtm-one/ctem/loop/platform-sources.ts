@@ -81,7 +81,7 @@ function sentence(text: string): string {
 }
 
 /** The fix of a reason in the reader's language; `null` when there is no reason. */
-export function platformSourceFix(source: { reason_code?: CtemPlatformSourceReasonCode | null }, t_i18n: Translate): string | null {
+function platformSourceFix(source: { reason_code?: CtemPlatformSourceReasonCode | null }, t_i18n: Translate): string | null {
   if (!source.reason_code) return null;
   return t_i18n(PLATFORM_SOURCE_FIX[source.reason_code] ?? PLATFORM_SOURCE_FIX.provider_error);
 }
