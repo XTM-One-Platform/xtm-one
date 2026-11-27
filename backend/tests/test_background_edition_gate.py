@@ -1039,7 +1039,16 @@ def _run_stubs():
     assignment = SimpleNamespace(
         enabled=True, name="Weekly briefing", user_id=None, is_company_managed=False
     )
-    agent = SimpleNamespace(enabled=True, user_id=None, is_builtin=False, id=uuid.uuid4())
+    # A resumed run reads the agent's tool set to word its resume note (#2677).
+    agent = SimpleNamespace(
+        enabled=True,
+        user_id=None,
+        is_builtin=False,
+        id=uuid.uuid4(),
+        builtin_tool_ids=[],
+        builtin_allowed_tools=None,
+        tool_deny_list=[],
+    )
     return run, assignment, agent
 
 

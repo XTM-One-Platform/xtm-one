@@ -402,7 +402,7 @@ async def test_the_resume_hands_the_parent_to_the_turn(monkeypatch):
 
     monkeypatch.setattr(parent_wake, "_stopped_since", _stopped)
 
-    async def _load_replay(db, conversation_id, *, user_id=None, now=None):
+    async def _load_replay(db, conversation_id, *, user_id=None, now=None, code_interpreter=False):
         return turn_checkpoint.ResumedWork(found=False), []
 
     monkeypatch.setattr(turn_checkpoint, "load_replay", _load_replay)

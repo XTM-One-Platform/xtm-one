@@ -207,7 +207,7 @@ def runner(monkeypatch):
     monkeypatch.setattr(database, "async_session", _session)
     monkeypatch.setattr(parent_wake, "_stopped_since", AsyncMock(return_value=False))
 
-    async def _load_replay(db, conversation_id, *, user_id=None, now=None):
+    async def _load_replay(db, conversation_id, *, user_id=None, now=None, code_interpreter=False):
         return turn_checkpoint.ResumedWork(found=False), []
 
     monkeypatch.setattr(turn_checkpoint, "load_replay", _load_replay)

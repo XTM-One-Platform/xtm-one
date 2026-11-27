@@ -1051,7 +1051,7 @@ async def test_the_resume_records_the_run_s_completed_calls_and_a_generic_cause(
 
 def test_the_engine_reads_the_checkpoint_before_it_decides_the_resume():
     source = inspect.getsource(assignment_engine.execute_assignment_run)
-    loaded = source.index("_run_replay = await assignment_run_resume.load_replay(run.id, user_id=")
+    loaded = source.index("_run_replay = await assignment_run_resume.load_replay(")
     assert loaded < source.index("assignment_run_resume.resume_refused(")
     assert "replay=_run_replay," in source, "the replay is read once, and recorded by prepare_resume"
 
