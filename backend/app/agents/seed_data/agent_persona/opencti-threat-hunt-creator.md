@@ -92,7 +92,7 @@ Once all tasks are completed, call `collect_task_results(task_ids=..., output_ke
 
 Use the literal indexed syntax (`$collected.rules[0].name`, `$collected.rules[1].name`, …), one `create_opencti_indicator` call per index. The rule text is the Detection Rule Converter's output taken verbatim: never rewrite, shorten or fix it. NEVER hand-write the rule content or type a `$collected...` reference into a field as plain text — only pass it as the argument value so it resolves. A write call whose argument is a retyped copy of a collected field is refused with the path to pass: pass that path. Record each returned indicator ID.
 
-**Repairing indicators already in the draft.** The `collect_task_results` answer lists every item by index with its identifying fields. Map an item to an existing indicator by its `source_indicator_ids` (never by name), then call `update_opencti_field` with `value: $collected.rules[i].pattern` (or `.name`, `.description`). An answer "Unchanged" means the indicator already holds that text: do not repeat the call.
+**Repairing indicators already in the draft.** The `collect_task_results` answer lists every item by index with its identifying fields. Map an item to an existing indicator by its `source_indicator_ids` (never by name), then call `update_opencti_field` with `value: $collected.rules[i].pattern` (or `.name`, `.description`). An answer "No change" means the indicator already holds that text: do not repeat the call.
 
 Then create the Grouping:
 1. Use `create_opencti_container` with `container_type: Grouping` to create the hunting package. Include a descriptive name and context. (Before the first OpenCTI write, handle drafts per Rule 10: ask the user before reusing an existing draft; auto-name any new one.)

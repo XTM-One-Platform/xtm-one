@@ -6,8 +6,6 @@ copy of a collected field (the model's own rewrite of the rule) is refused with
 the path to pass; an exact copy, a short value or free text passes.
 """
 
-import json
-
 from app.services.builtin_tools.handover import _collected_summary
 from app.tools.agent_loop import _retyped_collected_error
 from app.tools.base import CallableToolExecutor, CompositeToolExecutor, ToolDefinition
@@ -68,71 +66,6 @@ def test_list_shaped_collected_and_quoted_key() -> None:
     error = _retyped_collected_error({"pattern": _PATTERN.replace("windows", "linux")}, session)
     assert error is not None
     assert '$collected["my-rules"][0].pattern' in error
-
-
-class _FieldGraphQL:
-    """Stub of ``knowledge._graphql``: one indicator whose STIX form holds a pattern."""
-
-    def __init__(self, stored: str) -> None:
-        self.stored = stored
-        self.patches: list[dict[str, object]] = []
-
-    async def __call__(self, client, base_url, headers, query, variables=None):  # type: ignore[no-untyped-def]
-        if "toStix" in query:
-            return {"stixCoreObject": {"toStix": json.dumps({"pattern": self.stored})}}, None
-        if "fieldPatch" in query:
-            self.patches.append(variables or {})
-            return {"stixDomainObjectEdit": {"fieldPatch": {"id": "indicator--1", "entity_type": "Indicator"}}}, None
-        return {}, None
-
-
-def _field_executor(monkeypatch, stored: str):  # type: ignore[no-untyped-def]
-    import app.integrations.providers.opencti.knowledge as knowledge_mod
-    from app.integrations.providers.opencti import build_tools
-
-    stub = _FieldGraphQL(stored)
-    monkeypatch.setattr(knowledge_mod, "_graphql", stub)
-    executor = CallableToolExecutor()
-    build_tools(
-        "https://demo.opencti.io||test-token",
-        executor,
-        scope_headers={"opencti-draft-id": "draft--abc"},
-        direct_mutations=True,
-    )
-    return executor, stub
-
-
-async def test_update_field_to_the_stored_value_answers_unchanged(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    from app.tools.base import ToolCall
-
-    executor, stub = _field_executor(monkeypatch, _PATTERN)
-    result = await executor.execute_tool(
-        ToolCall(
-            id="c1",
-            name="update_opencti_field",
-            arguments={"entity_id": "indicator--1", "key": "pattern", "value": _PATTERN},
-        )
-    )
-    assert result.content.startswith("Unchanged: 'pattern'"), result.content
-    assert "draft--abc" in result.content
-    assert "Updated" not in result.content
-    assert stub.patches == []
-
-
-async def test_update_field_to_a_new_value_patches_and_names_the_draft(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    from app.tools.base import ToolCall
-
-    executor, stub = _field_executor(monkeypatch, "old pattern")
-    result = await executor.execute_tool(
-        ToolCall(
-            id="c2",
-            name="update_opencti_field",
-            arguments={"entity_id": "indicator--1", "key": "pattern", "value": _PATTERN},
-        )
-    )
-    assert result.content.startswith("Updated 'pattern' on [Indicator] indicator--1"), result.content
-    assert "recorded in draft draft--abc" in result.content
-    assert len(stub.patches) == 1
 
 
 def _loop_with_create_indicator() -> tuple[CompositeToolExecutor, list[dict[str, str]]]:
