@@ -22214,5 +22214,8 @@
   "The last pass ({at}) found no undeclared host and no new port": "前回のパス（{at}）では未宣言のホストも新しいポートも見つかりませんでした",
   "The last pass ({at}) found nothing new on this path": "前回のパス（{at}）ではこのタイプに新しいものは見つかりませんでした",
   "{reason}; the provider answered nothing for {scopes}": "{reason}。プロバイダーは {scopes} について何も返しませんでした",
-  "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.": "パートナーのタスクは、所有者が読み取れるフリート、フリートの状態、実行、および稼働中のビルドを読み取ります。書き込みは一切行わず、各読み取りはパートナーのタスクとともに監査されます。"
+  "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.": "パートナーのタスクは、所有者が読み取れるフリート、フリートの状態、実行、および稼働中のビルドを読み取ります。書き込みは一切行わず、各読み取りはパートナーのタスクとともに監査されます。",
+  "This fleet's runs only. The organization total counts every agent.": "このフリートの実行のみ。組織の合計にはすべてのエージェントが含まれます。",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: AI コスト {cost}、組織の合計にのみ計上されます。}}",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: その実行は組織の合計にのみ計上されます。}}"
 }
