@@ -426,6 +426,12 @@ own objects stay until that source is enabled and connected
 no delivery lost. A refused adoption stays off with its reason and is tried
 once (`adopted_from`).
 
+## 4quater. The inventory evaluation of path 6 (#2642)
+
+`services/ctem_inventory_staleness.py` evaluates the inventory records of the primary organization as they stand: a record whose `last_seen_at` is older than `attack_surface.stale_after_days` (14 by default) is `unseen`, a record whose `sync_id` names a sync that no longer exists is `orphaned`. A record of a sync whose last run failed or that paused itself is withheld and counted (`withheld_sync_failed`): its age is the sync's failure. Each finding is recorded through `record_signal` (source `xtm_one:pass`, dedupe `stale_asset:xtm_one:<detail>:<record id>`). It runs daily on the autonomous tick (Redis slot `ctem:inventory-staleness:pass`) and once in the resync step of a purge (`resync_passes`); the source is always on and can be taken off the path like any other.
+
+The last outcome is kept (`ctem:inventory-staleness:last`, 30 days). `GET /ctem-signals/paths` answers, on every path that is on with no signal in 30 days, `silent_reason` `{code, detail, evaluation?}`: `never_evaluated`, `no_asset_past_threshold` or `upstream_sync_failed` for path 6, `listener_never_fired` for a path no source ever fed.
+
 ## 5. Visibility
 
 Signals are organization data; their content is what the recorder chose to

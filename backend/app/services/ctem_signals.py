@@ -759,6 +759,42 @@ async def user_reads_signal(db: AsyncSession, user_id: str, signal_id: Any) -> b
     return user is not None and await ctem_access.group_right(db, uid) is not None
 
 
+#: Why a path that is on records nothing (#2642), the codes ``silent_reason`` answers.
+SILENT_REASONS: dict[str, str] = {
+    "never_evaluated": "The inventory has not been evaluated yet; it is evaluated daily and after a purge",
+    "no_asset_past_threshold": "No asset is past the threshold and every synced asset still has its sync",
+    "upstream_sync_failed": "An inventory sync failed: the assets it owns are not judged stale until it reads again",
+    "listener_never_fired": "No source of this path has sent an event yet",
+}
+
+
+def silent_reason(row: dict[str, Any], evaluation: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Why a path that is on recorded no signal in 30 days, or ``None`` when it did or is not on (#2642).
+
+    *evaluation* is the last outcome of the path's own evaluation (``ctem_inventory_staleness.last_outcome``
+    for path 6): it tells a sync failure from an inventory with nothing past the threshold.
+    """
+    from app.services.ctem_signal_sources import LIVE_PATH_STATUSES
+
+    if row.get("status") not in LIVE_PATH_STATUSES or int(row.get("count_30d") or 0) > 0:
+        return None
+    if row["id"] == "stale_asset":
+        if not evaluation:
+            code = "never_evaluated"
+        elif int(evaluation.get("withheld_sync_failed") or 0) or int(evaluation.get("failed_syncs") or 0):
+            code = "upstream_sync_failed"
+        else:
+            code = "no_asset_past_threshold"
+        out: dict[str, Any] = {"code": code, "detail": SILENT_REASONS[code]}
+        if evaluation:
+            keys = ("at", "evaluated", "stale_after_days", "failed_syncs", "withheld_sync_failed")
+            out["evaluation"] = {k: evaluation[k] for k in keys if k in evaluation}
+        return out
+    if not any(s.get("last_signal_at") for s in row.get("sources") or []) and not row.get("last_signal_at"):
+        return {"code": "listener_never_fired", "detail": SILENT_REASONS["listener_never_fired"]}
+    return None
+
+
 def path_catalog(
     counts: dict[str, dict[str, int]] | None = None,
     *,
@@ -766,6 +802,7 @@ def path_catalog(
     activity: dict[str, dict[str, Any]] | None = None,
     by_source: dict[str, dict[str, dict[str, Any]]] | None = None,
     webhooks: dict[str, list[dict[str, Any]]] | None = None,
+    evaluations: dict[str, dict[str, Any] | None] | None = None,
 ) -> list[dict[str, Any]]:
     """The 12 trigger paths, with their default lens and whether a listener maps an event to them.
 
@@ -783,6 +820,8 @@ def path_catalog(
     (``ctem_webhook_sources.path_sources_of``), each path also lists its signed webhook sources (#2506).
     Every path carries ``sources_enabled`` and ``sources_available``: its sources on, and its sources
     that could be on here (a source of a provider with no integration here never counts, #2506).
+    With *activity*, a path that is on with no signal in 30 days carries ``silent_reason``
+    (:func:`silent_reason`, #2642), read with its own evaluation in *evaluations*.
     """
     from app.services.ctem_signal_listeners import paths_with_listener
     from app.services.ctem_signal_sources import PATH_CAPABILITIES, PATH_DESCRIPTIONS, path_sources, path_status
@@ -815,5 +854,6 @@ def path_catalog(
             seen = activity.get(path) or {}
             row["count_30d"] = int(seen.get("count_30d") or 0)
             row["last_signal_at"] = seen.get("last_signal_at")
+            row["silent_reason"] = silent_reason(row, (evaluations or {}).get(path))
         out.append(row)
     return out

@@ -132,8 +132,14 @@ async def list_ctem_signal_paths(
         by_source = await signals.activity_by_source(db, organization_id=primary.id, recorded_by=reader, since=since)
     bound = await bound_sources(db, user.id)
     webhooks = webhook_sources.path_sources_of(await webhook_sources.list_sources(db))
+    # #2642: path 6's own inventory evaluation says why the path records nothing.
+    from app.services.ctem_inventory_staleness import last_outcome
+
+    evaluations = {"stale_asset": await last_outcome()}
     return {
-        "paths": signals.path_catalog(counts, bound=bound, activity=activity, by_source=by_source, webhooks=webhooks)
+        "paths": signals.path_catalog(
+            counts, bound=bound, activity=activity, by_source=by_source, webhooks=webhooks, evaluations=evaluations
+        )
     }
 
 

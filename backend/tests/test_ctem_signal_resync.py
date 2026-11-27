@@ -315,7 +315,7 @@ def test_a_pass_says_why_it_raised_nothing() -> None:
 
 @pytest.mark.asyncio
 async def test_each_pass_runs_once_with_its_slot_given_back(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import ctem_attack_surface, ctem_evidence_health
+    from app.services import ctem_attack_surface, ctem_evidence_health, ctem_inventory_staleness
 
     calls: list[str] = []
 
@@ -334,8 +334,17 @@ async def test_each_pass_runs_once_with_its_slot_given_back(monkeypatch: pytest.
 
     _patch(ctem_attack_surface, "surface", {"recorded": 3})
     _patch(ctem_evidence_health, "evidence", RuntimeError("OpenCRQ down"))
+    _patch(ctem_inventory_staleness, "inventory", {"recorded": 1, "unseen": 1})
     out = await resync.resync_passes(lambda: _Session())
-    assert calls == ["release surface", "pass surface", "release evidence", "pass evidence"]
+    assert calls == [
+        "release surface",
+        "pass surface",
+        "release evidence",
+        "pass evidence",
+        "release inventory",
+        "pass inventory",
+    ]
+    assert out["inventory_staleness"] == {"recorded": 1, "unseen": 1}
     assert out["attack_surface"] == {"recorded": 3}
     assert out["evidence_health"] == {"recorded": 0, "error": "RuntimeError: OpenCRQ down"}
 
