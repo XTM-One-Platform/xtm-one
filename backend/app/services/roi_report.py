@@ -48,7 +48,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.services import roi
+from app.services import fleet_value_marks, roi
 from app.services.roi_spend import COST_SOURCE, COST_SOURCE_LABEL, unallocated
 
 #: The currency used when neither the request nor the organization names one.
@@ -134,6 +134,12 @@ class RoiReport:
     cost_source: str = "recorded_runs"
     #: The spend of the scope's agents no recorded unit carries (the "Cost not tied to a unit" row).
     unallocated_cost: float = 0.0
+    #: A fleet report: the fleet's factory-reset mark when it falls inside the window (#2580),
+    #: the views' "Measured since <date> (reset)"; ``None`` otherwise.
+    value_measured_since: datetime | None = None
+    #: How many fleets are measured since a reset inside the window (the platform total leaves
+    #: their earlier records and spend out, #2580).
+    reset_fleets: int = 0
 
 
 @dataclass
@@ -369,12 +375,14 @@ async def price_rows(
     record_agents = {r.agent_id for r in rows if r.agent_id is not None}
     wanted = None if scope_agents is None else record_agents | scope_agents
     spend = await roi_spend.agent_spend(db, since=since, now=now, agent_ids=wanted)
+    spend = await clip_spend_to_marks(db, spend, since=since, now=now, agent_ids=wanted)
     in_scope = set(spend) if scope_agents is None else scope_agents
     counts: dict[uuid.UUID, int] = {}
     if spend:
         query = select(RoiRunRecord.agent_id, func.count()).where(RoiRunRecord.agent_id.in_(list(spend)))
         if since is not None:
             query = query.where(RoiRunRecord.created_at >= since)
+        query = query.where(fleet_value_marks.counted_clause(RoiRunRecord.created_at, RoiRunRecord.fleet_id))
         counts = {aid: int(n) for aid, n in (await db.execute(query.group_by(RoiRunRecord.agent_id))).all()}
     orphans = [a for a in in_scope if spend.get(a, 0.0) > 0 and not counts.get(a)]
     homes = {aid: home.fleet_id for aid, home in (await home_fleets_of(db, orphans)).items()}
@@ -386,6 +394,37 @@ async def price_rows(
         home_fleets=homes,
         make_row=lambda agent_id, fleet_id, measure: RecordRow(agent_id, fleet_id, measure),
     )
+
+
+async def clip_spend_to_marks(
+    db: AsyncSession,
+    spend: dict[uuid.UUID, float],
+    *,
+    since: datetime | None,
+    now: datetime | None,
+    agent_ids: set[uuid.UUID] | None,
+) -> dict[uuid.UUID, float]:
+    """*spend* with the agents of a reset fleet read again from their fleet's mark (#2580).
+
+    An agent's spend is its home fleet's (:mod:`roi_spend`); when that fleet carries a
+    ``value_measured_since`` later than *since*, only the spend from the mark counts, so no
+    pre-reset cost comes back as a cost-only row. One read per distinct mark.
+    """
+    from app.services import roi_spend
+
+    marks = await fleet_value_marks.load_marks(db)
+    if not marks:
+        return spend
+    candidates = set(spend) | (agent_ids or set())
+    by_agent = await fleet_value_marks.agent_marks(db, candidates, marks)
+    later = {aid: m for aid, m in by_agent.items() if since is None or m > since}
+    if not later:
+        return spend
+    clipped = {aid: cost for aid, cost in spend.items() if aid not in later}
+    for mark in sorted(set(later.values())):
+        agents = [aid for aid, m in later.items() if m == mark]
+        clipped.update(await roi_spend.agent_spend(db, since=mark, now=now, agent_ids=agents))
+    return clipped
 
 
 async def fleet_member_agents(db: AsyncSession, fleet_ids: Iterable[uuid.UUID]) -> set[uuid.UUID]:
@@ -482,6 +521,8 @@ async def load_report(
     )
     if since is not None:
         query = query.where(RoiRunRecord.created_at >= since)
+    # A fleet's value is measured from its last factory reset (#2580): its earlier records are left out.
+    query = query.where(fleet_value_marks.counted_clause(RoiRunRecord.created_at, RoiRunRecord.fleet_id))
     if scope == SCOPE_AGENT:
         query = query.where(RoiRunRecord.agent_id == scope_id)
     elif scope == SCOPE_FLEET:
@@ -582,6 +623,13 @@ async def load_report(
     report.unallocated_cost = unallocated(rows)
     report.backfilled_records = len(backfilled)
     report.backfilled_at = max(backfilled) if backfilled else None
+    marks = await fleet_value_marks.load_marks(db)
+    first_day = since.date() if since is not None else None
+    if scope == SCOPE_FLEET and scope_id is not None:
+        mark = marks.get(scope_id)
+        report.value_measured_since = mark if fleet_value_marks.in_window(mark, first_day) else None
+    else:
+        report.reset_fleets = sum(1 for m in marks.values() if fleet_value_marks.in_window(m, first_day))
     if scope_id is not None and scope not in (SCOPE_PLATFORM, SCOPE_MINE):
         report.scope_id = str(scope_id)
         names = agent_names if scope == SCOPE_AGENT else fleet_names
@@ -718,6 +766,7 @@ async def record_details(
     since = window_since(window, now=now)
     if since is not None:
         query = query.where(RoiRunRecord.created_at >= since)
+    query = query.where(fleet_value_marks.counted_clause(RoiRunRecord.created_at, RoiRunRecord.fleet_id))
     pricing = await load_pricing(db, currency)
     counts = {sid: {"rejected": 0, "work_items": 0, "unreviewed_work_items": 0} for sid in ids}
     used: dict[uuid.UUID, set[str]] = {sid: set() for sid in ids}
@@ -919,6 +968,9 @@ def _report_shape(report: RoiReport) -> dict[str, Any]:
         "cost_source": report.cost_source,
         "cost_source_label": COST_SOURCE_LABEL if report.cost_source == COST_SOURCE else None,
         "unallocated_cost": None if report.cost_masked else report.unallocated_cost,
+        # A fleet's value measured since its factory reset (#2580): "Measured since <date> (reset)".
+        "value_measured_since": report.value_measured_since.isoformat() if report.value_measured_since else None,
+        "reset_fleets": report.reset_fleets,
         # The Value page (#9836 R5a, design 10.7): the rows of "By unit of work" and the weekly trend.
         "units": [{"id": g.id, "name": g.name, **figures_dict(g.figures)} for g in report.units],
         "trend": [

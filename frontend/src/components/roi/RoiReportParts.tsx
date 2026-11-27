@@ -268,6 +268,22 @@ export function RoiKpiCards({
   );
 }
 
+/**
+ * Said on a fleet's value views when its factory reset falls inside the window (#2580): the
+ * figures count only what happened from the reset on. Draws nothing without a mark.
+ */
+export function RoiResetNote({ since }: { since?: string | null }) {
+  const { t_i18n, intl } = useFormatter();
+  if (!since) return null;
+  const date = intl.formatDate(since, { year: "numeric", month: "short", day: "numeric" });
+  return (
+    <p role="note" className="flex flex-wrap items-center gap-2 content-compact text-default-secondary" data-testid="roi-reset-note">
+      <Info className="h-4 w-4" aria-hidden />
+      {t_i18n("Measured since {date} (reset)", { date })}
+    </p>
+  );
+}
+
 /** Said when some minutes or rates are catalog defaults, with the way to set them. */
 export function RoiEstimatedNote() {
   const { t_i18n } = useFormatter();

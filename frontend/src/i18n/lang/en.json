@@ -22110,5 +22110,7 @@
   "No asset group or primary asset owner was found: an administrator, as no group decides CTEM.": "No asset group or primary asset owner was found: an administrator, as no group decides CTEM.",
   "The first of {count, plural, one {# candidate} other {# candidates}} by account creation.": "The first of {count, plural, one {# candidate} other {# candidates}} by account creation.",
   "No owner was found: the current owner is kept.": "No owner was found: the current owner is kept.",
-  "Set by a person.": "Set by a person."
+  "Set by a person.": "Set by a person.",
+  "Value (ROI) restarts from now": "Value (ROI) restarts from now",
+  "Measured since {date} (reset)": "Measured since {date} (reset)"
 }

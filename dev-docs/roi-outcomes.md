@@ -1475,6 +1475,20 @@ with the tripwire of 12.7.
   (10.5) from it; no surface masks on its own.
 - The reviewed share counts run and work item facts of the same selection as
   the hero (12.4), never another object list.
+- A fleet's value is measured from its last factory reset (#2580,
+  `services/fleet_value_marks.py`). The reset stamps `fleets.value_measured_since`;
+  from then on every read leaves out what that fleet did before the mark: its run,
+  work item and chat records (by `fleet_id` and `created_at`) and the LLM spend of
+  its home member agents (the ledger's cost facts, the report's spend read again
+  from the mark, so no pre-reset cost-only row returns). It is applied where the
+  facts are read (`roi_ledger.ledger_facts`, `roi_report.load_report` and
+  `clip_spend_to_marks`, `roi_records.list_records`), so the fleet view, the
+  fleet's row of the organization breakdown and the organization total exclude
+  the same part; `reset_fleets` on a platform report counts the fleets measured
+  since a reset inside the window. Nothing is deleted. A fleet report carries
+  `value_measured_since` when the mark falls inside the window, drawn as
+  "Measured since <date> (reset)". A fleet never reset (mark `NULL`) reads as
+  before.
 
 ### 12.7 Invariants (tests/test_roi_ledger_invariants.py)
 
