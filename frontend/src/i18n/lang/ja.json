@@ -15274,7 +15274,6 @@
   "ROI figures are estimated from default baselines until your organization sets its own.": "組織が独自のベースラインを設定するまで、ROI の数値は既定のベースラインから推定されます。",
   "Screen left empty between two inserts": "2つのはめ込みの間で画面が空になった",
   "Simulation finished": "シミュレーション完了",
-  "Atomic test finished": "アトミックテスト完了",
   "Inject or atomic test finished": "インジェクトまたはアトミックテスト完了",
   "Finding created": "検出結果の作成",
   "Stored": "保存済み",
@@ -20084,7 +20083,6 @@
   "Step in progress": "実行中のステップ",
   "Asset created": "アセット作成",
   "Asset updated": "アセット更新",
-  "Asset stale": "アセットの陳腐化",
   "Asset turned stale": "アセット陳腐化",
   "Triggers when an asset has not been seen in OpenAEV for longer than the tenant's stale threshold (off until the threshold is set).": "テナントの古さのしきい値を超えて OpenAEV でアセットが確認されていない場合にトリガーされます（しきい値が設定されるまで無効）。",
   "Finding deleted": "検出結果削除",
@@ -22174,7 +22172,7 @@
   "Triggers": "トリガー",
   "Playbook": "プレイブック",
   "Feeds {count, plural, one {# path} other {# paths}}: {paths}. Turning it off stops all of them.": "{count, plural, other {# 件のパス}}に供給: {paths}。オフにするとすべて停止します。",
-  "Owner: {owner}": "所有者: {owner}",
+  "Objects in {platform}:": "{platform} のオブジェクト:",
   "No legacy object left.": "旧オブジェクトは残っていません。",
   "{count, plural, one {# object would be removed:} other {# objects would be removed:}}": "{count, plural, other {# 件のオブジェクトが削除されます:}}",
   "{count, plural, =0 {No object removed.} one {# object removed.} other {# objects removed.}}": "{count, plural, =0 {オブジェクトは削除されませんでした。} other {# 件のオブジェクトを削除しました。}}",
@@ -22217,7 +22215,7 @@
   "The last pass ({at}) found nothing new on this path": "前回のパス（{at}）ではこのタイプに新しいものは見つかりませんでした",
   "{reason}; the provider answered nothing for {scopes}": "{reason}。プロバイダーは {scopes} について何も返しませんでした",
   "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.": "パートナーのタスクは、所有者が読み取れるフリート、フリートの状態、実行、および稼働中のビルドを読み取ります。書き込みは一切行わず、各読み取りはパートナーのタスクとともに監査されます。",
-  "Objects in {platform}, owned by Signals ({count, plural, one {# object} other {# objects}}):": "{platform} 内のオブジェクト（所有者: Signals、{count, plural, other {# 件}}）:",
-  "Other XTM One objects in {platform}, owned by fleets, not counted here ({count, plural, one {# object} other {# objects}}):": "{platform} 内のその他の XTM One オブジェクト（フリート所有、ここでは数えません、{count, plural, other {# 件}}）:",
-  "{count, plural, one {{owners} also listens to the \"{event}\" event with its own trigger} other {{owners} also listen to the \"{event}\" event, each with its own trigger}}: each owner gets its own delivery and starts its own run, as its own run-as user.": "{count, plural, other {{owners} も}}独自のトリガーで「{event}」イベントを受信します。各所有者は独自の配信を受け取り、独自の実行ユーザーで独自の実行を開始します。"
+  "This fleet's runs only. The organization total counts every agent.": "このフリートの実行のみ。組織の合計にはすべてのエージェントが含まれます。",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: AI コスト {cost}、組織の合計にのみ計上されます。}}",
+  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, other {{shown} 件の外部エージェントがこのフリートを監視しています: その実行は組織の合計にのみ計上されます。}}"
 }
