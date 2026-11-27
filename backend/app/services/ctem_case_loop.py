@@ -1482,9 +1482,14 @@ async def sweep(
     }
     # #2558: every writer that takes several key locks (this sweep, a drain pass, a recompute) holds the
     # vertical's writer lock first, so their key locks never cross; a listener takes one key lock only.
-    if _is_postgres(db):
-        await case_opening.hold_vertical_lock(db, vertical)
-    if await case_opening.may_open_waiting(db, vertical):
+    # The try form (#2555): when a drain pass or a recompute holds it, the sweep never waits on it; the
+    # opening and duplicate passes wait for the next tick and the other passes run now.
+    writer = not _is_postgres(db) or await case_opening.try_vertical_lock(db, vertical)
+    if not writer:
+        logger.info(
+            "CTEM sweep of %s: the writer lock is busy, opening and duplicate merge wait for the next tick", vertical
+        )
+    if writer and await case_opening.may_open_waiting(db, vertical):
         await open_waiting(db, vertical=vertical, events=events, now=now, counts=counts)
     # #2452: an open case never waits with no owner; the cases opened before the decider fallback get it.
     from app.services.ctem_case_owner import backfill_owners
@@ -1518,7 +1523,8 @@ async def sweep(
         if events is not None:
             events.add(CASE_SLA_BREACHED, case_data(case), _event_id(CASE_SLA_BREACHED, case, "sla"))
             events.frame(case, "sla_breached", now)
-    counts["merged"] = await merge_open_duplicates(db, vertical=vertical, events=events, now=now)
+    if writer:
+        counts["merged"] = await merge_open_duplicates(db, vertical=vertical, events=events, now=now)
     counts["announced"] = await announce_unannounced(db, events=events, now=now)
     # #1736: an open case no gate and no reminder waits on is raised once per stall window.
     from app.services.ctem_case_stall import sweep_stalled

@@ -257,3 +257,68 @@ async def test_merge_open_duplicates_merges_a_seeded_pair_into_the_oldest(monkey
     assert call["target_id"] == first.id and call["source_ids"] == [second.id]
     assert call["actor"] == rules.SYSTEM_ACTOR and call["reason"] == loop.DUPLICATE_MERGE_REASON
     assert "cyber" in events.verticals
+
+
+# --- The sweep never waits on the writer lock ---------------------------------
+
+
+async def _sweep_with_lock(monkeypatch: pytest.MonkeyPatch, taken: bool) -> tuple[list[str], dict[str, int]]:
+    """Run the sweep on PostgreSQL with the writer lock *taken* or busy; the passes it ran."""
+    from app.services import ctem_case_asset_retire, ctem_case_owner, ctem_case_stall
+    from app.services import ctem_case_opening as case_opening
+
+    ran: list[str] = []
+
+    async def try_lock(_db: object, _vertical: str) -> bool:
+        ran.append("try_lock")
+        return taken
+
+    async def hold_lock(_db: object, _vertical: str) -> None:
+        raise AssertionError("the sweep must not wait on the writer lock")
+
+    async def may_open(_db: object, _vertical: str) -> bool:
+        return True
+
+    async def open_waiting(_db: object, **_k: object) -> None:
+        ran.append("open")
+
+    async def merge(_db: object, **_k: object) -> int:
+        ran.append("merge")
+        return 2
+
+    async def zero(*_a: object, **_k: object) -> int:
+        return 0
+
+    monkeypatch.setattr(case_opening, "try_vertical_lock", try_lock)
+    monkeypatch.setattr(case_opening, "hold_vertical_lock", hold_lock)
+    monkeypatch.setattr(case_opening, "may_open_waiting", may_open)
+    monkeypatch.setattr(loop, "open_waiting", open_waiting)
+    monkeypatch.setattr(loop, "merge_open_duplicates", merge)
+    monkeypatch.setattr(loop, "announce_unannounced", zero)
+    monkeypatch.setattr(ctem_case_owner, "backfill_owners", zero)
+    monkeypatch.setattr(ctem_case_asset_retire, "close_retired_asset_cases", zero)
+    monkeypatch.setattr(ctem_case_stall, "sweep_stalled", zero)
+
+    class _Session(_PgSession):
+        async def execute(self, statement: object, params: dict[str, Any] | None = None) -> SimpleNamespace:
+            ran.append("sla")
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: []))
+
+    counts = await loop.sweep(_db(_Session()), events=loop.PendingEvents(), now=NOW)
+    return ran, counts
+
+
+@pytest.mark.asyncio
+async def test_a_busy_writer_lock_skips_opening_and_merge_and_keeps_the_other_passes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ran, counts = await _sweep_with_lock(monkeypatch, taken=False)
+    assert ran == ["try_lock", "sla"]
+    assert counts["merged"] == 0 and counts["opened"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_free_writer_lock_runs_opening_and_merge(monkeypatch: pytest.MonkeyPatch) -> None:
+    ran, counts = await _sweep_with_lock(monkeypatch, taken=True)
+    assert ran == ["try_lock", "open", "sla", "merge"]
+    assert counts["merged"] == 2
