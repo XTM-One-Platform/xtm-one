@@ -888,6 +888,21 @@ then the existing AI assessment and facts grid unchanged.
   "No open exposure on your software", or the products that could not be read
   when `details_unavailable` is not empty, #12139), no results (filters match nothing, with
   "Clear all filters").
+- **Filters panel and Signal type** (#2556): the Filters pill opens the
+  DataTable's faceted panel (`facetGrid`): the groups in columns of at least
+  12 rem within 56 rem (fits 1080p with no inner scroller), each value with
+  the count of rows it would keep given the other filters and the search
+  (`lib/data-table-facets.ts`, on the rows loaded: no request), and the
+  active filters as removable chips under the toolbar, beside "Clear all
+  filters"; the state stays in the URL (`c_f_<key>`). The **Signal type**
+  facet (`c_f_signal_type`) lists the 12 trigger paths and "No signal"
+  (a split or legacy case, or one whose signals the reader does not see).
+  Each row of `GET /ctem-cases` carries `signal_types`, the trigger paths of
+  the signal members the reader sees (`ctem_cases_view.signal_types`, read
+  from the view's `signal_details`, no query); the body carries
+  `signal_types`, the label of each path. The repeatable `signal_type` query
+  parameter (a trigger path or `none`, 422 otherwise) narrows the page as
+  `state` does, never the counts by state.
 
 ### 7.2bis Attention score and its points (#1176)
 

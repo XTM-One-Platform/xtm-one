@@ -214,6 +214,12 @@ interface FiltersPillProps {
   count: number;
   children: ReactNode;
   testId?: string;
+  /**
+   * The panel's layout classes instead of the one-column stack (`w-max min-w-72 space-y-3`):
+   * the DataTable's faceted grid (#2556) lays its groups out in columns so the panel fits a
+   * 1080p viewport without its inner scroller.
+   */
+  panelClassName?: string;
 }
 
 /**
@@ -223,7 +229,7 @@ interface FiltersPillProps {
  * of a pill panel) and stays open on a press inside a picker's portaled list
  * or calendar.
  */
-export function FiltersPill({ label, count, children, testId }: FiltersPillProps) {
+export function FiltersPill({ label, count, children, testId, panelClassName }: FiltersPillProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
@@ -244,7 +250,7 @@ export function FiltersPill({ label, count, children, testId }: FiltersPillProps
           role="group"
           aria-label={label}
           fitViewport
-          className="w-max min-w-72 space-y-3 p-3"
+          className={cn(panelClassName ?? "w-max min-w-72 space-y-3", "p-3")}
         >
           {children}
         </FilterPillPanel>
