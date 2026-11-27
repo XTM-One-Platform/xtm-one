@@ -111,6 +111,10 @@ DERIVABLE_CONTEXT_FIELDS = ("pir_ids", "regions", "sector")
 TRIGGER_MODE = "trigger"
 PIR_PLAYBOOK_MODE = "pir_playbook"
 PROVISION_MODES = (TRIGGER_MODE, PIR_PLAYBOOK_MODE)
+#: OpenCTI flags an entity in a PIR only as the SOURCE of a relationship matching one of its
+#: criteria; a Vulnerability or a Report never is (#2583 point 3), so a PIR score filter on them
+#: can never match and a listener built on it never fires.
+NOT_PIR_SOURCE_TYPES: tuple[str, ...] = ("Vulnerability", "Report")
 #: OpenCTI's playbook components (``modules/playbook/components``).
 PIR_ENTRY_COMPONENT = "PLAYBOOK_DATA_STREAM_PIR"
 NOTIFIER_COMPONENT = "PLAYBOOK_NOTIFIER_COMPONENT"
@@ -281,6 +285,18 @@ def read_provision_spec(trigger_config: Any) -> dict[str, Any] | None:
         "regions": [],
         "sectors": [],
     }
+
+
+def pir_source_refusal(entity_types: Any) -> str | None:
+    """Why a PIR score filter on *entity_types* can never match, ``None`` when it can (#2583 point 3). Pure."""
+    impossible = sorted({str(t) for t in entity_types or []} & set(NOT_PIR_SOURCE_TYPES))
+    if not impossible:
+        return None
+    return (
+        f"provision.entity_types {impossible} cannot be filtered on a PIR score: OpenCTI flags an entity in a "
+        "PIR only as the source of a relationship matching one of its criteria, which a Vulnerability or a "
+        "Report never is, so the listener would never fire; listen to them without pir_ids"
+    )
 
 
 def pir_score_filters(spec: dict[str, Any]) -> list[dict[str, Any]]:
