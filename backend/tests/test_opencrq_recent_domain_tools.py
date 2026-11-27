@@ -279,7 +279,9 @@ READS = {
             "Posture score: 11/100",
             "CVE findings by exploitability band: critical 0, high 1, medium 0, low 0",
             "Worst finding: CVE-2021-44228, score 52 (exploitability 89, impact 31)",
-            "Findings, worst first (page 1, showing 2 of 2):", "CVE-2024-6387", "score unscored",
+            "Findings, worst first (page 1, showing 2 of 2):",
+            "CVE-2024-6387",
+            "waiting for a CVSS vector",
         ),
         overrides={
             "findingScore.listAssetFindings": _fixture("findingScore.listAssetFindings.posture")[1],
