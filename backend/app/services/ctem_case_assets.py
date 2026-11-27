@@ -346,9 +346,8 @@ async def complete_gate_ask(
     line = card_line(attached_assets(getattr(case, "validations", None))) if case is not None else None
     if line is None:
         return ask
-    from app.services.decision_ask import fit
+    from app.services.decision_ask import lead_then_fit
 
     out = dict(ask)
-    rest = str(out.get("context") or "").strip()
-    out["context"] = fit(f"{line}\n{rest}" if rest else line, _MAX_CONTEXT_CHARS)
+    out["context"] = lead_then_fit(line, str(out.get("context") or ""), _MAX_CONTEXT_CHARS)
     return out
