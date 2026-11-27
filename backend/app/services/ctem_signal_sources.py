@@ -395,6 +395,17 @@ def reader_excluded(excluded: dict[str, set[tuple[str, ...]]], path: str, provid
     return bool(others) and all(is_excluded(excluded, path, s.provider, s.kind, s.name) for s in others)
 
 
+def reader_pairs(connected: Any) -> set[tuple[str, str]]:
+    """The ``(provider, "cases_reader")`` sources bound for the connected *providers*.
+
+    The cases recompute reads a connected provider's open issues with nothing to set up in its
+    platform, so its reader is on as soon as the provider is connected; only an exclusion on a
+    path turns it off there ("Not used here"). It never reads Not set up (UX round 1 on #2592, B1).
+    """
+    readers = {s.provider for row in PATH_SOURCES.values() for s in row if s.kind == "cases_reader"}
+    return {(provider, "cases_reader") for provider in connected if provider in readers}
+
+
 def _connected_ids(rows: list[tuple[Any, str]]) -> dict[str, set[str]]:
     out: dict[str, set[str]] = {}
     for integration_id, provider in rows:
@@ -446,6 +457,7 @@ async def bound_sources(db: AsyncSession, user_id: Any) -> BoundSources:
     ).all()
     connected = _connected_ids([(r[0], r[1]) for r in rows])
     bound = BoundSources((p, "listener") for p in connected)
+    bound.update(reader_pairs(connected))
 
     primary = await get_primary(db)
     if primary is not None:
