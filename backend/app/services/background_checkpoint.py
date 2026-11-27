@@ -330,8 +330,12 @@ async def load_task_replay(
     conversation_id: Any = None,
     user_id: Any = None,
     assignment_run_id: Any = None,
+    code_interpreter: bool = False,
 ) -> TaskReplay:
     """The checkpointed work of an earlier attempt of *task_id*, ready to replay.
+
+    *code_interpreter*: the resumed attempt can call the code interpreter, so
+    the resume note names ``attachments/`` (``turn_checkpoint.resume_note``).
 
     *conversation_id* (else *assignment_run_id*) and *user_id* name the
     sandbox workspace the task runs in (the delegating conversation's, or an
@@ -401,7 +405,7 @@ async def load_task_replay(
         await resume_landed.judge_for_resume(in_flight, conversation_id, user_id)
     # A file the note names is one the resumed attempt can open (#11847).
     resumed = replace(resumed, spilled=await turn_checkpoint.readable_spills(resumed.spilled, user_id))
-    note = turn_checkpoint.resume_note(resumed, workspace=workspace)
+    note = turn_checkpoint.resume_note(resumed, workspace=workspace, code_interpreter=code_interpreter)
     history = [*messages, *([note] if note is not None else [])]
     # Kept by this attempt's checkpoint: a later resume replays it, its in-flight line included.
     resumed = resumed.with_note(note)

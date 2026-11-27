@@ -244,7 +244,7 @@ def checkpoint_for(
     )
 
 
-async def load_replay(run_id: Any, *, user_id: Any = None) -> TaskReplay:
+async def load_replay(run_id: Any, *, user_id: Any = None, code_interpreter: bool = False) -> TaskReplay:
     """The checkpointed work of *run_id*'s lost attempt: read before the resume is decided.
 
     Its :attr:`TaskReplay.completed_calls` is the progress the streak reads
@@ -257,6 +257,7 @@ async def load_replay(run_id: Any, *, user_id: Any = None) -> TaskReplay:
         checkpoint_id(run_id),
         assignment_run_id=run_id if user_id else None,
         user_id=user_id,
+        code_interpreter=code_interpreter,
     )
 
 

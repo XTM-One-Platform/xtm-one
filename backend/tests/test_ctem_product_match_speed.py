@@ -34,6 +34,8 @@ def _former_rule(product: str, ref: str, *, family_exact: bool = True) -> bool:
     p = p.replace("_", " ")
     if family_exact and p in pa.FAMILY_WORDS and p != r:
         return False
+    if p != r and (pa.is_url_like(p) or pa.is_url_like(r)):
+        return False
     return p == r or re.search(rf"(^|[^a-z0-9]){re.escape(p)}($|[^a-z0-9])", r) is not None
 
 
@@ -69,6 +71,9 @@ _SAMPLES = [
     "++",
     "cpe:/a:apache:http_server:2.4",
     "cpe:2.3:a:apache:http_server:2.4.58:*:*:*:*:*:*:*",
+    "SharePoint",
+    "filigranio-my.sharepoint.com-C9CA3EEB",
+    "https://teams.microsoft.com",
 ]
 
 
@@ -85,6 +90,8 @@ def _gate_former(product: str, ref: str) -> bool:
         parts = r.split(":")
         r = parts[4] if len(parts) > 4 else r
     if p in pa.FAMILY_WORDS and p != r.replace("_", " "):
+        return False
+    if p != r and (pa.is_url_like(p) or pa.is_url_like(r)):
         return False
     return p == r or re.search(rf"(^|[^a-z0-9]){re.escape(p)}($|[^a-z0-9])", r) is not None
 

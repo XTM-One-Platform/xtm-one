@@ -125,7 +125,7 @@ async def test_a_resumed_wake_restores_the_platform_text_a_person_message_does_n
     async def _not_stopped(*_a, **_kw):
         return False
 
-    async def _load_replay(db, conversation_id, *, user_id=None, now=None):
+    async def _load_replay(db, conversation_id, *, user_id=None, now=None, code_interpreter=False):
         return turn_checkpoint.ResumedWork(found=False), []
 
     async def _run(db, **kw):
