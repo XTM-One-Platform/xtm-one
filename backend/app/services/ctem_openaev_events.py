@@ -109,16 +109,15 @@ async def _read_assertion_flag(integration_id: str, scenario_id: str) -> bool | 
 GONE: Any = object()
 
 
-async def _read_object(integration_id: str, path: str) -> Any:
-    """One OpenAEV object read with the integration owner's credential.
+async def owner_connection(integration_id: str) -> tuple[str, Any] | None:
+    """The base URL and request headers of an OpenAEV integration, with its owner's credential.
 
-    ``GONE`` when OpenAEV answers not found, ``None`` when unread for any other reason.
+    ``None`` when the integration is not an OpenAEV one or no credential is held.
     """
     import uuid
 
     from app.core.database import async_session
-    from app.integrations.http import is_not_found_error
-    from app.integrations.providers.openaev._common import _api, _headers
+    from app.integrations.providers.openaev._common import _headers
     from app.models.integration import Integration
     from app.services.integration_tools import _get_token
 
@@ -131,7 +130,22 @@ async def _read_object(integration_id: str, path: str) -> Any:
     if not token or "||" not in str(token):
         return None
     base_url, _, api_token = str(token).partition("||")
-    resp, err = await _api(base_url.strip().rstrip("/"), _headers(api_token.strip()), "get", path, f"GET {path}")
+    return base_url.strip().rstrip("/"), _headers(api_token.strip())
+
+
+async def _read_object(integration_id: str, path: str) -> Any:
+    """One OpenAEV object read with the integration owner's credential.
+
+    ``GONE`` when OpenAEV answers not found, ``None`` when unread for any other reason.
+    """
+    from app.integrations.http import is_not_found_error
+    from app.integrations.providers.openaev._common import _api
+
+    connection = await owner_connection(integration_id)
+    if connection is None:
+        return None
+    base_url, headers = connection
+    resp, err = await _api(base_url, headers, "get", path, f"GET {path}")
     if err and is_not_found_error(err):
         return GONE
     if err or resp is None:

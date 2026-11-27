@@ -68,6 +68,46 @@ def decision_primary_assets(decision: Any) -> list[dict[str, str]]:
     return [{"name": n, "basis": b} for n, b in out.items()]
 
 
+def decision_assets(decision: Any) -> list[str]:
+    """The inventory assets a gate decision matched, each name once, in order (#2635).
+
+    The assets the reconcile resolved the subject to (``reconcile.assets``), then the
+    assets of the chains that reached a primary asset (``reconcile.primary_assets``
+    and each scope source's kept ``chain``): the assets a case opened from the
+    signal is about, so the case counts them instead of an empty list.
+    """
+    if not isinstance(decision, dict):
+        return []
+    raw_reconcile = decision.get("reconcile")
+    raw_scope = decision.get("scope")
+    reconcile: dict[str, Any] = raw_reconcile if isinstance(raw_reconcile, dict) else {}
+    scope: dict[str, Any] = raw_scope if isinstance(raw_scope, dict) else {}
+    raw_assets = reconcile.get("assets")
+    names: list[Any] = list(raw_assets) if isinstance(raw_assets, list) else []
+    reached = reconcile.get("primary_assets")
+    hops: list[Any] = list(reached) if isinstance(reached, list) else []
+    raw_sources = scope.get("sources")
+    sources: list[Any] = raw_sources if isinstance(raw_sources, list) else []
+    for entry in sources:
+        if isinstance(entry, dict) and isinstance(entry.get("chain"), list):
+            hops += entry["chain"]
+    names += [hop.get("asset") for hop in hops if isinstance(hop, dict)]
+    return list(dict.fromkeys(str(n).strip() for n in names if isinstance(n, str) and n.strip()))
+
+
+def decision_scope_kinds(decision: Any) -> list[str]:
+    """What put a gate decision in scope, by kind, each once in order (#2635).
+
+    The ``from`` of each scope source (``asset``, ``asset_group``, ``primary_asset``,
+    ``owned_domain``, ``risk_scenario``): the reason a case whose members match no
+    asset and no primary asset was still opened.
+    """
+    scope = decision.get("scope") if isinstance(decision, dict) else None
+    sources = scope.get("sources") if isinstance(scope, dict) else None
+    kinds = [str(s["from"]) for s in sources or [] if isinstance(s, dict) and s.get("from")]
+    return list(dict.fromkeys(kinds))
+
+
 #: Records read at most as members of a linked group (a larger group is cut, said in ``truncated``).
 MAX_MEMBERS = 20000
 #: Installed software rows read at most for the assets that reach a primary asset.
