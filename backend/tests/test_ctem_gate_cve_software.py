@@ -49,7 +49,9 @@ def test_a_cve_only_threat_stays_unresolved_without_the_cve_software():
     decision = gate.decide(_profile(), _threat(), today=TODAY)
     assert decision.record["reason_code"] == "subject_unresolved"
     assert decision.record["inputs"]["cves"] == ["CVE-2023-38646"]
-    assert decision.record["reconcile"]["cve_lookup"] is None
+    # #2542: needed and not taken by this decision; a report is no OpenCTI threat to read.
+    assert decision.record["reconcile"]["cve_lookup"] == gate.LOOKUP_NOT_READ
+    assert decision.record["reconcile"]["threat_lookup"] == gate.LOOKUP_NOT_APPLICABLE
 
 
 def test_the_software_of_its_cve_resolves_it_to_the_inventory_and_its_assets():
