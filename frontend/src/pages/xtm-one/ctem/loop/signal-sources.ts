@@ -52,7 +52,7 @@ function pathErrorCount(path: Pick<CtemSignalPath, "sources">): number {
 type Translate = (key: string, values?: Record<string, string | number>) => string;
 
 /** Why a path that is on records nothing, in plain words (#2642): the code the API answers, never its English detail. @i18n-keys */
-export const SILENT_REASON_LABEL = {
+const SILENT_REASON_LABEL = {
   never_evaluated: "The inventory has not been evaluated yet: it is evaluated daily and after a purge",
   no_asset_past_threshold: "No asset is past the threshold and every synced asset still has its sync",
   upstream_sync_failed: "An inventory sync failed: its assets are not judged stale until it reads again",
