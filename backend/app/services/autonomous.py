@@ -1445,7 +1445,7 @@ async def _cleanup_retained_files(db: AsyncSession, *, also: dict[str, int] | No
 
 
 async def _run_retention_pass(db: AsyncSession) -> None:
-    """One bounded pass of the check file, file, coordination and run retention sweeps (#768, #2070).
+    """One bounded pass of the check file, file, coordination, run and CTEM signal retentions (#768, #2070, #2581).
 
     Each sweep is capped per tick; when one stops at its cap, the backlog flag
     of :data:`wall_clock_schedule.RETENTION_DRAIN` makes the next ticks run this
@@ -1495,8 +1495,22 @@ async def _run_retention_pass(db: AsyncSession) -> None:
             logger.info("Run retention: deleted %d finished assignment run(s)", deleted_runs)
     except Exception as e:
         logger.error("Run retention error: %s", format_exception_message(e), exc_info=True)
+    more_signals = False
+    try:
+        from app.services import ctem_signal_retention
+
+        deleted_signals, more_signals = await ctem_signal_retention.run_pass()
+        if any(deleted_signals.values()):
+            logger.info(
+                "CTEM signal retention: deleted %d discarded and %d watchlist signal(s)",
+                deleted_signals.get("discarded", 0),
+                deleted_signals.get("watchlist", 0),
+            )
+    except Exception as e:
+        logger.error("CTEM signal retention error: %s", format_exception_message(e), exc_info=True)
     await wall_clock_schedule.set_backlog(
-        wall_clock_schedule.RETENTION_DRAIN, more_checks or more_files or more_coordination or more_runs
+        wall_clock_schedule.RETENTION_DRAIN,
+        more_checks or more_files or more_coordination or more_runs or more_signals,
     )
 
 

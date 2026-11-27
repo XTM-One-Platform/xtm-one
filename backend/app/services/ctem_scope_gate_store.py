@@ -45,6 +45,8 @@ logger = logging.getLogger(__name__)
 GATED_STATES: tuple[str, ...] = ("new", "confirmed", "to_validate", "watchlist", "discarded")
 #: The ``reason_code`` of a signal a person dismissed (#1505): the gate leaves it alone until it is restored.
 DISMISSED_CODE = "dismissed_by_user"
+#: The states a new sighting of a known signal decides again (#1505 unmatched, #2581 watchlist).
+RE_DECIDED_ON_SIGHTING: tuple[str, ...] = ("to_validate", "watchlist")
 #: What a person may do to signals from the Signals page (#1505).
 TRIAGE_ACTIONS: tuple[str, ...] = ("dismiss", "restore", "recheck")
 #: Signals one bulk evaluation reads at most.
@@ -753,7 +755,9 @@ async def evaluate_after_record(db: AsyncSession, row: CtemSignal, *, created: b
 
     pending = ctem_case_loop.PendingEvents()
     # A re-sighting of an unmatched signal is decided again (#1505): the inventory may hold it now.
-    if not created and row.state != "to_validate":
+    # A re-sighting of a watchlist signal too (#2581): a rising EPSS, a new KEV flag or an asset
+    # now internet-facing may confirm it and open its case.
+    if not created and row.state not in RE_DECIDED_ON_SIGHTING:
         return pending  # any other re-sighting raises nothing (#1409)
 
     def recorded(verdict: str | None) -> None:
