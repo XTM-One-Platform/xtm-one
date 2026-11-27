@@ -22174,5 +22174,18 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferred} other {# inferred}}",
-  "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}"
+  "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}",
+  "Pass queued after the resync: it runs once every other source has replayed": "Pass queued after the resync: it runs once every other source has replayed",
+  "No pass has run yet: the attack surface pass is turned off (Attack surface, in the organization profile)": "No pass has run yet: the attack surface pass is turned off (Attack surface, in the organization profile)",
+  "No pass has run yet: the organization profile declares no owned domains and no address ranges": "No pass has run yet: the organization profile declares no owned domains and no address ranges",
+  "No pass has run yet: the organization profile declares no attack surface provider": "No pass has run yet: the organization profile declares no attack surface provider",
+  "No pass has run yet: the declared attack surface provider cannot be read": "No pass has run yet: the declared attack surface provider cannot be read",
+  "No pass has completed yet: a pass whose provider read fails records nothing and is retried later": "No pass has completed yet: a pass whose provider read fails records nothing and is retried later",
+  "The last pass ({at}) read no host: the provider answered nothing for {scopes}": "The last pass ({at}) read no host: the provider answered nothing for {scopes}",
+  "{count, plural, one {# host re-armed by the signal purge waits for the next pass that sees it (last pass {at})} other {# hosts re-armed by the signal purge wait for the next pass that sees them (last pass {at})}}": "{count, plural, one {# host re-armed by the signal purge waits for the next pass that sees it (last pass {at})} other {# hosts re-armed by the signal purge wait for the next pass that sees them (last pass {at})}}",
+  "The first pass ({at}) set the baseline: it raises no drift": "The first pass ({at}) set the baseline: it raises no drift",
+  "{count, plural, one {The last pass ({at}) withheld # new host: a partial read, or known to the provider before the previous pass} other {The last pass ({at}) withheld # new hosts: a partial read, or known to the provider before the previous pass}}": "{count, plural, one {The last pass ({at}) withheld # new host: a partial read, or known to the provider before the previous pass} other {The last pass ({at}) withheld # new hosts: a partial read, or known to the provider before the previous pass}}",
+  "The last pass ({at}) found no undeclared host and no new port": "The last pass ({at}) found no undeclared host and no new port",
+  "The last pass ({at}) found nothing new on this path": "The last pass ({at}) found nothing new on this path",
+  "{reason}; the provider answered nothing for {scopes}": "{reason}; the provider answered nothing for {scopes}"
 }
