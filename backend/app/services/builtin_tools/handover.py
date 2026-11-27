@@ -65,6 +65,48 @@ _COLLECTED_SAMPLE_CHARS = 400
 _COLLECTED_KEYS_SHOWN = 20
 #: Keys a per-item example path prefers, in order, when item 0 carries one.
 _COLLECTED_EXAMPLE_KEYS = ("name", "title", "rule_name", "id")
+#: Items the per-item index of the answer lists (#2686), and the characters
+#: of each identifying value it shows.
+_COLLECTED_INDEX_ITEMS = 50
+_COLLECTED_INDEX_VALUE_CHARS = 80
+#: Short identifying keys the index shows whole; any ``*_id`` / ``*_ids`` key
+#: is shown too. A long string field is shown by its length only.
+_COLLECTED_INDEX_KEYS = ("name", "title", "rule_name", "id", "pattern_type", "type")
+_COLLECTED_INDEX_LONG_CHARS = 120
+
+
+def _index_value(value: object) -> str:
+    """One identifying value of the per-item index, cut to a short line."""
+    import json as _json
+
+    text = value if isinstance(value, str) else _json.dumps(value, ensure_ascii=False, default=str)
+    if len(text) > _COLLECTED_INDEX_VALUE_CHARS:
+        text = text[:_COLLECTED_INDEX_VALUE_CHARS] + "..."
+    return text
+
+
+def _collected_index(items: list[object]) -> list[str]:
+    """One line per item: its identifying fields, and the length of its long fields.
+
+    The agent maps index i to an item (an existing object by its ``*_id`` /
+    ``*_ids``, a rule by its name) without the full text, then passes the item's
+    content by path instead of retyping it (#2686).
+    """
+    lines: list[str] = []
+    for index, item in enumerate(items[:_COLLECTED_INDEX_ITEMS]):
+        if not isinstance(item, dict):
+            continue
+        parts: list[str] = []
+        for key, value in item.items():
+            if key in _COLLECTED_INDEX_KEYS or key.endswith(("_id", "_ids")):
+                parts.append(f"{key}={_index_value(value)}")
+            elif isinstance(value, str) and len(value) > _COLLECTED_INDEX_LONG_CHARS:
+                parts.append(f"{key}: {len(value)} chars")
+        if parts:
+            lines.append(f"  [{index}] " + "; ".join(parts))
+    if len(items) > _COLLECTED_INDEX_ITEMS:
+        lines.append(f"  ... and {len(items) - _COLLECTED_INDEX_ITEMS} more items")
+    return lines
 
 
 def _path_segment(key: str) -> str:
@@ -115,11 +157,16 @@ def _collected_summary(merged: Mapping[str, object], task_count: int, output_key
                 f"Per-item path: `{base}[0]{_path_segment(example)}` (an item a key above "
                 f"does not list for all items may lack it)."
             )
+    index = _collected_index(items)
+    if index:
+        lines.append("Items by index:")
+        lines.extend(index)
     lines.append(
         "Pass `$collected`, an item path or a field path as a tool argument value: the "
         "platform resolves it to the real value. A key with a dash, dot or space goes in "
-        'quoted brackets: `["my-key"]`. To read one task\'s whole answer, call '
-        "get_full_task_result with its task id."
+        'quoted brackets: `["my-key"]`. Never retype an item\'s text: a write call whose '
+        "argument is a near copy of a collected field is refused. To read one task's "
+        "whole answer, call get_full_task_result with its task id."
     )
     return "\n".join(lines)
 
