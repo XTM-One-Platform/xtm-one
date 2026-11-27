@@ -17718,8 +17718,6 @@
   "Left after your prioritization policy: thresholds, exclusions and accepted risk.": "Lo que queda tras su política de priorización: umbrales, exclusiones y riesgo aceptado.",
   "Set a prioritization policy": "Definir una política de priorización",
   "Open issues": "Problemas abiertos",
-  "Open at source": "Abiertos en el origen",
-  "Case closed by decision": "Caso cerrado por decisión",
   "{count, plural, =0 {No open case} one {# open case} other {# open cases}}": "{count, plural, =0 {Ningún caso abierto} one {# caso abierto} other {# casos abiertos}}",
   "Open cases: the issues above grouped by the fix they share, needing attention or in progress.": "Casos abiertos: los problemas anteriores agrupados por la corrección que comparten, pendientes de atención o en curso.",
   "Not available yet": "Aún no disponible",
@@ -17924,6 +17922,7 @@
   "{count, plural, one {{products} could not be read, so open exposures there may be missing.} other {{products} could not be read, so open exposures there may be missing.}}": "{count, plural, one {No se pudo leer {products}: pueden faltar exposiciones abiertas.} other {No se pudieron leer {products}: pueden faltar exposiciones abiertas.}}",
   "On the issues you can see": "Sobre los problemas que puede ver",
   "Unknown: {count, plural, one {# open issue} other {# open issues}} not readable with details": "Desconocido: {count, plural, one {# problema abierto no legible} other {# problemas abiertos no legibles}} con detalles",
+  "Unknown: CVE facts not readable for you": "Desconocido: datos CVE no legibles para usted",
   "Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.": "Problemas abiertos agrupados por la corrección que los cierra. Ve los casos que contienen al menos un problema visible para usted en OpenCTI u OpenAEV.",
   "Open issues the fix closes. Issues you cannot see in their source product are counted as restricted.": "Problemas abiertos que cierra la corrección. Los que no puede ver en su producto de origen se cuentan como restringidos.",
   "Reason": "Motivo",
@@ -22179,5 +22178,6 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# activo primario probado} other {# activos primarios probados}}, {inferred, plural, one {# inferido} other {# inferidos}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# activo primario inferido} other {# activos primarios inferidos}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferido} other {# inferidos}}",
-  "No asset matched; opened on: {reasons}": "Ningún activo coincide; abierto por: {reasons}"
+  "No asset matched; opened on: {reasons}": "Ningún activo coincide; abierto por: {reasons}",
+  "Not scored": "Sin puntuación"
 }
