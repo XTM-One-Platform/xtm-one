@@ -888,7 +888,10 @@ FIX_ACTIONS: dict[str, dict[str, str]] = {
     },
     "no_webhook_secret": {"action": "Set a webhook secret on the integration.", "route": "/integrations"},
     "no_token": {"action": "Authorize the integration again as the run-as user.", "route": "/integrations"},
-    "integration_not_found": {"action": "Turn the source on again on an existing integration.", "route": "/ctem/signals"},
+    "integration_not_found": {
+        "action": "Turn the source on again on an existing integration.",
+        "route": "/ctem/signals",
+    },
     "organization_context_missing": {
         "action": "Fill the missing fields in Settings > Organization.",
         "route": "/settings/organization",
@@ -897,7 +900,10 @@ FIX_ACTIONS: dict[str, dict[str, str]] = {
         "action": "The next check removes them again; remove them by hand in the source platform if it keeps failing.",
         "route": "/ctem/signals",
     },
-    "not_provisioned_yet": {"action": "Wait for the next check, or turn the source off and on again.", "route": "/ctem/signals"},
+    "not_provisioned_yet": {
+        "action": "Wait for the next check, or turn the source off and on again.",
+        "route": "/ctem/signals",
+    },
     "provider_error": {
         "action": "Check the integration's connection and the run-as user's rights in the source platform.",
         "route": "/integrations",

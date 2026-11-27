@@ -294,7 +294,7 @@ export function useTestCtemWebhookSource() {
 }
 
 /** One source in error on one integration (#2637): its reason, last attempt and the fix. */
-export interface CtemSourceErrorDetail {
+interface CtemSourceErrorDetail {
   integration_id: string;
   enabled: boolean;
   reason: string | null;

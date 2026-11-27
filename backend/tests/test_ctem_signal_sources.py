@@ -214,7 +214,9 @@ def test_the_agent_tool_reads_the_same_status_and_errors_as_the_page() -> None:
     bound = sources.BoundSources()
     bound.error[("opencti", "listener")] = 1
     bound.error_details[("opencti", "listener")] = [
-        error_detail("i-1", "objects not removed: trigger t-1", {"checked_at": "2026-11-27T15:00:00+00:00"}, enabled=False)
+        error_detail(
+            "i-1", "objects not removed: trigger t-1", {"checked_at": "2026-11-27T15:00:00+00:00"}, enabled=False
+        )
     ]
     report = signal_sources_report(bound, "third_party_event")
     (path,) = report["paths"]
