@@ -21918,8 +21918,10 @@
   "Only the people and groups below can see this. Access to a built-in agent cannot be changed.": "Only the people and groups below can see this. Access to a built-in agent cannot be changed.",
   "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.": "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.",
   "Partners read this agent's fleet": "Partners read this agent's fleet",
+  "Partners read fleets and runs as the owner": "Partners read fleets and runs as the owner",
   "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.",
   "Could not change the partner fleet reads": "Could not change the partner fleet reads",
+  "Could not change the partner owner reads": "Could not change the partner owner reads",
   "Defender XDR alert raised": "Defender XDR alert raised",
   "Defender XDR alert evidence": "Defender XDR alert evidence",
   "Carries alert_id, title, severity, category, service_source, detection_source and the attack techniques. Real time through the Defender XDR Streaming API to your Azure Event Hub. Each alert runs once.": "Carries alert_id, title, severity, category, service_source, detection_source and the attack techniques. Real time through the Defender XDR Streaming API to your Azure Event Hub. Each alert runs once.",
@@ -22192,5 +22194,6 @@
   "{count, plural, one {The last pass ({at}) withheld # new host: a partial read, or known to the provider before the previous pass} other {The last pass ({at}) withheld # new hosts: a partial read, or known to the provider before the previous pass}}": "{count, plural, one {The last pass ({at}) withheld # new host: a partial read, or known to the provider before the previous pass} other {The last pass ({at}) withheld # new hosts: a partial read, or known to the provider before the previous pass}}",
   "The last pass ({at}) found no undeclared host and no new port": "The last pass ({at}) found no undeclared host and no new port",
   "The last pass ({at}) found nothing new on this path": "The last pass ({at}) found nothing new on this path",
-  "{reason}; the provider answered nothing for {scopes}": "{reason}; the provider answered nothing for {scopes}"
+  "{reason}; the provider answered nothing for {scopes}": "{reason}; the provider answered nothing for {scopes}",
+  "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.": "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task."
 }

@@ -21918,8 +21918,10 @@
   "Only the people and groups below can see this. Access to a built-in agent cannot be changed.": "Solo las personas y los grupos de abajo pueden verlo. El acceso a un agente integrado no se puede cambiar.",
   "Visible to everyone on the platform. Access to a built-in agent cannot be restricted.": "Visible para todos en la plataforma. El acceso a un agente integrado no se puede restringir.",
   "Partners read this agent's fleet": "Los socios leen la flota de este agente",
+  "Partners read fleets and runs as the owner": "Los socios leen flotas y ejecuciones como el propietario",
   "A partner's task also reads this agent's home fleet, its health, its work items and the running build. Never another fleet, never a write.": "La tarea de un socio también lee la flota de origen de este agente, su salud, sus elementos de trabajo y la versión en ejecución. Nunca otra flota, nunca una escritura.",
   "Could not change the partner fleet reads": "No se pudo cambiar la lectura de la flota por los socios",
+  "Could not change the partner owner reads": "No se pudo cambiar la lectura como propietario por los socios",
   "Defender XDR alert raised": "Alerta de Defender XDR generada",
   "Defender XDR alert evidence": "Evidencia de alerta de Defender XDR",
   "Carries alert_id, title, severity, category, service_source, detection_source and the attack techniques. Real time through the Defender XDR Streaming API to your Azure Event Hub. Each alert runs once.": "Incluye alert_id, title, severity, category, service_source, detection_source y las técnicas de ataque. En tiempo real mediante la Streaming API de Defender XDR hacia su Azure Event Hub. Cada alerta se ejecuta una sola vez.",
@@ -22192,5 +22194,6 @@
   "{count, plural, one {The last pass ({at}) withheld # new host: a partial read, or known to the provider before the previous pass} other {The last pass ({at}) withheld # new hosts: a partial read, or known to the provider before the previous pass}}": "{count, plural, one {La última pasada ({at}) retuvo # host nuevo: una lectura parcial, o conocido por el proveedor antes de la pasada anterior} other {La última pasada ({at}) retuvo # hosts nuevos: una lectura parcial, o conocidos por el proveedor antes de la pasada anterior}}",
   "The last pass ({at}) found no undeclared host and no new port": "La última pasada ({at}) no encontró ningún host no declarado ni ningún puerto nuevo",
   "The last pass ({at}) found nothing new on this path": "La última pasada ({at}) no encontró nada nuevo en este tipo",
-  "{reason}; the provider answered nothing for {scopes}": "{reason}; el proveedor no respondió nada para {scopes}"
+  "{reason}; the provider answered nothing for {scopes}": "{reason}; el proveedor no respondió nada para {scopes}",
+  "A partner's task reads the fleets, fleet health and runs the owner can read, and the running build. Never a write; each read is audited with the partner task.": "La tarea de un socio lee las flotas, su estado y las ejecuciones que el propietario puede leer, y la versión en ejecución. Nunca una escritura; cada lectura se audita con la tarea del socio."
 }
