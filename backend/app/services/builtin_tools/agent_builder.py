@@ -2351,6 +2351,92 @@ def _arg_provided(raw: object) -> bool:
     return True
 
 
+#: What update_agent says when integration_lending is not a yes or a no.
+INTEGRATION_LENDING_VALUE_ERROR = (
+    "integration_lending takes 'true' (lend the owner's personal integrations the agent binds to the "
+    "people it is shared with, in their chats with this agent only) or 'false' (lend nothing); blank "
+    "leaves it unchanged."
+)
+#: What update_agent says when 'true' finds nothing to lend.
+INTEGRATION_LENDING_NOTHING_TO_LEND = (
+    "Nothing to lend: the agent binds none of its owner's personal integrations (company-managed and "
+    "per-user integrations are never lent). Bind one first, then set integration_lending='true'."
+)
+
+
+async def _apply_integration_lending(
+    db: AsyncSession, agent: Any, actor_id: Any, raw: object, *, bindings_changed: bool
+) -> str | None:
+    """Write ``Agent.integration_lending`` from the agent tools' field (#2719), or
+    the refusal to return, nothing written.
+
+    'true' lends every integration :func:`lendable_integration_ids` names, by
+    the REST update's rule (:func:`checked_integration_lending`: the agent's
+    owner only, never an editor or an admin for them); 'false' lends nothing.
+    Blank leaves it, except that a binding change keeps only the lent ids still
+    bound, as the REST update does.
+    """
+    from datetime import UTC, datetime
+
+    from fastapi import HTTPException
+
+    from app.services.integration_credentials import (
+        LENT_INTEGRATION_NOT_OWNED_DETAIL,
+        checked_integration_lending,
+        lendable_integration_ids,
+        lent_integration_ids,
+        normalize_acting_user_id,
+    )
+
+    if not _arg_provided(raw):
+        if bindings_changed and getattr(agent, "integration_lending", None):
+            still_lent = sorted(lent_integration_ids(agent))
+            agent.integration_lending = (
+                {**agent.integration_lending, "integration_ids": still_lent} if still_lent else None
+            )
+        return None
+    value = _parse_lending_bool(raw)
+    if value is None:
+        return INTEGRATION_LENDING_VALUE_ERROR
+    if not value:
+        agent.integration_lending = None
+        return None
+    actor = normalize_acting_user_id(actor_id)
+    if actor is None or actor != normalize_acting_user_id(getattr(agent, "user_id", None)):
+        return LENT_INTEGRATION_NOT_OWNED_DETAIL
+    lendable = await lendable_integration_ids(db, agent)
+    if not lendable:
+        return INTEGRATION_LENDING_NOTHING_TO_LEND
+    try:
+        agent.integration_lending = await checked_integration_lending(
+            db,
+            actor_id=actor,
+            agent_owner_id=agent.user_id,
+            integration_ids=lendable,
+            bindings=agent.integration_bindings,
+            now_iso=datetime.now(UTC).isoformat(),
+        )
+    except HTTPException as exc:
+        return str(exc.detail)
+    return None
+
+
+def _parse_lending_bool(raw: object) -> bool | None:
+    """'true' / 'false' (any case, or a native bool) as a bool; anything else None.
+
+    Its own name: ``_parse_bool_arg(raw, label)`` is the module's tri-state
+    parser and a second definition under that name would shadow it.
+    """
+    if isinstance(raw, bool):
+        return raw
+    text = str(raw).strip().lower()
+    if text in ("true", "yes", "on", "1"):
+        return True
+    if text in ("false", "no", "off", "0"):
+        return False
+    return None
+
+
 def _parse_optional_json_arg(
     raw: object, label: str
 ) -> tuple[dict | None, str | None, bool]:
@@ -3066,6 +3152,7 @@ def build_agent_builder_tool(
         integration_template_read_only: str = "",
         integration_signatures: object = "",
         integration_live_writes: object = "",
+        integration_lending: str = "",
         handover_agent_ids: str = "",
         handover_types: str = "",
         handover_conditions: str = "",
@@ -3124,6 +3211,7 @@ def build_agent_builder_tool(
                 "integration_template_read_only": integration_template_read_only,
                 "integration_signatures": integration_signatures,
                 "integration_live_writes": integration_live_writes,
+                "integration_lending": integration_lending,
                 "handover_agent_ids": handover_agent_ids,
                 "handover_types": handover_types,
                 "handover_conditions": handover_conditions,
@@ -4945,6 +5033,32 @@ def build_agent_builder_tool(
                     return "None"
                 return ", ".join(groups) + " (add the group to builtin_tool_ids, or drop the entry)"
 
+            # Lending (#2719): the owner's "Use my integrations through this
+            # agent", what it lends (names only when the caller sees the row)
+            # and who set it when.
+            from app.services.integration_credentials import lent_integration_ids
+
+            _lent_ids = sorted(lent_integration_ids(agent))
+            _lending_raw = getattr(agent, "integration_lending", None) or {}
+            _lending_by = ""
+            if _lent_ids and safe_uuid(_lending_raw.get("set_by")):
+                from app.models.user import User
+
+                _by_row = (
+                    await _db.execute(
+                        select(User.full_name, User.email).where(User.id == safe_uuid(_lending_raw.get("set_by")))
+                    )
+                ).first()
+                if _by_row is not None:
+                    _lending_by = _by_row[0] or _by_row[1] or ""
+
+            def _fmt_integration_lending() -> str:
+                if not _lent_ids:
+                    return "off (integration_lending='true' lends the owner's personal integrations it binds)"
+                named = ", ".join(f"`{i}` ({integ_names[i]})" if i in integ_names else f"`{i}`" for i in _lent_ids)
+                who = _lending_by or str(_lending_raw.get("set_by") or "unknown")
+                return f"on, {len(_lent_ids)} lent: {named}; set by {who} at {_lending_raw.get('set_at') or 'unknown'}"
+
             def _fmt_integration_bindings() -> str:
                 if not raw_bindings:
                     return "None"
@@ -5147,6 +5261,7 @@ def build_agent_builder_tool(
                 f"  • MCP servers: {_fmt_named(mcp_id_list, mcp_names)}",
                 f"  • Custom tools: {_fmt_named(ct_id_list, ct_names)}",
                 f"  • Integration bindings: {_fmt_integration_bindings()}",
+                f"  • Integration lending: {_fmt_integration_lending()}",
                 f"  • Integration template bindings: {_fmt_list(_g('integration_template_bindings', None))}",
                 f"  • Integration template read-only: {_fmt_list(_g('integration_template_read_only', None))}",
                 f"  • Built-in tools: {_fmt_list([describe_builtin_tool_id(t) for t in (_g('builtin_tool_ids', None) or [])] or None)}",
@@ -5551,6 +5666,13 @@ def build_agent_builder_tool(
                     lines.append(f"  Integrations: {'; '.join(entries)}")
                 else:
                     lines.append("  Integrations: None")
+                # The owner's lending (#2719): on with its count, or off.
+                from app.services.integration_credentials import lent_integration_ids
+
+                _lent = lent_integration_ids(a)
+                lines.append(
+                    f"  Integration lending: on ({len(_lent)} lent)" if _lent else "  Integration lending: off"
+                )
 
                 kb_ids = [
                     str(k)
@@ -5656,6 +5778,7 @@ def build_agent_builder_tool(
         integration_template_read_only: str = "",
         integration_signatures: object = "",
         integration_live_writes: object = "",
+        integration_lending: str = "",
         handover_agent_ids: str = "",
         handover_types: str = "",
         handover_conditions: str = "",
@@ -6409,6 +6532,20 @@ def build_agent_builder_tool(
                         f"{exc.detail} Use the integration ids get_agent lists for the bindings that offer Live writes."
                     )
                 updated.append("integration_live_writes")
+
+            # Integration lending (#2719): the owner's switch "Use my
+            # integrations through this agent", by the rule of the REST update
+            # (checked_integration_lending: the agent's owner only, their own
+            # integrations, bound by the agent; set_by and set_at stamped).
+            # 'true' lends every lendable one the agent binds after this call.
+            _lending_err = await _apply_integration_lending(
+                _db, agent, uid, integration_lending, bindings_changed="integration_bindings" in updated
+            )
+            if _lending_err:
+                await _db.rollback()
+                return _lending_err
+            if _arg_provided(integration_lending):
+                updated.append("integration_lending")
 
             # ── Remaining config options (full parity with REST PUT /agents) ──
             # Every editable field on the agent is reachable here so the builder
@@ -14903,6 +15040,14 @@ def build_agent_builder_tool(
                             "Live writes per binding, for integrations that offer "
                             "it: JSON {integration id or provider key: "
                             "'on'|'off'|'inherit'}, merged."
+                        ),
+                        "default": "",
+                    },
+                    "integration_lending": {
+                        "type": "string",
+                        "description": (
+                            "Owner only: 'true' lends the owner's personal integrations it binds to "
+                            "the people it is shared with, in chats with this agent only; 'false' stops."
                         ),
                         "default": "",
                     },

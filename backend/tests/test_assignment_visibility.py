@@ -531,6 +531,14 @@ _FLAG_TIER_ALLOWED: dict[tuple[str, str], str] = {
         "the agent owner's own personal rows the agent binds (user_id is the owner), "
         "read for the agent settings banner; lists nothing to a caller (#8824)"
     ),
+    ("services/integration_credentials.py", "lendable_integration_ids"): (
+        "the agent owner's own personal rows the agent binds (user_id is the owner), "
+        "what integration_lending='true' lends; lists nothing to a caller (#2719)"
+    ),
+    ("services/fleet_health_signals.py", "_lending_findings"): (
+        "which bound rows a shared member's owner could lend (personal, owned by the "
+        "agent's owner), a health finding's evidence ids; decides no visibility (#2719)"
+    ),
     ("services/fleets.py", "grant_fleet_health_advisory"): (
         "finds the platform-seeded fleet-health-advisory skill by its slug tag to bind it "
         "to a fleet orchestrator during the fleet seed; answers no row to a caller, never a caller tier (#11700)"
@@ -660,6 +668,10 @@ _SHARE_COLUMN_READS_ALLOWED: dict[tuple[str, str], str] = {
     ("services/integration_credentials.py", "shared_agent_personal_integrations"): (
         "which of the owner's own rows an agent group already gets, for the agent "
         "settings banner; decides no visibility (#8824)"
+    ),
+    ("services/fleet_health_signals.py", "_lending_findings"): (
+        "whether a shared member's audience already holds its owner's bound row, "
+        "so a health finding skips it; decides no visibility (#2719)"
     ),
     ("services/roi_access.py", "reader_scope"): (
         "which workspaces are shared with a group the caller manages, the group "

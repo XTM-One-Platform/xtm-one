@@ -229,6 +229,31 @@ async def shared_agent_personal_integrations(db: AsyncSession, agent: Any) -> li
     )
 
 
+async def lendable_integration_ids(db: AsyncSession, agent: Any) -> list[str]:
+    """The integrations *agent* can lend when its owner lends "all" (the
+    ``integration_lending`` field of the agent tools, #2719): the owner's own
+    personal integrations it binds, neither company-managed nor per-user (a
+    per-user integration already lets each person use their own account).
+
+    Unlike :func:`shared_agent_personal_integrations` it does not depend on
+    the agent's current audience, so lending can be set before sharing.
+    """
+    owner = normalize_acting_user_id(getattr(agent, "user_id", None))
+    bound = sorted(canonical_integration_ids(flatten_binding_ids(getattr(agent, "integration_bindings", None))))
+    if owner is None or not bound:
+        return []
+    rows = (
+        await db.execute(
+            select(Integration.id, Integration.credential_mode).where(
+                Integration.id.in_([uuid.UUID(i) for i in bound]),
+                Integration.user_id == owner,
+                Integration.is_company_managed.is_(False),
+            )
+        )
+    ).all()
+    return sorted(str(row[0]) for row in rows if row[1] != PER_USER_CREDENTIAL_MODE)
+
+
 #: 400 detail: a lent integration must be one the agent binds.
 LENT_INTEGRATION_NOT_BOUND_DETAIL = (
     "An agent can only lend an integration it is bound to. Bind it first, then lend it."

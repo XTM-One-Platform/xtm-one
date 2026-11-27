@@ -55,6 +55,11 @@ was read from, so one read tells a fleet orchestrator everything the seeded
   (:func:`app.services.fleets.fleet_boundary_violations`).
 * ``cost_spike``: a member whose tokens of the last day are over
   :data:`SPIKE_FACTOR` times its own daily average of the week before.
+* ``shared_agent_without_lending``: a member shared with groups or people and
+  bound to its owner's personal integrations (not company-managed, not
+  per-user) it does not lend and that are not already shared with every group
+  and person it is shared with: those people run without them (#2719).
+  Lending is the owner's choice, never a safe fix.
 
 Reads only, on the caller's session and under the caller's visibility (the
 runs of ``run_visible_filter``, the work items and entries the caller may
@@ -114,6 +119,7 @@ FINDING_FIX: dict[str, str] = {
     "oversize_state": FIX_OWNER,
     "handover_not_allowed": FIX_OWNER,
     "cost_spike": FIX_OWNER,
+    "shared_agent_without_lending": FIX_OWNER,
 }
 
 #: The recommendation each kind carries, one line.
@@ -157,6 +163,10 @@ FINDING_ADVICE: dict[str, str] = {
         "expose it only when that is wanted."
     ),
     "cost_spike": "Read the member's runs of the day for a loop or an oversized read.",
+    "shared_agent_without_lending": (
+        "The people it is shared with run without these integrations: its owner lends them "
+        "(update_agent integration_lending='true') or switches the binding to per-user."
+    ),
 }
 
 
@@ -323,6 +333,7 @@ async def build_fleet_health_report(
     findings += await _shared_state_findings(db, fleet, ids, user_id=user_id)
     findings += await _handover_findings(db, fleet)
     findings += await _cost_findings(db, ids, run_scope=run_scope, now=now)
+    findings += await _lending_findings(db, ids)
     findings = with_ids(fleet.id, findings)
     active, dismissed = split_findings(findings, getattr(fleet, "health_dismissals", None), now)
 
@@ -792,6 +803,74 @@ async def _handover_findings(db: AsyncSession, fleet: Fleet) -> list[FleetFindin
             pairs,
         )
     ]
+
+
+async def _lending_findings(db: AsyncSession, ids: Sequence[uuid.UUID]) -> list[FleetFinding]:
+    """Shared members bound to their owner's personal integrations they do not lend (#2719)."""
+    from app.models.agent import Agent
+    from app.models.integration import Integration
+    from app.services.integration_credentials import (
+        PER_USER_CREDENTIAL_MODE,
+        canonical_integration_ids,
+        flatten_binding_ids,
+        lent_integration_ids,
+    )
+
+    if not ids:
+        return []
+    agents = (await db.execute(select(Agent).where(Agent.id.in_(list(ids))))).scalars().all()
+    wanted: list[tuple[Any, set[str]]] = []
+    for agent in agents:
+        if not (agent.shared_group_ids or agent.shared_user_ids) or agent.is_company_managed:
+            continue
+        unlent = canonical_integration_ids(flatten_binding_ids(agent.integration_bindings)) - lent_integration_ids(
+            agent
+        )
+        if unlent and agent.user_id is not None:
+            wanted.append((agent, unlent))
+    if not wanted:
+        return []
+    all_ids = sorted({i for _agent, unlent in wanted for i in unlent})
+    rows = (
+        await db.execute(
+            select(
+                Integration.id,
+                Integration.user_id,
+                Integration.shared_group_ids,
+                Integration.shared_user_ids,
+            ).where(
+                Integration.id.in_([uuid.UUID(i) for i in all_ids]),
+                Integration.is_company_managed.is_(False),
+                or_(Integration.credential_mode.is_(None), Integration.credential_mode != PER_USER_CREDENTIAL_MODE),
+            )
+        )
+    ).all()
+    by_id = {str(row[0]): row for row in rows}
+    pairs = [
+        f"{agent.id}:{iid}"
+        for agent, unlent in sorted(wanted, key=lambda kv: str(kv[0].id))
+        for iid in sorted(unlent)
+        if iid in by_id and by_id[iid][1] == agent.user_id and not _audience_holds(agent, by_id[iid])
+    ]
+    if not pairs:
+        return []
+    members = len({p.split(":", 1)[0] for p in pairs})
+    return [
+        _finding(
+            "shared_agent_without_lending",
+            f"{members} shared member(s) bound to {len(pairs)} personal integration(s) of their owner they do not lend",
+            pairs,
+        )
+    ]
+
+
+def _audience_holds(agent: Any, row: Any) -> bool:
+    """True when the integration *row* is already shared with every group and
+    person *agent* is shared with: they use it as their own, nothing to lend
+    (the rule of ``shared_agent_personal_integrations``, the settings banner)."""
+    groups = {str(g) for g in (agent.shared_group_ids or [])}
+    people = {str(u) for u in (agent.shared_user_ids or [])}
+    return groups <= {str(g) for g in (row[2] or [])} and people <= {str(u) for u in (row[3] or [])}
 
 
 #: Handovers named one by one in the summary (the evidence keeps every id).

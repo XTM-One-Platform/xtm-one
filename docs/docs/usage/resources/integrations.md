@@ -711,6 +711,10 @@ An agent you share with groups or people can be bound to your personal integrati
 
 Through the API, an agent's owner lends with `lent_integration_ids` on `PUT /api/v1/agents/{id}`: only the owner, only their own integrations, only ones the agent binds (`[]` lends nothing). The agent reports it as `integration_lending` (the ids, who set it and when). Binding a new personal integration does not lend it until the owner chooses again; unbinding one stops lending it.
 
+An agent sets it with the platform tools: `update_agent` (or `create_agent`) with `integration_lending='true'` lends every personal integration of the owner the agent binds (company-managed and per-user integrations are never lent), `'false'` stops lending, blank leaves it as it is. The same rule applies: only the agent's owner, never an editor or an administrator on their behalf. `get_agent` shows the lending (on or off, the integrations lent, who set it and when) and `list_agents` with `detail='full'` shows it per agent. A copy of an agent (`clone_agent`, a fleet export or apply, a catalog install) never carries the lending: it starts off, as in the settings page. A fleet health check (`get_fleet_health`) reports a shared member bound to its owner's personal integrations it does not lend (`shared_agent_without_lending`); only the owner fixes it.
+
+An agent another agent consults, delegates to or transfers to uses its own lending for the person in the chat: when both the assistant and the desk it consults lend, the desk runs with its owner's integrations for that person.
+
 ## Sharing a personal credential, everywhere
 
 Any stored credential - an OAuth account, a personal access token, an API key, a bot token, a service-account secret - is used by more than the people an integration is shared with. Everything that carries the integration lends it to its own audience:
