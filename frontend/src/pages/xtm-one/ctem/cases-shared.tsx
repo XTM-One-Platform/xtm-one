@@ -170,6 +170,31 @@ export function useCasesEmptyLabel(
   return { label: sentences.join(" "), unread: true };
 }
 
+/**
+ * The platform group owning a case as a team (#2577, shown since #2586), next to
+ * its lead in the case header: the DS users icon and the team name, cut with an
+ * ellipsis, under ONE tooltip that names the team in full and says what a team
+ * owner means (UX r1 B1 on #2587: no TruncatedText tooltip inside the Tip).
+ * Nothing when a person owns the case.
+ */
+export function CaseOwnerTeam({ name }: { name: string | null | undefined }) {
+  const { t_i18n } = useFormatter();
+  const tabIndex = useTriggerTabIndex();
+  if (!name) return null;
+  return (
+    <Tip content={t_i18n("{team}: the team owns this case, every member sees it as theirs.", { team: name })}>
+      <span
+        tabIndex={tabIndex}
+        className={`inline-flex min-w-0 max-w-[200px] items-center gap-1 text-default-secondary ${TIP_WRAP_FOCUS_RING}`}
+        data-testid="ctem-case-owner-team"
+      >
+        <Icon name="users" size={16} className="shrink-0" aria-hidden />
+        <span className="min-w-0 truncate">{name}</span>
+      </span>
+    </Tip>
+  );
+}
+
 /** The owner as the DS Avatar and their name, or "Unassigned" in secondary text. */
 export function CaseOwner({ name }: { name: string | null | undefined }) {
   const { t_i18n } = useFormatter();
