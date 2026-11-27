@@ -62,6 +62,7 @@ import {
   sourceDisplayState,
   sourceKindText,
   sourceState,
+  silentReasonText,
   sourceStateIcon,
   splitSources,
 } from "./signal-sources";
@@ -241,6 +242,24 @@ function MoreSources({
         data-testid="ctem-signal-sources-more"
       >
         {t_i18n("{count, plural, other {+# more}}", { count: sources.length })}
+      </span>
+    </Tip>
+  );
+}
+
+/** The info mark beside a 0 count: why the path records nothing, in the DS tooltip (#2642). */
+function SilentReasonMark({ text }: { text: string }) {
+  const tabIndex = useTriggerTabIndex();
+  return (
+    <Tip content={text}>
+      <span
+        tabIndex={tabIndex}
+        role="img"
+        aria-label={text}
+        className="inline-flex shrink-0 items-center rounded-sm text-default-secondary"
+        data-testid="ctem-signal-sources-silent-reason"
+      >
+        <Icon name="info" size={16} aria-hidden />
       </span>
     </Tip>
   );
@@ -437,7 +456,16 @@ export function SignalSourcesPanel() {
           .map((s) => `${t_i18n(SIGNAL_STATE_LABEL[s])} ${exactCount(path.counts?.[s] ?? 0)}`)
           .join(", ");
         const n30 = path.count_30d ?? 0;
-        return <CountCell tip={byState} title={exactCount(n30)} label={count(n30)} />;
+        const cell = <CountCell tip={byState} title={exactCount(n30)} label={count(n30)} />;
+        // A path that is on with 0 signals says why beside its count (#2642).
+        if (!path.silent_reason) return cell;
+        const why = silentReasonText(path.silent_reason, t_i18n, (iso) => formatShortDateTimeIntl(intl, iso));
+        return (
+          <span className="inline-flex items-center justify-end gap-1.5">
+            <SilentReasonMark text={why} />
+            {cell}
+          </span>
+        );
       },
     },
     {

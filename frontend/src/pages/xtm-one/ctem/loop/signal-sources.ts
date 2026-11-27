@@ -6,7 +6,13 @@
  * icon of each path and lens. Pure, so the status derivation is unit-tested.
  */
 import type { IconName } from "@filigran/design-system";
-import type { CtemSignalPath, CtemSignalPathSource, CtemSignalPathStatus } from "@/hooks/api/useCtemSignalsApi";
+import type {
+  CtemSignalPath,
+  CtemSignalPathSilentReason,
+  CtemSignalPathSource,
+  CtemSignalPathStatus,
+  CtemSilentReasonCode,
+} from "@/hooks/api/useCtemSignalsApi";
 import type { SignalSourcesSettings } from "@/lib/organization-profile";
 import { profileFieldHref } from "@/lib/organization-profile-tabs";
 
@@ -44,6 +50,23 @@ function pathErrorCount(path: Pick<CtemSignalPath, "sources">): number {
 }
 
 type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+/** Why a path that is on records nothing, in plain words (#2642): the code the API answers, never its English detail. @i18n-keys */
+export const SILENT_REASON_LABEL = {
+  never_evaluated: "The inventory has not been evaluated yet: it is evaluated daily and after a purge",
+  no_asset_past_threshold: "No asset is past the threshold and every synced asset still has its sync",
+  upstream_sync_failed: "An inventory sync failed: its assets are not judged stale until it reads again",
+  listener_never_fired: "No source of this path has sent an event yet",
+} as const satisfies Record<CtemSilentReasonCode, string>;
+
+/** The sentence a silent path's info mark shows: its reason, then its last evaluation when there is one (#2642). */
+export function silentReasonText(reason: CtemSignalPathSilentReason, t_i18n: Translate, formatDate: (iso: string) => string): string {
+  const sentence = t_i18n(SILENT_REASON_LABEL[reason.code] ?? reason.detail);
+  const at = reason.evaluation?.at;
+  if (!at) return sentence;
+  const evaluated = reason.evaluation?.evaluated ?? 0;
+  return `${sentence}. ${t_i18n("Last evaluated {date}: {count, plural, one {# asset} other {# assets}} checked", { date: formatDate(at), count: evaluated })}`;
+}
 
 /** A path's status in words; an error says how many sources are in error ("1 source in error"). */
 export function pathStatusLabel(path: Pick<CtemSignalPath, "status" | "sources">, t_i18n: Translate): string {

@@ -16,6 +16,7 @@ import {
   connectedCount,
   connectedProviders,
   pathStatus,
+  silentReasonText,
   sourceIntegrationNames,
   sourceState,
   splitSources,
@@ -367,6 +368,49 @@ describe("SignalSourcesPanel", () => {
     expect(within(row("code_flaw")).getByTestId("ctem-signal-sources-on-count").textContent).toBe("0 of 0");
     fireEvent.click(within(row("code_flaw")).getByTestId("ctem-signal-sources-open-sources"));
     expect(screen.getByTestId("ctem-path-sources").getAttribute("data-path")).toBe("code_flaw");
+  });
+
+  it("says why a path that is on records nothing beside its 0 count, and nothing on a path with signals (#2642)", async () => {
+    get.mockResolvedValue({
+      paths: [
+        PATHS[0],
+        path({
+          id: "stale_asset",
+          label: "Stale or orphaned asset",
+          status: "enabled",
+          sources: [{ provider: "openaev", kind: "listener", event: "", bound: true }],
+          count_30d: 0,
+          silent_reason: {
+            code: "upstream_sync_failed",
+            detail: "An inventory sync failed",
+            evaluation: { at: "2026-11-27T10:00:00+00:00", evaluated: 312, failed_syncs: 2 },
+          },
+        }),
+      ],
+    });
+    renderWithProviders(
+      <MemoryRouter>
+        <SignalSourcesPanel />
+      </MemoryRouter>,
+    );
+    const rows = await screen.findAllByTestId("ctem-signal-sources-path");
+    const row = (id: string) => rows.find((r) => r.getAttribute("data-path") === id) as HTMLElement;
+    const mark = within(row("stale_asset")).getByTestId("ctem-signal-sources-silent-reason");
+    expect(mark.getAttribute("aria-label")).toContain("An inventory sync failed: its assets are not judged stale until it reads again");
+    expect(mark.getAttribute("aria-label")).toContain("312 assets checked");
+    expect(within(row("new_vulnerability")).queryByTestId("ctem-signal-sources-silent-reason")).toBeNull();
+  });
+
+  it("reads each silent reason code in plain words, the API's English detail only as a fallback (#2642)", () => {
+    const t = ((key: string) => key) as Parameters<typeof silentReasonText>[1];
+    const fmt = (iso: string) => iso;
+    expect(silentReasonText({ code: "never_evaluated", detail: "x" }, t, fmt)).toBe(
+      "The inventory has not been evaluated yet: it is evaluated daily and after a purge",
+    );
+    expect(silentReasonText({ code: "listener_never_fired", detail: "x" }, t, fmt)).toBe("No source of this path has sent an event yet");
+    expect(silentReasonText({ code: "no_asset_past_threshold", detail: "x" }, t, fmt)).toBe(
+      "No asset is past the threshold and every synced asset still has its sync",
+    );
   });
 
   it("opens the Signals tab on the path clicked, never the whole list (davidloiret review on #1194)", async () => {
