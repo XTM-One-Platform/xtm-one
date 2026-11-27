@@ -1866,6 +1866,10 @@ async def _plan_on_records(
     )
 
 
+#: Rows one record write statement carries (#2629): a 10,000-row upsert timed out on a large inventory.
+RECORD_WRITE_BATCH = 1000
+
+
 async def apply_record_import(db: AsyncSession, plan: ImportPlan, *, actor: str) -> int:
     """Write a record plan (#1543): its rows in batches, then its removals; answers the rows written or removed.
 
@@ -1879,12 +1883,14 @@ async def apply_record_import(db: AsyncSession, plan: ImportPlan, *, actor: str)
         return 0
     origin = f"sync:{plan.sync_id}" if plan.sync_id else "import"
     count = 0
-    for start in range(0, len(plan.writes), records.MAX_BATCH):
+    # #2629: statements small enough for the database's statement timeout on a large inventory.
+    step = min(records.MAX_BATCH, RECORD_WRITE_BATCH)
+    for start in range(0, len(plan.writes), step):
         result = await records.write_rows(
             db,
             plan.organization_id,
             plan.section,
-            plan.writes[start : start + records.MAX_BATCH],
+            plan.writes[start : start + step],
             origin=origin,
             actor=actor,
         )

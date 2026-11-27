@@ -808,6 +808,21 @@ async def _find_by_name(gql: Gql, root: str, name: str) -> str | None:
     return None
 
 
+def notifier_edit_input(edits: list[dict[str, Any]], config: str) -> list[dict[str, Any]]:
+    """*edits* plus the connector id and the full configuration (#2632).
+
+    OpenCTI ``notifierEdit`` validates ``notifier_connector_id`` and
+    ``notifier_configuration`` read from the edit input on every patch, a missing
+    key reading as an empty string ("Invalid notifier connector"), so both always travel.
+    """
+    rest = [e for e in edits if e["key"] not in ("notifier_connector_id", "notifier_configuration")]
+    return [
+        *rest,
+        {"key": "notifier_connector_id", "value": [WEBHOOK_CONNECTOR_ID]},
+        {"key": "notifier_configuration", "value": [config]},
+    ]
+
+
 async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config: str, description: str = "") -> str:
     description = description or "Provisioned by XTM One: delivers this trigger's events to an assignment."
     notifier_id = notifier_id or await _find_by_name(gql, "notifiers", name)
@@ -829,13 +844,15 @@ async def _ensure_notifier(gql: Gql, notifier_id: str | None, name: str, config:
             if current.get("notifier_configuration") != config:
                 edits.append({"key": "notifier_configuration", "value": [config]})
             if edits:
+                changed = ", ".join(str(e["key"]) for e in edits)
                 _, err = await gql(
                     "mutation XtmNotifierPatch($id: ID!, $input: [EditInput!]!) "
                     "{ notifierFieldPatch(id: $id, input: $input) { id } }",
-                    {"id": notifier_id, "input": edits},
+                    {"id": notifier_id, "input": notifier_edit_input(edits, config)},
                 )
                 if err:
-                    raise RuntimeError(err)
+                    # #2632: the row names what was patched and OpenCTI's answer; the next pass retries.
+                    raise RuntimeError(f"notifier patch of {changed} refused: {err}")
             return notifier_id
     data, err = await gql(
         "mutation XtmNotifierAdd($input: NotifierAddInput!) { notifierAdd(input: $input) { id } }",
@@ -1628,6 +1645,21 @@ async def integration_connection(db: Any, integration_id: str, user_id: Any) -> 
     return connection[0], str(integration.id), secret
 
 
+def held(state: Any) -> bool:
+    """Whether *state* names an object that exists in OpenCTI (a trigger, a notifier or a playbook).
+
+    A state left by a failed pass (an error before any object was created) holds nothing: clearing it
+    loses nothing, and it never reads orphaned (#2636).
+    """
+    return isinstance(state, dict) and bool(
+        state.get("trigger_id")
+        or state.get("trigger_ids")
+        or state.get("notifier_id")
+        or state.get("playbook_id")
+        or state.get("playbook_ids")
+    )
+
+
 def _with_state(trigger_config: dict, state: dict | None) -> dict:
     updated = dict(trigger_config)
     if state is None:
@@ -1656,6 +1688,11 @@ async def provision_one(
         new_state = {**(state or {}), "status": "error", "error": str(exc), "checked_at": now.isoformat()}
         assignment.trigger_config = _with_state(config, new_state)
         return new_state
+    if spec is None and state and not held(state) and not retired:
+        # Off and holding nothing in OpenCTI (#2636): a leftover error of an earlier pass, never an
+        # orphan; the assignment reads not provisioned until it is switched on (fleet setup).
+        assignment.trigger_config = _with_state(config, None)
+        return None
     conn = await _connection(db, assignment, agent)
     if spec is None:
         if not state:
@@ -1723,9 +1760,7 @@ async def deprovision(db: Any, assignment: Any) -> None:
 
     config = assignment.trigger_config if isinstance(assignment.trigger_config, dict) else {}
     state = config.get(STATE_KEY)
-    if not isinstance(state, dict) or not (
-        state.get("trigger_id") or state.get("notifier_id") or state.get("playbook_id")
-    ):
+    if not held(state):
         return
     try:
         agent = await db.get(Agent, assignment.agent_id)

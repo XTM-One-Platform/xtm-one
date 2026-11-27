@@ -11,7 +11,7 @@ import httpx
 
 from app.core.egress import egress_client
 from app.services.pii_redactor import redact_pii
-from app.tools.base import CallableToolExecutor, FileContext, ToolDefinition
+from app.tools.base import CallableToolExecutor, FileContext, ToolDefinition, ToolResult
 
 from . import _common, attachments, body_edits, pr_inherit, pr_title
 from ._common import (
@@ -190,11 +190,13 @@ def register(
         assignee: str = "",
         count: int = 20,
         page: int = 1,
-    ) -> str:
+    ) -> str | ToolResult:
         """Search issues in a GitHub repository with filters.
 
         Returns issue number, title, labels, assignee, and a body preview
-        so you can judge relevance without reading the full issue.
+        so you can judge relevance without reading the full issue. The page's
+        matches are also the result's ``structured`` list (empty when none),
+        so an assignment's ``activation_check`` can test it.
         """
         if e := _common.repo_error(repo):
             return e
@@ -237,14 +239,16 @@ def register(
                     and _common.in_repo_scope(_common.repo_from_api_url(i.get("repository_url")))
                 ]
             if not items:
-                if page > 1:
-                    if total > 1000 and start > 1000:
-                        return (
-                            f"No issues found on page {page}. "
-                            "Note: GitHub Search API caps accessible results to the first 1000 matches."
-                        )
-                    return f"No issues found on page {page}."
-                return "No issues found."
+                if page == 1:
+                    content = "No issues found."
+                elif total > 1000 and start > 1000:
+                    content = (
+                        f"No issues found on page {page}. "
+                        "Note: GitHub Search API caps accessible results to the first 1000 matches."
+                    )
+                else:
+                    content = f"No issues found on page {page}."
+                return ToolResult(tool_call_id="", content=content, structured=[])
             lines = [
                 f"Found {len(items)} issues in this Scope(s) on page {page}:"
                 if scoped
@@ -260,7 +264,19 @@ def register(
                 lines.append("\nNote: GitHub Search API caps accessible results to the first 1000 matches.")
             if end < capped_total:
                 lines.append(format_pagination_hint(str(page + 1), "page"))
-            return "\n\n".join(lines)
+            structured = [
+                {
+                    "number": i["number"],
+                    "title": i["title"],
+                    "state": i["state"],
+                    "author": i["user"]["login"],
+                    "labels": [lb["name"] for lb in i.get("labels", []) if isinstance(lb, dict) and "name" in lb],
+                    "is_pull_request": "pull_request" in i,
+                    "url": i.get("html_url", ""),
+                }
+                for i in items
+            ]
+            return ToolResult(tool_call_id="", content="\n\n".join(lines), structured=structured)
 
     async def get_github_issue(
         repo: str,

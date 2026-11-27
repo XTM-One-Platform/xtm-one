@@ -178,6 +178,9 @@ class SourceIssue:
     #: The names of ``primary_assets`` reached only through an inferred link (#2396): a rule link, a name
     #: match or a primary asset named in the evidence; the others a manual or OpenCRQ link proves.
     inferred_primary_assets: tuple[str, ...] = ()
+    #: A signal member (#2635): what put its gate decision in scope, by kind (``asset_group``,
+    #: ``owned_domain``, ``risk_scenario``...), the reason a case that matched no asset was opened.
+    scope_kinds: tuple[str, ...] = ()
     first_seen_at: datetime | None = None
     #: The version the organization profile declares for the matched product (CTEM-11).
     installed_version: str | None = None
@@ -809,11 +812,15 @@ def aggregates(members: Iterable[SourceIssue]) -> dict[str, object]:
     cvss = [m.cvss for m in members if m.cvss is not None]
     epss = [m.epss for m in members if m.epss is not None]
     seen = [m.first_seen_at for m in members if m.first_seen_at is not None]
+    # #2635: a case that matched no asset and no primary asset says what put it in scope instead.
+    unmatched = not assets and not proven and not inferred
+    opened_on = list(dict.fromkeys(k for m in members for k in m.scope_kinds)) if unmatched else []
     return {
         "issue_count": len(members),
         "asset_count": len(assets),
         "primary_asset_count": len(proven),
         "inferred_primary_asset_count": len(inferred),
+        "opened_on": opened_on,
         "kev_count": sum(1 for m in members if m.kev),
         "max_cvss": max(cvss) if cvss else None,
         "max_epss": max(epss) if epss else None,

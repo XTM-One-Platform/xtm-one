@@ -364,11 +364,18 @@ def _steps_only_where_the_copies_fell_short(captured: dict, events: list[dict], 
     ``stepping_motion`` finding is the third test's."""
     start, end = move["t"]
     total = capture_rate.frames_at(start, end, FPS)
-    if not captured["stepping"]:
+    # A stretch of the whole frame (no ``canvas``) is judged only outside every canvas transition
+    # (``capture_rate.stepping``): a loaded runner's screencast at 8 fps may leave one about the move, never over it
+    # (merge_group run 46028726644: ``KeyError: 'canvas'`` on such a stretch read as the graph's). The move's own
+    # stretch is the graph's, and none of the others reaches into its span.
+    others = [s for s in captured["stepping"] if s.get("canvas") != "canvas#graph"]
+    assert all(s.get("canvas") is None and not _overlaps_move(s["t"], move["t"]) for s in others), (others, move)
+    graph = [s for s in captured["stepping"] if s.get("canvas") == "canvas#graph"]
+    if not graph:
         # The move's instants are rounded on its event: one frame of play either way.
         assert total - move["frames"] <= capture_rate.STEPPING_SHARE * total + 1, (move, total)
         return
-    [stretch] = captured["stepping"]
+    [stretch] = graph
     [event] = [e for e in events if move in (e.get("canvas_motion") or [])]
     assert stretch["canvas"] == "canvas#graph" and stretch["gl"] == "software" and "alone" not in stretch, stretch
     assert stretch["step"] == event.get("step") and stretch["share"] > capture_rate.STEPPING_SHARE, (stretch, event)
@@ -379,6 +386,11 @@ def _steps_only_where_the_copies_fell_short(captured: dict, events: list[dict], 
     # much: its count lies between those two, whichever side of an instant the rounding put either end on.
     assert stretch["frames"] - stretch["synthesised"] == move["frames"], (stretch, move)
     assert _spanned(start, end)[0] <= stretch["frames"] <= _spanned(start, end)[1], (stretch, move)
+
+
+def _overlaps_move(span: list[float], move: list[float]) -> bool:
+    """Whether a stretch's ``t`` reaches into a move's ``t`` past the half millisecond either is rounded by."""
+    return span[0] < move[1] - 2 * ROUNDED_S and span[1] > move[0] + 2 * ROUNDED_S
 
 
 def _spanned(start: float, end: float) -> tuple[int, int]:
