@@ -46,9 +46,11 @@ profile (`PROPOSABLE_EXPOSURE_PATHS` in
 ## 2. The pass
 
 `services/ctem_attack_surface.py`, called by the autonomous tick after the case
-sweep, at most once per cadence window (Redis slot `ctem:attack-surface:pass`). The slot is kept only by
-a pass that committed: a skipped pass (no credential yet) or a failed provider read gives it back, so the
-next tick retries.
+sweep, at most once per cadence window (Redis slot `ctem:attack-surface:pass`). A committed pass keeps
+the slot for the cadence window. A skipped pass (no credential yet) or a failed provider read keeps it
+for a backoff instead (#2613): 5 minutes after the first, doubling with each pass in a row that did not
+complete (`ctem:attack-surface:failures`), never past the cadence window; a committed pass clears the
+count. The purge resync (`resync_passes`) gives the slot back and runs the pass at once.
 
 1. Read: each declared provider's reader (section 2bis) gives one observation
    per public host (address, ports that answer, certificate names, DNS target,
@@ -56,7 +58,13 @@ next tick retries.
    joins them per host (ports and certificate names joined, a host resolves when
    any provider saw it resolve) and the evidence names the providers that saw it.
    Every declared reader must answer: one failed read fails the pass, because a
-   partial view would age the hosts only that provider sees into path 6.
+   partial view would age the hosts only that provider sees into path 6. Inside
+   the Shodan reader each query fails alone (#2613): a 404 on `/dns/domain` (a
+   domain Shodan holds no DNS data for) is an empty read; a 5xx or a rate limit
+   marks that scope's coverage `failed` and the other scopes are still read; a
+   refused credential (401, 403), or every query failing, fails the read. A
+   baseline host under a `failed` scope is not aged into path 6 `unseen` by that
+   pass, and the pass counts the scopes left unread (`unread_scopes`).
 2. Diff, in code (`diff`, a pure function): against the previous pass
    (`ctem_surface_observations`, one row per organization and host) and the
    profile.
@@ -98,8 +106,9 @@ shape the tests record, never approximated.
 A host missing from the baseline is only new when the previous pass could have
 seen it. Each reader records what each query read (`ReadCoverage`: provider,
 scope, kind, pages, records, `truncated` when the query hit its page bound);
-`read_statuses` gives each `<provider>|<scope>` read a status: `truncated`,
-`empty` (its queries answered nothing) or `complete`. The scope is the owned
+`read_statuses` gives each `<provider>|<scope>` read a status: `failed` (a
+query of the scope failed, #2613), `truncated`, `empty` (its queries answered
+nothing) or `complete`. The scope is the owned
 domain or range queried; GTI ASM reads per project, so its one read is `*`.
 
 Path 7 `new_host` is raised only when (`new_host_withheld`):
@@ -182,7 +191,8 @@ loop trace shows their evidence as raw lines.
 
 ## 4. Failures
 
-A provider read that fails records nothing and keeps the baseline; the next
-window retries. A missing or unsupported integration is skipped with its
+A provider read that fails records nothing and keeps the baseline; the next try
+comes after the backoff of section 2. A query that fails on one scope only
+leaves that scope unread and the pass commits on the others. A missing or unsupported integration is skipped with its
 reason in the log; the pass runs on the other declared integrations, and is
 skipped when none is left.

@@ -93,7 +93,8 @@ class Observation:
 
 @dataclass(frozen=True)
 class ReadCoverage:
-    """What one provider query read in a pass: its scope, pages, records and whether it hit its bound."""
+    """What one provider query read in a pass: its scope, pages, records, whether it hit its bound,
+    and whether it failed (``error``: the provider's answer), which leaves its scope unread."""
 
     provider: str
     scope: str
@@ -101,9 +102,11 @@ class ReadCoverage:
     pages: int
     records: int
     truncated: bool = False
+    failed: bool = False
+    error: str = ""
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "provider": self.provider,
             "scope": self.scope,
             "kind": self.kind,
@@ -111,6 +114,10 @@ class ReadCoverage:
             "records": self.records,
             "truncated": self.truncated,
         }
+        if self.failed:
+            out["failed"] = True
+            out["error"] = self.error[:300]
+        return out
 
 
 @dataclass(frozen=True)
@@ -167,15 +174,23 @@ def read_key(provider: str, scope: str) -> str:
     return f"{provider}|{scope}"
 
 
+def unread_scopes(coverage: Iterable[ReadCoverage]) -> list[str]:
+    """The scopes (owned domains, ranges) a failed query left unread in this pass."""
+    return list(dict.fromkeys(c.scope for c in coverage if c.failed))
+
+
 def read_statuses(coverage: Iterable[ReadCoverage]) -> dict[str, str]:
-    """The status of each read of a pass: ``truncated`` when a query hit its page bound,
-    ``empty`` when its queries answered nothing, else ``complete``."""
+    """The status of each read of a pass: ``failed`` when a query of its scope failed,
+    ``truncated`` when a query hit its page bound, ``empty`` when its queries answered
+    nothing, else ``complete``."""
     grouped: dict[str, list[ReadCoverage]] = {}
     for item in coverage:
         grouped.setdefault(read_key(item.provider, item.scope), []).append(item)
     out: dict[str, str] = {}
     for key, items in grouped.items():
-        if any(i.truncated for i in items):
+        if any(i.failed for i in items):
+            out[key] = "failed"
+        elif any(i.truncated for i in items):
             out[key] = "truncated"
         elif sum(i.records for i in items) == 0:
             out[key] = "empty"
@@ -287,6 +302,7 @@ def diff(
     statuses: dict[str, str] | None = None,
     withheld: dict[str, str] | None = None,
     out_of_scope: dict[str, str] | None = None,
+    unread: Iterable[str] = (),
 ) -> list[Finding]:
     """The differences between this pass, the previous one and the profile (no I/O).
 
@@ -297,6 +313,9 @@ def diff(
     A host that is neither declared nor :func:`in_scope` raises nothing on any path: it
     lands in *out_of_scope* (host to IP) and is named as ``shared_ip_names`` in the
     evidence of the owned hosts on the same IP.
+
+    *unread* names the scopes (owned domains, ranges) a failed query left unread: a
+    baseline host under one of them is not aged into path 6 ``unseen`` by this pass.
     """
     surface = getattr(profile, "attack_surface", None)
     stale_days = int(getattr(surface, "stale_after_days", 14) or 14)
@@ -437,9 +456,16 @@ def diff(
 
     # path 6: a host an earlier pass saw that no longer appears for N days.
     limit = now - timedelta(days=stale_days)
+    unread = list(unread)
+    unread_domains = [s for s in unread if "/" not in s]
+    unread_ranges = [s for s in unread if "/" in s]
     for host, before in baseline.items():
         if host in seen or before.last_seen_at > limit:
             continue
+        if _owned_domain(host, unread_domains) or (
+            unread_ranges and (_in_ranges(before.ip, unread_ranges) or _in_ranges(host, unread_ranges))
+        ):
+            continue  # its scope was not read by this pass: unseen proves nothing
         if host not in declared and not in_scope(host, before.ip, domains, ranges):
             continue
         days = max(stale_days, (now - before.last_seen_at).days)
@@ -554,6 +580,7 @@ async def run_pass(
     observations = await reader.observe(domains, ranges)
     coverage = reader_coverage(reader)
     statuses = read_statuses(coverage)
+    unread = unread_scopes(coverage)
     previous = await _previous_pass(db, organization_id)
     rows = await _baseline(db, organization_id)
     withheld: dict[str, str] = {}
@@ -568,6 +595,7 @@ async def run_pass(
         statuses=statuses,
         withheld=withheld,
         out_of_scope=out_of_scope,
+        unread=unread,
     )
 
     for obs in observations:
@@ -635,6 +663,8 @@ async def run_pass(
         counts[finding.trigger_path] = counts.get(finding.trigger_path, 0) + 1
     counts["new_host_withheld"] = len(withheld)
     counts["out_of_scope"] = len(out_of_scope)
+    if unread:
+        counts["unread_scopes"] = len(unread)
     db.add(
         CtemSurfacePass(
             organization_id=organization_id,
@@ -702,7 +732,7 @@ async def why_no_pass(db: AsyncSession, organization_id: uuid.UUID) -> str:
         return reader
     return (
         "no pass has completed yet: a pass is recorded only when it completes (records exist since #1512, "
-        "none is deleted); a pass whose provider read failed records nothing and retries at the next tick"
+        "none is deleted); a pass whose provider read failed records nothing and is retried after a backoff"
     )
 
 
@@ -805,8 +835,15 @@ class ShodanSurfaceReader:
 
         query = {**(params or {}), "key": self._key}
         async with egress_client(timeout=DEFAULT_TIMEOUT) as client:
-            resp, err = await safe_request(client, "get", f"{_SHODAN_URL}{path}", "Shodan", action, params=query)
-        if err or resp is None:
+            # 404 expected: Shodan answers it for a domain it holds no DNS data for.
+            resp, err = await safe_request(
+                client, "get", f"{_SHODAN_URL}{path}", "Shodan", action, params=query, expected_statuses={404}
+            )
+        if resp is not None and resp.status_code == 404:
+            return None  # "No information available for that domain": an empty read, not a failure
+        if resp is not None and resp.status_code in (401, 403):
+            raise SurfaceCredentialError(err or f"Shodan refused the credential to {action}")
+        if err or resp is None or not resp.is_success:
             raise SurfaceReadError(err or f"Shodan did not answer to {action}")
         try:
             return resp.json()
@@ -826,14 +863,40 @@ class ShodanSurfaceReader:
                 hosts[key].reads.append(read)
             return hosts[key]
 
+        # Each query fails alone (#2613): a 5xx or a rate limit on one domain or range leaves
+        # that scope unread (``failed`` coverage) and the others are still read. A refused
+        # credential stops the read, and a read where every query failed fails the pass.
         for domain in domains:
-            await self._dns(domain, _host)
-            matches = await self._search(f"hostname:{domain}", domain)
+            try:
+                await self._dns(domain, _host)
+            except SurfaceCredentialError:
+                raise
+            except SurfaceReadError as exc:
+                self._failed(domain, "dns", exc)
+            try:
+                matches = await self._search(f"hostname:{domain}", domain)
+            except SurfaceCredentialError:
+                raise
+            except SurfaceReadError as exc:
+                self._failed(domain, "search", exc)
+                matches = []
             self._banners(matches, lambda name, d=domain: _host(name, d))
         for block in ranges:
-            matches = await self._search(f"net:{block}", block)
+            try:
+                matches = await self._search(f"net:{block}", block)
+            except SurfaceCredentialError:
+                raise
+            except SurfaceReadError as exc:
+                self._failed(block, "search", exc)
+                matches = []
             self._banners(matches, lambda name, b=block: _host(name, b))
+        if self.coverage and all(c.failed for c in self.coverage):
+            raise SurfaceReadError(self.coverage[0].error or "every Shodan query of the pass failed")
         return list(hosts.values())
+
+    def _failed(self, scope: str, kind: str, exc: Exception) -> None:
+        logger.warning("CTEM attack surface pass: the Shodan %s read of %s failed: %s", kind, scope, exc)
+        self.coverage.append(ReadCoverage(self.provider, scope, kind, 0, 0, failed=True, error=str(exc)))
 
     async def _dns(self, domain: str, host: Any) -> None:
         """Every page of ``/dns/domain`` up to the bound: records and listed subdomains."""
@@ -1065,6 +1128,10 @@ class SurfaceReadError(RuntimeError):
     """The provider could not be read; the pass records nothing and keeps the baseline."""
 
 
+class SurfaceCredentialError(SurfaceReadError):
+    """The provider refused the credential (401, 403): no other query of the pass can succeed."""
+
+
 #: The reader of each supported provider, built from the integration's credential.
 READERS: dict[str, Any] = {"shodan": ShodanSurfaceReader, "gti": GtiAsmSurfaceReader}
 
@@ -1190,7 +1257,7 @@ async def pass_due(cadence_hours: int) -> bool:
 
 
 async def release_pass_slot() -> None:
-    """Give the slot back after a pass that did not complete, so the next tick retries it."""
+    """Give the slot back at once (the purge resync runs the pass now, whatever the backoff)."""
     try:
         from app.core.redis import redis_client
 
@@ -1198,6 +1265,46 @@ async def release_pass_slot() -> None:
         await client.delete(_CADENCE_SLOT_KEY)
     except Exception:  # no Redis: there is no slot to give back
         logger.debug("CTEM attack surface pass slot not released: Redis unavailable")
+
+
+#: The consecutive passes that did not complete, and the retry backoff they set (#2613):
+#: 5 minutes after the first, doubling, never past the cadence window.
+_FAILURES_KEY = "ctem:attack-surface:failures"
+_BACKOFF_FIRST_SECONDS = 300
+
+
+def backoff_seconds(failures: int, cadence_hours: int) -> int:
+    """The wait before the next try after *failures* passes in a row did not complete."""
+    step: int = _BACKOFF_FIRST_SECONDS * (1 << max(0, min(failures, 20) - 1))
+    return max(1, min(step, max(1, cadence_hours) * 3600))
+
+
+async def back_off_pass_slot(cadence_hours: int) -> int:
+    """Keep the slot for a backoff after a pass that did not complete, so the next ticks do
+    not retry it every minute (and spend provider credits on the same failure). Answers the
+    seconds kept (0 when Redis is unavailable: the next tick retries)."""
+    try:
+        from app.core.redis import redis_client
+
+        client = await redis_client()
+        failures = int(await client.incr(_FAILURES_KEY) or 1)
+        await client.expire(_FAILURES_KEY, max(1, cadence_hours) * 3600 * 2)
+        wait = backoff_seconds(failures, cadence_hours)
+        await client.set(_CADENCE_SLOT_KEY, "1", ex=wait)
+        return wait
+    except Exception:  # no Redis: nothing to keep, the next tick retries
+        logger.debug("CTEM attack surface pass backoff not kept: Redis unavailable")
+        return 0
+
+
+async def _clear_failures() -> None:
+    try:
+        from app.core.redis import redis_client
+
+        client = await redis_client()
+        await client.delete(_FAILURES_KEY)
+    except Exception:  # no Redis: no count to clear
+        logger.debug("CTEM attack surface pass failure count not cleared: Redis unavailable")
 
 
 async def scheduled_pass(db: AsyncSession) -> dict[str, Any] | None:
@@ -1230,10 +1337,13 @@ async def scheduled_pass(db: AsyncSession) -> dict[str, Any] | None:
         await db.commit()
         completed = True
     finally:
-        # The slot is kept only by a pass that committed: a skipped or failed
-        # pass (no credential yet, a provider 5xx or rate limit) retries next tick.
+        # A committed pass keeps the slot for the cadence window; a skipped or failed
+        # pass (no credential yet, a provider 5xx or rate limit) keeps it for a growing
+        # backoff instead, so it is retried in minutes, not at every tick (#2613).
         if not completed:
-            await release_pass_slot()
+            wait = await back_off_pass_slot(surface.cadence_hours)
+            logger.info("CTEM attack surface pass did not complete: next try in %s s", wait)
+    await _clear_failures()
     await ctem_case_loop.publish_pending(result["pending"])
     counts: dict[str, Any] = result["counts"]
     return counts

@@ -377,6 +377,122 @@ async def test_the_shodan_reader_stops_when_the_read_is_complete(monkeypatch: py
     assert observed[0].known_since == datetime(2026, 10, 1, tzinfo=UTC)
 
 
+class _Resp:
+    def __init__(self, status: int, body: Any = None) -> None:
+        self.status_code = status
+        self.is_success = 200 <= status < 300
+        self._body = body
+
+    def json(self) -> Any:
+        return self._body
+
+
+class _Client:
+    async def __aenter__(self) -> _Client:
+        return self
+
+    async def __aexit__(self, *exc: Any) -> None:
+        return None
+
+
+def _shodan_http(monkeypatch: pytest.MonkeyPatch, answer: Any) -> list[str]:
+    """Shodan answered by *answer(path, params)* -> (status, body), through the real ``_get``."""
+    from app.core import egress
+    from app.integrations import http
+
+    calls: list[str] = []
+
+    async def _safe_request(client: Any, method: str, url: str, provider: str, action: str, **kw: Any) -> Any:
+        path = url.removeprefix(surface._SHODAN_URL)
+        calls.append(path)
+        status, body = answer(path, kw.get("params") or {})
+        resp = _Resp(status, body)
+        if resp.is_success:
+            return resp, None
+        err = f"Error: Shodan HTTP {status} while trying to {action}"
+        return (resp, err) if kw.get("expected_statuses") is not None else (None, err)
+
+    monkeypatch.setattr(http, "safe_request", _safe_request)
+    monkeypatch.setattr(egress, "egress_client", lambda **kw: _Client())
+    return calls
+
+
+def _two_domains(fail_status: int) -> Any:
+    """empty.example answers *fail_status* on every query; corp.example has one host."""
+
+    def _answer(path: str, params: dict[str, Any]) -> tuple[int, Any]:
+        if path.endswith("/empty.example") or "empty.example" in str(params.get("query")):
+            return fail_status, {"error": "No information available for that domain."}
+        if path.startswith("/dns/domain/"):
+            return 200, {"data": [{"subdomain": "langfuse", "type": "A", "value": "203.0.113.20"}]}
+        if "corp.example" in str(params.get("query")):
+            return 200, {
+                "total": 1,
+                "matches": [{"ip_str": "203.0.113.20", "port": 443, "hostnames": ["langfuse.corp.example"]}],
+            }
+        return 200, {"total": 0, "matches": []}
+
+    return _answer
+
+
+@pytest.mark.asyncio
+async def test_a_domain_shodan_has_no_dns_data_for_is_an_empty_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2613: a 404 on /dns/domain is an empty read of that domain, the other domain is still read."""
+
+    def _answer(path: str, params: dict[str, Any]) -> tuple[int, Any]:
+        if path == "/dns/domain/empty.example":
+            return 404, {"error": "No information available for that domain."}
+        return _two_domains(200)(path, params)
+
+    _shodan_http(monkeypatch, _answer)
+    reader = surface.ShodanSurfaceReader("k")
+    observed = await reader.observe(["empty.example", "corp.example"], [])
+    assert [o.host for o in observed] == ["langfuse.corp.example"]
+    statuses = surface.read_statuses(reader.coverage)
+    assert statuses == {"shodan|empty.example": "empty", "shodan|corp.example": "complete"}
+    assert surface.unread_scopes(reader.coverage) == []
+
+
+@pytest.mark.asyncio
+async def test_a_5xx_on_one_scope_leaves_only_that_scope_unread(monkeypatch: pytest.MonkeyPatch) -> None:
+    _shodan_http(monkeypatch, _two_domains(503))
+    reader = surface.ShodanSurfaceReader("k")
+    observed = await reader.observe(["empty.example", "corp.example"], ["198.51.100.0/24"])
+    assert [o.host for o in observed] == ["langfuse.corp.example"]
+    statuses = surface.read_statuses(reader.coverage)
+    assert statuses == {
+        "shodan|empty.example": "failed",
+        "shodan|corp.example": "complete",
+        "shodan|198.51.100.0/24": "empty",
+    }
+    assert surface.unread_scopes(reader.coverage) == ["empty.example"]
+    failed = [c.as_dict() for c in reader.coverage if c.failed]
+    assert {c["kind"] for c in failed} == {"dns", "search"} and all("503" in c["error"] for c in failed)
+
+
+@pytest.mark.asyncio
+async def test_a_refused_credential_or_every_query_failing_still_fails_the_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _shodan_http(monkeypatch, lambda path, params: (401, {"error": "Invalid API key"}))
+    with pytest.raises(surface.SurfaceCredentialError):
+        await surface.ShodanSurfaceReader("k").observe(["corp.example", "other.example"], [])
+    calls = _shodan_http(monkeypatch, lambda path, params: (503, None))
+    with pytest.raises(surface.SurfaceReadError):
+        await surface.ShodanSurfaceReader("k").observe(["corp.example"], ["198.51.100.0/24"])
+    assert len(calls) == 3  # every scope was tried before the pass failed
+
+
+def test_a_host_under_an_unread_scope_is_not_aged_into_unseen() -> None:
+    profile = _profile(owned_domains=["corp.example", "empty.example"])
+    old = {
+        "www.empty.example": _base("www.empty.example", 443, days_ago=30),
+        "old.corp.example": _base("old.corp.example", 443, days_ago=30),
+    }
+    found = _diff([], old, profile, previous=PREVIOUS, statuses=COMPLETE, unread=["empty.example"])
+    assert [(f.host, f.detail) for f in found] == [("old.corp.example", "unseen")]
+
+
 # The shape of a Search ASM Entities hit, as Google documents it for its SecOps integration
 # (docs.cloud.google.com/chronicle/docs/soar/marketplace-integrations/mandiant-asm), with the
 # ports filled in.
@@ -575,15 +691,26 @@ def test_every_connected_provider_is_either_read_or_named_with_its_reason() -> N
 class _SlotRedis:
     def __init__(self) -> None:
         self.keys: set[str] = set()
+        self.ttl: dict[str, int | None] = {}
+        self.counts: dict[str, int] = {}
 
     async def set(self, key: str, value: str, nx: bool = False, ex: int | None = None) -> bool | None:
         if nx and key in self.keys:
             return None
         self.keys.add(key)
+        self.ttl[key] = ex
         return True
 
     async def delete(self, key: str) -> None:
         self.keys.discard(key)
+        self.counts.pop(key, None)
+
+    async def incr(self, key: str) -> int:
+        self.counts[key] = self.counts.get(key, 0) + 1
+        return self.counts[key]
+
+    async def expire(self, key: str, seconds: int) -> bool:
+        return True
 
 
 class _TickDb:
@@ -634,8 +761,12 @@ def _patch_tick(monkeypatch: pytest.MonkeyPatch, redis: _SlotRedis) -> None:
     monkeypatch.setattr(ctem_case_loop, "publish_pending", _publish)
 
 
+SLOT = "ctem:attack-surface:pass"
+
+
 @pytest.mark.asyncio
-async def test_a_skipped_pass_gives_the_cadence_slot_back(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_a_skipped_pass_keeps_the_slot_for_a_backoff_not_the_cadence(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#2613: a skipped pass is retried after a backoff, never at the next tick."""
     redis = _SlotRedis()
     _patch_tick(monkeypatch, redis)
 
@@ -645,11 +776,12 @@ async def test_a_skipped_pass_gives_the_cadence_slot_back(monkeypatch: pytest.Mo
     monkeypatch.setattr(surface, "reader_for", _no_reader)
     result = await surface.scheduled_pass(_tick_db())
     assert result is not None and str(result["skipped"]).startswith("no credential")
-    assert redis.keys == set()
+    assert redis.keys == {SLOT} and redis.ttl[SLOT] == surface._BACKOFF_FIRST_SECONDS
+    assert await surface.scheduled_pass(_tick_db()) is None  # the next tick does not retry
 
 
 @pytest.mark.asyncio
-async def test_a_failed_provider_read_gives_the_cadence_slot_back(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_a_failed_provider_read_backs_off_and_the_backoff_grows(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _SlotRedis()
     _patch_tick(monkeypatch, redis)
 
@@ -663,7 +795,15 @@ async def test_a_failed_provider_read_gives_the_cadence_slot_back(monkeypatch: p
     monkeypatch.setattr(surface, "run_pass", _fail)
     db = _tick_db()
     assert await surface.scheduled_pass(db) == {"skipped": "Shodan answered 503"}
-    assert db.rollbacks == 1 and redis.keys == set()
+    assert db.rollbacks == 1 and redis.ttl[SLOT] == 300
+    await surface.release_pass_slot()  # the backoff ends
+    assert await surface.scheduled_pass(db) == {"skipped": "Shodan answered 503"}
+    assert redis.ttl[SLOT] == 600
+
+
+def test_the_backoff_doubles_and_never_passes_the_cadence_window() -> None:
+    assert [surface.backoff_seconds(n, 24) for n in (1, 2, 3)] == [300, 600, 1200]
+    assert surface.backoff_seconds(30, 1) == 3600
 
 
 @pytest.mark.asyncio
@@ -680,8 +820,10 @@ async def test_a_committed_pass_keeps_the_cadence_slot(monkeypatch: pytest.Monke
     monkeypatch.setattr(surface, "reader_for", _reader)
     monkeypatch.setattr(surface, "run_pass", _ok)
     db = _tick_db()
+    redis.counts["ctem:attack-surface:failures"] = 3
     assert await surface.scheduled_pass(db) == {"new_exposure": 0}
-    assert db.commits == 1 and redis.keys == {"ctem:attack-surface:pass"}
+    assert db.commits == 1 and redis.keys == {SLOT} and redis.ttl[SLOT] == 24 * 3600
+    assert "ctem:attack-surface:failures" not in redis.counts
     assert await surface.scheduled_pass(db) is None
 
 
@@ -733,3 +875,60 @@ async def test_pass_signals_are_recorded_by_system(monkeypatch: pytest.MonkeyPat
     assert [r["recorded_by"] for r in recorded] == [ctem_signals.SYSTEM_ACTOR]
     assert recorded[0]["signal"].lens == "outside"
     assert recorded[0]["signal"].subject_kind == "asset"
+
+
+@pytest.mark.asyncio
+async def test_a_pass_with_one_domain_404_commits_and_raises_the_new_hosts_of_the_other(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2613 acceptance: one owned domain Shodan has no DNS data for no longer stops the pass."""
+    import uuid
+    from types import SimpleNamespace
+
+    from app.services import ctem_scope_gate_store, ctem_signals
+
+    recorded: list[Any] = []
+
+    async def _record(db: Any, **kw: Any) -> Any:
+        recorded.append(kw["signal"])
+        return object(), True
+
+    async def _evaluate(db: Any, row: Any, *, created: bool) -> None:
+        return None
+
+    known = SimpleNamespace(host="shop.corp.example", ports=[], last_seen_at=NOW, signalled=[], ip="203.0.113.10")
+
+    async def _baseline(db: Any, organization_id: Any) -> dict[str, Any]:
+        return {"shop.corp.example": known}
+
+    async def _previous(db: Any, organization_id: Any) -> Any:
+        return surface.PreviousPass(at=NOW - timedelta(days=1), statuses={READ: "complete"})
+
+    def _answer(path: str, params: dict[str, Any]) -> tuple[int, Any]:
+        if path == "/dns/domain/opencrq.example":
+            return 404, {"error": "No information available for that domain."}
+        return _two_domains(200)(path, params)
+
+    class _Db:
+        def __init__(self) -> None:
+            self.rows: list[Any] = []
+
+        def add(self, row: Any) -> None:
+            self.rows.append(row)
+
+        async def flush(self) -> None:
+            pass
+
+    _shodan_http(monkeypatch, _answer)
+    monkeypatch.setattr(ctem_signals, "record_signal", _record)
+    monkeypatch.setattr(ctem_scope_gate_store, "evaluate_after_record", _evaluate)
+    monkeypatch.setattr(surface, "_baseline", _baseline)
+    monkeypatch.setattr(surface, "_previous_pass", _previous)
+    db = _Db()
+    profile = _profile(owned_domains=["opencrq.example", "corp.example"], address_ranges=[])
+    result = await surface.run_pass(
+        db, organization_id=uuid.uuid4(), profile=profile, reader=surface.ShodanSurfaceReader("k"), now=NOW
+    )
+    assert result["statuses"] == {"shodan|opencrq.example": "empty", READ: "complete"}
+    assert [(s.trigger_path, s.subject_ref) for s in recorded] == [("surface_drift", "langfuse.corp.example")]
+    assert any(type(r).__name__ == "CtemSurfacePass" for r in db.rows)
