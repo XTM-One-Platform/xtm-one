@@ -188,9 +188,7 @@ listener row of section 2 has no source row.
 
 `status`, one per path, the one its sources say (UX round 1 on #2442):
 `error` (a source XTM One provisions is in error on one of its integrations,
-`error_count` on the source, and per integration in `errors` its `reason`,
-`reason_code`, `last_attempt_at` (the last check) and `fix` / `fix_route`
-(#2637); critical tone, the chip says "N sources in
+`error_count` on the source; critical tone, the chip says "N sources in
 error"), `enabled` (one source bound and every source used on the path, of a
 connected provider and not taken off it, is on; low tone) or `partly_enabled`
 (one bound, another used source off or not set up; medium tone), never
@@ -478,16 +476,6 @@ The tools are offered to the built-in `ctem-assistant`,
 for. No persona or seeded assignment uses them yet: the fleets are rewired on
 signals and cases in a later step of the loop.
 
-`list_ctem_signal_sources` (#2637) answers every path with its `status`,
-`sources_in_error` and each source's `state` (`error`, `on`, `off`,
-`not_used_here`, `not_configured`, `not_set_up`, `not_connected`), an error
-carrying its reason, last attempt and fix: the status and text of the Signal
-sources page, so a monitoring agent reads why a source is in error. A source
-switched off after a refused enable for a missing setting (no run-as, run-as
-without the integration, no webhook secret, organization context missing;
-`ctem_platform_sources.CONFIGURATION_CODES`) is `not_configured`, never
-`error`, and counts in no path's errors.
-
 Any other agent reads the signals through the read-only built-in group
 `ctem_read` (`list_ctem_signals` with the same visibility as section 5, plus
 the case reads; `dev-docs/ctem-cases.md` section 8.1). It never records a
@@ -585,12 +573,20 @@ order:
    - inside state (paths 3, 10): the open Aikido issues and the open Dependabot
      alerts of each GitHub organization, read with the integrations visible to
      the administrator who started the purge and a token minted for them;
+   - path 5 (#2641, #2643): the open findings of every enabled OpenAEV listener
+     source (`openaev_findings`, no age limit by default), read through
+     `POST /api/findings/search` with the integration owner's credential and fed
+     to `note_event` as the provisioned `finding_created` trigger delivers them
+     (`finding_delivery`: same `_openaev_event` shape, keyed on the finding id, so
+     a second resync adds nothing); skipped with its reason when that source is
+     off on path 5, a refused read is one error line and the other routes go on;
    - the attack surface (5, 6, 7) and evidence health (9, 12) passes, once each,
      their outcome reported (recorded, off in the profile, skipped and why, the
      error, or nothing to raise).
-   GitLab findings (the GitLab asset sync) and OpenAEV results (event only) are
-   reported with that reason. The step's counts carry `windows`, `routes` (per
-   route: window, read, recorded, capped, errors, skipped) and `by_path`
+   GitLab findings (the GitLab asset sync) and OpenAEV simulation results and
+   score degradations (transitions of a simulation run: run a simulation to raise
+   them again) are reported with that reason. The step's counts carry `windows`,
+   `routes` (per route: window, read, recorded, capped, errors, skipped) and `by_path`
    (signals and cases per trigger path).
 4. **Resume intake**, always, also after a failure, which the job status and the
    audit row report.
