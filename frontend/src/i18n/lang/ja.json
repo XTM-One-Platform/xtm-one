@@ -22163,5 +22163,18 @@
   "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.": "旧 Threat response オートメーションが OpenCTI に残したトリガー、プレイブック、通知先です。Signals ソースが置き換えます。それ以外は変更しません。",
   "Reading OpenCTI...": "OpenCTI を読み込み中...",
   "No OpenCTI integration has a Signals source on.": "Signals ソースがオンの OpenCTI 連携はありません。",
-  "Remove {count, plural, one {# object} other {# objects}}": "{count, plural, other {# 件のオブジェクトを削除}}"
+  "Remove {count, plural, one {# object} other {# objects}}": "{count, plural, other {# 件のオブジェクトを削除}}",
+  "Pass queued after the resync: it runs once every other source has replayed": "再同期後のパスは待機中です。他のすべてのソースの再生が終わると実行されます",
+  "No pass has run yet: the attack surface pass is turned off (Attack surface, in the organization profile)": "まだパスは実行されていません。アタックサーフェスのパスがオフです（組織プロファイルのアタックサーフェス）",
+  "No pass has run yet: the organization profile declares no owned domains and no address ranges": "まだパスは実行されていません。組織プロファイルに所有ドメインもアドレス範囲も宣言されていません",
+  "No pass has run yet: the organization profile declares no attack surface provider": "まだパスは実行されていません。組織プロファイルにアタックサーフェスのプロバイダーが宣言されていません",
+  "No pass has run yet: the declared attack surface provider cannot be read": "まだパスは実行されていません。宣言されたアタックサーフェスのプロバイダーを読み取れません",
+  "No pass has completed yet: a pass whose provider read fails records nothing and is retried later": "まだ完了したパスはありません。プロバイダーの読み取りに失敗したパスは何も記録せず、後で再試行されます",
+  "The last pass ({at}) read no host: the provider answered nothing for {scopes}": "前回のパス（{at}）はホストを読み取りませんでした。プロバイダーは {scopes} について何も返しませんでした",
+  "{count, plural, one {# host re-armed by the signal purge waits for the next pass that sees it (last pass {at})} other {# hosts re-armed by the signal purge wait for the next pass that sees them (last pass {at})}}": "{count, plural, other {シグナルのパージで再設定された # 件のホストが、それを検出する次のパスを待っています（前回のパス {at}）}}",
+  "The first pass ({at}) set the baseline: it raises no drift": "最初のパス（{at}）がベースラインを設定しました。ドリフトは発生しません",
+  "{count, plural, one {The last pass ({at}) withheld # new host: a partial read, or known to the provider before the previous pass} other {The last pass ({at}) withheld # new hosts: a partial read, or known to the provider before the previous pass}}": "{count, plural, other {前回のパス（{at}）は # 件の新しいホストを保留しました。部分的な読み取り、または前回のパスより前にプロバイダーが把握していたものです}}",
+  "The last pass ({at}) found no undeclared host and no new port": "前回のパス（{at}）では未宣言のホストも新しいポートも見つかりませんでした",
+  "The last pass ({at}) found nothing new on this path": "前回のパス（{at}）ではこのタイプに新しいものは見つかりませんでした",
+  "{reason}; the provider answered nothing for {scopes}": "{reason}。プロバイダーは {scopes} について何も返しませんでした"
 }
