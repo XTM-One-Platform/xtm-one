@@ -19,6 +19,7 @@ OpenCRQ refuses every ``findingScore`` read to a service account.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from app.tools.base import CallableToolExecutor, ToolDefinition
 
@@ -36,6 +37,7 @@ from ._common import (
     _scoped,
     _text,
     _trpc,
+    _unscored_wording,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,6 +82,13 @@ def _score(value) -> str:
     return "unscored" if value is None else str(int(value))
 
 
+def _row_score(f: dict[str, Any]) -> str:
+    """A finding's score, or why it has none (a technique test is never scored)."""
+    if f.get("score") is not None:
+        return f"score {_score(f['score'])}"
+    return _unscored_wording(f)
+
+
 def _vulnerability(f: dict) -> str:
     if f.get("cveId"):
         title = f" ({str(f['cveTitle'])[:80]})" if f.get("cveTitle") else ""
@@ -96,10 +105,7 @@ def _fmt_finding_row(f: dict) -> str:
     """One finding on one line; its id reaches the finding's page, so no link per row."""
     asset = f.get("assetName") or f.get("assetDerivedName") or "unnamed asset"
     band = f" ({f['band']})" if f.get("band") else ""
-    line = (
-        f"- {_vulnerability(f)} on {asset}: score {_score(f.get('score'))}{band}"
-        f", {f.get('currentState', '?')}"
-    )
+    line = f"- {_vulnerability(f)} on {asset}: {_row_score(f)}{band}, {f.get('currentState', '?')}"
     context = [
         value
         for value in (
@@ -210,7 +216,7 @@ def register(
         lines = [f"Top {len(rows)} vulnerabilities by finding score ({estate}):"]
         for idx, v in enumerate(rows, 1):
             lines.append(
-                f"{idx}. {_vulnerability(v)}: score {_score(v.get('score'))}, "
+                f"{idx}. {_vulnerability(v)}: {_row_score(v)}, "
                 f"{v.get('impactedAssetCount', 0)} impacted assets"
                 + (f", reported by {', '.join(v['sources'])}" if v.get("sources") else "")
             )

@@ -46,6 +46,7 @@ from ._common import (
     _quarantined,
     _resolve_tenant,
     _trpc,
+    _unscored_wording,
     _untrusted,
 )
 
@@ -1993,9 +1994,7 @@ def register(
                     + (f" ({_one_line(r['expectationType'], 40)} test)" if r.get("expectationType") else "")
                 )
             details = [
-                f"{_one_line(r['band'], 20)} {r['score']}"
-                if r.get("score") is not None
-                else "not scored yet",
+                f"{_one_line(r['band'], 20)} {r['score']}" if r.get("score") is not None else _unscored_wording(r),
                 f"{r.get('affectedAssetCount', 0)} asset(s)",
             ]
             if r.get("knownExploited"):

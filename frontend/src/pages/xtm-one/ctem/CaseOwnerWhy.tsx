@@ -10,7 +10,7 @@
  */
 import { Icon } from "@filigran/design-system";
 import { InfoPopover } from "@/components/ui/info-popover";
-import type { CtemCaseOwnerBasis, CtemCaseOwnerContributor } from "@/hooks/api/useCtemCasesApi";
+import type { CtemCaseOwnerBasis, CtemCaseOwnerContributor, CtemCaseOwnerTeam } from "@/hooks/api/useCtemCasesApi";
 import { useFormatter } from "@/i18n";
 import { ownerBasisSentences } from "./case-owner-why";
 
@@ -19,10 +19,13 @@ export function CaseOwnerWhy({
   basis,
   contributors,
   personName,
+  team = null,
 }: {
   basis: CtemCaseOwnerBasis | null | undefined;
   contributors: CtemCaseOwnerContributor[] | undefined;
   personName: (id: string) => string | null;
+  /** The owning team (#2586, `owningTeam`): the basis is then worded for the team and its lead. */
+  team?: CtemCaseOwnerTeam | null;
 }) {
   const { t_i18n } = useFormatter();
   const others = contributors ?? [];
@@ -40,7 +43,7 @@ export function CaseOwnerWhy({
       popoverTestId="ctem-case-owner-why-popover"
     >
       <div className="space-y-2 content-compact text-default-secondary">
-        {basis && ownerBasisSentences(basis, t_i18n).map((s) => <p key={s}>{s}</p>)}
+        {basis && ownerBasisSentences(basis, t_i18n, team).map((s) => <p key={s}>{s}</p>)}
         {others.length > 0 && (
           <div className="space-y-1">
             <p className="font-medium text-default-primary">{t_i18n("Also involved")}</p>
