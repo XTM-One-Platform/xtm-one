@@ -6,7 +6,9 @@ states, and the pure recording of a delegation's end. PostgreSQL level (marked
 ``integration``): an item blocked on a running task stays blocked, is released
 when the task completes, a ``completed`` wait is handed back with the outcome
 when the task fails, and a task id the user has no delegation for is refused at
-the write.
+the write. A company-managed item with no person (#2591) is matched by its
+creator or owner agent: that agent's task is accepted and released, another
+agent's or another user's is refused.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.services.work_item_a2a_refs import a2a_task_ids, apply_outcomes, end_of
+from app.services.work_item_a2a_refs import a2a_task_ids, apply_outcomes, delegating_agents, end_of
 from app.services.work_item_blocked_refs import (
     REF_KINDS,
     BlockedRefError,
@@ -194,3 +196,111 @@ async def test_an_item_waits_for_its_a2a_task_and_is_released_at_its_end():
 
         with pytest.raises(BlockedRefError, match="no outbound A2A delegation"):
             await blocked("task-nobody-sent", "terminal")
+
+
+# -- A company-managed item with no person (#2591) ---------------------------------------
+
+
+def test_the_delegating_agents_are_distinct_and_skip_nothing_real() -> None:
+    a = uuid.uuid4()
+    assert delegating_agents(a, str(a), None, "junk") == [a]
+    assert delegating_agents(None, None) == []
+
+
+async def _seed_company(sessions):
+    """A company-managed agent A, another agent B, and a person P with an agent of their own.
+
+    A delegated three tasks (one stays running, one completes, one fails); B delegated
+    one in a run acting as A's seed owner, and P's agent one in P's own run.
+    """
+    from app.models.a2a import A2ADelegation
+    from app.models.agent import Agent
+    from app.models.integration import Integration
+    from app.models.user import User
+
+    seed = User(id=uuid.uuid4(), email=f"seed-{uuid.uuid4().hex[:8]}@test.local", full_name="S", hashed_password="x")
+    person = User(id=uuid.uuid4(), email=f"p-{uuid.uuid4().hex[:8]}@test.local", full_name="P", hashed_password="x")
+    async with sessions() as db:
+        db.add_all([seed, person])
+        await db.flush()
+        company = Agent(id=uuid.uuid4(), name="Company", user_id=seed.id, is_company_managed=True)
+        other = Agent(id=uuid.uuid4(), name="Other", user_id=seed.id, is_company_managed=True)
+        personal = Agent(id=uuid.uuid4(), name="Personal", user_id=person.id)
+        partner = Integration(id=uuid.uuid4(), provider="oauth_a2a", name=f"p-{uuid.uuid4().hex[:6]}", user_id=seed.id)
+        db.add_all([company, other, personal, partner])
+        await db.flush()
+        rows = {}
+        for name, agent, user in (
+            ("running", company, seed),
+            ("ok", company, seed),
+            ("bad", company, seed),
+            ("other_agent", other, seed),
+            ("other_user", personal, person),
+        ):
+            row = A2ADelegation(
+                id=uuid.uuid4(),
+                integration_id=partner.id,
+                agent_id=agent.id,
+                user_id=user.id,
+                partner_task_id=f"task-{name}-{uuid.uuid4().hex[:6]}",
+                protocol_version="0.3",
+                signature_state="unsigned",
+            )
+            db.add(row)
+            rows[name] = row
+        await db.commit()
+    return company, rows
+
+
+async def _status(sessions, item_id: str) -> tuple[str, str]:
+    from app.models.work_item import WorkItem
+
+    async with sessions() as db:
+        item = await db.get(WorkItem, uuid.UUID(item_id))
+        return item.status, item.description or ""
+
+
+@pytest.mark.integration
+async def test_a_person_less_item_waits_for_its_agent_task_and_refuses_anyone_else():
+    from app.services import work_item as wi_service
+    from app.services.company_managed_writes import agent_writer
+    from app.services.work_item_a2a_refs import release_ended_a2a_tasks
+
+    async with _database() as sessions:
+        company, rows = await _seed_company(sessions)
+        writer = agent_writer(is_company_managed=True, agent_id=company.id)
+
+        async def blocked(task: str, release_on: str = "completed") -> dict:
+            return await wi_service.create_work_item(
+                user_id=None,
+                title=f"Waits for {task}",
+                description="the brief",
+                owner_agent_id=str(company.id),
+                created_by_agent_id=str(company.id),
+                blocked_on_refs=[{"kind": "a2a_task", "task": task, "release_on": release_on}],
+                is_company_managed=True,
+                writer=writer,
+            )
+
+        running = await blocked(rows["running"].partner_task_id)
+        ok = await blocked(rows["ok"].partner_task_id)
+        bad = await blocked(rows["bad"].partner_task_id)
+        assert running["user_id"] is None
+        assert {running["status"], ok["status"], bad["status"]} == {"blocked"}
+
+        # Another agent's task, or a person's run of another user: still refused.
+        for foreign in ("other_agent", "other_user", None):
+            task = rows[foreign].partner_task_id if foreign else "task-nobody-sent"
+            with pytest.raises(BlockedRefError, match="creator or owner agent has task"):
+                await blocked(task)
+
+        assert await release_ended_a2a_tasks() == 0
+        await _end(sessions, rows["ok"].id, "completed")
+        await _end(sessions, rows["bad"].id, "partner_failed")
+        assert await release_ended_a2a_tasks() == 2
+
+        status, description = await _status(sessions, ok["id"])
+        assert status == "open" and "completed" in description.split("\n", 1)[0]
+        status, description = await _status(sessions, bad["id"])
+        assert status == "open" and "partner_failed, not completed" in description.split("\n", 1)[0]
+        assert (await _status(sessions, running["id"]))[0] == "blocked"
