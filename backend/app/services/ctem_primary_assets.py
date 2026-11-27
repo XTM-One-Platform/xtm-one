@@ -332,8 +332,11 @@ def reference_names(product: str, ref: str) -> bool | None:
     vendor (``AnyConnect Secure Mobility Client`` in ``Cisco AnyConnect Secure Mobility Client``), or a
     run of two words or more that opens it, vendor and product (``Microsoft Office`` in ``Microsoft
     Office 2019 for Mac``); never by one of its words (``analytics`` in a nine-word title) nor by words
-    deep inside it. A CPE, or a short name (``Google Chrome 120``, ``nginx_plus``), answers ``None``:
-    the whole-word rule applies.
+    deep inside it. The words after the vendor and the opening run compare the label with its version
+    kept (``Windows Server 2022`` is not ``Windows Server 2019 Standard Edition``), and a bare OS or
+    vendor family label (:data:`FAMILY_WORDS`, ``Microsoft Windows``) or a generic word names a long
+    title only by its full name (#2628, #2685). A CPE, or a short name (``Google Chrome 120``,
+    ``nginx_plus``), answers ``None``: the whole-word rule applies.
     """
     text = str(ref or "")
     if text.strip().lower().startswith("cpe:"):
@@ -341,17 +344,26 @@ def reference_names(product: str, ref: str) -> bool | None:
     words, compound = _name_words(text)
     if not compound and sum(1 for w in words if not w.isdigit()) <= LONG_TITLE_WORDS:
         return None
-    named = _name_words(str(product or ""))[0]
+    label = str(product or "")
+    named = _name_words(label)[0]
     if not named:
         return False
-    if named == words:
+    label_full, ref_full = tuple(_TOKEN.findall(label.lower())), tuple(_TOKEN.findall(text.lower()))
+    if named == words or label_full == ref_full:
         return True
     if compound:
         return False
-    if named == words[1:]:
-        return True
-    size = len(named)
-    return size >= 2 and (words[:size] == named or words[1 : 1 + size] == named)
+    needle = _needle(label)
+    if needle in FAMILY_WORDS or needle in GENERIC_PRODUCT_WORDS:
+        return False
+    # The label keeps its version: ``Windows Server 2022`` never opens ``Windows Server 2019 ...``.
+    size = len(label_full)
+    for seq in (words, ref_full):
+        if label_full == seq[1:]:
+            return True
+        if size >= 2 and (seq[:size] == label_full or seq[1 : 1 + size] == label_full):
+            return True
+    return False
 
 
 def product_matches(product: str, ref: str, *, family_exact: bool = True, ref_exact: bool = True) -> bool:

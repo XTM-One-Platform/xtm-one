@@ -91,6 +91,34 @@ def test_a_long_title_matches_by_full_name_or_vendor_and_product() -> None:
     assert not pa.product_matches("Predictive Analytics", CET)
 
 
+@pytest.mark.parametrize("label", ["Microsoft Windows", "Mac OS X", "GNU Linux", "Chrome OS"])
+def test_a_family_label_never_opens_a_long_title(label: str) -> None:
+    """#2628 kept on long titles: a bare family names only itself (review of #2717)."""
+    ref = f"{label} Server 2019 Datacenter Edition"
+    assert not pa.product_matches(label, ref)
+    assert not gate._product_matches(label, ref)
+    assert _index(_reacher("HOST", label, os_family=label)).reach([ref]) == []
+
+
+@pytest.mark.parametrize(
+    ("label", "ref"),
+    [
+        ("Windows Server 2022", "Windows Server 2019 Standard Edition"),
+        ("Microsoft Office 2013", "Microsoft Office 2019 for Mac"),
+    ],
+)
+def test_a_label_of_another_release_never_opens_a_long_title(label: str, ref: str) -> None:
+    """The label keeps its version when it is compared with a long title (review of #2717)."""
+    assert not pa.product_matches(label, ref)
+    assert not gate._product_matches(label, ref)
+    assert _index(_reacher("HOST", label, os_family="Windows")).reach([ref]) == []
+
+
+def test_a_label_of_the_same_release_still_opens_a_long_title() -> None:
+    assert pa.product_matches("Microsoft Office 2019", "Microsoft Office 2019 for Mac")
+    assert pa.product_matches("Windows Server 2019", "Windows Server 2019 Standard Edition")
+
+
 def test_the_hop_names_the_label_the_asset_runs_and_the_reference_apart() -> None:
     hits = _index(_reacher("LAPTOP", "Google Chrome", os_family="Windows")).reach(["Google Chrome 120"])
     assert hits[0]["software"] == "Google Chrome" and hits[0]["reference"] == "Google Chrome 120"
