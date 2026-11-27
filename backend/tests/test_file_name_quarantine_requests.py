@@ -121,9 +121,9 @@ def test_a_bedrock_document_name_is_always_a_name_converse_accepts(file_id):
 @pytest.mark.parametrize("hostile", list(_HOSTILE_NAMES))
 async def test_the_openai_stub_for_a_native_non_image_file_fences_its_name(hostile, monkeypatch):
     """The defensive branch of ``build_openai_messages_async``: a native file
-    the image_url part cannot carry is named, not sent."""
-    ref = _ref(_HOSTILE_NAMES[hostile], "application/pdf", b"%PDF-1.4 x")
-    native = NativeFile(data=b"%PDF-1.4 x", content_type="application/pdf", filename=ref.filename)
+    no OpenAI part can carry is named, not sent."""
+    ref = _ref(_HOSTILE_NAMES[hostile], "text/csv", b"%PDF-1.4 x")
+    native = NativeFile(data=b"%PDF-1.4 x", content_type="text/csv", filename=ref.filename)
 
     async def _plan(*_args, **_kwargs):
         return SimpleNamespace(get=lambda _m, _f: native)
@@ -142,6 +142,25 @@ async def test_the_openai_stub_for_a_native_non_image_file_fences_its_name(hosti
     assert text == f"Read it.\n\n{stub}"
     assert len(untrusted_block_spans(text)) == 1
     assert (await build_openai_messages_async(messages, "openai"))[0]["content"] == text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hostile", list(_HOSTILE_NAMES))
+async def test_an_openai_pdf_part_is_named_by_its_id(hostile, monkeypatch):
+    """The gateway sends ``file.filename`` to Claude as the document title (#2519)."""
+    ref = _ref(_HOSTILE_NAMES[hostile], "application/pdf", b"%PDF-1.4 x")
+    native = NativeFile(data=b"%PDF-1.4 x", content_type="application/pdf", filename=ref.filename)
+
+    async def _plan(*_args, **_kwargs):
+        return SimpleNamespace(get=lambda _m, _f: native)
+
+    monkeypatch.setattr(file_resolver, "resolve_payload_files", _plan)
+    messages = [ChatMessage(role="user", content="Read it.", files=[ref])]
+
+    (user,) = await build_openai_messages_async(messages, "openai")
+
+    assert user["content"][1]["file"]["filename"] == f"{ref.file_id}.pdf"
+    assert "PWNED" not in str(user)
 
 
 # ---------------------------------------------------------------------------

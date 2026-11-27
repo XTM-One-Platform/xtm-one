@@ -84,12 +84,12 @@ async def test_unparseable_pdf_stays_native(monkeypatch):
     assert isinstance(resolved, NativeFile)
 
 
-async def test_pdf_for_openai_still_uses_text_fallback(monkeypatch):
-    """OpenAI has no native PDF support — the pre-existing extraction
-    path is unaffected by the page-limit guard."""
+async def test_pdf_for_openai_compat_still_uses_text_fallback(monkeypatch):
+    """An OpenAI-compatible backend has no native PDF support — the
+    extraction path is unaffected by the page-limit guard."""
     _install_fake_pypdf(monkeypatch, 3)
 
-    resolved = await resolve_file(_pdf_ref(), "openai")
+    resolved = await resolve_file(_pdf_ref(), "openai_compat")
 
     assert isinstance(resolved, FallbackText)
 

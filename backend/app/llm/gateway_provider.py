@@ -90,6 +90,9 @@ _VOICES_TIMEOUT = httpx.Timeout(15.0)
 _DEFAULTS_TTL_SECONDS = 300.0
 # The types whose default model the listing marks (``"default_for": [...]``, XTM-One-Platform/ai-gateway#391).
 _DEFAULT_TYPES = ("image", "speech", "chat", "embedding")
+# Upstreams the gateway sends a PDF ``file`` part to natively; each is also a
+# ``file_resolver`` key. Bedrock is left out: its key admits Office files too.
+_NATIVE_PDF_UPSTREAMS = frozenset({"anthropic", "gemini", "openai"})
 
 # One composition is one request. The read outlasts the gateway's own 10 minute
 # upstream wait, so its answer (a refusal included) arrives before the client
@@ -347,10 +350,16 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
             return None
         return (owner or "").lower() or None
 
-    async def _build_messages(self, messages: list[ChatMessage], model: str) -> list[dict]:
-        oai_messages = await super()._build_messages(messages, model)
+    async def _file_provider_key(self, model: str) -> str:
+        # The gateway turns a ``file`` PDF part into each of these upstreams' own
+        # document form; the key also brings that upstream's page limit.
+        upstream = await self._upstream_of(model)
+        return upstream if upstream in _NATIVE_PDF_UPSTREAMS else await super()._file_provider_key(model)
+
+    async def _build_messages(self, messages: list[ChatMessage], model: str) -> tuple[list[dict], int]:
+        oai_messages, pdf_tokens = await super()._build_messages(messages, model)
         if await self._upstream_of(model) != "gemini":
-            return oai_messages
+            return oai_messages, pdf_tokens
         # Gemini answers a call by tool name. Without it the gateway uses the call
         # id, which restarts at ``call_0`` every response: read the turn's own calls.
         names: dict = {}
@@ -361,7 +370,7 @@ class FiligranGatewayProvider(OpenAICompatibleProvider):
             elif message.get("role") == "tool" and (name := names.get(message.get("tool_call_id"))):
                 message = {**message, "name": name}
             out.append(message)
-        return out
+        return out, pdf_tokens
 
     async def _models_with_meta(self, client: openai.AsyncOpenAI | None = None) -> list[GatewayModel]:
         """Every gateway model with its upstream owner (``owned_by``) and types (:func:`_types_of`)."""

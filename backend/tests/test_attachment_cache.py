@@ -229,12 +229,12 @@ async def test_a_pdf_is_parsed_once_for_its_page_count(storage, monkeypatch):
 
 
 async def test_a_pdf_degraded_to_text_is_extracted_once(storage, monkeypatch):
-    """OpenAI takes no native PDF: its text is extracted - once, not per request."""
+    """An OpenAI-compatible backend takes no native PDF: its text is extracted - once, not per request."""
     parsed = _install_counting_pypdf(monkeypatch)
     report = _stored(storage, "chat/report.pdf", b"%PDF-1.4 pages=2", "application/pdf")
     messages = [ChatMessage(role="user", content="read", files=[report])]
 
-    texts = [(await resolve_payload_files(messages, "openai")).get(0, 0).text for _ in range(3)]
+    texts = [(await resolve_payload_files(messages, "openai_compat")).get(0, 0).text for _ in range(3)]
 
     assert len(set(texts)) == 1
     assert "page text" in texts[0]

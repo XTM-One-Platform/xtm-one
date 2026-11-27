@@ -36,6 +36,7 @@ from app.llm.model_limits import known_context_window
 from app.tools.base import ToolCall, ToolDefinition
 
 if TYPE_CHECKING:
+    from app.llm.file_resolver import PayloadFilePlan
     from app.llm.video import ReferenceImageLimits, VideoCredits, VideoRequest
 
 logger = logging.getLogger(__name__)
@@ -973,6 +974,7 @@ async def build_openai_messages_async(
     provider_key: str = "openai",
     *,
     context_window: int | None = None,
+    file_plan: PayloadFilePlan | None = None,
 ) -> list[dict]:
     """Async version of build_openai_messages that resolves FileRef attachments.
 
@@ -984,9 +986,8 @@ async def build_openai_messages_async(
     The user-message attachments are resolved together, newest first, under
     one budget (``file_resolver.resolve_payload_files``): a share of
     *context_window* when the caller knows it, and never the same bytes
-    twice. OpenAI-shaped providers take no PDF natively, so here the budget
-    bounds the extracted TEXT of older attachments — the same accumulation,
-    in a different form.
+    twice. A native PDF goes as a ``file`` part; *file_plan* is that budget
+    when the caller already resolved it (:func:`build_openai_payload`).
     """
     import json as _json
 
@@ -999,9 +1000,10 @@ async def build_openai_messages_async(
         resolve_payload_files,
     )
 
-    file_plan = await resolve_payload_files(
-        messages, provider_key, context_window=context_window
-    )
+    if file_plan is None:
+        file_plan = await resolve_payload_files(
+            messages, provider_key, context_window=context_window
+        )
     oai_messages: list[dict] = []
     pending_tool_images: list = []
 
@@ -1096,11 +1098,24 @@ async def build_openai_messages_async(
                                         },
                                     }
                                 )
+                            elif resolved.content_type == "application/pdf":
+                                b64_data = _b64.b64encode(resolved.data).decode("ascii")
+                                content_parts.append(
+                                    {
+                                        "type": "file",
+                                        "file": {
+                                            # The stored name is a third party's text, and the
+                                            # gateway makes it Claude's document title: the id.
+                                            "filename": f"{file_ref.file_id}.pdf",
+                                            "file_data": f"data:application/pdf;base64,{b64_data}",
+                                        },
+                                    }
+                                )
                             else:
-                                # Defensive guard: OpenAI image_url accepts only image MIME types.
+                                # Defensive guard: only images and PDFs have a part here.
                                 # Log a warning to detect MIME config regressions.
                                 logger.warning(
-                                    "Non-image NativeFile reached OpenAI image_url path: file %s (%r)",
+                                    "Unsupported NativeFile reached the OpenAI builder: file %s (%r)",
                                     file_ref.file_id,
                                     str(resolved.content_type)[:100],
                                 )
@@ -1183,6 +1198,26 @@ async def build_openai_messages_async(
 
     _flush_tool_vision()
     return oai_messages
+
+
+async def build_openai_payload(
+    messages: list[ChatMessage],
+    provider_key: str,
+    *,
+    context_window: int | None = None,
+) -> tuple[list[dict], int]:
+    """OpenAI-format messages and the page-based token estimate of their native PDFs.
+
+    Pass the estimate as ``native_document_tokens`` to the overflow check: a
+    ``file`` part is billed per page, which its bytes understate.
+    """
+    from app.llm.file_resolver import resolve_payload_files
+
+    plan = await resolve_payload_files(messages, provider_key, context_window=context_window)
+    oai_messages = await build_openai_messages_async(
+        messages, provider_key, context_window=context_window, file_plan=plan
+    )
+    return oai_messages, plan.native_pdf_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -2438,7 +2473,8 @@ class BaseLLMProvider(ABC):
     ) -> tuple[int, int, int]:
         """Measure an OpenAI-format message list after file resolution.
 
-        Returns (text_chars, image_count, native_file_bytes).
+        Returns (text_chars, image_count, native_file_bytes). A PDF ``file``
+        part is not counted: callers pass its page cost as ``native_document_tokens``.
         """
         text_chars = 0
         image_count = 0
