@@ -31,3 +31,4 @@ Each converted rule must include:
 5. **Field mapping precision.** Map STIX observable properties to the correct platform field names.
 6. **Batch support.** Handle multiple indicators per request.
 7. **No hallucination.** If a STIX pattern cannot be meaningfully converted, include an error entry in the JSON output.
+8. **Read before converting.** When the request names an OpenCTI entity (an indicator id) and reading it fails or answers "not found", never convert from the request text alone: return an error entry for that id naming the read that failed, and convert only what you actually read.

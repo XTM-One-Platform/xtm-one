@@ -6078,6 +6078,10 @@ async def execute_assignment_run(
             # The integration build of this run, replayed when a tool of the run
             # changes an integration it is bound to (#1874); None: no refresh.
             _rebuild_integration_tools: Any = None
+            # The run's scope: a provider writes into it the context the runs
+            # this one delegates to inherit (the OpenCTI draft the run works in,
+            # #2688); its consults, transfers and background tasks forward it.
+            _run_scope_headers: dict[str, str] = {}
             if effective_bindings:
                 try:
                     from app.services.assignment_helpers import resolve_hitl
@@ -6119,6 +6123,7 @@ async def execute_assignment_run(
                         # boundary on the providers that enforce one,
                         # not only the prompt hint above.
                         "element_scope": enforced_scope,
+                        "scope_headers": _run_scope_headers,
                     }
                     # The work item the inbox dispatched this run for: a commit
                     # the run pushes to an open pull request names it there
@@ -7372,6 +7377,8 @@ async def execute_assignment_run(
                                                 },
                                                 parent_run_id=str(run.id),
                                                 file_context=file_context,
+                                                # The run's draft context (#2688).
+                                                scope_headers=_run_scope_headers,
                                                 # The parent run was already
                                                 # metered — do not double-count
                                                 # the nested consult (OBS-3).
@@ -7597,6 +7604,8 @@ async def execute_assignment_run(
                                             },
                                             parent_run_id=str(run.id),
                                             file_context=file_context,
+                                            # The run's draft context (#2688).
+                                            scope_headers=_run_scope_headers,
                                             # The parent run was already
                                             # metered — do not double-count
                                             # the nested transfer (OBS-3).
@@ -7897,6 +7906,8 @@ async def execute_assignment_run(
                         # The run's per-user picks: its tasks act as the same
                         # accounts (#1792).
                         inherited_template_picks=_run_template_picks,
+                        # The run's draft context, read at each spawn (#2688).
+                        scope_headers=_run_scope_headers,
                     )
                     if _sa_result:
                         composite.add_tools(*_sa_result)
