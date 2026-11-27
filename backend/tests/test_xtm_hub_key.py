@@ -136,8 +136,15 @@ class TestAssertion:
 
     @pytest.mark.parametrize(
         "htu",
-        ["https://hub.example.com/document/get/a/b", "document/get/a/b", "/document/get/a/b?x=1", "/a#b", ""],
-        ids=["absolute-url", "relative", "query", "fragment", "empty"],
+        [
+            "https://hub.example.com/document/get/a/b",
+            "//hub.example.com/document/get/a/b",
+            "document/get/a/b",
+            "/document/get/a/b?x=1",
+            "/a#b",
+            "",
+        ],
+        ids=["absolute-url", "protocol-relative", "relative", "query", "fragment", "empty"],
     )
     def test_htu_is_a_path_only(self, htu):
         with pytest.raises(ValueError, match="htu"):

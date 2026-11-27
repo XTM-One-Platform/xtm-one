@@ -88,8 +88,8 @@ class XtmHubKey:
         ``identifier``. *htu*, for a download only, is the request path the
         assertion is good for: a path, never a host or a query string.
         """
-        if htu is not None and (not htu.startswith("/") or "?" in htu or "#" in htu):
-            raise ValueError("An assertion's htu is a request path: /..., without a query or a fragment")
+        if htu is not None and (not htu.startswith("/") or htu.startswith("//") or "?" in htu or "#" in htu):
+            raise ValueError("An assertion's htu is a request path: /..., without a host, a query or a fragment")
         now = datetime.now(UTC).replace(microsecond=0)
         payload: dict[str, Any] = {
             "iss": str(platform_id),
