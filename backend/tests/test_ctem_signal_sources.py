@@ -127,6 +127,8 @@ def test_the_catalog_carries_sources_status_and_activity() -> None:
         "off": False,
         "not_set_up": False,
         "error_count": 0,
+        "errors": [],
+        "not_configured": False,
         "excluded": False,
         "available": False,
         "also_feeds": ["credential_leak"],
@@ -170,6 +172,64 @@ def test_the_catalog_without_activity_keeps_its_former_shape_plus_sources() -> N
         "sources_enabled",
         "sources_available",
     } == set(row)
+
+
+def test_a_source_in_error_carries_its_reason_last_attempt_and_fix_on_its_path() -> None:
+    """#2637: an error on a path says why, when it was last tried and what fixes it, in the path answer."""
+    from app.services.ctem_platform_sources import error_detail
+
+    bound = sources.BoundSources()
+    bound.error[("opencti", "listener")] = 1
+    bound.error_details[("opencti", "listener")] = [
+        error_detail(
+            "i-1",
+            "the run-as user is deactivated or no longer exists: pick another run-as",
+            {"status": "error", "checked_at": "2026-11-27T15:00:00+00:00"},
+            enabled=True,
+        )
+    ]
+    row = sources.path_sources("third_party_event", bound)
+    assert row[0]["error_count"] == 1 and sources.path_status(row) == "error"
+    (detail,) = row[0]["errors"]
+    assert detail["reason_code"] == "run_as_inactive"
+    assert detail["last_attempt_at"] == "2026-11-27T15:00:00+00:00"
+    assert detail["fix"] and detail["fix_route"]
+
+
+def test_a_source_off_for_a_missing_setting_reads_not_configured_never_error() -> None:
+    """#2637: a source never switched on for a missing setting is no error: its path counts no error."""
+    bound = sources.BoundSources()
+    bound.not_set_up.add(("opencti", "listener"))
+    bound.not_configured.add(("opencti", "listener"))
+    row = sources.path_sources("third_party_event", bound)
+    assert row[0]["not_configured"] is True and row[0]["error_count"] == 0 and row[0]["errors"] == []
+    assert sources.path_status(row) != "error"
+
+
+def test_the_agent_tool_reads_the_same_status_and_errors_as_the_page() -> None:
+    """#2637: list_ctem_signal_sources answers each path's status and each source's state and error."""
+    from app.services.builtin_tools.ctem_signals import signal_sources_report
+    from app.services.ctem_platform_sources import error_detail
+
+    bound = sources.BoundSources()
+    bound.error[("opencti", "listener")] = 1
+    bound.error_details[("opencti", "listener")] = [
+        error_detail(
+            "i-1", "objects not removed: trigger t-1", {"checked_at": "2026-11-27T15:00:00+00:00"}, enabled=False
+        )
+    ]
+    report = signal_sources_report(bound, "third_party_event")
+    (path,) = report["paths"]
+    assert path["path"] == "third_party_event" and path["status"] == "error" and path["sources_in_error"] == 1
+    (source,) = path["sources"]
+    assert source["state"] == "error" and source["errors"][0]["reason_code"] == "objects_not_removed"
+
+    quiet = sources.BoundSources()
+    quiet.not_set_up.add(("opencti", "listener"))
+    quiet.not_configured.add(("opencti", "listener"))
+    (path,) = signal_sources_report(quiet, "third_party_event")["paths"]
+    assert path["sources_in_error"] == 0 and path["sources"][0]["state"] == "not_configured"
+    assert "errors" not in path["sources"][0]
 
 
 def test_the_code_paths_name_the_fleet_capability_that_feeds_them() -> None:

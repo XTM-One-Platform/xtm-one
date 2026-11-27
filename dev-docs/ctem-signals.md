@@ -188,7 +188,9 @@ listener row of section 2 has no source row.
 
 `status`, one per path, the one its sources say (UX round 1 on #2442):
 `error` (a source XTM One provisions is in error on one of its integrations,
-`error_count` on the source; critical tone, the chip says "N sources in
+`error_count` on the source, and per integration in `errors` its `reason`,
+`reason_code`, `last_attempt_at` (the last check) and `fix` / `fix_route`
+(#2637); critical tone, the chip says "N sources in
 error"), `enabled` (one source bound and every source used on the path, of a
 connected provider and not taken off it, is on; low tone) or `partly_enabled`
 (one bound, another used source off or not set up; medium tone), never
@@ -426,6 +428,12 @@ own objects stay until that source is enabled and connected
 no delivery lost. A refused adoption stays off with its reason and is tried
 once (`adopted_from`).
 
+## 4quater. The inventory evaluation of path 6 (#2642)
+
+`services/ctem_inventory_staleness.py` evaluates the inventory records of the primary organization as they stand: a record whose `last_seen_at` is older than `attack_surface.stale_after_days` (14 by default) is `unseen`, a record whose `sync_id` names a sync that no longer exists is `orphaned`. A record of a sync whose last run failed or that paused itself is withheld and counted (`withheld_sync_failed`): its age is the sync's failure. Each finding is recorded through `record_signal` (source `xtm_one:pass`, dedupe `stale_asset:xtm_one:<detail>:<record id>`). It runs daily on the autonomous tick (Redis slot `ctem:inventory-staleness:pass`) and once in the resync step of a purge (`resync_passes`); the source is always on and can be taken off the path like any other.
+
+The last outcome is kept (`ctem:inventory-staleness:last`, 30 days). `GET /ctem-signals/paths` answers, on every path that is on with no signal in 30 days, `silent_reason` `{code, detail, evaluation?}`: `never_evaluated`, `no_asset_past_threshold`, `upstream_sync_failed` or `inventory_truncated` (the inventory holds more records than one evaluation reads, 100,000 in pages of 5,000 keyed on the record id; the outcome counts them as `truncated`) for path 6, `listener_never_fired` for a path no source ever fed.
+
 ## 5. Visibility
 
 Signals are organization data; their content is what the recorder chose to
@@ -475,6 +483,16 @@ The tools are offered to the built-in `ctem-assistant`,
 `ctem-threat-relevance-analyst`, acting for the person the turn or run acts
 for. No persona or seeded assignment uses them yet: the fleets are rewired on
 signals and cases in a later step of the loop.
+
+`list_ctem_signal_sources` (#2637) answers every path with its `status`,
+`sources_in_error` and each source's `state` (`error`, `on`, `off`,
+`not_used_here`, `not_configured`, `not_set_up`, `not_connected`), an error
+carrying its reason, last attempt and fix: the status and text of the Signal
+sources page, so a monitoring agent reads why a source is in error. A source
+switched off after a refused enable for a missing setting (no run-as, run-as
+without the integration, no webhook secret, organization context missing;
+`ctem_platform_sources.CONFIGURATION_CODES`) is `not_configured`, never
+`error`, and counts in no path's errors.
 
 Any other agent reads the signals through the read-only built-in group
 `ctem_read` (`list_ctem_signals` with the same visibility as section 5, plus

@@ -271,7 +271,11 @@ def is_connected(state: Any) -> bool:
 
 
 def status_of(row: Any) -> tuple[str, str | None]:
-    """``(status, reason)`` of a row: ``connected``, ``off`` or ``error`` with its reason."""
+    """``(status, reason)`` of a row: ``connected``, ``off``, ``not_configured`` or ``error`` with its reason.
+
+    A source switched off after a refused enable for a missing setting (``CONFIGURATION_CODES``) reads
+    ``not_configured``, never ``error``: nothing failed, a setting is missing (#2637).
+    """
     state = row.state if isinstance(getattr(row, "state", None), dict) else {}
     if row.enabled and state.get("status") == IDLE:
         # Switched on, every path it feeds off: it holds nothing and is never an error (#2583 point 7).
@@ -281,7 +285,11 @@ def status_of(row: Any) -> tuple[str, str | None]:
             return "connected", None
         return "off", state.get("error")
     if not row.enabled:
-        return ("error", state.get("error")) if state.get("status") == "error" else ("off", None)
+        if state.get("status") != "error":
+            return "off", None
+        if reason_code(state.get("error"))[0] in CONFIGURATION_CODES:
+            return "not_configured", state.get("error")
+        return "error", state.get("error")
     if is_connected(state):
         return "connected", None
     return "error", state.get("error") or "not provisioned yet"
@@ -864,6 +872,61 @@ def reason_code(reason: str | None) -> tuple[str | None, dict[str, str]]:
     return "provider_error", {"detail": reason[:500]}
 
 
+#: The reasons that say a setting is missing, never that the source platform failed (#2637): a source
+#: switched off after a refused enable for one of them reads Not configured, never Error.
+CONFIGURATION_CODES: frozenset[str] = frozenset(
+    {"no_run_as", "run_as_no_integration", "no_webhook_secret", "organization_context_missing"}
+)
+
+#: What fixes each reason, in one line, and where (#2637): the UI's action and an agent's next step.
+FIX_ACTIONS: dict[str, dict[str, str]] = {
+    "no_run_as": {"action": "Turn the source on again and pick the user it provisions as.", "route": "/ctem/signals"},
+    "run_as_inactive": {"action": "Pick another run-as user.", "route": "/ctem/signals"},
+    "run_as_no_integration": {
+        "action": "Connect the integration for the run-as user, or pick a user who has it.",
+        "route": "/integrations",
+    },
+    "no_webhook_secret": {"action": "Set a webhook secret on the integration.", "route": "/integrations"},
+    "no_token": {"action": "Authorize the integration again as the run-as user.", "route": "/integrations"},
+    "integration_not_found": {
+        "action": "Turn the source on again on an existing integration.",
+        "route": "/ctem/signals",
+    },
+    "organization_context_missing": {
+        "action": "Fill the missing fields in Settings > Organization.",
+        "route": "/settings/organization",
+    },
+    "objects_not_removed": {
+        "action": "The next check removes them again; remove them by hand in the source platform if it keeps failing.",
+        "route": "/ctem/signals",
+    },
+    "not_provisioned_yet": {
+        "action": "Wait for the next check, or turn the source off and on again.",
+        "route": "/ctem/signals",
+    },
+    "provider_error": {
+        "action": "Check the integration's connection and the run-as user's rights in the source platform.",
+        "route": "/integrations",
+    },
+}
+
+
+def error_detail(integration_id: str, reason: str | None, state: Any, *, enabled: bool) -> dict[str, Any]:
+    """One source in error on one integration, as data (#2637): its reason, code, last attempt and fix."""
+    code, params = reason_code(reason)
+    fix = FIX_ACTIONS.get(code or "provider_error", FIX_ACTIONS["provider_error"])
+    return {
+        "integration_id": integration_id,
+        "enabled": enabled,
+        "reason": reason,
+        "reason_code": code,
+        "reason_params": params,
+        "last_attempt_at": (state or {}).get("checked_at") if isinstance(state, dict) else None,
+        "fix": fix["action"],
+        "fix_route": fix["route"],
+    }
+
+
 def provisioned_objects(state: Any) -> list[dict[str, str]]:
     """The objects a source holds in its platform, ``[{kind, id}]`` (#2583 point 2), for the Open in links.
 
@@ -936,6 +999,9 @@ def to_dict(row: Any) -> dict[str, Any]:
         "reason_code": code,
         "reason_params": params,
         "checked_at": (row.state or {}).get("checked_at"),
+        # What fixes the reason (#2637), null when there is none.
+        "fix": FIX_ACTIONS.get(code, FIX_ACTIONS["provider_error"])["action"] if code else None,
+        "fix_route": FIX_ACTIONS.get(code, FIX_ACTIONS["provider_error"])["route"] if code else None,
         "objects": provisioned_objects(row.state),
         "feeds": fed_paths(row.provider, row.kind),
     }
