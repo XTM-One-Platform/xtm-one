@@ -17922,6 +17922,7 @@
   "{count, plural, one {{products} could not be read, so open exposures there may be missing.} other {{products} could not be read, so open exposures there may be missing.}}": "{count, plural, one {No se pudo leer {products}: pueden faltar exposiciones abiertas.} other {No se pudieron leer {products}: pueden faltar exposiciones abiertas.}}",
   "On the issues you can see": "Sobre los problemas que puede ver",
   "Unknown: {count, plural, one {# open issue} other {# open issues}} not readable with details": "Desconocido: {count, plural, one {# problema abierto no legible} other {# problemas abiertos no legibles}} con detalles",
+  "Unknown: CVE facts not readable for you": "Desconocido: datos CVE no legibles para usted",
   "Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.": "Problemas abiertos agrupados por la corrección que los cierra. Ve los casos que contienen al menos un problema visible para usted en OpenCTI u OpenAEV.",
   "Open issues the fix closes. Issues you cannot see in their source product are counted as restricted.": "Problemas abiertos que cierra la corrección. Los que no puede ver en su producto de origen se cuentan como restringidos.",
   "Reason": "Motivo",
@@ -22178,7 +22179,5 @@
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# activo primario inferido} other {# activos primarios inferidos}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferido} other {# inferidos}}",
   "No asset matched; opened on: {reasons}": "Ningún activo coincide; abierto por: {reasons}",
-  "This fleet's runs only. The organization total counts every agent.": "Solo las ejecuciones de esta flota. El total de la organización cuenta todos los agentes.",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, one {{shown} agente externo supervisa esta flota: {cost} de coste de IA, contado solo en el total de la organización.} other {{shown} agentes externos supervisan esta flota: {cost} de coste de IA, contados solo en el total de la organización.}}",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} agente externo supervisa esta flota: sus ejecuciones cuentan solo en el total de la organización.} other {{shown} agentes externos supervisan esta flota: sus ejecuciones cuentan solo en el total de la organización.}}"
+  "Not scored": "Sin puntuación"
 }

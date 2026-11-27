@@ -17922,6 +17922,7 @@
   "{count, plural, one {{products} could not be read, so open exposures there may be missing.} other {{products} could not be read, so open exposures there may be missing.}}": "{count, plural, one {{products} could not be read, so open exposures there may be missing.} other {{products} could not be read, so open exposures there may be missing.}}",
   "On the issues you can see": "On the issues you can see",
   "Unknown: {count, plural, one {# open issue} other {# open issues}} not readable with details": "Unknown: {count, plural, one {# open issue} other {# open issues}} not readable with details",
+  "Unknown: CVE facts not readable for you": "Unknown: CVE facts not readable for you",
   "Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.": "Open issues grouped by the fix that closes them. You see the cases holding at least one issue you can see in OpenCTI or OpenAEV.",
   "Open issues the fix closes. Issues you cannot see in their source product are counted as restricted.": "Open issues the fix closes. Issues you cannot see in their source product are counted as restricted.",
   "Reason": "Reason",
@@ -22178,7 +22179,5 @@
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# inferred} other {# inferred}}",
   "No asset matched; opened on: {reasons}": "No asset matched; opened on: {reasons}",
-  "This fleet's runs only. The organization total counts every agent.": "This fleet's runs only. The organization total counts every agent.",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, one {{shown} outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {{shown} outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}",
-  "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {{shown} outside agent supervises this fleet: its runs count in the organization total only.} other {{shown} outside agents supervise this fleet: their runs count in the organization total only.}}"
+  "Not scored": "Not scored"
 }
