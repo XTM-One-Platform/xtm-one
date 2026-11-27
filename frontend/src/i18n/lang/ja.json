@@ -22183,5 +22183,11 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, other {証明済みの主要資産 # 件}}、{inferred, plural, other {推定 # 件}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, other {推定の主要資産 # 件}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, other {推定 # 件}}",
-  "No asset matched; opened on: {reasons}": "一致する資産なし。開始の根拠: {reasons}"
+  "No asset matched; opened on: {reasons}": "一致する資産なし。開始の根拠: {reasons}",
+  "Choose who XTM One acts as in {module}.": "{module} で XTM One が代理で操作するユーザーを選択してください。",
+  "Acts as": "代理ユーザー",
+  "Nobody chosen for {modules}": "{modules} のユーザーが選択されていません",
+  "Choose who XTM One acts as": "XTM One の代理ユーザーを選択",
+  "Data is read from the source platform with the permissions of the user this sync runs as. The source platform's access rules, including organization segregation and markings, are not carried over.": "データは、この同期の実行ユーザーの権限でソースプラットフォームから読み取られます。組織の分離やマーキングを含むソースプラットフォームのアクセスルールは引き継がれません。",
+  "XTM One rows are written to the target platform with the permissions of the user this sync runs as. Who can see them there follows that platform's own access rules, not XTM One's.": "XTM One の行は、この同期の実行ユーザーの権限でターゲットプラットフォームに書き込まれます。そこでの閲覧可否は XTM One ではなく、そのプラットフォーム自身のアクセスルールに従います。"
 }

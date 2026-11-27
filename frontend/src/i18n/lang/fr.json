@@ -22183,5 +22183,11 @@
   "{proven, plural, one {# proven primary asset} other {# proven primary assets}}, {inferred, plural, one {# inferred} other {# inferred}}": "{proven, plural, one {# actif primaire prouvé} other {# actifs primaires prouvés}}, {inferred, plural, one {# déduit} other {# déduits}}",
   "{count, plural, one {# inferred primary asset} other {# inferred primary assets}}": "{count, plural, one {# actif primaire déduit} other {# actifs primaires déduits}}",
   "{count, plural, one {# inferred} other {# inferred}}": "{count, plural, one {# déduit} other {# déduits}}",
-  "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}"
+  "No asset matched; opened on: {reasons}": "Aucun actif correspondant ; ouvert sur : {reasons}",
+  "Choose who XTM One acts as in {module}.": "Choisissez en tant que qui XTM One agit dans {module}.",
+  "Acts as": "Agit en tant que",
+  "Nobody chosen for {modules}": "Personne n'est choisi pour {modules}",
+  "Choose who XTM One acts as": "Choisir en tant que qui XTM One agit",
+  "Data is read from the source platform with the permissions of the user this sync runs as. The source platform's access rules, including organization segregation and markings, are not carried over.": "Les données sont lues sur la plateforme source avec les permissions de l'utilisateur sous lequel cette synchronisation s'exécute. Les règles d'accès de la plateforme source, y compris la ségrégation par organisation et les marquages, ne sont pas reprises.",
+  "XTM One rows are written to the target platform with the permissions of the user this sync runs as. Who can see them there follows that platform's own access rules, not XTM One's.": "Les lignes XTM One sont écrites dans la plateforme cible avec les droits de l'utilisateur sous lequel cette synchronisation s'exécute. Leur visibilité y suit les règles d'accès de cette plateforme, pas celles de XTM One."
 }
