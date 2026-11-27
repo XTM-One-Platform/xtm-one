@@ -653,8 +653,95 @@ async def test_an_unknown_or_unfit_custom_update_changes_nothing(monkeypatch: py
 async def test_a_native_field_update_is_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
     executor, rec, _ = _build(monkeypatch)
     await _call(executor, "update_opencti_field", entity_id="m1", key="description", value="new")
-    assert len(rec.calls) == 1
-    assert rec.calls[0][1]["input"] == [{"key": "description", "value": ["new"]}]
+    # One light read of updated_at, then the patch itself.
+    assert len(rec.calls) == 2
+    assert len(_mutations(rec)) == 1
+    assert rec.calls[-1][1]["input"] == [{"key": "description", "value": ["new"]}]
+
+
+# ── A write OpenCTI skipped is told apart from a real one (#2687) ──
+
+_PATCH_CASES = [
+    ("update_opencti_field", "entity_id", "stixCoreObject", "stixDomainObjectEdit"),
+    ("update_opencti_relationship_field", "relationship_id", "stixCoreRelationship", "stixCoreRelationshipEdit"),
+]
+
+
+@pytest.mark.parametrize(("tool", "id_arg", "root", "edit"), _PATCH_CASES)
+async def test_an_identical_value_is_answered_no_change(
+    monkeypatch: pytest.MonkeyPatch, tool: str, id_arg: str, root: str, edit: str
+) -> None:
+    stamp = "2026-11-20T10:00:00.000Z"
+    executor, rec, _ = _build(
+        monkeypatch,
+        [
+            ({root: {"updated_at": stamp}}, None),
+            ({edit: {"fieldPatch": {"id": "m1", "entity_type": "Indicator", "updated_at": stamp}}}, None),
+        ],
+    )
+    result = await _call(executor, tool, **{id_arg: "m1", "key": "name", "value": "X"})
+    assert result.content.startswith("No change: 'name' already holds this value on "), result.content
+    assert "do not repeat it" in result.content
+    assert f"{root}(id: $id) {{ updated_at }}" in rec.calls[0][0]
+    assert "updated_at" in _mutations(rec)[0]
+
+
+@pytest.mark.parametrize(("tool", "id_arg", "root", "edit"), _PATCH_CASES)
+async def test_a_changed_value_is_answered_updated(
+    monkeypatch: pytest.MonkeyPatch, tool: str, id_arg: str, root: str, edit: str
+) -> None:
+    executor, _rec, _ = _build(
+        monkeypatch,
+        [
+            ({root: {"updated_at": "2026-11-20T10:00:00.000Z"}}, None),
+            (
+                {
+                    edit: {
+                        "fieldPatch": {"id": "m1", "entity_type": "Indicator", "updated_at": "2026-11-27T19:00:00.000Z"}
+                    }
+                },
+                None,
+            ),
+        ],
+    )
+    result = await _call(executor, tool, **{id_arg: "m1", "key": "name", "value": "Y"})
+    assert result.content.startswith("Updated 'name' on "), result.content
+
+
+@pytest.mark.parametrize(("tool", "id_arg", "root", "edit"), _PATCH_CASES)
+async def test_an_unreadable_timestamp_keeps_the_updated_answer(
+    monkeypatch: pytest.MonkeyPatch, tool: str, id_arg: str, root: str, edit: str
+) -> None:
+    """Without a stamp before the patch the tool cannot prove a no-op: it says Updated."""
+    executor, _rec, _ = _build(
+        monkeypatch,
+        [
+            ({}, "GraphQL error in 'StoredUpdatedAt': denied"),
+            (
+                {
+                    edit: {
+                        "fieldPatch": {"id": "m1", "entity_type": "Indicator", "updated_at": "2026-11-20T10:00:00.000Z"}
+                    }
+                },
+                None,
+            ),
+        ],
+    )
+    result = await _call(executor, tool, **{id_arg: "m1", "key": "name", "value": "X"})
+    assert result.content.startswith("Updated 'name' on "), result.content
+
+
+@pytest.mark.parametrize(("tool", "id_arg", "root", "edit"), _PATCH_CASES)
+async def test_a_patch_error_is_returned_as_is(
+    monkeypatch: pytest.MonkeyPatch, tool: str, id_arg: str, root: str, edit: str
+) -> None:
+    error = "GraphQL error in 'Update': Cannot edit the field"
+    executor, _rec, _ = _build(
+        monkeypatch,
+        [({root: {"updated_at": "2026-11-20T10:00:00.000Z"}}, None), ({}, error)],
+    )
+    result = await _call(executor, tool, **{id_arg: "m1", "key": "name", "value": "X"})
+    assert result.content == error
 
 
 # ── The NLQ filter agent gets the custom-field filter keys ──

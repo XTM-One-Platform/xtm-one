@@ -2538,6 +2538,35 @@ def register_knowledge(
             "value": [_custom_field_edit_value(definition, values)],
         }, None
 
+    async def _stored_updated_at(client: Any, root: str, object_id: str) -> str | None:
+        """The object's ``updated_at`` before a field patch, None when it cannot be read.
+
+        OpenCTI drops an edit input equal to the stored value and returns the
+        element untouched (``rebuildAndMergeInputFromExistingData``), so an
+        ``updated_at`` that did not move across the patch is a write that
+        changed nothing.
+        """
+        data, err = await _graphql(
+            client,
+            base_url,
+            headers,
+            f"query StoredUpdatedAt($id: String!) {{ {root}(id: $id) {{ updated_at }} }}",
+            {"id": object_id},
+        )
+        if err:
+            return None
+        stamp = (data.get(root) or {}).get("updated_at")
+        return str(stamp) if stamp else None
+
+    def _patch_answer(key: str, target: str, before: str | None, result: dict[str, Any]) -> str:
+        """``Updated`` for a write that moved ``updated_at``, ``No change`` for one OpenCTI skipped."""
+        after = result.get("updated_at")
+        if before and after and str(after) == before:
+            return (
+                f"No change: '{key}' already holds this value on {target}. OpenCTI skipped the write; do not repeat it."
+            )
+        return f"Updated '{key}' on {target}."
+
     async def update_opencti_field(
         entity_id: str,
         key: str,
@@ -2547,7 +2576,7 @@ def register_knowledge(
         query = """
         mutation UpdateSDO($id: ID!, $input: [EditInput]!) {
             stixDomainObjectEdit(id: $id) {
-                fieldPatch(input: $input) { id entity_type }
+                fieldPatch(input: $input) { id entity_type updated_at }
             }
         }
         """
@@ -2555,6 +2584,7 @@ def register_knowledge(
         if refused:
             return refused
         async with _client(headers, timeout=30) as client:
+            before = await _stored_updated_at(client, "stixCoreObject", entity_id)
             data, err = await _graphql(
                 client,
                 base_url,
@@ -2567,8 +2597,9 @@ def register_knowledge(
             )
         if err:
             return err
-        result = data.get("stixDomainObjectEdit", {}).get("fieldPatch", {})
-        return f"Updated '{key}' on [{result.get('entity_type', '?')}] {result.get('id', entity_id)}."
+        result = (data.get("stixDomainObjectEdit") or {}).get("fieldPatch") or {}
+        target = f"[{result.get('entity_type', '?')}] {result.get('id', entity_id)}"
+        return _patch_answer(key, target, before, result)
 
     # ── 11. Update relationship field(s) ─────────────────────────────
 
@@ -2581,7 +2612,7 @@ def register_knowledge(
         query = """
         mutation UpdateRel($id: ID!, $input: [EditInput]!) {
             stixCoreRelationshipEdit(id: $id) {
-                fieldPatch(input: $input) { id entity_type }
+                fieldPatch(input: $input) { id entity_type updated_at }
             }
         }
         """
@@ -2589,6 +2620,7 @@ def register_knowledge(
         if refused:
             return refused
         async with _client(headers, timeout=30) as client:
+            before = await _stored_updated_at(client, "stixCoreRelationship", relationship_id)
             data, err = await _graphql(
                 client,
                 base_url,
@@ -2601,8 +2633,8 @@ def register_knowledge(
             )
         if err:
             return err
-        result = data.get("stixCoreRelationshipEdit", {}).get("fieldPatch", {})
-        return f"Updated '{key}' on relationship {result.get('id', relationship_id)}."
+        result = (data.get("stixCoreRelationshipEdit") or {}).get("fieldPatch") or {}
+        return _patch_answer(key, f"relationship {result.get('id', relationship_id)}", before, result)
 
     # ── 12. Delete entity ────────────────────────────────────────────
 
