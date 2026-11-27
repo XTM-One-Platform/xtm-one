@@ -334,6 +334,7 @@ export const SOURCE_KIND_LABEL = {
   pass: "Scheduled pass",
   pir_playbook: "PIR playbook",
   webhook: "Signed webhook",
+  cases_reader: "Cases recompute",
 } as const satisfies Record<CtemSignalPathSource["kind"], string>;
 
 /**

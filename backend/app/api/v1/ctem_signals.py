@@ -162,6 +162,7 @@ async def list_ctem_signal_sources(
     from app.models.ctem_signal_source import CtemSignalSource
     from app.models.integration import Integration
     from app.services import ctem_platform_sources as platform_sources
+    from app.services.integration_tools import get_integration_public_url
 
     providers = sorted({p for p, _ in platform_sources.PROVISIONED})
     integrations = (
@@ -198,9 +199,12 @@ async def list_ctem_signal_sources(
                     "reason_code": None,
                     "reason_params": {},
                     "checked_at": None,
+                    "objects": [],
                 }
             )
             item["integration_name"] = integration.name
+            # The platform's web UI host, for the Open in links of its objects (#2583 point 2).
+            item["integration_url"] = get_integration_public_url(integration)
             item["integration_connected"] = integration.status == "connected"
             item["label"] = spec.label
             out.append(item)

@@ -7,6 +7,7 @@
  */
 import type {
   CtemPlatformSource,
+  CtemPlatformSourceObject,
   CtemPlatformSourceReasonCode,
   CtemPlatformSourceStatus,
   CtemSignalPathSource,
@@ -62,6 +63,52 @@ export function platformSourceReason(
     detail: "",
     ...(source.reason_params ?? {}),
   });
+}
+
+/**
+ * Where each provisioned object opens in its platform (#2583 point 2), from the integration's web UI host.
+ * A playbook opens by its id; a notifier and a trigger have no page of their own there, so they open the
+ * list that holds them, where the object is found by its "XTM One - ..." name.
+ */
+const OBJECT_ROUTES: Record<string, Partial<Record<CtemPlatformSourceObject["kind"], (id: string) => string>>> = {
+  opencti: {
+    notifier: () => "/dashboard/settings/customization/notifiers",
+    trigger: () => "/dashboard/profile/triggers",
+    playbook: (id) => `/dashboard/data/processing/automation/${encodeURIComponent(id)}`,
+  },
+  openaev: {
+    notifier: () => "/admin/settings/customization/notifiers",
+    trigger: () => "/admin/profile/triggers",
+  },
+};
+
+/** The Open in label of each object kind. @i18n-keys */
+export const PLATFORM_OBJECT_OPEN_LABEL = {
+  notifier: "Open the notifier in {platform}",
+  trigger: "Open the triggers in {platform}",
+  playbook: "Open the playbook in {platform}",
+} as const satisfies Record<CtemPlatformSourceObject["kind"], string>;
+
+/** One Open in link: the object, its kind, and the URL in its platform. */
+export interface PlatformObjectLink {
+  kind: CtemPlatformSourceObject["kind"];
+  id: string;
+  href: string;
+}
+
+/** The Open in links of a source's objects; none without a web UI host or a route for the kind. */
+export function platformObjectLinks(
+  source: Pick<CtemPlatformSource, "provider" | "objects" | "integration_url">,
+): PlatformObjectLink[] {
+  const base = (source.integration_url ?? "").replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(base)) return [];
+  const routes = OBJECT_ROUTES[source.provider] ?? {};
+  const links: PlatformObjectLink[] = [];
+  for (const object of source.objects ?? []) {
+    const route = routes[object.kind];
+    if (route) links.push({ kind: object.kind, id: object.id, href: `${base}${route(object.id)}` });
+  }
+  return links;
 }
 
 /** The refusal of an enable (`detail: {code, params}`) in the reader's language, or `null` for any other error. */

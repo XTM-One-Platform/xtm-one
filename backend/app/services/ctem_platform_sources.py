@@ -755,6 +755,37 @@ def reason_code(reason: str | None) -> tuple[str | None, dict[str, str]]:
     return "provider_error", {"detail": reason[:500]}
 
 
+def provisioned_objects(state: Any) -> list[dict[str, str]]:
+    """The objects a source holds in its platform, ``[{kind, id}]`` (#2583 point 2), for the Open in links.
+
+    ``kind`` is ``notifier``, ``trigger`` or ``playbook``; per-path states (the PIR playbook)
+    are read too. An id held twice is listed once, in a stable order.
+    """
+    if not isinstance(state, dict):
+        return []
+    out: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(kind: str, value: Any) -> None:
+        if isinstance(value, str) and value and (kind, value) not in seen:
+            seen.add((kind, value))
+            out.append({"kind": kind, "id": value})
+
+    def walk(sub: dict[str, Any]) -> None:
+        add("notifier", sub.get("notifier_id"))
+        add("trigger", sub.get("trigger_id"))
+        triggers = sub.get("trigger_ids")
+        for value in (triggers.values() if isinstance(triggers, dict) else triggers or []):
+            add("trigger", value)
+        add("playbook", sub.get("playbook_id"))
+
+    walk(state)
+    for _, sub in sorted((state.get("paths") or {}).items()):
+        if isinstance(sub, dict):
+            walk(sub)
+    return out
+
+
 def to_dict(row: Any) -> dict[str, Any]:
     status, reason = status_of(row)
     code, params = reason_code(reason)
@@ -770,4 +801,5 @@ def to_dict(row: Any) -> dict[str, Any]:
         "reason_code": code,
         "reason_params": params,
         "checked_at": (row.state or {}).get("checked_at"),
+        "objects": provisioned_objects(row.state),
     }

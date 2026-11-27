@@ -155,7 +155,7 @@ export type CtemSignalPathStatus = "enabled" | "partly_enabled" | "error" | "not
 /** One way a trigger path is fired (#1189): an integration listener, a scheduled pass or the OpenCTI PIR playbook. */
 export interface CtemSignalPathSource {
   provider: string;
-  kind: "listener" | "pass" | "pir_playbook" | "webhook";
+  kind: "listener" | "pass" | "pir_playbook" | "webhook" | "cases_reader";
   /** The English line naming the event that fires the path (an i18n key). */
   event: string;
   /** Bound for the caller: a connected integration they can see (and, for a pass, the pass runs on it). */
@@ -320,6 +320,16 @@ export interface CtemPlatformSource {
   reason_code: CtemPlatformSourceReasonCode | null;
   reason_params: Record<string, string>;
   checked_at: string | null;
+  /** The objects it holds in its platform (#2583 point 2), for the Open in links. */
+  objects?: CtemPlatformSourceObject[];
+  /** The platform's web UI host, `null` when the integration stores none. */
+  integration_url?: string | null;
+}
+
+/** One object a platform source provisioned: a notifier, a trigger or a playbook, by its id there. */
+export interface CtemPlatformSourceObject {
+  kind: "notifier" | "trigger" | "playbook";
+  id: string;
 }
 
 /** The platform signal sources, administrators only (the API answers 403 to anyone else). */

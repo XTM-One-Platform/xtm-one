@@ -20693,6 +20693,7 @@
   "Agents and API only": "Solo agentes y API",
   "Live listener": "Escucha en vivo",
   "Scheduled pass": "Pasada programada",
+  "Cases recompute": "Recálculo de casos",
   "PIR playbook": "Playbook de PIR",
   "What your own tools see in your environment": "Lo que sus propias herramientas ven en su entorno",
   "What an attacker sees of you from the internet": "Lo que un atacante ve de usted desde internet",
@@ -22110,5 +22111,12 @@
   "No asset group or primary asset owner was found: an administrator, as no group decides CTEM.": "No se encontró responsable de grupo de activos ni de activo principal: un administrador, ya que ningún grupo decide en CTEM.",
   "The first of {count, plural, one {# candidate} other {# candidates}} by account creation.": "El primero de {count, plural, one {# candidato} other {# candidatos}} por fecha de creación de la cuenta.",
   "No owner was found: the current owner is kept.": "No se encontró responsable: se mantiene el responsable actual.",
-  "Set by a person.": "Definido por una persona."
+  "Set by a person.": "Definido por una persona.",
+  "The cases recompute reads a vulnerability on your inventory software": "El recálculo de casos lee una vulnerabilidad en un software de su inventario",
+  "The cases recompute reads a CVE finding on one of your assets": "El recálculo de casos lee un hallazgo CVE en uno de sus activos",
+  "Open the notifier in {platform}": "Abrir el notificador en {platform}",
+  "Open the triggers in {platform}": "Abrir los disparadores en {platform}",
+  "Open the playbook in {platform}": "Abrir el playbook en {platform}",
+  "The resync reads every source again, with the paths and sources that are on.": "La resincronización vuelve a leer cada fuente, con las rutas y fuentes activadas.",
+  "Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.": "Sin resincronización, el recálculo de casos se suspende durante un intervalo: la lista queda vacía hasta que resincronice o lance un recálculo."
 }

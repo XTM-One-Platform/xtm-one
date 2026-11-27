@@ -146,6 +146,12 @@ export function SignalsPurgeAction() {
             checked={resync}
             onCheckedChange={(checked) => setResync(checked === true)}
           />
+          {/* What refills the list after the purge (#2583 note): the recompute is held without a resync. */}
+          <p className="text-default-secondary" data-testid="ctem-signals-purge-recompute">
+            {resync
+              ? t_i18n("The resync reads every source again, with the paths and sources that are on.")
+              : t_i18n("Without a resync, the cases recompute is held for one interval: the list stays empty until you resync or run a recompute.")}
+          </p>
         </div>
       </ConfirmDialog>
       <Dialog open={progressOpen} onOpenChange={setProgressOpen}>

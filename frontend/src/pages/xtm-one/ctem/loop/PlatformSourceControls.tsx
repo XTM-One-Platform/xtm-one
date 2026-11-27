@@ -9,7 +9,7 @@
  * off removes what it provisioned. A reader sees the same lines without controls.
  */
 import { useEffect, useId, useState } from "react";
-import { Chip } from "@filigran/design-system";
+import { Chip, Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { userSelectOption } from "@/components/ui/entity-select-options";
@@ -17,6 +17,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SettingsField, settingsFieldHintId } from "@/components/ui/settings-form";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
+import { Tip } from "@/components/ui/tooltip";
 import { useUsers } from "@/hooks/api/useAuthApi";
 import {
   type CtemPlatformSource,
@@ -26,11 +27,44 @@ import {
 } from "@/hooks/api/useCtemSignalsApi";
 import { useFormatter } from "@/i18n";
 import {
+  PLATFORM_OBJECT_OPEN_LABEL,
   PLATFORM_SOURCE_STATUS_LABEL,
   PLATFORM_SOURCE_STATUS_TONE,
   enableRefusalText,
+  platformObjectLinks,
   platformSourceReason,
 } from "./platform-sources";
+
+/** The platform's name on an Open in label. */
+const PLATFORM_NAME: Record<string, string> = { opencti: "OpenCTI", openaev: "OpenAEV", opencrq: "OpenCRQ" };
+
+/**
+ * One icon button per object the source holds in its platform (#2583 point 2): opens it there in a new tab.
+ * Objects that open the same page (several triggers in one list) share one button.
+ */
+function PlatformObjectLinks({ source }: { source: CtemPlatformSource }) {
+  const { t_i18n } = useFormatter();
+  const seen = new Set<string>();
+  const links = platformObjectLinks(source).filter((link) => !seen.has(link.href) && seen.add(link.href));
+  if (links.length === 0) return null;
+  const platform = PLATFORM_NAME[source.provider] ?? source.provider;
+  return (
+    <span className="flex shrink-0 items-center" data-testid="ctem-platform-source-objects">
+      {links.map((link) => {
+        const label = t_i18n(PLATFORM_OBJECT_OPEN_LABEL[link.kind], { platform });
+        return (
+          <Tip key={link.href} content={label}>
+            <Button asChild variant="ghost" size="icon" className="size-7">
+              <a href={link.href} target="_blank" rel="noopener noreferrer" aria-label={label} data-testid="ctem-platform-source-object-link" data-kind={link.kind}>
+                <Icon name="external-link" size={16} aria-hidden />
+              </a>
+            </Button>
+          </Tip>
+        );
+      })}
+    </span>
+  );
+}
 
 /** The key of one platform source on one integration. */
 function platformSourceKey(source: Pick<CtemPlatformSource, "provider" | "kind" | "integration_id">): string {
@@ -183,8 +217,10 @@ function PlatformSourceLine({
           className="shrink-0"
           data-testid="ctem-platform-source-status"
         />
+        <span className="ml-auto" />
+        {source.enabled && <PlatformObjectLinks source={source} />}
         <Switch
-          className="ml-auto shrink-0"
+          className="shrink-0"
           checked={source.enabled}
           disabled={!isAdmin || disable.isPending || !source.integration_connected}
           onCheckedChange={toggle}
