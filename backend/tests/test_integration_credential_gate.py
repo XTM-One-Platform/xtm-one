@@ -131,6 +131,10 @@ EXEMPT_READS: dict[str, str] = {
         "presence check deciding whether an expired token can still be refreshed, "
         "for a fleet's prerequisite line; never decrypted, never returned"
     ),
+    "services/integration_state.py:status_for_auth_type": (
+        "presence check deciding the status an auth-type switch leaves an OAuth "
+        "integration in (#2553); never decrypted, never returned"
+    ),
     "services/integration_credentials.py:apply_oauth_share_consent": (
         "presence check deciding whether an edit records consent for a token "
         "already stored on the row; never decrypted"
