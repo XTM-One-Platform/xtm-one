@@ -22163,5 +22163,8 @@
   "The triggers, playbooks and notifiers the former Threat response automations left in OpenCTI. The Signals sources replace them; nothing else is touched.": "Les déclencheurs, playbooks et notificateurs laissés dans OpenCTI par les anciennes automatisations Threat response. Les sources Signals les remplacent ; rien d'autre n'est modifié.",
   "Reading OpenCTI...": "Lecture d'OpenCTI...",
   "No OpenCTI integration has a Signals source on.": "Aucune intégration OpenCTI n'a de source Signals activée.",
-  "Remove {count, plural, one {# object} other {# objects}}": "Supprimer {count, plural, one {# objet} other {# objets}}"
+  "Remove {count, plural, one {# object} other {# objects}}": "Supprimer {count, plural, one {# objet} other {# objets}}",
+  "This fleet's runs only. The organization total counts every agent.": "Exécutions de cette flotte uniquement. Le total de l'organisation compte tous les agents.",
+  "{agents, plural, one {# outside agent supervises this fleet: {cost} of AI cost, counted in the organization total only.} other {# outside agents supervise this fleet: {cost} of AI cost, counted in the organization total only.}}": "{agents, plural, one {# agent extérieur supervise cette flotte : {cost} de coût IA, compté dans le total de l'organisation uniquement.} other {# agents extérieurs supervisent cette flotte : {cost} de coût IA, comptés dans le total de l'organisation uniquement.}}",
+  "{agents, plural, one {# outside agent supervises this fleet: its runs count in the organization total only.} other {# outside agents supervise this fleet: their runs count in the organization total only.}}": "{agents, plural, one {# agent extérieur supervise cette flotte : ses exécutions comptent dans le total de l'organisation uniquement.} other {# agents extérieurs supervisent cette flotte : leurs exécutions comptent dans le total de l'organisation uniquement.}}"
 }
