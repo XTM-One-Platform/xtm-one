@@ -22112,5 +22112,10 @@
   "No owner was found: the current owner is kept.": "No owner was found: the current owner is kept.",
   "Set by a person.": "Set by a person.",
   "Value (ROI) restarts from now": "Value (ROI) restarts from now",
-  "Measured since {date} (reset)": "Measured since {date} (reset)"
+  "Measured since {date} (reset)": "Measured since {date} (reset)",
+  "The person shown leads the case for the team, and every member of the team sees it as theirs.": "The person shown leads the case for the team, and every member of the team sees it as theirs.",
+  "The team {team} owns the asset group {group}, which holds {assets} of the {affected, plural, one {# affected asset} other {# affected assets}}.": "The team {team} owns the asset group {group}, which holds {assets} of the {affected, plural, one {# affected asset} other {# affected assets}}.",
+  "The team {team} owns the asset group {group}, which holds {assets, plural, one {# affected asset} other {# affected assets}}.": "The team {team} owns the asset group {group}, which holds {assets, plural, one {# affected asset} other {# affected assets}}.",
+  "The team {team} is accountable for the primary asset {name}, which the case reaches. No affected asset group has an owner.": "The team {team} is accountable for the primary asset {name}, which the case reaches. No affected asset group has an owner.",
+  "{team}: the team owns this case, every member sees it as theirs.": "{team}: the team owns this case, every member sees it as theirs."
 }
