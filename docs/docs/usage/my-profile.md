@@ -51,7 +51,19 @@ You can usually review or update:
 - theme
 - authentication method
 
-Your email address is shown but not editable: the other Filigran platforms find your account by it, so an administrator changes it for you.
+## Email address
+
+The other Filigran platforms (OpenCTI, OpenAEV, OpenCRQ) find your account by your email address, so a new address is proven before it replaces the old one:
+
+1. Next to `Email`, select `Change`.
+2. Type the new address and your current password, then select `Send code`.
+3. Type the six-digit code sent to the new address and select `Confirm`. The code works once, within 10 minutes; after five wrong codes, ask for a new one.
+
+You stay signed in, and from then on you sign in with the new address. The old address is told of the change, and password reset links already sent to it stop working. You can ask for three codes an hour.
+
+When the new address already belongs to another account, or is one the platform keeps for itself, no code is sent and nothing changes: the page answers the same way, so it never tells whether an address has an account.
+
+The change needs a platform that sends email; otherwise, and for anything else, an administrator changes your email for you. If you sign in with SSO, or your identity provider creates your account (SCIM), it manages your email: the row is read-only and says why, as it does for the `ADMIN_EMAIL` account and on a platform that sends no email.
 
 If you use SSO, the page shows that clearly so you know sign-in is handled by your identity provider.
 

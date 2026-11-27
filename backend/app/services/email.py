@@ -819,18 +819,25 @@ def platform_invitation_email(
     return html, text
 
 
-def email_changed_email(*, old_email: str, new_email: str) -> tuple[str, str]:
+def email_changed_email(*, old_email: str, new_email: str, by_administrator: bool = True) -> tuple[str, str]:
     """Return (html, text) bodies for the notice of an account's email change.
 
-    Sent to the old and the new address. It carries no link to act on: the
-    owner who did not expect it contacts an administrator."""
+    Sent to the old address, and to the new one when an administrator made
+    the change. It carries no link to act on: the owner who did not expect
+    it contacts an administrator."""
     name = get_cached_branding().name
     title = "Your email address changed"
-    old_esc, new_esc = html_escape(old_email), html_escape(new_email)
+
+    def sentence(account: str, old: str, new: str) -> str:
+        if by_administrator:
+            return f"An administrator changed the email address of your {account} account from {old} to {new}."
+        return f"The email address of your {account} account was changed from its profile, from {old} to {new}."
+
     body = email_heading(title) + email_paragraph_html(
-        f"An administrator changed the email address of your {html_escape(name)} account "
-        f"from <strong>{old_esc}</strong> to <strong>{new_esc}</strong>. "
-        "You now sign in and receive account emails at the new address."
+        sentence(
+            html_escape(name), f"<strong>{html_escape(old_email)}</strong>", f"<strong>{html_escape(new_email)}</strong>"
+        )
+        + " You now sign in and receive account emails at the new address."
     )
     html = render_email(
         title=title,
@@ -841,10 +848,59 @@ def email_changed_email(*, old_email: str, new_email: str) -> tuple[str, str]:
         ),
     )
     text = (
-        f"An administrator changed the email address of your {name} account "
-        f"from {old_email} to {new_email}.\n\n"
+        f"{sentence(name, old_email, new_email)}\n\n"
         "If you didn't expect this change, contact your administrator."
     )
+    return html, text
+
+
+def email_change_code_email(code: str, expire_minutes: int) -> tuple[str, str]:
+    """Return (html, text) bodies for the code that proves the new address of an email change."""
+    name = get_cached_branding().name
+    title = "Confirm your new email address"
+    body = (
+        email_heading(title)
+        + email_paragraph(f"Enter this code in your {name} profile to make this your account's email address:")
+        + email_paragraph_html(
+            f'<strong style="font-size:28px;line-height:36px;letter-spacing:6px;">{html_escape(code)}</strong>'
+        )
+        + email_paragraph(f"The code works once, within {expire_minutes} minutes.")
+    )
+    html = render_email(
+        title=title,
+        preheader=f"Your {name} email change code.",
+        body_html=body,
+        fine_print_html=html_escape(
+            "If you didn't ask for this, ignore this email: your address is not added to any account."
+        ),
+    )
+    text = (
+        f"Enter this code in your {name} profile to make this your account's email address: {code}\n\n"
+        f"The code works once, within {expire_minutes} minutes.\n\n"
+        "If you didn't ask for this, ignore this email: your address is not added to any account."
+    )
+    return html, text
+
+
+def email_change_address_taken_email() -> tuple[str, str]:
+    """Return (html, text) bodies for the notice that someone asked to move their account to this address.
+
+    Sent to the account that already holds it, instead of a code. Names
+    nobody and carries no link."""
+    name = get_cached_branding().name
+    title = "Someone tried to use your email address"
+    message = (
+        f"Someone signed in to {name} asked to change their account's email address to this one. "
+        "It already belongs to your account, so nothing changed and no code was sent."
+    )
+    body = email_heading(title) + email_paragraph(message)
+    html = render_email(
+        title=title,
+        preheader=f"Nothing changed on your {name} account.",
+        body_html=body,
+        fine_print_html=html_escape("If this keeps happening, tell your administrator."),
+    )
+    text = f"{message}\n\nIf this keeps happening, tell your administrator."
     return html, text
 
 

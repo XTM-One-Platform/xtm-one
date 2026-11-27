@@ -351,6 +351,22 @@ export function useChangePassword() {
   });
 }
 
+/** Send a code to a new address (`202` whether or not the address is free). */
+export function useRequestEmailChange() {
+  return useMutation<{ status: string }, Error, { email: string; current_password: string }>({
+    mutationFn: (body) => api.post("/settings/email-change", body),
+  });
+}
+
+/** Make the address the code was sent to the account's email. */
+export function useConfirmEmailChange() {
+  const qc = useQueryClient();
+  return useMutation<{ status: string; email: string }, Error, { code: string }>({
+    mutationFn: (body) => api.post("/settings/email-change/confirm", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+  });
+}
+
 // --- Admin password management ---
 export function useSetUserPassword() {
   return useMutation<void, Error, { userId: string; new_password: string }>({

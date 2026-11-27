@@ -77,12 +77,6 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
-def _source_of(user: Any) -> str:
-    if getattr(user, "scim_external_id", None):
-        return "scim"
-    return "sso" if getattr(user, "sso_provider", None) else "local"
-
-
 def _status_of(user: Any) -> str:
     if getattr(user, "deprovisioned_at", None):
         return "deprovisioned"
@@ -118,7 +112,7 @@ def user_filter_clauses(
     from sqlalchemy import or_, select
 
     from app.models.group import GroupMember
-    from app.models.user import User
+    from app.models.user import User, provisioning_source_clause
 
     clauses: list[Any] = []
     if status:
@@ -133,11 +127,7 @@ def user_filter_clauses(
     if source:
         if source not in _SOURCES:
             raise ValueError(f"source must be one of {', '.join(_SOURCES)}")
-        if source == "scim":
-            clauses.append(User.scim_external_id.is_not(None))
-        else:
-            clauses.append(User.scim_external_id.is_(None))
-            clauses.append(User.sso_provider.is_not(None) if source == "sso" else User.sso_provider.is_(None))
+        clauses.append(provisioning_source_clause(source))
     if role:
         clauses.append(User.role == role)
     if group_id:
@@ -220,12 +210,14 @@ async def _groups_of(db: Any, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, list
 def _user_row(
     user: Any, *, groups: list[dict[str, str]], last_login: datetime | None, owned: dict[str, int]
 ) -> dict[str, Any]:
+    from app.models.user import provisioning_source
+
     return {
         "id": str(user.id),
         "name": user.full_name,
         "email": user.email,
         "status": _status_of(user),
-        "source": _source_of(user),
+        "source": provisioning_source(user),
         "scim_external_id": user.scim_external_id,
         "role": user.role,
         "protected": bool(getattr(user, "deactivation_protected", False)),

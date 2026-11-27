@@ -1,6 +1,6 @@
 # ADR Verified Email Change for XTM One Users
 
-Status: Proposed. Step 1 (the administrator change and the 422 on the preferences endpoint) is implemented
+Status: Implemented: the administrator change and the 422 on the preferences endpoint (step 1), and the self-service change with a code (step 2)
 Scope: `backend/` (account settings, user management, password reset, transactional email), `frontend/` (Profile page, user management)
 Reviewed in refinement: not yet
 
@@ -40,19 +40,19 @@ From the Profile page, the user enters the new address and their current passwor
 
 `POST /api/v1/settings/email-change` with `{ email, current_password }`:
 
-- Refused with 400 for an SSO account (`sso_provider` set): its IdP owns the email, and the Profile page shows it read-only with the reason.
+- Refused with 400 for an SSO account (`sso_provider` set) or one SCIM created, linked or updated (`models/user.py` `provisioning_source()`: `scim_external_id`, or `scim_linked_at`, which SCIM stamps whether or not the IdP sends the optional `externalId`): its IdP owns the email, and its next SCIM sync would write it back. `GET /auth/me` reports why the change is refused (`email_change_blocked`: `identity_provider`, `platform_admin`, `no_email`), and the Profile page shows the row read-only with the reason.
 - Refused with 403 under impersonation.
 - Refused with 401 when the current password is wrong.
 - Refused with 400 when the address is not a valid email or its domain is not allowed (same rule as registration).
 - Refused with 503 when SMTP is not configured.
-- Otherwise 202, whether or not the address is free. The address is trimmed and lowercased. When it is free, a code is sent to it. When another user has it, no code is sent, and that user gets a notice that someone tried to use their address, without a link and without the requester's identity.
+- Otherwise 202, whether or not the address is free. `ADMIN_EMAIL` and a Terms of Use exempt address answer the same 202 with no code and no email, once the password and both limits have passed, so a session cannot probe them. The address is trimmed and lowercased. When it is free, a code is sent to it. When another user has it, no code is sent, and that user gets a notice that someone tried to use their address, without a link and without the requester's identity.
 
-The code has 6 digits, is single-use and lives 10 minutes. It is stored in Redis as an HMAC-SHA256 with the server `secret_key`, bound to the user and to the new address. A new request replaces the pending one, even for the same address: the previous code stops working. After 5 wrong codes the request is dropped and a new one is needed. The attempt cap is the real protection against guessing; the HMAC only keeps a leaked Redis from giving the codes away. Requests are limited to 3 per hour per user and 3 per hour per target address (bucket keyed by an HMAC of the address), so the endpoint cannot be used to flood someone's inbox.
+The code has 6 digits, is single-use and lives 10 minutes. It is stored in Redis as an HMAC-SHA256 with the server `secret_key`, bound to the user and to the new address, next to the address it started from: a change confirmed after an administrator or SCIM changed the email is refused. A new request replaces the pending one, even for the same address: the previous code stops working. After 5 wrong codes the request is dropped and a new one is needed. The attempt cap is the real protection against guessing; the HMAC only keeps a leaked Redis from giving the codes away. Requests are limited to 3 per hour per user and 3 per hour per target address (bucket keyed by an HMAC of the address), so the endpoint cannot be used to flood someone's inbox.
 
 `POST /api/v1/settings/email-change/confirm` with `{ code }`:
 
 - 200 when the code matches: the email is written, the pending password reset links of the account stop working, a notice goes to the old address, and the change is audited.
-- 400 for a wrong, expired or dropped code, and when the address was taken in between (the unique index refuses the write).
+- 400 for a wrong, expired or dropped code, and when the address is no longer one the user may take: taken in between (the unique index refuses the write), its domain no longer allowed, `ADMIN_EMAIL` or Terms of Use exempt since.
 
 The notice to the old address says that the email changed, to which address, and to contact an administrator if the owner did not do it. It carries no link to act on.
 

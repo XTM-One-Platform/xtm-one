@@ -129,5 +129,5 @@ def test_the_filters_build_one_clause_per_criterion() -> None:
     clauses = module.user_filter_clauses(
         status="inactive", source="sso", role="admin", search="ann", created_from="2026-01-01T00:00:00Z"
     )
-    # inactive: is_active false + not deprovisioned; sso: no SCIM id + an SSO provider.
-    assert len(clauses) == 7
+    # inactive: is_active false + not deprovisioned; sso: one clause, models.user.provisioning_source_clause.
+    assert len(clauses) == 6

@@ -60,6 +60,9 @@ export interface MfaState {
   recovery_codes_remaining: number;
 }
 
+/** Why a person cannot change their own email (`email_change_blocked` on `/auth/me`). */
+export type EmailChangeBlocked = "identity_provider" | "platform_admin" | "no_email";
+
 export interface User {
   id: string;
   email: string;
@@ -106,6 +109,8 @@ export interface User {
   reply_suggestions_enabled?: boolean;
   role: "admin" | "user";
   sso_provider: string | null;
+  /** Why the person cannot change their own email, or null when they can. */
+  email_change_blocked?: EmailChangeBlocked | null;
   default_knowledge_base_ids: string[] | null;
   default_mcp_server_ids: string[] | null;
   default_agent_id: string | null;

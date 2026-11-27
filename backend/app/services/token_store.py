@@ -9,22 +9,38 @@ never reveals a usable token. The raw token is returned once at creation.
 
 Key layout:
     invite:{token_hash}   -> JSON {email, role, created_by_id, created_at, expires_at[, destination]}
-    pwreset:{token_hash}  -> JSON {user_id, created_by_id, created_at, expires_at}
+    pwreset:{token_hash}  -> JSON {user_id, email, created_by_id, created_at, expires_at}
+    emailchange:{user_id} -> JSON {id, email, mac, created_at}
+    emailchange-attempts:{id} -> wrong-code counter of that pending change
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.config import settings
+from app.core.rate_limit import INCR_EXPIRE_LUA
 from app.core.redis import redis_client
-from app.core.security import hash_token
+from app.core.security import hash_token, timing_safe_str_eq
 
 _INVITE_PREFIX = "invite:"
 _RESET_PREFIX = "pwreset:"
+_EMAIL_CHANGE_PREFIX = "emailchange:"
+_EMAIL_CHANGE_ATTEMPTS_PREFIX = "emailchange-attempts:"
+
+#: Deletes a key only while it still holds ARGV[1]: a pending email change
+#: replaced meanwhile by a newer request is left alone.
+DELETE_IF_EQUAL_LUA = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
 
 #: Moves an invitation to its new key only while the old one still holds what
 #: was read: one script, so the invitation is never lost between the two keys
@@ -256,3 +272,85 @@ async def consume_password_reset(raw_token: str) -> dict | None:
     r = await redis_client()
     val = await r.getdel(_RESET_PREFIX + hash_token(raw_token))
     return json.loads(val) if val else None
+
+
+# ---------------------------------------------------------------------------
+# Email change codes
+# ---------------------------------------------------------------------------
+
+#: A code lives 10 minutes: six digits are only safe with a short life and few tries.
+EMAIL_CHANGE_TTL_SECONDS = 600
+#: Wrong codes after which the pending change is dropped and a new one is needed.
+EMAIL_CHANGE_MAX_ATTEMPTS = 5
+
+
+def _secret_mac(*parts: str) -> str:
+    message = "\x00".join(parts).encode()
+    return hmac.new(settings.secret_key.encode(), message, hashlib.sha256).hexdigest()
+
+
+def _email_change_mac(user_id: Any, email: str, code: str) -> str:
+    """The stored form of *code*: bound to the user and the new address, keyed by the server secret."""
+    return _secret_mac("email-change", str(user_id), email, code)
+
+
+def email_change_address_bucket(email: str) -> str:
+    """The rate-limit bucket of a target address: a keyed hash, so Redis never holds the address."""
+    return _secret_mac("email-change-address", email.strip().lower())
+
+
+async def create_email_change(*, user_id: Any, email: str, from_email: str) -> str:
+    """Start an email change of *user_id* from *from_email* to *email*. Returns the 6-digit code to send.
+
+    It replaces the user's pending change, whatever its address: the previous
+    code stops working and its wrong-code count does not carry over."""
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    email = email.strip().lower()
+    payload = {
+        "id": secrets.token_hex(16),
+        "email": email,
+        "from": from_email.strip().lower(),
+        "mac": _email_change_mac(user_id, email, code),
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    r = await redis_client()
+    await r.set(_EMAIL_CHANGE_PREFIX + str(user_id), json.dumps(payload), ex=EMAIL_CHANGE_TTL_SECONDS)
+    return code
+
+
+async def drop_email_change(user_id: Any) -> None:
+    """Forget *user_id*'s pending email change, if any."""
+    r = await redis_client()
+    await r.delete(_EMAIL_CHANGE_PREFIX + str(user_id))
+
+
+async def consume_email_change(*, user_id: Any, code: str, current_email: str) -> str | None:
+    """The new address of *user_id*'s pending change when *code* is its code, else ``None``.
+
+    A change started from another address than *current_email* (changed
+    meanwhile by an administrator or SCIM) is dropped unread. A match consumes
+    the change. Every try counts, the right one included,
+    and atomically: once :data:`EMAIL_CHANGE_MAX_ATTEMPTS` tries are spent
+    the change is dropped, however many arrive at once. A change replaced
+    by a newer request between the read and the match is not consumed."""
+    r = await redis_client()
+    key = _EMAIL_CHANGE_PREFIX + str(user_id)
+    raw = await r.get(key)
+    if not raw:
+        return None
+    pending = json.loads(raw)
+    if pending.get("from") != current_email.strip().lower():
+        await r.eval(DELETE_IF_EQUAL_LUA, 1, key, raw)
+        return None
+    tries = int(
+        await r.eval(INCR_EXPIRE_LUA, 1, _EMAIL_CHANGE_ATTEMPTS_PREFIX + pending["id"], EMAIL_CHANGE_TTL_SECONDS)
+    )
+    if tries > EMAIL_CHANGE_MAX_ATTEMPTS:
+        await r.eval(DELETE_IF_EQUAL_LUA, 1, key, raw)
+        return None
+    if timing_safe_str_eq(_email_change_mac(user_id, pending["email"], code), pending["mac"]):
+        consumed = int(await r.eval(DELETE_IF_EQUAL_LUA, 1, key, raw))
+        return pending["email"] if consumed else None
+    if tries >= EMAIL_CHANGE_MAX_ATTEMPTS:
+        await r.eval(DELETE_IF_EQUAL_LUA, 1, key, raw)
+    return None

@@ -5,6 +5,15 @@ upgrade and rollback procedures live in the documentation site
 ([Deployment > Upgrade](docs/docs/deployment/upgrade.md)); this file documents
 releases that need special attention.
 
+## A person changes their own email with a code
+
+**No configuration change.** The migration `u1906scimlnk01` adds `users.scim_linked_at` and stamps the accounts SCIM already manages (an `externalId`, or a SCIM write in the audit log).
+
+- **New**: people change their email again from their profile (`Email`, `Change`): they type the new address and their current password, then the six-digit code sent to the new address (`POST /api/v1/settings/email-change`, then `POST /api/v1/settings/email-change/confirm`). The code works once within 10 minutes, five wrong codes void it, and three requests an hour are allowed per person and per address. The old address is told of the change.
+- **Needs SMTP**: without a mail server the route answers `503`; an administrator changes the email from the user's page, as before.
+- **SSO and SCIM accounts**: their identity provider manages the address; they cannot change it themselves. An account SCIM created or linked without an `externalId` now counts as SCIM-managed too, on the users list as well.
+- `PUT /api/v1/settings/preferences` still answers `422` for a new address.
+
 ## `evaluations.speed_tolerance` is dropped
 
 **No action needed.** The migration `e686spdtol01` drops the `evaluations.speed_tolerance` column, which no release since `e1780evp001` reads or writes. Every evaluation keeps its tolerance in `performance_tolerance`, and an exported package that names `speed_tolerance` still imports into it.

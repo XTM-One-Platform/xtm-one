@@ -588,6 +588,10 @@ _EXEMPT_PLATFORM_ADMINISTRATION = {
     "upsert_oauth_default",
     "delete_oauth_default",
     "update_preferences",
+    # A person changing their own email with a code sent to the new address:
+    # account identity, reaching no model.
+    "request_email_change",
+    "confirm_email_change",
     # Redeeming a Filigran support code to recharge the agent failure pools:
     # commercial administration, reaching no provider. Arrived from main while
     # this branch was open, and the sweep demanded a classification rather than

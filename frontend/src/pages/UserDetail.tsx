@@ -487,7 +487,7 @@ function EmailCard({ user, userId }: { user: UserDetailType; userId: string }) {
         ) : (
           <>
             <p className="content-compact text-default-secondary">
-              {t_i18n("The other platforms find this person's account by this address. Users cannot change it themselves. The old and the new address are notified, and reset links already sent stop working.")}
+              {t_i18n("The other platforms find this person's account by this address. Here it changes without a code; people change their own with a code sent to the new address. The old and the new address are notified, and reset links already sent stop working.")}
             </p>
             <div className="flex gap-2">
               <Input

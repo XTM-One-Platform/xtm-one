@@ -536,6 +536,17 @@ class CtemFleetInviteDismissal(BaseModel):
     modules: list[_InviteEntry] = Field(default_factory=list, max_length=MAX_FLEET_INVITE_ENTRIES)
 
 
+class EmailChangeRequest(BaseModel):
+    """``POST /settings/email-change``: the address is checked by the route (400, not 422)."""
+
+    email: str = Field(max_length=320)
+    current_password: str = Field(max_length=1024)
+
+
+class EmailChangeConfirmRequest(BaseModel):
+    code: str = Field(max_length=32)
+
+
 class UserPreferencesRequest(BaseModel):
     email: str | None = None
     full_name: str | None = None

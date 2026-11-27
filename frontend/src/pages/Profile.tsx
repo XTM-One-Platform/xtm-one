@@ -4,7 +4,7 @@ import { IconButton, Spinner } from "@filigran/design-system";
 import { platformOrigin } from "@/lib/base-path";
 import { useState, useMemo, useRef } from "react";
 import { useParams } from "react-router-dom";
-import { User as UserIcon, Shield, Mail, Key, Pencil, Save, Lock, Check, Copy, Trash2, Fingerprint, Bot, Wrench, RotateCcw, Code, Server, BookOpen, KeyRound, Terminal, Radio, MessageSquare, X, Globe, BarChart3, Info, ExternalLink, Brain, ChevronDown, ChevronRight, Zap, Palette, Languages, UserCog, Sparkles, Smartphone } from "lucide-react";
+import { User as UserIcon, Shield, Key, Pencil, Save, Lock, Check, Copy, Trash2, Fingerprint, Bot, Wrench, RotateCcw, Code, Server, BookOpen, KeyRound, Terminal, Radio, MessageSquare, X, Globe, BarChart3, Info, ExternalLink, Brain, ChevronDown, ChevronRight, Zap, Palette, Languages, UserCog, Sparkles, Smartphone } from "lucide-react";
 import { Tip } from "@/components/ui/tooltip";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +44,7 @@ import { useBuiltinTools } from "@/hooks/useBuiltinTools";
 import { BuiltinToolsPending } from "@/pages/tools/BuiltinToolsPending";
 import { CtemStageAgentsCard } from "@/pages/xtm-one/ctem/CtemStageAgentsCard";
 import { TwoFactorRow } from "@/pages/profile/TwoFactorRow";
+import { EmailRow } from "@/pages/profile/EmailRow";
 import { ToolApprovalsRow } from "@/pages/profile/ToolApprovalsRow";
 import { HealthCompanionCard } from "@/pages/profile/HealthCompanionCard";
 import { ReplySuggestionsCard } from "@/pages/profile/ReplySuggestionsCard";
@@ -261,12 +262,7 @@ export default function Profile() {
                   </div>
                 ) : null}
 
-                <InfoRow icon={Mail} label={t_i18n("Email")} editing={editing}>
-                  <span className="content-base">{user.email}</span>
-                  {editing && (
-                    <p className="content-compact text-default-secondary">{t_i18n("Your email identifies you on the other platforms: an administrator changes it.")}</p>
-                  )}
-                </InfoRow>
+                <EmailRow email={user.email} blocked={user.email_change_blocked} impersonated={!!user.impersonated_by_id} />
 
                 <InfoRow icon={Globe} label={t_i18n("Timezone")} editing={editing} fieldId="profile-timezone">
                   {editing ? (
