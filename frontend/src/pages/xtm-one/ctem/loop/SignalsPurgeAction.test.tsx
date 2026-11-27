@@ -41,6 +41,7 @@ describe("SignalsPurgeAction", () => {
         { key: "vulnerability", group: "world", label: "Vulnerabilities", default: 7, windowed: true },
         { key: "intrusion_set", group: "world", label: "Intrusion sets", default: 30, windowed: true },
         { key: "aikido", group: "inside", label: "Aikido open issues", default: null, windowed: true },
+        { key: "gitlab", group: "inside", label: "GitLab dependency findings", default: null, windowed: false, note: "Recorded by the GitLab asset sync" },
         { key: "attack_surface", group: "pass", label: "Attack surface pass", default: null, windowed: false },
       ],
       resync_max_days: 365,
@@ -76,6 +77,9 @@ describe("SignalsPurgeAction", () => {
     expect(vulns.value).toBe("7");
     expect((screen.getByRole("textbox", { name: "Aikido open issues" }) as HTMLInputElement).value).toBe("");
     expect(screen.getByTestId("ctem-signals-purge-window-attack_surface").textContent).toContain("Runs once");
+    // A route the resync does not read is a read-only line with its reason, never a field (UX round 1 of #2590, B3).
+    expect(screen.queryByRole("textbox", { name: "GitLab dependency findings" })).toBeNull();
+    expect(screen.getByTestId("ctem-signals-purge-window-gitlab").textContent).toContain("Recorded by the GitLab asset sync");
     fireEvent.change(vulns, { target: { value: "3" } });
     const code = screen.getByTestId("confirm-challenge-code").textContent ?? "";
     fireEvent.change(screen.getByRole("textbox", { name: "To confirm, type the code below:" }), { target: { value: code } });
@@ -92,7 +96,13 @@ describe("SignalsPurgeAction", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Vulnerabilities" }), { target: { value: "0" } });
     const code = screen.getByTestId("confirm-challenge-code").textContent ?? "";
     fireEvent.change(screen.getByRole("textbox", { name: "To confirm, type the code below:" }), { target: { value: code } });
-    expect(screen.getByRole("alert").textContent).toContain("Enter a whole number from 1 to 365");
+    // The message sits under the invalid field itself, visible and tied to it (UX round 1 of #2590, B2).
+    const field = screen.getByRole("textbox", { name: "Vulnerabilities" });
+    const error = screen.getByRole("alert");
+    expect(error.textContent).toContain("Enter a whole number from 1 to 365");
+    expect(field.getAttribute("aria-describedby")).toBe(error.id);
+    // One message, under the field: no second copy hidden at the bottom of the list.
+    expect(screen.getAllByText("Enter a whole number from 1 to 365")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Purge" })).toHaveProperty("disabled", true);
   });
 

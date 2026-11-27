@@ -22131,5 +22131,7 @@
   "GitHub Dependabot alerts": "GitHub Dependabot alerts",
   "GitLab dependency findings": "GitLab dependency findings",
   "OpenAEV simulation results": "OpenAEV simulation results",
-  "Attack surface pass": "Attack surface pass"
+  "Attack surface pass": "Attack surface pass",
+  "Recorded by the GitLab asset sync": "Recorded by the GitLab asset sync",
+  "Delivered by event only": "Delivered by event only"
 }

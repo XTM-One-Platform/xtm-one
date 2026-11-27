@@ -140,6 +140,7 @@ export function SignalsPurgeAction() {
         )}
         confirmLabel={t_i18n("Purge")}
         challenge
+        size={resync ? "wide" : "sm"}
         confirmDisabled={!counts || start.isPending || (resync && !windows)}
         onConfirm={confirm}
       >
@@ -237,60 +238,59 @@ function ResyncWindows({
   const { t_i18n } = useFormatter();
   const groups = (Object.keys(GROUP_HEADING) as CtemSignalResyncRoute["group"][]).filter((g) => routes.some((r) => r.group === g));
   return (
-    <div className="max-h-72 space-y-3 overflow-y-auto pr-1" data-testid="ctem-signals-purge-windows">
+    <div className="space-y-3" data-testid="ctem-signals-purge-windows">
       <p className="text-default-secondary">
         {t_i18n("How far back the resync reads, in days. Leave an inside-state field empty to read every open item.")}
       </p>
       {groups.map((group) => (
         <fieldset key={group} className="space-y-1.5">
           <legend className="font-medium">{t_i18n(GROUP_HEADING[group])}</legend>
-          {routes
-            .filter((r) => r.group === group)
-            .map((route) => {
-              const id = `ctem-signals-purge-window-${route.key}`;
-              if (!route.windowed) {
+          {/* Two columns in the wide dialog, no inner scroller: every field and its error stay in view (UX round 1 of #2590, B1 and B2). */}
+          <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+            {routes
+              .filter((r) => r.group === group)
+              .map((route) => {
+                const id = `ctem-signals-purge-window-${route.key}`;
+                if (!route.windowed) {
+                  // A pass, or a route the resync does not read: a read-only line with its reason, never a field (B3).
+                  return (
+                    <div key={route.key} className="min-w-0" data-testid={id}>
+                      <span className="block">{t_i18n(route.label)}</span>
+                      <span className="block text-default-secondary">{t_i18n(route.note ?? "Runs once")}</span>
+                    </div>
+                  );
+                }
+                const invalid = parseWindow(texts[route.key] ?? "", route, maxDays) === "invalid";
                 return (
-                  <div key={route.key} className="flex items-center justify-between gap-3" data-testid={id}>
-                    <span className="min-w-0 truncate">{t_i18n(route.label)}</span>
-                    <span className="shrink-0 text-default-secondary">{t_i18n("Runs once")}</span>
+                  <div key={route.key} className="min-w-0">
+                    <label id={`${id}-label`} htmlFor={id} className="block">
+                      {t_i18n(route.label)}
+                    </label>
+                    <span className="mt-1 flex items-center gap-1.5">
+                      <Input
+                        id={id}
+                        inputMode="numeric"
+                        className="h-8 w-20 shrink-0 [&_input]:text-right [&_input]:tabular-nums"
+                        value={texts[route.key] ?? ""}
+                        placeholder={route.group === "inside" ? t_i18n("All") : undefined}
+                        aria-invalid={invalid}
+                        aria-labelledby={`${id}-label`}
+                        aria-describedby={invalid ? `${id}-error` : undefined}
+                        onChange={(e) => onChange(route.key, e.target.value)}
+                      />
+                      <span className="shrink-0 whitespace-nowrap text-default-secondary">{t_i18n("days")}</span>
+                    </span>
+                    {invalid && (
+                      <p id={`${id}-error`} className="mt-1 text-feedback-error-primary" role="alert">
+                        {t_i18n("Enter a whole number from {min} to {max}", { min: 1, max: maxDays })}
+                      </p>
+                    )}
                   </div>
                 );
-              }
-              const invalid = parseWindow(texts[route.key] ?? "", route, maxDays) === "invalid";
-              return (
-                <div key={route.key} className="flex items-center justify-between gap-3">
-                  <label id={`${id}-label`} htmlFor={id} className="min-w-0 truncate">
-                    {t_i18n(route.label)}
-                  </label>
-                  <span className="flex shrink-0 items-center gap-1.5">
-                    <Input
-                      id={id}
-                      inputMode="numeric"
-                      className="h-8 w-20 text-right tabular-nums"
-                      value={texts[route.key] ?? ""}
-                      placeholder={route.group === "inside" ? t_i18n("All") : undefined}
-                      aria-invalid={invalid}
-                      aria-labelledby={`${id}-label`}
-                      aria-describedby={invalid ? `${id}-error` : undefined}
-                      onChange={(e) => onChange(route.key, e.target.value)}
-                    />
-                    <span className="w-8 text-default-secondary">{t_i18n("days")}</span>
-                  </span>
-                  {invalid && (
-                    <span id={`${id}-error`} className="sr-only">
-                      {t_i18n("Enter a whole number from {min} to {max}", { min: 1, max: maxDays })}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
+              })}
+          </div>
         </fieldset>
       ))}
-      {routes.some((r) => r.windowed && parseWindow(texts[r.key] ?? "", r, maxDays) === "invalid") && (
-        <p className="text-feedback-error-primary" role="alert">
-          {t_i18n("Enter a whole number from {min} to {max}", { min: 1, max: maxDays })}
-        </p>
-      )}
     </div>
   );
 }

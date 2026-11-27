@@ -22119,7 +22119,7 @@
   "Stopped at the read limit": "Detenido en el límite de lectura",
   "{read} read, {recorded} recorded": "{read} leídos, {recorded} registrados",
   "How far back the resync reads, in days. Leave an inside-state field empty to read every open item.": "Hasta cuándo lee la resincronización, en días. Deje vacío un campo de estado interno para leer todos los elementos abiertos.",
-  "Intrusion sets": "Intrusion sets",
+  "Intrusion sets": "Conjuntos de intrusión",
   "Threat actor groups": "Grupos de actores de amenaza",
   "Threat actor individuals": "Actores de amenaza individuales",
   "Campaigns": "Campañas",
@@ -22131,5 +22131,7 @@
   "GitHub Dependabot alerts": "Alertas de Dependabot de GitHub",
   "GitLab dependency findings": "Hallazgos de dependencias de GitLab",
   "OpenAEV simulation results": "Resultados de simulación de OpenAEV",
-  "Attack surface pass": "Pasada de superficie de ataque"
+  "Attack surface pass": "Pasada de superficie de ataque",
+  "Recorded by the GitLab asset sync": "Registrado por la sincronización de activos de GitLab",
+  "Delivered by event only": "Entregado solo por evento"
 }

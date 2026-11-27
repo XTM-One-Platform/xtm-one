@@ -62,10 +62,13 @@ class Window:
     group: str  # world | inside | pass
     label: str
     default: int | None
-    #: ``False`` for a pass: it reads the current state, no window applies.
+    #: ``False`` for a pass (it reads the current state) and for a route no listing
+    #: exists for (:data:`UNLISTED`): no window applies, so the dialog draws no field.
     windowed: bool = True
     #: The OpenCTI entity type a world route reads.
     entity_type: str = ""
+    #: Why a route is not resynced, short and in English (the dialog translates it).
+    note: str = ""
 
 
 #: Every resync route, in the dialog's order; the defaults live here only.
@@ -82,8 +85,10 @@ WINDOWS: tuple[Window, ...] = (
     Window("third_party", "world", "Third-party and sub-processor events", 30),
     Window("aikido", "inside", "Aikido open issues", None),
     Window("github", "inside", "GitHub Dependabot alerts", None),
-    Window("gitlab", "inside", "GitLab dependency findings", None),
-    Window("openaev", "inside", "OpenAEV simulation results", None),
+    Window(
+        "gitlab", "inside", "GitLab dependency findings", None, windowed=False, note="Recorded by the GitLab asset sync"
+    ),
+    Window("openaev", "inside", "OpenAEV simulation results", None, windowed=False, note="Delivered by event only"),
     Window("attack_surface", "pass", "Attack surface pass", None, windowed=False),
     Window("evidence_health", "pass", "Evidence health pass", None, windowed=False),
 )
@@ -113,9 +118,20 @@ def default_windows() -> dict[str, int | None]:
 
 
 def describe_windows() -> list[dict[str, Any]]:
-    """The routes as the purge dialog draws them: key, group, label, default, windowed."""
+    """The routes as the purge dialog draws them: key, group, label, default, windowed, note.
+
+    ``note`` is set on a route the resync does not read (:data:`UNLISTED`): the dialog shows
+    it as a read-only line, never an editable window the server would ignore.
+    """
     return [
-        {"key": w.key, "group": w.group, "label": w.label, "default": w.default, "windowed": w.windowed}
+        {
+            "key": w.key,
+            "group": w.group,
+            "label": w.label,
+            "default": w.default,
+            "windowed": w.windowed,
+            "note": w.note or None,
+        }
         for w in WINDOWS
     ]
 

@@ -379,8 +379,10 @@ export interface CtemSignalResyncRoute {
   label: string;
   /** Days; null: no age limit. */
   default: number | null;
-  /** False for a pass: it reads the current state. */
+  /** False for a pass (it reads the current state) and for a route the resync does not read. */
   windowed: boolean;
+  /** Why the resync does not read this route (English, translated by the dialog); null otherwise. */
+  note?: string | null;
 }
 
 /** The resync's outcome on one route (#2578), from `steps.resync.counts.routes`. */

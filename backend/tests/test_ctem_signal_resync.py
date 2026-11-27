@@ -94,12 +94,22 @@ def test_the_defaults_are_seven_days_for_vulnerabilities_thirty_for_the_world_an
         {"vulnerability": 2.5},
         {"vulnerability": True},
         {"attack_surface": 3},
+        {"gitlab": 3},  # no listing: the route reads no window
         {"nope": 3},
     ],
 )
 def test_a_bad_window_is_refused(raw: dict[str, Any]) -> None:
     with pytest.raises(resync.WindowError):
         resync.validate_windows(raw)
+
+
+def test_a_route_the_resync_does_not_read_offers_no_window() -> None:
+    # UX round 1 of #2590 (B3): an unlisted route is drawn read-only with its reason, never as a field.
+    described = {r["key"]: r for r in resync.describe_windows()}
+    for key in resync.UNLISTED:
+        assert described[key]["windowed"] is False and described[key]["note"]
+        assert key not in resync.default_windows()
+    assert all(r["note"] is None for r in described.values() if r["windowed"])
 
 
 def test_an_inside_route_may_have_no_age_limit_or_a_cap() -> None:
