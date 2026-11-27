@@ -2112,7 +2112,17 @@ async def execute_task_run(task_id: uuid.UUID) -> None:
         resume_replay = None
         attempt = _attempt_of(run.trigger_context)
         if _handed_back(run.trigger_context) is not None:
-            resume_replay = await assignment_run_resume.load_replay(run.id)
+            from app.services.builtin_tool_aliases import runtime_builtin_tool_ids
+            from app.services.code_interpreter import code_interpreter_callable
+
+            # The resume note names attachments/ only to a run that can call the code interpreter (#2677).
+            resume_replay = await assignment_run_resume.load_replay(
+                run.id,
+                code_interpreter=code_interpreter_callable(
+                    runtime_builtin_tool_ids(agent.builtin_tool_ids, getattr(agent, "builtin_allowed_tools", None)),
+                    agent.tool_deny_list,
+                ),
+            )
             refused = assignment_run_resume.resume_refused(
                 run.trigger_context,
                 attempt=attempt,

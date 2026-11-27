@@ -3631,8 +3631,12 @@ async def _resolve_upload_knowledge_base(
     return None, first_refusal or no_grant
 
 
-async def _turn_offers_code_interpreter(db: AsyncSession, conv: Conversation | None, user_id: object) -> bool:
-    """:func:`_upload_offers_code_interpreter` for a turn that holds the user's id alone; ``False`` on any doubt."""
+async def turn_offers_code_interpreter(db: AsyncSession, conv: Conversation | None, user_id: object) -> bool:
+    """:func:`_upload_offers_code_interpreter` for a turn that holds the user's id alone; ``False`` on any doubt.
+
+    Every resume entry point (web, REST, channel, cut-turn and parent wake)
+    passes it to ``turn_checkpoint.load_replay`` (#2677).
+    """
     if conv is None:
         return False
     try:
@@ -9234,7 +9238,7 @@ async def run_chat_connection(
                 db,
                 conv_id,
                 user_id=user_id,
-                code_interpreter=await _turn_offers_code_interpreter(db, conv, user_id),
+                code_interpreter=await turn_offers_code_interpreter(db, conv, user_id),
             )
             if _turn_replay:
                 history = [*history, *_turn_replay]

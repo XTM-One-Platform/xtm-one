@@ -106,6 +106,26 @@ def test_every_capabilities_line_goes_through_the_callable_builder() -> None:
         assert "', '.join(ga_builtin_tool_ids)" not in source, module.__name__
 
 
+def test_every_resume_entry_point_passes_the_callable_decision() -> None:
+    """Review of #2682: the web, REST, channel and cut-turn (parent wake)
+    resumes, and the A2A hand-back, resolve the flag instead of taking the
+    no-mount default."""
+    import inspect
+    import re
+
+    from app.a2a import tasks
+    from app.api.v1 import chat
+    from app.channels import router
+    from app.services import parent_wake
+
+    for module in (chat, router, parent_wake, tasks):
+        source = inspect.getsource(module)
+        calls = re.findall(r"\.load_replay\((.*?)\n\s*\)", source, flags=re.S)
+        assert calls, module.__name__
+        for call in calls:
+            assert "code_interpreter=" in call, f"{module.__name__}: load_replay({call.strip()})"
+
+
 def test_capabilities_line_of_an_agent_with_a_platform_disabled_code_interpreter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

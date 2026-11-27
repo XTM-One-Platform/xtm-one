@@ -792,7 +792,15 @@ async def resume_cut_turn(cut, *, on_start: Callable[[], None] | None = None) ->
             )
             return False
         run_as = str(conv.user_id) if conv.user_id else cut.user_id
-        resumed, replay = await turn_checkpoint.load_replay(db, conv_uuid, user_id=run_as)
+        from app.api.v1.chat import turn_offers_code_interpreter
+
+        # The resume note names attachments/ only when the resumed turn can call the code interpreter (#2677).
+        resumed, replay = await turn_checkpoint.load_replay(
+            db,
+            conv_uuid,
+            user_id=run_as,
+            code_interpreter=await turn_offers_code_interpreter(db, conv, run_as),
+        )
         checkpoint = turn_checkpoint.TurnCheckpoint(
             conv_uuid, turn_id=cut.turn_id, resumed=resumed, user_id=run_as
         )
