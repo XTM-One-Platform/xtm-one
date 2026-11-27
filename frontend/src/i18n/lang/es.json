@@ -17718,6 +17718,8 @@
   "Left after your prioritization policy: thresholds, exclusions and accepted risk.": "Lo que queda tras su política de priorización: umbrales, exclusiones y riesgo aceptado.",
   "Set a prioritization policy": "Definir una política de priorización",
   "Open issues": "Problemas abiertos",
+  "Open at source": "Abiertos en el origen",
+  "Case closed by decision": "Caso cerrado por decisión",
   "{count, plural, =0 {No open case} one {# open case} other {# open cases}}": "{count, plural, =0 {Ningún caso abierto} one {# caso abierto} other {# casos abiertos}}",
   "Open cases: the issues above grouped by the fix they share, needing attention or in progress.": "Casos abiertos: los problemas anteriores agrupados por la corrección que comparten, pendientes de atención o en curso.",
   "Not available yet": "Aún no disponible",
