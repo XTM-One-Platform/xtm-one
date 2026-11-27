@@ -130,8 +130,6 @@ export interface DataTableFilterOption {
   value: string;
   /** Already translated. */
   label: string;
-  /** A decorative 16 px icon or logo drawn before the label (#2578); the label carries the meaning. */
-  icon?: ReactNode;
 }
 
 export interface DataTableFilter<T> {
@@ -406,6 +404,8 @@ export interface DataTableProps<T> {
    * a 1080p viewport, each value shows how many rows it would keep (counted on the rows
    * the table holds, given the other filters and the search), and the active filters show
    * as removable chips under the toolbar. Client mode only: a `server` table keeps the stack.
+   * On by default (#2573, Design standards s.3: one Filters panel on every records table);
+   * `facetGrid={false}` opts out.
    */
   facetGrid?: boolean;
   /**
@@ -599,7 +599,7 @@ function DataTableView<T>({
   showToolbar = true,
   compactSearch = false,
   filtersInPill = false,
-  facetGrid = false,
+  facetGrid = true,
   onRowClick,
   rowOpens,
   rowHref,
@@ -792,6 +792,8 @@ function DataTableView<T>({
       searchFields && state.search.trim() ? rows.filter((row) => matchesSearch(searchFields(row), state.search)) : rows;
     return facetValueCounts(searched, filters, state.filters);
   }, [faceted, rows, filters, state.filters, state.search, searchFields]);
+  // The groups the panel draws (a filter with no option draws none): its column count.
+  const facetGroupCount = filterOptions.filter((options) => options.length > 0).length;
   const filterChips = faceted
     ? activeFilterChips(
         filters.map((filter) => ({ key: filter.key, label: t_i18n(filter.label) })),
@@ -1406,9 +1408,9 @@ function DataTableView<T>({
                 label={t_i18n("Filters")}
                 count={filterCount}
                 testId="data-table-filters"
-                panelClassName={faceted ? FACET_GRID_PANEL : undefined}
+                panelClassName={faceted ? facetPanelClass(facetGroupCount) : undefined}
               >
-                <FacetColumns faceted={faceted}>
+                <FacetColumns faceted={faceted} columns={facetColumnCount(facetGroupCount)}>
                 {filters.map((filter, index) =>
                   filterOptions[index].length === 0 ? null : (
                     <div
@@ -1575,18 +1577,36 @@ function DataTableView<T>({
 
 /**
  * The faceted Filters panel (#2556): its groups packed into balanced columns of at least
- * 13 rem (a long group never stretches a row, as a grid would): four in its 60 rem, three
- * when the panel's fitted width (filterPanelMaxWidth) is narrower. The CTEM cases list's
- * 11 groups fit a 1080p viewport without the panel's own scroller (measured in the lab:
- * 958 px of content in a grid, 586 px in four columns). The columns live in an inner block
- * with no height cap: on a short viewport the panel scrolls down, never sideways (a capped
+ * 13 rem (a long group never stretches a row, as a grid would), as many columns as groups
+ * up to four, three when the panel's fitted width (filterPanelMaxWidth) is narrower. The
+ * panel is sized to its columns (#2573, UX r1 B1 on #2576): one group draws a one-column
+ * panel, never 60 rem with 46 rem empty. The CTEM cases list's 11 groups fit a 1080p
+ * viewport in four columns without the panel's own scroller (measured in the lab: 958 px
+ * of content in a grid, 586 px in four columns). The columns live in an inner block with
+ * no height cap: on a short viewport the panel scrolls down, never sideways (a capped
  * multi-column box spills its extra columns to the right).
  */
-const FACET_GRID_PANEL = "w-[60rem]";
+const FACET_MAX_COLUMNS = 4;
 
-function FacetColumns({ faceted, children }: { faceted: boolean; children: ReactNode }) {
+/**
+ * The panel width by column count (1 to 4), literal for the class scanner: n columns of
+ * 13.875 rem (222 px, the column of the 60 rem panel), n - 1 gaps of 1 rem (gap-x-4) and
+ * the 1.5 rem of p-3. Four columns keep the 60 rem of #2556; one column is 15.375 rem.
+ */
+const FACET_PANEL_WIDTH = ["w-[15.375rem]", "w-[30.25rem]", "w-[45.125rem]", "w-[60rem]"] as const;
+
+/** Columns of a faceted panel with `groups` filter groups: one per group, at most four. */
+function facetColumnCount(groups: number): number {
+  return Math.min(Math.max(groups, 1), FACET_MAX_COLUMNS);
+}
+
+function facetPanelClass(groups: number): string {
+  return FACET_PANEL_WIDTH[facetColumnCount(groups) - 1];
+}
+
+function FacetColumns({ faceted, columns, children }: { faceted: boolean; columns: number; children: ReactNode }) {
   return faceted ? (
-    <div data-testid="data-table-facet-columns" className="columns-[13rem] gap-x-4">
+    <div data-testid="data-table-facet-columns" data-facet-columns={columns} className="columns-[13rem] gap-x-4">
       {children}
     </div>
   ) : (
@@ -1754,26 +1774,17 @@ function FilterOptionList({
     <>
       {options.map((option) => {
         const isSelected = selected.includes(option.value);
-        // A value no row would keep under the other filters is dimmed, still selectable (#2578).
-        const empty = !!counts && !isSelected && (counts[option.value] ?? 0) === 0;
         return (
           <button
             type="button"
             key={option.value}
             aria-pressed={isSelected}
-            data-empty={empty || undefined}
             onClick={() => onChange(toggleArrayItem(selected, option.value))}
             className={cn(
               "flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left content-compact transition-colors",
               isSelected ? "bg-accent/15 text-accent" : "hover:bg-elevation-hover",
-              empty && "text-default-secondary",
             )}
           >
-            {option.icon && (
-              <span data-testid="filter-option-icon" className={cn("flex size-4 shrink-0 items-center justify-center", empty && "opacity-50")} aria-hidden>
-                {option.icon}
-              </span>
-            )}
             <span className="min-w-0 flex-1 truncate" title={option.label}>
               {option.label}
             </span>

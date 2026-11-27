@@ -550,36 +550,19 @@ order:
    transaction. Then the raised state outside `ctem_signals`: the attack surface
    pass's `ctem_surface_observations.signalled` keys, each undone so the next pass
    finds its difference again (a raised port leaves the host's baseline ports, a
-   raised new host keeps its row with the `rearm:new_host` mark, so the next pass
-   that sees it raises it once without the provider-date check, then drops the
-   mark; a deleted row was withheld `known_to_provider` and never raised again).
-   No other source keeps raised state outside the signal row.
+   raised new host leaves the baseline). No other source keeps raised state
+   outside the signal row.
 3. **Resync**, only when the administrator ticked it (unchecked by default),
    `app.services.ctem_signal_resync`, recording through the paused intake for this
-   step only, each route with its own read window and its own cap
-   (`MAX_PER_ROUTE`), so no type starves another. The routes and their default
-   windows live in `WINDOWS`; the dialog sends the chosen ones as
-   `resync_windows`, validated by `validate_windows` (1 to 365 days; an
-   inside-state route also takes null, no age limit; a pass takes none):
-   - one route per OpenCTI type the live listener reads (paths 1, 2, 10;
-     vulnerabilities 7 days by default, the others 30), from every enabled
-     OpenCTI source as its run-as, each fed to `note_event` as an `update`
-     delivery (same extractor, exclusions, internal-id dedupe and scope gate);
-   - PIR matches: the entities flagged in each PIR, delivered as the PIR
-     playbook delivers them (`xtm_source` and the PIR score), so the relevance
-     floor is computed as live;
-   - path 11: the reports naming a tracked organization's OpenCTI identity,
-     through `note_tracked_organizations`;
-   - inside state (paths 3, 10): the open Aikido issues and the open Dependabot
-     alerts of each GitHub organization, read with the integrations visible to
-     the administrator who started the purge and a token minted for them;
-   - the attack surface (5, 6, 7) and evidence health (9, 12) passes, once each,
-     their outcome reported (recorded, off in the profile, skipped and why, the
-     error, or nothing to raise).
-   GitLab findings (the GitLab asset sync) and OpenAEV results (event only) are
-   reported with that reason. The step's counts carry `windows`, `routes` (per
-   route: window, read, recorded, capped, errors, skipped) and `by_path`
-   (signals and cases per trigger path).
+   step only: the OpenCTI entities of the live listener's types (paths 1, 2, 10)
+   created or updated in the last 30 days, from every enabled OpenCTI source as
+   its run-as, each fed to `ctem_signal_listeners.note_event` as an `update`
+   delivery (same extractor, exclusions, internal-id dedupe and scope gate as
+   live); then the attack surface (5, 6, 7) and evidence health (9, 12) passes,
+   once each. Not resynced, named in the job's `skipped` counts: PIR scores
+   (OpenCTI attaches them on its playbook delivery only), path 11 (needs a live
+   delivery's organization annotation), and the open findings of paths 3, 4, 8
+   (Aikido, GitHub and OpenAEV deliver them by event; no listing is wired).
 4. **Resume intake**, always, also after a failure, which the job status and the
    audit row report.
 
@@ -588,12 +571,10 @@ are never touched. One `audit_logs` row (`entity_type` `ctem_signal_purge`)
 holds the actor, the resync choice and the counts per step.
 
 `GET /api/v1/ctem-signals/purge` (administrators): the live counts
-(`{signals, cases}`), the confirmation word, the resync routes with their
-default windows (`resync_routes`, `resync_max_days`) and the running or last job.
-`POST /api/v1/ctem-signals/purge` `{confirm, resync, resync_windows?}`
-(administrators): 422 without the word `PURGE` or on a window it refuses, 409
-while a job runs, else 202 with the job's first status (its `windows` filled
-in with the defaults). A non-administrator gets 403 on both.
+(`{signals, cases}`), the confirmation word and the running or last job.
+`POST /api/v1/ctem-signals/purge` `{confirm, resync}` (administrators): 422
+without the word `PURGE`, 409 while a job runs, else 202 with the job's first
+status. A non-administrator gets 403 on both.
 
 A job whose process restarts mid-job never writes its end: its status stays
 `running` while the job lock and the intake pause expire (2 h). `read_status`
@@ -606,8 +587,50 @@ the pause is still there, `resume` stays `pending` and the dialog says intake is
 still paused. The progress dialog stops polling and the purge button opens the
 confirm dialog again.
 
+## 6quater. Retention of discarded and watchlist signals (#2581)
+
+Without it a signal is only deleted by the purge (section 6ter) or with its
+organization. `services/ctem_signal_retention.py` deletes the signals nobody will
+act on, in the hourly retention pass of the autonomous tick
+(`autonomous._run_retention_pass`, next to the file, coordination and run
+retentions):
+
+| State | Deleted when | Window key (Settings > Observability) | Default |
+|---|---|---|---|
+| `discarded` by the scope gate | not seen (`last_seen_at`) for the window | `coordination_retention.ctem_signal_discarded_days` | `CTEM_SIGNAL_DISCARDED_RETENTION_DAYS`, 30 |
+| `watchlist` | not seen for the window | `coordination_retention.ctem_signal_watchlist_days` | `CTEM_SIGNAL_WATCHLIST_RETENTION_DAYS`, 90 |
+
+- **0 turns a rule off.** The windows are keys of
+  `platform_settings.coordination_retention` (`services/coordination_retention.py`),
+  saved through `PUT /api/v1/settings/observability` (`CoordinationRetention`,
+  optional: a body without them keeps the stored windows), and fall back to the
+  environment defaults.
+- **Never deleted:** a signal a person dismissed (`decision.reason_code`
+  `dismissed_by_user`: deleting it would bring it back at its next sighting);
+  a signal in a case (it names one in `case_id`, or a case holds it as a
+  `signal` member, `ctem_case_issues`); any other state.
+- **A later sighting** of a deleted signal records it again as a first
+  sighting: the scope gate decides it anew and `ctem_signal.recorded` is raised.
+- **Watchlist re-decided on every sighting:** a new sighting of a watchlist
+  signal runs the scope gate again (`ctem-scope-gate.md` section 1), so it
+  rarely reaches its window while it keeps being seen.
+- **Batches:** `SIGNAL_RETENTION_BATCH` (1,000) per transaction, oldest
+  sighting first; the DELETE re-applies every rule, so a signal seen again or
+  joined to a case meanwhile stays. A pass deletes at most
+  `MAX_BATCHES_PER_PASS` batches per state; one that reached it sets the
+  `RETENTION_DRAIN` backlog and the next ticks drain the rest.
+- **Skipped during a purge:** `purge_running()` reads the purge job's guards
+  (a job of this process, the intake pause `PAUSE_KEY`, the job lock
+  `JOB_LOCK_KEY`); a Redis error never stops retention for good.
+- **Audit:** one platform audit row per pass that deleted anything
+  (`system:ctem_signal_retention`, action `retention_purge`, entity type
+  `ctem_signal`), with `details.deleted` per state and `details.retention_days`.
+
 ## 7. Tests
 
+`tests/test_ctem_signal_retention.py` and
+`tests/test_ctem_signal_retention_postgres.py` (section 6quater: each rule on
+PostgreSQL, a 0 window, the batches, the audit row, the purge guard),
 `tests/test_ctem_signals.py` (input rules, listener table, API and tools:
 one signal per path through each, idempotence, filters, recorder scope,
 Copilot mode), `tests/test_ctem_signals_postgres.py` (the upsert, a new

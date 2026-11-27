@@ -24,14 +24,13 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Icon, type IconName } from "@filigran/design-system";
+import { Icon } from "@filigran/design-system";
 import { Button } from "@/components/ui/button";
 import { DataTable, TOOLBAR_CONTROL_HEIGHT, type DataTableColumn } from "@/components/ui/data-table";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/ui/overflow-menu";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { DateTimeCell } from "@/components/ui/date-time-cell";
-import { ProviderLogo } from "@/components/ui/provider-logo";
 import { BackButton } from "@/components/ui/back-button";
 import { SegmentedFilter } from "@/components/ui/segmented-filter";
 import { SourceBadge } from "@/components/ui/source-badge";
@@ -59,7 +58,7 @@ import { CaseOpeningSwitch } from "./ctem/CaseOpeningSwitch";
 import { signalProviderName } from "./ctem/loop/SignalLoopTrace";
 import { LoopTraceSheet } from "./ctem/loop/LoopTraceSheet";
 import { SignalsSummaryStrip } from "./ctem/loop/SignalsSummaryStrip";
-import { connectedCount, PATH_ICON } from "./ctem/loop/signal-sources";
+import { connectedCount } from "./ctem/loop/signal-sources";
 import { readSignalsView, SIGNAL_SOURCES_PATH, SIGNALS_PARAMS, SIGNALS_PATH, SIGNALS_TABLE_URL_KEY, selectAllScope } from "./ctem/loop/signals-route";
 
 type StateFilter = CtemSignalState | "all";
@@ -302,7 +301,7 @@ function SignalsTab() {
     },
     {
       key: "path",
-      header: "Trigger path",
+      header: "Signal type",
       hideable: true,
       width: COLUMN_WIDTH.path,
       cell: (s) => <TruncatedText text={t_i18n(s.trigger_path_label || s.trigger_path)} />,
@@ -400,31 +399,20 @@ function SignalsTab() {
         defaultPageSize={25}
         rowLines={2}
         searchFields={(s) => [s.subject.label, s.subject.ref, s.trigger_path_label, signalProviderName(s.source.provider)]}
-        searchPlaceholder={t_i18n("Search signal, path or source")}
+        searchPlaceholder={t_i18n("Search signal, type or source")}
         filtersInPill
-        // Each option with its icon (the Sources view's) and how many signals it keeps under the
-        // other filters and the search; a value that keeps none is dimmed (#2578).
-        facetGrid
         filters={[
           {
             key: "path",
-            label: "Trigger path",
+            label: "Signal type",
             values: (s) => [s.trigger_path],
-            options: paths.map((p) => ({
-              value: p.id,
-              label: t_i18n(p.label),
-              icon: <Icon name={(PATH_ICON[p.id] ?? "activity") as IconName} size={16} className="text-default-secondary" />,
-            })),
+            options: paths.map((p) => ({ value: p.id, label: t_i18n(p.label) })),
           },
           {
             key: "source",
             label: "Source",
             values: (s) => [s.source.provider],
-            options: sources.map((p) => ({
-              value: p,
-              label: signalProviderName(p),
-              icon: <ProviderLogo provider={p} className="size-4" decorative />,
-            })),
+            options: sources.map((p) => ({ value: p, label: signalProviderName(p) })),
           },
         ]}
         exportName="ctem-signals"
