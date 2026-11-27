@@ -22110,5 +22110,7 @@
   "No asset group or primary asset owner was found: an administrator, as no group decides CTEM.": "資産グループまたは主要資産の担当者が見つかりません。CTEM を決定するグループがないため、管理者です。",
   "The first of {count, plural, one {# candidate} other {# candidates}} by account creation.": "アカウント作成順で{count, plural, other {#人の候補}}の最初の人です。",
   "No owner was found: the current owner is kept.": "担当者が見つかりません。現在の担当者を維持します。",
-  "Set by a person.": "ユーザーが設定しました。"
+  "Set by a person.": "ユーザーが設定しました。",
+  "Value (ROI) restarts from now": "価値 (ROI) は今から再計測されます",
+  "Measured since {date} (reset)": "{date} から計測 (リセット)"
 }
