@@ -1285,8 +1285,17 @@ async def integration_gql(db: Any, integration: Any, user_id: Any, *, timeout: i
     api_base = api_base.strip().rstrip("/")
     headers: Any = {"Authorization": f"Bearer {api_token.strip()}", "Content-Type": "application/json"}
     if getattr(integration, "auth_type", None) == "platform_managed":
+        from app.integrations.http import RefreshableHeaders
         from app.integrations.providers.opencti.capabilities import attach_probe
+        from app.services.integration_tools import _make_platform_jwt_refresh_fn
 
+        # The run-as user's JWT lives 10 minutes; a resync or a reconcile reads for
+        # longer, so the headers carry the re-minter _graphql refreshes before expiry
+        # and on an AUTH_REQUIRED answer, as the agent tools do.
+        headers = RefreshableHeaders(
+            headers,
+            refresh_fn=_make_platform_jwt_refresh_fn(str(integration.id), str(user_id) if user_id else None),
+        )
         # A registered platform is called with the run-as user's own JWT: a
         # query their role cannot pass (notifiers need SETTINGS_SETCUSTOMIZATION)
         # is never sent, or OpenCTI logs it as their unauthorized read. A
